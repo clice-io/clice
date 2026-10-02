@@ -10,36 +10,36 @@ namespace {
 // scan() — is_angled and is_include_next fields
 // ============================================================================
 
-TEST_SUITE(IncludeResolver) {
+ZEST_SUITE(IncludeResolver){
 
-TEST_CASE(ScanAngledVsQuoted) {
-    auto result = scan_quick(R"(
+    ZEST_CASE(ScanAngledVsQuoted){auto result = scan_quick(R"(
 #include <vector>
 #include "local.h"
 )");
 
-    ASSERT_EQ(result.includes.size(), 2u);
-    EXPECT_EQ(result.includes[0].path, "vector");
-    EXPECT_TRUE(result.includes[0].is_angled);
-    EXPECT_FALSE(result.includes[0].is_include_next);
+ASSERT(result.includes.size() == 2u);
+EXPECT(result.includes[0].path == "vector");
+EXPECT(result.includes[0].is_angled);
+EXPECT(!result.includes[0].is_include_next);
 
-    EXPECT_EQ(result.includes[1].path, "local.h");
-    EXPECT_FALSE(result.includes[1].is_angled);
-    EXPECT_FALSE(result.includes[1].is_include_next);
-}
+EXPECT(result.includes[1].path == "local.h");
+EXPECT(!result.includes[1].is_angled);
+EXPECT(!result.includes[1].is_include_next);
 
-TEST_CASE(ScanIncludeNext) {
+}  // namespace
+
+ZEST_CASE(ScanIncludeNext) {
     auto result = scan_quick(R"(
 #include_next <stdlib.h>
 )");
 
-    ASSERT_EQ(result.includes.size(), 1u);
-    EXPECT_EQ(result.includes[0].path, "stdlib.h");
-    EXPECT_TRUE(result.includes[0].is_angled);
-    EXPECT_TRUE(result.includes[0].is_include_next);
+    ASSERT(result.includes.size() == 1u);
+    EXPECT(result.includes[0].path == "stdlib.h");
+    EXPECT(result.includes[0].is_angled);
+    EXPECT(result.includes[0].is_include_next);
 }
 
-TEST_CASE(ScanMixedDirectives) {
+ZEST_CASE(ScanMixedDirectives) {
     auto result = scan_quick(R"(
 #include <system.h>
 #include "quoted.h"
@@ -50,29 +50,29 @@ TEST_CASE(ScanMixedDirectives) {
 #include_next "next_quoted.h"
 )");
 
-    ASSERT_EQ(result.includes.size(), 5u);
+    ASSERT(result.includes.size() == 5u);
 
-    EXPECT_TRUE(result.includes[0].is_angled);
-    EXPECT_FALSE(result.includes[0].conditional);
+    EXPECT(result.includes[0].is_angled);
+    EXPECT(!result.includes[0].conditional);
 
-    EXPECT_FALSE(result.includes[1].is_angled);
-    EXPECT_FALSE(result.includes[1].conditional);
+    EXPECT(!result.includes[1].is_angled);
+    EXPECT(!result.includes[1].conditional);
 
-    EXPECT_TRUE(result.includes[2].is_angled);
-    EXPECT_TRUE(result.includes[2].conditional);
+    EXPECT(result.includes[2].is_angled);
+    EXPECT(result.includes[2].conditional);
 
-    EXPECT_FALSE(result.includes[3].is_angled);
-    EXPECT_TRUE(result.includes[3].conditional);
+    EXPECT(!result.includes[3].is_angled);
+    EXPECT(result.includes[3].conditional);
 
-    EXPECT_FALSE(result.includes[4].is_angled);
-    EXPECT_TRUE(result.includes[4].is_include_next);
+    EXPECT(!result.includes[4].is_angled);
+    EXPECT(result.includes[4].is_include_next);
 }
 
 // ============================================================================
 // resolve_include() — tests with real filesystem
 // ============================================================================
 
-TEST_CASE(ResolveAbsolutePath) {
+ZEST_CASE(ResolveAbsolutePath) {
     TempDir tmp;
     tmp.touch("header.h");
 
@@ -83,11 +83,11 @@ TEST_CASE(ResolveAbsolutePath) {
 
     auto result = resolve_include(abs_path, false, "", false, 0, config, scope);
 
-    ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, abs_path));
+    ASSERT(result);
+    EXPECT(llvm::sys::fs::equivalent(result->path, abs_path));
 }
 
-TEST_CASE(ResolveQuotedIncludeFromIncluderDir) {
+ZEST_CASE(ResolveQuotedIncludeFromIncluderDir) {
     TempDir tmp;
     tmp.touch("src/main.cpp");
     tmp.touch("src/local.h");
@@ -101,11 +101,11 @@ TEST_CASE(ResolveQuotedIncludeFromIncluderDir) {
 
     auto result = resolve_include("local.h", false, tmp.path("src"), false, 0, config, scope);
 
-    ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("src/local.h")));
+    ASSERT(result);
+    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("src/local.h")));
 }
 
-TEST_CASE(ResolveAngledIncludeFromSearchDirs) {
+ZEST_CASE(ResolveAngledIncludeFromSearchDirs) {
     TempDir tmp;
     tmp.touch("include/sys/types.h");
 
@@ -118,11 +118,11 @@ TEST_CASE(ResolveAngledIncludeFromSearchDirs) {
 
     auto result = resolve_include("sys/types.h", true, "", false, 0, config, scope);
 
-    ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("include/sys/types.h")));
+    ASSERT(result);
+    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("include/sys/types.h")));
 }
 
-TEST_CASE(ResolveAngledSkipsQuotedDirs) {
+ZEST_CASE(ResolveAngledSkipsQuotedDirs) {
     TempDir tmp;
     tmp.touch("quoted/header.h", "// quoted");
     tmp.touch("angled/header.h", "// angled");
@@ -137,13 +137,13 @@ TEST_CASE(ResolveAngledSkipsQuotedDirs) {
 
     auto result = resolve_include("header.h", true, "", false, 0, config, scope);
 
-    ASSERT_TRUE(result.has_value());
+    ASSERT(result);
     // Angled include should skip quoted dir and find in angled dir.
-    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("angled/header.h")));
-    EXPECT_EQ(result->found_dir_idx, 1u);
+    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("angled/header.h")));
+    EXPECT(result->found_dir_idx == 1u);
 }
 
-TEST_CASE(ResolveIncludeNext) {
+ZEST_CASE(ResolveIncludeNext) {
     TempDir tmp;
     tmp.touch("dir1/stdlib.h", "// first");
     tmp.touch("dir2/stdlib.h", "// second");
@@ -159,13 +159,13 @@ TEST_CASE(ResolveIncludeNext) {
     // Simulate #include_next from a file found at dir index 0.
     auto result = resolve_include("stdlib.h", true, "", true, 0, config, scope);
 
-    ASSERT_TRUE(result.has_value());
+    ASSERT(result);
     // Should skip dir1 (found_dir_idx=0) and find in dir2.
-    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("dir2/stdlib.h")));
-    EXPECT_EQ(result->found_dir_idx, 1u);
+    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("dir2/stdlib.h")));
+    EXPECT(result->found_dir_idx == 1u);
 }
 
-TEST_CASE(ResolveNotFound) {
+ZEST_CASE(ResolveNotFound) {
     TempDir tmp;
 
     SearchConfig config;
@@ -177,10 +177,10 @@ TEST_CASE(ResolveNotFound) {
 
     auto result = resolve_include("nonexistent.h", false, tmp.path("src"), false, 0, config, scope);
 
-    EXPECT_FALSE(result.has_value());
+    EXPECT(!result.has_value());
 }
 
-TEST_CASE(ResolveStatCacheHits) {
+ZEST_CASE(ResolveStatCacheHits) {
     TempDir tmp;
     tmp.touch("include/cached.h");
 
@@ -194,16 +194,16 @@ TEST_CASE(ResolveStatCacheHits) {
     // First resolution — populates cache.
     auto result1 = resolve_include("cached.h", true, "", false, 0, config, scope);
 
-    ASSERT_TRUE(result1.has_value());
+    ASSERT(result1);
 
     // Second resolution — should use cache (no filesystem I/O needed).
     auto result2 = resolve_include("cached.h", true, "", false, 0, config, scope);
 
-    ASSERT_TRUE(result2.has_value());
-    EXPECT_EQ(result1->path, result2->path);
+    ASSERT(result2);
+    EXPECT(result1->path == result2->path);
 }
 
-TEST_CASE(ResolveQuotedFallsBackToSearchDirs) {
+ZEST_CASE(ResolveQuotedFallsBackToSearchDirs) {
     TempDir tmp;
     // Header not in includer dir, but in search dir.
     tmp.touch("include/fallback.h");
@@ -217,15 +217,15 @@ TEST_CASE(ResolveQuotedFallsBackToSearchDirs) {
 
     auto result = resolve_include("fallback.h", false, tmp.path("src"), false, 0, config, scope);
 
-    ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("include/fallback.h")));
+    ASSERT(result);
+    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("include/fallback.h")));
 }
 
 // ============================================================================
 // Three-tier search directory tests
 // ============================================================================
 
-TEST_CASE(AngledSkipsQuotedDirs) {
+ZEST_CASE(AngledSkipsQuotedDirs) {
     TempDir tmp;
     tmp.touch("iquote/header.h", "// iquote");
     tmp.touch("idir/header.h", "// I dir");
@@ -244,12 +244,12 @@ TEST_CASE(AngledSkipsQuotedDirs) {
 
     // <header.h> should skip iquote, find in idir (Angled before System).
     auto result = resolve_include("header.h", true, "", false, 0, config, scope);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("idir/header.h")));
-    EXPECT_EQ(result->found_dir_idx, 1u);
+    ASSERT(result);
+    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("idir/header.h")));
+    EXPECT(result->found_dir_idx == 1u);
 }
 
-TEST_CASE(AngledMissesQuotedOnly) {
+ZEST_CASE(AngledMissesQuotedOnly) {
     TempDir tmp;
     tmp.touch("iquote/only_here.h");
 
@@ -264,10 +264,10 @@ TEST_CASE(AngledMissesQuotedOnly) {
 
     // <only_here.h> should NOT find it — only in quoted dir.
     auto result = resolve_include("only_here.h", true, "", false, 0, config, scope);
-    EXPECT_FALSE(result.has_value());
+    EXPECT(!result.has_value());
 }
 
-TEST_CASE(QuotedSearchesAllDirs) {
+ZEST_CASE(QuotedSearchesAllDirs) {
     TempDir tmp;
     tmp.touch("sys/deep.h", "// system");
 
@@ -284,11 +284,11 @@ TEST_CASE(QuotedSearchesAllDirs) {
 
     // "deep.h" is only in system dir, but quoted search goes through all.
     auto result = resolve_include("deep.h", false, "", false, 0, config, scope);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("sys/deep.h")));
+    ASSERT(result);
+    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("sys/deep.h")));
 }
 
-TEST_CASE(AngledBeforeSystem) {
+ZEST_CASE(AngledBeforeSystem) {
     TempDir tmp;
     tmp.touch("idir/priority.h", "// angled");
     tmp.touch("sys/priority.h", "// system");
@@ -304,12 +304,12 @@ TEST_CASE(AngledBeforeSystem) {
 
     // <priority.h> should find in Angled (index 0) before System (index 1).
     auto result = resolve_include("priority.h", true, "", false, 0, config, scope);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("idir/priority.h")));
-    EXPECT_EQ(result->found_dir_idx, 0u);
+    ASSERT(result);
+    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("idir/priority.h")));
+    EXPECT(result->found_dir_idx == 0u);
 }
 
-TEST_CASE(AfterSearchedLast) {
+ZEST_CASE(AfterSearchedLast) {
     TempDir tmp;
     tmp.touch("after/fallback.h", "// after");
 
@@ -327,12 +327,12 @@ TEST_CASE(AfterSearchedLast) {
 
     // <fallback.h> not in angled or sys, found in after.
     auto result = resolve_include("fallback.h", true, "", false, 0, config, scope);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("after/fallback.h")));
-    EXPECT_EQ(result->found_dir_idx, 2u);
+    ASSERT(result);
+    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("after/fallback.h")));
+    EXPECT(result->found_dir_idx == 2u);
 }
 
-TEST_CASE(IncludeNextPropagatesIdx) {
+ZEST_CASE(IncludeNextPropagatesIdx) {
     TempDir tmp;
     tmp.touch("dir0/limits.h", "// local");
     tmp.touch("dir1/limits.h", "// system1");
@@ -350,13 +350,13 @@ TEST_CASE(IncludeNextPropagatesIdx) {
 
     // File found at dir1 (index 1) does #include_next <limits.h>
     auto result = resolve_include("limits.h", true, "", true, 1, config, scope);
-    ASSERT_TRUE(result.has_value());
+    ASSERT(result);
     // Should skip dirs 0-1, find in dir2.
-    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("dir2/limits.h")));
-    EXPECT_EQ(result->found_dir_idx, 2u);
+    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("dir2/limits.h")));
+    EXPECT(result->found_dir_idx == 2u);
 }
 
-TEST_CASE(IncludeNextOutsideDirs) {
+ZEST_CASE(IncludeNextOutsideDirs) {
     TempDir tmp;
     tmp.touch("inc0/target.h", "// first");
     tmp.touch("inc1/target.h", "// second");
@@ -374,8 +374,8 @@ TEST_CASE(IncludeNextOutsideDirs) {
     // looks its #include_next up like a plain include, from the start.
     auto includer =
         resolve_include("a.h", false, tmp.path("src"), false, std::nullopt, config, scope);
-    ASSERT_TRUE(includer.has_value());
-    EXPECT_EQ(includer->found_dir_idx, std::nullopt);
+    ASSERT(includer);
+    EXPECT(includer->found_dir_idx == std::nullopt);
 
     auto result = resolve_include("target.h",
                                   false,
@@ -384,12 +384,12 @@ TEST_CASE(IncludeNextOutsideDirs) {
                                   includer->found_dir_idx,
                                   config,
                                   scope);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(llvm::sys::fs::equivalent(result->path, tmp.path("inc0/target.h")));
-    EXPECT_EQ(result->found_dir_idx, 0u);
+    ASSERT(result);
+    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("inc0/target.h")));
+    EXPECT(result->found_dir_idx == 0u);
 }
 
-TEST_CASE(CaseMatchesVolume) {
+ZEST_CASE(CaseMatchesVolume) {
     // A header included in another case than its name on disk: found
     // exactly where the volume opens it — Windows and macOS by default —
     // and nowhere else.
@@ -406,15 +406,15 @@ TEST_CASE(CaseMatchesVolume) {
     vfs::Scope scope(cache);
     auto header = resolve_include("myheader.h", true, "", false, 0, config, scope);
     auto nested = resolve_include("sub/x.h", true, "", false, 0, config, scope);
-    ASSERT_EQ(header.has_value(), insensitive);
-    ASSERT_EQ(nested.has_value(), insensitive);
+    ASSERT(header.has_value() == insensitive);
+    ASSERT(nested.has_value() == insensitive);
     if(insensitive) {
-        EXPECT_TRUE(llvm::sys::fs::equivalent(header->path, tmp.path("a/MyHeader.h")));
-        EXPECT_EQ(nested->found_dir_idx, 1u);
+        EXPECT(llvm::sys::fs::equivalent(header->path, tmp.path("a/MyHeader.h")));
+        EXPECT(nested->found_dir_idx == 1u);
     }
 }
 
-TEST_CASE(NormalizationMatchesVolume) {
+ZEST_CASE(NormalizationMatchesVolume) {
     // The name on disk decomposed (NFD), the include composed (NFC): APFS
     // opens one by the other, other volumes do not.
     TempDir tmp;
@@ -427,7 +427,7 @@ TEST_CASE(NormalizationMatchesVolume) {
     vfs::DirCache cache;
     vfs::Scope scope(cache);
     auto result = resolve_include("\xC3\xA9.h", true, "", false, 0, config, scope);
-    ASSERT_EQ(result.has_value(), insensitive);
+    ASSERT(result.has_value() == insensitive);
 }
 
 // TODO: add tests for:
@@ -436,7 +436,7 @@ TEST_CASE(NormalizationMatchesVolume) {
 // - Relative paths with .. components ("../sibling/header.h")
 // - ResolvedSearchConfig overload (the production hot path)
 
-};  // TEST_SUITE(IncludeResolver)
+};  // namespace clice::testing
 
 }  // namespace
 }  // namespace clice::testing

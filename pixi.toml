@@ -180,9 +180,12 @@ depends-on = ["install-tests"]
 cmd = "node tools/docs/translate.ts review"
 depends-on = ["install-tests"]
 
+# Tests run one at a time, in zest's worker process so that a crash fails
+# only its test: many start workers and compilers of their own, and running
+# them side by side is not vetted for resource contention.
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = 'CLICE_TEST_DATA_DIR=$PIXI_PROJECT_ROOT/tests/data ./build/{{ type }}/bin/unit_tests --verbose'
+cmd = 'CLICE_TEST_DATA_DIR=$PIXI_PROJECT_ROOT/tests/data ./build/{{ type }}/bin/unit_tests --verbose --jobs 1'
 depends-on = [{ task = "check-feature-docs" }]
 
 # npm workspaces: install runs at the repo root and covers tools/, tests/

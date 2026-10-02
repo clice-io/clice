@@ -16,32 +16,32 @@ using std::chrono::seconds;
 constexpr std::uint8_t compile = 0;
 constexpr std::uint8_t hover = 1;
 
-TEST_SUITE(QuarantineMachine) {
+ZEST_SUITE(QuarantineMachine){
 
-TEST_CASE(CrashBarsItsKind) {
-    Quarantine q;
-    auto t0 = Clock::now();
-    EXPECT_FALSE(q.barred(compile, t0));
+    ZEST_CASE(CrashBarsItsKind){Quarantine q;
+auto t0 = Clock::now();
+EXPECT(!q.barred(compile, t0));
 
-    q.on_crash(compile, "d1", "killed by signal 11", t0);
-    EXPECT_TRUE(q.barred(compile, t0));
-    EXPECT_TRUE(q.crashed(compile));
-    EXPECT_FALSE(q.barred(hover, t0));
+q.on_crash(compile, "d1", "killed by signal 11", t0);
+EXPECT(q.barred(compile, t0));
+EXPECT(q.crashed(compile));
+EXPECT(!q.barred(hover, t0));
 
-    // A document that sits still is never retried.
-    EXPECT_TRUE(q.barred(compile, t0 + seconds(3600)));
-}
+// A document that sits still is never retried.
+EXPECT(q.barred(compile, t0 + seconds(3600)));
 
-TEST_CASE(ChangeRetriesAfterSpacing) {
+}  // namespace
+
+ZEST_CASE(ChangeRetriesAfterSpacing) {
     Quarantine q;
     auto t0 = Clock::now();
     q.on_crash(compile, "d1", "cause", t0);
     q.on_change(t0 + seconds(1));
-    EXPECT_TRUE(q.barred(compile, t0 + seconds(1)));
-    EXPECT_FALSE(q.barred(compile, t0 + Quarantine::retry_spacing));
+    EXPECT(q.barred(compile, t0 + seconds(1)));
+    EXPECT(!q.barred(compile, t0 + Quarantine::retry_spacing));
 }
 
-TEST_CASE(StrikesLeaveSaveOnly) {
+ZEST_CASE(StrikesLeaveSaveOnly) {
     Quarantine q;
     auto t = Clock::now();
     for(unsigned strike = 1; strike <= Quarantine::max_strikes; strike += 1) {
@@ -49,63 +49,63 @@ TEST_CASE(StrikesLeaveSaveOnly) {
         q.on_change(t);
         t += seconds(10);
     }
-    EXPECT_TRUE(q.barred(compile, t));
-    ASSERT_EQ(q.notes().size(), 1u);
-    EXPECT_TRUE(q.notes()[0].save_only);
+    EXPECT(q.barred(compile, t));
+    ASSERT(q.notes().size() == 1u);
+    EXPECT(q.notes()[0].save_only);
 
     q.on_save();
-    EXPECT_FALSE(q.barred(compile, t));
+    EXPECT(!q.barred(compile, t));
 
     // The save starts a fresh run: one crash later, a change retries again.
     q.on_crash(compile, "after-save", "cause", t);
     q.on_change(t);
-    EXPECT_FALSE(q.barred(compile, t + seconds(10)));
+    EXPECT(!q.barred(compile, t + seconds(10)));
 }
 
-TEST_CASE(LandClearsRecord) {
+ZEST_CASE(LandClearsRecord) {
     Quarantine q;
     auto t0 = Clock::now();
     q.on_crash(compile, "d1", "cause", t0);
     q.on_land(compile);
-    EXPECT_FALSE(q.crashed(compile));
-    EXPECT_FALSE(q.barred(compile, t0));
-    EXPECT_TRUE(q.empty());
+    EXPECT(!q.crashed(compile));
+    EXPECT(!q.barred(compile, t0));
+    EXPECT(q.empty());
 }
 
-TEST_CASE(DeathCountsOnce) {
+ZEST_CASE(DeathCountsOnce) {
     Quarantine q;
     auto t0 = Clock::now();
     q.on_crash(hover, "d1", "cause", t0);
     q.on_crash(hover, "d1", "cause", t0);
-    ASSERT_EQ(q.notes().size(), 1u);
-    EXPECT_EQ(q.notes()[0].strikes, 1u);
+    ASSERT(q.notes().size() == 1u);
+    EXPECT(q.notes()[0].strikes == 1u);
 
     // Anonymous evidence always counts.
     q.on_crash(hover, "", "cause", t0);
     q.on_crash(hover, "", "cause", t0);
-    EXPECT_EQ(q.notes()[0].strikes, 3u);
+    EXPECT(q.notes()[0].strikes == 3u);
 }
 
-TEST_CASE(AttemptSpendsLicense) {
+ZEST_CASE(AttemptSpendsLicense) {
     Quarantine q;
     auto t0 = Clock::now();
     q.on_crash(compile, "d1", "cause", t0);
     q.on_save();
     {
         Quarantine::Attempt attempt(q, compile);
-        EXPECT_TRUE(q.barred(compile, t0));
+        EXPECT(q.barred(compile, t0));
     }
     // Ended without a crash: the license comes back.
-    EXPECT_FALSE(q.barred(compile, t0));
+    EXPECT(!q.barred(compile, t0));
 
     {
         Quarantine::Attempt attempt(q, compile);
         q.on_crash(compile, "d2", "cause", t0);
     }
-    EXPECT_TRUE(q.barred(compile, t0 + seconds(10)));
+    EXPECT(q.barred(compile, t0 + seconds(10)));
 }
 
-TEST_CASE(SaveThenCrashKeepsBar) {
+ZEST_CASE(SaveThenCrashKeepsBar) {
     // The strikes a save reset climb back to the count the attempt saw;
     // the crash still spends the license it carried.
     Quarantine q;
@@ -117,21 +117,21 @@ TEST_CASE(SaveThenCrashKeepsBar) {
         q.on_save();
         q.on_crash(compile, "d2", "cause", t0 + seconds(1));
     }
-    EXPECT_TRUE(q.barred(compile, t0 + seconds(10)));
+    EXPECT(q.barred(compile, t0 + seconds(10)));
 }
 
-TEST_CASE(SiblingCrashOvertakes) {
+ZEST_CASE(SiblingCrashOvertakes) {
     Quarantine q;
     auto t0 = Clock::now();
     Quarantine::Attempt attempt(q, hover);
-    EXPECT_FALSE(attempt.overtaken());
+    EXPECT(!attempt.overtaken());
     q.on_crash(compile, "d1", "cause", t0);
-    EXPECT_FALSE(attempt.overtaken());
+    EXPECT(!attempt.overtaken());
     q.on_crash(hover, "d2", "cause", t0);
-    EXPECT_TRUE(attempt.overtaken());
+    EXPECT(attempt.overtaken());
 }
 
-TEST_CASE(ChangeDuringFlightStands) {
+ZEST_CASE(ChangeDuringFlightStands) {
     // The crash describes the inputs the attempt carried; an edit during
     // its flight is still untried.
     Quarantine q;
@@ -141,59 +141,59 @@ TEST_CASE(ChangeDuringFlightStands) {
         q.on_change(t0);
         q.on_crash(compile, "d1", "cause", t0 + seconds(20));
     }
-    EXPECT_FALSE(q.barred(compile, t0 + seconds(30)));
+    EXPECT(!q.barred(compile, t0 + seconds(30)));
 }
 
-TEST_CASE(EditingCrashStaysSilent) {
+ZEST_CASE(EditingCrashStaysSilent) {
     Quarantine q;
     auto t0 = Clock::now();
     q.on_change(t0);
     q.on_crash(compile, "d1", "cause", t0 + seconds(1));
-    EXPECT_FALSE(q.shows(compile));
-    EXPECT_TRUE(q.notes().empty());
+    EXPECT(!q.shows(compile));
+    EXPECT(q.notes().empty());
 
     // A repeat shows.
     q.on_change(t0 + seconds(2));
     q.on_crash(compile, "d2", "cause", t0 + seconds(5));
-    EXPECT_TRUE(q.shows(compile));
-    EXPECT_EQ(q.notes().size(), 1u);
+    EXPECT(q.shows(compile));
+    EXPECT(q.notes().size() == 1u);
 }
 
-TEST_CASE(SavedCrashShows) {
+ZEST_CASE(SavedCrashShows) {
     // Saved code is no half-typed code, however recent the edit.
     Quarantine q;
     auto t0 = Clock::now();
     q.on_change(t0);
     q.on_save();
     q.on_crash(compile, "d1", "cause", t0 + seconds(1));
-    EXPECT_TRUE(q.shows(compile));
+    EXPECT(q.shows(compile));
 }
 
-TEST_CASE(ColdCrashShows) {
+ZEST_CASE(ColdCrashShows) {
     Quarantine q;
     auto t0 = Clock::now();
     q.on_change(t0);
     q.on_crash(hover, "d1", "killed by signal 6 (SIGABRT)", t0 + Quarantine::editing_window);
-    ASSERT_EQ(q.notes().size(), 1u);
-    EXPECT_EQ(q.notes()[0].kind, hover);
-    EXPECT_EQ(q.notes()[0].cause, "killed by signal 6 (SIGABRT)");
-    EXPECT_FALSE(q.notes()[0].save_only);
+    ASSERT(q.notes().size() == 1u);
+    EXPECT(q.notes()[0].kind == hover);
+    EXPECT(q.notes()[0].cause == "killed by signal 6 (SIGABRT)");
+    EXPECT(!q.notes()[0].save_only);
 }
 
-TEST_CASE(BudgetBlocksAtThreshold) {
+ZEST_CASE(BudgetBlocksAtThreshold) {
     BlameBudget budget;
-    EXPECT_FALSE(budget.blocked("key-a"));
+    EXPECT(!budget.blocked("key-a"));
 
     budget.on_blame("key-a");
-    EXPECT_FALSE(budget.blocked("key-a"));
+    EXPECT(!budget.blocked("key-a"));
     budget.on_blame("key-a");
-    EXPECT_TRUE(budget.blocked("key-a"));
+    EXPECT(budget.blocked("key-a"));
 
     // Keys are independent: fresh content (fresh key) starts fresh.
-    EXPECT_FALSE(budget.blocked("key-b"));
+    EXPECT(!budget.blocked("key-b"));
 }
 
-TEST_CASE(BudgetClearsOnLand) {
+ZEST_CASE(BudgetClearsOnLand) {
     // A consumer landing proves the blames were transient: without the
     // clear, two unrelated hiccups far apart would block a key that
     // serves fine in between.
@@ -201,20 +201,20 @@ TEST_CASE(BudgetClearsOnLand) {
     budget.on_blame("key");
     budget.on_land("key");
     budget.on_blame("key");
-    EXPECT_FALSE(budget.blocked("key"));
+    EXPECT(!budget.blocked("key"));
 }
 
-TEST_CASE(BudgetRearmsAfterCooldown) {
+ZEST_CASE(BudgetRearmsAfterCooldown) {
     // The poison may live in content the key cannot see (a header included
     // by the hashed preamble text): a block is a cooldown, not a verdict.
     // Zero cooldown models "elapsed" — the key earns a fresh budget.
     BlameBudget budget{std::chrono::milliseconds(0)};
     budget.on_blame("key");
     budget.on_blame("key");
-    EXPECT_FALSE(budget.blocked("key"));
+    EXPECT(!budget.blocked("key"));
 }
 
-};  // TEST_SUITE(QuarantineMachine)
+};  // namespace clice::testing
 
 }  // namespace
 

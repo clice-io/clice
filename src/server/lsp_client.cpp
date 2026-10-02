@@ -619,13 +619,10 @@ void LSPClient::register_document_sync() {
 void LSPClient::register_language_features() {
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
-        auto [path, path_id, session, project] =
-            resolve_uri(params.text_document.uri);
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
             co_return kota::outcome_error(unserved(path));
-        co_return co_await project->features.hover(session,
-                                                   params.position,
-                                                   ctx.cancellation);
+        co_return co_await project->features.hover(session, params.position, ctx.cancellation);
     });
 
     peer.on_request(
@@ -753,33 +750,29 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] =
-                resolve_uri(params.text_document.uri);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(unserved(path));
             llvm::StringRef trigger;
             if(params.context && params.context->trigger_character) {
                 trigger = *params.context->trigger_character;
             }
-            co_return co_await project->features.completion(
-                session,
-                params.position,
-                completion_client,
-                trigger,
-                ctx.cancellation);
+            co_return co_await project->features.completion(session,
+                                                            params.position,
+                                                            completion_client,
+                                                            trigger,
+                                                            ctx.cancellation);
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] =
-                resolve_uri(params.text_document.uri);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 co_return kota::outcome_error(unserved(path));
-            co_return co_await project->features.signature_help(
-                session,
-                params.position,
-                ctx.cancellation);
+            co_return co_await project->features.signature_help(session,
+                                                                params.position,
+                                                                ctx.cancellation);
         });
 
     peer.on_request(

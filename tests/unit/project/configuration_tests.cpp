@@ -18,87 +18,86 @@ Config tagged(const TempDir& tmp) {
     return config;
 }
 
-TEST_SUITE(Configuration) {
+ZEST_SUITE(Configuration) {
+    ZEST_CASE(FallbackDefaultElseFirst) {
+        TempDir tmp;
+        auto config = tagged(tmp);
+        EXPECT(fallback_configuration(config) == "release");
 
-TEST_CASE(FallbackDefaultElseFirst) {
-    TempDir tmp;
-    auto config = tagged(tmp);
-    EXPECT_EQ(fallback_configuration(config), "release");
+        config.default_configuration = "nope";
+        EXPECT(fallback_configuration(config) == "debug");
 
-    config.default_configuration = "nope";
-    EXPECT_EQ(fallback_configuration(config), "debug");
+        Config untagged;
+        untagged.rules.push_back(ConfigRule{.compile_commands = {"."}});
+        untagged.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+        EXPECT(fallback_configuration(untagged).empty());
+    };
 
-    Config untagged;
-    untagged.rules.push_back(ConfigRule{.compile_commands = {"."}});
-    untagged.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    EXPECT_TRUE(fallback_configuration(untagged).empty());
-};
+    ZEST_CASE(SelectionRoundTrips) {
+        TempDir tmp;
+        auto cache_dir = tmp.path(".clice");
+        EXPECT(read_selection(cache_dir).empty());
+        ASSERT(write_selection(cache_dir, "release"));
+        EXPECT(read_selection(cache_dir) == "release");
+        ASSERT(write_selection(cache_dir, "debug"));
+        EXPECT(read_selection(cache_dir) == "debug");
+        EXPECT(fs::exists(path::join(cache_dir, "state.json")));
 
-TEST_CASE(SelectionRoundTrips) {
-    TempDir tmp;
-    auto cache_dir = tmp.path(".clice");
-    EXPECT_TRUE(read_selection(cache_dir).empty());
-    ASSERT_TRUE(write_selection(cache_dir, "release").has_value());
-    EXPECT_EQ(read_selection(cache_dir), "release");
-    ASSERT_TRUE(write_selection(cache_dir, "debug").has_value());
-    EXPECT_EQ(read_selection(cache_dir), "debug");
-    EXPECT_TRUE(fs::exists(path::join(cache_dir, "state.json")));
+        tmp.touch(".clice/state.json", "not json");
+        EXPECT(read_selection(cache_dir).empty());
+        EXPECT(read_file(path::join(cache_dir, "state.json")).value_or("") == "not json");
+        EXPECT(read_selection("").empty());
+    };
 
-    tmp.touch(".clice/state.json", "not json");
-    EXPECT_TRUE(read_selection(cache_dir).empty());
-    EXPECT_EQ(read_file(path::join(cache_dir, "state.json")).value_or(""), "not json");
-    EXPECT_TRUE(read_selection("").empty());
-};
+    ZEST_CASE(SelectionWriteFails) {
+        TempDir tmp;
+        EXPECT(!write_selection("", "release").has_value());
+        tmp.touch("blocked", "x");
+        EXPECT(!write_selection(tmp.path("blocked"), "release").has_value());
+    };
 
-TEST_CASE(SelectionWriteFails) {
-    TempDir tmp;
-    EXPECT_FALSE(write_selection("", "release").has_value());
-    tmp.touch("blocked", "x");
-    EXPECT_FALSE(write_selection(tmp.path("blocked"), "release").has_value());
-};
+    ZEST_CASE(CheckRequested) {
+        TempDir tmp;
+        auto config = tagged(tmp);
+        EXPECT(declares_configuration(config, "debug"));
+        EXPECT(!declares_configuration(config, "nope"));
+        EXPECT(check_requested_configuration(config, ""));
+        EXPECT(check_requested_configuration(config, "release"));
+        EXPECT(!check_requested_configuration(config, "nope"));
+    };
 
-TEST_CASE(CheckRequested) {
-    TempDir tmp;
-    auto config = tagged(tmp);
-    EXPECT_TRUE(declares_configuration(config, "debug"));
-    EXPECT_FALSE(declares_configuration(config, "nope"));
-    EXPECT_TRUE(check_requested_configuration(config, ""));
-    EXPECT_TRUE(check_requested_configuration(config, "release"));
-    EXPECT_FALSE(check_requested_configuration(config, "nope"));
-};
+    ZEST_CASE(ResolvePrecedence) {
+        TempDir tmp;
+        auto config = tagged(tmp);
+        EXPECT(resolve_configuration(config, "") == "release");
 
-TEST_CASE(ResolvePrecedence) {
-    TempDir tmp;
-    auto config = tagged(tmp);
-    EXPECT_EQ(resolve_configuration(config, ""), "release");
+        ASSERT(write_selection(config.project.cache_dir, "debug"));
+        EXPECT(resolve_configuration(config, "") == "debug");
+        EXPECT(resolve_configuration(config, "release") == "release");
+    };
 
-    ASSERT_TRUE(write_selection(config.project.cache_dir, "debug").has_value());
-    EXPECT_EQ(resolve_configuration(config, ""), "debug");
-    EXPECT_EQ(resolve_configuration(config, "release"), "release");
-};
+    ZEST_CASE(UnknownNameFallsBack) {
+        TempDir tmp;
+        auto config = tagged(tmp);
+        EXPECT(resolve_configuration(config, "nope") == "release");
 
-TEST_CASE(UnknownNameFallsBack) {
-    TempDir tmp;
-    auto config = tagged(tmp);
-    EXPECT_EQ(resolve_configuration(config, "nope"), "release");
+        ASSERT(write_selection(config.project.cache_dir, "gone"));
+        EXPECT(resolve_configuration(config, "") == "release");
+        EXPECT(read_selection(config.project.cache_dir) == "gone");
+        EXPECT(resolve_configuration(config, "debug") == "debug");
+    };
 
-    ASSERT_TRUE(write_selection(config.project.cache_dir, "gone").has_value());
-    EXPECT_EQ(resolve_configuration(config, ""), "release");
-    EXPECT_EQ(read_selection(config.project.cache_dir), "gone");
-    EXPECT_EQ(resolve_configuration(config, "debug"), "debug");
-};
+    ZEST_CASE(UntaggedIgnoresSelection) {
+        TempDir tmp;
+        Config config;
+        config.rules.push_back(ConfigRule{.compile_commands = {"."}});
+        config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+        ASSERT(write_selection(config.project.cache_dir, "release"));
+        EXPECT(resolve_configuration(config, "").empty());
+        EXPECT(resolve_configuration(config, "release").empty());
+    };
 
-TEST_CASE(UntaggedIgnoresSelection) {
-    TempDir tmp;
-    Config config;
-    config.rules.push_back(ConfigRule{.compile_commands = {"."}});
-    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT_TRUE(write_selection(config.project.cache_dir, "release").has_value());
-    EXPECT_TRUE(resolve_configuration(config, "").empty());
-    EXPECT_TRUE(resolve_configuration(config, "release").empty());
-};
-
-};  // TEST_SUITE(Configuration)
+};  // ZEST_SUITE(Configuration)
 
 }  // namespace
 

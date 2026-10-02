@@ -12,7 +12,7 @@ kota::task<> settle(Pred pred) {
     for(int i = 0; i < 100 && !pred(); ++i) {
         co_await kota::sleep(1);
     }
-    EXPECT_TRUE(pred());
+    EXPECT(pred());
 }
 
 }  // namespace clice::testing

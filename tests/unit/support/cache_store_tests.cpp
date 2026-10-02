@@ -75,64 +75,64 @@ std::string
     return *committed;
 }
 
-TEST_SUITE(CacheStore) {
+ZEST_SUITE(CacheStore){
 
-TEST_CASE(StoreAndLookup) {
-    TempDir tmp;
-    auto store = open_store(tmp);
-    register_lru(store);
+    ZEST_CASE(StoreAndLookup){TempDir tmp;
+auto store = open_store(tmp);
+register_lru(store);
 
-    ASSERT_FALSE(store.lookup("pch", "k1").has_value());
+ASSERT(!store.lookup("pch", "k1").has_value());
 
-    auto path = put(store, "pch", "k1", "blob content");
+auto path = put(store, "pch", "k1", "blob content");
 
-    auto hit = store.lookup("pch", "k1");
-    ASSERT_TRUE(hit.has_value());
-    ASSERT_EQ(*hit, path);
-    ASSERT_EQ(read_file(*hit).value_or(""), "blob content");
+auto hit = store.lookup("pch", "k1");
+ASSERT(hit);
+ASSERT(*hit == path);
+ASSERT(read_file(*hit).value_or("") == "blob content");
 
-    // The blob landed inside the versioned namespace directory.
-    ASSERT_TRUE(llvm::StringRef(path).contains("v1"));
-    ASSERT_TRUE(llvm::StringRef(path).ends_with("k1.pch"));
-}
+// The blob landed inside the versioned namespace directory.
+ASSERT(llvm::StringRef(path).contains("v1"));
+ASSERT(llvm::StringRef(path).ends_with("k1.pch"));
 
-TEST_CASE(RootIgnoreMarkers) {
+}  // namespace
+
+ZEST_CASE(RootIgnoreMarkers) {
     TempDir tmp;
     auto store = open_store(tmp);
 
     // Opening alone marks nothing: the root may be a user-configured,
     // shared directory.
-    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/.gitignore")));
+    ASSERT(!llvm::sys::fs::exists(tmp.path("root/.gitignore")));
 
     CacheStore::write_ignore_markers(tmp.path("root"));
 
     // config.toml stays visible: the root doubles as .clice/config.toml.
-    ASSERT_EQ(read_file(tmp.path("root/.gitignore")).value_or(""), "*\n!config.toml\n");
+    ASSERT(read_file(tmp.path("root/.gitignore")).value_or("") == "*\n!config.toml\n");
     auto tag = read_file(tmp.path("root/CACHEDIR.TAG")).value_or("");
-    ASSERT_TRUE(llvm::StringRef(tag).starts_with("Signature: 8a477f597d28d172789f06886806bc55"));
+    ASSERT(llvm::StringRef(tag).starts_with("Signature: 8a477f597d28d172789f06886806bc55"));
 }
 
-TEST_CASE(MarkersCreateRoot) {
+ZEST_CASE(MarkersCreateRoot) {
     TempDir tmp;
 
     // Sessions mark the defaulted root before anything else creates it.
     CacheStore::write_ignore_markers(tmp.path("fresh"));
 
-    ASSERT_EQ(read_file(tmp.path("fresh/.gitignore")).value_or(""), "*\n!config.toml\n");
-    ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("fresh/CACHEDIR.TAG")));
+    ASSERT(read_file(tmp.path("fresh/.gitignore")).value_or("") == "*\n!config.toml\n");
+    ASSERT(llvm::sys::fs::exists(tmp.path("fresh/CACHEDIR.TAG")));
 }
 
-TEST_CASE(IgnoreMarkersPreserved) {
+ZEST_CASE(IgnoreMarkersPreserved) {
     TempDir tmp;
     { auto store = open_store(tmp); }
     require(fs::write(tmp.path("root/.gitignore"), "custom\n").has_value(), "rewrite failed");
 
     CacheStore::write_ignore_markers(tmp.path("root"));
-    ASSERT_EQ(read_file(tmp.path("root/.gitignore")).value_or(""), "custom\n");
-    ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("root/CACHEDIR.TAG")));
+    ASSERT(read_file(tmp.path("root/.gitignore")).value_or("") == "custom\n");
+    ASSERT(llvm::sys::fs::exists(tmp.path("root/CACHEDIR.TAG")));
 }
 
-TEST_CASE(DropRemovesTmp) {
+ZEST_CASE(DropRemovesTmp) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_lru(store);
@@ -143,45 +143,45 @@ TEST_CASE(DropRemovesTmp) {
     std::string tmp_path;
     {
         auto pending = store.begin_store("pch", "k1");
-        ASSERT_TRUE(fs::write(pending.tmp_path, "junk").has_value());
+        ASSERT(fs::write(pending.tmp_path, "junk"));
         tmp_path = pending.tmp_path;
     }
 
-    ASSERT_FALSE(llvm::sys::fs::exists(tmp_path));
-    ASSERT_FALSE(store.lookup("pch", "k1").has_value());
+    ASSERT(!llvm::sys::fs::exists(tmp_path));
+    ASSERT(!store.lookup("pch", "k1").has_value());
 
     // A moved-from entry no longer owns the tmp file.
     auto pending = store.begin_store("pch", "k2");
-    ASSERT_TRUE(fs::write(pending.tmp_path, "junk").has_value());
+    ASSERT(fs::write(pending.tmp_path, "junk"));
     auto second = pending.tmp_path;
     {
         auto moved = std::move(pending);
-        ASSERT_TRUE(llvm::sys::fs::exists(second));
+        ASSERT(llvm::sys::fs::exists(second));
     }
-    ASSERT_FALSE(llvm::sys::fs::exists(second));
+    ASSERT(!llvm::sys::fs::exists(second));
 
     // Move assignment cleans the destination's own tmp before adopting.
     auto lhs = store.begin_store("pch", "k3");
     auto rhs = store.begin_store("pch", "k4");
-    ASSERT_TRUE(fs::write(lhs.tmp_path, "junk").has_value());
-    ASSERT_TRUE(fs::write(rhs.tmp_path, "junk").has_value());
+    ASSERT(fs::write(lhs.tmp_path, "junk"));
+    ASSERT(fs::write(rhs.tmp_path, "junk"));
     auto third = lhs.tmp_path;
     auto fourth = rhs.tmp_path;
     lhs = std::move(rhs);
-    ASSERT_FALSE(llvm::sys::fs::exists(third));
-    ASSERT_TRUE(llvm::sys::fs::exists(fourth));
+    ASSERT(!llvm::sys::fs::exists(third));
+    ASSERT(llvm::sys::fs::exists(fourth));
 }
 
-TEST_CASE(CommitWithoutWriteFails) {
+ZEST_CASE(CommitWithoutWriteFails) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_lru(store);
 
     auto pending = store.begin_store("pch", "k1");
-    ASSERT_FALSE(store.commit(std::move(pending)).has_value());
+    ASSERT(!store.commit(std::move(pending)).has_value());
 }
 
-TEST_CASE(SurvivesReopen) {
+ZEST_CASE(SurvivesReopen) {
     TempDir tmp;
     {
         auto store = open_store(tmp);
@@ -193,11 +193,11 @@ TEST_CASE(SurvivesReopen) {
     auto store = open_store(tmp);
     register_lru(store);
     auto hit = store.lookup("pch", "k1");
-    ASSERT_TRUE(hit.has_value());
-    ASSERT_EQ(read_file(*hit).value_or(""), "persisted");
+    ASSERT(hit);
+    ASSERT(read_file(*hit).value_or("") == "persisted");
 }
 
-TEST_CASE(VersionBumpDiscards) {
+ZEST_CASE(VersionBumpDiscards) {
     TempDir tmp;
     {
         auto store = open_store(tmp);
@@ -208,11 +208,11 @@ TEST_CASE(VersionBumpDiscards) {
 
     auto store = open_store(tmp, version + 1);
     register_lru(store);
-    ASSERT_FALSE(store.lookup("pch", "k1").has_value());
-    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v1")));
+    ASSERT(!store.lookup("pch", "k1").has_value());
+    ASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v1")));
 }
 
-TEST_CASE(LiveLayoutKept) {
+ZEST_CASE(LiveLayoutKept) {
     TempDir tmp;
     // A clice of another version is live inside v1 (our own pid stands in
     // for its `tmp/{pid}` marker): the sweep must not delete the cache out
@@ -222,32 +222,32 @@ TEST_CASE(LiveLayoutKept) {
     tmp.touch("root/cache/v1/pch/k1.pch", "live");
 
     auto store = open_store(tmp, version + 1);
-    ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("root/cache/v1/pch/k1.pch")));
+    ASSERT(llvm::sys::fs::exists(tmp.path("root/cache/v1/pch/k1.pch")));
 }
 
-TEST_CASE(CrashedLayoutDiscarded) {
+ZEST_CASE(CrashedLayoutDiscarded) {
     TempDir tmp;
     // A crashed old-version instance leaves its `tmp/{pid}` behind; a dead
     // pid does not hold the layout alive.
     tmp.touch(std::string("root/cache/v1/tmp/") + dead_pid + "/0.pch");
 
     auto store = open_store(tmp, version + 1);
-    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v1")));
+    ASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v1")));
 }
 
-TEST_CASE(LegacyLayoutDiscarded) {
+ZEST_CASE(LegacyLayoutDiscarded) {
     TempDir tmp;
     // Pre-versioning layout: blobs and metadata directly under cache/.
     tmp.touch("root/cache/cache.json", "{}");
     tmp.touch("root/cache/pch/deadbeef.pch", "old");
 
     auto store = open_store(tmp);
-    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/cache.json")));
-    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/pch")));
+    ASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/cache.json")));
+    ASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/pch")));
 }
 
 #ifndef _WIN32
-TEST_CASE(SymlinkNotFollowed) {
+ZEST_CASE(SymlinkNotFollowed) {
     TempDir tmp;
     tmp.touch("outside/keep.txt", "data");
     tmp.mkdir("root/cache");
@@ -257,12 +257,12 @@ TEST_CASE(SymlinkNotFollowed) {
         ::symlink(tmp.path("outside").c_str(), tmp.path("root/cache/v0").c_str());
 
     auto store = open_store(tmp);
-    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v0")));
-    ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("outside/keep.txt")));
+    ASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v0")));
+    ASSERT(llvm::sys::fs::exists(tmp.path("outside/keep.txt")));
 }
 #endif
 
-TEST_CASE(LruEviction) {
+ZEST_CASE(LruEviction) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_lru(store, 25);  // fits two 10-byte blobs, not three
@@ -271,35 +271,35 @@ TEST_CASE(LruEviction) {
     put(store, "pch", "b", "bbbbbbbbbb");
 
     // Touch "a" so "b" becomes the coldest entry.
-    ASSERT_TRUE(store.lookup("pch", "a").has_value());
+    ASSERT(store.lookup("pch", "a"));
 
     put(store, "pch", "c", "cccccccccc");
 
-    ASSERT_TRUE(store.lookup("pch", "a").has_value());
-    ASSERT_FALSE(store.lookup("pch", "b").has_value());
-    ASSERT_TRUE(store.lookup("pch", "c").has_value());
+    ASSERT(store.lookup("pch", "a"));
+    ASSERT(!store.lookup("pch", "b").has_value());
+    ASSERT(store.lookup("pch", "c"));
 
     // The eviction is reported exactly once: owners of derived in-memory
     // state drain the record on their own loop, and a second drain must
     // not replay it.
     auto evicted = store.take_evictions();
-    ASSERT_EQ(evicted.size(), 1U);
-    ASSERT_EQ(evicted[0].ns, std::string("pch"));
-    ASSERT_EQ(evicted[0].key, std::string("b"));
-    ASSERT_TRUE(store.take_evictions().empty());
+    ASSERT(evicted.size() == 1U);
+    ASSERT(evicted[0].ns == std::string("pch"));
+    ASSERT(evicted[0].key == std::string("b"));
+    ASSERT(store.take_evictions().empty());
 }
 
-TEST_CASE(FreshCommitNotEvicted) {
+ZEST_CASE(FreshCommitNotEvicted) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_lru(store, 5);  // smaller than a single blob
 
     auto path = put(store, "pch", "big", "0123456789");
-    ASSERT_TRUE(llvm::sys::fs::exists(path));
-    ASSERT_TRUE(store.lookup("pch", "big").has_value());
+    ASSERT(llvm::sys::fs::exists(path));
+    ASSERT(store.lookup("pch", "big"));
 }
 
-TEST_CASE(RewriteWins) {
+ZEST_CASE(RewriteWins) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_lru(store);
@@ -308,10 +308,10 @@ TEST_CASE(RewriteWins) {
     // same key must serve the new content, never the old blob.
     put(store, "pch", "k1", "first snapshot");
     auto path = put(store, "pch", "k1", "second");
-    ASSERT_EQ(read_file(path).value_or(""), "second");
+    ASSERT(read_file(path).value_or("") == "second");
 }
 
-TEST_CASE(LruStaleBlobReplaced) {
+ZEST_CASE(LruStaleBlobReplaced) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_lru(store);
@@ -322,11 +322,11 @@ TEST_CASE(LruStaleBlobReplaced) {
     // never kept.  Squat the path to force the collision portably.
     tmp.mkdir("root/cache/v1/pch/k1.pch");
     auto path = put(store, "pch", "k1", "fresh");
-    ASSERT_EQ(read_file(path).value_or(""), "fresh");
-    ASSERT_TRUE(store.lookup("pch", "k1").has_value());
+    ASSERT(read_file(path).value_or("") == "fresh");
+    ASSERT(store.lookup("pch", "k1"));
 }
 
-TEST_CASE(CommitFailureSurfaces) {
+ZEST_CASE(CommitFailureSurfaces) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_lru(store);
@@ -335,12 +335,12 @@ TEST_CASE(CommitFailureSurfaces) {
     // commit must report the failure, not silently claim the data is stored.
     tmp.touch("root/cache/v1/pch/k1.pch/squatter", "x");
     auto pending = store.begin_store("pch", "k1");
-    ASSERT_TRUE(fs::write(pending.tmp_path, "dropped").has_value());
-    ASSERT_FALSE(store.commit(std::move(pending)).has_value());
-    ASSERT_FALSE(store.lookup("pch", "k1").has_value());
+    ASSERT(fs::write(pending.tmp_path, "dropped"));
+    ASSERT(!store.commit(std::move(pending)).has_value());
+    ASSERT(!store.lookup("pch", "k1").has_value());
 }
 
-TEST_CASE(InvalidateRemovesBlob) {
+ZEST_CASE(InvalidateRemovesBlob) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_lru(store);
@@ -348,11 +348,11 @@ TEST_CASE(InvalidateRemovesBlob) {
     auto path = put(store, "pch", "k1", "blob");
     store.invalidate("pch", "k1");
 
-    ASSERT_FALSE(store.lookup("pch", "k1").has_value());
-    ASSERT_FALSE(llvm::sys::fs::exists(path));
+    ASSERT(!store.lookup("pch", "k1").has_value());
+    ASSERT(!llvm::sys::fs::exists(path));
 }
 
-TEST_CASE(InvalidateMappedBlob) {
+ZEST_CASE(InvalidateMappedBlob) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_lru(store);
@@ -361,16 +361,16 @@ TEST_CASE(InvalidateMappedBlob) {
     auto mapped = llvm::MemoryBuffer::getFile(path,
                                               /*IsText=*/false,
                                               /*RequiresNullTerminator=*/false);
-    ASSERT_TRUE(bool(mapped));
-    ASSERT_EQ((*mapped)->getBufferKind(), llvm::MemoryBuffer::MemoryBuffer_MMap);
+    ASSERT(bool(mapped));
+    ASSERT((*mapped)->getBufferKind() == llvm::MemoryBuffer::MemoryBuffer_MMap);
 
     store.invalidate("pch", "k1");
 
-    ASSERT_FALSE(llvm::sys::fs::exists(path));
-    ASSERT_EQ((*mapped)->getBuffer().back(), 'x');
+    ASSERT(!llvm::sys::fs::exists(path));
+    ASSERT((*mapped)->getBuffer().back() == 'x');
 }
 
-TEST_CASE(MissingManifestRescans) {
+ZEST_CASE(MissingManifestRescans) {
     TempDir tmp;
     {
         auto store = open_store(tmp);
@@ -380,16 +380,16 @@ TEST_CASE(MissingManifestRescans) {
     }
 
     [[maybe_unused]] auto removed = llvm::sys::fs::remove(tmp.path("root/cache/v1/manifest.json"));
-    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v1/manifest.json")));
+    ASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v1/manifest.json")));
 
     auto store = open_store(tmp);
     register_lru(store);
     auto hit = store.lookup("pch", "k1");
-    ASSERT_TRUE(hit.has_value());
-    ASSERT_EQ(read_file(*hit).value_or(""), "scanned blob");
+    ASSERT(hit);
+    ASSERT(read_file(*hit).value_or("") == "scanned blob");
 }
 
-TEST_CASE(CorruptManifestRescans) {
+ZEST_CASE(CorruptManifestRescans) {
     TempDir tmp;
     {
         auto store = open_store(tmp);
@@ -402,10 +402,10 @@ TEST_CASE(CorruptManifestRescans) {
 
     auto store = open_store(tmp);
     register_lru(store);
-    ASSERT_TRUE(store.lookup("pch", "k1").has_value());
+    ASSERT(store.lookup("pch", "k1"));
 }
 
-TEST_CASE(UncheckpointedBlobAdopted) {
+ZEST_CASE(UncheckpointedBlobAdopted) {
     TempDir tmp;
     {
         auto store = open_store(tmp);
@@ -420,31 +420,31 @@ TEST_CASE(UncheckpointedBlobAdopted) {
 
     auto store = open_store(tmp);
     register_lru(store);
-    ASSERT_TRUE(store.lookup("pch", "k1").has_value());
-    ASSERT_TRUE(store.lookup("pch", "orphan").has_value());
+    ASSERT(store.lookup("pch", "k1"));
+    ASSERT(store.lookup("pch", "orphan"));
 }
 
-TEST_CASE(DeadInstanceTmpSwept) {
+ZEST_CASE(DeadInstanceTmpSwept) {
     TempDir tmp;
     tmp.touch(std::string("root/cache/v1/tmp/") + dead_pid + "/0.pch", "leftover");
 
     auto store = open_store(tmp);
-    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path(std::string("root/cache/v1/tmp/") + dead_pid)));
+    ASSERT(!llvm::sys::fs::exists(tmp.path(std::string("root/cache/v1/tmp/") + dead_pid)));
 }
 
-TEST_CASE(ShutdownRemovesOwnTmp) {
+ZEST_CASE(ShutdownRemovesOwnTmp) {
     TempDir tmp;
     auto pid = std::to_string(llvm::sys::Process::getProcessId());
     {
         auto store = open_store(tmp);
         register_lru(store);
-        ASSERT_TRUE(llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid)));
+        ASSERT(llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid)));
         store.shutdown();
     }
-    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid)));
+    ASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid)));
 }
 
-TEST_CASE(ScratchBasics) {
+ZEST_CASE(ScratchBasics) {
     TempDir tmp;
     auto store = open_store(tmp);
     store.register_namespace(
@@ -454,22 +454,22 @@ TEST_CASE(ScratchBasics) {
     auto path = put(store, "header_context", "k1", "preamble");
 
     // Scratch blobs live under this instance's pid directory.
-    ASSERT_TRUE(llvm::StringRef(path).contains(pid));
-    ASSERT_TRUE(store.lookup("header_context", "k1").has_value());
+    ASSERT(llvm::StringRef(path).contains(pid));
+    ASSERT(store.lookup("header_context", "k1"));
 
     // Scratch entries never enter the manifest.
     store.checkpoint();
     auto manifest = read_file(tmp.path("root/cache/v1/manifest.json"));
     if(manifest.has_value()) {
-        ASSERT_FALSE(llvm::StringRef(*manifest).contains("header_context"));
+        ASSERT(!llvm::StringRef(*manifest).contains("header_context"));
     }
 
     // shutdown removes the whole instance directory.
     store.shutdown();
-    ASSERT_FALSE(llvm::sys::fs::exists(path));
+    ASSERT(!llvm::sys::fs::exists(path));
 }
 
-TEST_CASE(ScratchDeadPidSwept) {
+ZEST_CASE(ScratchDeadPidSwept) {
     TempDir tmp;
     tmp.touch(std::string("root/cache/v1/header_context/") + dead_pid + "/x.h", "stale");
 
@@ -477,28 +477,28 @@ TEST_CASE(ScratchDeadPidSwept) {
     store.register_namespace(
         {.name = "header_context", .extension = ".h", .policy = CachePolicy::Scratch});
 
-    ASSERT_FALSE(
-        llvm::sys::fs::exists(tmp.path(std::string("root/cache/v1/header_context/") + dead_pid)));
+    ASSERT(
+        !llvm::sys::fs::exists(tmp.path(std::string("root/cache/v1/header_context/") + dead_pid)));
 }
 
-TEST_CASE(CommitOverwriteSameKey) {
+ZEST_CASE(CommitOverwriteSameKey) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_lru(store, 20);
 
     put(store, "pch", "k1", "first");
     auto path = put(store, "pch", "k1", "second");
-    ASSERT_EQ(read_file(path).value_or(""), "second");
+    ASSERT(read_file(path).value_or("") == "second");
 
     // total_size must account for replacement, not accumulate: correct
     // accounting gives 6 + 10 = 16 <= 20 (no eviction); accumulating the
     // replaced 5 bytes would give 21 > 20 and evict k1.
     put(store, "pch", "x", "xxxxxxxxxx");
-    ASSERT_TRUE(store.lookup("pch", "k1").has_value());
-    ASSERT_TRUE(store.lookup("pch", "x").has_value());
+    ASSERT(store.lookup("pch", "k1"));
+    ASSERT(store.lookup("pch", "x"));
 }
 
-TEST_CASE(ManifestAtimePersisted) {
+ZEST_CASE(ManifestAtimePersisted) {
     TempDir tmp;
     {
         auto store = open_store(tmp);
@@ -507,18 +507,18 @@ TEST_CASE(ManifestAtimePersisted) {
         put(store, "pch", "b", "bbbbbbbbbb");
         // Touch "a" after both writes so only the manifest knows it is the
         // hotter entry — the mtime fallback would conclude the opposite.
-        ASSERT_TRUE(store.lookup("pch", "a").has_value());
+        ASSERT(store.lookup("pch", "a"));
         store.shutdown();
     }
 
     // Reopen with a budget that forces one eviction at registration.
     auto store = open_store(tmp);
     register_lru(store, 15);
-    ASSERT_TRUE(store.lookup("pch", "a").has_value());
-    ASSERT_FALSE(store.lookup("pch", "b").has_value());
+    ASSERT(store.lookup("pch", "a"));
+    ASSERT(!store.lookup("pch", "b").has_value());
 }
 
-TEST_CASE(CheckpointAutoTriggers) {
+ZEST_CASE(CheckpointAutoTriggers) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_lru(store);
@@ -529,11 +529,11 @@ TEST_CASE(CheckpointAutoTriggers) {
         put(store, "pch", std::format("k{}", i), "blob");
     }
     auto manifest = read_file(tmp.path("root/cache/v1/manifest.json"));
-    ASSERT_TRUE(manifest.has_value());
-    ASSERT_TRUE(llvm::StringRef(*manifest).contains("k0"));
+    ASSERT(manifest);
+    ASSERT(llvm::StringRef(*manifest).contains("k0"));
 }
 
-TEST_CASE(PairStoreAndLookup) {
+ZEST_CASE(PairStoreAndLookup) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_paired(store);
@@ -541,29 +541,29 @@ TEST_CASE(PairStoreAndLookup) {
     // A primary alone is an incomplete pair: lookup serves it, lookup_aux
     // must miss.
     put(store, "pch", "k1", "primary blob");
-    ASSERT_TRUE(store.lookup("pch", "k1").has_value());
-    ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
+    ASSERT(store.lookup("pch", "k1"));
+    ASSERT(!store.lookup_aux("pch", "k1").has_value());
 
     auto aux_path = put_aux(store, "pch", "k1", "aux blob");
-    ASSERT_TRUE(llvm::StringRef(aux_path).ends_with(".pch.idx"));
+    ASSERT(llvm::StringRef(aux_path).ends_with(".pch.idx"));
 
     auto hit = store.lookup_aux("pch", "k1");
-    ASSERT_TRUE(hit.has_value());
-    ASSERT_EQ(read_file(*hit).value_or(""), "aux blob");
+    ASSERT(hit);
+    ASSERT(read_file(*hit).value_or("") == "aux blob");
 }
 
-TEST_CASE(AuxWithoutPrimaryFails) {
+ZEST_CASE(AuxWithoutPrimaryFails) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_paired(store);
 
     auto pending = store.begin_store_aux("pch", "ghost");
     require(fs::write(pending.tmp_path, "orphan").has_value(), "tmp write failed");
-    ASSERT_FALSE(store.commit(std::move(pending)).has_value());
-    ASSERT_FALSE(store.lookup_aux("pch", "ghost").has_value());
+    ASSERT(!store.commit(std::move(pending)).has_value());
+    ASSERT(!store.lookup_aux("pch", "ghost").has_value());
 }
 
-TEST_CASE(PrimaryRecommitResetsAux) {
+ZEST_CASE(PrimaryRecommitResetsAux) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_paired(store);
@@ -574,14 +574,14 @@ TEST_CASE(PrimaryRecommitResetsAux) {
     // Republishing the primary must drop the stale aux: yesterday's aux
     // next to today's primary would be a silent mismatch.
     put(store, "pch", "k1", "new primary");
-    ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
-    ASSERT_FALSE(read_file(aux_path).has_value());
+    ASSERT(!store.lookup_aux("pch", "k1").has_value());
+    ASSERT(!read_file(aux_path).has_value());
 
     put_aux(store, "pch", "k1", "new aux");
-    ASSERT_TRUE(store.lookup_aux("pch", "k1").has_value());
+    ASSERT(store.lookup_aux("pch", "k1"));
 }
 
-TEST_CASE(PairEvictedTogether) {
+ZEST_CASE(PairEvictedTogether) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_paired(store, 25);
@@ -594,14 +594,14 @@ TEST_CASE(PairEvictedTogether) {
     put(store, "pch", "k2", "bbbbb");
     put_aux(store, "pch", "k2", "bbbbb");
 
-    ASSERT_FALSE(store.lookup("pch", "k1").has_value());
-    ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
-    ASSERT_FALSE(read_file(aux_path).has_value());
-    ASSERT_TRUE(store.lookup("pch", "k2").has_value());
-    ASSERT_TRUE(store.lookup_aux("pch", "k2").has_value());
+    ASSERT(!store.lookup("pch", "k1").has_value());
+    ASSERT(!store.lookup_aux("pch", "k1").has_value());
+    ASSERT(!read_file(aux_path).has_value());
+    ASSERT(store.lookup("pch", "k2"));
+    ASSERT(store.lookup_aux("pch", "k2"));
 }
 
-TEST_CASE(PairSurvivesReopen) {
+ZEST_CASE(PairSurvivesReopen) {
     TempDir tmp;
     {
         auto store = open_store(tmp);
@@ -613,13 +613,13 @@ TEST_CASE(PairSurvivesReopen) {
 
     auto store = open_store(tmp);
     register_paired(store);
-    ASSERT_TRUE(store.lookup("pch", "k1").has_value());
+    ASSERT(store.lookup("pch", "k1"));
     auto hit = store.lookup_aux("pch", "k1");
-    ASSERT_TRUE(hit.has_value());
-    ASSERT_EQ(read_file(*hit).value_or(""), "aux");
+    ASSERT(hit);
+    ASSERT(read_file(*hit).value_or("") == "aux");
 }
 
-TEST_CASE(StaleAuxDropped) {
+ZEST_CASE(StaleAuxDropped) {
     TempDir tmp;
     {
         auto store = open_store(tmp);
@@ -637,22 +637,22 @@ TEST_CASE(StaleAuxDropped) {
     // the native handle type on Windows.
     auto aux_path = tmp.path("root/cache/v1/pch/k1.pch.idx");
     int fd = 0;
-    ASSERT_FALSE(bool(llvm::sys::fs::openFileForWrite(aux_path,
-                                                      fd,
-                                                      llvm::sys::fs::CD_OpenExisting,
-                                                      llvm::sys::fs::OF_None)));
+    ASSERT(!bool(llvm::sys::fs::openFileForWrite(aux_path,
+                                                 fd,
+                                                 llvm::sys::fs::CD_OpenExisting,
+                                                 llvm::sys::fs::OF_None)));
     auto old_time = std::chrono::system_clock::now() - std::chrono::hours(1);
-    ASSERT_FALSE(bool(llvm::sys::fs::setLastAccessAndModificationTime(fd, old_time, old_time)));
+    ASSERT(!bool(llvm::sys::fs::setLastAccessAndModificationTime(fd, old_time, old_time)));
     llvm::sys::Process::SafelyCloseFileDescriptor(fd);
 
     auto store = open_store(tmp);
     register_paired(store);
-    ASSERT_TRUE(store.lookup("pch", "k1").has_value());
-    ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
-    ASSERT_FALSE(read_file(aux_path).has_value());
+    ASSERT(store.lookup("pch", "k1"));
+    ASSERT(!store.lookup_aux("pch", "k1").has_value());
+    ASSERT(!read_file(aux_path).has_value());
 }
 
-TEST_CASE(OrphanAuxSwept) {
+ZEST_CASE(OrphanAuxSwept) {
     TempDir tmp;
     {
         auto store = open_store(tmp);
@@ -666,11 +666,11 @@ TEST_CASE(OrphanAuxSwept) {
 
     auto store = open_store(tmp);
     register_paired(store);
-    ASSERT_FALSE(store.lookup_aux("pch", "ghost").has_value());
-    ASSERT_FALSE(read_file(tmp.path("root/cache/v1/pch/ghost.pch.idx")).has_value());
+    ASSERT(!store.lookup_aux("pch", "ghost").has_value());
+    ASSERT(!read_file(tmp.path("root/cache/v1/pch/ghost.pch.idx")).has_value());
 }
 
-TEST_CASE(InvalidateRemovesPair) {
+ZEST_CASE(InvalidateRemovesPair) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_paired(store);
@@ -679,22 +679,22 @@ TEST_CASE(InvalidateRemovesPair) {
     auto aux_path = put_aux(store, "pch", "k1", "aux");
 
     store.invalidate("pch", "k1");
-    ASSERT_FALSE(store.lookup("pch", "k1").has_value());
-    ASSERT_FALSE(store.lookup_aux("pch", "k1").has_value());
-    ASSERT_FALSE(read_file(aux_path).has_value());
+    ASSERT(!store.lookup("pch", "k1").has_value());
+    ASSERT(!store.lookup_aux("pch", "k1").has_value());
+    ASSERT(!read_file(aux_path).has_value());
 }
 
-TEST_CASE(ReadOnlyOpenRequiresStore) {
+ZEST_CASE(ReadOnlyOpenRequiresStore) {
     TempDir tmp;
     // The parent directory alone (config resolution creates it eagerly)
     // must not pass for an existing store.
     tmp.touch("root/cache/marker", "");
     auto store = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
-    ASSERT_FALSE(store.has_value());
-    ASSERT_TRUE(store.error() == std::errc::no_such_file_or_directory);
+    ASSERT(!store.has_value());
+    ASSERT(store.error() == std::errc::no_such_file_or_directory);
 }
 
-TEST_CASE(ReadOnlyOpenTouchesNothing) {
+ZEST_CASE(ReadOnlyOpenTouchesNothing) {
     TempDir tmp;
     {
         auto store = open_store(tmp);
@@ -706,18 +706,18 @@ TEST_CASE(ReadOnlyOpenTouchesNothing) {
     // A newer-version inspector must neither create its own directory nor
     // sweep the older version a live server may still be using.
     auto store = CacheStore::open(tmp.path("root"), version + 1, /*read_only=*/true);
-    ASSERT_FALSE(store.has_value());
-    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v2")));
+    ASSERT(!store.has_value());
+    ASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v2")));
 
     auto reader = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
-    ASSERT_TRUE(reader.has_value());
+    ASSERT(reader);
     register_lru(*reader);
-    ASSERT_TRUE(reader->lookup("pch", "k1").has_value());
+    ASSERT(reader->lookup("pch", "k1"));
     auto pid = std::to_string(llvm::sys::Process::getProcessId());
-    ASSERT_FALSE(llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid)));
+    ASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v1/tmp/" + pid)));
 }
 
-TEST_CASE(ReadOnlyNeverWrites) {
+ZEST_CASE(ReadOnlyNeverWrites) {
     TempDir tmp;
     {
         auto store = open_store(tmp);
@@ -726,24 +726,24 @@ TEST_CASE(ReadOnlyNeverWrites) {
         store.shutdown();
     }
     auto manifest_before = read_file(tmp.path("root/cache/v1/manifest.json"));
-    ASSERT_TRUE(manifest_before.has_value());
+    ASSERT(manifest_before);
 
     auto reader = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
-    ASSERT_TRUE(reader.has_value());
+    ASSERT(reader);
     // A budget below the blob size must not evict at registration, an
     // invalidate must not delete the live server's blob, and the atime
     // bumps from lookups must not publish a manifest at shutdown — with
     // no tmp dir it would even be staged in the working directory.
     register_lru(*reader, 1);
-    ASSERT_TRUE(reader->lookup("pch", "k1").has_value());
+    ASSERT(reader->lookup("pch", "k1"));
     reader->invalidate("pch", "k1");
     reader->shutdown();
 
-    ASSERT_EQ(read_file(tmp.path("root/cache/v1/pch/k1.pch")).value_or(""), "blob");
-    ASSERT_EQ(read_file(tmp.path("root/cache/v1/manifest.json")).value_or(""), *manifest_before);
+    ASSERT(read_file(tmp.path("root/cache/v1/pch/k1.pch")).value_or("") == "blob");
+    ASSERT(read_file(tmp.path("root/cache/v1/manifest.json")).value_or("") == *manifest_before);
 }
 
-};  // TEST_SUITE(CacheStore)
+};  // namespace clice::testing
 
 }  // namespace
 

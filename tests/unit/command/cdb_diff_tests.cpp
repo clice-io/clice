@@ -29,279 +29,278 @@ void write_json(TempDir& tmp, llvm::ArrayRef<CDBEntry> entries) {
     tmp.touch("compile_commands.json", build_cdb_json(entries));
 }
 
-TEST_SUITE(ReloadDiff) {
+ZEST_SUITE(ReloadDiff) {
+    ZEST_CASE(AddedEntry) {
+        TempDir tmp;
+        FileTable file_table;
+        CompilationDatabase cdb{file_table};
+        auto cdb_path = tmp.path("compile_commands.json");
 
-TEST_CASE(AddedEntry) {
-    TempDir tmp;
-    FileTable file_table;
-    CompilationDatabase cdb{file_table};
-    auto cdb_path = tmp.path("compile_commands.json");
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {}}
+        });
+        cdb.load(cdb_path);
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {}}
-    });
-    cdb.load(cdb_path);
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {}},
+                       {tmp.root.str(), "b.cpp", {}}
+        });
+        auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {}},
-                   {tmp.root.str(), "b.cpp", {}}
-    });
-    auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
+        ASSERT(diff->added.size() == 1U);
+        EXPECT(diff->added[0] == id_of(cdb, tmp, "b.cpp"));
+        EXPECT(diff->removed.empty());
+        EXPECT(diff->changed.empty());
+    };
 
-    ASSERT_EQ(diff->added.size(), 1U);
-    EXPECT_EQ(diff->added[0], id_of(cdb, tmp, "b.cpp"));
-    EXPECT_TRUE(diff->removed.empty());
-    EXPECT_TRUE(diff->changed.empty());
-};
+    ZEST_CASE(RemovedEntry) {
+        TempDir tmp;
+        FileTable file_table;
+        CompilationDatabase cdb{file_table};
+        auto cdb_path = tmp.path("compile_commands.json");
 
-TEST_CASE(RemovedEntry) {
-    TempDir tmp;
-    FileTable file_table;
-    CompilationDatabase cdb{file_table};
-    auto cdb_path = tmp.path("compile_commands.json");
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {}},
+                       {tmp.root.str(), "b.cpp", {}}
+        });
+        cdb.load(cdb_path);
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {}},
-                   {tmp.root.str(), "b.cpp", {}}
-    });
-    cdb.load(cdb_path);
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {}}
+        });
+        auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {}}
-    });
-    auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
+        ASSERT(diff->removed.size() == 1U);
+        EXPECT(diff->removed[0] == id_of(cdb, tmp, "b.cpp"));
+        EXPECT(diff->added.empty());
+        EXPECT(diff->changed.empty());
+    };
 
-    ASSERT_EQ(diff->removed.size(), 1U);
-    EXPECT_EQ(diff->removed[0], id_of(cdb, tmp, "b.cpp"));
-    EXPECT_TRUE(diff->added.empty());
-    EXPECT_TRUE(diff->changed.empty());
-};
+    ZEST_CASE(ChangedFlag) {
+        TempDir tmp;
+        FileTable file_table;
+        CompilationDatabase cdb{file_table};
+        auto cdb_path = tmp.path("compile_commands.json");
 
-TEST_CASE(ChangedFlag) {
-    TempDir tmp;
-    FileTable file_table;
-    CompilationDatabase cdb{file_table};
-    auto cdb_path = tmp.path("compile_commands.json");
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {"-DFOO=1"}}
+        });
+        cdb.load(cdb_path);
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {"-DFOO=1"}}
-    });
-    cdb.load(cdb_path);
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {"-DFOO=2"}}
+        });
+        auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {"-DFOO=2"}}
-    });
-    auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
+        ASSERT(diff->changed.size() == 1U);
+        EXPECT(diff->changed[0] == id_of(cdb, tmp, "a.cpp"));
+        EXPECT(diff->added.empty());
+        EXPECT(diff->removed.empty());
+    };
 
-    ASSERT_EQ(diff->changed.size(), 1U);
-    EXPECT_EQ(diff->changed[0], id_of(cdb, tmp, "a.cpp"));
-    EXPECT_TRUE(diff->added.empty());
-    EXPECT_TRUE(diff->removed.empty());
-};
+    ZEST_CASE(IdenticalReload) {
+        TempDir tmp;
+        FileTable file_table;
+        CompilationDatabase cdb{file_table};
+        auto cdb_path = tmp.path("compile_commands.json");
 
-TEST_CASE(IdenticalReload) {
-    TempDir tmp;
-    FileTable file_table;
-    CompilationDatabase cdb{file_table};
-    auto cdb_path = tmp.path("compile_commands.json");
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {"-DFOO=1"}},
+                       {tmp.root.str(), "b.cpp", {"-Wall"}  }
+        });
+        cdb.load(cdb_path);
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {"-DFOO=1"}},
-                   {tmp.root.str(), "b.cpp", {"-Wall"}  }
-    });
-    cdb.load(cdb_path);
+        auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
+        EXPECT(diff->empty());
+    };
 
-    auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
-    EXPECT_TRUE(diff->empty());
-};
+    ZEST_CASE(ReorderChangesSelection) {
+        // Moving whole files around the JSON changes nothing, but swapping one
+        // file's entries does: the first entry is its default selection.
+        TempDir tmp;
+        FileTable file_table;
+        CompilationDatabase cdb{file_table};
+        auto cdb_path = tmp.path("compile_commands.json");
 
-TEST_CASE(ReorderChangesSelection) {
-    // Moving whole files around the JSON changes nothing, but swapping one
-    // file's entries does: the first entry is its default selection.
-    TempDir tmp;
-    FileTable file_table;
-    CompilationDatabase cdb{file_table};
-    auto cdb_path = tmp.path("compile_commands.json");
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {"-DA=1"}},
+                       {tmp.root.str(), "a.cpp", {"-DB=1"}},
+                       {tmp.root.str(), "b.cpp", {}       }
+        });
+        cdb.load(cdb_path);
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {"-DA=1"}},
-                   {tmp.root.str(), "a.cpp", {"-DB=1"}},
-                   {tmp.root.str(), "b.cpp", {}       }
-    });
-    cdb.load(cdb_path);
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "b.cpp", {}       },
+                       {tmp.root.str(), "a.cpp", {"-DB=1"}},
+                       {tmp.root.str(), "a.cpp", {"-DA=1"}}
+        });
+        auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "b.cpp", {}       },
-                   {tmp.root.str(), "a.cpp", {"-DB=1"}},
-                   {tmp.root.str(), "a.cpp", {"-DA=1"}}
-    });
-    auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
+        ASSERT(diff);
+        EXPECT(diff->added.empty());
+        EXPECT(diff->removed.empty());
+        EXPECT(diff->changed ==
+               llvm::SmallVector<Fid>{file_table.intern(Spelling::absolute(tmp.path("a.cpp")))});
+    };
 
-    ASSERT_TRUE(diff.has_value());
-    EXPECT_TRUE(diff->added.empty());
-    EXPECT_TRUE(diff->removed.empty());
-    EXPECT_EQ(diff->changed,
-              llvm::SmallVector<Fid>{file_table.intern(Spelling::absolute(tmp.path("a.cpp")))});
-};
+    ZEST_CASE(CodegenChangeIgnored) {
+        // Entry identity is the Frontend canonical hash, which drops codegen-only
+        // flags. Swapping one codegen flag for another therefore yields no change.
+        // (Note: -O* is NOT codegen-only here — it defines __OPTIMIZE__ and is
+        // kept, so an -O change does count; see OptLevelIsSemantic.)
+        TempDir tmp;
+        FileTable file_table;
+        CompilationDatabase cdb{file_table};
+        auto cdb_path = tmp.path("compile_commands.json");
 
-TEST_CASE(CodegenChangeIgnored) {
-    // Entry identity is the Frontend canonical hash, which drops codegen-only
-    // flags. Swapping one codegen flag for another therefore yields no change.
-    // (Note: -O* is NOT codegen-only here — it defines __OPTIMIZE__ and is
-    // kept, so an -O change does count; see OptLevelIsSemantic.)
-    TempDir tmp;
-    FileTable file_table;
-    CompilationDatabase cdb{file_table};
-    auto cdb_path = tmp.path("compile_commands.json");
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {"-fPIC", "-g"}}
+        });
+        cdb.load(cdb_path);
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {"-fPIC", "-g"}}
-    });
-    cdb.load(cdb_path);
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {"-fno-omit-frame-pointer", "-flto"}}
+        });
+        auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {"-fno-omit-frame-pointer", "-flto"}}
-    });
-    auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
+        EXPECT(diff->empty());
+    };
 
-    EXPECT_TRUE(diff->empty());
-};
+    ZEST_CASE(OptLevelIsSemantic) {
+        // Anchors that -O* is semantic (defines __OPTIMIZE__), not codegen-only:
+        // changing the optimization level must be reported as a change.
+        TempDir tmp;
+        FileTable file_table;
+        CompilationDatabase cdb{file_table};
+        auto cdb_path = tmp.path("compile_commands.json");
 
-TEST_CASE(OptLevelIsSemantic) {
-    // Anchors that -O* is semantic (defines __OPTIMIZE__), not codegen-only:
-    // changing the optimization level must be reported as a change.
-    TempDir tmp;
-    FileTable file_table;
-    CompilationDatabase cdb{file_table};
-    auto cdb_path = tmp.path("compile_commands.json");
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {"-O2"}}
+        });
+        cdb.load(cdb_path);
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {"-O2"}}
-    });
-    cdb.load(cdb_path);
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {"-O3"}}
+        });
+        auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {"-O3"}}
-    });
-    auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
+        ASSERT(diff->changed.size() == 1U);
+        EXPECT(diff->changed[0] == id_of(cdb, tmp, "a.cpp"));
+        EXPECT(diff->added.empty());
+        EXPECT(diff->removed.empty());
+    };
 
-    ASSERT_EQ(diff->changed.size(), 1U);
-    EXPECT_EQ(diff->changed[0], id_of(cdb, tmp, "a.cpp"));
-    EXPECT_TRUE(diff->added.empty());
-    EXPECT_TRUE(diff->removed.empty());
-};
+    ZEST_CASE(MultiEntryOneChanged) {
+        // A file with several entries appears in `changed` once, not per entry.
+        TempDir tmp;
+        FileTable file_table;
+        CompilationDatabase cdb{file_table};
+        auto cdb_path = tmp.path("compile_commands.json");
 
-TEST_CASE(MultiEntryOneChanged) {
-    // A file with several entries appears in `changed` once, not per entry.
-    TempDir tmp;
-    FileTable file_table;
-    CompilationDatabase cdb{file_table};
-    auto cdb_path = tmp.path("compile_commands.json");
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {"-DA=1"}},
+                       {tmp.root.str(), "a.cpp", {"-DB=1"}}
+        });
+        cdb.load(cdb_path);
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {"-DA=1"}},
-                   {tmp.root.str(), "a.cpp", {"-DB=1"}}
-    });
-    cdb.load(cdb_path);
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {"-DA=2"}},
+                       {tmp.root.str(), "a.cpp", {"-DB=1"}}
+        });
+        auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {"-DA=2"}},
-                   {tmp.root.str(), "a.cpp", {"-DB=1"}}
-    });
-    auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
+        ASSERT(diff->changed.size() == 1U);
+        EXPECT(diff->changed[0] == id_of(cdb, tmp, "a.cpp"));
+        EXPECT(diff->added.empty());
+        EXPECT(diff->removed.empty());
+    };
 
-    ASSERT_EQ(diff->changed.size(), 1U);
-    EXPECT_EQ(diff->changed[0], id_of(cdb, tmp, "a.cpp"));
-    EXPECT_TRUE(diff->added.empty());
-    EXPECT_TRUE(diff->removed.empty());
-};
+    ZEST_CASE(FirstLoadAllAdded) {
+        // Discovering a CDB for the first time: every file is `added`.
+        TempDir tmp;
+        FileTable file_table;
+        CompilationDatabase cdb{file_table};
+        auto cdb_path = tmp.path("compile_commands.json");
 
-TEST_CASE(FirstLoadAllAdded) {
-    // Discovering a CDB for the first time: every file is `added`.
-    TempDir tmp;
-    FileTable file_table;
-    CompilationDatabase cdb{file_table};
-    auto cdb_path = tmp.path("compile_commands.json");
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {}},
+                       {tmp.root.str(), "b.cpp", {}}
+        });
+        auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {}},
-                   {tmp.root.str(), "b.cpp", {}}
-    });
-    auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
+        ASSERT(diff->added.size() == 2U);
+        EXPECT(contains(diff->added, id_of(cdb, tmp, "a.cpp")));
+        EXPECT(contains(diff->added, id_of(cdb, tmp, "b.cpp")));
+        EXPECT(diff->removed.empty());
+        EXPECT(diff->changed.empty());
+    };
 
-    ASSERT_EQ(diff->added.size(), 2U);
-    EXPECT_TRUE(contains(diff->added, id_of(cdb, tmp, "a.cpp")));
-    EXPECT_TRUE(contains(diff->added, id_of(cdb, tmp, "b.cpp")));
-    EXPECT_TRUE(diff->removed.empty());
-    EXPECT_TRUE(diff->changed.empty());
-};
+    ZEST_CASE(CorruptKeepsEntries) {
+        // A half-written / corrupt CDB must leave the loaded entries intact and
+        // signal failure so the caller retries instead of seeing "no change".
+        TempDir tmp;
+        FileTable file_table;
+        CompilationDatabase cdb{file_table};
+        auto cdb_path = tmp.path("compile_commands.json");
 
-TEST_CASE(CorruptKeepsEntries) {
-    // A half-written / corrupt CDB must leave the loaded entries intact and
-    // signal failure so the caller retries instead of seeing "no change".
-    TempDir tmp;
-    FileTable file_table;
-    CompilationDatabase cdb{file_table};
-    auto cdb_path = tmp.path("compile_commands.json");
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {}}
+        });
+        cdb.load(cdb_path);
+        ASSERT(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {}}
-    });
-    cdb.load(cdb_path);
-    ASSERT_TRUE(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
+        tmp.touch("compile_commands.json", "<<< corrupted compile_commands.json >>>");
+        auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    tmp.touch("compile_commands.json", "<<< corrupted compile_commands.json >>>");
-    auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
+        ASSERT(!diff.has_value());
+        EXPECT(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
 
-    ASSERT_FALSE(diff.has_value());
-    EXPECT_TRUE(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
+        auto file = path::join(tmp.root.str(), "a.cpp");
+        auto candidates = cdb.candidate_entries(file);
+        ASSERT(candidates.size() == 1U);
+        EXPECT(llvm::StringRef(print_argv(cdb.render_full(candidates.front().config)))
+                   .contains("-std=c++20"));
+    };
 
-    auto file = path::join(tmp.root.str(), "a.cpp");
-    auto candidates = cdb.candidate_entries(file);
-    ASSERT_EQ(candidates.size(), 1U);
-    EXPECT_TRUE(llvm::StringRef(print_argv(cdb.render_full(candidates.front().config)))
-                    .contains("-std=c++20"));
-};
+    ZEST_CASE(MissingFileFails) {
+        // An unreadable file (deleted, or still locked by the generator) is a
+        // failure, not an empty database: entries survive and the caller retries.
+        TempDir tmp;
+        FileTable file_table;
+        CompilationDatabase cdb{file_table};
+        auto cdb_path = tmp.path("compile_commands.json");
 
-TEST_CASE(MissingFileFails) {
-    // An unreadable file (deleted, or still locked by the generator) is a
-    // failure, not an empty database: entries survive and the caller retries.
-    TempDir tmp;
-    FileTable file_table;
-    CompilationDatabase cdb{file_table};
-    auto cdb_path = tmp.path("compile_commands.json");
+        write_json(tmp,
+                   {
+                       {tmp.root.str(), "a.cpp", {}}
+        });
+        cdb.load(cdb_path);
+        fs::remove_all(cdb_path);
 
-    write_json(tmp,
-               {
-                   {tmp.root.str(), "a.cpp", {}}
-    });
-    cdb.load(cdb_path);
-    fs::remove_all(cdb_path);
+        auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
+        ASSERT(!diff.has_value());
+        EXPECT(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
+    };
 
-    ASSERT_FALSE(diff.has_value());
-    EXPECT_TRUE(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
-};
-
-};  // TEST_SUITE(ReloadDiff)
+};  // ZEST_SUITE(ReloadDiff)
 
 }  // namespace
 

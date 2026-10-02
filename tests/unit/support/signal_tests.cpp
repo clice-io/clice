@@ -6,28 +6,28 @@
 namespace clice::testing {
 namespace {
 
-TEST_SUITE(Signal) {
+ZEST_SUITE(Signal){
 
-TEST_CASE(EmitCallsHandlers) {
-    Signal<int> signal;
-    int sum = 0;
-    auto c1 = signal.connect([&](int v) { sum += v; });
-    auto c2 = signal.connect([&](int v) { sum += v * 10; });
-    signal.emit(3);
-    ASSERT_EQ(sum, 33);
-}
+    ZEST_CASE(EmitCallsHandlers){Signal<int> signal;
+int sum = 0;
+auto c1 = signal.connect([&](int v) { sum += v; });
+auto c2 = signal.connect([&](int v) { sum += v * 10; });
+signal.emit(3);
+ASSERT(sum == 33);
 
-TEST_CASE(ConnectOrder) {
+}  // namespace
+
+ZEST_CASE(ConnectOrder) {
     Signal<> signal;
     std::vector<int> order;
     auto c1 = signal.connect([&] { order.push_back(1); });
     auto c2 = signal.connect([&] { order.push_back(2); });
     auto c3 = signal.connect([&] { order.push_back(3); });
     signal.emit();
-    ASSERT_EQ(order, (std::vector<int>{1, 2, 3}));
+    ASSERT(order == (std::vector<int>{1, 2, 3}));
 }
 
-TEST_CASE(DisconnectOnDestruction) {
+ZEST_CASE(DisconnectOnDestruction) {
     Signal<> signal;
     int calls = 0;
     {
@@ -35,19 +35,19 @@ TEST_CASE(DisconnectOnDestruction) {
         signal.emit();
     }
     signal.emit();
-    ASSERT_EQ(calls, 1);
+    ASSERT(calls == 1);
 }
 
-TEST_CASE(ExplicitDisconnect) {
+ZEST_CASE(ExplicitDisconnect) {
     Signal<> signal;
     int calls = 0;
     auto conn = signal.connect([&] { calls += 1; });
     conn.disconnect();
     signal.emit();
-    ASSERT_EQ(calls, 0);
+    ASSERT(calls == 0);
 }
 
-TEST_CASE(MoveTransfersConnection) {
+ZEST_CASE(MoveTransfersConnection) {
     Signal<> signal;
     int calls = 0;
     Signal<>::Connection held;
@@ -56,13 +56,13 @@ TEST_CASE(MoveTransfersConnection) {
         held = std::move(conn);
     }
     signal.emit();
-    ASSERT_EQ(calls, 1);
+    ASSERT(calls == 1);
     held.disconnect();
     signal.emit();
-    ASSERT_EQ(calls, 1);
+    ASSERT(calls == 1);
 }
 
-TEST_CASE(ConnectionOutlivesSignal) {
+ZEST_CASE(ConnectionOutlivesSignal) {
     Signal<>::Connection conn;
     {
         Signal<> signal;
@@ -72,12 +72,12 @@ TEST_CASE(ConnectionOutlivesSignal) {
     conn.disconnect();
 }
 
-TEST_CASE(EmitWithoutSubscribers) {
+ZEST_CASE(EmitWithoutSubscribers) {
     Signal<int> signal;
     signal.emit(42);
 }
 
-};  // TEST_SUITE(Signal)
+};  // namespace clice::testing
 
 }  // namespace
 }  // namespace clice::testing

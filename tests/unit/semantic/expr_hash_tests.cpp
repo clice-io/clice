@@ -123,14 +123,14 @@ struct Fidelity {
                       stmt->getStmtClassName(),
                       stmt->getBeginLoc().printToString(context.getSourceManager()));
         }
-        EXPECT_TRUE(equal);
+        EXPECT(equal);
     }
 
     void compare(const Expr* lhs, const Expr* rhs, bool expected) {
         check(lhs);
         check(rhs);
-        EXPECT_EQ(profile(lhs) == profile(rhs), expected);
-        EXPECT_EQ(upstream(lhs) == upstream(rhs), expected);
+        EXPECT((profile(lhs) == profile(rhs)) == expected);
+        EXPECT((upstream(lhs) == upstream(rhs)) == expected);
     }
 };
 
@@ -239,14 +239,14 @@ struct MarkedExpressions : RecursiveASTVisitor<MarkedExpressions> {
     bool VisitTypedefNameDecl(TypedefNameDecl* decl) {
         if(decl->getName().starts_with("mark_")) {
             auto* type = cast<DecltypeType>(decl->getUnderlyingType());
-            EXPECT_TRUE(expressions.try_emplace(decl->getName(), type->getUnderlyingExpr()).second);
+            EXPECT(expressions.try_emplace(decl->getName(), type->getUnderlyingExpr()).second);
         }
         return true;
     }
 
     bool VisitFunctionDecl(FunctionDecl* decl) {
         if(decl->getNameInfo().getAsString().starts_with("mark_")) {
-            EXPECT_TRUE(
+            EXPECT(
                 expressions
                     .try_emplace(decl->getName(), decl->getTrailingRequiresClause().ConstraintExpr)
                     .second);
@@ -267,13 +267,13 @@ bool has_errors(CompilationUnit& unit) {
 
 Fidelity check_marked(Tester& tester) {
     MarkedExpressions markers;
-    EXPECT_TRUE(markers.TraverseDecl(tester.unit->tu()));
-    EXPECT_FALSE(markers.expressions.empty());
+    EXPECT(markers.TraverseDecl(tester.unit->tu()));
+    EXPECT(!markers.expressions.empty());
     Fidelity fidelity{tester.unit->context()};
     for(const auto& [name, expr]: markers.expressions) {
-        EXPECT_TRUE(expr);
+        EXPECT(expr);
         ProfileTree tree(fidelity);
-        EXPECT_TRUE(tree.TraverseStmt(const_cast<Expr*>(expr)));
+        EXPECT(tree.TraverseStmt(const_cast<Expr*>(expr)));
     }
     return fidelity;
 }
@@ -283,14 +283,13 @@ void expect_kinds(const Fidelity& fidelity, llvm::ArrayRef<Stmt::StmtClass> kind
         if(!fidelity.kinds.contains(kind)) {
             LOG_ERROR("Missing handwritten statement class {}", static_cast<unsigned>(kind));
         }
-        EXPECT_TRUE(fidelity.kinds.contains(kind));
+        EXPECT(fidelity.kinds.contains(kind));
     }
 }
 
-TEST_SUITE(expr_hash, Tester) {
-
-TEST_CASE(StandardLibraryConstraints) {
-    add_main("main.cpp", R"cpp(
+ZEST_SUITE(expr_hash, Tester) {
+    ZEST_CASE(StandardLibraryConstraints) {
+        add_main("main.cpp", R"cpp(
 #include <vector>
 #include <string>
 #include <ranges>
@@ -306,18 +305,18 @@ struct Bounded {
 template<class T, int N> struct Partial;
 template<class T> struct Partial<T, sizeof(T)> {};
 )cpp");
-    ASSERT_TRUE(compile_driver("-std=c++20"));
-    ASSERT_FALSE(has_errors(*unit));
-    Fidelity fidelity{unit->context()};
-    ConstraintSweep sweep(fidelity);
-    ASSERT_TRUE(sweep.TraverseDecl(unit->tu()));
-    LOG_INFO("expr_hash: checked {} distinct standard-library constraint expressions",
-             fidelity.checked.size());
-    EXPECT_GT(fidelity.checked.size(), 1500u);
-};
+        ASSERT(compile_driver("-std=c++20"));
+        ASSERT(!has_errors(*unit));
+        Fidelity fidelity{unit->context()};
+        ConstraintSweep sweep(fidelity);
+        ASSERT(sweep.TraverseDecl(unit->tu()));
+        LOG_INFO("expr_hash: checked {} distinct standard-library constraint expressions",
+                 fidelity.checked.size());
+        EXPECT(fidelity.checked.size() > 1500u);
+    };
 
-TEST_CASE(HandwrittenExpressions) {
-    add_main("main.cpp", R"cpp(
+    ZEST_CASE(HandwrittenExpressions) {
+        add_main("main.cpp", R"cpp(
 namespace std {
 class type_info;
 template<class T> class initializer_list {
@@ -531,139 +530,139 @@ void statements() {
     using mark_va_arg = decltype(__builtin_va_arg(args, int));
 }
 )cpp");
-    prepare("-std=c++23");
-    params.arguments.insert(
-        params.arguments.end(),
-        {"-fenable-matrix", "-fblocks", "-ffixed-point", "-fcxx-exceptions", "-fexceptions"});
-    ASSERT_TRUE(try_compile());
-    ASSERT_FALSE(has_errors(*unit));
-    MarkedExpressions markers;
-    ASSERT_TRUE(markers.TraverseDecl(unit->tu()));
-    Fidelity fidelity{unit->context()};
-    for(const auto& [name, expr]: markers.expressions) {
-        ASSERT_TRUE(expr);
-        ProfileTree tree(fidelity);
-        ASSERT_TRUE(tree.TraverseStmt(const_cast<Expr*>(expr)));
-    }
-    LOG_INFO("expr_hash: checked {} handwritten markers, {} nodes, {} statement classes",
-             markers.expressions.size(),
-             fidelity.checked.size(),
-             fidelity.kinds.size());
-    EXPECT_GT(markers.expressions.size(), 100u);
-    expect_kinds(fidelity,
-                 {Stmt::AddrLabelExprClass,
-                  Stmt::ArrayInitIndexExprClass,
-                  Stmt::ArrayInitLoopExprClass,
-                  Stmt::ArraySubscriptExprClass,
-                  Stmt::ArrayTypeTraitExprClass,
-                  Stmt::AtomicExprClass,
-                  Stmt::AttributedStmtClass,
-                  Stmt::BinaryConditionalOperatorClass,
-                  Stmt::BinaryOperatorClass,
-                  Stmt::BlockExprClass,
-                  Stmt::BreakStmtClass,
-                  Stmt::BuiltinBitCastExprClass,
-                  Stmt::CStyleCastExprClass,
-                  Stmt::CXXBindTemporaryExprClass,
-                  Stmt::CXXBoolLiteralExprClass,
-                  Stmt::CXXCatchStmtClass,
-                  Stmt::CXXConstCastExprClass,
-                  Stmt::CXXConstructExprClass,
-                  Stmt::CXXDefaultArgExprClass,
-                  Stmt::CXXDefaultInitExprClass,
-                  Stmt::CXXDeleteExprClass,
-                  Stmt::CXXDependentScopeMemberExprClass,
-                  Stmt::CXXDynamicCastExprClass,
-                  Stmt::CXXFoldExprClass,
-                  Stmt::CXXForRangeStmtClass,
-                  Stmt::CXXFunctionalCastExprClass,
-                  Stmt::CXXInheritedCtorInitExprClass,
-                  Stmt::CXXMemberCallExprClass,
-                  Stmt::CXXNewExprClass,
-                  Stmt::CXXNoexceptExprClass,
-                  Stmt::CXXNullPtrLiteralExprClass,
-                  Stmt::CXXOperatorCallExprClass,
-                  Stmt::CXXParenListInitExprClass,
-                  Stmt::CXXPseudoDestructorExprClass,
-                  Stmt::CXXReinterpretCastExprClass,
-                  Stmt::CXXRewrittenBinaryOperatorClass,
-                  Stmt::CXXScalarValueInitExprClass,
-                  Stmt::CXXStaticCastExprClass,
-                  Stmt::CXXStdInitializerListExprClass,
-                  Stmt::CXXTemporaryObjectExprClass,
-                  Stmt::CXXThisExprClass,
-                  Stmt::CXXThrowExprClass,
-                  Stmt::CXXTryStmtClass,
-                  Stmt::CXXTypeidExprClass,
-                  Stmt::CXXUnresolvedConstructExprClass,
-                  Stmt::CallExprClass,
-                  Stmt::CaseStmtClass,
-                  Stmt::CapturedStmtClass,
-                  Stmt::CharacterLiteralClass,
-                  Stmt::ChooseExprClass,
-                  Stmt::CompoundAssignOperatorClass,
-                  Stmt::CompoundLiteralExprClass,
-                  Stmt::CompoundStmtClass,
-                  Stmt::ConceptSpecializationExprClass,
-                  Stmt::ConditionalOperatorClass,
-                  Stmt::ConstantExprClass,
-                  Stmt::ContinueStmtClass,
-                  Stmt::ConvertVectorExprClass,
-                  Stmt::DeclRefExprClass,
-                  Stmt::DeclStmtClass,
-                  Stmt::DefaultStmtClass,
-                  Stmt::DependentScopeDeclRefExprClass,
-                  Stmt::DesignatedInitExprClass,
-                  Stmt::DoStmtClass,
-                  Stmt::ExpressionTraitExprClass,
-                  Stmt::ExtVectorElementExprClass,
-                  Stmt::ExprWithCleanupsClass,
-                  Stmt::FixedPointLiteralClass,
-                  Stmt::FloatingLiteralClass,
-                  Stmt::ForStmtClass,
-                  Stmt::GCCAsmStmtClass,
-                  Stmt::GNUNullExprClass,
-                  Stmt::GenericSelectionExprClass,
-                  Stmt::GotoStmtClass,
-                  Stmt::IfStmtClass,
-                  Stmt::ImaginaryLiteralClass,
-                  Stmt::ImplicitCastExprClass,
-                  Stmt::ImplicitValueInitExprClass,
-                  Stmt::IndirectGotoStmtClass,
-                  Stmt::InitListExprClass,
-                  Stmt::IntegerLiteralClass,
-                  Stmt::LabelStmtClass,
-                  Stmt::LambdaExprClass,
-                  Stmt::MaterializeTemporaryExprClass,
-                  Stmt::MatrixSubscriptExprClass,
-                  Stmt::MemberExprClass,
-                  Stmt::NullStmtClass,
-                  Stmt::OffsetOfExprClass,
-                  Stmt::OpaqueValueExprClass,
-                  Stmt::PackExpansionExprClass,
-                  Stmt::ParenExprClass,
-                  Stmt::PredefinedExprClass,
-                  Stmt::RequiresExprClass,
-                  Stmt::ReturnStmtClass,
-                  Stmt::ShuffleVectorExprClass,
-                  Stmt::SizeOfPackExprClass,
-                  Stmt::SourceLocExprClass,
-                  Stmt::StmtExprClass,
-                  Stmt::StringLiteralClass,
-                  Stmt::SwitchStmtClass,
-                  Stmt::TypeTraitExprClass,
-                  Stmt::UnaryExprOrTypeTraitExprClass,
-                  Stmt::UnaryOperatorClass,
-                  Stmt::UnresolvedLookupExprClass,
-                  Stmt::UnresolvedMemberExprClass,
-                  Stmt::UserDefinedLiteralClass,
-                  Stmt::VAArgExprClass,
-                  Stmt::WhileStmtClass,
-                  Stmt::ParenListExprClass});
-};
+        prepare("-std=c++23");
+        params.arguments.insert(
+            params.arguments.end(),
+            {"-fenable-matrix", "-fblocks", "-ffixed-point", "-fcxx-exceptions", "-fexceptions"});
+        ASSERT(try_compile());
+        ASSERT(!has_errors(*unit));
+        MarkedExpressions markers;
+        ASSERT(markers.TraverseDecl(unit->tu()));
+        Fidelity fidelity{unit->context()};
+        for(const auto& [name, expr]: markers.expressions) {
+            ASSERT(expr);
+            ProfileTree tree(fidelity);
+            ASSERT(tree.TraverseStmt(const_cast<Expr*>(expr)));
+        }
+        LOG_INFO("expr_hash: checked {} handwritten markers, {} nodes, {} statement classes",
+                 markers.expressions.size(),
+                 fidelity.checked.size(),
+                 fidelity.kinds.size());
+        EXPECT(markers.expressions.size() > 100u);
+        expect_kinds(fidelity,
+                     {Stmt::AddrLabelExprClass,
+                      Stmt::ArrayInitIndexExprClass,
+                      Stmt::ArrayInitLoopExprClass,
+                      Stmt::ArraySubscriptExprClass,
+                      Stmt::ArrayTypeTraitExprClass,
+                      Stmt::AtomicExprClass,
+                      Stmt::AttributedStmtClass,
+                      Stmt::BinaryConditionalOperatorClass,
+                      Stmt::BinaryOperatorClass,
+                      Stmt::BlockExprClass,
+                      Stmt::BreakStmtClass,
+                      Stmt::BuiltinBitCastExprClass,
+                      Stmt::CStyleCastExprClass,
+                      Stmt::CXXBindTemporaryExprClass,
+                      Stmt::CXXBoolLiteralExprClass,
+                      Stmt::CXXCatchStmtClass,
+                      Stmt::CXXConstCastExprClass,
+                      Stmt::CXXConstructExprClass,
+                      Stmt::CXXDefaultArgExprClass,
+                      Stmt::CXXDefaultInitExprClass,
+                      Stmt::CXXDeleteExprClass,
+                      Stmt::CXXDependentScopeMemberExprClass,
+                      Stmt::CXXDynamicCastExprClass,
+                      Stmt::CXXFoldExprClass,
+                      Stmt::CXXForRangeStmtClass,
+                      Stmt::CXXFunctionalCastExprClass,
+                      Stmt::CXXInheritedCtorInitExprClass,
+                      Stmt::CXXMemberCallExprClass,
+                      Stmt::CXXNewExprClass,
+                      Stmt::CXXNoexceptExprClass,
+                      Stmt::CXXNullPtrLiteralExprClass,
+                      Stmt::CXXOperatorCallExprClass,
+                      Stmt::CXXParenListInitExprClass,
+                      Stmt::CXXPseudoDestructorExprClass,
+                      Stmt::CXXReinterpretCastExprClass,
+                      Stmt::CXXRewrittenBinaryOperatorClass,
+                      Stmt::CXXScalarValueInitExprClass,
+                      Stmt::CXXStaticCastExprClass,
+                      Stmt::CXXStdInitializerListExprClass,
+                      Stmt::CXXTemporaryObjectExprClass,
+                      Stmt::CXXThisExprClass,
+                      Stmt::CXXThrowExprClass,
+                      Stmt::CXXTryStmtClass,
+                      Stmt::CXXTypeidExprClass,
+                      Stmt::CXXUnresolvedConstructExprClass,
+                      Stmt::CallExprClass,
+                      Stmt::CaseStmtClass,
+                      Stmt::CapturedStmtClass,
+                      Stmt::CharacterLiteralClass,
+                      Stmt::ChooseExprClass,
+                      Stmt::CompoundAssignOperatorClass,
+                      Stmt::CompoundLiteralExprClass,
+                      Stmt::CompoundStmtClass,
+                      Stmt::ConceptSpecializationExprClass,
+                      Stmt::ConditionalOperatorClass,
+                      Stmt::ConstantExprClass,
+                      Stmt::ContinueStmtClass,
+                      Stmt::ConvertVectorExprClass,
+                      Stmt::DeclRefExprClass,
+                      Stmt::DeclStmtClass,
+                      Stmt::DefaultStmtClass,
+                      Stmt::DependentScopeDeclRefExprClass,
+                      Stmt::DesignatedInitExprClass,
+                      Stmt::DoStmtClass,
+                      Stmt::ExpressionTraitExprClass,
+                      Stmt::ExtVectorElementExprClass,
+                      Stmt::ExprWithCleanupsClass,
+                      Stmt::FixedPointLiteralClass,
+                      Stmt::FloatingLiteralClass,
+                      Stmt::ForStmtClass,
+                      Stmt::GCCAsmStmtClass,
+                      Stmt::GNUNullExprClass,
+                      Stmt::GenericSelectionExprClass,
+                      Stmt::GotoStmtClass,
+                      Stmt::IfStmtClass,
+                      Stmt::ImaginaryLiteralClass,
+                      Stmt::ImplicitCastExprClass,
+                      Stmt::ImplicitValueInitExprClass,
+                      Stmt::IndirectGotoStmtClass,
+                      Stmt::InitListExprClass,
+                      Stmt::IntegerLiteralClass,
+                      Stmt::LabelStmtClass,
+                      Stmt::LambdaExprClass,
+                      Stmt::MaterializeTemporaryExprClass,
+                      Stmt::MatrixSubscriptExprClass,
+                      Stmt::MemberExprClass,
+                      Stmt::NullStmtClass,
+                      Stmt::OffsetOfExprClass,
+                      Stmt::OpaqueValueExprClass,
+                      Stmt::PackExpansionExprClass,
+                      Stmt::ParenExprClass,
+                      Stmt::PredefinedExprClass,
+                      Stmt::RequiresExprClass,
+                      Stmt::ReturnStmtClass,
+                      Stmt::ShuffleVectorExprClass,
+                      Stmt::SizeOfPackExprClass,
+                      Stmt::SourceLocExprClass,
+                      Stmt::StmtExprClass,
+                      Stmt::StringLiteralClass,
+                      Stmt::SwitchStmtClass,
+                      Stmt::TypeTraitExprClass,
+                      Stmt::UnaryExprOrTypeTraitExprClass,
+                      Stmt::UnaryOperatorClass,
+                      Stmt::UnresolvedLookupExprClass,
+                      Stmt::UnresolvedMemberExprClass,
+                      Stmt::UserDefinedLiteralClass,
+                      Stmt::VAArgExprClass,
+                      Stmt::WhileStmtClass,
+                      Stmt::ParenListExprClass});
+    };
 
-TEST_CASE(MicrosoftExpressions) {
-    add_main("main.cpp", R"cpp(
+    ZEST_CASE(MicrosoftExpressions) {
+        add_main("main.cpp", R"cpp(
 struct _GUID { unsigned long a; unsigned short b, c; unsigned char d[8]; };
 struct __declspec(uuid("12345678-1234-1234-1234-123456789abc")) Identified {};
 using mark_uuid_type = decltype(__uuidof(Identified));
@@ -692,47 +691,48 @@ template<class T> void dependent() {
     }));
 }
 )cpp");
-    triple = "x86_64-pc-windows-msvc";
-    ASSERT_TRUE(compile());
-    ASSERT_FALSE(has_errors(*unit));
-    auto fidelity = check_marked(*this);
-    expect_kinds(fidelity,
-                 {Stmt::CXXUuidofExprClass,
-                  Stmt::MSPropertyRefExprClass,
-                  Stmt::MSPropertySubscriptExprClass,
-                  Stmt::PseudoObjectExprClass,
-                  Stmt::MSDependentExistsStmtClass,
-                  Stmt::SEHTryStmtClass,
-                  Stmt::SEHExceptStmtClass,
-                  Stmt::SEHFinallyStmtClass,
-                  Stmt::SEHLeaveStmtClass});
-    // clice does not link the target-specific parsers required to parse MS asm.
-    auto& context = unit->context();
-    auto location =
-        context.getSourceManager().getLocForStartOfFile(context.getSourceManager().getMainFileID());
-    auto* operand = IntegerLiteral::Create(context, llvm::APInt(32, 1), context.IntTy, location);
-    auto* assembly = new (context) MSAsmStmt(context,
-                                             location,
-                                             location,
-                                             false,
-                                             true,
-                                             {},
-                                             0,
-                                             1,
-                                             {"r"},
-                                             {operand},
-                                             "",
-                                             {},
-                                             location);
-    auto* body = CompoundStmt::Create(context, {assembly, operand}, {}, location, location);
-    auto* expression = new (context) StmtExpr(body, context.IntTy, location, location, 0);
-    ProfileTree tree(fidelity);
-    ASSERT_TRUE(tree.TraverseStmt(expression));
-    expect_kinds(fidelity, {Stmt::MSAsmStmtClass});
-};
+        triple = "x86_64-pc-windows-msvc";
+        ASSERT(compile());
+        ASSERT(!has_errors(*unit));
+        auto fidelity = check_marked(*this);
+        expect_kinds(fidelity,
+                     {Stmt::CXXUuidofExprClass,
+                      Stmt::MSPropertyRefExprClass,
+                      Stmt::MSPropertySubscriptExprClass,
+                      Stmt::PseudoObjectExprClass,
+                      Stmt::MSDependentExistsStmtClass,
+                      Stmt::SEHTryStmtClass,
+                      Stmt::SEHExceptStmtClass,
+                      Stmt::SEHFinallyStmtClass,
+                      Stmt::SEHLeaveStmtClass});
+        // clice does not link the target-specific parsers required to parse MS asm.
+        auto& context = unit->context();
+        auto location = context.getSourceManager().getLocForStartOfFile(
+            context.getSourceManager().getMainFileID());
+        auto* operand =
+            IntegerLiteral::Create(context, llvm::APInt(32, 1), context.IntTy, location);
+        auto* assembly = new (context) MSAsmStmt(context,
+                                                 location,
+                                                 location,
+                                                 false,
+                                                 true,
+                                                 {},
+                                                 0,
+                                                 1,
+                                                 {"r"},
+                                                 {operand},
+                                                 "",
+                                                 {},
+                                                 location);
+        auto* body = CompoundStmt::Create(context, {assembly, operand}, {}, location, location);
+        auto* expression = new (context) StmtExpr(body, context.IntTy, location, location, 0);
+        ProfileTree tree(fidelity);
+        ASSERT(tree.TraverseStmt(expression));
+        expect_kinds(fidelity, {Stmt::MSAsmStmtClass});
+    };
 
-TEST_CASE(CoroutineExpressions) {
-    add_main("main.cpp", R"cpp(
+    ZEST_CASE(CoroutineExpressions) {
+        add_main("main.cpp", R"cpp(
 #include <coroutine>
 struct Task {
     struct promise_type {
@@ -755,49 +755,49 @@ using mark_coroutine = decltype([]() -> Task {
     co_return;
 });
 )cpp");
-    ASSERT_TRUE(compile_driver("-std=c++20"));
-    ASSERT_FALSE(has_errors(*unit));
-    auto fidelity = check_marked(*this);
-    expect_kinds(fidelity,
-                 {Stmt::CoroutineBodyStmtClass,
-                  Stmt::CoreturnStmtClass,
-                  Stmt::CoawaitExprClass,
-                  Stmt::DependentCoawaitExprClass,
-                  Stmt::CoyieldExprClass});
-};
+        ASSERT(compile_driver("-std=c++20"));
+        ASSERT(!has_errors(*unit));
+        auto fidelity = check_marked(*this);
+        expect_kinds(fidelity,
+                     {Stmt::CoroutineBodyStmtClass,
+                      Stmt::CoreturnStmtClass,
+                      Stmt::CoawaitExprClass,
+                      Stmt::DependentCoawaitExprClass,
+                      Stmt::CoyieldExprClass});
+    };
 
-TEST_CASE(LanguageExtensions) {
-    Tester opencl;
-    opencl.triple = "x86_64-unknown-linux-gnu";
-    opencl.add_main("main.cpp", R"cpp(
+    ZEST_CASE(LanguageExtensions) {
+        Tester opencl;
+        opencl.triple = "x86_64-unknown-linux-gnu";
+        opencl.add_main("main.cpp", R"cpp(
 using mark_as_type = decltype(__builtin_astype(1, float));
 using mark_addrspace = decltype(addrspace_cast<__global int*>((__generic int*)nullptr));
 )cpp");
-    opencl.prepare("-cl-std=clc++2021");
-    opencl.params.arguments.insert(opencl.params.arguments.end(), {"-x", "clcpp"});
-    ASSERT_TRUE(opencl.try_compile());
-    ASSERT_FALSE(has_errors(*opencl.unit));
-    auto opencl_fidelity = check_marked(opencl);
-    expect_kinds(opencl_fidelity, {Stmt::AsTypeExprClass, Stmt::CXXAddrspaceCastExprClass});
+        opencl.prepare("-cl-std=clc++2021");
+        opencl.params.arguments.insert(opencl.params.arguments.end(), {"-x", "clcpp"});
+        ASSERT(opencl.try_compile());
+        ASSERT(!has_errors(*opencl.unit));
+        auto opencl_fidelity = check_marked(opencl);
+        expect_kinds(opencl_fidelity, {Stmt::AsTypeExprClass, Stmt::CXXAddrspaceCastExprClass});
 
-    {
-        Tester fixture;
-        fixture.add_main("main.cpp", R"cpp(
+        {
+            Tester fixture;
+            fixture.add_main("main.cpp", R"cpp(
 struct dim3 { dim3(unsigned); };
 int cudaConfigureCall(dim3, dim3, unsigned = 0, void* = nullptr);
 __attribute__((global)) void kernel();
 using mark_cuda_call = decltype(kernel<<<1, 1>>>());
 )cpp");
-        fixture.prepare("-std=c++20");
-        fixture.params.arguments.insert(fixture.params.arguments.end(), {"-x", "cuda"});
-        ASSERT_TRUE(fixture.try_compile());
-        ASSERT_FALSE(has_errors(*fixture.unit));
-        auto fidelity = check_marked(fixture);
-        expect_kinds(fidelity, {Stmt::CUDAKernelCallExprClass});
-    }
-    {
-        Tester fixture;
-        fixture.add_main("main.cpp", R"cpp(
+            fixture.prepare("-std=c++20");
+            fixture.params.arguments.insert(fixture.params.arguments.end(), {"-x", "cuda"});
+            ASSERT(fixture.try_compile());
+            ASSERT(!has_errors(*fixture.unit));
+            auto fidelity = check_marked(fixture);
+            expect_kinds(fidelity, {Stmt::CUDAKernelCallExprClass});
+        }
+        {
+            Tester fixture;
+            fixture.add_main("main.cpp", R"cpp(
 class Kernel;
 template <typename KernelName, typename... Ts>
 void sycl_kernel_launch(const char*, Ts...) {}
@@ -808,46 +808,46 @@ using mark_sycl_kernel = decltype([] {
 });
 using mark_sycl_name = decltype(__builtin_sycl_unique_stable_name(int));
 )cpp");
-        // clang 23 refuses SYCL device compilation for a non-GPU triple.
-        fixture.triple = "spirv64-unknown-unknown";
-        fixture.prepare("-std=c++20");
-        fixture.params.arguments.insert(fixture.params.arguments.end(), {"-fsycl-is-device"});
-        ASSERT_TRUE(fixture.try_compile());
-        ASSERT_FALSE(has_errors(*fixture.unit));
-        auto fidelity = check_marked(fixture);
-        expect_kinds(fidelity,
-                     {Stmt::SYCLUniqueStableNameExprClass, Stmt::SYCLKernelCallStmtClass});
-    }
-    {
-        Tester fixture;
-        fixture.add_file("data.bin", std::string(400, 'a'));
-        fixture.add_main("main.cpp", R"cpp(
+            // clang 23 refuses SYCL device compilation for a non-GPU triple.
+            fixture.triple = "spirv64-unknown-unknown";
+            fixture.prepare("-std=c++20");
+            fixture.params.arguments.insert(fixture.params.arguments.end(), {"-fsycl-is-device"});
+            ASSERT(fixture.try_compile());
+            ASSERT(!has_errors(*fixture.unit));
+            auto fidelity = check_marked(fixture);
+            expect_kinds(fidelity,
+                         {Stmt::SYCLUniqueStableNameExprClass, Stmt::SYCLKernelCallStmtClass});
+        }
+        {
+            Tester fixture;
+            fixture.add_file("data.bin", std::string(400, 'a'));
+            fixture.add_main("main.cpp", R"cpp(
 using mark_embed = decltype((int[]){
 #embed "data.bin"
 });
 )cpp");
-        ASSERT_TRUE(fixture.compile("-std=c++2c"));
-        ASSERT_FALSE(has_errors(*fixture.unit));
-        auto fidelity = check_marked(fixture);
-        expect_kinds(fidelity, {Stmt::EmbedExprClass});
-    }
-    {
-        Tester fixture;
-        fixture.add_main("main.cpp", R"cpp(
+            ASSERT(fixture.compile("-std=c++2c"));
+            ASSERT(!has_errors(*fixture.unit));
+            auto fidelity = check_marked(fixture);
+            expect_kinds(fidelity, {Stmt::EmbedExprClass});
+        }
+        {
+            Tester fixture;
+            fixture.add_main("main.cpp", R"cpp(
 int ordinary(int);
 using mark_recovery = decltype([] { ordinary(1, 2); });
 )cpp");
-        fixture.prepare();
-        fixture.params.arguments.push_back("-frecovery-ast");
-        ASSERT_TRUE(fixture.try_compile());
-        ASSERT_TRUE(fixture.unit->context().getDiagnostics().hasErrorOccurred());
-        auto fidelity = check_marked(fixture);
-        expect_kinds(fidelity, {Stmt::RecoveryExprClass});
-    }
-};
+            fixture.prepare();
+            fixture.params.arguments.push_back("-frecovery-ast");
+            ASSERT(fixture.try_compile());
+            ASSERT(fixture.unit->context().getDiagnostics().hasErrorOccurred());
+            auto fidelity = check_marked(fixture);
+            expect_kinds(fidelity, {Stmt::RecoveryExprClass});
+        }
+    };
 
-TEST_CASE(PartialPackSubstitution) {
-    add_main("main.cpp", R"cpp(
+    ZEST_CASE(PartialPackSubstitution) {
+        add_main("main.cpp", R"cpp(
 void consume(...);
 template<int... N> struct Values {
     template<class... T> using mark_value_pack = decltype(consume((T{} + N)...));
@@ -862,19 +862,19 @@ template<class... T> void indexing(T... args) {
 }
 void instantiate_index() { indexing(1, 2); }
 )cpp");
-    ASSERT_TRUE(compile("-std=c++2c"));
-    ASSERT_FALSE(has_errors(*unit));
-    Fidelity fidelity{unit->context()};
-    ProfileTree tree(fidelity);
-    ASSERT_TRUE(tree.TraverseDecl(unit->tu()));
-    expect_kinds(fidelity,
-                 {Stmt::SubstNonTypeTemplateParmPackExprClass,
-                  Stmt::FunctionParmPackExprClass,
-                  Stmt::PackIndexingExprClass});
-};
+        ASSERT(compile("-std=c++2c"));
+        ASSERT(!has_errors(*unit));
+        Fidelity fidelity{unit->context()};
+        ProfileTree tree(fidelity);
+        ASSERT(tree.TraverseDecl(unit->tu()));
+        expect_kinds(fidelity,
+                     {Stmt::SubstNonTypeTemplateParmPackExprClass,
+                      Stmt::FunctionParmPackExprClass,
+                      Stmt::PackIndexingExprClass});
+    };
 
-TEST_CASE(EquivalencePairs) {
-    add_main("main.cpp", R"cpp(
+    ZEST_CASE(EquivalencePairs) {
+        add_main("main.cpp", R"cpp(
 template<int N> void mark_nttp_a() requires (N > 0);
 template<int Renamed> void mark_nttp_b() requires (Renamed > 0);
 template<int N> void mark_parens_a() requires ((N) > 0);
@@ -902,46 +902,46 @@ using mark_literal = decltype(42);
 template<int N> struct Wrapped { static constexpr int value = N; };
 static_assert(Wrapped<42>::value == 42);
 )cpp");
-    ASSERT_TRUE(compile());
-    ASSERT_FALSE(has_errors(*unit));
-    MarkedExpressions markers;
-    ASSERT_TRUE(markers.TraverseDecl(unit->tu()));
-    Fidelity fidelity{unit->context()};
-    for(auto name: {"nttp", "param", "type", "typedef", "qualified", "fold", "parens"}) {
-        auto* lhs = markers.expressions.lookup(std::format("mark_{}_a", name));
-        auto* rhs = markers.expressions.lookup(std::format("mark_{}_b", name));
-        ASSERT_TRUE(lhs && rhs);
-        fidelity.compare(lhs, rhs, llvm::StringRef(name) != "parens");
-    }
-    auto* fold_a = cast<CXXFoldExpr>(markers.expressions.lookup("mark_fold_a"));
-    auto* fold_b = cast<CXXFoldExpr>(markers.expressions.lookup("mark_fold_b"));
-    EXPECT_FALSE(fold_a->getCallee());
-    EXPECT_TRUE(fold_b->getCallee());
-
-    auto* literal = const_cast<Expr*>(markers.expressions.lookup("mark_literal"));
-    ASSERT_TRUE(literal);
-    auto* constant = ConstantExpr::Create(unit->context(), literal);
-    fidelity.compare(constant, literal, true);
-    ClassTemplateDecl* wrapped = nullptr;
-    for(auto* decl: unit->tu()->decls()) {
-        if(auto* candidate = dyn_cast<ClassTemplateDecl>(decl);
-           candidate && candidate->getName() == "Wrapped") {
-            wrapped = candidate;
+        ASSERT(compile());
+        ASSERT(!has_errors(*unit));
+        MarkedExpressions markers;
+        ASSERT(markers.TraverseDecl(unit->tu()));
+        Fidelity fidelity{unit->context()};
+        for(auto name: {"nttp", "param", "type", "typedef", "qualified", "fold", "parens"}) {
+            auto* lhs = markers.expressions.lookup(std::format("mark_{}_a", name));
+            auto* rhs = markers.expressions.lookup(std::format("mark_{}_b", name));
+            ASSERT((lhs && rhs));
+            fidelity.compare(lhs, rhs, llvm::StringRef(name) != "parens");
         }
-    }
-    ASSERT_TRUE(wrapped);
-    auto* specialization = *wrapped->specializations().begin();
-    const SubstNonTypeTemplateParmExpr* substitution = nullptr;
-    for(auto* decl: specialization->decls()) {
-        if(auto* value = dyn_cast<VarDecl>(decl); value && value->getName() == "value") {
-            substitution = dyn_cast<SubstNonTypeTemplateParmExpr>(value->getInit());
-        }
-    }
-    ASSERT_TRUE(substitution);
-    fidelity.compare(substitution, substitution->getReplacement(), true);
-};
+        auto* fold_a = cast<CXXFoldExpr>(markers.expressions.lookup("mark_fold_a"));
+        auto* fold_b = cast<CXXFoldExpr>(markers.expressions.lookup("mark_fold_b"));
+        EXPECT(!fold_a->getCallee());
+        EXPECT(fold_b->getCallee());
 
-};  // TEST_SUITE(expr_hash)
+        auto* literal = const_cast<Expr*>(markers.expressions.lookup("mark_literal"));
+        ASSERT(literal);
+        auto* constant = ConstantExpr::Create(unit->context(), literal);
+        fidelity.compare(constant, literal, true);
+        ClassTemplateDecl* wrapped = nullptr;
+        for(auto* decl: unit->tu()->decls()) {
+            if(auto* candidate = dyn_cast<ClassTemplateDecl>(decl);
+               candidate && candidate->getName() == "Wrapped") {
+                wrapped = candidate;
+            }
+        }
+        ASSERT(wrapped);
+        auto* specialization = *wrapped->specializations().begin();
+        const SubstNonTypeTemplateParmExpr* substitution = nullptr;
+        for(auto* decl: specialization->decls()) {
+            if(auto* value = dyn_cast<VarDecl>(decl); value && value->getName() == "value") {
+                substitution = dyn_cast<SubstNonTypeTemplateParmExpr>(value->getInit());
+            }
+        }
+        ASSERT(substitution);
+        fidelity.compare(substitution, substitution->getReplacement(), true);
+    };
+
+};  // ZEST_SUITE(expr_hash)
 
 }  // namespace
 }  // namespace clice::testing

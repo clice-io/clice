@@ -23,61 +23,61 @@ namespace lsp = kota::ipc::lsp;
 
 namespace {
 
-TEST_SUITE(tu_index, Tester) {
+ZEST_SUITE(tu_index, Tester) {
+    /// One file's rows read back out of its envelope section through the
+    /// Shard reader — every assertion below therefore exercises the full
+    /// build → encode → read roundtrip, not builder-internal state.
+    struct DecodedRows {
+        std::vector<index::Occurrence> occurrences;
+        llvm::DenseMap<index::SymbolHash, std::vector<index::Relation>> relations{};
 
-/// One file's rows read back out of its envelope section through the
-/// Shard reader — every assertion below therefore exercises the full
-/// build → encode → read roundtrip, not builder-internal state.
-struct DecodedRows {
-    std::vector<index::Occurrence> occurrences;
-    llvm::DenseMap<index::SymbolHash, std::vector<index::Relation>> relations{};
-
-    bool empty() const {
-        return occurrences.empty() && relations.empty();
-    }
-};
-
-struct DecodedIndex {
-    index::TUIndex view;
-    DecodedRows main_file_index;
-    /// Non-main sections keyed by path id.
-    std::vector<std::pair<std::uint32_t, DecodedRows>> file_indices;
-    index::SymbolTable symbols{};
-};
-
-DecodedIndex tu_index;
-
-DecodedRows decode_rows(const index::Shard& shard) {
-    DecodedRows rows;
-    shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
-        rows.occurrences.push_back(occurrence);
-        return true;
-    });
-    shard.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
-        rows.relations[hash].push_back(relation);
-        return true;
-    });
-    return rows;
-}
-
-void decode_index(const std::string& envelope) {
-    tu_index = {};
-    tu_index.view = index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(envelope));
-    auto& view = tu_index.view;
-    ASSERT_TRUE(view.loaded());
-
-    auto main_path = view.path_count() - 1;
-    for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
-        auto rows = decode_rows(view.shard_of(view.section_path(i)));
-        if(view.section_path(i) == main_path) {
-            tu_index.main_file_index = std::move(rows);
-        } else {
-            tu_index.file_indices.emplace_back(view.section_path(i), std::move(rows));
+        bool empty() const {
+            return occurrences.empty() && relations.empty();
         }
+    };
+
+    struct DecodedIndex {
+        index::TUIndex view;
+        DecodedRows main_file_index;
+        /// Non-main sections keyed by path id.
+        std::vector<std::pair<std::uint32_t, DecodedRows>> file_indices;
+        index::SymbolTable symbols{};
+    };
+
+    DecodedIndex tu_index;
+
+    DecodedRows decode_rows(const index::Shard& shard) {
+        DecodedRows rows;
+        shard.for_each_occurrence([&](const index::Occurrence& occurrence) {
+            rows.occurrences.push_back(occurrence);
+            return true;
+        });
+        shard.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
+            rows.relations[hash].push_back(relation);
+            return true;
+        });
+        return rows;
     }
 
-    view.iterate_symbols(
-        [&](index::SymbolHash hash, const index::SymbolIdentity& identity, llvm::StringRef bitmap) {
+    void decode_index(const std::string& envelope) {
+        tu_index = {};
+        tu_index.view = index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(envelope));
+        auto& view = tu_index.view;
+        ASSERT(view.loaded());
+
+        auto main_path = view.path_count() - 1;
+        for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
+            auto rows = decode_rows(view.shard_of(view.section_path(i)));
+            if(view.section_path(i) == main_path) {
+                tu_index.main_file_index = std::move(rows);
+            } else {
+                tu_index.file_indices.emplace_back(view.section_path(i), std::move(rows));
+            }
+        }
+
+        view.iterate_symbols([&](index::SymbolHash hash,
+                                 const index::SymbolIdentity& identity,
+                                 llvm::StringRef bitmap) {
             auto& symbol = tu_index.symbols[hash];
             symbol.name = identity.name.str();
             symbol.args = identity.args.str();
@@ -90,100 +90,101 @@ void decode_index(const std::string& envelope) {
                 index::read_bitmap(bitmap.data(), bitmap.size()).value_or(Bitmap{});
             return true;
         });
-}
+    }
 
-/// The one symbol with this name (and specialization arguments) in the
-/// decoded table.
-std::pair<index::SymbolHash, index::Symbol> symbol_named(llvm::StringRef name,
-                                                         llvm::StringRef args = "",
-                                                         std::optional<SymbolKind> kind = {}) {
-    std::optional<std::pair<index::SymbolHash, index::Symbol>> found;
-    for(auto& [hash, symbol]: tu_index.symbols) {
-        if(symbol.name == name && symbol.args == args &&
-           (!kind || symbol.kind.value() == kind->value())) {
-            if(found) {
-                LOG_FATAL("symbol {}{} is not unique", name, args);
+    /// The one symbol with this name (and specialization arguments) in the
+    /// decoded table.
+    std::pair<index::SymbolHash, index::Symbol> symbol_named(llvm::StringRef name,
+                                                             llvm::StringRef args = "",
+                                                             std::optional<SymbolKind> kind = {}) {
+        std::optional<std::pair<index::SymbolHash, index::Symbol>> found;
+        for(auto& [hash, symbol]: tu_index.symbols) {
+            if(symbol.name == name && symbol.args == args &&
+               (!kind || symbol.kind.value() == kind->value())) {
+                if(found) {
+                    LOG_FATAL("symbol {}{} is not unique", name, args);
+                }
+                found.emplace(hash, symbol);
             }
-            found.emplace(hash, symbol);
         }
+        if(!found) {
+            LOG_FATAL("no symbol {}{}", name, args);
+        }
+        return *found;
     }
-    if(!found) {
-        LOG_FATAL("no symbol {}{}", name, args);
+
+    bool has(const index::Symbol& symbol, index::SymbolFlags flag) {
+        return index::has_flag(symbol.flags, flag);
     }
-    return *found;
-}
 
-bool has(const index::Symbol& symbol, index::SymbolFlags flag) {
-    return index::has_flag(symbol.flags, flag);
-}
+    void build_index(llvm::StringRef code,
+                     std::source_location location = std::source_location::current()) {
+        add_main("main.cpp", code);
+        ASSERT(compile());
 
-void build_index(llvm::StringRef code,
-                 std::source_location location = std::source_location::current()) {
-    add_main("main.cpp", code);
-    ASSERT_TRUE(compile());
+        decode_index(index::build_tu_index(*unit));
+    }
 
-    decode_index(index::build_tu_index(*unit));
-}
+    auto select(llvm::StringRef pos) -> std::vector<index::Occurrence> {
+        auto offset = point(pos);
+        auto& index = tu_index.main_file_index;
 
-auto select(llvm::StringRef pos) -> std::vector<index::Occurrence> {
-    auto offset = point(pos);
-    auto& index = tu_index.main_file_index;
+        auto it = std::ranges::lower_bound(
+            index.occurrences,
+            offset,
+            {},
+            [](index::Occurrence& occurrence) { return occurrence.range.end; });
 
-    auto it =
-        std::ranges::lower_bound(index.occurrences, offset, {}, [](index::Occurrence& occurrence) {
-            return occurrence.range.end;
+        std::vector<index::Occurrence> occurrences;
+        while(it != index.occurrences.end()) {
+            if(it->range.contains(offset)) {
+                occurrences.emplace_back(*it);
+                it++;
+                continue;
+            }
+
+            break;
+        }
+        return occurrences;
+    }
+
+    void EXPECT_SELECT(llvm::StringRef pos,
+                       llvm::StringRef expect_range,
+                       std::source_location location = std::source_location::current()) {
+        auto expected = range(expect_range);
+        auto occurrences = select(pos);
+
+        ASSERT(!occurrences.empty());
+
+        /// FIXME: Make eq pretty print reflectable struct.
+        ASSERT(dump(occurrences.front().range) == dump(expected));
+    };
+
+    void GO_TO_DEFINITION(llvm::StringRef pos,
+                          llvm::StringRef definition,
+                          std::source_location location = std::source_location::current()) {
+        auto expected = range(definition);
+        auto occurrences = select(pos);
+
+        ASSERT(occurrences.size() == 1U);
+
+        auto& index = tu_index.main_file_index;
+        auto it = index.relations.find(occurrences.front().target);
+        ASSERT(it != index.relations.end());
+        ///<< std::format("Cannot find target: {}", occurrences.front().target);
+
+        auto& relations = it->second;
+        auto target = std::ranges::find_if(relations, [](const index::Relation& relation) {
+            return relation.kind == RelationKind::Definition;
         });
 
-    std::vector<index::Occurrence> occurrences;
-    while(it != index.occurrences.end()) {
-        if(it->range.contains(offset)) {
-            occurrences.emplace_back(*it);
-            it++;
-            continue;
-        }
-
-        break;
+        ASSERT(target != relations.end());
+        ///   << std::format("Fail to find definition in {}", dump(relations));
+        ASSERT(dump(target->range) == dump(expected));
     }
-    return occurrences;
-}
 
-void EXPECT_SELECT(llvm::StringRef pos,
-                   llvm::StringRef expect_range,
-                   std::source_location location = std::source_location::current()) {
-    auto expected = range(expect_range);
-    auto occurrences = select(pos);
-
-    ASSERT_FALSE(occurrences.empty());
-
-    /// FIXME: Make eq pretty print reflectable struct.
-    ASSERT_EQ(dump(occurrences.front().range), dump(expected));
-};
-
-void GO_TO_DEFINITION(llvm::StringRef pos,
-                      llvm::StringRef definition,
-                      std::source_location location = std::source_location::current()) {
-    auto expected = range(definition);
-    auto occurrences = select(pos);
-
-    ASSERT_EQ(occurrences.size(), 1U);
-
-    auto& index = tu_index.main_file_index;
-    auto it = index.relations.find(occurrences.front().target);
-    ASSERT_TRUE(it != index.relations.end());
-    ///<< std::format("Cannot find target: {}", occurrences.front().target);
-
-    auto& relations = it->second;
-    auto target = std::ranges::find_if(relations, [](const index::Relation& relation) {
-        return relation.kind == RelationKind::Definition;
-    });
-
-    ASSERT_TRUE(target != relations.end());
-    ///   << std::format("Fail to find definition in {}", dump(relations));
-    ASSERT_EQ(dump(target->range), dump(expected));
-}
-
-TEST_CASE(Basic) {
-    build_index(R"(
+    ZEST_CASE(Basic) {
+        build_index(R"(
             int §(1)⟦f§(1)oo⟧();
 
             int §(2)⟦b§(2)ar⟧() {
@@ -191,17 +192,17 @@ TEST_CASE(Basic) {
             }
         )");
 
-    auto& index = tu_index.main_file_index;
-    ASSERT_EQ(index.relations.size(), 2U);
-    ASSERT_EQ(index.occurrences.size(), 3U);
+        auto& index = tu_index.main_file_index;
+        ASSERT(index.relations.size() == 2U);
+        ASSERT(index.occurrences.size() == 3U);
 
-    EXPECT_SELECT("1", "1");
-    EXPECT_SELECT("2", "2");
-    EXPECT_SELECT("3", "3");
-}
+        EXPECT_SELECT("1", "1");
+        EXPECT_SELECT("2", "2");
+        EXPECT_SELECT("3", "3");
+    }
 
-TEST_CASE(ClassTemplate) {
-    build_index(R"(
+    ZEST_CASE(ClassTemplate) {
+        build_index(R"(
             template <typename T, typename U>
             struct §(primary_decl)foo;
 
@@ -232,21 +233,21 @@ TEST_CASE(ClassTemplate) {
             §(implicit_full)foo<int, int> a;
         )");
 
-    GO_TO_DEFINITION("primary_decl", "primary");
-    GO_TO_DEFINITION("explicit_primary", "primary");
-    GO_TO_DEFINITION("implicit_primary_1", "primary");
-    GO_TO_DEFINITION("implicit_primary_2", "primary");
-    GO_TO_DEFINITION("partial_spec_decl", "partial_spec");
-    GO_TO_DEFINITION("explicit_partial", "partial_spec");
-    GO_TO_DEFINITION("implicit_partial", "partial_spec");
-    /// FIXME: Figure forward template declaration.
-    /// GO_TO_DEFINITION("forward_full", "full_spec");
-    GO_TO_DEFINITION("full_spec_decl", "full_spec");
-    GO_TO_DEFINITION("implicit_full", "full_spec");
-}
+        GO_TO_DEFINITION("primary_decl", "primary");
+        GO_TO_DEFINITION("explicit_primary", "primary");
+        GO_TO_DEFINITION("implicit_primary_1", "primary");
+        GO_TO_DEFINITION("implicit_primary_2", "primary");
+        GO_TO_DEFINITION("partial_spec_decl", "partial_spec");
+        GO_TO_DEFINITION("explicit_partial", "partial_spec");
+        GO_TO_DEFINITION("implicit_partial", "partial_spec");
+        /// FIXME: Figure forward template declaration.
+        /// GO_TO_DEFINITION("forward_full", "full_spec");
+        GO_TO_DEFINITION("full_spec_decl", "full_spec");
+        GO_TO_DEFINITION("implicit_full", "full_spec");
+    }
 
-TEST_CASE(FunctionTemplate) {
-    build_index(R"(
+    ZEST_CASE(FunctionTemplate) {
+        build_index(R"(
             template <typename T> void §(primary_decl)foo();
 
             template <typename T> void §(primary)⟦foo⟧() {}
@@ -263,17 +264,17 @@ TEST_CASE(FunctionTemplate) {
             }
         )");
 
-    GO_TO_DEFINITION("primary_decl", "primary");
-    /// FIXME: clang doen't record location info of explicit function instantiation/
-    /// See https://github.com/llvm/llvm-project/issues/115418.
-    /// GO_TO_DEFINITION("explicit_primary", "primary");
-    GO_TO_DEFINITION("implicit_primary", "primary");
-    GO_TO_DEFINITION("spec_decl", "spec");
-    GO_TO_DEFINITION("implicit_spec", "spec");
-}
+        GO_TO_DEFINITION("primary_decl", "primary");
+        /// FIXME: clang doen't record location info of explicit function instantiation/
+        /// See https://github.com/llvm/llvm-project/issues/115418.
+        /// GO_TO_DEFINITION("explicit_primary", "primary");
+        GO_TO_DEFINITION("implicit_primary", "primary");
+        GO_TO_DEFINITION("spec_decl", "spec");
+        GO_TO_DEFINITION("implicit_spec", "spec");
+    }
 
-TEST_CASE(InstantiationLocalCollapse) {
-    build_index(R"(
+    ZEST_CASE(InstantiationLocalCollapse) {
+        build_index(R"(
             struct Fn {
                 template <typename T>
                 int operator()(T §(parm)x) const {
@@ -286,18 +287,18 @@ TEST_CASE(InstantiationLocalCollapse) {
             int b = fn(2.0);
         )");
 
-    for(auto pos: {"parm", "local", "local_ref", "parm_ref"}) {
-        auto occurrences = select(pos);
-        std::set<index::SymbolHash> targets;
-        for(auto& occurrence: occurrences) {
-            targets.insert(occurrence.target);
+        for(auto pos: {"parm", "local", "local_ref", "parm_ref"}) {
+            auto occurrences = select(pos);
+            std::set<index::SymbolHash> targets;
+            for(auto& occurrence: occurrences) {
+                targets.insert(occurrence.target);
+            }
+            EXPECT(targets.size() == 1U);
         }
-        EXPECT_EQ(targets.size(), 1U);
     }
-}
 
-TEST_CASE(LambdaCaptureCollapse) {
-    build_index(R"(
+    ZEST_CASE(LambdaCaptureCollapse) {
+        build_index(R"(
             struct Fn {
                 template <typename T>
                 int operator()(T §(parm)x) const {
@@ -312,29 +313,29 @@ TEST_CASE(LambdaCaptureCollapse) {
             int b = fn(2.0);
         )");
 
-    for(auto pos: {"parm", "parm_ref"}) {
-        auto occurrences = select(pos);
-        std::set<index::SymbolHash> targets;
-        for(auto& occurrence: occurrences) {
-            targets.insert(occurrence.target);
+        for(auto pos: {"parm", "parm_ref"}) {
+            auto occurrences = select(pos);
+            std::set<index::SymbolHash> targets;
+            for(auto& occurrence: occurrences) {
+                targets.insert(occurrence.target);
+            }
+            EXPECT(targets.size() == 1U);
         }
-        EXPECT_EQ(targets.size(), 1U);
     }
-}
 
-TEST_CASE(AliasTemplate) {
-    build_index(R"(
+    ZEST_CASE(AliasTemplate) {
+        build_index(R"(
             template <typename T>
             using §(primary)⟦foo⟧ = T;
 
             §(implicit_primary)foo<int> a;
         )");
 
-    GO_TO_DEFINITION("implicit_primary", "primary");
-}
+        GO_TO_DEFINITION("implicit_primary", "primary");
+    }
 
-TEST_CASE(VarTemplate) {
-    build_index(R"(
+    ZEST_CASE(VarTemplate) {
+        build_index(R"(
             template <typename T, typename U>
             extern int §(primary_decl)foo;
 
@@ -363,18 +364,18 @@ TEST_CASE(VarTemplate) {
             }
         )");
 
-    GO_TO_DEFINITION("primary_decl", "primary");
-    /// GO_TO_DEFINITION("explicit_primary", "primary");
-    GO_TO_DEFINITION("implicit_primary_1", "primary");
-    GO_TO_DEFINITION("implicit_primary_2", "primary");
-    GO_TO_DEFINITION("partial_spec_decl", "partial_spec");
-    /// GotoDefinition("explicit_partial", "partial_spec");
-    GO_TO_DEFINITION("implicit_partial", "partial_spec");
-    GO_TO_DEFINITION("implicit_full", "full_spec");
-}
+        GO_TO_DEFINITION("primary_decl", "primary");
+        /// GO_TO_DEFINITION("explicit_primary", "primary");
+        GO_TO_DEFINITION("implicit_primary_1", "primary");
+        GO_TO_DEFINITION("implicit_primary_2", "primary");
+        GO_TO_DEFINITION("partial_spec_decl", "partial_spec");
+        /// GotoDefinition("explicit_partial", "partial_spec");
+        GO_TO_DEFINITION("implicit_partial", "partial_spec");
+        GO_TO_DEFINITION("implicit_full", "full_spec");
+    }
 
-TEST_CASE(Concept) {
-    build_index(R"(
+    ZEST_CASE(Concept) {
+        build_index(R"(
             template <typename T>
             concept §(primary)⟦§(primary)foo⟧ = true;
 
@@ -383,13 +384,13 @@ TEST_CASE(Concept) {
             §(implicit2)foo auto bar = 1;
         )");
 
-    GO_TO_DEFINITION("primary", "primary");
-    GO_TO_DEFINITION("implicit", "primary");
-    GO_TO_DEFINITION("implicit2", "primary");
-}
+        GO_TO_DEFINITION("primary", "primary");
+        GO_TO_DEFINITION("implicit", "primary");
+        GO_TO_DEFINITION("implicit2", "primary");
+    }
 
-TEST_CASE(Reference) {
-    build_index(R"(
+    ZEST_CASE(Reference) {
+        build_index(R"(
             int §(decl)foo = 42;
 
             int bar() {
@@ -397,22 +398,22 @@ TEST_CASE(Reference) {
             }
         )");
 
-    auto& index = tu_index.main_file_index;
-    auto occurrences = select("ref");
-    ASSERT_EQ(occurrences.size(), 1U);
+        auto& index = tu_index.main_file_index;
+        auto occurrences = select("ref");
+        ASSERT(occurrences.size() == 1U);
 
-    auto it = index.relations.find(occurrences.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+        auto it = index.relations.find(occurrences.front().target);
+        ASSERT(it != index.relations.end());
 
-    auto& relations = it->second;
-    auto ref = std::ranges::find_if(relations, [](const index::Relation& r) {
-        return r.kind == RelationKind::Reference;
-    });
-    ASSERT_TRUE(ref != relations.end());
-}
+        auto& relations = it->second;
+        auto ref = std::ranges::find_if(relations, [](const index::Relation& r) {
+            return r.kind == RelationKind::Reference;
+        });
+        ASSERT(ref != relations.end());
+    }
 
-TEST_CASE(BaseAndDerived) {
-    build_index(R"(
+    ZEST_CASE(BaseAndDerived) {
+        build_index(R"(
             struct §(base)⟦§(base)Base⟧ {
                 virtual void foo() {}
             };
@@ -422,34 +423,34 @@ TEST_CASE(BaseAndDerived) {
             };
         )");
 
-    auto& index = tu_index.main_file_index;
-    auto base_occs = select("base");
-    auto derived_occs = select("derived");
-    ASSERT_FALSE(base_occs.empty());
-    ASSERT_FALSE(derived_occs.empty());
-    auto base_hash = base_occs.front().target;
-    auto derived_hash = derived_occs.front().target;
+        auto& index = tu_index.main_file_index;
+        auto base_occs = select("base");
+        auto derived_occs = select("derived");
+        ASSERT(!base_occs.empty());
+        ASSERT(!derived_occs.empty());
+        auto base_hash = base_occs.front().target;
+        auto derived_hash = derived_occs.front().target;
 
-    auto has_pair =
-        [&](index::SymbolHash source, RelationKind::Kind kind, index::SymbolHash target) {
-            auto it = index.relations.find(source);
-            if(it == index.relations.end()) {
-                return false;
-            }
-            for(auto& r: it->second) {
-                if(r.kind == kind && r.target_symbol == target) {
-                    return true;
+        auto has_pair =
+            [&](index::SymbolHash source, RelationKind::Kind kind, index::SymbolHash target) {
+                auto it = index.relations.find(source);
+                if(it == index.relations.end()) {
+                    return false;
                 }
-            }
-            return false;
-        };
+                for(auto& r: it->second) {
+                    if(r.kind == kind && r.target_symbol == target) {
+                        return true;
+                    }
+                }
+                return false;
+            };
 
-    ASSERT_TRUE(has_pair(derived_hash, RelationKind::Base, base_hash));
-    ASSERT_TRUE(has_pair(base_hash, RelationKind::Derived, derived_hash));
-}
+        ASSERT(has_pair(derived_hash, RelationKind::Base, base_hash));
+        ASSERT(has_pair(base_hash, RelationKind::Derived, derived_hash));
+    }
 
-TEST_CASE(CallerAndCallee) {
-    build_index(R"(
+    ZEST_CASE(CallerAndCallee) {
+        build_index(R"(
             void §(callee_def)callee() {}
 
             void §(caller_def)caller() {
@@ -457,45 +458,45 @@ TEST_CASE(CallerAndCallee) {
             }
         )");
 
-    auto& index = tu_index.main_file_index;
+        auto& index = tu_index.main_file_index;
 
-    // Find caller symbol and check for Callee relation.
-    auto caller_occs = select("caller_def");
-    ASSERT_FALSE(caller_occs.empty());
-    auto caller_hash = caller_occs.front().target;
+        // Find caller symbol and check for Callee relation.
+        auto caller_occs = select("caller_def");
+        ASSERT(!caller_occs.empty());
+        auto caller_hash = caller_occs.front().target;
 
-    auto caller_it = index.relations.find(caller_hash);
-    ASSERT_TRUE(caller_it != index.relations.end());
+        auto caller_it = index.relations.find(caller_hash);
+        ASSERT(caller_it != index.relations.end());
 
-    bool found_callee = false;
-    for(auto& r: caller_it->second) {
-        if(r.kind == RelationKind::Callee) {
-            found_callee = true;
-            break;
+        bool found_callee = false;
+        for(auto& r: caller_it->second) {
+            if(r.kind == RelationKind::Callee) {
+                found_callee = true;
+                break;
+            }
         }
-    }
-    ASSERT_TRUE(found_callee);
+        ASSERT(found_callee);
 
-    // Find callee symbol and check for Caller relation.
-    auto callee_occs = select("callee_def");
-    ASSERT_FALSE(callee_occs.empty());
-    auto callee_hash = callee_occs.front().target;
+        // Find callee symbol and check for Caller relation.
+        auto callee_occs = select("callee_def");
+        ASSERT(!callee_occs.empty());
+        auto callee_hash = callee_occs.front().target;
 
-    auto callee_it = index.relations.find(callee_hash);
-    ASSERT_TRUE(callee_it != index.relations.end());
+        auto callee_it = index.relations.find(callee_hash);
+        ASSERT(callee_it != index.relations.end());
 
-    bool found_caller = false;
-    for(auto& r: callee_it->second) {
-        if(r.kind == RelationKind::Caller) {
-            found_caller = true;
-            break;
+        bool found_caller = false;
+        for(auto& r: callee_it->second) {
+            if(r.kind == RelationKind::Caller) {
+                found_caller = true;
+                break;
+            }
         }
+        ASSERT(found_caller);
     }
-    ASSERT_TRUE(found_caller);
-}
 
-TEST_CASE(MethodCallerCallee) {
-    build_index(R"(
+    ZEST_CASE(MethodCallerCallee) {
+        build_index(R"(
             void §(callee_def)callee() {}
 
             struct S {
@@ -505,84 +506,84 @@ TEST_CASE(MethodCallerCallee) {
             };
         )");
 
-    auto& index = tu_index.main_file_index;
+        auto& index = tu_index.main_file_index;
 
-    // Calls inside a method body produce call edges, with the method as
-    // the caller.
-    auto method_occs = select("method_def");
-    ASSERT_FALSE(method_occs.empty());
-    auto method_hash = method_occs.front().target;
+        // Calls inside a method body produce call edges, with the method as
+        // the caller.
+        auto method_occs = select("method_def");
+        ASSERT(!method_occs.empty());
+        auto method_hash = method_occs.front().target;
 
-    auto callee_occs = select("callee_def");
-    ASSERT_FALSE(callee_occs.empty());
-    auto callee_hash = callee_occs.front().target;
+        auto callee_occs = select("callee_def");
+        ASSERT(!callee_occs.empty());
+        auto callee_hash = callee_occs.front().target;
 
-    auto method_it = index.relations.find(method_hash);
-    ASSERT_TRUE(method_it != index.relations.end());
+        auto method_it = index.relations.find(method_hash);
+        ASSERT(method_it != index.relations.end());
 
-    bool found_callee = false;
-    for(auto& r: method_it->second) {
-        if(r.kind == RelationKind::Callee && r.target_symbol == callee_hash) {
-            found_callee = true;
-            break;
+        bool found_callee = false;
+        for(auto& r: method_it->second) {
+            if(r.kind == RelationKind::Callee && r.target_symbol == callee_hash) {
+                found_callee = true;
+                break;
+            }
         }
-    }
-    ASSERT_TRUE(found_callee);
+        ASSERT(found_callee);
 
-    auto callee_it = index.relations.find(callee_hash);
-    ASSERT_TRUE(callee_it != index.relations.end());
+        auto callee_it = index.relations.find(callee_hash);
+        ASSERT(callee_it != index.relations.end());
 
-    bool found_caller = false;
-    for(auto& r: callee_it->second) {
-        if(r.kind == RelationKind::Caller && r.target_symbol == method_hash) {
-            found_caller = true;
-            break;
+        bool found_caller = false;
+        for(auto& r: callee_it->second) {
+            if(r.kind == RelationKind::Caller && r.target_symbol == method_hash) {
+                found_caller = true;
+                break;
+            }
         }
+        ASSERT(found_caller);
     }
-    ASSERT_TRUE(found_caller);
-}
 
-TEST_CASE(UsingRelationKey) {
-    build_index(R"(
+    ZEST_CASE(UsingRelationKey) {
+        build_index(R"(
             namespace ns { void §(target)foo(); }
             using ns::§(use)⟦§(use)foo⟧;
         )");
 
-    auto& index = tu_index.main_file_index;
+        auto& index = tu_index.main_file_index;
 
-    // The relation row of a using declaration is keyed by the same symbol
-    // its occurrence references, so looking the occurrence's symbol up in
-    // the relations always finds the using site.
-    auto use_occs = select("use");
-    ASSERT_FALSE(use_occs.empty());
-    auto hash = use_occs.front().target;
+        // The relation row of a using declaration is keyed by the same symbol
+        // its occurrence references, so looking the occurrence's symbol up in
+        // the relations always finds the using site.
+        auto use_occs = select("use");
+        ASSERT(!use_occs.empty());
+        auto hash = use_occs.front().target;
 
-    auto it = index.relations.find(hash);
-    ASSERT_TRUE(it != index.relations.end());
+        auto it = index.relations.find(hash);
+        ASSERT(it != index.relations.end());
 
-    bool found_use = false;
-    for(auto& r: it->second) {
-        if(r.kind == RelationKind::WeakReference && r.range == range("use")) {
-            found_use = true;
-            break;
+        bool found_use = false;
+        for(auto& r: it->second) {
+            if(r.kind == RelationKind::WeakReference && r.range == range("use")) {
+                found_use = true;
+                break;
+            }
         }
+        ASSERT(found_use);
     }
-    ASSERT_TRUE(found_use);
-}
 
-TEST_CASE(CtorInitMemberRef) {
-    build_index(R"(
+    ZEST_CASE(CtorInitMemberRef) {
+        build_index(R"(
             struct S {
                 int §(def)⟦x⟧;
                 S() : §(use)x(1) {}
             };
         )");
 
-    GO_TO_DEFINITION("use", "def");
-}
+        GO_TO_DEFINITION("use", "def");
+    }
 
-TEST_CASE(DesignatedInitRef) {
-    build_index(R"(
+    ZEST_CASE(DesignatedInitRef) {
+        build_index(R"(
             struct Point {
                 int §(def)⟦x⟧;
                 int y;
@@ -591,11 +592,11 @@ TEST_CASE(DesignatedInitRef) {
             Point p = {.§(use)x = 1};
         )");
 
-    GO_TO_DEFINITION("use", "def");
-}
+        GO_TO_DEFINITION("use", "def");
+    }
 
-TEST_CASE(RewrittenOperatorRef) {
-    build_index(R"(
+    ZEST_CASE(RewrittenOperatorRef) {
+        build_index(R"(
             namespace std {
             struct strong_ordering {
                 int n;
@@ -615,13 +616,13 @@ TEST_CASE(RewrittenOperatorRef) {
             bool lt(S a, S b) { return a §(use)< b; }
         )");
 
-    /// a < b is rewritten to (a <=> b) < 0; the operator token references
-    /// the rewritten-to operator.
-    GO_TO_DEFINITION("use", "def");
-}
+        /// a < b is rewritten to (a <=> b) < 0; the operator token references
+        /// the rewritten-to operator.
+        GO_TO_DEFINITION("use", "def");
+    }
 
-TEST_CASE(DependentWeakReference) {
-    build_index(R"(
+    ZEST_CASE(DependentWeakReference) {
+        build_index(R"(
             template <typename T>
             struct Base {
                 static constexpr int §(target)value = 1;
@@ -631,31 +632,31 @@ TEST_CASE(DependentWeakReference) {
             int use() { return Base<T>::§(use)⟦§(use)value⟧; }
         )");
 
-    auto& index = tu_index.main_file_index;
+        auto& index = tu_index.main_file_index;
 
-    /// The dependent name resolves through the template resolver to the
-    /// pattern's member; both sites share one symbol.
-    auto use_occs = select("use");
-    ASSERT_FALSE(use_occs.empty());
-    auto target_occs = select("target");
-    ASSERT_FALSE(target_occs.empty());
-    ASSERT_EQ(use_occs.front().target, target_occs.front().target);
+        /// The dependent name resolves through the template resolver to the
+        /// pattern's member; both sites share one symbol.
+        auto use_occs = select("use");
+        ASSERT(!use_occs.empty());
+        auto target_occs = select("target");
+        ASSERT(!target_occs.empty());
+        ASSERT(use_occs.front().target == target_occs.front().target);
 
-    auto it = index.relations.find(use_occs.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+        auto it = index.relations.find(use_occs.front().target);
+        ASSERT(it != index.relations.end());
 
-    bool found_weak = false;
-    for(auto& r: it->second) {
-        if(r.kind == RelationKind::WeakReference && r.range == range("use")) {
-            found_weak = true;
-            break;
+        bool found_weak = false;
+        for(auto& r: it->second) {
+            if(r.kind == RelationKind::WeakReference && r.range == range("use")) {
+                found_weak = true;
+                break;
+            }
         }
+        ASSERT(found_weak);
     }
-    ASSERT_TRUE(found_weak);
-}
 
-TEST_CASE(TypeDefinitionRelations) {
-    build_index(R"(
+    ZEST_CASE(TypeDefinitionRelations) {
+        build_index(R"(
             struct §(s)⟦§(s)S⟧ {};
 
             struct Holder {
@@ -667,152 +668,152 @@ TEST_CASE(TypeDefinitionRelations) {
             enum §(e)⟦§(e)E⟧ { §(ec)⟦§(ec)A⟧ };
         )");
 
-    auto& index = tu_index.main_file_index;
+        auto& index = tu_index.main_file_index;
 
-    auto has_type_definition = [&](llvm::StringRef source, llvm::StringRef target) {
-        auto source_occs = select(source);
-        auto target_occs = select(target);
-        if(source_occs.empty() || target_occs.empty()) {
-            return false;
-        }
-        auto source_hash = source_occs.front().target;
-        auto target_hash = target_occs.front().target;
-        auto it = index.relations.find(source_hash);
-        if(it == index.relations.end()) {
-            return false;
-        }
-        for(auto& r: it->second) {
-            if(r.kind == RelationKind::TypeDefinition && r.target_symbol == target_hash) {
-                return true;
+        auto has_type_definition = [&](llvm::StringRef source, llvm::StringRef target) {
+            auto source_occs = select(source);
+            auto target_occs = select(target);
+            if(source_occs.empty() || target_occs.empty()) {
+                return false;
             }
-        }
-        return false;
-    };
+            auto source_hash = source_occs.front().target;
+            auto target_hash = target_occs.front().target;
+            auto it = index.relations.find(source_hash);
+            if(it == index.relations.end()) {
+                return false;
+            }
+            for(auto& r: it->second) {
+                if(r.kind == RelationKind::TypeDefinition && r.target_symbol == target_hash) {
+                    return true;
+                }
+            }
+            return false;
+        };
 
-    ASSERT_TRUE(has_type_definition("field", "s"));
-    ASSERT_TRUE(has_type_definition("alias", "s"));
-    ASSERT_TRUE(has_type_definition("ec", "e"));
-}
+        ASSERT(has_type_definition("field", "s"));
+        ASSERT(has_type_definition("alias", "s"));
+        ASSERT(has_type_definition("ec", "e"));
+    }
 
-TEST_CASE(ConstructorDestructorRelations) {
-    build_index(R"(
+    ZEST_CASE(ConstructorDestructorRelations) {
+        build_index(R"(
             struct §(s)⟦§(s)S⟧ {
                 §(ctor)S();
                 ~S();
             };
         )");
 
-    auto& index = tu_index.main_file_index;
-    auto class_occs = select("s");
-    auto ctor_occs = select("ctor");
-    ASSERT_FALSE(class_occs.empty());
-    ASSERT_FALSE(ctor_occs.empty());
-    auto class_hash = class_occs.front().target;
-    auto ctor_hash = ctor_occs.front().target;
+        auto& index = tu_index.main_file_index;
+        auto class_occs = select("s");
+        auto ctor_occs = select("ctor");
+        ASSERT(!class_occs.empty());
+        ASSERT(!ctor_occs.empty());
+        auto class_hash = class_occs.front().target;
+        auto ctor_hash = ctor_occs.front().target;
 
-    auto it = index.relations.find(class_hash);
-    ASSERT_TRUE(it != index.relations.end());
+        auto it = index.relations.find(class_hash);
+        ASSERT(it != index.relations.end());
 
-    bool found_ctor = false;
-    bool found_dtor = false;
-    for(auto& r: it->second) {
-        if(r.kind == RelationKind::Constructor && r.target_symbol == ctor_hash) {
-            found_ctor = true;
+        bool found_ctor = false;
+        bool found_dtor = false;
+        for(auto& r: it->second) {
+            if(r.kind == RelationKind::Constructor && r.target_symbol == ctor_hash) {
+                found_ctor = true;
+            }
+            if(r.kind == RelationKind::Destructor) {
+                found_dtor = true;
+            }
         }
-        if(r.kind == RelationKind::Destructor) {
-            found_dtor = true;
+        ASSERT(found_ctor);
+        ASSERT(found_dtor);
+
+        // The constructor points back at its class for go-to-type-definition.
+        auto ctor_it = index.relations.find(ctor_hash);
+        ASSERT(ctor_it != index.relations.end());
+
+        bool found_type = false;
+        for(auto& r: ctor_it->second) {
+            if(r.kind == RelationKind::TypeDefinition && r.target_symbol == class_hash) {
+                found_type = true;
+            }
         }
+        ASSERT(found_type);
     }
-    ASSERT_TRUE(found_ctor);
-    ASSERT_TRUE(found_dtor);
 
-    // The constructor points back at its class for go-to-type-definition.
-    auto ctor_it = index.relations.find(ctor_hash);
-    ASSERT_TRUE(ctor_it != index.relations.end());
-
-    bool found_type = false;
-    for(auto& r: ctor_it->second) {
-        if(r.kind == RelationKind::TypeDefinition && r.target_symbol == class_hash) {
-            found_type = true;
-        }
-    }
-    ASSERT_TRUE(found_type);
-}
-
-TEST_CASE(MacroRelations) {
-    build_index(R"(
+    ZEST_CASE(MacroRelations) {
+        build_index(R"(
             #define §(def)⟦§(def)FOO⟧ 1
             int x = §(use)⟦§(use)FOO⟧;
         )");
 
-    auto& index = tu_index.main_file_index;
-    auto def_occs = select("def");
-    auto use_occs = select("use");
-    ASSERT_FALSE(def_occs.empty());
-    ASSERT_FALSE(use_occs.empty());
-    ASSERT_EQ(def_occs.front().target, use_occs.front().target);
+        auto& index = tu_index.main_file_index;
+        auto def_occs = select("def");
+        auto use_occs = select("use");
+        ASSERT(!def_occs.empty());
+        ASSERT(!use_occs.empty());
+        ASSERT(def_occs.front().target == use_occs.front().target);
 
-    auto it = index.relations.find(def_occs.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+        auto it = index.relations.find(def_occs.front().target);
+        ASSERT(it != index.relations.end());
 
-    bool found_definition = false;
-    bool found_reference = false;
-    for(auto& r: it->second) {
-        if(r.kind == RelationKind::Definition && r.range == range("def")) {
-            found_definition = true;
+        bool found_definition = false;
+        bool found_reference = false;
+        for(auto& r: it->second) {
+            if(r.kind == RelationKind::Definition && r.range == range("def")) {
+                found_definition = true;
+            }
+            if(r.kind == RelationKind::Reference && r.range == range("use")) {
+                found_reference = true;
+            }
         }
-        if(r.kind == RelationKind::Reference && r.range == range("use")) {
-            found_reference = true;
-        }
+        ASSERT(found_definition);
+        ASSERT(found_reference);
     }
-    ASSERT_TRUE(found_definition);
-    ASSERT_TRUE(found_reference);
-}
 
-TEST_CASE(ModuleName) {
-    build_index(R"(export module §(m)⟦§(m)foo⟧;)");
+    ZEST_CASE(ModuleName) {
+        build_index(R"(export module §(m)⟦§(m)foo⟧;)");
 
-    auto& index = tu_index.main_file_index;
-    auto occs = select("m");
-    ASSERT_FALSE(occs.empty());
-    ASSERT_EQ(occs.front().target, unit->module_entity("foo"));
-    ASSERT_EQ(symbol_named("foo").second.kind.value(), SymbolKind(SymbolKind::Module).value());
+        auto& index = tu_index.main_file_index;
+        auto occs = select("m");
+        ASSERT(!occs.empty());
+        ASSERT(occs.front().target == unit->module_entity("foo"));
+        ASSERT(symbol_named("foo").second.kind.value() == SymbolKind(SymbolKind::Module).value());
 
-    auto it = index.relations.find(occs.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+        auto it = index.relations.find(occs.front().target);
+        ASSERT(it != index.relations.end());
 
-    bool found_definition = false;
-    for(auto& r: it->second) {
-        if(r.kind == RelationKind::Definition) {
-            found_definition = true;
+        bool found_definition = false;
+        for(auto& r: it->second) {
+            if(r.kind == RelationKind::Definition) {
+                found_definition = true;
+            }
         }
+        ASSERT(found_definition);
     }
-    ASSERT_TRUE(found_definition);
-}
 
-TEST_CASE(ModulePartitionName) {
-    build_index(R"(export module §(m)⟦§(m)foo:part⟧;)");
+    ZEST_CASE(ModulePartitionName) {
+        build_index(R"(export module §(m)⟦§(m)foo:part⟧;)");
 
-    // The occurrence spans the whole written name, partition included.
-    auto occs = select("m");
-    ASSERT_FALSE(occs.empty());
-    ASSERT_EQ(occs.front().range, range("m"));
+        // The occurrence spans the whole written name, partition included.
+        auto occs = select("m");
+        ASSERT(!occs.empty());
+        ASSERT(occs.front().range == range("m"));
 
-    auto& index = tu_index.main_file_index;
-    auto it = index.relations.find(occs.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+        auto& index = tu_index.main_file_index;
+        auto it = index.relations.find(occs.front().target);
+        ASSERT(it != index.relations.end());
 
-    bool found_definition = false;
-    for(auto& r: it->second) {
-        if(r.kind == RelationKind::Definition) {
-            found_definition = true;
+        bool found_definition = false;
+        for(auto& r: it->second) {
+            if(r.kind == RelationKind::Definition) {
+                found_definition = true;
+            }
         }
+        ASSERT(found_definition);
     }
-    ASSERT_TRUE(found_definition);
-}
 
-TEST_CASE(ImplementationUnitReference) {
-    add_files("main.cpp", R"(
+    ZEST_CASE(ImplementationUnitReference) {
+        add_files("main.cpp", R"(
 #[foo.cppm]
 export module foo;
 export int x = 1;
@@ -820,32 +821,32 @@ export int x = 1;
 #[main.cpp]
 module §(m)⟦§(m)foo⟧;
 )");
-    ASSERT_TRUE(compile_with_modules());
-    decode_index(index::build_tu_index(*unit));
+        ASSERT(compile_with_modules());
+        decode_index(index::build_tu_index(*unit));
 
-    // An implementation unit's declaration is a Reference, not a Definition.
-    auto occs = select("m");
-    ASSERT_FALSE(occs.empty());
-    ASSERT_EQ(occs.front().range, range("m"));
+        // An implementation unit's declaration is a Reference, not a Definition.
+        auto occs = select("m");
+        ASSERT(!occs.empty());
+        ASSERT(occs.front().range == range("m"));
 
-    auto& index = tu_index.main_file_index;
-    auto it = index.relations.find(occs.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+        auto& index = tu_index.main_file_index;
+        auto it = index.relations.find(occs.front().target);
+        ASSERT(it != index.relations.end());
 
-    bool found_reference = false;
-    for(auto& r: it->second) {
-        if(r.kind == RelationKind::Definition) {
-            ASSERT_TRUE(false);
+        bool found_reference = false;
+        for(auto& r: it->second) {
+            if(r.kind == RelationKind::Definition) {
+                ASSERT(false);
+            }
+            if(r.kind == RelationKind::Reference) {
+                found_reference = true;
+            }
         }
-        if(r.kind == RelationKind::Reference) {
-            found_reference = true;
-        }
+        ASSERT(found_reference);
     }
-    ASSERT_TRUE(found_reference);
-}
 
-TEST_CASE(OverrideRelation) {
-    build_index(R"(
+    ZEST_CASE(OverrideRelation) {
+        build_index(R"(
             struct Base {
                 virtual void method() {}
             };
@@ -855,81 +856,81 @@ TEST_CASE(OverrideRelation) {
             };
         )");
 
-    // The semantic visitor stores:
-    //   handleRelation(method, Interface, override, ...)  — overriding method has Interface
-    //   handleRelation(override, Implementation, method, ...) — base method has Implementation
-    // Search for both relation kinds across all indices.
-    bool found_interface = false;
-    bool found_implementation = false;
+        // The semantic visitor stores:
+        //   handleRelation(method, Interface, override, ...)  — overriding method has Interface
+        //   handleRelation(override, Implementation, method, ...) — base method has Implementation
+        // Search for both relation kinds across all indices.
+        bool found_interface = false;
+        bool found_implementation = false;
 
-    auto check_relations = [&](DecodedRows& idx) {
-        for(auto& [hash, rels]: idx.relations) {
-            for(auto& r: rels) {
-                if(r.kind == RelationKind::Interface)
-                    found_interface = true;
-                if(r.kind == RelationKind::Implementation)
-                    found_implementation = true;
+        auto check_relations = [&](DecodedRows& idx) {
+            for(auto& [hash, rels]: idx.relations) {
+                for(auto& r: rels) {
+                    if(r.kind == RelationKind::Interface)
+                        found_interface = true;
+                    if(r.kind == RelationKind::Implementation)
+                        found_implementation = true;
+                }
             }
-        }
-    };
+        };
 
-    check_relations(tu_index.main_file_index);
-    for(auto& [path_id, idx]: tu_index.file_indices) {
-        check_relations(idx);
+        check_relations(tu_index.main_file_index);
+        for(auto& [path_id, idx]: tu_index.file_indices) {
+            check_relations(idx);
+        }
+
+        ASSERT(found_interface);
+        ASSERT(found_implementation);
     }
 
-    ASSERT_TRUE(found_interface);
-    ASSERT_TRUE(found_implementation);
-}
-
-TEST_CASE(DeclarationAndDefinition) {
-    build_index(R"(
+    ZEST_CASE(DeclarationAndDefinition) {
+        build_index(R"(
             int §(decl)foo();
 
             int §(def)⟦§(def)foo⟧() { return 42; }
         )");
 
-    auto& index = tu_index.main_file_index;
+        auto& index = tu_index.main_file_index;
 
-    // Find the declaration occurrence and verify Declaration relation exists.
-    auto decl_occs = select("decl");
-    ASSERT_FALSE(decl_occs.empty());
-    auto symbol_hash = decl_occs.front().target;
+        // Find the declaration occurrence and verify Declaration relation exists.
+        auto decl_occs = select("decl");
+        ASSERT(!decl_occs.empty());
+        auto symbol_hash = decl_occs.front().target;
 
-    auto it = index.relations.find(symbol_hash);
-    ASSERT_TRUE(it != index.relations.end());
+        auto it = index.relations.find(symbol_hash);
+        ASSERT(it != index.relations.end());
 
-    bool found_decl = false;
-    bool found_def = false;
-    for(auto& r: it->second) {
-        if(r.kind == RelationKind::Declaration) {
-            found_decl = true;
+        bool found_decl = false;
+        bool found_def = false;
+        for(auto& r: it->second) {
+            if(r.kind == RelationKind::Declaration) {
+                found_decl = true;
+            }
+            if(r.kind == RelationKind::Definition) {
+                found_def = true;
+            }
         }
-        if(r.kind == RelationKind::Definition) {
-            found_def = true;
-        }
+        ASSERT(found_decl);
+        ASSERT(found_def);
     }
-    ASSERT_TRUE(found_decl);
-    ASSERT_TRUE(found_def);
-}
 
-TEST_CASE(MacroDefinitionExtent) {
-    build_index(R"(
+    ZEST_CASE(MacroDefinitionExtent) {
+        build_index(R"(
         #define MAKE_FN(name) int name() { return 42; }
         §(ext)⟦MAKE_FN(generated)⟧
     )");
 
-    auto [hash, symbol] = symbol_named("generated");
-    auto& relations = tu_index.main_file_index.relations[hash];
-    auto definition = std::ranges::find_if(relations, [](const index::Relation& relation) {
-        return relation.kind == RelationKind::Definition;
-    });
-    ASSERT_TRUE(definition != relations.end());
-    ASSERT_EQ(dump(definition->definition_range()), dump(range("ext")));
-}
+        auto [hash, symbol] = symbol_named("generated");
+        auto& relations = tu_index.main_file_index.relations[hash];
+        auto definition = std::ranges::find_if(relations, [](const index::Relation& relation) {
+            return relation.kind == RelationKind::Definition;
+        });
+        ASSERT(definition != relations.end());
+        ASSERT(dump(definition->definition_range()) == dump(range("ext")));
+    }
 
-TEST_CASE(SpelledInMacroRedeclarations) {
-    build_index(R"(
+    ZEST_CASE(SpelledInMacroRedeclarations) {
+        build_index(R"(
         #define FWD(name) class name;
         FWD(Written)
         class Written {};
@@ -938,62 +939,62 @@ TEST_CASE(SpelledInMacroRedeclarations) {
         MAKE(Generated)
     )");
 
-    ASSERT_FALSE(has(symbol_named("Written").second, index::SymbolFlags::SpelledInMacro));
-    ASSERT_TRUE(has(symbol_named("Generated").second, index::SymbolFlags::SpelledInMacro));
-}
+        ASSERT(!has(symbol_named("Written").second, index::SymbolFlags::SpelledInMacro));
+        ASSERT(has(symbol_named("Generated").second, index::SymbolFlags::SpelledInMacro));
+    }
 
-TEST_CASE(CrossFileHeaderIndex) {
-    add_file("header.h", R"(
+    ZEST_CASE(CrossFileHeaderIndex) {
+        add_file("header.h", R"(
             #pragma once
             int §(hdr_func)⟦§(hdr_func)helper⟧();
         )");
-    add_main("main.cpp", R"(
+        add_main("main.cpp", R"(
             #include "header.h"
 
             int main() {
                 return §(use_helper)helper();
             }
         )");
-    ASSERT_TRUE(compile());
-    decode_index(index::build_tu_index(*unit));
+        ASSERT(compile());
+        decode_index(index::build_tu_index(*unit));
 
-    // The header should have its own FileIndex (separate from main).
-    ASSERT_TRUE(tu_index.file_indices.size() >= 1U);
+        // The header should have its own FileIndex (separate from main).
+        ASSERT(tu_index.file_indices.size() >= 1U);
 
-    // The main file should have a reference to helper.
-    auto& main_index = tu_index.main_file_index;
-    ASSERT_FALSE(main_index.occurrences.empty());
+        // The main file should have a reference to helper.
+        auto& main_index = tu_index.main_file_index;
+        ASSERT(!main_index.occurrences.empty());
 
-    // Find 'helper' reference in main file.
-    auto use_offset = point("use_helper");
-    auto it = std::ranges::lower_bound(main_index.occurrences,
-                                       use_offset,
-                                       {},
-                                       [](const index::Occurrence& o) { return o.range.end; });
-    ASSERT_TRUE(it != main_index.occurrences.end());
-    ASSERT_TRUE(it->range.contains(use_offset));
+        // Find 'helper' reference in main file.
+        auto use_offset = point("use_helper");
+        auto it = std::ranges::lower_bound(main_index.occurrences,
+                                           use_offset,
+                                           {},
+                                           [](const index::Occurrence& o) { return o.range.end; });
+        ASSERT(it != main_index.occurrences.end());
+        ASSERT(it->range.contains(use_offset));
 
-    // The helper symbol should exist in the TU symbol table.
-    auto helper_hash = it->target;
-    ASSERT_TRUE(tu_index.symbols.contains(helper_hash));
+        // The helper symbol should exist in the TU symbol table.
+        auto helper_hash = it->target;
+        ASSERT(tu_index.symbols.contains(helper_hash));
 
-    // The helper's declaration should be in the header's rows.
-    bool found_in_header = false;
-    for(auto& [path_id, file_index]: tu_index.file_indices) {
-        for(auto& [sym, rels]: file_index.relations) {
-            if(sym == helper_hash) {
-                found_in_header = true;
-                break;
+        // The helper's declaration should be in the header's rows.
+        bool found_in_header = false;
+        for(auto& [path_id, file_index]: tu_index.file_indices) {
+            for(auto& [sym, rels]: file_index.relations) {
+                if(sym == helper_hash) {
+                    found_in_header = true;
+                    break;
+                }
             }
+            if(found_in_header)
+                break;
         }
-        if(found_in_header)
-            break;
+        ASSERT(found_in_header);
     }
-    ASSERT_TRUE(found_in_header);
-}
 
-TEST_CASE(SymbolKinds) {
-    build_index(R"(
+    ZEST_CASE(SymbolKinds) {
+        build_index(R"(
             struct §(cls)MyClass {};
             enum §(enm)MyEnum { A, B };
             void §(func)myFunc() {}
@@ -1001,188 +1002,188 @@ TEST_CASE(SymbolKinds) {
             namespace §(ns)MyNS {}
         )");
 
-    auto check_kind = [&](llvm::StringRef name, SymbolKind expected) {
-        auto occs = select(name);
-        ASSERT_FALSE(occs.empty());
-        auto hash = occs.front().target;
-        ASSERT_TRUE(tu_index.symbols.contains(hash));
-        ASSERT_EQ(tu_index.symbols[hash].kind.value(), expected.value());
-    };
+        auto check_kind = [&](llvm::StringRef name, SymbolKind expected) {
+            auto occs = select(name);
+            ASSERT(!occs.empty());
+            auto hash = occs.front().target;
+            ASSERT(tu_index.symbols.contains(hash));
+            ASSERT(tu_index.symbols[hash].kind.value() == expected.value());
+        };
 
-    check_kind("cls", SymbolKind::Struct);
-    check_kind("enm", SymbolKind::Enum);
-    check_kind("func", SymbolKind::Function);
-    check_kind("var", SymbolKind::Variable);
-    check_kind("ns", SymbolKind::Namespace);
-}
+        check_kind("cls", SymbolKind::Struct);
+        check_kind("enm", SymbolKind::Enum);
+        check_kind("func", SymbolKind::Function);
+        check_kind("var", SymbolKind::Variable);
+        check_kind("ns", SymbolKind::Namespace);
+    }
 
-TEST_CASE(LookupOccurrence) {
-    build_index(R"(
+    ZEST_CASE(LookupOccurrence) {
+        build_index(R"(
         int §(x)⟦fo§(x)o⟧();
         int §(ref)⟦fo§(ref)o⟧() { return 0; }
     )");
 
-    auto& fi = tu_index.main_file_index;
-    ASSERT_FALSE(fi.occurrences.empty());
-    const index::Shard& shard = tu_index.view.shard_of(tu_index.view.path_count() - 1);
-    ASSERT_TRUE(shard.loaded());
+        auto& fi = tu_index.main_file_index;
+        ASSERT(!fi.occurrences.empty());
+        const index::Shard& shard = tu_index.view.shard_of(tu_index.view.path_count() - 1);
+        ASSERT(shard.loaded());
 
-    auto x_range = range("x");
-    std::optional<index::Occurrence> found;
-    shard.lookup(point("x"), [&](const index::Occurrence& occ) {
-        found = occ;
-        return true;
-    });
-    ASSERT_TRUE(found.has_value());
-    EXPECT_EQ(found->range.begin, x_range.begin);
-    EXPECT_EQ(found->range.end, x_range.end);
+        auto x_range = range("x");
+        std::optional<index::Occurrence> found;
+        shard.lookup(point("x"), [&](const index::Occurrence& occ) {
+            found = occ;
+            return true;
+        });
+        ASSERT(found);
+        EXPECT(found->range.begin == x_range.begin);
+        EXPECT(found->range.end == x_range.end);
 
-    found.reset();
-    shard.lookup(point("ref"), [&](const index::Occurrence& occ) {
-        found = occ;
-        return true;
-    });
-    ASSERT_TRUE(found.has_value());
-    EXPECT_EQ(found->target, fi.occurrences.front().target);
+        found.reset();
+        shard.lookup(point("ref"), [&](const index::Occurrence& occ) {
+            found = occ;
+            return true;
+        });
+        ASSERT(found);
+        EXPECT(found->target == fi.occurrences.front().target);
 
-    found.reset();
-    shard.lookup(0, [&](const index::Occurrence& occ) {
-        found = occ;
-        return false;
-    });
-    EXPECT_FALSE(found.has_value());
-}
+        found.reset();
+        shard.lookup(0, [&](const index::Occurrence& occ) {
+            found = occ;
+            return false;
+        });
+        EXPECT(!found.has_value());
+    }
 
-TEST_CASE(LookupRelation) {
-    build_index(R"(
+    ZEST_CASE(LookupRelation) {
+        build_index(R"(
         void §(decl)⟦fo§(decl)o⟧();
         void §(def)⟦fo§(def)o⟧() {}
     )");
 
-    const index::Shard& shard = tu_index.view.shard_of(tu_index.view.path_count() - 1);
-    ASSERT_TRUE(shard.loaded());
+        const index::Shard& shard = tu_index.view.shard_of(tu_index.view.path_count() - 1);
+        ASSERT(shard.loaded());
 
-    std::optional<index::Occurrence> occ;
-    shard.lookup(point("decl"), [&](const index::Occurrence& o) {
-        occ = o;
-        return false;
-    });
-    ASSERT_TRUE(occ.has_value());
+        std::optional<index::Occurrence> occ;
+        shard.lookup(point("decl"), [&](const index::Occurrence& o) {
+            occ = o;
+            return false;
+        });
+        ASSERT(occ);
 
-    auto def_range = range("def");
-    bool found_def = false;
-    shard.lookup(occ->target, RelationKind::Definition, [&](const index::Relation& r) {
-        found_def = true;
-        EXPECT_EQ(r.range.begin, def_range.begin);
-        EXPECT_EQ(r.range.end, def_range.end);
-        return false;
-    });
-    EXPECT_TRUE(found_def);
+        auto def_range = range("def");
+        bool found_def = false;
+        shard.lookup(occ->target, RelationKind::Definition, [&](const index::Relation& r) {
+            found_def = true;
+            EXPECT(r.range.begin == def_range.begin);
+            EXPECT(r.range.end == def_range.end);
+            return false;
+        });
+        EXPECT(found_def);
 
-    bool found_any = false;
-    shard.lookup(occ->target, RelationKind::Caller, [&](const index::Relation&) {
-        found_any = true;
-        return false;
-    });
-    EXPECT_FALSE(found_any);
-}
+        bool found_any = false;
+        shard.lookup(occ->target, RelationKind::Caller, [&](const index::Relation&) {
+            found_any = true;
+            return false;
+        });
+        EXPECT(!found_any);
+    }
 
-TEST_CASE(ScopeExternal) {
-    build_index(R"(
+    ZEST_CASE(ScopeExternal) {
+        build_index(R"(
             int global_var = 0;
             void global_func() {}
             struct GlobalClass { int member; };
             namespace ns { int ns_var = 1; }
         )");
 
-    std::set<std::string> expected{"global_var",
-                                   "global_func",
-                                   "GlobalClass",
-                                   "member",
-                                   "ns_var",
-                                   "ns"};
-    std::set<std::string> found;
-    for(auto& [hash, symbol]: tu_index.symbols) {
-        if(expected.contains(symbol.name)) {
-            ASSERT_EQ(static_cast<int>(symbol.scope),
-                      static_cast<int>(index::SymbolScope::External));
-            found.insert(symbol.name);
+        std::set<std::string> expected{"global_var",
+                                       "global_func",
+                                       "GlobalClass",
+                                       "member",
+                                       "ns_var",
+                                       "ns"};
+        std::set<std::string> found;
+        for(auto& [hash, symbol]: tu_index.symbols) {
+            if(expected.contains(symbol.name)) {
+                ASSERT(static_cast<int>(symbol.scope) ==
+                       static_cast<int>(index::SymbolScope::External));
+                found.insert(symbol.name);
+            }
         }
+        ASSERT(found == expected);
     }
-    ASSERT_EQ(found, expected);
-}
 
-TEST_CASE(ScopeFileLocal) {
-    build_index(R"(
+    ZEST_CASE(ScopeFileLocal) {
+        build_index(R"(
             void foo() {
                 int local_var = 42;
             }
             void bar(int param) {}
         )");
 
-    std::set<std::string> expected{"local_var", "param"};
-    std::set<std::string> found;
-    for(auto& [hash, symbol]: tu_index.symbols) {
-        if(expected.contains(symbol.name)) {
-            ASSERT_EQ(static_cast<int>(symbol.scope),
-                      static_cast<int>(index::SymbolScope::FileLocal));
-            found.insert(symbol.name);
+        std::set<std::string> expected{"local_var", "param"};
+        std::set<std::string> found;
+        for(auto& [hash, symbol]: tu_index.symbols) {
+            if(expected.contains(symbol.name)) {
+                ASSERT(static_cast<int>(symbol.scope) ==
+                       static_cast<int>(index::SymbolScope::FileLocal));
+                found.insert(symbol.name);
+            }
         }
+        ASSERT(found == expected);
     }
-    ASSERT_EQ(found, expected);
-}
 
-TEST_CASE(ScopeTULocal) {
-    build_index(R"(
+    ZEST_CASE(ScopeTULocal) {
+        build_index(R"(
             static int static_var = 0;
             static void static_func() {}
             namespace { int anon_var = 1; }
         )");
 
-    std::set<std::string> expected{"static_var", "static_func", "anon_var"};
-    std::set<std::string> found;
-    for(auto& [hash, symbol]: tu_index.symbols) {
-        if(expected.contains(symbol.name)) {
-            ASSERT_EQ(static_cast<int>(symbol.scope),
-                      static_cast<int>(index::SymbolScope::TULocal));
-            found.insert(symbol.name);
+        std::set<std::string> expected{"static_var", "static_func", "anon_var"};
+        std::set<std::string> found;
+        for(auto& [hash, symbol]: tu_index.symbols) {
+            if(expected.contains(symbol.name)) {
+                ASSERT(static_cast<int>(symbol.scope) ==
+                       static_cast<int>(index::SymbolScope::TULocal));
+                found.insert(symbol.name);
+            }
         }
+        ASSERT(found == expected);
     }
-    ASSERT_EQ(found, expected);
-}
 
-TEST_CASE(BareNameAndParentChain) {
-    build_index(R"(
+    ZEST_CASE(BareNameAndParentChain) {
+        build_index(R"(
         namespace ns { struct Outer { struct Inner { void method(); }; }; }
         void ns::Outer::Inner::method() {}
         namespace ns { inline namespace v1 { enum Color { Red }; } }
         void local_host() { struct Local { int field; }; }
     )");
 
-    auto [ns, ns_symbol] = symbol_named("ns");
-    auto [outer, outer_symbol] = symbol_named("Outer");
-    auto [inner, inner_symbol] = symbol_named("Inner");
-    auto [method, method_symbol] = symbol_named("method");
-    ASSERT_EQ(ns_symbol.parent, 0u);
-    ASSERT_EQ(outer_symbol.parent, ns);
-    ASSERT_EQ(inner_symbol.parent, outer);
-    ASSERT_EQ(method_symbol.parent, inner);
+        auto [ns, ns_symbol] = symbol_named("ns");
+        auto [outer, outer_symbol] = symbol_named("Outer");
+        auto [inner, inner_symbol] = symbol_named("Inner");
+        auto [method, method_symbol] = symbol_named("method");
+        ASSERT(ns_symbol.parent == 0u);
+        ASSERT(outer_symbol.parent == ns);
+        ASSERT(inner_symbol.parent == outer);
+        ASSERT(method_symbol.parent == inner);
 
-    auto [v1, v1_symbol] = symbol_named("v1");
-    ASSERT_TRUE(has(v1_symbol, index::SymbolFlags::InlineNamespace));
-    ASSERT_EQ(v1_symbol.parent, ns);
-    auto [color, color_symbol] = symbol_named("Color");
-    ASSERT_EQ(color_symbol.parent, v1);
-    ASSERT_EQ(symbol_named("Red").second.parent, color);
+        auto [v1, v1_symbol] = symbol_named("v1");
+        ASSERT(has(v1_symbol, index::SymbolFlags::InlineNamespace));
+        ASSERT(v1_symbol.parent == ns);
+        auto [color, color_symbol] = symbol_named("Color");
+        ASSERT(color_symbol.parent == v1);
+        ASSERT(symbol_named("Red").second.parent == color);
 
-    auto [host, host_symbol] = symbol_named("local_host");
-    auto [local, local_symbol] = symbol_named("Local");
-    ASSERT_EQ(local_symbol.parent, host);
-    ASSERT_EQ(symbol_named("field").second.parent, local);
-}
+        auto [host, host_symbol] = symbol_named("local_host");
+        auto [local, local_symbol] = symbol_named("Local");
+        ASSERT(local_symbol.parent == host);
+        ASSERT(symbol_named("field").second.parent == local);
+    }
 
-TEST_CASE(SpecializationArguments) {
-    build_index(R"(
+    ZEST_CASE(SpecializationArguments) {
+        build_index(R"(
         template <typename T> struct Box { T value; };
         template <> struct Box<int> { int value; };
         template <typename T> struct Box<T*> { T* value; };
@@ -1193,37 +1194,37 @@ TEST_CASE(SpecializationArguments) {
         Box<char*> c;
     )");
 
-    auto [primary, primary_symbol] = symbol_named("Box");
-    ASSERT_TRUE(has(primary_symbol, index::SymbolFlags::Template));
-    ASSERT_FALSE(has(primary_symbol, index::SymbolFlags::Specialization));
-    ASSERT_TRUE(has(primary_symbol, index::SymbolFlags::Completable));
+        auto [primary, primary_symbol] = symbol_named("Box");
+        ASSERT(has(primary_symbol, index::SymbolFlags::Template));
+        ASSERT(!has(primary_symbol, index::SymbolFlags::Specialization));
+        ASSERT(has(primary_symbol, index::SymbolFlags::Completable));
 
-    auto [full, full_symbol] = symbol_named("Box", "<int>");
-    ASSERT_TRUE(has(full_symbol, index::SymbolFlags::Specialization));
-    ASSERT_FALSE(has(full_symbol, index::SymbolFlags::Template));
-    ASSERT_FALSE(has(full_symbol, index::SymbolFlags::Completable));
+        auto [full, full_symbol] = symbol_named("Box", "<int>");
+        ASSERT(has(full_symbol, index::SymbolFlags::Specialization));
+        ASSERT(!has(full_symbol, index::SymbolFlags::Template));
+        ASSERT(!has(full_symbol, index::SymbolFlags::Completable));
 
-    auto [partial, partial_symbol] = symbol_named("Box", "<T *>");
-    ASSERT_TRUE(has(partial_symbol, index::SymbolFlags::Specialization));
-    ASSERT_TRUE(has(partial_symbol, index::SymbolFlags::Template));
+        auto [partial, partial_symbol] = symbol_named("Box", "<T *>");
+        ASSERT(has(partial_symbol, index::SymbolFlags::Specialization));
+        ASSERT(has(partial_symbol, index::SymbolFlags::Template));
 
-    // Members of the full specialization hang off it; the primary's
-    // members and every instantiation's off the primary.
-    std::set<index::SymbolHash> value_parents;
-    for(auto& [hash, symbol]: tu_index.symbols) {
-        if(symbol.name == "value") {
-            value_parents.insert(symbol.parent);
+        // Members of the full specialization hang off it; the primary's
+        // members and every instantiation's off the primary.
+        std::set<index::SymbolHash> value_parents;
+        for(auto& [hash, symbol]: tu_index.symbols) {
+            if(symbol.name == "value") {
+                value_parents.insert(symbol.parent);
+            }
         }
+        ASSERT(value_parents == (std::set<index::SymbolHash>{primary, full, partial}));
+
+        auto [function, function_symbol] = symbol_named("identity", "<int>");
+        ASSERT(has(function_symbol, index::SymbolFlags::Specialization));
+        ASSERT(has(symbol_named("identity").second, index::SymbolFlags::Template));
     }
-    ASSERT_EQ(value_parents, (std::set<index::SymbolHash>{primary, full, partial}));
 
-    auto [function, function_symbol] = symbol_named("identity", "<int>");
-    ASSERT_TRUE(has(function_symbol, index::SymbolFlags::Specialization));
-    ASSERT_TRUE(has(symbol_named("identity").second, index::SymbolFlags::Template));
-}
-
-TEST_CASE(SymbolFacts) {
-    build_index(R"(
+    ZEST_CASE(SymbolFacts) {
+        build_index(R"(
         [[deprecated]] void old();
         struct { int in_anonymous; } anonymous_instance;
         #define DECLARE(name) void name();
@@ -1241,269 +1242,269 @@ TEST_CASE(SymbolFacts) {
         namespace n { struct Scoped { Scoped(); ~Scoped(); }; }
     )");
 
-    ASSERT_TRUE(has(symbol_named("old").second, index::SymbolFlags::Deprecated));
-    auto holder = symbol_named("Holder", "", SymbolKind::Struct).second;
-    ASSERT_FALSE(has(holder, index::SymbolFlags::Deprecated));
+        ASSERT(has(symbol_named("old").second, index::SymbolFlags::Deprecated));
+        auto holder = symbol_named("Holder", "", SymbolKind::Struct).second;
+        ASSERT(!has(holder, index::SymbolFlags::Deprecated));
 
-    auto [anonymous, anonymous_symbol] = symbol_named("(anonymous struct)");
-    ASSERT_TRUE(has(anonymous_symbol, index::SymbolFlags::Unnamed));
-    ASSERT_EQ(symbol_named("in_anonymous").second.parent, anonymous);
+        auto [anonymous, anonymous_symbol] = symbol_named("(anonymous struct)");
+        ASSERT(has(anonymous_symbol, index::SymbolFlags::Unnamed));
+        ASSERT(symbol_named("in_anonymous").second.parent == anonymous);
 
-    ASSERT_TRUE(has(symbol_named("spelled").second, index::SymbolFlags::SpelledInMacro));
-    ASSERT_FALSE(has(symbol_named("old").second, index::SymbolFlags::SpelledInMacro));
-    ASSERT_FALSE(has(symbol_named("old").second, index::SymbolFlags::SystemHeader));
+        ASSERT(has(symbol_named("spelled").second, index::SymbolFlags::SpelledInMacro));
+        ASSERT(!has(symbol_named("old").second, index::SymbolFlags::SpelledInMacro));
+        ASSERT(!has(symbol_named("old").second, index::SymbolFlags::SystemHeader));
 
-    ASSERT_TRUE(has(symbol_named("old").second, index::SymbolFlags::Completable));
-    ASSERT_TRUE(has(symbol_named("Plain").second, index::SymbolFlags::Completable));
-    ASSERT_TRUE(has(symbol_named("Inner").second, index::SymbolFlags::Completable));
-    ASSERT_FALSE(has(symbol_named("Hidden").second, index::SymbolFlags::Completable));
-    ASSERT_FALSE(has(symbol_named("member").second, index::SymbolFlags::Completable));
-    ASSERT_TRUE(has(symbol_named("DECLARE").second, index::SymbolFlags::Completable));
+        ASSERT(has(symbol_named("old").second, index::SymbolFlags::Completable));
+        ASSERT(has(symbol_named("Plain").second, index::SymbolFlags::Completable));
+        ASSERT(has(symbol_named("Inner").second, index::SymbolFlags::Completable));
+        ASSERT(!has(symbol_named("Hidden").second, index::SymbolFlags::Completable));
+        ASSERT(!has(symbol_named("member").second, index::SymbolFlags::Completable));
+        ASSERT(has(symbol_named("DECLARE").second, index::SymbolFlags::Completable));
 
-    using index::NameForm;
-    ASSERT_EQ(index::name_form(symbol_named("member").second.flags), NameForm::Identifier);
-    ASSERT_EQ(index::name_form(holder.flags), NameForm::Identifier);
-    ASSERT_EQ(index::name_form(symbol_named("~Holder").second.flags), NameForm::Destructor);
-    ASSERT_EQ(index::name_form(symbol_named("operator int").second.flags), NameForm::Conversion);
-    ASSERT_EQ(index::name_form(symbol_named("operator==").second.flags), NameForm::Operator);
-    auto [holder_class, holder_symbol] = symbol_named("Holder", "", SymbolKind::Struct);
-    auto constructor = symbol_named("Holder", "", SymbolKind::Method).second;
-    ASSERT_EQ(index::name_form(constructor.flags), NameForm::Constructor);
-    ASSERT_EQ(constructor.parent, holder_class);
+        using index::NameForm;
+        ASSERT(index::name_form(symbol_named("member").second.flags) == NameForm::Identifier);
+        ASSERT(index::name_form(holder.flags) == NameForm::Identifier);
+        ASSERT(index::name_form(symbol_named("~Holder").second.flags) == NameForm::Destructor);
+        ASSERT(index::name_form(symbol_named("operator int").second.flags) == NameForm::Conversion);
+        ASSERT(index::name_form(symbol_named("operator==").second.flags) == NameForm::Operator);
+        auto [holder_class, holder_symbol] = symbol_named("Holder", "", SymbolKind::Struct);
+        auto constructor = symbol_named("Holder", "", SymbolKind::Method).second;
+        ASSERT(index::name_form(constructor.flags) == NameForm::Constructor);
+        ASSERT(constructor.parent == holder_class);
 
-    // A scoped class's constructor and destructor spell the class's own
-    // name, never its qualifier.
-    auto [scoped, scoped_symbol] = symbol_named("Scoped", "", SymbolKind::Struct);
-    ASSERT_EQ(symbol_named("Scoped", "", SymbolKind::Method).second.parent, scoped);
-    ASSERT_EQ(symbol_named("~Scoped").second.parent, scoped);
-}
+        // A scoped class's constructor and destructor spell the class's own
+        // name, never its qualifier.
+        auto [scoped, scoped_symbol] = symbol_named("Scoped", "", SymbolKind::Struct);
+        ASSERT(symbol_named("Scoped", "", SymbolKind::Method).second.parent == scoped);
+        ASSERT(symbol_named("~Scoped").second.parent == scoped);
+    }
 
-TEST_CASE(CanonicalFile) {
-    add_file("header.h", R"(
+    ZEST_CASE(CanonicalFile) {
+        add_file("header.h", R"(
         int declared_twice();
         int header_only();
         inline int header_defined() { return 1; }
     )");
-    add_main("main.cpp", R"(
+        add_main("main.cpp", R"(
         #include "header.h"
         int declared_twice();
         int declared_twice() { return header_only() + header_defined(); }
         int main_only();
     )");
-    ASSERT_TRUE(compile());
-    decode_index(index::build_tu_index(*unit));
+        ASSERT(compile());
+        decode_index(index::build_tu_index(*unit));
 
-    auto main_path = tu_index.view.path_count() - 1;
-    auto header_path = [&] {
-        for(std::uint32_t id = 0; id < tu_index.view.path_count(); id += 1) {
-            if(tu_index.view.path(id).ends_with("header.h")) {
-                return id;
+        auto main_path = tu_index.view.path_count() - 1;
+        auto header_path = [&] {
+            for(std::uint32_t id = 0; id < tu_index.view.path_count(); id += 1) {
+                if(tu_index.view.path(id).ends_with("header.h")) {
+                    return id;
+                }
             }
-        }
-        LOG_FATAL("header.h is not in the path table");
-    }();
+            LOG_FATAL("header.h is not in the path table");
+        }();
 
-    auto twice = symbol_named("declared_twice").second;
-    ASSERT_TRUE(has(twice, index::SymbolFlags::HasDefinition));
-    ASSERT_EQ(twice.file, main_path);
+        auto twice = symbol_named("declared_twice").second;
+        ASSERT(has(twice, index::SymbolFlags::HasDefinition));
+        ASSERT(twice.file == main_path);
 
-    auto only = symbol_named("header_only").second;
-    ASSERT_FALSE(has(only, index::SymbolFlags::HasDefinition));
-    ASSERT_EQ(only.file, header_path);
+        auto only = symbol_named("header_only").second;
+        ASSERT(!has(only, index::SymbolFlags::HasDefinition));
+        ASSERT(only.file == header_path);
 
-    auto defined = symbol_named("header_defined").second;
-    ASSERT_TRUE(has(defined, index::SymbolFlags::HasDefinition));
-    ASSERT_EQ(defined.file, header_path);
-    ASSERT_TRUE(has(defined, index::SymbolFlags::Completable));
+        auto defined = symbol_named("header_defined").second;
+        ASSERT(has(defined, index::SymbolFlags::HasDefinition));
+        ASSERT(defined.file == header_path);
+        ASSERT(has(defined, index::SymbolFlags::Completable));
 
-    // A main-file-only build keeps no header rows: a symbol the main file
-    // merely uses has no declaring row at all.
-    decode_index(index::build_tu_index(*unit, true));
-    auto used = symbol_named("header_only").second;
-    ASSERT_FALSE(has(used, index::SymbolFlags::HasDefinition));
-    ASSERT_EQ(used.file, index::no_file);
-    ASSERT_EQ(symbol_named("main_only").second.file, tu_index.view.path_count() - 1);
-}
+        // A main-file-only build keeps no header rows: a symbol the main file
+        // merely uses has no declaring row at all.
+        decode_index(index::build_tu_index(*unit, true));
+        auto used = symbol_named("header_only").second;
+        ASSERT(!has(used, index::SymbolFlags::HasDefinition));
+        ASSERT(used.file == index::no_file);
+        ASSERT(symbol_named("main_only").second.file == tu_index.view.path_count() - 1);
+    }
 
-TEST_CASE(PreambleDefaultArgument) {
-    // An out-of-line definition inherits the default argument expression
-    // from the in-class declaration; its DeclRefExpr is located in the
-    // preamble header, whose FileID is loaded from the PCH.
-    add_file("foo.h", R"(
+    ZEST_CASE(PreambleDefaultArgument) {
+        // An out-of-line definition inherits the default argument expression
+        // from the in-class declaration; its DeclRefExpr is located in the
+        // preamble header, whose FileID is loaded from the PCH.
+        add_file("foo.h", R"(
 struct Foo {
     static constexpr int npos = -1;
     int find(int x = npos) const;
 };
 )");
-    add_main("main.cpp", R"(
+        add_main("main.cpp", R"(
 #include "foo.h"
 int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
 )");
-    ASSERT_TRUE(compile_with_pch());
+        ASSERT(compile_with_pch());
 
-    // A full build keeps the preamble rows: this proves the row exists
-    // (so the gate test below cannot pass vacuously) and that the loaded
-    // fid resolves through the graph to the header's path.
-    decode_index(index::build_tu_index(*unit));
-    bool found = false;
-    for(auto& [path_id, index]: tu_index.file_indices) {
-        found |= tu_index.view.path(path_id).ends_with("foo.h");
+        // A full build keeps the preamble rows: this proves the row exists
+        // (so the gate test below cannot pass vacuously) and that the loaded
+        // fid resolves through the graph to the header's path.
+        decode_index(index::build_tu_index(*unit));
+        bool found = false;
+        for(auto& [path_id, index]: tu_index.file_indices) {
+            found |= tu_index.view.path(path_id).ends_with("foo.h");
+        }
+        ASSERT(found);
+
+        decode_index(index::build_tu_index(*unit, true));
+
+        // Rows resolving into the preamble are dropped: the preamble's own
+        // index covers them. Only the main file's rows remain.
+        ASSERT(tu_index.file_indices.empty());
+        EXPECT_SELECT("1", "def");
     }
-    ASSERT_TRUE(found);
 
-    decode_index(index::build_tu_index(*unit, true));
-
-    // Rows resolving into the preamble are dropped: the preamble's own
-    // index covers them. Only the main file's rows remain.
-    ASSERT_TRUE(tu_index.file_indices.empty());
-    EXPECT_SELECT("1", "def");
-}
-
-TEST_CASE(PreambleBaseSpecifier) {
-    // A forward declaration reaches the definition's base specifiers via
-    // the shared DefinitionData; their source ranges are in the preamble
-    // header, whose FileID is loaded from the PCH.
-    add_file("bar.h", R"(
+    ZEST_CASE(PreambleBaseSpecifier) {
+        // A forward declaration reaches the definition's base specifiers via
+        // the shared DefinitionData; their source ranges are in the preamble
+        // header, whose FileID is loaded from the PCH.
+        add_file("bar.h", R"(
 struct Base {};
 struct Derived : Base {};
 )");
-    add_main("main.cpp", R"(
+        add_main("main.cpp", R"(
 #include "bar.h"
 struct Derived;
 Derived* use();
 )");
-    ASSERT_TRUE(compile_with_pch());
+        ASSERT(compile_with_pch());
 
-    // Full build: the base-specifier rows land in the preamble header
-    // and its loaded fid resolves to the header's path.
-    decode_index(index::build_tu_index(*unit));
-    bool found = false;
-    for(auto& [path_id, index]: tu_index.file_indices) {
-        found |= tu_index.view.path(path_id).ends_with("bar.h");
+        // Full build: the base-specifier rows land in the preamble header
+        // and its loaded fid resolves to the header's path.
+        decode_index(index::build_tu_index(*unit));
+        bool found = false;
+        for(auto& [path_id, index]: tu_index.file_indices) {
+            found |= tu_index.view.path(path_id).ends_with("bar.h");
+        }
+        ASSERT(found);
+
+        decode_index(index::build_tu_index(*unit, true));
+
+        ASSERT(tu_index.file_indices.empty());
+        ASSERT(!tu_index.main_file_index.occurrences.empty());
     }
-    ASSERT_TRUE(found);
 
-    decode_index(index::build_tu_index(*unit, true));
-
-    ASSERT_TRUE(tu_index.file_indices.empty());
-    ASSERT_FALSE(tu_index.main_file_index.occurrences.empty());
-}
-
-TEST_CASE(HeaderMacroDropped) {
-    // Macro occurrences flow through the same gate: a definition in an
-    // included header is dropped from an main-file-only build, while
-    // the reference in the main file is kept.
-    add_file("baz.h", R"(
+    ZEST_CASE(HeaderMacroDropped) {
+        // Macro occurrences flow through the same gate: a definition in an
+        // included header is dropped from an main-file-only build, while
+        // the reference in the main file is kept.
+        add_file("baz.h", R"(
 #define BAZ 1
 )");
-    add_main("main.cpp", R"(
+        add_main("main.cpp", R"(
 #include "baz.h"
 int x = §(1)BAZ;
 )");
-    ASSERT_TRUE(compile());
+        ASSERT(compile());
 
-    decode_index(index::build_tu_index(*unit, true));
-    ASSERT_TRUE(tu_index.file_indices.empty());
-    ASSERT_FALSE(tu_index.main_file_index.occurrences.empty());
-}
-
-TEST_CASE(UnknownFidFallback) {
-    // A preamble header's loaded FileID is unknown to a graph built
-    // without indexed fids; lookups must degrade to the main file
-    // instead of crashing.
-    add_file("foo.h", R"(
-struct Foo {};
-)");
-    add_main("main.cpp", R"(
-#include "foo.h"
-int x = 1;
-)");
-    ASSERT_TRUE(compile_with_pch());
-
-    auto tree = index::IncludeTree::from(*unit);
-    auto fid = unit->file_id(TestVFS::path("foo.h"));
-    ASSERT_TRUE(fid.isValid());
-    ASSERT_EQ(tree.node_of(fid), static_cast<std::uint32_t>(-1));
-    ASSERT_EQ(tree.path_id(fid), static_cast<std::uint32_t>(tree.paths.size() - 1));
-}
-
-TEST_CASE(PreambleFidResolved) {
-    // When a preamble header's fid is passed as an indexed fid, its
-    // include chain is recovered through the SourceManager even though
-    // this parse's preprocessor callbacks never saw the include.
-    add_file("foo.h", R"(
-struct Foo {};
-)");
-    add_main("main.cpp", R"(
-#include "foo.h"
-int x = 1;
-)");
-    ASSERT_TRUE(compile_with_pch());
-
-    auto fid = unit->file_id(TestVFS::path("foo.h"));
-    ASSERT_TRUE(fid.isValid());
-
-    auto tree = index::IncludeTree::from(*unit, {fid});
-    auto node = tree.node_of(fid);
-    ASSERT_TRUE(node != static_cast<std::uint32_t>(-1));
-    ASSERT_TRUE(tree.paths[tree.path_id(fid)].ends_with("foo.h"));
-}
-
-TEST_CASE(DeepExpressionChain) {
-    // Doubling macros expand to a ~32k-term binary expression chain.
-    // Regression test: indexing such an AST must not overflow the stack.
-    std::string code = "#define A0 1+1\n";
-    for(int i = 1; i <= 14; i++) {
-        code += std::format("#define A{} A{}+A{}\n", i, i - 1, i - 1);
-    }
-    code += "int bomb = A14;\n";
-    auto bomb_offset = static_cast<std::uint32_t>(code.find("bomb"));
-
-    add_main("main.cpp", code);
-
-    // Compile on a generous fixed-size stack: clang's own Sema checkers
-    // recurse once per term and need more than a default thread stack in
-    // sanitized builds (and Windows main threads only get 1MB). 32MB is
-    // an empirical bound with margin, not a derived number.
-    bool compiled = false;
-    llvm::thread compile_thread(std::optional<unsigned>(4 * clang::DesiredStackSize),
-                                [&] { compiled = compile(); });
-    compile_thread.join();
-    ASSERT_TRUE(compiled);
-
-    // Index on a deliberately tight stack: the traversal must use
-    // constant stack space however deep the expression is, so any
-    // reintroduced per-node recursion crashes here deterministically
-    // instead of only on production workers with deeper files.
-    feature::InactiveScan scan;
-    llvm::thread index_thread(std::optional<unsigned>(clang::DesiredStackSize / 4), [&] {
-        // Mirror the stateful worker's post-compile sequence.
-        scan = feature::inactive_regions(*unit);
         decode_index(index::build_tu_index(*unit, true));
+        ASSERT(tu_index.file_indices.empty());
+        ASSERT(!tu_index.main_file_index.occurrences.empty());
+    }
 
-        // The semantic map must also serve token classification and a
-        // selection at the giant expansion's invocation on this stack:
-        // per-token ancestor walks and recursive tree materialization
-        // both used to degrade on chains this deep.
-        feature::semantic_tokens(*unit);
-        auto use_offset = static_cast<std::uint32_t>(code.rfind("A14"));
-        SelectionTree::create_right(*unit, LocalSourceRange(use_offset, use_offset));
-    });
-    index_thread.join();
+    ZEST_CASE(UnknownFidFallback) {
+        // A preamble header's loaded FileID is unknown to a graph built
+        // without indexed fids; lookups must degrade to the main file
+        // instead of crashing.
+        add_file("foo.h", R"(
+struct Foo {};
+)");
+        add_main("main.cpp", R"(
+#include "foo.h"
+int x = 1;
+)");
+        ASSERT(compile_with_pch());
 
-    ASSERT_TRUE(scan.regions.empty());
+        auto tree = index::IncludeTree::from(*unit);
+        auto fid = unit->file_id(TestVFS::path("foo.h"));
+        ASSERT(fid.isValid());
+        ASSERT(tree.node_of(fid) == static_cast<std::uint32_t>(-1));
+        ASSERT(tree.path_id(fid) == static_cast<std::uint32_t>(tree.paths.size() - 1));
+    }
 
-    // The traversal must have actually reached the decl behind the chain,
-    // not bailed out early: expect an occurrence exactly at `bomb`.
-    auto& occurrences = tu_index.main_file_index.occurrences;
-    auto bomb = std::ranges::find(occurrences, bomb_offset, [](index::Occurrence& occurrence) {
-        return occurrence.range.begin;
-    });
-    ASSERT_TRUE(bomb != occurrences.end());
-}
+    ZEST_CASE(PreambleFidResolved) {
+        // When a preamble header's fid is passed as an indexed fid, its
+        // include chain is recovered through the SourceManager even though
+        // this parse's preprocessor callbacks never saw the include.
+        add_file("foo.h", R"(
+struct Foo {};
+)");
+        add_main("main.cpp", R"(
+#include "foo.h"
+int x = 1;
+)");
+        ASSERT(compile_with_pch());
 
-TEST_CASE(SuperQualifierRef) {
-    add_main("main.cpp", R"(
+        auto fid = unit->file_id(TestVFS::path("foo.h"));
+        ASSERT(fid.isValid());
+
+        auto tree = index::IncludeTree::from(*unit, {fid});
+        auto node = tree.node_of(fid);
+        ASSERT(node != static_cast<std::uint32_t>(-1));
+        ASSERT(tree.paths[tree.path_id(fid)].ends_with("foo.h"));
+    }
+
+    ZEST_CASE(DeepExpressionChain) {
+        // Doubling macros expand to a ~32k-term binary expression chain.
+        // Regression test: indexing such an AST must not overflow the stack.
+        std::string code = "#define A0 1+1\n";
+        for(int i = 1; i <= 14; i++) {
+            code += std::format("#define A{} A{}+A{}\n", i, i - 1, i - 1);
+        }
+        code += "int bomb = A14;\n";
+        auto bomb_offset = static_cast<std::uint32_t>(code.find("bomb"));
+
+        add_main("main.cpp", code);
+
+        // Compile on a generous fixed-size stack: clang's own Sema checkers
+        // recurse once per term and need more than a default thread stack in
+        // sanitized builds (and Windows main threads only get 1MB). 32MB is
+        // an empirical bound with margin, not a derived number.
+        bool compiled = false;
+        llvm::thread compile_thread(std::optional<unsigned>(4 * clang::DesiredStackSize),
+                                    [&] { compiled = compile(); });
+        compile_thread.join();
+        ASSERT(compiled);
+
+        // Index on a deliberately tight stack: the traversal must use
+        // constant stack space however deep the expression is, so any
+        // reintroduced per-node recursion crashes here deterministically
+        // instead of only on production workers with deeper files.
+        feature::InactiveScan scan;
+        llvm::thread index_thread(std::optional<unsigned>(clang::DesiredStackSize / 4), [&] {
+            // Mirror the stateful worker's post-compile sequence.
+            scan = feature::inactive_regions(*unit);
+            decode_index(index::build_tu_index(*unit, true));
+
+            // The semantic map must also serve token classification and a
+            // selection at the giant expansion's invocation on this stack:
+            // per-token ancestor walks and recursive tree materialization
+            // both used to degrade on chains this deep.
+            feature::semantic_tokens(*unit);
+            auto use_offset = static_cast<std::uint32_t>(code.rfind("A14"));
+            SelectionTree::create_right(*unit, LocalSourceRange(use_offset, use_offset));
+        });
+        index_thread.join();
+
+        ASSERT(scan.regions.empty());
+
+        // The traversal must have actually reached the decl behind the chain,
+        // not bailed out early: expect an occurrence exactly at `bomb`.
+        auto& occurrences = tu_index.main_file_index.occurrences;
+        auto bomb = std::ranges::find(occurrences, bomb_offset, [](index::Occurrence& occurrence) {
+            return occurrence.range.begin;
+        });
+        ASSERT(bomb != occurrences.end());
+    }
+
+    ZEST_CASE(SuperQualifierRef) {
+        add_main("main.cpp", R"(
             struct Base {
                 void m();
             };
@@ -1511,296 +1512,296 @@ TEST_CASE(SuperQualifierRef) {
                 void f() { §(use)__super::m(); }
             };
         )");
-    prepare("-std=c++20");
-    /// __super needs Microsoft extensions; splice the flag in before the
-    /// trailing source path.
-    owned_args.insert(owned_args.end() - 1, "-fms-extensions");
-    params.arguments.clear();
-    for(auto& arg: owned_args) {
-        params.arguments.push_back(arg.c_str());
+        prepare("-std=c++20");
+        /// __super needs Microsoft extensions; splice the flag in before the
+        /// trailing source path.
+        owned_args.insert(owned_args.end() - 1, "-fms-extensions");
+        params.arguments.clear();
+        for(auto& arg: owned_args) {
+            params.arguments.push_back(arg.c_str());
+        }
+        ASSERT(try_compile());
+        decode_index(index::build_tu_index(*unit));
+
+        GO_TO_DEFINITION("use", "def");
     }
-    ASSERT_TRUE(try_compile());
-    decode_index(index::build_tu_index(*unit));
 
-    GO_TO_DEFINITION("use", "def");
-}
-
-TEST_CASE(EnvelopeSections) {
-    add_file("header.h", R"(
+    ZEST_CASE(EnvelopeSections) {
+        add_file("header.h", R"(
             #pragma once
             inline int §(hdr)helper() { return 1; }
         )");
-    add_main("main.cpp", R"(
+        add_main("main.cpp", R"(
             #include "header.h"
             int main() { return §(use)helper(); }
         )");
-    ASSERT_TRUE(compile());
-    decode_index(index::build_tu_index(*unit));
-    ASSERT_FALSE(tu_index.file_indices.empty());
+        ASSERT(compile());
+        decode_index(index::build_tu_index(*unit));
+        ASSERT(!tu_index.file_indices.empty());
 
-    auto& view = tu_index.view;
-    ASSERT_TRUE(view.built_at() > 0);
+        auto& view = tu_index.view;
+        ASSERT(view.built_at() > 0);
 
-    // Sections ascend by path id and the main file's rows are the
-    // last path id's section.
-    for(std::uint32_t i = 1; i < view.section_count(); i += 1) {
-        ASSERT_TRUE(view.section_path(i - 1) < view.section_path(i));
+        // Sections ascend by path id and the main file's rows are the
+        // last path id's section.
+        for(std::uint32_t i = 1; i < view.section_count(); i += 1) {
+            ASSERT(view.section_path(i - 1) < view.section_path(i));
+        }
+        auto main_section = view.section_of(view.path_count() - 1);
+        ASSERT(main_section);
+
+        // Every section's hash is the byte identity of its blob, the blob
+        // loads as a self-contained single-variant shard under that identity,
+        // and the whole envelope passes the persisted-load gate.
+        ASSERT(view.shards_verify());
+        for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
+            auto blob = view.section_blob(i);
+            ASSERT(view.section_hash(i) == llvm::xxh3_64bits(blob));
+            auto shard = index::Shard::from_bytes(blob);
+            ASSERT(shard.loaded());
+            ASSERT(shard.variants().size() == std::size_t(1));
+            ASSERT(shard.variants().front() == view.section_hash(i));
+        }
+
+        // The graph travels with the envelope: every path resolves and the
+        // consumed-content hash column covers the whole table.
+        for(std::uint32_t id = 0; id < view.path_count(); id += 1) {
+            ASSERT(!view.path(id).empty());
+            ASSERT(view.path_hash(id) != 0);
+        }
+
+        // Symbols read back identically through iteration and point lookup.
+        ASSERT(!tu_index.symbols.empty());
+        for(auto& [hash, symbol]: tu_index.symbols) {
+            auto identity = view.find_symbol(hash);
+            ASSERT(identity);
+            ASSERT(identity->name == llvm::StringRef(symbol.name));
+            ASSERT(identity->kind.value() == symbol.kind.value());
+            ASSERT(static_cast<int>(identity->scope) == static_cast<int>(symbol.scope));
+        }
     }
-    auto main_section = view.section_of(view.path_count() - 1);
-    ASSERT_TRUE(main_section.has_value());
 
-    // Every section's hash is the byte identity of its blob, the blob
-    // loads as a self-contained single-variant shard under that identity,
-    // and the whole envelope passes the persisted-load gate.
-    ASSERT_TRUE(view.shards_verify());
-    for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
-        auto blob = view.section_blob(i);
-        ASSERT_EQ(view.section_hash(i), llvm::xxh3_64bits(blob));
-        auto shard = index::Shard::from_bytes(blob);
-        ASSERT_TRUE(shard.loaded());
-        ASSERT_EQ(shard.variants().size(), std::size_t(1));
-        ASSERT_EQ(shard.variants().front(), view.section_hash(i));
-    }
-
-    // The graph travels with the envelope: every path resolves and the
-    // consumed-content hash column covers the whole table.
-    for(std::uint32_t id = 0; id < view.path_count(); id += 1) {
-        ASSERT_FALSE(view.path(id).empty());
-        ASSERT_TRUE(view.path_hash(id) != 0);
-    }
-
-    // Symbols read back identically through iteration and point lookup.
-    ASSERT_FALSE(tu_index.symbols.empty());
-    for(auto& [hash, symbol]: tu_index.symbols) {
-        auto identity = view.find_symbol(hash);
-        ASSERT_TRUE(identity.has_value());
-        ASSERT_EQ(identity->name, llvm::StringRef(symbol.name));
-        ASSERT_EQ(identity->kind.value(), symbol.kind.value());
-        ASSERT_EQ(static_cast<int>(identity->scope), static_cast<int>(symbol.scope));
-    }
-}
-
-TEST_CASE(CorruptSectionBytesRejected) {
-    // The persisted-load gate must reject any flipped section byte, in
-    // particular flips that still form a structurally valid shard (an
-    // opaque hash field, say) — only the byte hash catches those, and
-    // serving them would navigate by corrupted rows across restarts.
-    add_main("main.cpp", R"(
+    ZEST_CASE(CorruptSectionBytesRejected) {
+        // The persisted-load gate must reject any flipped section byte, in
+        // particular flips that still form a structurally valid shard (an
+        // opaque hash field, say) — only the byte hash catches those, and
+        // serving them would navigate by corrupted rows across restarts.
+        add_main("main.cpp", R"(
             int value = 1;
             int main() { return value; }
         )");
-    ASSERT_TRUE(compile());
-    decode_index(index::build_tu_index(*unit));
+        ASSERT(compile());
+        decode_index(index::build_tu_index(*unit));
 
-    auto& view = tu_index.view;
-    ASSERT_TRUE(view.section_count() > 0);
-    auto blob = view.section_blob(0);
-    auto offset = static_cast<std::size_t>(blob.data() - view.bytes().data());
+        auto& view = tu_index.view;
+        ASSERT(view.section_count() > 0);
+        auto blob = view.section_blob(0);
+        auto offset = static_cast<std::size_t>(blob.data() - view.bytes().data());
 
-    bool structurally_valid_flip = false;
-    std::string bytes = view.bytes().str();
-    for(std::size_t i = 0; i < blob.size(); i += 1) {
-        std::string mutated = bytes;
-        mutated[offset + i] ^= 0x01;
-        auto reloaded = index::TUIndex::from_bytes(mutated);
-        if(!reloaded.loaded()) {
-            continue;
+        bool structurally_valid_flip = false;
+        std::string bytes = view.bytes().str();
+        for(std::size_t i = 0; i < blob.size(); i += 1) {
+            std::string mutated = bytes;
+            mutated[offset + i] ^= 0x01;
+            auto reloaded = index::TUIndex::from_bytes(mutated);
+            if(!reloaded.loaded()) {
+                continue;
+            }
+            if(index::Shard::from_bytes(reloaded.section_blob(0)).loaded()) {
+                structurally_valid_flip = true;
+            }
+            ASSERT(!reloaded.shards_verify());
         }
-        if(index::Shard::from_bytes(reloaded.section_blob(0)).loaded()) {
-            structurally_valid_flip = true;
-        }
-        ASSERT_FALSE(reloaded.shards_verify());
+        ASSERT(structurally_valid_flip);
     }
-    ASSERT_TRUE(structurally_valid_flip);
-}
 
-TEST_CASE(FromRejectsHostileInput) {
-    ASSERT_FALSE(index::TUIndex::from_bytes("not a flatbuffer at all").loaded());
+    ZEST_CASE(FromRejectsHostileInput) {
+        ASSERT(!index::TUIndex::from_bytes("not a flatbuffer at all").loaded());
 
-    build_index(R"(
+        build_index(R"(
             int foo() { return 42; }
         )");
-    auto bytes = tu_index.view.bytes();
+        auto bytes = tu_index.view.bytes();
 
-    // Sanity: the intact envelope loads, so the rejections below are earned.
-    ASSERT_TRUE(index::TUIndex::from_bytes(bytes).loaded());
+        // Sanity: the intact envelope loads, so the rejections below are earned.
+        ASSERT(index::TUIndex::from_bytes(bytes).loaded());
 
-    ASSERT_FALSE(index::TUIndex::from_bytes(bytes.substr(0, bytes.size() / 2)).loaded());
+        ASSERT(!index::TUIndex::from_bytes(bytes.substr(0, bytes.size() / 2)).loaded());
 
-    // Bytes 4-7 carry the buffer identifier; a blob from another format
-    // must be rejected up front.
-    ASSERT_TRUE(bytes.size() > 8);
-    std::string clobbered(bytes.data(), bytes.size());
-    for(std::size_t i = 4; i < 8; i += 1) {
-        clobbered[i] = 'X';
+        // Bytes 4-7 carry the buffer identifier; a blob from another format
+        // must be rejected up front.
+        ASSERT(bytes.size() > 8);
+        std::string clobbered(bytes.data(), bytes.size());
+        for(std::size_t i = 4; i < 8; i += 1) {
+            clobbered[i] = 'X';
+        }
+        ASSERT(!index::TUIndex::from_bytes(clobbered).loaded());
     }
-    ASSERT_FALSE(index::TUIndex::from_bytes(clobbered).loaded());
-}
 
-TEST_CASE(FromRejectsStaleFormatVersion) {
-    // Only the version slot and the path table are written: every other
-    // field reads back absent, which is structurally valid — the verdict
-    // must hinge on the version value. Field order MUST mirror the
-    // envelope layout (tu_index.cpp): format_version is slot 0.
-    struct VersionAndPaths {
-        std::uint32_t format_version = 0;
+    ZEST_CASE(FromRejectsStaleFormatVersion) {
+        // Only the version slot and the path table are written: every other
+        // field reads back absent, which is structurally valid — the verdict
+        // must hinge on the version value. Field order MUST mirror the
+        // envelope layout (tu_index.cpp): format_version is slot 0.
+        struct VersionAndPaths {
+            std::uint32_t format_version = 0;
+            std::int64_t built_at = 0;
+            std::vector<std::string> paths = {"/proj/main.cpp"};
+        };
+
+        auto bytes_of = [](const std::vector<std::uint8_t>& blob) {
+            return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
+        };
+
+        auto stale = kota::codec::fbs::to_bytes(
+            VersionAndPaths{.format_version = index::index_format_version + 1});
+        ASSERT(stale);
+        ASSERT(!index::TUIndex::from_bytes(bytes_of(*stale)).loaded());
+
+        // Positive control: the same shape carrying the current version loads,
+        // so the rejection above comes from the value, not the blob's shape.
+        auto current = kota::codec::fbs::to_bytes(
+            VersionAndPaths{.format_version = index::index_format_version});
+        ASSERT(current);
+        ASSERT(index::TUIndex::from_bytes(bytes_of(*current)).loaded());
+    }
+
+    /// Hand-built envelopes for hostile-input tests. Field order MUST mirror
+    /// the envelope layout (tu_index.cpp).
+    struct MirrorSection {
+        std::uint32_t path_id = 0;
+        std::uint64_t hash = 0;
+        std::vector<std::uint8_t> blob;
+    };
+
+    struct MirrorEnvelope {
+        std::uint32_t format_version = index::index_format_version;
         std::int64_t built_at = 0;
-        std::vector<std::string> paths = {"/proj/main.cpp"};
+        std::vector<std::string> paths;
+        std::vector<std::uint64_t> path_hashes;
+        std::vector<index::IncludeNode> nodes;
+        index::SymbolTable symbols{};
+        std::vector<MirrorSection> sections;
     };
 
-    auto bytes_of = [](const std::vector<std::uint8_t>& blob) {
-        return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
-    };
-
-    auto stale = kota::codec::fbs::to_bytes(
-        VersionAndPaths{.format_version = index::index_format_version + 1});
-    ASSERT_TRUE(stale.has_value());
-    ASSERT_FALSE(index::TUIndex::from_bytes(bytes_of(*stale)).loaded());
-
-    // Positive control: the same shape carrying the current version loads,
-    // so the rejection above comes from the value, not the blob's shape.
-    auto current =
-        kota::codec::fbs::to_bytes(VersionAndPaths{.format_version = index::index_format_version});
-    ASSERT_TRUE(current.has_value());
-    ASSERT_TRUE(index::TUIndex::from_bytes(bytes_of(*current)).loaded());
-}
-
-/// Hand-built envelopes for hostile-input tests. Field order MUST mirror
-/// the envelope layout (tu_index.cpp).
-struct MirrorSection {
-    std::uint32_t path_id = 0;
-    std::uint64_t hash = 0;
-    std::vector<std::uint8_t> blob;
-};
-
-struct MirrorEnvelope {
-    std::uint32_t format_version = index::index_format_version;
-    std::int64_t built_at = 0;
-    std::vector<std::string> paths;
-    std::vector<std::uint64_t> path_hashes;
-    std::vector<index::IncludeNode> nodes;
-    index::SymbolTable symbols{};
-    std::vector<MirrorSection> sections;
-};
-
-std::string mirror_bytes(const MirrorEnvelope& envelope) {
-    auto bytes = kota::codec::fbs::to_bytes(envelope);
-    if(!bytes) {
-        return {};
+    std::string mirror_bytes(const MirrorEnvelope& envelope) {
+        auto bytes = kota::codec::fbs::to_bytes(envelope);
+        if(!bytes) {
+            return {};
+        }
+        return std::string(bytes->begin(), bytes->end());
     }
-    return std::string(bytes->begin(), bytes->end());
-}
 
-TEST_CASE(FromRejectsReservedParents) {
-    // Symbol parents become DenseSet keys in a query's container walk; the
-    // sentinel values must fail the envelope as a whole.
-    MirrorEnvelope honest;
-    honest.paths = {"/proj/main.cpp"};
-    honest.symbols[42].name = "sym";
-    honest.symbols[42].parent = 7;
-    ASSERT_TRUE(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+    ZEST_CASE(FromRejectsReservedParents) {
+        // Symbol parents become DenseSet keys in a query's container walk; the
+        // sentinel values must fail the envelope as a whole.
+        MirrorEnvelope honest;
+        honest.paths = {"/proj/main.cpp"};
+        honest.symbols[42].name = "sym";
+        honest.symbols[42].parent = 7;
+        ASSERT(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
 
-    MirrorEnvelope hostile = honest;
-    hostile.symbols[42].parent = ~std::uint64_t(0);
-    ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
-    hostile.symbols[42].parent = ~std::uint64_t(0) - 1;
-    ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
-}
+        MirrorEnvelope hostile = honest;
+        hostile.symbols[42].parent = ~std::uint64_t(0);
+        ASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        hostile.symbols[42].parent = ~std::uint64_t(0) - 1;
+        ASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+    }
 
-TEST_CASE(FromRejectsOutOfRangeParents) {
-    // A node's parent indexes the node table in every consumer; only
-    // another node or the root sentinel is acceptable.
-    MirrorEnvelope honest;
-    honest.paths = {"/proj/main.cpp", "/proj/a.h"};
-    honest.nodes.push_back({.file = 1, .parent = ~0u, .line = 1});
-    honest.nodes.push_back({.file = 1, .parent = 0, .line = 2});
-    ASSERT_TRUE(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+    ZEST_CASE(FromRejectsOutOfRangeParents) {
+        // A node's parent indexes the node table in every consumer; only
+        // another node or the root sentinel is acceptable.
+        MirrorEnvelope honest;
+        honest.paths = {"/proj/main.cpp", "/proj/a.h"};
+        honest.nodes.push_back({.file = 1, .parent = ~0u, .line = 1});
+        honest.nodes.push_back({.file = 1, .parent = 0, .line = 2});
+        ASSERT(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
 
-    MirrorEnvelope hostile = honest;
-    hostile.nodes.back().parent = 2;
-    ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
-}
+        MirrorEnvelope hostile = honest;
+        hostile.nodes.back().parent = 2;
+        ASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+    }
 
-TEST_CASE(FromRejectsOutOfRangePathIds) {
-    // Structural verification does not constrain field values, and the
-    // merge pipeline dereferences every decoded path id against the path
-    // table without further checks — an envelope pointing outside its own
-    // table must be rejected as a whole. Symbol reference-file ids are
-    // deliberately not gated here: ProjectIndex::merge bounds them, pinned
-    // by project_index_tests.
+    ZEST_CASE(FromRejectsOutOfRangePathIds) {
+        // Structural verification does not constrain field values, and the
+        // merge pipeline dereferences every decoded path id against the path
+        // table without further checks — an envelope pointing outside its own
+        // table must be rejected as a whole. Symbol reference-file ids are
+        // deliberately not gated here: ProjectIndex::merge bounds them, pinned
+        // by project_index_tests.
 
-    // Positive control first: the same shapes with in-range ids load, so
-    // the rejections below come from the hostile values.
-    MirrorEnvelope honest;
-    honest.paths = {"/proj/main.cpp"};
-    honest.nodes.push_back({.file = 0, .parent = 0, .line = 1});
-    honest.sections.push_back({.path_id = 0});
-    ASSERT_TRUE(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+        // Positive control first: the same shapes with in-range ids load, so
+        // the rejections below come from the hostile values.
+        MirrorEnvelope honest;
+        honest.paths = {"/proj/main.cpp"};
+        honest.nodes.push_back({.file = 0, .parent = 0, .line = 1});
+        honest.sections.push_back({.path_id = 0});
+        ASSERT(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
 
-    {
+        {
+            MirrorEnvelope hostile;
+            hostile.paths = {"/proj/main.cpp"};
+            hostile.nodes.push_back({.file = 7, .parent = 0, .line = 1});
+            ASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        }
+        {
+            MirrorEnvelope hostile;
+            hostile.paths = {"/proj/main.cpp"};
+            hostile.sections.push_back({.path_id = 7});  // Only path id 0 exists.
+            ASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        }
+    }
+
+    ZEST_CASE(FromRejectsEmptyPathTable) {
+        // The builder ends every path table with the main file, and
+        // consumers address path_count() - 1 unchecked — an envelope with no
+        // paths at all is corrupt.
         MirrorEnvelope hostile;
-        hostile.paths = {"/proj/main.cpp"};
-        hostile.nodes.push_back({.file = 7, .parent = 0, .line = 1});
-        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        ASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
     }
-    {
-        MirrorEnvelope hostile;
-        hostile.paths = {"/proj/main.cpp"};
-        hostile.sections.push_back({.path_id = 7});  // Only path id 0 exists.
-        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+
+    ZEST_CASE(FromRejectsUnsortedSections) {
+        // section_of binary-searches the section table by path id; a repeated
+        // or out-of-order id would attribute one file's rows to another.
+
+        // Positive control: the ascending shape loads.
+        MirrorEnvelope honest;
+        honest.paths = {"/proj/a.h", "/proj/main.cpp"};
+        honest.sections.push_back({.path_id = 0});
+        honest.sections.push_back({.path_id = 1});
+        ASSERT(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+
+        {
+            MirrorEnvelope hostile;
+            hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
+            hostile.sections.push_back({.path_id = 1});
+            hostile.sections.push_back({.path_id = 0});
+            ASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        }
+        {
+            MirrorEnvelope hostile;
+            hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
+            hostile.sections.push_back({.path_id = 1});
+            hostile.sections.push_back({.path_id = 1});
+            ASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        }
     }
-}
 
-TEST_CASE(FromRejectsEmptyPathTable) {
-    // The builder ends every path table with the main file, and
-    // consumers address path_count() - 1 unchecked — an envelope with no
-    // paths at all is corrupt.
-    MirrorEnvelope hostile;
-    ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
-}
-
-TEST_CASE(FromRejectsUnsortedSections) {
-    // section_of binary-searches the section table by path id; a repeated
-    // or out-of-order id would attribute one file's rows to another.
-
-    // Positive control: the ascending shape loads.
-    MirrorEnvelope honest;
-    honest.paths = {"/proj/a.h", "/proj/main.cpp"};
-    honest.sections.push_back({.path_id = 0});
-    honest.sections.push_back({.path_id = 1});
-    ASSERT_TRUE(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
-
-    {
-        MirrorEnvelope hostile;
-        hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
-        hostile.sections.push_back({.path_id = 1});
-        hostile.sections.push_back({.path_id = 0});
-        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+    ZEST_CASE(AbsentPathHashesReadZero) {
+        // The hash column may be shorter than the path table on a foreign
+        // envelope (structurally valid: the field reads back empty); absent
+        // entries read as 0, "unavailable".
+        MirrorEnvelope envelope;
+        envelope.paths = {"/proj/a.h", "/proj/main.cpp"};
+        envelope.path_hashes = {7};
+        auto bytes = mirror_bytes(envelope);
+        auto view = index::TUIndex::from_bytes(bytes);
+        ASSERT(view.loaded());
+        ASSERT(view.path_hash(0) == 7u);
+        ASSERT(view.path_hash(1) == 0u);
     }
-    {
-        MirrorEnvelope hostile;
-        hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
-        hostile.sections.push_back({.path_id = 1});
-        hostile.sections.push_back({.path_id = 1});
-        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
-    }
-}
 
-TEST_CASE(AbsentPathHashesReadZero) {
-    // The hash column may be shorter than the path table on a foreign
-    // envelope (structurally valid: the field reads back empty); absent
-    // entries read as 0, "unavailable".
-    MirrorEnvelope envelope;
-    envelope.paths = {"/proj/a.h", "/proj/main.cpp"};
-    envelope.path_hashes = {7};
-    auto bytes = mirror_bytes(envelope);
-    auto view = index::TUIndex::from_bytes(bytes);
-    ASSERT_TRUE(view.loaded());
-    ASSERT_EQ(view.path_hash(0), 7u);
-    ASSERT_EQ(view.path_hash(1), 0u);
-}
-
-};  // TEST_SUITE(tu_index)
+};  // ZEST_SUITE(tu_index)
 
 }  // namespace
 }  // namespace clice::testing

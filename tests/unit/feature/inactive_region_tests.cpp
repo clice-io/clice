@@ -6,18 +6,17 @@ namespace clice::testing {
 
 namespace {
 
-TEST_SUITE(inactive_regions, Tester) {
+ZEST_SUITE(inactive_regions, Tester) {
+    feature::InactiveScan scan;
 
-feature::InactiveScan scan;
+    void run(llvm::StringRef source) {
+        add_main("main.cpp", source);
+        ASSERT(compile("-std=c++17"));
+        scan = feature::inactive_regions(*unit);
+    }
 
-void run(llvm::StringRef source) {
-    add_main("main.cpp", source);
-    ASSERT_TRUE(compile("-std=c++17"));
-    scan = feature::inactive_regions(*unit);
-}
-
-TEST_CASE(FalseBranch) {
-    run(R"cpp(
+    ZEST_CASE(FalseBranch) {
+        run(R"cpp(
 int a();
 #if 0
 int dead();
@@ -25,15 +24,15 @@ int dead();
 int b();
 )cpp");
 
-    ASSERT_EQ(scan.regions.size(), 2u);
-    auto content = unit->main_content();
-    auto begin = scan.regions[0];
-    auto end = scan.regions[1];
-    EXPECT_EQ(content.substr(begin, end - begin), "int dead();\n");
-}
+        ASSERT(scan.regions.size() == 2u);
+        auto content = unit->main_content();
+        auto begin = scan.regions[0];
+        auto end = scan.regions[1];
+        EXPECT(content.substr(begin, end - begin) == "int dead();\n");
+    }
 
-TEST_CASE(ElseBranch) {
-    run(R"cpp(
+    ZEST_CASE(ElseBranch) {
+        run(R"cpp(
 #define USE_A 1
 #if USE_A
 int active();
@@ -42,49 +41,52 @@ int dead();
 #endif
 )cpp");
 
-    ASSERT_EQ(scan.regions.size(), 2u);
-    auto content = unit->main_content();
-    EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]), "int dead();\n");
-}
+        ASSERT(scan.regions.size() == 2u);
+        auto content = unit->main_content();
+        EXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) ==
+               "int dead();\n");
+    }
 
-TEST_CASE(IncludeGuardStaysActive) {
-    run(R"cpp(
+    ZEST_CASE(IncludeGuardStaysActive) {
+        run(R"cpp(
 #ifndef GUARD_H
 int active();
 #endif
 )cpp");
 
-    EXPECT_EQ(scan.regions.size(), 0u);
-}
+        EXPECT(scan.regions.size() == 0u);
+    }
 
-TEST_CASE(IfndefDefinedMacro) {
-    run(R"cpp(
+    ZEST_CASE(IfndefDefinedMacro) {
+        run(R"cpp(
 #define TAKEN 1
 #ifndef TAKEN
 int dead();
 #endif
 )cpp");
 
-    ASSERT_EQ(scan.regions.size(), 2u);
-    auto content = unit->main_content();
-    EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]), "int dead();\n");
-}
+        ASSERT(scan.regions.size() == 2u);
+        auto content = unit->main_content();
+        EXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) ==
+               "int dead();\n");
+    }
 
-TEST_CASE(IfdefUndefinedMacro) {
-    run(R"cpp(
+    ZEST_CASE(IfdefUndefinedMacro) {
+        run(R"cpp(
 #ifdef MISSING
 int dead();
 #endif
 int b();
 )cpp");
 
-    ASSERT_EQ(scan.regions.size(), 2u);
-    auto content = unit->main_content();
-    EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]), "int dead();\n");
-}
+        ASSERT(scan.regions.size() == 2u);
+        auto content = unit->main_content();
+        EXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) ==
+               "int dead();\n");
+    }
 
-TEST_CASE(NestedRegionsMerge) {
-    run(R"cpp(
+    ZEST_CASE(NestedRegionsMerge) {
+        run(R"cpp(
 #if 0
 int dead();
 #ifdef INNER
@@ -95,13 +97,13 @@ int tail();
 int b();
 )cpp");
 
-    ASSERT_EQ(scan.regions.size(), 2u);
-    auto content = unit->main_content();
-    EXPECT_EQ(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]),
-              "int dead();\n#ifdef INNER\nint deeper();\n#endif\nint tail();\n");
-}
+        ASSERT(scan.regions.size() == 2u);
+        auto content = unit->main_content();
+        EXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) ==
+               "int dead();\n#ifdef INNER\nint deeper();\n#endif\nint tail();\n");
+    }
 
-};  // TEST_SUITE(inactive_regions)
+};  // ZEST_SUITE(inactive_regions)
 
 }  // namespace
 

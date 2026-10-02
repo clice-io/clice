@@ -99,7 +99,9 @@ std::string crash_tag(const Params& params) {
 /// in Error::data. One process death fails every request in flight on it;
 /// per-content blame (Quarantine) dedups by this identity so a single death
 /// is counted at most once per document.
-inline kota::codec::dyn::Value death_identity(std::size_t index, unsigned generation, bool stateful) {
+inline kota::codec::dyn::Value death_identity(std::size_t index,
+                                              unsigned generation,
+                                              bool stateful) {
     return std::format("{}:{}:{}", stateful ? "sf" : "sl", index, generation);
 }
 

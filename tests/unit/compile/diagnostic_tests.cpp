@@ -79,139 +79,138 @@ namespace {
 
 using namespace clice;
 
-TEST_SUITE(Diagnostic) {
+ZEST_SUITE(Diagnostic) {
+    /// Holds VFS-backed CompilationParams with proper string ownership.
+    struct DiagParams {
+        llvm::IntrusiveRefCntPtr<TestVFS> vfs;
+        std::vector<std::string> owned_args;
+        CompilationParams params;
 
-/// Holds VFS-backed CompilationParams with proper string ownership.
-struct DiagParams {
-    llvm::IntrusiveRefCntPtr<TestVFS> vfs;
-    std::vector<std::string> owned_args;
-    CompilationParams params;
+        DiagParams(llvm::StringRef content, std::initializer_list<const char*> extra_args = {}) {
+            vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+            vfs->add("main.cpp", content);
+            params.vfs = vfs;
 
-    DiagParams(llvm::StringRef content, std::initializer_list<const char*> extra_args = {}) {
-        vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-        vfs->add("main.cpp", content);
+            owned_args.push_back("clang++");
+            owned_args.push_back("-ffreestanding");
+            owned_args.push_back("-Xclang");
+            owned_args.push_back("-undef");
+            for(auto a: extra_args) {
+                owned_args.push_back(a);
+            }
+            owned_args.push_back(TestVFS::path("main.cpp"));
+
+            for(auto& s: owned_args) {
+                params.arguments.push_back(s.c_str());
+            }
+        }
+    };
+
+    ZEST_CASE(TargetError) {
+        auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+        vfs->add("main.cpp", "");
+
+        std::string main_path = TestVFS::path("main.cpp");
+        CompilationParams params;
         params.vfs = vfs;
+        params.arguments = {"clang++", "-target", "aa-bb-cc", main_path.c_str()};
 
-        owned_args.push_back("clang++");
-        owned_args.push_back("-ffreestanding");
-        owned_args.push_back("-Xclang");
-        owned_args.push_back("-undef");
-        for(auto a: extra_args) {
-            owned_args.push_back(a);
-        }
-        owned_args.push_back(TestVFS::path("main.cpp"));
+        auto unit = compile(params);
+        ASSERT(unit.setup_fail());
+        ASSERT(unit.diagnostics().size() == 1);
 
-        for(auto& s: owned_args) {
-            params.arguments.push_back(s.c_str());
-        }
+        auto& diag = unit.diagnostics()[0];
+        EXPECT(diag.id.diagnostic_code() == "err_target_unknown_triple");
+        EXPECT(diag.id.level == DiagnosticLevel::Error);
+        EXPECT(diag.id.source == DiagnosticSource::Clang);
+        EXPECT(diag.fid.isInvalid());
+        EXPECT(!diag.range.valid());
+        EXPECT(diag.message == "unknown target triple 'aa-bb-cc'");
     }
-};
 
-TEST_CASE(TargetError) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    vfs->add("main.cpp", "");
+    ZEST_CASE(Error) {
+        DiagParams dp("int main() { return 0 }");
 
-    std::string main_path = TestVFS::path("main.cpp");
-    CompilationParams params;
-    params.vfs = vfs;
-    params.arguments = {"clang++", "-target", "aa-bb-cc", main_path.c_str()};
+        auto unit = compile(dp.params);
+        ASSERT(unit.completed());
+        ASSERT(unit.diagnostics().size() == 1);
 
-    auto unit = compile(params);
-    ASSERT_TRUE(unit.setup_fail());
-    ASSERT_TRUE(unit.diagnostics().size() == 1);
+        auto& diag = unit.diagnostics()[0];
+        EXPECT(diag.id.diagnostic_code() == "err_expected_semi_after_stmt");
+        EXPECT(diag.id.level == DiagnosticLevel::Error);
+        EXPECT(diag.id.source == DiagnosticSource::Clang);
+        EXPECT(diag.fid == unit.main_file());
+        EXPECT(diag.range.valid());
+        EXPECT(diag.message == "expected ';' after return statement");
+    };
 
-    auto& diag = unit.diagnostics()[0];
-    EXPECT_EQ(diag.id.diagnostic_code(), "err_target_unknown_triple");
-    EXPECT_EQ(diag.id.level, DiagnosticLevel::Error);
-    EXPECT_EQ(diag.id.source, DiagnosticSource::Clang);
-    EXPECT_TRUE(diag.fid.isInvalid());
-    EXPECT_TRUE(!diag.range.valid());
-    EXPECT_EQ(diag.message, "unknown target triple 'aa-bb-cc'");
-}
+    ZEST_CASE(Warning) {
+        DiagParams dp("int main() { int x; return 0; }", {"-Wall", "-Wunused-variable"});
 
-TEST_CASE(Error) {
-    DiagParams dp("int main() { return 0 }");
+        auto unit = compile(dp.params);
+        ASSERT(unit.completed());
+        ASSERT(unit.diagnostics().size() == 1);
 
-    auto unit = compile(dp.params);
-    ASSERT_TRUE(unit.completed());
-    ASSERT_TRUE(unit.diagnostics().size() == 1);
+        auto& diag = unit.diagnostics()[0];
+        EXPECT(diag.id.diagnostic_code() == "warn_unused_variable");
+        EXPECT(diag.id.level == DiagnosticLevel::Warning);
+        EXPECT(diag.id.source == DiagnosticSource::Clang);
+        EXPECT(diag.range.valid());
+        EXPECT(diag.message.find("unused variable") != std::string::npos);
+    }
 
-    auto& diag = unit.diagnostics()[0];
-    EXPECT_EQ(diag.id.diagnostic_code(), "err_expected_semi_after_stmt");
-    EXPECT_EQ(diag.id.level, DiagnosticLevel::Error);
-    EXPECT_EQ(diag.id.source, DiagnosticSource::Clang);
-    EXPECT_EQ(diag.fid, unit.main_file());
-    EXPECT_TRUE(diag.range.valid());
-    EXPECT_EQ(diag.message, "expected ';' after return statement");
-};
-
-TEST_CASE(Warning) {
-    DiagParams dp("int main() { int x; return 0; }", {"-Wall", "-Wunused-variable"});
-
-    auto unit = compile(dp.params);
-    ASSERT_TRUE(unit.completed());
-    ASSERT_EQ(unit.diagnostics().size(), 1);
-
-    auto& diag = unit.diagnostics()[0];
-    EXPECT_EQ(diag.id.diagnostic_code(), "warn_unused_variable");
-    EXPECT_EQ(diag.id.level, DiagnosticLevel::Warning);
-    EXPECT_EQ(diag.id.source, DiagnosticSource::Clang);
-    EXPECT_TRUE(diag.range.valid());
-    EXPECT_TRUE(diag.message.find("unused variable") != std::string::npos);
-}
-
-TEST_CASE(PCHError) {
-    /// Any error in compilation will result in failure on generating PCH or PCM.
-    DiagParams dp(R"(
+    ZEST_CASE(PCHError) {
+        /// Any error in compilation will result in failure on generating PCH or PCM.
+        DiagParams dp(R"(
 void foo() {}
 void foo() {}
 )");
-    dp.params.output_file = "fake.pch";
+        dp.params.output_file = "fake.pch";
 
-    PCHInfo info;
-    auto unit = compile(dp.params, info);
-    ASSERT_TRUE(unit.fatal_error());
-}
+        PCHInfo info;
+        auto unit = compile(dp.params, info);
+        ASSERT(unit.fatal_error());
+    }
 
-TEST_CASE(ASTError) {
-    /// Event fatal error may generate incomplete AST, but it is fine.
-    DiagParams dp(R"(
+    ZEST_CASE(ASTError) {
+        /// Event fatal error may generate incomplete AST, but it is fine.
+        DiagParams dp(R"(
 void foo() {}
 void foo() {}
 )");
 
-    auto unit = compile(dp.params);
-    ASSERT_TRUE(unit.completed());
-}
+        auto unit = compile(dp.params);
+        ASSERT(unit.completed());
+    }
 
-TEST_CASE(CommandLineNote) {
-    /// A macro-redefinition note points into <command line>; related
-    /// information must skip it instead of emitting an empty URI.
-    DiagParams dp(R"(
+    ZEST_CASE(CommandLineNote) {
+        /// A macro-redefinition note points into <command line>; related
+        /// information must skip it instead of emitting an empty URI.
+        DiagParams dp(R"(
 #define FOO 2
 int main() { return 0; }
 )",
-                  {"-DFOO=1"});
+                      {"-DFOO=1"});
 
-    auto unit = compile(dp.params);
-    ASSERT_TRUE(unit.completed());
+        auto unit = compile(dp.params);
+        ASSERT(unit.completed());
 
-    auto diagnostics = feature::diagnostics(unit);
-    bool redefined = false;
-    for(auto& diag: diagnostics) {
-        if(auto* text = std::get_if<std::string>(&diag.message)) {
-            redefined |= text->find("macro redefined") != std::string::npos;
-        }
-        if(diag.related_information.has_value()) {
-            for(auto& related: *diag.related_information) {
-                ASSERT_FALSE(related.location.uri.empty());
+        auto diagnostics = feature::diagnostics(unit);
+        bool redefined = false;
+        for(auto& diag: diagnostics) {
+            if(auto* text = std::get_if<std::string>(&diag.message)) {
+                redefined |= text->find("macro redefined") != std::string::npos;
+            }
+            if(diag.related_information.has_value()) {
+                for(auto& related: *diag.related_information) {
+                    ASSERT(!related.location.uri.empty());
+                }
             }
         }
+        ASSERT(redefined);
     }
-    ASSERT_TRUE(redefined);
-}
 
-};  // TEST_SUITE(Diagnostic)
+};  // ZEST_SUITE(Diagnostic)
 
 }  // namespace
 

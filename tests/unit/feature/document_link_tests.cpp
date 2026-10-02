@@ -8,37 +8,36 @@ namespace clice::testing {
 
 namespace {
 
-TEST_SUITE(document_link, Tester) {
+ZEST_SUITE(document_link, Tester) {
+    std::vector<feature::DocumentLink> links;
 
-std::vector<feature::DocumentLink> links;
+    void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
+        add_files("main.cpp", source);
+        ASSERT(compile(standard));
+        links = feature::document_links(*unit);
+    }
 
-void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
-    add_files("main.cpp", source);
-    ASSERT_TRUE(compile(standard));
-    links = feature::document_links(*unit);
-}
+    void EXPECT_LINK(std::size_t index, llvm::StringRef name, llvm::StringRef path) {
+        auto& link = links[index];
+        auto expected = range(name, "main.cpp");
 
-void EXPECT_LINK(std::size_t index, llvm::StringRef name, llvm::StringRef path) {
-    auto& link = links[index];
-    auto expected = range(name, "main.cpp");
+        ASSERT(link.range.begin == expected.begin);
+        ASSERT(link.range.end == expected.end);
 
-    ASSERT_EQ(link.range.begin, expected.begin);
-    ASSERT_EQ(link.range.end, expected.end);
+        ASSERT(llvm::StringRef(link.target) == path);
+    }
 
-    ASSERT_EQ(llvm::StringRef(link.target), path);
-}
+    ZEST_CASE(DirectiveArgumentFromFilename) {
+        llvm::StringRef content = R"(#if __has_include("test.h"))";
+        auto offset = static_cast<std::uint32_t>(content.find("test.h"));
+        auto result = feature::find_directive_argument(content, offset, nullptr);
 
-TEST_CASE(DirectiveArgumentFromFilename) {
-    llvm::StringRef content = R"(#if __has_include("test.h"))";
-    auto offset = static_cast<std::uint32_t>(content.find("test.h"));
-    auto result = feature::find_directive_argument(content, offset, nullptr);
+        ASSERT(result);
+        ASSERT(content.substr(result->begin, result->length()) == R"("test.h")");
+    }
 
-    ASSERT_TRUE(result.has_value());
-    ASSERT_EQ(content.substr(result->begin, result->length()), R"("test.h")");
-}
-
-TEST_CASE(Include) {
-    run(R"cpp(
+    ZEST_CASE(Include) {
+        run(R"cpp(
 #[test.h]
 
 #[pragma_once.h]
@@ -58,17 +57,17 @@ TEST_CASE(Include) {
 #include §(5)⟦"guard_macro.h"§⟧
 )cpp");
 
-    ASSERT_EQ(links.size(), 6U);
-    EXPECT_LINK(0, "0", TestVFS::path("test.h"));
-    EXPECT_LINK(1, "1", TestVFS::path("test.h"));
-    EXPECT_LINK(2, "2", TestVFS::path("pragma_once.h"));
-    EXPECT_LINK(3, "3", TestVFS::path("pragma_once.h"));
-    EXPECT_LINK(4, "4", TestVFS::path("guard_macro.h"));
-    EXPECT_LINK(5, "5", TestVFS::path("guard_macro.h"));
-}
+        ASSERT(links.size() == 6U);
+        EXPECT_LINK(0, "0", TestVFS::path("test.h"));
+        EXPECT_LINK(1, "1", TestVFS::path("test.h"));
+        EXPECT_LINK(2, "2", TestVFS::path("pragma_once.h"));
+        EXPECT_LINK(3, "3", TestVFS::path("pragma_once.h"));
+        EXPECT_LINK(4, "4", TestVFS::path("guard_macro.h"));
+        EXPECT_LINK(5, "5", TestVFS::path("guard_macro.h"));
+    }
 
-TEST_CASE(HasInclude) {
-    run(R"cpp(
+    ZEST_CASE(HasInclude) {
+        run(R"cpp(
 #[test.h]
 
 #[main.cpp]
@@ -81,13 +80,13 @@ TEST_CASE(HasInclude) {
 #endif
 )cpp");
 
-    ASSERT_EQ(links.size(), 2U);
-    EXPECT_LINK(0, "0", TestVFS::path("test.h"));
-    EXPECT_LINK(1, "1", TestVFS::path("test.h"));
-}
+        ASSERT(links.size() == 2U);
+        EXPECT_LINK(0, "0", TestVFS::path("test.h"));
+        EXPECT_LINK(1, "1", TestVFS::path("test.h"));
+    }
 
-TEST_CASE(MacroInclude) {
-    run(R"cpp(
+    ZEST_CASE(MacroInclude) {
+        run(R"cpp(
 #[test.h]
 
 #[main.cpp]
@@ -95,13 +94,13 @@ TEST_CASE(MacroInclude) {
 #include §(0)⟦HEADER§⟧
 )cpp");
 
-    ASSERT_EQ(links.size(), 1U);
-    EXPECT_LINK(0, "0", TestVFS::path("test.h"));
-}
+        ASSERT(links.size() == 1U);
+        EXPECT_LINK(0, "0", TestVFS::path("test.h"));
+    }
 
-TEST_CASE(HasIncludeTwice) {
-    // Two operators on one line: each restarts the argument match.
-    run(R"cpp(
+    ZEST_CASE(HasIncludeTwice) {
+        // Two operators on one line: each restarts the argument match.
+        run(R"cpp(
 #[a.h]
 
 #[b.h]
@@ -113,16 +112,16 @@ TEST_CASE(HasIncludeTwice) {
 #endif
 )cpp");
 
-    // Two include links, then the two operator arguments.
-    ASSERT_EQ(links.size(), 4U);
-    EXPECT_LINK(2, "0", TestVFS::path("a.h"));
-    EXPECT_LINK(3, "1", TestVFS::path("b.h"));
-}
+        // Two include links, then the two operator arguments.
+        ASSERT(links.size() == 4U);
+        EXPECT_LINK(2, "0", TestVFS::path("a.h"));
+        EXPECT_LINK(3, "1", TestVFS::path("b.h"));
+    }
 
-TEST_CASE(ImportNamedMacro) {
-    // Pre-C++20, even `import` is a legal macro name; as the filename
-    // argument it must link, not read as a directive keyword.
-    run(R"cpp(
+    ZEST_CASE(ImportNamedMacro) {
+        // Pre-C++20, even `import` is a legal macro name; as the filename
+        // argument it must link, not read as a directive keyword.
+        run(R"cpp(
 #[test.h]
 
 #[main.cpp]
@@ -130,12 +129,12 @@ TEST_CASE(ImportNamedMacro) {
 #include §(0)⟦import§⟧
 )cpp");
 
-    ASSERT_EQ(links.size(), 1U);
-    EXPECT_LINK(0, "0", TestVFS::path("test.h"));
-}
+        ASSERT(links.size() == 1U);
+        EXPECT_LINK(0, "0", TestVFS::path("test.h"));
+    }
 
-TEST_CASE(Embed) {
-    run(R"cpp(
+    ZEST_CASE(Embed) {
+        run(R"cpp(
 #[bytes.bin]
 0123456789
 
@@ -144,14 +143,14 @@ const char e[] = {
 #embed §(0)⟦"bytes.bin"§⟧
 };
 )cpp",
-        "-std=c++23");
+            "-std=c++23");
 
-    ASSERT_EQ(links.size(), 1U);
-    EXPECT_LINK(0, "0", TestVFS::path("bytes.bin"));
-}
+        ASSERT(links.size() == 1U);
+        EXPECT_LINK(0, "0", TestVFS::path("bytes.bin"));
+    }
 
-TEST_CASE(HasEmbed) {
-    run(R"cpp(
+    ZEST_CASE(HasEmbed) {
+        run(R"cpp(
 #[data.bin]
 ABCDE
 
@@ -162,22 +161,22 @@ ABCDE
 #if __has_embed("non_existent.bin")
 #endif
 )cpp",
-        "-std=c++23");
+            "-std=c++23");
 
-    ASSERT_EQ(links.size(), 1U);
-    EXPECT_LINK(0, "0", TestVFS::path("data.bin"));
-}
+        ASSERT(links.size() == 1U);
+        EXPECT_LINK(0, "0", TestVFS::path("data.bin"));
+    }
 
-TEST_CASE(MissingInclude) {
-    run(R"cpp(
+    ZEST_CASE(MissingInclude) {
+        run(R"cpp(
 #[main.cpp]
 #include "missing.h"
 )cpp");
 
-    ASSERT_TRUE(links.empty());
-}
+        ASSERT(links.empty());
+    }
 
-};  // TEST_SUITE(document_link)
+};  // ZEST_SUITE(document_link)
 
 }  // namespace
 
