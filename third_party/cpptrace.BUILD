@@ -44,6 +44,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [":src_headers"] + select({
         "@platforms//os:windows": [],
-        "//conditions:default": ["@libdwarf//:dwarf"],
+        "//conditions:default": ["@libdwarf"],
     }),
 )
