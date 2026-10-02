@@ -2,8 +2,9 @@ name: compat-test
 
 # Real build systems and compilers (tests/compat): called from main for
 # changes to command handling, with that run's build; weekly and on demand
-# with the latest nightly, so a new compiler or build-tool release that
-# breaks command handling shows up without a code change.
+# with the newest release and the commit it was built from, so a compiler
+# or build-tool release that breaks command handling shows up without a
+# code change.
 on:
   workflow_call:
   schedule:
@@ -17,15 +18,24 @@ jobs:
   compat:
     runs-on: ubuntu-24.04
     steps:
+      - name: Pick the newest release
+        id: release
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
+          ref: ${{ steps.release.outputs.tag }}
           persist-credentials: false
 
       - uses: ./.github/actions/setup-pixi
         with:
           environments: node
-          activate-environment: node
 
       # The runner image already has gcc, clang, cmake, make and bazelisk.
       - name: Install build systems and cross compilers
@@ -35,23 +45,23 @@ jobs:
             bear ccache meson ninja-build xmake g++-mingw-w64-x86-64
 
       - name: Download binaries
-        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+        if: steps.release.outputs.tag == ''
         uses: actions/download-artifact@v8
         with:
           name: native-build-ubuntu-24.04-RelWithDebInfo
           path: build/RelWithDebInfo/
 
-      - name: Download the latest nightly
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      - name: Download the release
+        if: steps.release.outputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
-          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')
-          gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
-            --pattern 'clice-*.x86_64-unknown-linux-gnu.tar.gz' --dir "$RUNNER_TEMP/nightly"
-          tar -xzf "$RUNNER_TEMP"/nightly/clice-*.tar.gz -C "$RUNNER_TEMP/nightly"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'clice-*.x86_64-unknown-linux-gnu.tar.gz' --dir "$RUNNER_TEMP/release"
+          tar -xzf "$RUNNER_TEMP"/release/clice-*.tar.gz -C "$RUNNER_TEMP/release"
           mkdir -p build/RelWithDebInfo
-          cp -r "$RUNNER_TEMP/nightly/clice/bin" "$RUNNER_TEMP/nightly/clice/lib" build/RelWithDebInfo/
+          cp -r "$RUNNER_TEMP/release/clice/bin" "$RUNNER_TEMP/release/clice/lib" build/RelWithDebInfo/
 
       - name: Make binaries executable
         run: chmod +x build/RelWithDebInfo/bin/*

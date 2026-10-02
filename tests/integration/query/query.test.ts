@@ -150,11 +150,11 @@ test("answers from the persisted index", ({ session }) => {
         file: string;
         arguments: string[];
         source: string;
-        toolchain_error?: string;
+        toolchainError: string | null;
     }>(ws, "compileCommand", "--path", "main.cpp");
     expect(asUri(command.result!.file)).toBe(ws.uri("main.cpp"));
     expect(command.result?.source).toBe("database");
-    expect(command.result?.toolchain_error).toBeUndefined();
+    expect(command.result?.toolchainError).toBeNull();
     expect(command.result?.arguments).toContain("-cc1");
 
     const kinds = query<{ symbols: { name: string; kind: string }[] }>(
@@ -273,15 +273,15 @@ test("names a failed compiler query", ({ session }) => {
         ]),
     );
     ws.pinCacheDir();
-    runIndex(ws);
+    expect(runIndex(ws).status, "the unit still parses from its driver-level command").toBe(0);
 
-    const command = query<{ arguments: string[]; toolchain_error?: string }>(
+    const command = query<{ arguments: string[]; toolchainError: string | null }>(
         ws,
         "compileCommand",
         "--path",
         "main.cpp",
     );
-    expect(command.result?.toolchain_error).toBeDefined();
+    expect(command.result?.toolchainError).toContain("missing-cc");
     expect(command.result?.arguments).not.toContain("-cc1");
 });
 

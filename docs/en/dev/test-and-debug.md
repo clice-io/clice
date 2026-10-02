@@ -111,7 +111,7 @@ Real build systems and real compilers: each scenario in `tests/compat/scenarios.
 pixi run compat-test          # default RelWithDebInfo
 ```
 
-The scenarios need their tools installed (bear, ccache, meson, ninja, xmake, the MinGW cross compiler, bazel). A scenario whose tools are missing is skipped locally and fails in CI. CI runs the suite on pull requests that touch `src/command/` or the suite itself, and weekly against the latest nightly.
+The scenarios need their tools installed (bear, ccache, meson, ninja, xmake, the MinGW cross compiler, bazel). A scenario whose tools are missing is skipped locally and fails in CI. CI runs the suite on changes that touch `src/command/` or the suite itself, and weekly against the newest nightly build.
 
 ## Debug
 

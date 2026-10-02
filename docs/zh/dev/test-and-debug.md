@@ -110,7 +110,7 @@ pixi 环境之外的前置条件：
 pixi run compat-test          # default RelWithDebInfo
 ```
 
-这些场景需要安装各自的工具（bear、ccache、meson、ninja、xmake、MinGW 交叉编译器、bazel）。缺少工具的场景在本地跳过，在 CI 中则判为失败。CI 在改动 `src/command/` 或该套件本身的拉取请求上运行它，并每周针对最新的 nightly 运行一次。
+这些场景需要安装各自的工具（bear、ccache、meson、ninja、xmake、MinGW 交叉编译器、bazel）。缺少工具的场景在本地跳过，在 CI 中则判为失败。CI 在改动 `src/command/` 或该套件本身时运行它，并每周针对最新的 nightly 构建运行一次。
 
 ## 调试
 

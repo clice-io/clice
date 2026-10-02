@@ -234,9 +234,9 @@ CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm run snap --wo
 """
 depends-on = ["install-tests"]
 
-# Real build systems and toolchains over tests/compat/project: each scenario
-# needs the tools it names (CI installs them, see compat-test.yml) and node,
-# so it runs in any environment that has node.
+# Real build systems and toolchains over tests/compat/project; the tools each
+# scenario names come from the system (CI installs them, see compat-test.yml).
+# Workspace-level so CI can run it from the bare `node` env.
 [tasks.compat-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """

@@ -17,7 +17,7 @@ export interface CompileCommand {
     directory: string;
     arguments: string[];
     source: string;
-    toolchain_error?: string;
+    toolchainError: string | null;
 }
 
 function runClice(clice: string, args: string[]) {
@@ -51,9 +51,4 @@ export function compileCommand(clice: string, root: string, file: string): Compi
         throw new Error(`compileCommand ${file}: ${answer.error ?? run.stderr}`);
     }
     return answer.result;
-}
-
-/// Whether `run` occurs in `args` as adjacent arguments.
-export function containsRun(args: string[], run: string[]): boolean {
-    return args.some((_, start) => run.every((arg, i) => args[start + i] === arg));
 }

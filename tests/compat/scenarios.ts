@@ -11,7 +11,7 @@ const CLANGXX = "/usr/bin/clang++";
 
 const BOTH: Record<string, FileExpectation> = { "src/main.cpp": {}, "src/util.c": {} };
 
-function cmake(generator: string, cc: string, cxx: string, ...extra: string[]): string[][] {
+function cmake(generator: string, cc: string, cxx: string, ...extra: string[]): Scenario["build"] {
     return [
         [
             "cmake",
@@ -45,19 +45,18 @@ export const SCENARIOS: Scenario[] = [
         files: BOTH,
     },
     {
-        name: "cmake ccache launcher",
+        // CMake keeps its compiler launcher out of the database; meson
+        // writes the ccache its native file names in front of the compiler.
+        name: "meson ccache launcher",
         platforms: ["linux"],
-        requires: ["cmake", "ninja", "ccache", GCC, GXX],
-        build: cmake(
-            "Ninja",
-            GCC,
-            GXX,
-            "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
-            "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
-        ),
+        requires: ["meson", "ninja", "ccache", GCC, GXX],
+        build: [
+            ["meson", "setup", "build", "--native-file", "ccache.ini"],
+            ["ninja", "-C", "build"],
+        ],
         files: {
-            "src/main.cpp": { contains: [[GXX, "-cc1"]] },
-            "src/util.c": { contains: [[GCC, "-cc1"]] },
+            "src/main.cpp": { recorded: [["ccache", GXX]], contains: [[GXX, "-cc1"]] },
+            "src/util.c": { recorded: [["ccache", GCC]], contains: [[GCC, "-cc1"]] },
         },
     },
     {
@@ -71,11 +70,15 @@ export const SCENARIOS: Scenario[] = [
             "-DCMAKE_C_USE_RESPONSE_FILE_FOR_INCLUDES=ON",
             "-DCMAKE_CXX_USE_RESPONSE_FILE_FOR_INCLUDES=ON",
         ),
-        // The database names the include directories only through
-        // `@CMakeFiles/compat.dir/includes_<lang>.rsp`.
         files: {
-            "src/main.cpp": { contains: [["-I", "${root}/include"]] },
-            "src/util.c": { contains: [["-I", "${root}/include"]] },
+            "src/main.cpp": {
+                recorded: [["@CMakeFiles/compat.dir/includes_CXX.rsp"]],
+                contains: [["-I", "${root}/include"]],
+            },
+            "src/util.c": {
+                recorded: [["@CMakeFiles/compat.dir/includes_C.rsp"]],
+                contains: [["-I", "${root}/include"]],
+            },
         },
     },
     {
@@ -91,9 +94,9 @@ export const SCENARIOS: Scenario[] = [
     {
         name: "xmake gcc",
         platforms: ["linux"],
-        requires: ["xmake", "gcc"],
+        requires: ["xmake", GCC, GXX],
         build: [
-            ["xmake", "config", "--yes"],
+            ["xmake", "config", "--yes", `--cc=${GCC}`, `--cxx=${GXX}`],
             ["xmake", "build", "--yes"],
             ["xmake", "project", "--kind=compile_commands"],
         ],
@@ -110,13 +113,14 @@ export const SCENARIOS: Scenario[] = [
                 "make",
                 `CC=${GCC}`,
                 `CXX=${GXX}`,
-                "CXXFLAGS=-std=gnu++20 -O2 -g -fno-rtti -pthread -MD -MF build/main.d",
-                "CFLAGS=-std=c11 -Os -fdiagnostics-color=always -ffunction-sections -flto -fsanitize=address",
+                "CXXFLAGS=-std=gnu++20 -O2 -g -fno-exceptions -fno-rtti -pthread -MD -MF build/main.d",
+                "CFLAGS=-std=c11 -Os -ffast-math -funsigned-char -march=x86-64-v3 -ffunction-sections -flto -fsanitize=address",
             ],
         ],
         // Outputs, dependency files, debug info and pure codegen switches
-        // are dropped; what changes the parse stays, a relative include
-        // directory anchored at the entry's directory.
+        // are dropped; what changes the parse stays (the macro check sees
+        // -ffast-math, -funsigned-char, -march and -fno-exceptions), a
+        // relative include directory anchored at the entry's directory.
         files: {
             "src/main.cpp": {
                 contains: [
@@ -129,7 +133,7 @@ export const SCENARIOS: Scenario[] = [
             },
             "src/util.c": {
                 contains: [["-std=c11"], ["-fsanitize=address"]],
-                excludes: ["-fcolor-diagnostics", "-ffunction-sections", "-flto=full"],
+                excludes: ["-ffunction-sections", "-flto=full"],
             },
         },
     },

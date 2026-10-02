@@ -8,14 +8,8 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { entryArguments, entrySource, type DatabaseEntry } from "./database.ts";
 import { systemEnv } from "./scenario.ts";
-
-export interface DatabaseEntry {
-    directory: string;
-    file: string;
-    arguments?: string[];
-    command?: string;
-}
 
 /// Macros whose values follow from the compiler, its target and the
 /// command's flags: language mode, target, data model, and the semantic
@@ -53,63 +47,6 @@ const GNU_MACROS = [
     "__SSE4_2__",
     "__AVX2__",
 ];
-
-/// Split a POSIX shell command line the way the build system's shell
-/// would: quotes group, backslashes escape outside single quotes.
-export function splitCommand(command: string): string[] {
-    const args: string[] = [];
-    let current = "";
-    let started = false;
-    let quote: "'" | '"' | undefined;
-    for (let i = 0; i < command.length; i += 1) {
-        const c = command[i] ?? "";
-        if (quote === "'") {
-            if (c === "'") {
-                quote = undefined;
-            } else {
-                current += c;
-            }
-        } else if (c === "\\" && i + 1 < command.length) {
-            const next = command[i + 1] ?? "";
-            i += 1;
-            if (quote === '"' && !'$`"\\\n'.includes(next)) {
-                current += c;
-            }
-            current += next;
-            started = true;
-        } else if (quote === '"') {
-            if (c === '"') {
-                quote = undefined;
-            } else {
-                current += c;
-            }
-        } else if (c === "'" || c === '"') {
-            quote = c;
-            started = true;
-        } else if (/\s/.test(c)) {
-            if (started) {
-                args.push(current);
-                current = "";
-                started = false;
-            }
-        } else {
-            current += c;
-            started = true;
-        }
-    }
-    if (started) {
-        args.push(current);
-    }
-    return args;
-}
-
-export function entryArguments(entry: DatabaseEntry): string[] {
-    return entry.arguments ?? splitCommand(entry.command ?? "");
-}
-
-export function entrySource(entry: DatabaseEntry): string {
-    return path.resolve(entry.directory, entry.file);
-}
 
 /// Arguments that name the build's outputs or its own dependency files —
 /// rerunning the entry must neither overwrite them nor compile.

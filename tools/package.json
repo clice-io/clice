@@ -19,8 +19,7 @@
     "./snap/server": "./snap/server.ts",
     "./snap/inspect": "./snap/inspect.ts",
     "./protocol": "./protocol/protocol.ts",
-    "./compat/clice": "./compat/clice.ts",
-    "./compat/macros": "./compat/macros.ts",
+    "./compat/check": "./compat/check.ts",
     "./compat/scenario": "./compat/scenario.ts",
     "./compile-commands": "./compile_commands.ts"
   },
@@ -36,6 +35,7 @@
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
+    "shell-quote": "^1.11.0",
     "unified": "^11.0.5",
     "vscode-languageserver-protocol": "^3.17.5",
     "vscode-uri": "^3.1.0",
@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@types/node": "~25.0.3",
+    "@types/shell-quote": "^1.7.5",
     "eslint": "^10.8.0",
     "typescript": "~5.5.4",
     "typescript-eslint": "^8.65.0"

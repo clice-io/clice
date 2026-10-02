@@ -1,6 +1,5 @@
-# Plain make, captured with bear: every flag comes from the scenario.
-CC ?= cc
-CXX ?= c++
+# Plain make, captured with bear: the compilers and their flags come from
+# the scenario's command line.
 FLAGS := -Iinclude -DCOMPAT_DEFINE=1
 
 all: build/main.o build/util.o

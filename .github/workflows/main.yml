@@ -76,6 +76,8 @@ jobs:
               - '.github/workflows/compat-test.yml'
             compat:
               - 'src/command/**'
+              - 'src/project/command_resolver.*'
+              - 'src/server/query_commands.*'
               - 'tests/compat/**'
               - 'tools/compat/**'
               - '.github/workflows/compat-test.yml'
