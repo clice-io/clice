@@ -10,12 +10,12 @@
 #include "project/command_resolver.h"
 #include "project/open_index.h"
 #include "project/project.h"
+#include "vfs/file_system.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
 #include "kota/support/glob_pattern.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/MemoryBuffer.h"
 
 namespace clice::driver {
 
@@ -167,10 +167,10 @@ std::expected<analysis::PartitionSpec, std::string> partition_spec(const Modules
     if(!opts.partition) {
         return spec;
     }
-    auto buffer = llvm::MemoryBuffer::getFile(*opts.partition);
+    auto buffer = vfs::read(*opts.partition);
     if(!buffer) {
         return std::unexpected(
-            std::format("cannot read {}: {}", *opts.partition, buffer.getError().message()));
+            std::format("cannot read {}: {}", *opts.partition, buffer.error().message()));
     }
     PartitionFile file;
     if(auto result = kota::codec::json::from_string((*buffer)->getBuffer(), file); !result) {

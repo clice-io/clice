@@ -11,6 +11,7 @@
 
 #include "command/command.h"
 #include "project/project.h"
+#include "vfs/file_system.h"
 #include "vfs/path.h"
 
 #include "kota/support/glob_pattern.h"
@@ -19,7 +20,6 @@
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 
 namespace clice::analysis {
@@ -197,8 +197,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     auto line_text = [&](std::uint32_t file, std::uint32_t line) -> llvm::StringRef {
         auto [it, inserted] = contents.try_emplace(file);
         if(inserted) {
-            if(auto buffer =
-                   llvm::MemoryBuffer::getFile(llvm::StringRef(table.resolve(fids[file])))) {
+            if(auto buffer = vfs::read(table.resolve(fids[file]))) {
                 it->second = (*buffer)->getBuffer().str();
             }
         }

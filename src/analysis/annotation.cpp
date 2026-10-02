@@ -4,11 +4,11 @@
 #include <map>
 
 #include "support/process.h"
+#include "vfs/file_system.h"
 
 #include "kota/async/async.h"
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/MemoryBuffer.h"
 
 namespace clice::analysis {
 
@@ -31,10 +31,10 @@ double Annotations::value(llvm::StringRef name, llvm::StringRef path, double fal
 }
 
 std::expected<Annotation, std::string> read_annotation(llvm::StringRef path) {
-    auto buffer = llvm::MemoryBuffer::getFile(path);
+    auto buffer = vfs::read(path);
     if(!buffer) {
         return std::unexpected(
-            std::format("cannot read {}: {}", std::string_view(path), buffer.getError().message()));
+            std::format("cannot read {}: {}", std::string_view(path), buffer.error().message()));
     }
 
     struct File {
