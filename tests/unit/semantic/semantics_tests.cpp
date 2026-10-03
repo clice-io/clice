@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <format>
 #include <optional>
@@ -23,9 +24,9 @@ std::optional<std::uint32_t> token_index_at(const Semantics& semantics, std::uin
     return std::nullopt;
 }
 
-/// How long the unit's semantic tree takes to build over `uses` nested
-/// macro invocations shaped like gtest's EXPECT_EQ; nullopt when the source
-/// does not compile cleanly.
+/// The fastest of three semantic tree builds over `uses` nested macro
+/// invocations shaped like gtest's EXPECT_EQ, each the first build of a
+/// fresh unit; nullopt when the source does not compile cleanly.
 std::optional<std::chrono::nanoseconds> nested_macro_build_time(std::uint32_t uses) {
     std::string source = R"cpp(
 namespace testing {
@@ -71,14 +72,18 @@ void test() {
     }
     source += "}\n";
 
-    clear();
-    add_main("main.cpp", source);
-    if(!compile() || !unit->diagnostics().empty()) {
-        return std::nullopt;
+    auto fastest = std::chrono::nanoseconds::max();
+    for(int run = 0; run < 3; run += 1) {
+        clear();
+        add_main("main.cpp", source);
+        if(!compile() || !unit->diagnostics().empty()) {
+            return std::nullopt;
+        }
+        auto start = std::chrono::steady_clock::now();
+        unit->semantics();
+        fastest = std::min(fastest, std::chrono::steady_clock::now() - start);
     }
-    auto start = std::chrono::steady_clock::now();
-    unit->semantics();
-    return std::chrono::steady_clock::now() - start;
+    return fastest;
 }
 
 TEST_CASE(ModuleNodes) {
