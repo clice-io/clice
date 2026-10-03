@@ -91,6 +91,14 @@ public:
         build_crashes.erase(pch_key);
     }
 
+    /// A consumer's save retries every failed preamble once (see
+    /// build_failures). Returns whether any build had failed.
+    bool retry_failed() {
+        bool failed = !build_failures.empty();
+        build_failures.clear();
+        return failed;
+    }
+
     /// A complete, store-backed, deps-current pair is registered under
     /// the key. Non-const: a passing deps check may repair the snapshot's
     /// stat fast path in place.
@@ -185,9 +193,9 @@ private:
 
     /// The keys whose build failed on errors in the user's code, with what
     /// that build read and looked for: refused until one of those files
-    /// changes. The key covers the preamble text and the flags, so the
-    /// same inputs fail the same way — rebuilt, every compile of every
-    /// consumer would pay for the failing build first.
+    /// changes or a consumer is saved. The key covers the preamble text and
+    /// the flags, so the same inputs fail the same way — rebuilt, every
+    /// compile of every consumer would pay for the failing build first.
     llvm::StringMap<DepsSnapshot> build_failures;
 
     /// Consumption strikes per key (see blame); separate from the build

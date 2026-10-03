@@ -49,6 +49,23 @@ sessionTest("failed pch waits for its inputs", async ({ session }) => {
     expect(failedBuilds()).toBe(1);
 });
 
+/// A header that shows up in a search directory missing at the build is no
+/// input the failed build recorded: a save retries it.
+sessionTest("failed pch retries on save", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", '#include "generated.h"\nint main() { return generated(); }\n');
+    workspace.writeCDB(["main.cpp"], { extraArgs: [`-I${workspace.path("gen")}`] });
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(uri);
+
+    workspace.write("gen/generated.h", "#pragma once\ninline int generated() { return 1; }\n");
+    client.save(uri);
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+    expect(workspace.pchFiles()).toHaveLength(1);
+});
+
 test("pch diagnostics on open", async ({ client }) => {
     // Opening a file with #include should trigger PCH build and return clean diagnostics.
     const [uri] = await client.openAndWait("main.cpp");

@@ -302,17 +302,24 @@ bool ASTFamily::compile_barred(const Session& session) {
 void ASTFamily::saved(Session& session) {
     session.quarantine->on_save();
     // The modules it is and imports retry with it: a crashed build is
-    // refused until a consumer holds a license (see depend_modules). A
-    // module crash leaves the importer's compile standing, so only a fresh
-    // round asks for the module again.
-    if(session.quarantine->crashed(evidence_kind(EvidenceKind::PCM))) {
-        invalidate(session.path_id);
-    }
+    // refused until a consumer holds a license (see depend_modules), a
+    // failed one until what it read or looked for changes. A failed
+    // build's inputs miss a lookup in a directory that did not exist yet,
+    // so a save retries failed preambles too. Either refusal leaves the
+    // compile standing, so only a fresh round asks for the artifact again.
+    bool retry = session.quarantine->crashed(evidence_kind(EvidenceKind::PCM));
     pcm.forgive(session.path_id);
+    retry |= pcm.retry_failed(session.path_id);
     for(auto dep: graph.dependencies(node(session.path_id))) {
         if(dep.family == Family::PCM) {
-            pcm.forgive(Fid{static_cast<std::uint32_t>(dep.key)});
+            auto module = Fid{static_cast<std::uint32_t>(dep.key)};
+            pcm.forgive(module);
+            retry |= pcm.retry_failed(module);
         }
+    }
+    retry |= pch.retry_failed();
+    if(retry) {
+        invalidate(session.path_id);
     }
 }
 

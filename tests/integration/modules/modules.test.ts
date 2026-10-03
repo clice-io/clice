@@ -318,6 +318,32 @@ test("failed module follows a new provider", async ({ session }) => {
     client.assertCleanCompile(uri);
 });
 
+/// A header that shows up in a search directory missing at the build is no
+/// input the failed module build recorded: saving an importer retries it.
+test("failed module retries on save", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write(
+        "a.cppm",
+        'module;\n#include "generated.h"\nexport module A;\nexport int a() { return generated(); }\n',
+    );
+    workspace.write("main.cpp", "import A;\nint main() { return a(); }\n");
+    workspace.writeEntries(
+        [
+            ["a.cppm", [`-I${workspace.path("gen")}`]],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(uri);
+
+    workspace.write("gen/generated.h", "#pragma once\ninline int generated() { return 1; }\n");
+    client.save(uri);
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+});
+
 /// An import reaching the unit only through its command's forced include
 /// is built before the unit compiles.
 test("forced include imports module", async ({ session }) => {
