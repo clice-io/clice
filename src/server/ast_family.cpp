@@ -311,7 +311,7 @@ void ASTFamily::saved(Session& session) {
     pcm.forgive(session.path_id);
     retry |= pcm.retry_failed(session.path_id);
     for(auto dep: graph.dependencies(node(session.path_id))) {
-        if(dep.family == Family::PCM) {
+        if(dep.family == Family::PCM && !PCMFamily::is_unresolved(dep)) {
             auto module = Fid{static_cast<std::uint32_t>(dep.key)};
             pcm.forgive(module);
             retry |= pcm.retry_failed(module);
