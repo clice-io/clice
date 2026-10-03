@@ -54,6 +54,7 @@ A `Relation` records richer semantic information, consisting of three elements: 
 - Type relationships (Interface, Implementation, TypeDefinition)
 - Construction and destruction (Constructor, Destructor)
 - Specialization (Specialization, Primary): an explicit or partial specialization and the template it specializes, recorded in the file where the specialization is written, as inheritance is recorded where the derived class is
+- Pasting (Pasted): a name used by a fragment pasted inside a declaration, such as an X-macro table included into a `switch`, recorded once more at that `#include` in the pasting file; find references skips it, dependency analysis reads it
 
 The two are stored separately because their query patterns differ. `Occurrence` is indexed by position — given a byte offset, binary search quickly locates the symbol under the cursor. `Relation` is indexed by `SymbolHash` — given a symbol, look up all its definitions, references, and call relationships. These two queries have contradictory sorting requirements; separate storage allows both to execute efficiently.
 

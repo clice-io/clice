@@ -298,7 +298,8 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 .is_one_of(RelationKind::Reference,
                            RelationKind::WeakReference,
                            RelationKind::Read,
-                           RelationKind::Write);
+                           RelationKind::Write,
+                           RelationKind::Pasted);
         };
         auto declaration_of = [](const index::Relation& relation) {
             return RelationKind(relation.kind).isDeclOrDef();

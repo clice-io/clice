@@ -854,6 +854,45 @@ TEST_CASE(DependentOperatorUnreferenced) {
     }
 }
 
+TEST_CASE(PastedFragmentUses) {
+    add_file("kinds.inc", "KIND(red)\nKIND(green)\n");
+    add_file("decls.inc", "int helper();\nint value = helper();\n");
+    add_file("take.h", "constexpr int fallback = 1;\nint take(int x = fallback);\n");
+    add_main("main.cpp", R"(
+        #include "decls.inc"
+        #include "take.h"
+        int take(int x) { return x; }
+        enum Color { red, green };
+        int pick(Color color) {
+            switch(color) {
+        #define KIND(name) case name: return helper();
+        #include §(paste)⟦"kinds.inc"⟧
+        #undef KIND
+            }
+            return 0;
+        }
+    )");
+    ASSERT_TRUE(compile());
+    decode_index(index::build_tu_index(*unit));
+
+    auto pasted_at = [&](llvm::StringRef name) {
+        std::vector<LocalSourceRange> ranges;
+        for(auto& relation: tu_index.main_file_index.relations[symbol_named(name).first]) {
+            if(relation.kind == RelationKind::Pasted) {
+                ranges.push_back(relation.range);
+            }
+        }
+        return ranges;
+    };
+    for(auto name: {"red", "green", "helper"}) {
+        auto ranges = pasted_at(name);
+        ASSERT_EQ(ranges.size(), 1U);
+        ASSERT_TRUE(ranges.front() == range("paste"));
+    }
+    ASSERT_TRUE(pasted_at("Color").empty());
+    ASSERT_TRUE(pasted_at("fallback").empty());
+}
+
 TEST_CASE(ModuleName) {
     build_index(R"(export module §(m)⟦§(m)foo⟧;)");
 

@@ -159,8 +159,9 @@ namespace clice::index {
 /// symbols span, the global blob carries the reverse include graph,
 /// module linkage is external, and C tags and C-linkage functions follow
 /// C's identity rules; v23: names without linkage outside a function reach
-/// as far as their scope, `defined` operands reference their macro, and
-/// dependent operators reference no candidates).
+/// as far as their scope, `defined` operands reference their macro,
+/// dependent operators reference no candidates, and the include pasting a
+/// fragment into a declaration carries the fragment's uses).
 constexpr inline std::uint32_t index_format_version = 23;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
