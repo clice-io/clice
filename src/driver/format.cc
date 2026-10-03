@@ -61,7 +61,7 @@ auto make_command() {
 
 int run_format(BatchFormatOptions options) {
     auto result = run_batch_format(options);
-    driver::print(stderr, "{}", result.output);
+    write_output(stderr, result.output);
     if(result.exit_code == 2) {
         driver::println(stderr, "{}", result.error);
         return 2;

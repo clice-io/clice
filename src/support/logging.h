@@ -86,7 +86,7 @@
 /// best-effort: clients are expected to drain stderr (editors do), and
 /// one that stops reading costs log lines, never liveness — once the
 /// pipe fills, lines are dropped and the gap is reported when the client
-/// drains again (see support/stderr_sink.h). Workers log ONLY to
+/// drains again (see support/log_sinks.h). Workers log ONLY to
 /// their own <session>/<worker>.log (mirror_stderr = false): a worker's
 /// stderr is reserved for unexpected third-party output — assertion
 /// failures, sanitizer reports — which the pool relays line-by-line into the
@@ -122,8 +122,8 @@ std::string session_log_directory(std::string_view logging_dir);
 /// Log to <dir>/<name>.log, replaying lines buffered by stderr_logger.
 /// With mirror_stderr, every line is also written to stderr through the
 /// sink stderr_logger chose — the master uses this so editors can show its
-/// log; workers must pass false (their
-/// stderr is reserved for crash output, relayed by the pool).
+/// log; workers must pass false (their stderr is reserved for crash
+/// output, relayed by the pool).
 /// Returns false when the log directory or file cannot be set up — logging
 /// then stays on the previously installed sinks.
 bool file_logger(std::string_view name,

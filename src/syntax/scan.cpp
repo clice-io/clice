@@ -304,9 +304,9 @@ private:
 
 /// The setup every preprocessor-driven scan shares: the instance from the
 /// command (diagnostics ignored), the directives getter, the target, and
-/// the main file entered through a preprocess-only action. `body` runs on the entered
-/// preprocessor; the module declaration it reached is read into `result`
-/// before the source file is ended.
+/// the main file entered through a preprocess-only action. `body` runs on
+/// the entered preprocessor; the module declaration it reached is read
+/// into `result` before the source file is ended.
 void scan_with_preprocessor(
     llvm::ArrayRef<const char*> arguments,
     llvm::StringRef directory,
@@ -329,8 +329,8 @@ void scan_with_preprocessor(
         return;
     }
 
-    // An engaged content remaps the main file to it, even when empty: an
-    // overlay VFS, so both the preprocessor and the directives getter see it.
+    // An engaged content remaps the main file to it, even when empty,
+    // through an overlay VFS.
     if(content.has_value()) {
         auto& inputs = invocation->getFrontendOpts().Inputs;
         if(!inputs.empty()) {

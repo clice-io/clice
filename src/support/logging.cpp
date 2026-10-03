@@ -1,6 +1,7 @@
 #include "support/logging.h"
 
 #include <array>
+#include <cassert>
 #include <chrono>
 #include <ctime>
 #include <format>
@@ -19,8 +20,7 @@
 #endif
 
 #include "version.h"
-#include "support/file_sink.h"
-#include "support/stderr_sink.h"
+#include "support/log_sinks.h"
 #include "vfs/path.h"
 
 #include "spdlog/sinks/ringbuffer_sink.h"
@@ -45,7 +45,7 @@ void stderr_logger(std::string_view name, const Options& options) {
         client_stderr = std::make_shared<StderrSink>();
         console_sink = client_stderr;
     } else {
-        console_sink = std::make_shared<FileSink>(2, false);
+        console_sink = std::make_shared<FileSink>(2, /*owned=*/false);
     }
 
     std::shared_ptr<spdlog::logger> logger;
@@ -103,6 +103,7 @@ bool file_logger(std::string_view name,
 
     llvm::SmallVector<spdlog::sink_ptr, 2> sinks = {file_sink};
     if(mirror_stderr) {
+        assert(console_sink && "stderr_logger chooses the sink file_logger mirrors to");
         sinks.push_back(console_sink);
     }
     auto logger = std::make_shared<spdlog::logger>(std::string(name), sinks.begin(), sinks.end());

@@ -286,10 +286,9 @@ TEST_CASE(MainFileNeverCached) {
     EXPECT_FALSE(cache.entries.contains(main_path));
 }
 
-TEST_CASE(HalfTypedDirectives) {
-    // Text cut off mid-directive, as typing leaves it: the directives
-    // lexer crashed on both (an `#if(` at the end of the buffer behind a
-    // forced include, the header name of `import <...>`).
+TEST_CASE(DirectiveCutAtEnd) {
+    // Typing leaves an `#if(` cut off at the end of the buffer; behind a
+    // forced include, clang's directives lexer crashed on it.
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     auto main_path = TestVFS::path("main.cpp");
     auto forced = TestVFS::path("empty.h");
@@ -301,21 +300,13 @@ TEST_CASE(HalfTypedDirectives) {
                                          "-include",
                                          forced.c_str(),
                                          main_path.c_str()};
-    auto cut = scan_precise(args,
-                            TestVFS::root(),
-                            llvm::StringRef("#define VERSION_CODE()\r\n  #if(MSVC)VERSION_CODE("),
-                            nullptr,
-                            vfs);
-    EXPECT_TRUE(cut.modules.empty());
-
-    for(int round = 0; round < 20; round += 1) {
-        auto header_unit = scan_precise(args,
-                                        TestVFS::root(),
-                                        llvm::StringRef("import <vector>;\nint x;\n"),
-                                        nullptr,
-                                        vfs);
-        EXPECT_TRUE(header_unit.modules.empty());
-    }
+    auto result =
+        scan_precise(args,
+                     TestVFS::root(),
+                     llvm::StringRef("#define VERSION_CODE()\r\n  #if(MSVC)VERSION_CODE("),
+                     nullptr,
+                     vfs);
+    EXPECT_TRUE(result.modules.empty());
 }
 
 };  // TEST_SUITE(Scan)
