@@ -113,7 +113,7 @@ test("truncated index rebuilds", ({ session }) => {
         "add",
     );
     expect(reader.status).toBe(1);
-    expect(reader.stderr).toContain("run `clice index` to rebuild it");
+    expect(reader.stderr).toContain("run `clice index` to repair it");
 
     expect(indexedUnits(ws)).toBe(1);
     const search = query<{ symbols: { name: string }[] }>(ws, "symbolSearch", "--query", "add");

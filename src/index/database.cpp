@@ -150,11 +150,13 @@ Coverage coverage(MDB_env* env) {
 /// the read. A healthy file can be short too — a commit never writes the
 /// tail pages it allocated and freed again, and nothing references them —
 /// so the length alone cannot tell damage from health. Writers keep the
-/// file covering every declared page, zero-filling the gap: in a damaged
-/// tree the zero pages read as MDB_CORRUPTED, which the repair path
-/// handles, and in a healthy one nothing reads them. Read-only openers
-/// rely on it and take a short file for damage. The write transaction
-/// keeps every other writer from growing the file meanwhile.
+/// file covering every declared page, zero-filling the gap: a healthy
+/// tree never reads those pages, and a damaged one reads zeros instead of
+/// faulting — a tree page as MDB_CORRUPTED, which the repair path
+/// handles, a blob as bytes its format check rejects. Read-only openers
+/// rely on it and take a short file for damage; a file written before
+/// this rule existed reads as damaged until a writer opens it. The write
+/// transaction keeps every other writer from growing the file meanwhile.
 int cover_declared_pages(MDB_env* env) {
 #ifdef _WIN32
     // A writable mapping extends the file to the whole map size.
@@ -528,7 +530,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
             if(read_only && is_corruption(rc)) {
                 LOG_WARN(
                     "Index database at {} is damaged ({} failed: {}); run `clice index` to "
-                    "rebuild it",
+                    "repair it",
                     path,
                     stage,
                     mdb_strerror(rc));
@@ -595,8 +597,8 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
                 mdb_txn_abort(txn);
                 mdb_env_close(env);
                 LOG_WARN(
-                    "Index database at {} is damaged (shorter than its pages, {} of {} bytes); "
-                    "run `clice index` to rebuild it",
+                    "Index database at {} is shorter than its pages ({} of {} bytes); run "
+                    "`clice index` to repair it",
                     path,
                     length,
                     declared);
