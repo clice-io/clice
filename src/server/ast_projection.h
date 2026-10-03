@@ -49,6 +49,11 @@ struct ASTProjection {
     /// text at the point of use.
     std::optional<std::string> pch_key;
 
+    /// The preamble key whose build failed for the latest compilation,
+    /// which then compiled without one: what a save of the document
+    /// retries.
+    std::optional<std::string> failed_pch_key;
+
     /// The latest compilation's index envelope; null until a compile
     /// lands index data. NOT merged into Project.project_index — that
     /// only gets disk-derived data from background indexing.

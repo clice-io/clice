@@ -196,9 +196,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     if(!result.has_value() || !result.value().success) {
         if(expected_build_failure(result)) {
             LOG_WARN("PCH build failed for {}: {}", bp.file, build_failure_message(result));
-            // A build that never parsed names no inputs to wait on: one
-            // that failed setting up retries.
-            if(result.has_value() && !result.value().deps.empty()) {
+            if(result.has_value()) {
                 build_failures.insert_or_assign(pch_key,
                                                 capture_deps_snapshot(project.file_table,
                                                                       result.value().deps,

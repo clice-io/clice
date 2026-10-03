@@ -321,10 +321,8 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             LOG_WARN("BuildPCM failed for module {}: {}",
                      module_name,
                      build_failure_message(result));
-            // A build that never parsed names no inputs to wait on: one
-            // that failed setting up retries. So does one overtaken in
-            // flight: its inputs are already gone.
-            if(result.has_value() && !result.value().deps.empty() && ctx.current()) {
+            // A round overtaken in flight failed on inputs already gone.
+            if(result.has_value() && ctx.current()) {
                 build_failures.insert_or_assign(path_id, Failure{pcm_key, inputs()});
             }
         } else {

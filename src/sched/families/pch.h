@@ -91,12 +91,10 @@ public:
         build_crashes.erase(pch_key);
     }
 
-    /// A consumer's save retries every failed preamble once (see
-    /// build_failures). Returns whether any build had failed.
-    bool retry_failed() {
-        bool failed = !build_failures.empty();
-        build_failures.clear();
-        return failed;
+    /// A consumer's save retries its failed preamble (see
+    /// build_failures). Returns whether the key's build had failed.
+    bool retry_failed(llvm::StringRef pch_key) {
+        return build_failures.erase(pch_key);
     }
 
     /// A complete, store-backed, deps-current pair is registered under

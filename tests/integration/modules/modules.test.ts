@@ -20,9 +20,7 @@ async function definitionUris(
     character: number,
 ): Promise<string[]> {
     const result = (await client.definitionAt(uri, line, character)) as
-        | proto.Location
-        | proto.Location[]
-        | null;
+        proto.Location | proto.Location[] | null;
     return locationsOf(result).map((loc) => loc.uri);
 }
 
@@ -319,17 +317,20 @@ test("failed module follows a new provider", async ({ session }) => {
 });
 
 /// A header that shows up in a search directory missing at the build is no
-/// input the failed module build recorded: saving an importer retries it.
+/// input the failed module build recorded: saving an importer retries it,
+/// through the modules in between.
 test("failed module retries on save", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write(
-        "a.cppm",
-        'module;\n#include "generated.h"\nexport module A;\nexport int a() { return generated(); }\n',
+        "b.cppm",
+        'module;\n#include "generated.h"\nexport module B;\nexport int b() { return generated(); }\n',
     );
+    workspace.write("a.cppm", "export module A;\nimport B;\nexport int a() { return b(); }\n");
     workspace.write("main.cpp", "import A;\nint main() { return a(); }\n");
     workspace.writeEntries(
         [
-            ["a.cppm", [`-I${workspace.path("gen")}`]],
+            ["b.cppm", [`-I${workspace.path("gen")}`]],
+            ["a.cppm", []],
             ["main.cpp", []],
         ],
         { std: "c++20" },

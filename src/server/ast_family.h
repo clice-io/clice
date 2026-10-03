@@ -189,8 +189,8 @@ public:
     }
 
     /// didSave: every crashed kind of the document retries on its next
-    /// request, the artifacts it consumes included, and so does every
-    /// artifact whose build failed.
+    /// request, the artifacts it consumes included, and so do the ones
+    /// whose build failed.
     void saved(Session& session);
 
     /// Install `output` as the document's current output and wake the
