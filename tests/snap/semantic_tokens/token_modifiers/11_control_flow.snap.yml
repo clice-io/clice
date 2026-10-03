@@ -1,0 +1,23 @@
+---
+created_at: 2026-09-28
+input_file: token_modifiers/11_control_flow.cpp
+---
+- { loc: "8:4", text: "switch", kind: keyword, modifiers: [controlFlow] }
+- { loc: "9:8", text: "case", kind: keyword, modifiers: [controlFlow] }
+- { loc: "9:16", text: "return", kind: keyword, modifiers: [controlFlow] }
+- { loc: "10:8", text: "default", kind: keyword }
+- { loc: "10:17", text: "break", kind: keyword, modifiers: [controlFlow] }
+- { loc: "12:4", text: "for", kind: keyword, modifiers: [controlFlow] }
+- { loc: "13:8", text: "if", kind: keyword, modifiers: [controlFlow] }
+- { loc: "14:12", text: "continue", kind: keyword, modifiers: [controlFlow] }
+- { loc: "15:10", text: "else", kind: keyword, modifiers: [controlFlow] }
+- { loc: "16:12", text: "goto", kind: keyword, modifiers: [controlFlow] }
+- { loc: "20:4", text: "while", kind: keyword, modifiers: [controlFlow] }
+- { loc: "23:4", text: "do", kind: keyword, modifiers: [controlFlow] }
+- { loc: "25:6", text: "while", kind: keyword, modifiers: [controlFlow] }
+- { loc: "26:4", text: "try", kind: keyword, modifiers: [controlFlow] }
+- { loc: "27:8", text: "throw", kind: keyword, modifiers: [controlFlow] }
+- { loc: "28:6", text: "catch", kind: keyword, modifiers: [controlFlow] }
+- { loc: "29:11", text: "static_cast", kind: keyword }
+- { loc: "33:4", text: "virtual", kind: keyword }
+- { loc: "33:24", text: "default", kind: keyword }

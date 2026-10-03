@@ -206,6 +206,63 @@
       {
         "id": "inactive",
         "description": "Token inside a preprocessor-inactive region (e.g. an #if 0 branch). The clice extension dims these regions; other clients can style the modifier directly."
+      },
+      {
+        "id": "controlFlow",
+        "description": "Keyword that transfers control (e.g. if, return, throw, co_await)."
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "c",
+        "scopes": {
+          "keyword": [
+            "keyword.other.c"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control.c"
+          ],
+          "directive": [
+            "keyword.control.directive.c"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive.c"
+          ]
+        }
+      },
+      {
+        "language": "cpp",
+        "scopes": {
+          "keyword": [
+            "keyword.other.cpp"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control.cpp"
+          ],
+          "directive": [
+            "keyword.control.directive.cpp"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive.cpp"
+          ]
+        }
+      },
+      {
+        "language": "cuda-cpp",
+        "scopes": {
+          "keyword": [
+            "keyword.other.cuda-cpp"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control.cuda-cpp"
+          ],
+          "directive": [
+            "keyword.control.directive.cuda-cpp"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive.cuda-cpp"
+          ]
+        }
       }
     ],
     "views": {

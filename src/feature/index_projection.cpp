@@ -227,7 +227,7 @@ auto index_semantic_tokens(llvm::StringRef content,
             kind = profile.keywords.get(spelling).getTokenID();
         }
         auto lexical_class = classify_lexical_kind(kind, spelling);
-        Classified lexical{lexical_class.kind, 0};
+        Classified lexical{lexical_class.kind, lexical_class.modifiers};
 
         // Directive overlay, driven by the lexer's preprocessor awareness:
         // the hash and the directive name paint as Directive, a #define's
