@@ -268,6 +268,56 @@ test("failed module waits for its inputs", async ({ session }) => {
     expect(failedBuilds()).toBe(1);
 });
 
+/// A module that failed for what an interface it imports lacked builds
+/// again once that interface changes.
+test("failed module follows its import", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("b.cppm", "export module B;\nexport int b() { return 1; }\n");
+    workspace.write("a.cppm", "export module A;\nimport B;\nexport int a() { return c(); }\n");
+    workspace.write("main.cpp", "import A;\nint main() { return a(); }\n");
+    workspace.writeEntries(
+        [
+            ["b.cppm", []],
+            ["a.cppm", []],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(uri);
+
+    workspace.write("b.cppm", "export module B;\nexport int c() { return 1; }\n");
+    client.save(workspace.uri("b.cppm"));
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+});
+
+/// A module that failed on an import nothing provided builds again once a
+/// unit declares that module.
+test("failed module follows a new provider", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("m.cppm", "int placeholder;\n");
+    workspace.write("a.cppm", "export module A;\nimport M;\nexport int a() { return m(); }\n");
+    workspace.write("main.cpp", "import A;\nint main() { return a(); }\n");
+    workspace.writeEntries(
+        [
+            ["m.cppm", []],
+            ["a.cppm", []],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(uri);
+
+    workspace.write("m.cppm", "export module M;\nexport int m() { return 1; }\n");
+    client.save(workspace.uri("m.cppm"));
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+});
+
 /// An import reaching the unit only through its command's forced include
 /// is built before the unit compiles.
 test("forced include imports module", async ({ session }) => {

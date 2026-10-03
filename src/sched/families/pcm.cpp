@@ -275,6 +275,17 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // cached from a previous (now-invalidated) build.
     project.fill_pcm_deps(bp.pcms, path_id);
 
+    // The interfaces it imports are inputs as much as its own text — the
+    // PCM embeds what it read of them — and theirs already carry their own
+    // imports', so the snapshot is transitive. Taken before the build: an
+    // eviction landing during it must not drop them.
+    DepsSnapshot imported;
+    for(auto dep: deps.resolved) {
+        if(auto it = project.pcm_cache.find(dep); it != project.pcm_cache.end()) {
+            imported.append(it->second.deps.begin(), it->second.deps.end());
+        }
+    }
+
     // The interest class is read at dispatch time: a foreground requester
     // may have joined after this round started. The advisory token rides
     // into the pool, which translates a fire into the cooperative
@@ -299,17 +310,10 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         LOG_INFO("BuildPCM preempted for module {}, will retry", module_name);
         co_return RoundOutcome::Stale;
     }
-    // The interfaces it imported are inputs as much as its own text — the
-    // PCM embeds what it read of them — and theirs already carry their own
-    // imports', so the snapshot is transitive.
     auto inputs = [&] {
         auto snapshot =
             capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
-        for(auto dep: deps.resolved) {
-            if(auto it = project.pcm_cache.find(dep); it != project.pcm_cache.end()) {
-                snapshot.append(it->second.deps.begin(), it->second.deps.end());
-            }
-        }
+        snapshot.append(imported.begin(), imported.end());
         return snapshot;
     };
     if(!result.has_value() || !result.value().success) {
@@ -318,9 +322,9 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
                      module_name,
                      build_failure_message(result));
             // A build that never parsed names no inputs to wait on: one
-            // that failed setting up (an imported interface clang could not
-            // read) retries.
-            if(result.has_value() && !result.value().deps.empty()) {
+            // that failed setting up retries. So does one overtaken in
+            // flight: its inputs are already gone.
+            if(result.has_value() && !result.value().deps.empty() && ctx.current()) {
                 build_failures.insert_or_assign(path_id, Failure{pcm_key, inputs()});
             }
         } else {
@@ -451,6 +455,10 @@ llvm::SmallVector<Fid> PCMFamily::invalidate(Fid path_id) {
     for(auto id: graph.update(node(path_id))) {
         auto pid = Fid{static_cast<std::uint32_t>(id.key)};
         erased |= project.pcm_cache.erase(pid);
+        // A unit that failed against an import's old command or content
+        // has no record of either: its own key and files say nothing
+        // changed.
+        build_failures.erase(pid);
         dirtied.push_back(pid);
     }
     if(erased) {

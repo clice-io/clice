@@ -87,8 +87,9 @@ void drop_cursor_site(std::vector<Site>& sites, const Site& cursor) {
     }
 }
 
-/// The containers above `parent`, the parent of `hash`, outermost first
-/// (see IndexQuery::container_chain), each resolved through `lookup`.
+/// `parent`, the parent of `hash`, and the containers above it, outermost
+/// first, inline namespaces skipped (see IndexQuery::container_chain), each
+/// resolved through `lookup`.
 llvm::SmallVector<SymbolRef, 4>
     scope_chain(SymbolHash hash,
                 SymbolHash parent,
@@ -881,9 +882,6 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
            })) {
             return;
         }
-        // One symbol is in many tables (every open buffer including its
-        // header): its name and scope are judged once.
-        seen.insert(hash);
         auto quality =
             symbol_quality(identity.name, identity.kind, identity.flags, reference_files);
         auto rank = ranker.rank(identity.name, identity.args, quality, /*lenient=*/true);
@@ -900,6 +898,7 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
                 return;
             }
         }
+        seen.insert(hash);
         hits.push_back({*rank, SymbolRef::from(hash, identity)});
     };
     auto references_of = [&](SymbolHash hash) -> std::uint32_t {

@@ -580,20 +580,20 @@ void open_buffers(CountingSessions& sessions, int buffers) {
 }
 
 TEST_CASE(ScopedSearchScalesLinearly) {
-    std::size_t visits[2];
-    for(auto [slot, buffers]: {
-            std::pair{0, 2},
-            std::pair{1, 8}
-    }) {
+    auto visits_with = [&](int buffers) {
         CountingSessions sessions;
         open_buffers(sessions, buffers);
-        index::IndexQuery scoped{project.project_index, project.file_table, nullptr, &sessions};
-        scoped.search(*index::SymbolQuery::parse("app::fn0_1"), 10);
-        visits[slot] = sessions.visits;
-    }
+        index::IndexQuery session_query{project.project_index,
+                                        project.file_table,
+                                        nullptr,
+                                        &sessions};
+        session_query.search(*index::SymbolQuery::parse("app::fn0_1"), 10);
+        return sessions.visits;
+    };
     // Four times the open buffers: a scan of each buffer's table grows
     // four times, a lookup through every table per candidate sixteen.
-    ASSERT_LE(visits[1], visits[0] * 4);
+    auto few = visits_with(2);
+    ASSERT_LE(visits_with(8), few * 4);
 }
 
 };  // TEST_SUITE(IndexQuery)
