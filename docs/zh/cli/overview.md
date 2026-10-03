@@ -12,7 +12,6 @@ clice 只有一个二进制。编辑器启动 `clice serve` 并通过 LSP 与它
 | `query`    | 向持久化索引查询符号、引用、调用图和文件。       | [query](./query.md)            |
 | `refactor` | 依据持久化索引在整个工作区重命名一个符号。       | [refactor](./refactor.md)      |
 | `analyze`  | 报告重构所需的事实，例如模块依赖和循环依赖。     | [analyze](./analyze.md)        |
-| `doc`      | 从项目中提取文档数据。尚未实现。                 |                                |
 
 `inspect` 现在已可使用但还没有页面，选项通过 `clice inspect --help` 查看。
 

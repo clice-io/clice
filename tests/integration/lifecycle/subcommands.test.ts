@@ -2,8 +2,7 @@ import { spawnSync } from "node:child_process";
 import { waitUntil, type CliceClient } from "@clice/tools/client";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
-const SUBCOMMANDS = ["serve", "query", "worker", "index", "doc", "lint", "format", "analyze"];
-const STUBS = ["doc"];
+const SUBCOMMANDS = ["serve", "query", "worker", "index", "lint", "format", "analyze"];
 
 function runClice(...args: string[]) {
     return spawnSync(cliceExecutable(), args, { encoding: "utf8", timeout: 30_000 });
@@ -31,16 +30,6 @@ test("root usage lists subcommands", () => {
         for (const name of SUBCOMMANDS) {
             expect(result.stdout).toContain(name);
         }
-    }
-});
-
-test("stubs report unimplemented", () => {
-    // Stubs explain themselves on stderr and exit non-zero: the command is
-    // still unavailable and scripts must be able to detect that.
-    for (const name of STUBS) {
-        const result = runClice(name);
-        expect(result.status).toBe(1);
-        expect(result.stderr).toContain("not implemented");
     }
 });
 
