@@ -327,12 +327,12 @@ void ASTFamily::saved(Session& session) {
     add_imports(node(session.path_id));
     for(std::size_t i = 0; i < modules.size(); i += 1) {
         pcm.forgive(modules[i]);
-        retry |= pcm.retry_failed(modules[i]);
+        retry |= pcm.forget_failure(modules[i]);
         add_imports({Family::PCM, modules[i].raw});
     }
     if(auto projection = projections.projection(session.path_id);
        projection && projection->failed_pch_key) {
-        retry |= pch.retry_failed(*projection->failed_pch_key);
+        retry |= pch.forget_failure(*projection->failed_pch_key);
     }
     if(retry) {
         invalidate(session.path_id);
@@ -1048,6 +1048,12 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         };
 
         auto& entry = projections.entries[path_id];
+        // A document moving off a preamble it failed on releases that
+        // failure: only the preamble's consumers would ever retry it.
+        if(entry.projection && entry.projection->failed_pch_key &&
+           entry.projection->failed_pch_key != failed_pch) {
+            pch.forget_failure(*entry.projection->failed_pch_key);
+        }
         entry.projection = std::move(next);
         entry.deps =
             capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);

@@ -20,7 +20,9 @@ async function definitionUris(
     character: number,
 ): Promise<string[]> {
     const result = (await client.definitionAt(uri, line, character)) as
-        proto.Location | proto.Location[] | null;
+        | proto.Location
+        | proto.Location[]
+        | null;
     return locationsOf(result).map((loc) => loc.uri);
 }
 

@@ -91,9 +91,10 @@ public:
         build_crashes.erase(pch_key);
     }
 
-    /// A consumer's save retries its failed preamble (see
-    /// build_failures). Returns whether the key's build had failed.
-    bool retry_failed(llvm::StringRef pch_key) {
+    /// Forget the key's failed build (see build_failures), so the next
+    /// request builds it again: a consumer's save retries it, a consumer
+    /// moving to another key releases it. Returns whether it had failed.
+    bool forget_failure(llvm::StringRef pch_key) {
         return build_failures.erase(pch_key);
     }
 
@@ -191,7 +192,8 @@ private:
 
     /// The keys whose build failed on errors in the user's code, with what
     /// that build read and looked for: refused until one of those files
-    /// changes or a consumer is saved. The key covers the preamble text and
+    /// changes, and forgotten when a consumer is saved or moves to another
+    /// key. The key covers the preamble text and
     /// the flags, so the same inputs fail the same way — rebuilt, every
     /// compile of every consumer would pay for the failing build first.
     llvm::StringMap<DepsSnapshot> build_failures;

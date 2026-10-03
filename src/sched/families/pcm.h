@@ -121,7 +121,7 @@ public:
 
     /// An importer's save retries the module's failed build (see
     /// build_failures). Returns whether it had failed.
-    bool retry_failed(Fid module) {
+    bool forget_failure(Fid module) {
         return build_failures.erase(module);
     }
 
