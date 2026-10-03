@@ -9,12 +9,6 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclTemplate.h"
 
-namespace clang::syntax {
-
-class TokenBuffer;
-
-}
-
 /// The rendering side of the AST helpers: everything that turns an AST
 /// entity into a human-facing string lives in this namespace, so that
 /// clang printing quirks are patched in exactly one place. Semantic
@@ -177,13 +171,9 @@ auto template_params(const clang::TemplateParameterList* params, const Options& 
 /// "template <...> class" for template template parameters.
 auto template_param_type(const clang::NamedDecl* param, const Options& options = {}) -> Type;
 
-/// Pretty-print the declaration itself. When a token buffer is given,
-/// initializers longer than 200 tokens are suppressed — such lists are
-/// not useful in a hover card and are catastrophically expensive to
-/// print.
-auto definition(const clang::Decl* decl,
-                const Options& options = {},
-                const clang::syntax::TokenBuffer* tb = nullptr) -> std::string;
+/// Pretty-print the declaration itself, without a variable's initializer
+/// when that would run long.
+auto definition(const clang::Decl* decl, const Options& options = {}) -> std::string;
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Type& type);
 

@@ -80,6 +80,9 @@ std::unique_ptr<clang::CompilerInvocation>
         pp_opts.PrecompiledPreambleBytes = {bound, false};
     }
 
+    // `#pragma clang __debug crash` and its kin exist to crash the compiler.
+    pp_opts.DisablePragmaDebugCrash = true;
+
     // We don't want to write comment locations into PCM. They are racy and slow
     // to read back. We rely on dynamic index for the comments instead.
     pp_opts.WriteCommentListToPCH = false;

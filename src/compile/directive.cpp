@@ -226,6 +226,15 @@ public:
         }
     }
 
+    void PragmaDebug(clang::SourceLocation, llvm::StringRef command) override {
+        // `dump` leaves the rest of its line to the parser: directive tokens
+        // TokenBuffer cannot map back to the file (an unreachable there).
+        // Nothing here wants the dump printed.
+        if(command == "dump") {
+            unit->instance->getPreprocessor().DiscardUntilEndOfDirective();
+        }
+    }
+
     void PragmaDiagnosticPush(clang::SourceLocation loc, llvm::StringRef) override {
         add_diagnostic_pragma({.kind = DiagnosticPragma::Push, .loc = loc});
     }

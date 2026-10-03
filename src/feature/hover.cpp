@@ -303,9 +303,7 @@ auto synthesize_documentation(const clang::NamedDecl* decl) -> std::string {
 }
 
 /// Generate a hover info given the declaration.
-auto decl_hover(const clang::NamedDecl* decl,
-                const display::Options& options,
-                const clang::syntax::TokenBuffer& tb) -> HoverInfo {
+auto decl_hover(const clang::NamedDecl* decl, const display::Options& options) -> HoverInfo {
     HoverInfo info;
     auto& context = decl->getASTContext();
 
@@ -379,7 +377,7 @@ auto decl_hover(const clang::NamedDecl* decl,
         }
     }
 
-    info.definition = display::definition(decl, options, &tb);
+    info.definition = display::definition(decl, options);
     return info;
 }
 
@@ -1442,7 +1440,7 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
         if(const SelectionTree::Node* node = tree.common_ancestor()) {
             auto targets = decls_at(unit, tokens);
             if(const auto* decl = pick_decl_to_use(targets)) {
-                info = decl_hover(decl, display_options, unit.token_buffer());
+                info = decl_hover(decl, display_options);
 
                 /// Layout info only shown when hovering on the field/class
                 /// itself.
