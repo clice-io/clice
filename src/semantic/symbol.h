@@ -201,6 +201,10 @@ struct RelationKind {
         /// Keyed by an explicit or partial specialization, the target the
         /// template it specializes.
         Primary,
+        /// At the include that pastes a fragment into a declaration
+        /// (`#include "Kinds.inc"` inside a switch), a name the fragment
+        /// uses: the pasting file names it too.
+        Pasted,
     };
 
     constexpr RelationKind() = default;

@@ -2,10 +2,11 @@
 ///
 /// - status: supported
 ///
-/// `#define`, use, `#ifdef` and `#undef` all show the macro's definition
+/// `#define`, use, `#ifdef`, `defined` and `#undef` all show the macro's definition
 ///
 /// A macro's hover card carries its `#define` text wherever the name
-/// appears: the definition itself, a use, an `#ifdef` guard and an `#undef`.
+/// appears: the definition itself, a use, an `#ifdef` guard, a `defined`
+/// test and an `#undef`.
 
 int anchor = 0;
 
@@ -17,4 +18,8 @@ int use = §(02_use_site)LIMIT;
 int guarded = 1;
 #endif
 
-#undef §(04_undef_site)LIMIT
+#if defined(§(04_defined_site)LIMIT)
+int tested = 1;
+#endif
+
+#undef §(05_undef_site)LIMIT

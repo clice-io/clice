@@ -59,13 +59,13 @@ tests/snap/hover/symbol_information/04_definition_rendering.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#710 -->
+<!-- BEGIN CAPABILITY: supported clangd#710 -->
 
 **初始化器截断**
 
 过大的初始化器会截断显示，不会完整呈现
 
-显示的定义省略了初始化器，但求值后的 `Value` 字段仍会列出全部 256 个元素。
+显示的定义省略了初始化器，求值后的 `Value` 字段只显示 256 个元素中的前十个。
 
 ```snap
 tests/snap/hover/symbol_information/05_initializer_truncation.cpp
@@ -623,9 +623,9 @@ tests/snap/hover/documentation/12_comment_suppression.cpp
 
 **各处均显示定义文本**
 
-在 `#define`、使用处、`#ifdef` 和 `#undef` 处均显示宏定义
+在 `#define`、使用处、`#ifdef`、`defined` 和 `#undef` 处均显示宏定义
 
-无论宏名称出现在何处，其悬停卡片都会显示对应的 `#define` 文本：包括宏定义本身、使用处、`#ifdef` 条件判断处以及 `#undef` 处。
+无论宏名称出现在何处，其悬停卡片都会显示对应的 `#define` 文本：包括宏定义本身、使用处、`#ifdef` 条件判断处、`defined` 检测处以及 `#undef` 处。
 
 ```snap
 tests/snap/hover/macro_hover/01_macro_definition_sites.cpp

@@ -74,9 +74,9 @@ struct ScanResult {
         return has_import || !module_name.empty() || need_preprocess;
     }
 
-    /// Hash of the lexer scan's directive stream, all a precise scan reads
-    /// of the file — it runs in dependency-directives mode: equal hashes,
-    /// equal precise scans of the file under one command and disk.
+    /// Hash of the lexer scan's directive stream, all a precise scan's
+    /// result depends on: equal hashes, equal precise scans of the file
+    /// under one command and disk.
     std::uint64_t directives_hash = 0;
 };
 
@@ -132,8 +132,7 @@ ScanResult scan_quick(llvm::StringRef content);
 /// partition import (`import :part;`) against the enclosing module's
 /// name. Keeps all directives including #define and conditionals.
 /// An engaged `content` remaps the main file to it — even when empty:
-/// an emptied buffer must scan as empty, not fall back to the disk. A
-/// remapped scan bypasses `cache`, which is keyed by path alone.
+/// an emptied buffer must scan as empty, not fall back to the disk.
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
                         std::optional<llvm::StringRef> content = std::nullopt,

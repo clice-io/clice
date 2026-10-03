@@ -226,6 +226,15 @@ public:
         }
     }
 
+    void PragmaDebug(clang::SourceLocation, llvm::StringRef command) override {
+        // `dump` leaves the rest of its line to the parser: directive tokens
+        // TokenBuffer cannot map back to the file (an unreachable there).
+        // Nothing here wants the dump printed.
+        if(command == "dump") {
+            unit->instance->getPreprocessor().DiscardUntilEndOfDirective();
+        }
+    }
+
     void PragmaDiagnosticPush(clang::SourceLocation loc, llvm::StringRef) override {
         add_diagnostic_pragma({.kind = DiagnosticPragma::Push, .loc = loc});
     }
@@ -316,6 +325,14 @@ public:
                       const clang::MacroDefinition& definition,
                       clang::SourceRange range,
                       const clang::MacroArgs* args) override {
+        if(auto def = definition.getMacroInfo()) {
+            add_macro(def, MacroRef::Ref, name.getLocation());
+        }
+    }
+
+    void Defined(const clang::Token& name,
+                 const clang::MacroDefinition& definition,
+                 clang::SourceRange) override {
         if(auto def = definition.getMacroInfo()) {
             add_macro(def, MacroRef::Ref, name.getLocation());
         }

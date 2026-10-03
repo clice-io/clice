@@ -13,6 +13,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/Stack.h"
@@ -79,6 +80,12 @@ std::unique_ptr<clang::CompilerInvocation>
     if(bound != 0) {
         pp_opts.PrecompiledPreambleBytes = {bound, false};
     }
+
+    // `#pragma clang __debug crash` and its kin crash the compiler on
+    // purpose. Tests keep them as a crash a file's content decides.
+    const static bool pragma_crash =
+        llvm::sys::Process::GetEnv("CLICE_TEST_PRAGMA_CRASH").has_value();
+    pp_opts.DisablePragmaDebugCrash = !pragma_crash;
 
     // We don't want to write comment locations into PCM. They are racy and slow
     // to read back. We rely on dynamic index for the comments instead.

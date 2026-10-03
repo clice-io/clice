@@ -14,6 +14,8 @@
 
 #ifndef _WIN32
 #include <sys/resource.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 #include "lmdb.h"
@@ -115,6 +117,66 @@ bool is_corruption(int rc) {
 void remove_database_files(llvm::StringRef path) {
     vfs::remove(path);
     vfs::remove(path.str() + "-lock");
+}
+
+/// The file's length against the length its newest meta page vouches
+/// for: every page up to the last one it declares.
+struct Coverage {
+    std::uint64_t length;
+    std::uint64_t declared;
+};
+
+Coverage coverage(MDB_env* env) {
+    MDB_envinfo info;
+    mdb_env_info(env, &info);
+    MDB_stat db_stat;
+    mdb_env_stat(env, &db_stat);
+    std::uint64_t declared = (static_cast<std::uint64_t>(info.me_last_pgno) + 1) * db_stat.ms_psize;
+    mdb_filehandle_t fd;
+    mdb_env_get_fd(env, &fd);
+#ifdef _WIN32
+    LARGE_INTEGER length{};
+    ::GetFileSizeEx(fd, &length);
+    return {static_cast<std::uint64_t>(length.QuadPart), declared};
+#else
+    struct stat file{};
+    ::fstat(fd, &file);
+    return {static_cast<std::uint64_t>(file.st_size), declared};
+#endif
+}
+
+/// LMDB reads the file through a shared mapping, so a page referenced
+/// past the end of a truncated file faults (SIGBUS) instead of failing
+/// the read. A healthy file can be short too — a commit never writes the
+/// tail pages it allocated and freed again, and nothing references them —
+/// so the length alone cannot tell damage from health. Writers keep the
+/// file covering every declared page, zero-filling the gap: a healthy
+/// tree never reads those pages, and a damaged one reads zeros instead of
+/// faulting — a tree page as MDB_CORRUPTED, which the repair path
+/// handles, a blob as bytes its format check rejects. Read-only openers
+/// rely on it and take a short file for damage; a file written before
+/// this rule existed reads as damaged until a writer opens it. The write
+/// transaction keeps every other writer from growing the file meanwhile.
+int cover_declared_pages(MDB_env* env) {
+#ifdef _WIN32
+    // A writable mapping extends the file to the whole map size.
+    return 0;
+#else
+    MDB_txn* txn = nullptr;
+    if(int rc = mdb_txn_begin(env, nullptr, 0, &txn)) {
+        return rc;
+    }
+    int rc = 0;
+    if(auto [length, declared] = coverage(env); length < declared) {
+        mdb_filehandle_t fd;
+        mdb_env_get_fd(env, &fd);
+        if(::ftruncate(fd, static_cast<off_t>(declared)) != 0) {
+            rc = errno;
+        }
+    }
+    mdb_txn_abort(txn);
+    return rc;
+#endif
 }
 
 class LmdbDatabase final : public BlobDatabase {
@@ -224,6 +286,9 @@ public:
         }
         if(int rc = mdb_txn_commit(wtxn)) {
             return fail_all(rc, "commit");
+        }
+        if(int rc = cover_declared_pages(env)) {
+            LOG_WARN("Cannot extend the index database over its pages: {}", mdb_strerror(rc));
         }
         return {};
     }
@@ -462,7 +527,16 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
         // loop should retry; false = give up with persistence disabled.
         auto fail = [&](int rc, llvm::StringRef stage) {
             mdb_env_close(env);
-            if(!read_only && is_corruption(rc) && !repaired) {
+            if(read_only && is_corruption(rc)) {
+                LOG_WARN(
+                    "Index database at {} is damaged ({} failed: {}); run `clice index` to "
+                    "repair it",
+                    path,
+                    stage,
+                    mdb_strerror(rc));
+                return false;
+            }
+            if(is_corruption(rc) && !repaired) {
                 LOG_WARN("Index database at {} is corrupt ({} failed: {}); rebuilding",
                          path,
                          stage,
@@ -514,6 +588,25 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
         }
         if(rc != 0) {
             if(fail(rc, "snapshot")) {
+                continue;
+            }
+            return nullptr;
+        }
+        if(read_only) {
+            if(auto [length, declared] = coverage(env); length < declared) {
+                mdb_txn_abort(txn);
+                mdb_env_close(env);
+                LOG_WARN(
+                    "Index database at {} is shorter than its pages ({} of {} bytes); run "
+                    "`clice index` to repair it",
+                    path,
+                    length,
+                    declared);
+                return nullptr;
+            }
+        } else if(int cover_rc = cover_declared_pages(env)) {
+            mdb_txn_abort(txn);
+            if(fail(cover_rc, "cover")) {
                 continue;
             }
             return nullptr;

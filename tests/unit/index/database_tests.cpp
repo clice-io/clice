@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <print>
 
+#include "lmdb.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "index/database.h"
@@ -195,6 +196,108 @@ TEST_CASE(CorruptDatabaseRebuilds) {
     ASSERT_TRUE(db != nullptr);
     ASSERT_FALSE(db->contains(index::IndexBlobKind::CDB, "cdb"));
     ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
+}
+
+/// A database of `count` large blobs written over several commits, so
+/// its pages run well past the two meta pages; returns the file's path.
+std::string populated_database(CacheStore& store, int count) {
+    auto db = index::open_database(store, "");
+    require(db != nullptr, "opening the database failed");
+    for(int i = 0; i < count; i += 1) {
+        auto rejected =
+            db->write({blob(index::IndexBlobKind::Shard, std::to_string(i), large_value('t'))}, {});
+        require(rejected.empty(), "writing a blob failed");
+    }
+    return path::join(index::library_directory(store, ""), "index.mdb");
+}
+
+/// Cuts the file down to its two meta pages: the tree they point at is gone.
+void truncate_to_meta(llvm::StringRef file) {
+    int fd = -1;
+    require(!llvm::sys::fs::openFileForReadWrite(file,
+                                                 fd,
+                                                 llvm::sys::fs::CD_OpenExisting,
+                                                 llvm::sys::fs::OF_None),
+            "opening index.mdb failed");
+    require(!llvm::sys::fs::resize_file(fd, 2 * llvm::sys::Process::getPageSizeEstimate()),
+            "truncating index.mdb failed");
+    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+}
+
+TEST_CASE(TruncatedDatabaseRebuilds) {
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    truncate_to_meta(populated_database(store, 8));
+
+    auto db = index::open_database(store, "");
+    ASSERT_TRUE(db != nullptr);
+    ASSERT_FALSE(db->contains(index::IndexBlobKind::Shard, "7"));
+    ASSERT_TRUE(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
+    ASSERT_TRUE(db->advance_read_snapshot().has_value());
+    db->retire_old_snapshot();
+    ASSERT_TRUE(db->read(index::IndexBlobKind::CDB, "cdb").buffer->getBuffer() == "fresh");
+}
+
+TEST_CASE(ReadOnlyRefusesTruncated) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp, "ws");
+        truncate_to_meta(populated_database(store, 8));
+    }
+    auto store = open_store(tmp, "ws", /*read_only=*/true);
+    ASSERT_TRUE(index::open_database(store, "") == nullptr);
+}
+
+TEST_CASE(WritesCoverFreedTail) {
+    // A batch whose freed pages LMDB hands back to its free list is never
+    // written, and when they sit at the end the file stays shorter than
+    // the pages its meta declares — healthy, yet what a truncation looks
+    // like to a read-only opener. Every commit must cover them.
+    TempDir tmp;
+    std::string file;
+    {
+        auto store = open_store(tmp, "lmdb");
+        file = path::join(index::library_directory(store, ""), "index.mdb");
+        auto db = index::open_database(store, "");
+        ASSERT_TRUE(db != nullptr);
+        auto settle = [&] {
+            ASSERT_TRUE(db->advance_read_snapshot().has_value());
+            db->retire_old_snapshot();
+        };
+        ASSERT_TRUE(
+            db->write({blob(index::IndexBlobKind::Shard, "x", large_value('x'))}, {}).empty());
+        settle();
+        ASSERT_TRUE(db->write(
+                          {
+        },
+                          {{index::IndexBlobKind::Shard, "x"}})
+                        .empty());
+        settle();
+        ASSERT_TRUE(db->write(
+                          {
+                              blob(index::IndexBlobKind::CDB, "cdb", "small"),
+                              blob(index::IndexBlobKind::Shard, "h", std::string(1 << 16, 'h'))
+        },
+                          {{index::IndexBlobKind::Shard, "h"}})
+                        .empty());
+    }
+
+    MDB_env* env = nullptr;
+    ASSERT_EQ(mdb_env_create(&env), 0);
+    ASSERT_EQ(mdb_env_open(env, file.c_str(), MDB_NOSUBDIR | MDB_RDONLY, 0644), 0);
+    MDB_envinfo info;
+    mdb_env_info(env, &info);
+    MDB_stat db_stat;
+    mdb_env_stat(env, &db_stat);
+    mdb_env_close(env);
+    std::uint64_t size = 0;
+    ASSERT_FALSE(static_cast<bool>(llvm::sys::fs::file_size(file, size)));
+    EXPECT_TRUE(size >= (info.me_last_pgno + 1) * db_stat.ms_psize);
+
+    auto store = open_store(tmp, "lmdb", /*read_only=*/true);
+    auto db = index::open_database(store, "");
+    ASSERT_TRUE(db != nullptr);
+    ASSERT_TRUE(db->contains(index::IndexBlobKind::CDB, "cdb"));
 }
 
 TEST_CASE(DefaultOpenFileBounded) {

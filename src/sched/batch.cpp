@@ -60,10 +60,12 @@ kota::task<> wait_until_indexed(const IndexPump& pump) {
     }
 }
 
-/// The first signal asks for a graceful stop: in-flight files are
-/// abandoned, finished ones are persisted, and a rerun resumes from
-/// there. A second signal — of either watched kind, hence the shared
-/// flag — exits immediately.
+/// The first signal — of either watched kind, hence the shared flag —
+/// asks for a graceful stop: in-flight files are abandoned, finished ones
+/// are persisted, and a rerun resumes from there. A second Ctrl-C exits
+/// immediately; a repeated SIGTERM does not: supervisors send it more than
+/// once (GNU timeout signals the child, then its whole process group) and
+/// escalate with SIGKILL themselves.
 kota::task<> watch_signal(int signum, kota::cancellation_source& stop, bool& stop_requested) {
     auto watcher = kota::signal::create();
     if(!watcher || watcher->start(signum).has_error()) {
@@ -71,12 +73,13 @@ kota::task<> watch_signal(int signum, kota::cancellation_source& stop, bool& sto
     }
     while(true) {
         co_await watcher->wait();
-        if(stop_requested) {
+        if(!stop_requested) {
+            stop_requested = true;
+            LOG_INFO("Interrupted; saving indexing progress");
+            stop.cancel();
+        } else if(signum == SIGINT) {
             std::_Exit(130);
         }
-        stop_requested = true;
-        LOG_INFO("Interrupted; saving indexing progress");
-        stop.cancel();
     }
 }
 

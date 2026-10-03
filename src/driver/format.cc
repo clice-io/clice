@@ -1,5 +1,3 @@
-#include <print>
-
 #include "driver/driver.h"
 #include "sched/batch.h"
 #include "support/logging.h"
@@ -63,32 +61,32 @@ auto make_command() {
 
 int run_format(BatchFormatOptions options) {
     auto result = run_batch_format(options);
-    std::print(stderr, "{}", result.output);
+    write_output(stderr, result.output);
     if(result.exit_code == 2) {
-        std::println(stderr, "{}", result.error);
+        driver::println(stderr, "{}", result.error);
         return 2;
     }
     if(result.files == 0) {
-        std::println("No files to format under {}.", options.root);
+        driver::println("No files to format under {}.", options.root);
         return 0;
     }
     if(!options.check) {
-        std::println("Formatted {} file{} in {:.1f}s.",
-                     result.files,
-                     plural_s(result.files),
-                     result.seconds);
+        driver::println("Formatted {} file{} in {:.1f}s.",
+                        result.files,
+                        plural_s(result.files),
+                        result.seconds);
     } else if(result.unformatted.empty()) {
-        std::println("Checked {} file{} in {:.1f}s: all formatted.",
-                     result.files,
-                     plural_s(result.files),
-                     result.seconds);
+        driver::println("Checked {} file{} in {:.1f}s: all formatted.",
+                        result.files,
+                        plural_s(result.files),
+                        result.seconds);
     } else {
-        std::println("Checked {} file{} in {:.1f}s: {} need{} formatting.",
-                     result.files,
-                     plural_s(result.files),
-                     result.seconds,
-                     result.unformatted.size(),
-                     result.unformatted.size() == 1 ? "s" : "");
+        driver::println("Checked {} file{} in {:.1f}s: {} need{} formatting.",
+                        result.files,
+                        plural_s(result.files),
+                        result.seconds,
+                        result.unformatted.size(),
+                        result.unformatted.size() == 1 ? "s" : "");
     }
     return result.exit_code;
 }

@@ -827,10 +827,24 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
             .str();
     }
 
-    return constant.Val.getAsString(context, type);
+    /// Arrays show their first elements only, as in diagnostics.
+    clang::PrintingPolicy policy = context.getPrintingPolicy();
+    policy.EntireContentsOfLargeArray = false;
+    std::string value;
+    llvm::raw_string_ostream os(value);
+    constant.Val.printPretty(os, policy, type, &context);
+    return value;
 }
 
 namespace {
+
+/// An `#embed` or a string literal is a single token of any length.
+auto printed_length(const clang::Expr& expr, const clang::PrintingPolicy& policy) -> std::size_t {
+    std::string text;
+    llvm::raw_string_ostream os(text);
+    expr.printPretty(os, nullptr, policy);
+    return text.size();
+}
 
 /// Default argument might exist but be unavailable, in the case of unparsed
 /// arguments for example. This function returns the default argument if it is
@@ -994,7 +1008,8 @@ auto definition(const clang::Decl* decl,
                 /// Initializers might be huge and result in lots of memory allocations
                 /// in some catastrophic cases. Such long lists are not useful in hover
                 /// cards anyway.
-                if(tb->expandedTokens(init->getSourceRange()).size() > 200) {
+                if(tb->expandedTokens(init->getSourceRange()).size() > 200 ||
+                   printed_length(*init, policy) > 500) {
                     policy.SuppressInitializers = true;
                 }
             }

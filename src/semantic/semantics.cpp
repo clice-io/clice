@@ -615,10 +615,16 @@ private:
         semantics.file_begin = main_file_range.getBegin();
         semantics.pp_ignored.resize(semantics.tokens.size(), false);
 
-        // Tokens preprocessed to nothing (e.g. a disabled region or an empty
-        // macro invocation) never contribute to a selection. Only relevant
-        // when token ownership is recorded at all.
+        // Only relevant when token ownership is recorded at all.
         if(options.main_file_only) {
+            // claim_range() looks up every node's range. Indexed, a range
+            // bounded by expanded tokens resolves by location; otherwise
+            // each lookup binary-searches with isBeforeInTranslationUnit,
+            // whose cost grows with the macro expansions in the file.
+            unit.token_buffer().indexExpandedTokens();
+
+            // Tokens preprocessed to nothing (e.g. a disabled region or an
+            // empty macro invocation) never contribute to a selection.
             for(const clang::syntax::TokenBuffer::Expansion& expansion:
                 unit.expansions_overlapping(semantics.tokens)) {
                 if(expansion.Expanded.empty()) {
@@ -821,9 +827,12 @@ private:
             clang::SourceLocation start = expanded_tokens.front().location();
             clang::FileID fid = SM.getFileID(start);
             // Comparing SourceLocations against bounds is cheaper than getFileID().
+            // A file ID owns its one-past-the-end location too: the parentheses
+            // clang synthesizes around a braced macro argument (`F(T{1, 2})`)
+            // sit there.
             clang::SourceLocation limit = SM.getComposedLoc(fid, SM.getFileIDSize(fid));
             auto batch = expanded_tokens.take_while([&](const clang::syntax::Token& T) {
-                return T.location() >= start && T.location() < limit;
+                return T.location() >= start && T.location() <= limit;
             });
             assert(!batch.empty());
             expanded_tokens = expanded_tokens.drop_front(batch.size());

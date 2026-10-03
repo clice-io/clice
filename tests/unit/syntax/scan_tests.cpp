@@ -265,7 +265,7 @@ TEST_CASE(PreciseHonorsWorkingDirectory) {
     EXPECT_FALSE(result.includes[0].not_found);
 }
 
-TEST_CASE(RemapBypassesSharedCache) {
+TEST_CASE(MainFileNeverCached) {
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     auto main_path = TestVFS::path("main.cpp");
     vfs->add("main.cpp", R"(#include "header.h")");
@@ -274,17 +274,39 @@ TEST_CASE(RemapBypassesSharedCache) {
     SharedScanCache cache;
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
 
-    // A remapped scan must not seed the path-keyed cache with
-    // overlay-derived directives.
+    // The main file is lexed in full, never through cached directives:
+    // a remapped scan cannot seed the path-keyed cache with the overlay.
     auto remapped = scan_precise(args, TestVFS::root(), llvm::StringRef("int x = 1;"), &cache, vfs);
     EXPECT_TRUE(remapped.includes.empty());
     EXPECT_FALSE(cache.entries.contains(main_path));
 
-    // Poisoned, this scan would hit the overlay's no-directives entry
-    // and miss the disk include.
     auto disk = scan_precise(args, TestVFS::root(), {}, &cache, vfs);
     ASSERT_EQ(disk.includes.size(), 1u);
     EXPECT_TRUE(disk.includes[0].path.find("header.h") != std::string::npos);
+    EXPECT_FALSE(cache.entries.contains(main_path));
+}
+
+TEST_CASE(DirectiveCutAtEnd) {
+    // Typing leaves an `#if(` cut off at the end of the buffer; behind a
+    // forced include, clang's directives lexer crashed on it.
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    auto forced = TestVFS::path("empty.h");
+    vfs->add("main.cpp");
+    vfs->add("empty.h");
+
+    auto args = std::vector<const char*>{"clang++",
+                                         "-std=c++20",
+                                         "-include",
+                                         forced.c_str(),
+                                         main_path.c_str()};
+    auto result =
+        scan_precise(args,
+                     TestVFS::root(),
+                     llvm::StringRef("#define VERSION_CODE()\r\n  #if(MSVC)VERSION_CODE("),
+                     nullptr,
+                     vfs);
+    EXPECT_TRUE(result.modules.empty());
 }
 
 };  // TEST_SUITE(Scan)

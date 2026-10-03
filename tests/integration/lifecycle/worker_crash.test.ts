@@ -21,9 +21,13 @@ function poison(n: number): string {
 }
 
 /// The worker crashes are the point here: the session opts out of the
-/// anomaly gate and Debug builds must not trap on them.
+/// anomaly gate, Debug builds must not trap on them, and the compiler keeps
+/// `#pragma clang __debug crash` live.
 function crashing(env: Record<string, string> = {}) {
-    return { allowAnomaly: true, env: { CLICE_ANOMALY_NO_TRAP: "1", ...env } };
+    return {
+        allowAnomaly: true,
+        env: { CLICE_ANOMALY_NO_TRAP: "1", CLICE_TEST_PRAGMA_CRASH: "1", ...env },
+    };
 }
 
 function text(diagnostic: proto.Diagnostic): string {

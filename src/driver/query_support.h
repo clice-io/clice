@@ -6,10 +6,10 @@
 
 #include <expected>
 #include <format>
-#include <print>
 #include <string>
 #include <vector>
 
+#include "driver/driver.h"
 #include "index/symbol_query.h"
 #include "vfs/file_system.h"
 #include "vfs/path.h"
@@ -45,7 +45,7 @@ std::string render_json(const T& value) {
 
 template <typename T>
 void print_json(const T& value) {
-    std::println("{}", render_json(value));
+    driver::println("{}", render_json(value));
 }
 
 /// The symbol locator the flags of `opts` spell, as a name query:

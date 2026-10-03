@@ -891,6 +891,7 @@ static kota::task<> accept_connections(MasterServer& server,
 }
 
 int run_serve_mode(const ServerOptions& opts, const char* self_path) {
+    logging::options.never_block_stderr = true;
     logging::stderr_logger("master", logging::options);
 
     auto mode = opts.mode.value_or(ServerMode::Pipe);

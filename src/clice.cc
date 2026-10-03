@@ -1,5 +1,4 @@
 #include <csignal>
-#include <print>
 
 #include "version.h"
 #include "driver/driver.h"
@@ -42,7 +41,7 @@ int main(int argc, const char** argv) {
                                   "A C++ development toolkit built on LLVM/Clang");
 
     auto print_root_usage = [&] {
-        std::println("usage: clice <command> [<args>]\n");
+        driver::println("usage: clice <command> [<args>]\n");
         driver::print_usage(clice);
     };
 
@@ -66,7 +65,7 @@ int main(int argc, const char** argv) {
     });
 
     if(!args.empty() && (args[0] == "--version" || args[0] == "-v")) {
-        std::println("clice version {}", clice::version);
+        driver::println("clice version {}", clice::version);
         return 0;
     }
 
