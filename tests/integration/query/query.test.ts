@@ -72,6 +72,20 @@ function query<T>(
     return { ...(JSON.parse(run.stdout) as Answer<T>), status: run.status };
 }
 
+/// The references to the symbol at `place`, declarations included, as
+/// sorted `file:line` sites.
+function referenceSites(ws: Workspace, place: string): string[] {
+    const refs = query<{ references: { file: string; line: number }[] }>(
+        ws,
+        "references",
+        "--name",
+        place,
+        "--include-declaration",
+    );
+    expect(refs.status, refs.error).toBe(0);
+    return refs.result!.references.map((r) => `${basename(r.file)}:${r.line}`).sort();
+}
+
 async function waitSymbol(client: CliceClient, name: string): Promise<boolean> {
     return waitUntil(
         async () => {
@@ -318,21 +332,10 @@ test("references reach internal and local symbols", ({ session }) => {
     ws.pinCacheDir();
     expect(runIndex(ws).status).toBe(0);
 
-    const sites = (place: string) => {
-        const refs = query<{ references: { file: string; line: number }[] }>(
-            ws,
-            "references",
-            "--name",
-            place,
-            "--include-declaration",
-        );
-        expect(refs.status, refs.error).toBe(0);
-        return refs.result!.references.map((r) => `${basename(r.file)}:${r.line}`).sort();
-    };
     const helper = ["a.cpp:2", "b.cpp:2", "util.h:2"];
-    expect(sites("util.h:2:12")).toEqual(helper);
-    expect(sites("a.cpp:2:18")).toEqual(helper);
-    expect(sites("b.cpp:2:15")).toEqual(["b.cpp:2", "b.cpp:2", "b.cpp:2"]);
+    expect(referenceSites(ws, "util.h:2:12")).toEqual(helper);
+    expect(referenceSites(ws, "a.cpp:2:18")).toEqual(helper);
+    expect(referenceSites(ws, "b.cpp:2:15")).toEqual(["b.cpp:2", "b.cpp:2", "b.cpp:2"]);
 
     const outline = (file: string) =>
         query<{ symbols: { name: string; symbolId: string }[] }>(
@@ -356,6 +359,26 @@ test("references reach internal and local symbols", ({ session }) => {
     );
     expect(byId.status, byId.error).toBe(0);
     expect(byId.result?.name).toBe("helper");
+});
+
+test("references reach enumerators of every file", ({ session }) => {
+    const unnamed = session.tmpdir();
+    unnamed.write("flags.h", "#pragma once\nenum { flag = 1 };\n");
+    unnamed.write("a.cpp", '#include "flags.h"\nint a() { return flag; }\n');
+    unnamed.write("b.cpp", '#include "flags.h"\nint b() { return flag * 2; }\n');
+    unnamed.writeCDB(["a.cpp", "b.cpp"]);
+    unnamed.pinCacheDir();
+    expect(runIndex(unnamed).status).toBe(0);
+    expect(referenceSites(unnamed, "a.cpp:2:18")).toEqual(["a.cpp:2", "b.cpp:2", "flags.h:2"]);
+
+    const c = session.tmpdir();
+    c.write("color.h", "#pragma once\nenum color { red };\n");
+    c.write("a.c", '#include "color.h"\nint a(void) { return red; }\n');
+    c.write("b.c", '#include "color.h"\nint b(void) { return red + 1; }\n');
+    c.writeCDB(["a.c", "b.c"], { std: "c17", extraArgs: ["-x", "c"] });
+    c.pinCacheDir();
+    expect(runIndex(c).status).toBe(0);
+    expect(referenceSites(c, "a.c:2:22")).toEqual(["a.c:2", "b.c:2", "color.h:2"]);
 });
 
 test("context of a name opening its line", ({ session }) => {
