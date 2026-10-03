@@ -96,6 +96,31 @@ async function waitSymbol(client: CliceClient, name: string): Promise<boolean> {
     );
 }
 
+test("truncated index rebuilds", ({ session }) => {
+    const ws = writeProject(session);
+    expect(runIndex(ws).status).toBe(0);
+    fs.truncateSync(`${ws.indexLibrary()}/index.mdb`, 8192);
+
+    // A reader cannot repair the file: it says so instead of reading past
+    // the end, and the next batch run rebuilds the index.
+    const reader = runClice(
+        "query",
+        "--workspace",
+        ws.root,
+        "--method",
+        "symbolSearch",
+        "--query",
+        "add",
+    );
+    expect(reader.status).toBe(1);
+    expect(reader.stderr).toContain("run `clice index` to rebuild it");
+
+    expect(indexedUnits(ws)).toBe(1);
+    const search = query<{ symbols: { name: string }[] }>(ws, "symbolSearch", "--query", "add");
+    expect(search.status).toBe(0);
+    expect(search.result!.symbols.map((s) => s.name)).toContain("add");
+});
+
 test("answers from the persisted index", ({ session }) => {
     const ws = writeProject(session);
     expect(runIndex(ws).status).toBe(0);
