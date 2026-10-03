@@ -1,5 +1,4 @@
 #include <memory>
-#include <print>
 #include <span>
 #include <string>
 #include <vector>
@@ -318,7 +317,7 @@ void add_analyze(kota::deco::cli::SubCommander& root, int& exit_code) {
         "clice analyze <command> [<args>]",
         "Analyses whose facts an agent turns into refactoring decisions");
     auto usage = [commander = analyze.get(), &exit_code] {
-        std::println("usage: clice analyze <command> [<args>]\n");
+        driver::println("usage: clice analyze <command> [<args>]\n");
         print_usage(*commander);
         exit_code = 0;
     };

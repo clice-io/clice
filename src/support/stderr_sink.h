@@ -85,11 +85,4 @@ private:
     std::size_t dropped_unreported = 0;
 };
 
-/// Undo StderrSink's non-blocking switch on a pipe/socket fd. Workers call
-/// this right after their startup logger: their stderr is reserved for
-/// third-party crash output (assertion failures, sanitizer reports) whose
-/// writers expect blocking semantics, and its reader is the master's
-/// always-running drain — a trusted party, unlike a client.
-void restore_pipe_blocking(int fd = 2);
-
 }  // namespace clice::logging

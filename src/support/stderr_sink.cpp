@@ -48,21 +48,6 @@ static bool set_pipe_nonblocking(int fd) {
 #endif
 }
 
-void restore_pipe_blocking(int fd) {
-    if(!externally_drained(fd)) {
-        return;
-    }
-#ifdef _WIN32
-    HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
-    DWORD mode = PIPE_READMODE_BYTE | PIPE_WAIT;
-    ::SetNamedPipeHandleState(handle, &mode, nullptr, nullptr);
-#else
-    if(int flags = ::fcntl(fd, F_GETFL); flags >= 0) {
-        ::fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
-    }
-#endif
-}
-
 StderrSink::StderrSink(int fd, std::size_t capacity) : fd(fd), capacity(capacity) {
     // A pipe that cannot be switched must never be written: a blocking
     // write to it is exactly the wedge this sink exists to prevent.

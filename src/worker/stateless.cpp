@@ -10,7 +10,6 @@
 #include "feature/feature.h"
 #include "index/tu_index.h"
 #include "support/logging.h"
-#include "support/stderr_sink.h"
 #include "vfs/file_system.h"
 #include "worker/common.h"
 #include "worker/crash_report.h"
@@ -537,12 +536,6 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 #endif
 
     logging::stderr_logger(worker_name, logging::options);
-    // A worker's stderr reader is the master's always-running drain — a
-    // trusted party — and the fd is reserved for third-party crash output
-    // (assertion failures, sanitizer reports) whose writers expect blocking
-    // semantics. Undo the sink's non-blocking switch unconditionally: with
-    // no log directory the file_logger below never runs.
-    logging::restore_pipe_blocking();
     if(!log_dir.empty()) {
         // File only: worker stderr is reserved for crash/unexpected output,
         // which the master relays into its own log (see logging taxonomy).

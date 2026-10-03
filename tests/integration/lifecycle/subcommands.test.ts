@@ -1,4 +1,5 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { waitUntil, type CliceClient } from "@clice/tools/client";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
@@ -72,6 +73,58 @@ test("index subcommand builds and resumes", ({ session }) => {
     expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
     expect(stats.stdout).toContain("Translation units: 1");
 });
+
+test.skipIf(process.platform === "win32")(
+    "repeated SIGTERM saves progress",
+    async ({ session }) => {
+        const ws = session.tmpdir();
+        ws.pinCacheDir();
+        const units = Array.from({ length: 24 }, (_, i) => `unit${i}.cpp`);
+        for (const [i, unit] of units.entries()) {
+            ws.write(unit, `#include <map>\n#include <string>\nint unit${i}() { return ${i}; }\n`);
+        }
+        ws.writeCDB(units);
+
+        // GNU timeout signals the child, then its whole process group: the
+        // second SIGTERM must not turn the graceful stop into an exit that
+        // throws the finished units away.
+        const child = spawn(
+            cliceExecutable(),
+            ["index", "--workspace", ws.root, "--workers", "1"],
+            {
+                stdio: ["ignore", "pipe", "pipe"],
+            },
+        );
+        let stdout = "";
+        child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
+        const exited = once(child, "exit");
+        let stderr = "";
+        const signalled = new Promise<void>((resolve) => {
+            child.stderr.on("data", (chunk: Buffer) => {
+                const before = stderr;
+                stderr += chunk.toString();
+                if (
+                    !before.includes("[perf:index] progress=") &&
+                    stderr.includes("[perf:index] progress=")
+                ) {
+                    child.kill("SIGTERM");
+                }
+                if (!before.includes("Interrupted;") && stderr.includes("Interrupted;")) {
+                    child.kill("SIGTERM");
+                    resolve();
+                }
+            });
+        });
+        await signalled;
+        const [code] = await exited;
+        expect(code, `stderr: ${stderr}`).toBe(130);
+        expect(stdout).toContain("progress saved");
+
+        const stats = runClice("index", "--stats", "--workspace", ws.root);
+        expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
+        expect(stats.stdout).toMatch(/Translation units: [1-9]/);
+    },
+);
 
 test("index reports header losing host", async ({ session }) => {
     const ws = session.tmpdir();
@@ -171,4 +224,45 @@ test("lint with index persists both", ({ session }) => {
     const stats = runClice("index", "--stats", "--workspace", ws.root);
     expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
     expect(stats.stdout).toContain("Translation units: 1");
+});
+
+function bigSource(): string {
+    return Array.from(
+        { length: 1500 },
+        (_, i) => `int function_number_${i}(int a, int b) { return a + b; }\n`,
+    ).join("");
+}
+
+test.skipIf(process.platform === "win32")("output survives merged stderr", ({ session }) => {
+    // With `2>&1` stdout shares stderr's file description, which the
+    // serving master alone switches to non-blocking: a command writing
+    // more than a pipe holds must still deliver it all.
+    const ws = session.tmpdir();
+    ws.write("big.cpp", bigSource());
+    const run = spawnSync(
+        "sh",
+        ["-c", 'exec "$0" "$@" 2>&1', cliceExecutable(), "inspect", "document_symbol"].concat([
+            ws.path("big.cpp"),
+            "--flags",
+            '["-std=c++23"]',
+        ]),
+        { encoding: "utf8", timeout: 60_000, maxBuffer: 64 * 1024 * 1024 },
+    );
+    expect(run.status, run.stdout.slice(-2000)).toBe(0);
+    expect(run.stdout).toContain("function_number_1499");
+});
+
+test.skipIf(process.platform === "win32")("closed reader ends quietly", async ({ session }) => {
+    // `clice … | head`: the reader goes away and the command ends the way
+    // any command-line tool does, by SIGPIPE.
+    const ws = session.tmpdir();
+    ws.write("big.cpp", bigSource());
+    const child = spawn(
+        cliceExecutable(),
+        ["inspect", "document_symbol", ws.path("big.cpp"), "--flags", '["-std=c++23"]'],
+        { stdio: ["ignore", "pipe", "ignore"] },
+    );
+    child.stdout.once("data", () => child.stdout.destroy());
+    const [code, signal] = await once(child, "exit");
+    expect({ code, signal }).toEqual({ code: null, signal: "SIGPIPE" });
 });

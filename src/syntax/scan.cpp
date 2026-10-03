@@ -162,6 +162,9 @@ public:
 
     std::optional<llvm::ArrayRef<clang::dependency_directives_scan::Directive>>
         operator()(clang::FileEntryRef file) override {
+        if(file == main_file) {
+            return std::nullopt;
+        }
         auto path = file.getFileEntry().tryGetRealPathName();
         if(path.empty()) {
             path = file.getName();
@@ -211,6 +214,13 @@ public:
 
         return llvm::ArrayRef(entry_ptr->directives);
     }
+
+    /// Lexed by clang's ordinary lexer, not from its directives: the main
+    /// file is the text being typed, and the directives lexer breaks on
+    /// half-typed directives (an `#if(` cut off at the end of the buffer,
+    /// `import <header>;`) where the ordinary lexer reports an error — the
+    /// scan runs in the master process, where a crash ends the server.
+    clang::OptionalFileEntryRef main_file;
 
 private:
     SharedScanCache* cache;
@@ -293,10 +303,8 @@ private:
 };
 
 /// The setup every preprocessor-driven scan shares: the instance from the
-/// command (diagnostics ignored), the directives getter — a remapped main file bypasses the
-/// path-keyed cache, or it would read a prior on-disk scan of the same
-/// path and poison it for later ones — the target, and the main file
-/// entered through a preprocess-only action. `body` runs on the entered
+/// command (diagnostics ignored), the directives getter, the target, and
+/// the main file entered through a preprocess-only action. `body` runs on the entered
 /// preprocessor; the module declaration it reached is read into `result`
 /// before the source file is ended.
 void scan_with_preprocessor(
@@ -343,8 +351,8 @@ void scan_with_preprocessor(
     instance->getDiagnostics().setSuppressAllDiagnostics(true);
     instance->createFileManager();
 
-    auto getter = std::make_unique<ScanDirectivesGetter>(content ? nullptr : cache,
-                                                         instance->getFileManager());
+    auto getter = std::make_unique<ScanDirectivesGetter>(cache, instance->getFileManager());
+    auto& directives = *getter;
     instance->setDependencyDirectivesGetter(std::move(getter));
 
     if(!instance->createTarget()) {
@@ -355,6 +363,8 @@ void scan_with_preprocessor(
     if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
         return;
     }
+    auto& sources = instance->getSourceManager();
+    directives.main_file = sources.getFileEntryRefForID(sources.getMainFileID());
 
     body(*instance, *action);
 

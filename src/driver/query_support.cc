@@ -39,11 +39,11 @@ std::expected<std::vector<std::string>, std::string> refresh(const Spelling& wor
         case index::WriterProbe::State::Free: break;
     }
     auto report_progress = [](const BatchProgress& progress) {
-        std::println(stderr,
-                     "indexing {}/{} units, {} failed",
-                     progress.completed,
-                     progress.total,
-                     progress.failed);
+        driver::println(stderr,
+                        "indexing {}/{} units, {} failed",
+                        progress.completed,
+                        progress.total,
+                        progress.failed);
     };
     auto result = run_batch_index({
         .root = workspace,

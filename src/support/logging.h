@@ -103,6 +103,12 @@ using Level = spdlog::level::level_enum;
 struct Options {
     Level level = Level::info;
     bool replay_console = true;
+    /// stderr's reader is an editor, which must not be able to block the
+    /// server: lines it does not take are buffered, then dropped (see
+    /// StderrSink). Every other process writes stderr blocking, as any
+    /// command-line tool does — its reader is a terminal, a pipeline, or
+    /// the master's drain.
+    bool never_block_stderr = false;
 };
 
 extern Options options;
@@ -114,8 +120,9 @@ void stderr_logger(std::string_view name, const Options& options);
 std::string session_log_directory(std::string_view logging_dir);
 
 /// Log to <dir>/<name>.log, replaying lines buffered by stderr_logger.
-/// With mirror_stderr, every line is also written to stderr — the master
-/// uses this so editors can show its log; workers must pass false (their
+/// With mirror_stderr, every line is also written to stderr through the
+/// sink stderr_logger chose — the master uses this so editors can show its
+/// log; workers must pass false (their
 /// stderr is reserved for crash output, relayed by the pool).
 /// Returns false when the log directory or file cannot be set up — logging
 /// then stays on the previously installed sinks.

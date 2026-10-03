@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <print>
 #include <string>
 #include <vector>
 
@@ -273,7 +272,7 @@ int run_query(const QueryOptions& opts, const char* self_path) {
         return 1;
     }
     auto reply = answer(project, contexts, opts, failed, dropped);
-    std::println("{}", reply.json);
+    driver::println("{}", reply.json);
     return reply.exit_code;
 }
 
