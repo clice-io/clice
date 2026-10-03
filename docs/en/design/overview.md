@@ -150,7 +150,7 @@ See [Multi-process Architecture](multi-process.md).
 
 ### `src/driver/` — Subcommands
 
-Entry points for the `clice` binary: `serve` (the LSP server), `worker`, `index` (batch indexing), `lint` (batch clang-tidy), `inspect`, `format`, `query`, and `doc`.
+Entry points for the `clice` binary: `serve` (the LSP server), `worker`, `index` (batch indexing), `lint` (batch clang-tidy), `inspect`, `format`, `query`, `refactor`, and `analyze`.
 
 ## Inter-module Relationships
 

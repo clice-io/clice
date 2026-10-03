@@ -150,7 +150,7 @@ LSP 功能的具体实现。每个功能接收 `CompilationUnitRef`，返回对�
 
 ### `src/driver/` — 子命令
 
-`clice` 二进制程序的入口点：`serve`（LSP 服务器）、`worker`、`index`（批量索引）、`lint`（批量 clang-tidy）、`inspect`、`format`、`query` 和 `doc`。
+`clice` 二进制程序的入口点：`serve`（LSP 服务器）、`worker`、`index`（批量索引）、`lint`（批量 clang-tidy）、`inspect`、`format`、`query`、`refactor` 和 `analyze`。
 
 ## 模块间关系
 
