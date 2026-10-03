@@ -101,23 +101,23 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
                  clang::TemplateTemplateParmDecl>(decl)) {
         return SymbolScope::FileLocal;
     }
-    // An alias has no linkage of its own, yet names one entity wherever its
-    // scope reaches: at namespace and class scope it is global (TU-local in
-    // an anonymous namespace), inside a function local.
-    if(llvm::isa<clang::TypedefNameDecl, clang::NamespaceAliasDecl>(decl)) {
-        if(decl->getParentFunctionOrMethod()) {
-            return SymbolScope::FileLocal;
-        }
-        return decl->isInAnonymousNamespace() ? SymbolScope::TULocal : SymbolScope::External;
-    }
     // Module linkage reaches the module's other units, as external
     // linkage reaches every unit.
     auto linkage = decl->getFormalLinkage();
-    if(linkage == clang::Linkage::None)
-        return SymbolScope::FileLocal;
-    if(linkage == clang::Linkage::Internal)
+    if(linkage == clang::Linkage::Internal) {
         return SymbolScope::TULocal;
-    return SymbolScope::External;
+    }
+    if(linkage != clang::Linkage::None) {
+        return SymbolScope::External;
+    }
+    // A name without linkage still reaches as far as its scope does: an
+    // alias, an enumerator of an unnamed enum (every enumerator in C) or a
+    // member of an unnamed class is named from every file including its
+    // header. Only a function's own declarations stay in their file.
+    if(decl->getParentFunctionOrMethod() || llvm::isa<clang::ParmVarDecl>(decl)) {
+        return SymbolScope::FileLocal;
+    }
+    return decl->isInAnonymousNamespace() ? SymbolScope::TULocal : SymbolScope::External;
 }
 
 NameForm name_form_of(clang::DeclarationName name) {

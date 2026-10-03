@@ -321,6 +321,14 @@ public:
         }
     }
 
+    void Defined(const clang::Token& name,
+                 const clang::MacroDefinition& definition,
+                 clang::SourceRange) override {
+        if(auto def = definition.getMacroInfo()) {
+            add_macro(def, MacroRef::Ref, name.getLocation());
+        }
+    }
+
     void MacroUndefined(const clang::Token& name,
                         const clang::MacroDefinition& md,
                         const clang::MacroDirective* undef) override {

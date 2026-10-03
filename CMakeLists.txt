@@ -104,6 +104,7 @@ else()
     target_compile_options(clice_options INTERFACE
         -fno-rtti
         -fno-exceptions
+        -Werror=return-type
         -Wno-deprecated-declarations
         $<$<COMPILE_LANG_AND_ID:CXX,Clang,AppleClang>:-Wno-undefined-inline>
     )
