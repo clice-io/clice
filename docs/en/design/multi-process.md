@@ -145,6 +145,8 @@ A first crash right after an edit stays silent, since it most likely comes from 
 
 Background indexing follows the same rule without a warning: a file whose own index run crashes its worker is skipped until it changes.
 
+A precompiled preamble or a module whose build fails on errors in the code is not built again while nothing it read or looked for has changed: the documents using it compile without it and report the errors. It is built again once one of those files changes, once the preamble's text or the compile flags change, and whenever a document using it is saved.
+
 ### Worker Restarts
 
 1. The master process detects the exit, takes the dead worker's documents off the routing table at once, and launches a replacement — immediately for an occasional crash, with exponential backoff for a crash loop
