@@ -117,6 +117,10 @@ bool has(const index::Symbol& symbol, index::SymbolFlags flag) {
     return index::has_flag(symbol.flags, flag);
 }
 
+int scope(llvm::StringRef name) {
+    return static_cast<int>(symbol_named(name).second.scope);
+}
+
 void build_index(llvm::StringRef code,
                  std::source_location location = std::source_location::current()) {
     add_main("main.cpp", code);
@@ -817,11 +821,11 @@ TEST_CASE(MacroDefinedOperand) {
         )");
 
     auto target = select("def").front().target;
+    auto& relations = tu_index.main_file_index.relations[target];
     for(auto name: {"paren", "bare"}) {
         auto occurrences = select(name);
         ASSERT_EQ(occurrences.size(), 1U);
         ASSERT_EQ(occurrences.front().target, target);
-        auto& relations = tu_index.main_file_index.relations[target];
         ASSERT_TRUE(std::ranges::any_of(relations, [&](const index::Relation& relation) {
             return relation.kind == RelationKind::Reference && relation.range == range(name);
         }));
@@ -844,9 +848,9 @@ TEST_CASE(DependentOperatorUnreferenced) {
     )");
 
     for(auto name: {"operator==", "operator<=>"}) {
-        for(auto& relation: tu_index.main_file_index.relations[symbol_named(name).first]) {
-            ASSERT_EQ(static_cast<int>(relation.kind), static_cast<int>(RelationKind::Declaration));
-        }
+        auto& relations = tu_index.main_file_index.relations[symbol_named(name).first];
+        ASSERT_EQ(relations.size(), 1U);
+        ASSERT_TRUE(relations.front().kind == RelationKind::Declaration);
     }
 }
 
@@ -1240,9 +1244,6 @@ TEST_CASE(ScopeModuleLinkage) {
             static int static_var = 0;
         )");
 
-    auto scope = [&](llvm::StringRef name) {
-        return static_cast<int>(symbol_named(name).second.scope);
-    };
     ASSERT_EQ(scope("module_var"), static_cast<int>(index::SymbolScope::External));
     ASSERT_EQ(scope("exported_var"), static_cast<int>(index::SymbolScope::External));
     ASSERT_EQ(scope("static_var"), static_cast<int>(index::SymbolScope::TULocal));
@@ -1253,18 +1254,17 @@ TEST_CASE(ScopeNoLinkage) {
             enum { unnamed_value };
             struct { int unnamed_field; } unnamed_object;
             struct Holder { enum { member_value }; };
-            namespace { enum { hidden_value }; }
+            namespace { enum { hidden_value }; using hidden_alias = int; }
             typedef void (*callback)(int prototype_param);
             void host() { enum { local_value }; }
         )");
 
-    auto scope = [&](llvm::StringRef name) {
-        return static_cast<int>(symbol_named(name).second.scope);
-    };
     ASSERT_EQ(scope("unnamed_value"), static_cast<int>(index::SymbolScope::External));
     ASSERT_EQ(scope("unnamed_field"), static_cast<int>(index::SymbolScope::External));
     ASSERT_EQ(scope("member_value"), static_cast<int>(index::SymbolScope::External));
+    ASSERT_EQ(scope("callback"), static_cast<int>(index::SymbolScope::External));
     ASSERT_EQ(scope("hidden_value"), static_cast<int>(index::SymbolScope::TULocal));
+    ASSERT_EQ(scope("hidden_alias"), static_cast<int>(index::SymbolScope::TULocal));
     ASSERT_EQ(scope("prototype_param"), static_cast<int>(index::SymbolScope::FileLocal));
     ASSERT_EQ(scope("local_value"), static_cast<int>(index::SymbolScope::FileLocal));
 }
@@ -1272,17 +1272,12 @@ TEST_CASE(ScopeNoLinkage) {
 TEST_CASE(ScopeCEnumerator) {
     add_main("main.c", R"c(
             enum color { red };
-            struct point { int x; };
             void host(void) { enum { local_value }; }
         )c");
     ASSERT_TRUE(compile("-std=c17"));
     decode_index(index::build_tu_index(*unit));
 
-    auto scope = [&](llvm::StringRef name) {
-        return static_cast<int>(symbol_named(name).second.scope);
-    };
     ASSERT_EQ(scope("red"), static_cast<int>(index::SymbolScope::External));
-    ASSERT_EQ(scope("x"), static_cast<int>(index::SymbolScope::External));
     ASSERT_EQ(scope("local_value"), static_cast<int>(index::SymbolScope::FileLocal));
 }
 

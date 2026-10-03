@@ -62,7 +62,7 @@ public:
     /// overloads whose parameter list can accept the call's argument count.
     /// Full overload resolution needs conversion rules (Sema territory);
     /// arity is the safe, conversion-free subset of it. A dependent
-    /// operator (`a == b`) has none: instantiation adds the operands'
+    /// operator (`a == b`) gets no candidates: instantiation adds the operands'
     /// associated operators and the built-in ones, so the operators its
     /// definition happened to see say nothing, and differ between the
     /// units including it.

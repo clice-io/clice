@@ -113,7 +113,8 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
     // A name without linkage still reaches as far as its scope does: an
     // alias, an enumerator of an unnamed enum (every enumerator in C) or a
     // member of an unnamed class is named from every file including its
-    // header. Only a function's own declarations stay in their file.
+    // header. Only a function's own declarations and a prototype's
+    // parameters stay in their file.
     if(decl->getParentFunctionOrMethod() || llvm::isa<clang::ParmVarDecl>(decl)) {
         return SymbolScope::FileLocal;
     }
