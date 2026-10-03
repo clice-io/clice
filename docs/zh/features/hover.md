@@ -59,13 +59,13 @@ tests/snap/hover/symbol_information/04_definition_rendering.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#710 -->
+<!-- BEGIN CAPABILITY: supported clangd#710 -->
 
 **初始化器截断**
 
 过大的初始化器会截断显示，不会完整呈现
 
-显示的定义省略了初始化器，但求值后的 `Value` 字段仍会列出全部 256 个元素。
+显示的定义省略了初始化器，求值后的 `Value` 字段只显示 256 个元素中的前十个。
 
 ```snap
 tests/snap/hover/symbol_information/05_initializer_truncation.cpp

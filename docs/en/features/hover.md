@@ -59,14 +59,14 @@ tests/snap/hover/symbol_information/04_definition_rendering.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#710 -->
+<!-- BEGIN CAPABILITY: supported clangd#710 -->
 
 **Initializer truncation**
 
 Huge initializers render truncated, not in full
 
-The rendered definition omits the initializer, but the evaluated
-`Value` field still spells out all 256 elements.
+The rendered definition omits the initializer, and the evaluated
+`Value` field shows the first ten of its 256 elements.
 
 ```snap
 tests/snap/hover/symbol_information/05_initializer_truncation.cpp
