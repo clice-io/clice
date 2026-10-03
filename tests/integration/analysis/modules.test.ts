@@ -543,6 +543,38 @@ test("edge lists entities and users", ({ session }) => {
     expect(str?.users).toContain("util/clock.h:3");
 });
 
+test("names a pasted table produces", ({ session }) => {
+    const ws = session.tmpdir();
+    const external = session.tmpdir();
+    external.write("kinds.inc", "KIND(red)\nKIND(green)\n");
+    ws.pinCacheDir();
+    ws.write("core/color.h", lines("#pragma once", "enum Color { red, green, blue };"));
+    ws.write(
+        "app/name.cpp",
+        lines(
+            '#include "core/color.h"',
+            "const char* name(Color color) {",
+            "    switch(color) {",
+            "#define KIND(x) case x: return #x;",
+            '#include "kinds.inc"',
+            "#undef KIND",
+            '    default: return "";',
+            "    }",
+            "}",
+        ),
+    );
+    ws.writeEntries([["app/name.cpp", [`-I${ws.root}`, `-I${external.root}`]]]);
+    const run = runClice("index", "--workspace", ws.root, "--workers", "2");
+    expect(run.status, `stderr: ${run.stderr}`).toBe(0);
+
+    const detail = analyze(ws, "--view", "edge", "--from", "app", "--to", "core") as {
+        entities: { entity: string }[];
+    };
+    const named = (enumerator: string) =>
+        detail.entities.some((entry) => entry.entity.endsWith(enumerator));
+    expect([named("red"), named("green"), named("blue")]).toEqual([true, true, false]);
+});
+
 test("obstacles to the rewrite", ({ session }) => {
     const ws = indexed(session);
     const obstacles = analyze(ws, "--view", "obstacles") as Obstacles;

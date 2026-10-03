@@ -623,9 +623,9 @@ tests/snap/hover/documentation/12_comment_suppression.cpp
 
 **各处均显示定义文本**
 
-在 `#define`、使用处、`#ifdef` 和 `#undef` 处均显示宏定义
+在 `#define`、使用处、`#ifdef`、`defined` 和 `#undef` 处均显示宏定义
 
-无论宏名称出现在何处，其悬停卡片都会显示对应的 `#define` 文本：包括宏定义本身、使用处、`#ifdef` 条件判断处以及 `#undef` 处。
+无论宏名称出现在何处，其悬停卡片都会显示对应的 `#define` 文本：包括宏定义本身、使用处、`#ifdef` 条件判断处、`defined` 检测处以及 `#undef` 处。
 
 ```snap
 tests/snap/hover/macro_hover/01_macro_definition_sites.cpp

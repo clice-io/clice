@@ -672,10 +672,11 @@ tests/snap/hover/documentation/12_comment_suppression.cpp
 
 **Definition text at every site**
 
-`#define`, use, `#ifdef` and `#undef` all show the macro's definition
+`#define`, use, `#ifdef`, `defined` and `#undef` all show the macro's definition
 
 A macro's hover card carries its `#define` text wherever the name
-appears: the definition itself, a use, an `#ifdef` guard and an `#undef`.
+appears: the definition itself, a use, an `#ifdef` guard, a `defined`
+test and an `#undef`.
 
 ```snap
 tests/snap/hover/macro_hover/01_macro_definition_sites.cpp
