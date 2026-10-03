@@ -27,6 +27,7 @@
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
+#include "clang/Tooling/Syntax/Tokens.h"
 
 namespace clice::display {
 
@@ -837,6 +838,14 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
 
 namespace {
 
+/// An `#embed` or a string literal is a single token of any length.
+auto printed_length(const clang::Expr& expr, const clang::PrintingPolicy& policy) -> std::size_t {
+    std::string text;
+    llvm::raw_string_ostream os(text);
+    expr.printPretty(os, nullptr, policy);
+    return text.size();
+}
+
 /// Default argument might exist but be unavailable, in the case of unparsed
 /// arguments for example. This function returns the default argument if it is
 /// available.
@@ -988,21 +997,28 @@ auto template_param_type(const clang::NamedDecl* param, const Options& options) 
     return {};
 }
 
-auto definition(const clang::Decl* decl, const Options& options) -> std::string {
+auto definition(const clang::Decl* decl,
+                const Options& options,
+                const clang::syntax::TokenBuffer* tb) -> std::string {
     assert(decl);
     clang::PrintingPolicy policy = derive_policy(decl->getASTContext(), options);
+    if(tb) {
+        if(auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+            if(auto* init = var->getInit()) {
+                /// Initializers might be huge and result in lots of memory allocations
+                /// in some catastrophic cases. Such long lists are not useful in hover
+                /// cards anyway.
+                if(tb->expandedTokens(init->getSourceRange()).size() > 200 ||
+                   printed_length(*init, policy) > 500) {
+                    policy.SuppressInitializers = true;
+                }
+            }
+        }
+    }
+
     std::string definition;
     llvm::raw_string_ostream os(definition);
     decl->print(os, policy);
-
-    /// Long initializers are not useful in hover cards. Measured as
-    /// printed: an `#embed` or a string literal is one token of any length.
-    constexpr std::size_t max_initialized_length = 500;
-    if(definition.size() > max_initialized_length && llvm::isa<clang::VarDecl>(decl)) {
-        definition.clear();
-        policy.SuppressInitializers = true;
-        decl->print(os, policy);
-    }
     return definition;
 }
 

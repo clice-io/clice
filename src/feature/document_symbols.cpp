@@ -204,8 +204,11 @@ private:
         // Clang leaves a bound it cannot locate unset, on valid code too:
         // `short __attribute__((vector_size(16)))`, `Ts...[0]`, an unclosed
         // `namespace a {`, the typeless `for(x : v)`.
-        if(full_range.isInvalid()) {
-            full_range = name_range;
+        if(full_range.getBegin().isInvalid()) {
+            full_range.setBegin(name_range.getBegin());
+        }
+        if(full_range.getEnd().isInvalid()) {
+            full_range.setEnd(name_range.getEnd());
         }
 
         auto [fid, selection_range] = unit.decompose_range(name_range);

@@ -25,7 +25,7 @@ std::optional<std::uint32_t> token_index_at(const Semantics& semantics, std::uin
 
 /// How long the unit's semantic tree takes to build over `uses` nested
 /// macro invocations shaped like gtest's EXPECT_EQ; nullopt when the source
-/// fails to compile.
+/// does not compile cleanly.
 std::optional<std::chrono::nanoseconds> nested_macro_build_time(std::uint32_t uses) {
     std::string source = R"cpp(
 namespace testing {
@@ -73,7 +73,7 @@ void test() {
 
     clear();
     add_main("main.cpp", source);
-    if(!compile()) {
+    if(!compile() || !unit->diagnostics().empty()) {
         return std::nullopt;
     }
     auto start = std::chrono::steady_clock::now();
@@ -164,10 +164,10 @@ TEST_CASE(NoModuleNoNodes) {
 }
 
 TEST_CASE(NestedMacroScaling) {
-    // Every node looks its range up among the expanded tokens; done by
-    // isBeforeInTranslationUnit binary search, the build turned quadratic
-    // in the number of nested macro uses: 4x the uses took over 20x the
-    // time, where a linear build takes about 4x.
+    // Every node looks its range up among the expanded tokens. Binary
+    // searched with isBeforeInTranslationUnit, the first build over cold
+    // SourceManager caches goes quadratic (over 20x for 4x the uses); a
+    // linear build takes about 4x.
     auto small = nested_macro_build_time(400);
     auto large = nested_macro_build_time(1600);
     ASSERT_TRUE(small.has_value() && large.has_value());

@@ -1,5 +1,9 @@
 // The `#pragma clang __debug` commands that crash, hang or dump the compiler
-// do nothing: the code around them highlights as usual.
+// do nothing, in the preamble and after it: the code around them highlights
+// as usual.
+
+#pragma clang __debug crash
+#pragma clang __debug dump
 
 int before;
 #pragma clang __debug crash
