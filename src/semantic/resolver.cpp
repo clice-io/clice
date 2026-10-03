@@ -1128,6 +1128,9 @@ public:
         if(auto* callee = llvm::dyn_cast_or_null<clang::NamedDecl>(expr->getCalleeDecl())) {
             return {callee};
         }
+        if(llvm::isa<clang::CXXOperatorCallExpr>(expr)) {
+            return {};
+        }
 
         llvm::SmallVector<const clang::NamedDecl*, 4> candidates;
         auto callee = expr->getCallee()->IgnoreParenImpCasts();
@@ -2638,9 +2641,6 @@ TemplateResolver::lookup_result TemplateResolver::lookup(const clang::Unresolved
 
 llvm::SmallVector<const clang::NamedDecl*, 4>
     TemplateResolver::lookup(const clang::CallExpr* expr) {
-    if(llvm::isa<clang::CXXOperatorCallExpr>(expr) && !expr->getCalleeDecl()) {
-        return {};
-    }
     PseudoInstantiator instantiator(context, resolved);
     return instantiator.call_candidates(expr);
 }
