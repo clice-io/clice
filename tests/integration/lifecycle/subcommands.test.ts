@@ -10,7 +10,7 @@ function runClice(...args: string[]) {
 
 function exitOf(child: ChildProcess): Promise<{ code: number | null; signal: string | null }> {
     return new Promise((resolve) => {
-        child.once("exit", (code, signal) => {
+        child.once("close", (code, signal) => {
             resolve({ code, signal });
         });
     });
