@@ -848,6 +848,12 @@ std::expected<void, std::string> move_entities(Facts& facts, llvm::StringRef spe
         entity = facts.entities[entity].top;
     }
 
+    if(auto known = facts.file_ids.find(path);
+       known == facts.file_ids.end() ? !is_header_path(path) : facts.files[known->second].source) {
+        return std::unexpected(std::format("--move-entity {}: {} is not a header",
+                                           std::string_view(spec),
+                                           path.str()));
+    }
     auto [it, inserted] =
         facts.file_ids.try_emplace(path, static_cast<std::uint32_t>(facts.files.size()));
     auto target = it->second;
@@ -855,9 +861,6 @@ std::expected<void, std::string> move_entities(Facts& facts, llvm::StringRef spe
         facts.files.push_back({.path = path.str()});
         facts.uses.emplace_back();
         facts.macro_uses.emplace_back();
-    } else if(facts.files[target].source) {
-        return std::unexpected(
-            std::format("--move-entity {}: {} is a source", std::string_view(spec), path.str()));
     }
 
     auto moves = [&](std::uint32_t entity) {
@@ -1570,7 +1573,8 @@ Overview Report::overview(std::uint32_t limit) const {
                 }
                 interface.entities[entity] = users;
                 for(auto user: users) {
-                    if(!facts.files[user].source && files.insert(user).second) {
+                    if(!facts.files[user].source && !graph.internal[user] &&
+                       files.insert(user).second) {
                         cut.files.push_back(facts.files[user].path);
                     }
                 }
