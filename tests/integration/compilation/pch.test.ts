@@ -22,6 +22,33 @@ sessionTest("unchanged preamble keeps its pch", async ({ session }) => {
     expect(fs.statSync(pch!).mtimeMs, "the pch was rebuilt").toBe(built);
 });
 
+/// A preamble whose build fails is not rebuilt for body edits: the same
+/// inputs fail again. The missing header showing up is a new input.
+sessionTest("failed pch waits for its inputs", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    const text = (n: number) =>
+        `#include "generated.h"\nint main() { return generated() + ${n}; }\n`;
+    workspace.write("main.cpp", text(0));
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+    const failedBuilds = () =>
+        client.drainedStderr().toString("utf8").split("PCH build failed for").length - 1;
+
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(uri);
+    for (let n = 1; n <= 3; n++) {
+        client.change(uri, n, text(n));
+        await client.waitForRecompile(uri);
+    }
+    expect(failedBuilds()).toBe(1);
+
+    workspace.write("generated.h", "#pragma once\ninline int generated() { return 1; }\n");
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+    expect(workspace.pchFiles()).toHaveLength(1);
+    expect(failedBuilds()).toBe(1);
+});
+
 test("pch diagnostics on open", async ({ client }) => {
     // Opening a file with #include should trigger PCH build and return clean diagnostics.
     const [uri] = await client.openAndWait("main.cpp");

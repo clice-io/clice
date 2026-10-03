@@ -236,6 +236,38 @@ test("failed import reported", async ({ session }) => {
     expect(importError(), JSON.stringify(client.diagnostics.get(uri))).toHaveLength(1);
 });
 
+/// A module whose build fails is not rebuilt for its importer's edits: the
+/// same inputs fail again. Saving a fix is a new input.
+test("failed module waits for its inputs", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("a.cppm", "export module A;\nexport int a() { return broken_in_a; }\n");
+    const main = (n: number) => `import A;\nint main() { return a() + ${n}; }\n`;
+    workspace.write("main.cpp", main(0));
+    workspace.writeEntries(
+        [
+            ["a.cppm", []],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const failedBuilds = () =>
+        client.drainedStderr().toString("utf8").split("BuildPCM failed for module A:").length - 1;
+
+    const [uri] = await client.openAndWait("main.cpp");
+    for (let n = 1; n <= 3; n++) {
+        client.change(uri, n, main(n));
+        await client.waitForRecompile(uri);
+    }
+    expect(failedBuilds()).toBe(1);
+
+    workspace.write("a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    client.save(workspace.uri("a.cppm"));
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+    expect(failedBuilds()).toBe(1);
+});
+
 /// An import reaching the unit only through its command's forced include
 /// is built before the unit compiles.
 test("forced include imports module", async ({ session }) => {

@@ -149,7 +149,9 @@ llvm::SmallVector<NodeId> PCMFamily::provider_appeared(llvm::StringRef name) {
         // invalidate() does for content changes — a PCM built against
         // the unresolved name embeds the failure.
         if(id.family == Family::PCM && !is_unresolved(id)) {
-            erased |= project.pcm_cache.erase(Fid{static_cast<std::uint32_t>(id.key)});
+            auto pid = Fid{static_cast<std::uint32_t>(id.key)};
+            erased |= project.pcm_cache.erase(pid);
+            build_failures.erase(pid);
         }
     }
     // The records are persisted, and this drop is invisible to their own
@@ -256,6 +258,13 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         LOG_WARN("PCM build for module {} refused: it crashed a worker", module_name);
         co_return RoundOutcome::Failed;
     }
+    if(auto it = build_failures.find(path_id); it != build_failures.end()) {
+        if(it->second.key == pcm_key && !deps_changed(project.file_table, it->second.deps)) {
+            LOG_DEBUG("PCM build for module {} skipped: it failed on these inputs", module_name);
+            co_return RoundOutcome::Failed;
+        }
+        build_failures.erase(it);
+    }
 
     bp.module_name = module_name;
     auto pending = project.store->begin_store("pcm", pcm_key);
@@ -290,11 +299,30 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         LOG_INFO("BuildPCM preempted for module {}, will retry", module_name);
         co_return RoundOutcome::Stale;
     }
+    // The interfaces it imported are inputs as much as its own text — the
+    // PCM embeds what it read of them — and theirs already carry their own
+    // imports', so the snapshot is transitive.
+    auto inputs = [&] {
+        auto snapshot =
+            capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
+        for(auto dep: deps.resolved) {
+            if(auto it = project.pcm_cache.find(dep); it != project.pcm_cache.end()) {
+                snapshot.append(it->second.deps.begin(), it->second.deps.end());
+            }
+        }
+        return snapshot;
+    };
     if(!result.has_value() || !result.value().success) {
         if(expected_build_failure(result)) {
             LOG_WARN("BuildPCM failed for module {}: {}",
                      module_name,
                      build_failure_message(result));
+            // A build that never parsed names no inputs to wait on: one
+            // that failed setting up (an imported interface clang could not
+            // read) retries.
+            if(result.has_value() && !result.value().deps.empty()) {
+                build_failures.insert_or_assign(path_id, Failure{pcm_key, inputs()});
+            }
         } else {
             LOG_ANOMALY(PCMBuildFail,
                         "PCM build failed for module {}: {}",
@@ -313,17 +341,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     }
 
     auto pcm_path = std::move(committed.value().value());
-    auto snapshot =
-        capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
-    // The interfaces it imported are inputs as much as its own text — the
-    // PCM embeds what it read of them — and theirs already carry their own
-    // imports', so the snapshot is transitive.
-    for(auto dep: deps.resolved) {
-        if(auto it = project.pcm_cache.find(dep); it != project.pcm_cache.end()) {
-            snapshot.append(it->second.deps.begin(), it->second.deps.end());
-        }
-    }
-    project.pcm_cache[path_id] = {.path = pcm_path, .key = pcm_key, .deps = std::move(snapshot)};
+    project.pcm_cache[path_id] = {.path = pcm_path, .key = pcm_key, .deps = inputs()};
     LOG_INFO("Built PCM for module {}: {}", module_name, pcm_path);
 
     project.mark_artifacts_dirty();

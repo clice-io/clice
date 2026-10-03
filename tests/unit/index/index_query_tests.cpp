@@ -1,3 +1,4 @@
+#include <format>
 #include <string>
 #include <vector>
 
@@ -6,6 +7,7 @@
 #include "test/tester.h"
 #include "feature/feature.h"
 #include "index/query.h"
+#include "index/tu_index.h"
 #include "project/command_resolver.h"
 #include "project/index_store.h"
 #include "sched/families/pch.h"
@@ -20,6 +22,40 @@
 
 namespace clice::testing {
 namespace {
+
+/// Open buffers reduced to their session tables, counting the tables the
+/// queries visit.
+struct CountingSessions : index::LiveSources {
+    std::vector<index::TUIndex> tables;
+    mutable std::size_t visits = 0;
+
+    bool is_open(Fid) const override {
+        return false;
+    }
+
+    std::optional<index::RowSource> claim(Fid) const override {
+        return std::nullopt;
+    }
+
+    void each_session(llvm::function_ref<bool(const index::RowSource&)>) const override {}
+
+    void each_session_index(llvm::function_ref<bool(const index::TUIndex&)> visit) const override {
+        for(auto& table: tables) {
+            visits += 1;
+            if(!visit(table)) {
+                return;
+            }
+        }
+    }
+
+    void each_preamble(llvm::function_ref<bool(const index::RowSource&)>) const override {}
+
+    void each_overlay(llvm::function_ref<bool(const index::TUIndex&)>) const override {}
+
+    std::shared_ptr<index::TUIndex> preamble_blob(Fid) const override {
+        return nullptr;
+    }
+};
 
 TEST_SUITE(IndexQuery, Tester) {
 
@@ -524,6 +560,40 @@ TEST_CASE(DeletedDefinitionFallsBack) {
     auto results = search("removed");
     ASSERT_EQ(results.size(), 1U);
     ASSERT_TRUE(results.front().site.path.ends_with("header.h"));
+}
+
+/// Open `buffers` documents, each declaring its own functions in one
+/// shared namespace.
+void open_buffers(CountingSessions& sessions, int buffers) {
+    for(int buffer = 0; buffer < buffers; buffer += 1) {
+        clear();
+        std::string text = "namespace app { namespace shared {\n";
+        for(int i = 0; i < 40; i += 1) {
+            text += std::format("int fn{}_{}();\n", buffer, i);
+        }
+        text += "} }\n";
+        add_main(std::format("main{}.cpp", buffer), text);
+        ASSERT_TRUE(compile());
+        sessions.tables.push_back(index::TUIndex::from_buffer(
+            llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit, true))));
+    }
+}
+
+TEST_CASE(ScopedSearchScalesLinearly) {
+    std::size_t visits[2];
+    for(auto [slot, buffers]: {
+            std::pair{0, 2},
+            std::pair{1, 8}
+    }) {
+        CountingSessions sessions;
+        open_buffers(sessions, buffers);
+        index::IndexQuery scoped{project.project_index, project.file_table, nullptr, &sessions};
+        scoped.search(*index::SymbolQuery::parse("app::fn0_1"), 10);
+        visits[slot] = sessions.visits;
+    }
+    // Four times the open buffers: a scan of each buffer's table grows
+    // four times, a lookup through every table per candidate sixteen.
+    ASSERT_LE(visits[1], visits[0] * 4);
 }
 
 };  // TEST_SUITE(IndexQuery)

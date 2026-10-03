@@ -106,10 +106,10 @@ static std::expected<std::string, std::string> artifact_output(llvm::StringRef l
 }
 
 /// The reply of a finished artifact build. Success hands the master the
-/// path to commit and the build's inputs; failure removes the half-written
-/// file and classifies the errors — `internal_error` marks a failure of
-/// the worker's own I/O, never the user's code, and must not be downgraded
-/// to an expected build failure.
+/// path to commit; failure removes the half-written file and classifies
+/// the errors — `internal_error` marks a failure of the worker's own I/O,
+/// never the user's code, and must not be downgraded to an expected build
+/// failure. Either way the reply carries the build's inputs.
 static worker::ArtifactBuildResult land_artifact(llvm::StringRef label,
                                                  bool success,
                                                  const std::string& tmp_path,
@@ -118,11 +118,11 @@ static worker::ArtifactBuildResult land_artifact(llvm::StringRef label,
                                                  std::string errors,
                                                  bool internal_error) {
     worker::ArtifactBuildResult result;
+    result.build_at = build_at;
+    result.deps = deps;
     if(success) {
         result.success = true;
         result.output_path = tmp_path;
-        result.build_at = build_at;
-        result.deps = deps;
         return result;
     }
     vfs::remove(tmp_path);

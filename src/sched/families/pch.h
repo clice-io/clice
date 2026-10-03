@@ -183,6 +183,13 @@ private:
     /// same preamble would burn a worker of its own.
     llvm::StringMap<kota::ipc::Error> build_crashes;
 
+    /// The keys whose build failed on errors in the user's code, with what
+    /// that build read and looked for: refused until one of those files
+    /// changes. The key covers the preamble text and the flags, so the
+    /// same inputs fail the same way — rebuilt, every compile of every
+    /// consumer would pay for the failing build first.
+    llvm::StringMap<DepsSnapshot> build_failures;
+
     /// Consumption strikes per key (see blame); separate from the build
     /// side, which every successful rebuild clears.
     BlameBudget consume_blames;
