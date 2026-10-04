@@ -189,6 +189,7 @@ export function initializationOptionsFor(
 export class CliceClient {
     child: ChildProcessWithoutNullStreams;
     protected connection: proto.ProtocolConnection;
+    private transport: Transport;
     /// Non-null only in socket mode: the LSP transport rides this socket
     /// instead of the child's stdio, and must be torn down with the client.
     private socket: net.Socket | null = null;
@@ -231,6 +232,7 @@ export class CliceClient {
 
     private constructor(child: ChildProcessWithoutNullStreams, transport: Transport) {
         this.child = child;
+        this.transport = transport;
         this.connection = createProtocolConnection(
             new StreamMessageReader(transport.reader),
             new StreamMessageWriter(transport.writer),
@@ -381,6 +383,70 @@ export class CliceClient {
         return token === undefined
             ? conn.sendRequest(type, params)
             : conn.sendRequest(type, params, token);
+    }
+
+    /// Writes `messages` in one write, which the server reads together, and
+    /// resolves with the response to each request among them, by id. The
+    /// client's own connection ignores those responses: the ids must be
+    /// strings, which it never sends.
+    sendTogether(
+        messages: (proto.RequestMessage | proto.NotificationMessage)[],
+    ): Promise<Map<string, proto.ResponseMessage>> {
+        const pending = new Set(
+            messages.flatMap((message) => ("id" in message ? [String(message.id)] : [])),
+        );
+        const responses = new Map<string, proto.ResponseMessage>();
+        const { reader, writer } = this.transport;
+        const answered = new Promise<Map<string, proto.ResponseMessage>>((resolve) => {
+            if (pending.size === 0) {
+                resolve(responses);
+                return;
+            }
+            // Attached mid-stream, the first chunk may begin inside a
+            // message: a frame is found by the end of its header, and the
+            // length the header names.
+            let buffer = Buffer.alloc(0);
+            const onData = (chunk: Buffer): void => {
+                buffer = Buffer.concat([buffer, chunk]);
+                for (;;) {
+                    const end = buffer.indexOf("\r\n\r\n");
+                    if (end < 0) {
+                        break;
+                    }
+                    const header = buffer.subarray(0, end).toString("latin1");
+                    const named = /Content-Length: (\d+)/i.exec(
+                        header.slice(header.lastIndexOf("Content-Length:")),
+                    );
+                    const length = Number(named?.[1] ?? 0);
+                    if (buffer.length < end + 4 + length) {
+                        break;
+                    }
+                    const body = buffer.subarray(end + 4, end + 4 + length).toString("utf-8");
+                    buffer = buffer.subarray(end + 4 + length);
+                    const message = JSON.parse(body) as proto.Message;
+                    if (proto.Message.isResponse(message) && pending.delete(String(message.id))) {
+                        responses.set(String(message.id), message);
+                    }
+                }
+                if (pending.size === 0) {
+                    reader.off("data", onData);
+                    resolve(responses);
+                }
+            };
+            reader.on("data", onData);
+        });
+        writer.write(
+            Buffer.concat(
+                messages.map((message) => {
+                    const body = Buffer.from(JSON.stringify(message), "utf-8");
+                    return Buffer.concat([
+                        Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, "ascii"),
+                        body,
+                    ]);
+                }),
+            ),
+        );
+        return answered;
     }
 
     sendNotification<P>(type: proto.NotificationType<P>, params: P): Promise<void>;

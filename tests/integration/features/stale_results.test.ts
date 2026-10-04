@@ -106,3 +106,68 @@ test("edit mid-flight still completes", async ({ session }) => {
     client.change(uri, 2, "int moved;\n" + body);
     await expect(moved).rejects.toMatchObject({ code: proto.LSPErrorCodes.ContentModified });
 }, 300_000);
+
+/// A request and the edit written right behind it, which the server reads
+/// together: the request still belongs to the text it was asked about.
+function readWithEdit(
+    uri: string,
+    request: { id: string; method: string; params: object },
+    text: string,
+): (proto.RequestMessage | proto.NotificationMessage)[] {
+    return [
+        { jsonrpc: "2.0", ...request },
+        {
+            jsonrpc: "2.0",
+            method: proto.DidChangeTextDocumentNotification.method,
+            params: { textDocument: { uri, version: 2 }, contentChanges: [{ text }] },
+        },
+    ];
+}
+
+for (const [method, params] of [
+    ["textDocument/hover", { position: { line: 0, character: 4 } }],
+    ["textDocument/formatting", { options: { tabSize: 4, insertSpaces: true } }],
+] as const) {
+    test(`${method} read with an edit answers ContentModified`, async ({ session }) => {
+        const { client, workspace } = session.tmp();
+        workspace.write("main.cpp", "int value = 1;\n");
+        workspace.writeCDB(["main.cpp"]);
+        await client.initialize(workspace);
+        const [uri] = await client.openAndWait("main.cpp");
+
+        const replies = await client.sendTogether(
+            readWithEdit(
+                uri,
+                { id: method, method, params: { textDocument: { uri }, ...params } },
+                "int  value = 2;\n",
+            ),
+        );
+        expect(replies.get(method)?.error?.code).toBe(proto.LSPErrorCodes.ContentModified);
+    }, 120_000);
+}
+
+test("completion read with an edit is served", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    const body = "int extra_value;\nint probe = extra_";
+    workspace.write("main.cpp", body);
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+
+    const replies = await client.sendTogether(
+        readWithEdit(
+            uri,
+            {
+                id: "completion",
+                method: "textDocument/completion",
+                params: { textDocument: { uri }, position: { line: 1, character: 18 } },
+            },
+            body + "v",
+        ),
+    );
+    const reply = replies.get("completion")?.result as
+        | proto.CompletionList
+        | proto.CompletionItem[];
+    const items = Array.isArray(reply) ? reply : reply.items;
+    expect(items.map((item) => item.label)).toContain("extra_value");
+}, 120_000);

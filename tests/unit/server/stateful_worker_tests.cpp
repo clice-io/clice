@@ -128,7 +128,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
     ASSERT(test_done);
 }
 
-ZEST_CASE(CancelNotificationInterruptsCompile) {
+ZEST_CASE(WireCancelInterruptsCompile) {
     TempDir tmp;
     tmp.touch("interrupt.cpp", "");
     auto src = tmp.path("interrupt.cpp");
@@ -154,29 +154,32 @@ ZEST_CASE(CancelNotificationInterruptsCompile) {
         cp.pch = {"", 0};
         cp.pcms = {};
 
-        // The notification chases the request down the pipe and flips the
-        // stop flag mid-parse. Unlike a wire cancel the request runs to a
-        // reply, and an interrupted parse reports no deps and no index —
-        // the reply's content, not the clock, is the assertion.
-        std::optional<worker::CompileResult> reply;
+        // The cancel chases the request down the pipe and flips the stop
+        // flag mid-parse; the request still waits for the worker's answer.
+        // An interrupted parse leaves the document without an AST, which
+        // the next query reports — the content, not the clock, is the
+        // assertion.
+        kota::cancellation_source source;
+        bool cancelled = false;
         kota::task_group<> group;
         auto sender = [&]() -> kota::task<> {
-            kota::ipc::request_options opts;
-            opts.timeout = std::chrono::milliseconds(30'000);
-            auto result = co_await w.peer->send_request(cp, opts);
-            if(result.has_value()) {
-                reply = std::move(result.value());
-            }
+            auto result = co_await w.peer->send_request(
+                cp,
+                {.token = source.token(), .timeout = std::chrono::seconds(30)});
+            cancelled = !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
         group.spawn(sender());
         co_await kota::sleep(20, w.loop);
-        w.peer->send_notification(worker::CancelCompileParams{src});
+        source.cancel();
         co_await group.join();
+        CO_ASSERT(cancelled);
 
-        CO_ASSERT(reply);
-        EXPECT(reply->version == 1);
-        EXPECT(reply->deps.empty());
-        EXPECT(reply->tu_index_data.empty());
+        worker::QueryParams qp;
+        qp.kind = worker::QueryKind::DocumentSymbol;
+        qp.path = src;
+        auto symbols = co_await w.peer->send_request(qp);
+        CO_ASSERT(symbols);
+        EXPECT(symbols.value().data == "null");
 
         test_done = true;
     });

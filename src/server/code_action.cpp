@@ -128,10 +128,11 @@ bool internal_header(llvm::StringRef spelling) {
 }  // namespace
 
 kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
-    Features::code_action(std::shared_ptr<Session> session,
+    Features::code_action(Ticket ticket,
                           const protocol::Range& range,
                           llvm::ArrayRef<protocol::CodeActionKind> only,
                           kota::cancellation_token token) {
+    auto& session = ticket.session;
     std::vector<protocol::CodeAction> out;
     if(llvm::none_of(feature::code_action_kinds,
                      [&](std::string_view kind) { return admits(only, kind); })) {
@@ -144,7 +145,6 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         co_return out;
     }
 
-    auto ticket = Ticket::take(session);
     auto result = co_await dispatcher.code_actions(ticket, range, std::move(token));
     if(!result.has_value()) {
         co_return kota::outcome_error(std::move(result.error()));

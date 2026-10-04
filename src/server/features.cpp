@@ -68,10 +68,6 @@ kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
                                                  RouteOptions options,
                                                  std::optional<index::RowSource>* source) {
     for(bool waited = false;;) {
-        // This handler is resumed eagerly: drain the transport pipe before
-        // reading any buffer state, so a queued didChange or cancel lands
-        // first (the same discipline as completion's yield).
-        co_await kota::yield();
         if(!ticket.fresh()) {
             co_return Route::Superseded;
         }
@@ -338,9 +334,8 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
 }
 
 kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
-    Features::document_links(std::shared_ptr<Session> session,
-                             kota::cancellation_token token) {
-    auto ticket = Ticket::take(session);
+    Features::document_links(Ticket ticket, kota::cancellation_token token) {
+    auto& session = ticket.session;
 
     // Links carry byte offsets; this reply edge converts them.
     auto convert = [&](llvm::ArrayRef<feature::DocumentLink> raw_links,
@@ -392,13 +387,12 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
     co_return links;
 }
 
-Features::RawResult Features::definition(std::shared_ptr<Session> session,
+Features::RawResult Features::definition(Ticket ticket,
                                          Fid path_id,
                                          const protocol::Position& position,
                                          kota::cancellation_token token) {
-    Ticket ticket;
+    auto& session = ticket.session;
     if(session) {
-        ticket = Ticket::take(session);
         if(auto stop = co_await nav_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
         }
@@ -507,13 +501,13 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
     co_return serde_raw{"[]"};
 }
 
-Features::RawResult Features::hover(std::shared_ptr<Session> session,
+Features::RawResult Features::hover(Ticket ticket,
                                     const protocol::Position& position,
                                     kota::cancellation_token token) {
+    auto& session = ticket.session;
     if(!session) {
         co_return kota::outcome_error(document_not_open());
     }
-    auto ticket = Ticket::take(session);
     auto path_id = session->path_id;
 
     auto index_card = [&]() -> std::optional<serde_raw> {
@@ -590,9 +584,8 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
     co_return std::move(raw);
 }
 
-Features::RawResult Features::semantic_tokens(std::shared_ptr<Session> session,
-                                              kota::cancellation_token token) {
-    auto ticket = Ticket::take(session);
+Features::RawResult Features::semantic_tokens(Ticket ticket, kota::cancellation_token token) {
+    auto& session = ticket.session;
     std::optional<index::RowSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Superseded: co_return kota::outcome_error(content_modified());
@@ -626,9 +619,10 @@ Features::RawResult Features::semantic_tokens(std::shared_ptr<Session> session,
                                         std::move(token));
 }
 
-Features::RawResult Features::inlay_hints(std::shared_ptr<Session> session,
+Features::RawResult Features::inlay_hints(Ticket ticket,
                                           const protocol::Range& range,
                                           kota::cancellation_token token) {
+    auto& session = ticket.session;
     // Inlay hints are Sema products the index cannot project; a session
     // the policy keeps un-compiled answers honestly empty. The compile
     // that follows an escalation pushes an inlayHint refresh, so clients
@@ -638,20 +632,20 @@ Features::RawResult Features::inlay_hints(std::shared_ptr<Session> session,
         co_return serde_raw{"[]"};
     }
     co_return co_await dispatcher.query(worker::QueryKind::InlayHints,
-                                        Ticket::take(session),
+                                        ticket,
                                         {},
                                         range,
                                         std::move(token));
 }
 
-Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
+Features::RawResult Features::folding_range(Ticket ticket,
                                             bool line_folding_only,
                                             kota::cancellation_token token) {
+    auto& session = ticket.session;
     auto convert = [&](llvm::ArrayRef<feature::FoldingRange> folds) {
         return to_raw(feature::folding_ranges_to_protocol(folds, session->position_map(), line_folding_only));
     };
 
-    auto ticket = Ticket::take(session);
     std::optional<index::RowSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Superseded: co_return kota::outcome_error(content_modified());
@@ -685,9 +679,8 @@ Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
     co_return convert(**folds);
 }
 
-Features::RawResult Features::document_symbol(std::shared_ptr<Session> session,
-                                              kota::cancellation_token token) {
-    auto ticket = Ticket::take(session);
+Features::RawResult Features::document_symbol(Ticket ticket, kota::cancellation_token token) {
+    auto& session = ticket.session;
     std::optional<index::RowSource> source;
     switch(co_await pick_route(ticket, {.await_cold_attempt = true}, &source)) {
         case Route::Superseded: co_return kota::outcome_error(content_modified());
@@ -715,30 +708,39 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
                                          const feature::CompletionClient& client,
                                          llvm::StringRef trigger_character,
                                          kota::cancellation_token token) {
-    auto pause = pump.scoped_pause();
-
     // Asking for code completion is edit intent: flip the session out of
     // index-only serving (a no-op when already escalated or under
-    // readonly = "on"). Before the yield below on purpose: it must tag
-    // the session this request arrived for, not whatever a drained
-    // didClose/didOpen pair put in its place.
+    // readonly = "on"). At dispatch on purpose: it must tag the session
+    // this request arrived for, not whatever a didClose/didOpen pair read
+    // with it put in its place.
     ast.escalate(*session);
+    return complete(std::move(session),
+                    pump.scoped_pause(),
+                    position,
+                    client,
+                    trigger_character,
+                    std::move(token));
+}
 
-    // This handler is resumed eagerly, so a $/cancelRequest or didChange
-    // sitting in the pipe (rapid-fire completions cancel and re-issue as
-    // the user types) has not been read yet. Yield once BEFORE reading any
-    // buffer state: the loop drains the pipe — a fired token tears this
-    // frame down here, and an edit lands before the offset and completion
-    // context are computed, so the synchronous include scan below never
-    // serves candidates or ranges for a buffer that no longer exists.
-    // Unlike the whole-document features, a drained edit is served, not
-    // refused: the ticket is taken after the drain, and the client
-    // filters candidates against whatever it typed meanwhile.
-    co_await kota::yield();
-
-    // The drain may also have replaced the Session object (a didClose,
-    // with or without a reopen): the request belongs to the discarded
-    // buffer, and only the store can tell.
+Features::RawResult Features::complete(std::shared_ptr<Session> session,
+                                       IndexPump::ScopedPause pause,
+                                       const protocol::Position& position,
+                                       const feature::CompletionClient& client,
+                                       llvm::StringRef trigger_character,
+                                       kota::cancellation_token token) {
+    // The task starts once the messages read with the request are
+    // dispatched: a $/cancelRequest among them (rapid-fire completions
+    // cancel and re-issue as the user types) keeps it from starting, and an
+    // edit lands before the offset and completion context are computed,
+    // so the synchronous include scan below never serves candidates or
+    // ranges for a buffer that no longer exists. Unlike the whole-document
+    // features, such an edit is served, not refused: the ticket is taken
+    // here, and the client filters candidates against whatever it typed
+    // meanwhile.
+    //
+    // Those messages may also have replaced the Session object (a
+    // didClose, with or without a reopen): the request belongs to the
+    // discarded buffer, and only the store can tell.
     if(sessions.find(session->path_id) != session) {
         co_return kota::outcome_error(content_modified());
     }
@@ -849,30 +851,34 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
 Features::RawResult Features::signature_help(std::shared_ptr<Session> session,
                                              const protocol::Position& position,
                                              kota::cancellation_token token) {
-    auto pause = pump.scoped_pause();
     ast.escalate(*session);
-    co_return co_await dispatcher.signature_help(Ticket::take(session), position, std::move(token));
+    return kota::co_invoke([this,
+                            ticket = Ticket::take(std::move(session)),
+                            pause = pump.scoped_pause(),
+                            &position,
+                            token = std::move(token)]() -> RawResult {
+        co_return co_await dispatcher.signature_help(ticket, position, token);
+    });
 }
 
 Features::RawResult Features::formatting(std::shared_ptr<Session> session,
+                                         std::optional<protocol::Range> range,
                                          kota::cancellation_token token) {
-    auto pause = pump.scoped_pause();
-    co_return co_await dispatcher.format(Ticket::take(session), {}, std::move(token));
+    return kota::co_invoke([this,
+                            ticket = Ticket::take(std::move(session)),
+                            pause = pump.scoped_pause(),
+                            range,
+                            token = std::move(token)]() -> RawResult {
+        co_return co_await dispatcher.format(ticket, range, token);
+    });
 }
 
-Features::RawResult Features::range_formatting(std::shared_ptr<Session> session,
-                                               const protocol::Range& range,
-                                               kota::cancellation_token token) {
-    auto pause = pump.scoped_pause();
-    co_return co_await dispatcher.format(Ticket::take(session), range, std::move(token));
-}
-
-Features::RawResult Features::references(std::shared_ptr<Session> session,
+Features::RawResult Features::references(Ticket ticket,
                                          Fid path_id,
                                          const protocol::Position& position,
                                          bool include_declaration) {
-    if(session) {
-        if(auto stop = co_await nav_gate(Ticket::take(session))) {
+    if(ticket.session) {
+        if(auto stop = co_await nav_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
         }
     }
@@ -919,14 +925,14 @@ static void list_notice(std::string& notice,
     }
 }
 
-Features::RawResult Features::prepare_rename(std::shared_ptr<Session> session,
+Features::RawResult Features::prepare_rename(Ticket ticket,
                                              Fid path_id,
                                              const protocol::Position& position) {
     if(auto refused = refuse_rootless(project)) {
         co_return kota::outcome_error(std::move(*refused));
     }
-    if(session) {
-        if(auto stop = co_await nav_gate(Ticket::take(session))) {
+    if(ticket.session) {
+        if(auto stop = co_await nav_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
         }
     }
@@ -945,17 +951,15 @@ Features::RawResult Features::prepare_rename(std::shared_ptr<Session> session,
 }
 
 kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
-    Features::rename(std::shared_ptr<Session> session,
+    Features::rename(Ticket ticket,
                      Fid path_id,
                      const protocol::Position& position,
                      std::string new_name) {
     if(auto refused = refuse_rootless(project)) {
         co_return kota::outcome_error(std::move(*refused));
     }
-    std::optional<Ticket> ticket;
-    if(session) {
-        ticket.emplace(Ticket::take(session));
-        if(auto stop = co_await nav_gate(*ticket)) {
+    if(ticket.session) {
+        if(auto stop = co_await nav_gate(ticket)) {
             if(stop->error) {
                 co_return kota::outcome_error(std::move(*stop->error));
             }
@@ -1000,7 +1004,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         }
         return result;
     });
-    if(ticket && !ticket->fresh()) {
+    if(ticket.session && !ticket.fresh()) {
         co_return kota::outcome_error(content_modified());
     }
     // Rows indexed during the sweep may link the symbol to more: plan
@@ -1239,11 +1243,11 @@ static void merge_located(std::vector<index::IndexQuery::Located>& into,
     }
 }
 
-Features::RawResult Features::declaration(std::shared_ptr<Session> session,
+Features::RawResult Features::declaration(Ticket ticket,
                                           Fid path_id,
                                           const protocol::Position& position) {
-    if(session) {
-        if(auto stop = co_await nav_gate(Ticket::take(session))) {
+    if(ticket.session) {
+        if(auto stop = co_await nav_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
         }
     }
@@ -1259,11 +1263,11 @@ Features::RawResult Features::declaration(std::shared_ptr<Session> session,
                })));
 }
 
-Features::RawResult Features::type_definition(std::shared_ptr<Session> session,
+Features::RawResult Features::type_definition(Ticket ticket,
                                               Fid path_id,
                                               const protocol::Position& position) {
-    if(session) {
-        if(auto stop = co_await nav_gate(Ticket::take(session))) {
+    if(ticket.session) {
+        if(auto stop = co_await nav_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
         }
     }
@@ -1279,11 +1283,11 @@ Features::RawResult Features::type_definition(std::shared_ptr<Session> session,
                })));
 }
 
-Features::RawResult Features::implementation(std::shared_ptr<Session> session,
+Features::RawResult Features::implementation(Ticket ticket,
                                              Fid path_id,
                                              const protocol::Position& position) {
-    if(session) {
-        if(auto stop = co_await nav_gate(Ticket::take(session))) {
+    if(ticket.session) {
+        if(auto stop = co_await nav_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
         }
     }
@@ -1299,11 +1303,11 @@ Features::RawResult Features::implementation(std::shared_ptr<Session> session,
                                  })));
 }
 
-Features::RawResult Features::call_hierarchy_prepare(std::shared_ptr<Session> session,
+Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
                                                      Fid path_id,
                                                      const protocol::Position& position) {
-    if(session) {
-        if(auto stop = co_await nav_gate(Ticket::take(session))) {
+    if(ticket.session) {
+        if(auto stop = co_await nav_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
         }
     }
@@ -1390,11 +1394,11 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
     co_return to_raw(results);
 }
 
-Features::RawResult Features::type_hierarchy_prepare(std::shared_ptr<Session> session,
+Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
                                                      Fid path_id,
                                                      const protocol::Position& position) {
-    if(session) {
-        if(auto stop = co_await nav_gate(Ticket::take(session))) {
+    if(ticket.session) {
+        if(auto stop = co_await nav_gate(ticket)) {
             co_return co_await stop_reply(std::move(*stop));
         }
     }

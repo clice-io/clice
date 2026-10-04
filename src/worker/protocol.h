@@ -176,7 +176,7 @@ enum class CompileStatus : uint8_t {
     /// The parse produced a usable product — a complete AST, or a fatal
     /// error whose diagnostics describe the user's code.
     Done,
-    /// The parse was interrupted by CancelCompile (superseded round).
+    /// The parse was interrupted (superseded round).
     Cancelled,
     /// The frontend failed before parsing began: bad invocation, or a
     /// prebuilt input (PCH/PCM) clang could not read. Whether the consumed
@@ -413,17 +413,6 @@ struct EvictedParams {
     std::string path;
 };
 
-/// Interrupt the in-flight compile of `path`, if any. Sent at the master's
-/// supersede point instead of wire-cancelling the compile request: the
-/// worker flips the compile's stop flag so clang abandons the stale parse
-/// at the next declaration, while the request still runs to a normal
-/// (incomplete) reply — the master keeps observing the real outcome, so a
-/// worker death during a superseded compile still reaches the document's
-/// quarantine accounting.
-struct CancelCompileParams {
-    std::string path;
-};
-
 /// Whether a request builds — a compile, a PCH or PCM, an indexing run:
 /// work whose time grows with the translation unit, where a query's never
 /// should.
@@ -511,11 +500,6 @@ struct NotificationTraits<clice::worker::EvictParams> {
 template <>
 struct NotificationTraits<clice::worker::EvictedParams> {
     constexpr inline static std::string_view method = "clice/worker/evicted";
-};
-
-template <>
-struct NotificationTraits<clice::worker::CancelCompileParams> {
-    constexpr inline static std::string_view method = "clice/worker/cancelCompile";
 };
 
 }  // namespace kota::ipc::protocol

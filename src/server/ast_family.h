@@ -20,6 +20,7 @@
 #include "worker/pool.h"
 
 #include "kota/async/async.h"
+#include "llvm/ADT/DenseMap.h"
 
 namespace clice {
 
@@ -120,10 +121,9 @@ public:
 
     /// The edit path's whole supersede (didChange): the buffer moved, so
     /// the projection is no longer current and the in-flight round's
-    /// result is void. Fires the round's advisory token and interrupts
-    /// the worker's parse with a CancelCompile notification — FIFO order
-    /// puts it ahead of any replacement Compile, and the round still
-    /// observes its real reply (crash accounting depends on it).
+    /// result is void. Fires the round's advisory token and cancels its
+    /// compile on the wire, which interrupts the worker's parse; the round
+    /// still observes the real reply (crash accounting depends on it).
     void supersede(Fid path_id);
 
     /// A Lost-type invalidation (dependency changed on disk, worker
@@ -199,8 +199,8 @@ public:
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The rounds themselves land in TaskGraph::shutdown — the
     /// interruption is what keeps that landing prompt (a round's stateful
-    /// send deliberately carries no advisory token; contract 2 wants the
-    /// real reply, and CancelCompile makes it arrive early).
+    /// send carries the interrupt, not its advisory token: contract 2 wants
+    /// the real reply, and the interrupt makes it arrive early).
     kota::task<> stop();
 
 private:
@@ -280,6 +280,10 @@ private:
     /// Detached ensure_compiled joins from request_compile; the rounds
     /// live in the graph's task group.
     kota::task_group<> kicks;
+
+    /// The cancel of each document's in-flight compile send, which
+    /// supersede() and stop() fire to interrupt the worker's parse.
+    llvm::DenseMap<Fid, std::unique_ptr<kota::cancellation_source>> compile_interrupts;
 };
 
 /// Discriminators for Quarantine's per-kind records; query kinds follow

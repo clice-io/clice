@@ -83,7 +83,24 @@ void SessionStore::apply_change(Session& session,
                     // The batch's earlier changes left non_ascii_lines
                     // stale; line_starts is kept current.
                     feature::PositionMap map{.content = session.text, .lines = session.line_starts};
-                    auto [start, end] = map.to_offset_range(c.range);
+                    auto& range = c.range;
+                    if(!map.to_offset(range.start) || !map.to_offset(range.end)) {
+                        // The client's view has drifted from ours (or the
+                        // client is buggy). LSP 3.17 requires clamping
+                        // positions past the document instead of dropping
+                        // the edit, which would silently desync every
+                        // subsequent position until a full sync or reopen.
+                        LOG_INFO(
+                            "didChange range {}:{}-{}:{} does not fit the buffer "
+                            "(path_id={} version={}); clamped",
+                            range.start.line,
+                            range.start.character,
+                            range.end.line,
+                            range.end.character,
+                            session.path_id,
+                            version);
+                    }
+                    auto [start, end] = map.to_offset_range(range);
                     if(llvm::StringRef(session.text).substr(start, end - start) != c.text) {
                         session.text.replace(start, end - start, c.text);
                         applied = true;

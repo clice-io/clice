@@ -6,6 +6,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <format>
 #include <optional>
 #include <vector>
 
@@ -251,13 +252,15 @@ int main() {
     ASSERT(utf8_token->length > utf16_token->length);
 }
 
-ZEST_CASE(MultiLineCommentSplit) {
-    add_main("main.cpp", R"cpp(
-int main() {
-/*ab
-cd*/
-}
-)cpp");
+/// A block comment over two lines splits into one piece per line, each
+/// ending before its line's terminator.
+void check_comment_split(llvm::StringRef newline) {
+    add_main("main.cpp",
+             std::format(R"cpp(int main() {{
+/*ab{}cd*/
+}}
+)cpp",
+                         newline));
     ASSERT(compile_with_pch());
 
     auto utf8_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
@@ -272,10 +275,18 @@ cd*/
     }
 
     ASSERT(comments.size() == 2);
-    ASSERT(comments[0].length == 5);
+    ASSERT(comments[0].length == 4);
     ASSERT(comments[1].line == comments[0].line + 1);
     ASSERT(comments[1].start == 0);
     ASSERT(comments[1].length == 4);
+}
+
+ZEST_CASE(MultiLineCommentSplit) {
+    check_comment_split("\n");
+}
+
+ZEST_CASE(CRLFCommentSplit) {
+    check_comment_split("\r\n");
 }
 
 ZEST_CASE(ModuleImport) {

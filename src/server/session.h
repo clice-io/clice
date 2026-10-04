@@ -130,7 +130,7 @@ struct Session {
 };
 
 /// A request's claim on the buffer it was asked about: the generation
-/// snapshot taken at the request's entry, before its first suspension.
+/// snapshot taken as the request is dispatched.
 /// Every later decision — adopting a compile product, landing a worker
 /// reply, answering at all — asks `fresh()` first; a didChange or
 /// didClose bumped the generation, and whatever the request computed
@@ -141,8 +141,9 @@ struct Ticket {
     std::shared_ptr<Session> session;
     std::uint64_t generation = 0;
 
+    /// An empty ticket for no session: a document not open.
     static Ticket take(std::shared_ptr<Session> session) {
-        auto generation = session->generation;
+        auto generation = session ? session->generation : 0;
         return {std::move(session), generation};
     }
 
