@@ -1,8 +1,22 @@
 #include "syntax/lexer.h"
 
+#include <string>
+#include <vector>
+
+#include "llvm/TargetParser/Triple.h"
 #include "clang/Lex/Lexer.h"
 
 namespace clice {
+
+clang::LangOptions raw_dialect(clang::Language language, clang::LangStandard::Kind standard) {
+    clang::LangOptions options;
+    std::vector<std::string> includes;
+    clang::LangOptions::setLangDefaults(options, language, llvm::Triple(), includes, standard);
+    options.Char8 = options.CPlusPlus20;
+    options.GNUKeywords = options.GNUMode;
+    options.LineComment = true;
+    return options;
+}
 
 static clang::SourceLocation fake_loc = clang::SourceLocation::getFromRawEncoding(1);
 static clang::LangOptions default_opts;

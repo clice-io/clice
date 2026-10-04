@@ -278,16 +278,27 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     for(std::uint32_t doc = 0; doc < count; doc += 1) {
         doc_of.try_emplace(entry_of(doc).hash, doc);
     }
-    // The chain a qualified name spells skips inline namespaces.
+    // The chain a qualified name spells skips transparent scopes; the
+    // unnamed ones are no documents, so their parents are kept apart.
+    llvm::DenseMap<SymbolHash, SymbolHash> unnamed_parents;
+    for(auto& entry: snapshot.entries) {
+        if(has_flag(entry.flags, SymbolFlags::Unnamed)) {
+            unnamed_parents.try_emplace(entry.hash, entry.parent);
+        }
+    }
     auto parent_of = [&](std::uint32_t doc) {
         auto parent = entry_of(doc).parent;
         for(std::size_t depth = 0; parent != 0 && depth < max_chain; depth += 1) {
+            if(auto unnamed = unnamed_parents.find(parent); unnamed != unnamed_parents.end()) {
+                parent = unnamed->second;
+                continue;
+            }
             auto it = doc_of.find(parent);
             if(it == doc_of.end()) {
                 return no_doc;
             }
             auto& candidate = entry_of(it->second);
-            if(!has_flag(candidate.flags, SymbolFlags::InlineNamespace)) {
+            if(!transparent_scope(candidate.flags)) {
                 return it->second;
             }
             parent = candidate.parent;

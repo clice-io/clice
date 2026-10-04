@@ -1,0 +1,21 @@
+---
+created_at: 2026-10-04
+input_file: module_related/02_module_name_hover/main.cpp
+---
+--- main.cpp
+import_name: { range: "13:7-13:11" }
+### module `math`  
+
+---
+```cpp
+${WS}/module_related/02_module_name_hover/math.cppm
+```
+
+--- math.cppm
+declared_name: { range: "0:14-0:18" }
+### module `math`  
+
+---
+```cpp
+${WS}/module_related/02_module_name_hover/math.cppm
+```

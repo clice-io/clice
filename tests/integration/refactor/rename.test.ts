@@ -229,3 +229,12 @@ test("the editor hears why not", async ({ session }) => {
     );
     expect(await client.prepareRenameAt(uri, 0, 0)).toBeNull();
 });
+
+test("a rootless server refuses up front", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", "int compute();\nint use() { return compute(); }\n");
+    await client.initialize(workspace, { folders: [] });
+    const [uri] = await client.openAndWait("main.cpp");
+
+    await expect(client.prepareRenameAt(uri, 0, 5)).rejects.toThrow("workspace folder");
+});

@@ -1288,6 +1288,30 @@ TEST_CASE(ScopeModuleLinkage) {
     ASSERT_EQ(scope("static_var"), static_cast<int>(index::SymbolScope::TULocal));
 }
 
+TEST_CASE(ExportedFlag) {
+    build_index(R"(
+            export module m;
+            export int exported_var = 0;
+            export {
+                int block_fn();
+                struct Exported { void member(); };
+            }
+            export namespace api { int nested(); }
+            int module_var = 0;
+            int block_fn() { return 0; }
+        )");
+
+    auto exported = [&](llvm::StringRef name) {
+        return has(symbol_named(name).second, index::SymbolFlags::Exported);
+    };
+    ASSERT_TRUE(exported("exported_var"));
+    ASSERT_TRUE(exported("block_fn"));
+    ASSERT_TRUE(exported("Exported"));
+    ASSERT_TRUE(exported("nested"));
+    ASSERT_FALSE(exported("member"));
+    ASSERT_FALSE(exported("module_var"));
+}
+
 TEST_CASE(ScopeNoLinkage) {
     build_index(R"(
             enum { unnamed_value };

@@ -247,9 +247,9 @@ public:
     std::optional<SymbolRef> symbol_info(SymbolHash hash, Fid anchor = {}) const;
 
     /// The containers of a symbol, outermost first: the parent chain up
-    /// to the translation unit or to a parent no table knows, inline
-    /// namespaces skipped (anonymous ones never are parents). Empty at the
-    /// translation unit and for an unknown hash.
+    /// to the translation unit or to a parent no table knows, transparent
+    /// scopes skipped (anonymous namespaces never are parents). Empty at
+    /// the translation unit and for an unknown hash.
     llvm::SmallVector<SymbolRef, 4> container_chain(SymbolHash hash) const;
 
     /// The chain spelled as a qualified name ("ns::Outer" for

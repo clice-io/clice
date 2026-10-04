@@ -619,6 +619,40 @@ test("own configuration of another folder", async ({ session }) => {
     expect((await client.currentContext(shared)).context?.commandHash).toBe(other);
 });
 
+test("a closed file keeps its choice", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("alpha/shared.cpp", "int shared() { return 0; }\n");
+    workspace.writeCDB(["alpha/shared.cpp"], {
+        extraArgs: ["-DFIRST"],
+        at: "alpha/compile_commands.json",
+    });
+    workspace.writeCDB(["alpha/shared.cpp"], {
+        extraArgs: ["-DSECOND"],
+        at: "beta/compile_commands.json",
+    });
+    await client.initialize(workspace, { folders: ["alpha", "beta"] });
+
+    const [shared] = await client.openAndWait("alpha/shared.cpp");
+    const listed = await client.queryContext(shared);
+    const own = listed.contexts.filter((context) => context.uri === shared);
+    expect(own).toHaveLength(2);
+    const first = own[0]!.commandHash!;
+    const other = own[1]!.commandHash!;
+    const switched = await client.switchContext(shared, shared, {
+        commandHash: other,
+        epoch: listed.epoch,
+    });
+    expect(switched.success).toBe(true);
+
+    // A switch for a document no longer open fails, and the choice made
+    // before stands.
+    client.close(shared);
+    const refused = await client.switchContext(shared, shared, { commandHash: first });
+    expect(refused.success).toBe(false);
+    await client.openAndWait("alpha/shared.cpp");
+    expect((await client.currentContext(shared)).context?.commandHash).toBe(other);
+});
+
 test("save reaches every folder", async ({ session }) => {
     const { client, workspace } = session.tmp();
     libraryAndApp(workspace);

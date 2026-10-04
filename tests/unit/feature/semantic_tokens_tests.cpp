@@ -186,11 +186,33 @@ export int exported_value = 1;
 int private_value = 2;
 )cpp");
 
+    auto definition = SymbolModifiers::to_mask(SymbolModifiers::Definition);
     EXPECT_TOKEN("g0", SymbolKind::Keyword);
     EXPECT_TOKEN("k0", SymbolKind::Keyword);
-    EXPECT_TOKEN("n0", SymbolKind::Module);
-    EXPECT_TOKEN("n1", SymbolKind::Module);
+    EXPECT_TOKEN("n0", SymbolKind::Module, definition);
+    EXPECT_TOKEN("n1", SymbolKind::Module, definition);
     EXPECT_TOKEN("p0", SymbolKind::Keyword);
+}
+
+TEST_CASE(UsingFromDependentBase) {
+    // A dependent name that a template base brings in with a
+    // using-declaration names the member itself.
+    run_utf8(R"cpp(
+struct Base { void f(); };
+template <class T> struct B : Base { using Base::f; };
+template <class T> struct D : B<T> {
+    void g() {
+        this->§(member)⟦f⟧();
+        B<T>::§(qualified)⟦f⟧();
+    }
+};
+)cpp");
+
+    for(auto name: {"member", "qualified"}) {
+        auto* token = find_by_range(name);
+        ASSERT_TRUE(token != nullptr);
+        ASSERT_EQ(token->type, static_cast<std::uint32_t>(SymbolKind::Method));
+    }
 }
 
 TEST_CASE(UTF16LengthDiffersFromUTF8) {

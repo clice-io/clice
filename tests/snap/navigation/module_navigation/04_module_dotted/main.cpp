@@ -1,13 +1,12 @@
 /// # Dot-separated module name
 ///
-/// - status: partial
+/// - status: supported
 /// - verify: server
 ///
-/// Only the leading segment of a dotted module name navigates to its interface
+/// Every segment of a dotted module name navigates to its interface
 ///
-/// Go-to-definition on the leading segment of a dot-separated module name
-/// reaches the module's interface unit; the segments after a dot do not
-/// resolve on their own yet.
+/// Go-to-definition on any segment of a dot-separated module name reaches
+/// the module's interface unit; the whole name is one reference.
 
 import §(seg_app)app.§(seg_core)core;
 

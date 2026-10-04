@@ -34,6 +34,14 @@ bool is_templated(const clang::Decl* decl) {
     return false;
 }
 
+bool is_exported(const clang::Decl* decl) {
+    if(!decl->getDeclContext()->getRedeclContext()->isFileContext()) {
+        return false;
+    }
+    return llvm::any_of(decl->redecls(),
+                        [](const clang::Decl* redecl) { return redecl->isInExportDeclContext(); });
+}
+
 namespace {
 
 template <class T>

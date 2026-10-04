@@ -752,12 +752,6 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
         }
         target = *it;
     }
-    // One project holds the file's choice (compiler routes by it).
-    for(auto& project: projects) {
-        if(project != target) {
-            project->contexts.forget_selection(path_id);
-        }
-    }
     auto session = find_session(path_id);
     if(target != owner && session) {
         owner->close_session(path_id);
@@ -773,6 +767,12 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
     // index cannot give it (union rows). A rejected switch changed no
     // context and owes none.
     if(result.success) {
+        // One project holds the file's choice (compiler routes by it).
+        for(auto& project: projects) {
+            if(project != target) {
+                project->contexts.forget_selection(path_id);
+            }
+        }
         target->ast.escalate(*session);
     }
     co_return result;

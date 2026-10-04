@@ -489,20 +489,9 @@ private:
                     auto* import = node.get<Import>();
                     anchor(import->location, {SymbolKind::Keyword, 0}, true);
                     for(auto location: import->name_locations) {
-                        auto index = spelled_index(location);
-                        if(!index) {
-                            continue;
+                        if(auto index = spelled_index(location)) {
+                            combine(token_semantics[*index], {SymbolKind::Module, 0});
                         }
-                        /// A partition import (`import :part;`) reports the
-                        /// component location at its leading colon; the
-                        /// written name is the next spelled token. The colon
-                        /// itself stays unpainted, matching the module
-                        /// declaration side.
-                        if(spelled[*index].kind() == clang::tok::colon &&
-                           *index + 1 < spelled.size()) {
-                            *index += 1;
-                        }
-                        combine(token_semantics[*index], {SymbolKind::Module, 0});
                     }
                     break;
                 }
@@ -520,12 +509,18 @@ private:
                     /// keywords the lexical pass paints on its own, and the
                     /// separators stay unpainted, matching the import side.
                     anchor_offset(module->keyword.begin, {SymbolKind::Keyword, 0});
+                    /// An interface unit defines its module; an
+                    /// implementation unit references it.
+                    Classified name{SymbolKind::Module,
+                                    unit.is_module_interface_unit()
+                                        ? SymbolModifiers::to_mask(SymbolModifiers::Definition)
+                                        : 0};
                     for(auto& part: module->name_parts) {
-                        anchor_offset(part.begin, {SymbolKind::Module, 0});
+                        anchor_offset(part.begin, name);
                     }
                     if(module->kind == LexicalInfo::ModuleDeclaration::Kind::Declaration) {
                         for(auto& part: module->partition_parts) {
-                            anchor_offset(part.begin, {SymbolKind::Module, 0});
+                            anchor_offset(part.begin, name);
                         }
                     }
                     break;

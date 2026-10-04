@@ -259,7 +259,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             if(!scope) {
                 break;
             }
-            if(!index::has_flag(scope->flags, index::SymbolFlags::InlineNamespace)) {
+            if(!index::transparent_scope(scope->flags)) {
                 name = index::SymbolRef::from(parent, *scope).display_name() + "::" + name;
             }
             parent = scope->parent;

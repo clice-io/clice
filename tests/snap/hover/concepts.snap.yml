@@ -31,7 +31,7 @@ Type: `class`
 ---
 ```cpp
 // In send
-public: Serializable Payload
+Serializable Payload
 ```
 
 04_concept_on_auto_param: { range: "25:11-25:19" }

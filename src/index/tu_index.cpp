@@ -354,6 +354,9 @@ public:
         if(is_completable(decl)) {
             flags |= SymbolFlags::Completable;
         }
+        if(decls::is_exported(decl)) {
+            flags |= SymbolFlags::Exported;
+        }
         symbol.flags = with_form(flags, name_form_of(decl->getDeclName()));
         return symbol;
     }
@@ -555,13 +558,9 @@ public:
             if(module.kind != LexicalInfo::ModuleDeclaration::Kind::Declaration) {
                 continue;
             }
-            auto name_begin = module.name_parts.front().begin;
-            auto name_end = (module.partition_parts.empty() ? module.name_parts.back()
-                                                            : module.partition_parts.back())
-                                .end;
             emit(module_name,
                  unit.main_file(),
-                 LocalSourceRange{name_begin, name_end},
+                 module.name_range(),
                  unit.is_module_interface_unit() ? RelationKind::Definition
                                                  : RelationKind::Reference);
             break;
@@ -715,10 +714,7 @@ public:
             // A dependent call reaches every candidate the resolver finds
             // for it, as its weak references do.
             for(auto* candidate: unit.resolver().lookup(CE)) {
-                if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(candidate)) {
-                    candidate = shadow->getTargetDecl();
-                }
-                call(candidate, range);
+                call(candidate->getUnderlyingDecl(), range);
             }
             return;
         }

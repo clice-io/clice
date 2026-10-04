@@ -88,7 +88,7 @@ void drop_cursor_site(std::vector<Site>& sites, const Site& cursor) {
 }
 
 /// `parent`, the parent of `hash`, and the containers above it, outermost
-/// first, inline namespaces skipped (see IndexQuery::container_chain), each
+/// first, transparent ones skipped (see IndexQuery::container_chain), each
 /// resolved through `lookup`.
 llvm::SmallVector<SymbolRef, 4>
     scope_chain(SymbolHash hash,
@@ -104,7 +104,7 @@ llvm::SmallVector<SymbolRef, 4>
             break;
         }
         parent = scope->parent;
-        if(!has_flag(scope->flags, SymbolFlags::InlineNamespace)) {
+        if(!transparent_scope(scope->flags)) {
             chain.push_back(std::move(*scope));
         }
     }

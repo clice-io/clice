@@ -254,6 +254,9 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
     if(!info) {
         return std::nullopt;
     }
+    if(info->kind == SymbolKind::Module) {
+        return module_hover_card(*cursor, *info);
+    }
     std::string definition;
     std::string comment;
     if(auto text = query.definition_text(symbol, cursor->site.file)) {
@@ -262,6 +265,19 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
     }
     auto hover = feature::index_hover(*info, definition, comment);
     hover.symbol_range = cursor->site.range;
+    return hover;
+}
+
+feature::HoverInfo Features::module_hover_card(const index::IndexQuery::Cursor& cursor,
+                                               const index::SymbolRef& module) {
+    feature::HoverInfo hover;
+    hover.name = module.name;
+    hover.kind = SymbolKind::Module;
+    auto units = query.sites(module.hash, cursor.site.file, RelationKind::Definition);
+    if(!units.empty()) {
+        hover.definition = shown(project.file_table, units.front().path);
+    }
+    hover.symbol_range = cursor.site.range;
     return hover;
 }
 
@@ -406,26 +422,32 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
         if(!cursor) {
             return {};
         }
-        // A definition another project compiles (a library's source beside
-        // the application including its header) outranks the declarations
-        // this project alone can offer; standing on a definition, or with
-        // none anywhere, the declarations answer too.
-        auto defined = gather(cursor->symbols,
-                              path_id,
-                              [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                  return from.sites(named, path_id, RelationKind::Definition);
-                              });
-        if(!defined.empty() && llvm::none_of(defined, [&](const index::Site& site) {
-               return index::covers(site, cursor->site);
-           })) {
-            return to_lsp::locations(defined);
+        // Each symbol answers for itself. A definition another project
+        // compiles (a library's source beside the application including
+        // its header) outranks the declarations this project alone can
+        // offer; standing on a definition, or with none anywhere, the
+        // declarations answer too.
+        std::vector<index::Site> result;
+        for(auto symbol: cursor->symbols) {
+            auto defined = gather(symbol,
+                                  path_id,
+                                  [&](const index::IndexQuery& from, index::SymbolHash named) {
+                                      return from.sites(named, path_id, RelationKind::Definition);
+                                  });
+            if(defined.empty() || llvm::any_of(defined, [&](const index::Site& site) {
+                   return index::covers(site, cursor->site);
+               })) {
+                defined =
+                    gather(symbol,
+                           path_id,
+                           [&](const index::IndexQuery& from, index::SymbolHash named) {
+                               return from.definition({.symbols = {named}, .site = cursor->site});
+                           });
+            }
+            llvm::append_range(result, std::move(defined));
         }
-        return to_lsp::locations(
-            gather(cursor->symbols,
-                   path_id,
-                   [&](const index::IndexQuery& from, index::SymbolHash named) {
-                       return from.definition({.symbols = {named}, .site = cursor->site});
-                   }));
+        index::dedup_sites(result);
+        return to_lsp::locations(result);
     };
     if(auto result = index_definition(); !result.empty()) {
         co_return to_raw(result);
@@ -526,6 +548,17 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
         if(auto* link = link_at(*links, *offset)) {
             auto hover = directive_hover(*session, *link);
             co_return hover ? to_raw(*hover) : serde_raw{"null"};
+        }
+    }
+
+    // A module name's card names the unit defining the module, which the
+    // worker cannot see across files: this side answers it, from the index.
+    if(auto cursor = cursor_at(path_id, position)) {
+        auto info = query.symbol_info(cursor->symbols.front(), cursor->site.file);
+        if(info && info->kind == SymbolKind::Module) {
+            co_return to_raw(feature::to_protocol_hover(module_hover_card(*cursor, *info),
+                                                        project.config.hover,
+                                                        session->line_map()));
         }
     }
 
@@ -865,6 +898,15 @@ static kota::ipc::Error rename_refused(std::string message) {
     return kota::ipc::Error{kota::ipc::protocol::ErrorCode::RequestFailed, std::move(message)};
 }
 
+/// A rename edits the sources of a workspace folder: a project without
+/// one refuses it up front, before the cursor costs a compile.
+static std::optional<kota::ipc::Error> refuse_rootless(const Project& project) {
+    if(project.config.workspace_root.empty()) {
+        return rename_refused("a rename edits the sources of a workspace folder; open one");
+    }
+    return std::nullopt;
+}
+
 /// `title` and up to a handful of `items`, one a line.
 static void list_notice(std::string& notice,
                         std::string_view title,
@@ -885,6 +927,9 @@ static void list_notice(std::string& notice,
 Features::RawResult Features::prepare_rename(std::shared_ptr<Session> session,
                                              Fid path_id,
                                              const protocol::Position& position) {
+    if(auto refused = refuse_rootless(project)) {
+        co_return kota::outcome_error(std::move(*refused));
+    }
     if(session) {
         if(auto stop = co_await nav_gate(Ticket::take(session))) {
             co_return co_await stop_reply(std::move(*stop));
@@ -909,6 +954,9 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
                      Fid path_id,
                      const protocol::Position& position,
                      std::string new_name) {
+    if(auto refused = refuse_rootless(project)) {
+        co_return kota::outcome_error(std::move(*refused));
+    }
     std::optional<Ticket> ticket;
     if(session) {
         ticket.emplace(Ticket::take(session));
@@ -920,10 +968,6 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         }
     }
     auto& config = project.config;
-    if(config.workspace_root.empty()) {
-        co_return kota::outcome_error(
-            rename_refused("a rename edits the sources of a workspace folder; open one"));
-    }
     auto cursor = cursor_at(path_id, position);
     if(!cursor) {
         co_return std::nullopt;

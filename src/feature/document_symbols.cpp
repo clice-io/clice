@@ -138,8 +138,11 @@ public:
         }
 
         for(; index < nodes.size(); index += 1) {
-            if(nodes[index].node.kind() == SemanticNode::Kind::MacroDefine) {
-                add_macro(*nodes[index].node.get<MacroRef>());
+            auto& node = nodes[index].node;
+            if(node.kind() == SemanticNode::Kind::MacroDefine) {
+                add_macro(*node.get<MacroRef>());
+            } else if(node.kind() == SemanticNode::Kind::Module) {
+                add_module(*node.get<LexicalInfo::ModuleDeclaration>());
             }
         }
 
@@ -281,6 +284,22 @@ private:
             }
         }
         level->push_back(std::move(symbol));
+    }
+
+    /// The module an interface unit defines; an implementation unit's
+    /// declaration only names a module defined elsewhere.
+    void add_module(const LexicalInfo::ModuleDeclaration& module) {
+        if(module.kind != LexicalInfo::ModuleDeclaration::Kind::Declaration ||
+           !unit.is_module_interface_unit()) {
+            return;
+        }
+        auto name = module.name_range();
+        symbols.push_back({
+            .name = unit.module_name().str(),
+            .kind = SymbolKind::Module,
+            .range = name,
+            .selection_range = name,
+        });
     }
 
     static bool is_supported(const clang::Decl* decl) {

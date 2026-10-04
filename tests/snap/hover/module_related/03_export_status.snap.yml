@@ -1,0 +1,54 @@
+---
+created_at: 2026-10-04
+input_file: module_related/03_export_status.cpp
+---
+exported_fn: { range: "12:11-12:15" }
+### function `area`  
+
+---
+→ `int`  
+Parameters:  
+- `int side`
+
+---
+```cpp
+export int area(int side)
+```
+
+exported_struct: { range: "17:11-17:17" }
+### struct `Square`  
+
+---
+Size: 4 bytes, alignment 4 bytes  
+
+---
+```cpp
+export struct Square {}
+```
+
+internal_fn: { range: "22:4-22:13" }
+### function `perimeter`  
+
+---
+→ `int`  
+Parameters:  
+- `int side`
+
+---
+```cpp
+int perimeter(int side)
+```
+
+member: { range: "18:12-18:16" }
+### field `side`  
+
+---
+Type: `int`  
+Offset: 0 bytes  
+Size: 4 bytes, alignment 4 bytes  
+
+---
+```cpp
+// In Square
+public: int side
+```

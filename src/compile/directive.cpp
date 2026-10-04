@@ -4,6 +4,7 @@
 #include "vfs/path.h"
 
 #include "clang/Basic/Module.h"
+#include "clang/Lex/Lexer.h"
 #include "clang/Lex/MacroArgs.h"
 #include "clang/Lex/MacroInfo.h"
 #include "clang/Lex/Preprocessor.h"
@@ -199,10 +200,38 @@ public:
             if(!import.name.empty())
                 import.name += '.';
             import.name += name.getIdentifierInfo()->getName();
-            import.name_locations.emplace_back(name.getLoc());
         }
-
         import.full_name = M ? M->getFullModuleName() : import.name;
+
+        // Clang reports a C++20 module name flattened into one component
+        // at its first token — a partition's at its colon — so the written
+        // identifiers are lexed back from there. A name spelled by a macro
+        // has no written tokens past the reported one.
+        auto start = names.front().getLoc();
+        if(start.isMacroID()) {
+            import.name_locations.push_back(start);
+            return;
+        }
+        auto [name_fid, offset] = unit.decompose_location(start);
+        auto content = unit.file_content(name_fid);
+        clang::Lexer lexer(unit.create_location(name_fid, 0),
+                           unit.lang_options(),
+                           content.begin(),
+                           content.begin() + offset,
+                           content.end());
+        clang::Token token;
+        lexer.LexFromRawLexer(token);
+        if(token.is(clang::tok::colon)) {
+            lexer.LexFromRawLexer(token);
+        }
+        while(token.is(clang::tok::raw_identifier)) {
+            import.name_locations.push_back(token.getLocation());
+            lexer.LexFromRawLexer(token);
+            if(token.isNot(clang::tok::period)) {
+                break;
+            }
+            lexer.LexFromRawLexer(token);
+        }
     }
 
     void HasInclude(clang::SourceLocation location,

@@ -293,6 +293,12 @@ private:
     std::optional<feature::HoverInfo> index_hover_card(const Session& session,
                                                        const protocol::Position& position);
 
+    /// A module name's card: the module and the unit defining it, named
+    /// the way the user knows the file. Both routes answer it from the
+    /// index, which knows the defining unit across files.
+    feature::HoverInfo module_hover_card(const index::IndexQuery::Cursor& cursor,
+                                         const index::SymbolRef& module);
+
     /// The host source of a header session: the user's persisted choice,
     /// else the resolved header context, else its best-ranked includer;
     /// invalid for a file without any.

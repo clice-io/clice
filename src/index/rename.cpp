@@ -122,24 +122,15 @@ std::vector<IndexQuery::Located> all_named(const IndexQuery& query, llvm::String
     }
 }
 
-/// The newest dialect of a language, as the driver sets it up.
-clang::LangOptions dialect(clang::Language language, clang::LangStandard::Kind standard) {
-    clang::LangOptions options;
-    std::vector<std::string> includes;
-    clang::LangOptions::setLangDefaults(options, language, llvm::Triple(), includes, standard);
-    // The driver's default, which the language defaults leave off.
-    options.Char8 = options.CPlusPlus20;
-    return options;
-}
-
-/// Read-only once built, so sweeps on other threads may share them.
+/// The newest dialect of each language; read-only once built, so sweeps
+/// on other threads may share them.
 const clang::LangOptions& cxx() {
-    const static auto options = dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26);
+    const static auto options = raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26);
     return options;
 }
 
 const clang::LangOptions& c() {
-    const static auto options = dialect(clang::Language::C, clang::LangStandard::lang_c23);
+    const static auto options = raw_dialect(clang::Language::C, clang::LangStandard::lang_c23);
     return options;
 }
 

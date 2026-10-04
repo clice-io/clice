@@ -309,7 +309,10 @@ auto decl_hover(const clang::NamedDecl* decl,
     HoverInfo info;
     auto& context = decl->getASTContext();
 
-    info.access_specifier = clang::getAccessSpelling(decl->getAccess()).str();
+    /// Clang gives template parameters public access; only members have one.
+    if(!decl->isTemplateParameter()) {
+        info.access_specifier = clang::getAccessSpelling(decl->getAccess()).str();
+    }
     info.namespace_scope = display::namespace_scope(decl);
     if(!info.namespace_scope->empty()) {
         info.namespace_scope->append("::");
@@ -344,12 +347,10 @@ auto decl_hover(const clang::NamedDecl* decl,
     /// Fill in types and params.
     if(const clang::FunctionDecl* function = underlying_function(decl)) {
         fill_function_type_and_params(info, decl, function, options);
+    } else if(decl->isTemplateParameter()) {
+        info.type = display::template_param_type(decl, options);
     } else if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(decl)) {
         info.type = display::type(context, value->getType(), options);
-    } else if(const auto* type_param = llvm::dyn_cast<clang::TemplateTypeParmDecl>(decl)) {
-        info.type = type_param->wasDeclaredWithTypename() ? "typename" : "class";
-    } else if(const auto* template_param = llvm::dyn_cast<clang::TemplateTemplateParmDecl>(decl)) {
-        info.type = display::template_param_type(template_param, options);
     } else if(const auto* var_template = llvm::dyn_cast<clang::VarTemplateDecl>(decl)) {
         info.type = display::type(context, var_template->getTemplatedDecl()->getType(), options);
     } else if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefNameDecl>(decl)) {
@@ -380,6 +381,9 @@ auto decl_hover(const clang::NamedDecl* decl,
     }
 
     info.definition = display::definition(decl, options, &tb);
+    if(decls::is_exported(decl)) {
+        info.definition.insert(0, "export ");
+    }
     return info;
 }
 

@@ -55,6 +55,30 @@ auto resolver() {
     };
 }
 
+/// The projected tokens of the compiled unit equal the AST's, down to the
+/// modifiers the index knows.
+void expect_tokens_match_ast(llvm::StringRef file) {
+    auto ast = feature::semantic_tokens(*unit);
+    auto projected = feature::index_semantic_tokens(unit->main_content(),
+                                                    feature::index_lang_options(file, false),
+                                                    occurrences,
+                                                    decls,
+                                                    resolver());
+
+    // The index knows Declaration/Definition; every other AST modifier
+    // (Readonly, Static, Virtual, ...) is a pinned degradation.
+    auto pinned = SymbolModifiers::to_mask(SymbolModifiers::Declaration) |
+                  SymbolModifiers::to_mask(SymbolModifiers::Definition);
+
+    ASSERT_EQ(projected.size(), ast.size());
+    for(std::size_t i = 0; i < ast.size(); i += 1) {
+        ASSERT_EQ(projected[i].range.begin, ast[i].range.begin);
+        ASSERT_EQ(projected[i].range.end, ast[i].range.end);
+        ASSERT_EQ(projected[i].kind.value_of(), ast[i].kind.value_of());
+        ASSERT_EQ(projected[i].modifiers, ast[i].modifiers & pinned);
+    }
+}
+
 TEST_CASE(TokensMatchAst) {
     add_main("main.cpp", R"cpp(
 // a line comment
@@ -85,25 +109,39 @@ int total(Point point, int base) {
 )cpp");
     ASSERT_TRUE(compile());
     extract_rows();
+    expect_tokens_match_ast("main.cpp");
+}
 
-    auto ast = feature::semantic_tokens(*unit);
-    auto projected = feature::index_semantic_tokens(unit->main_content(),
-                                                    feature::index_lang_options("main.cpp", false),
-                                                    occurrences,
-                                                    decls,
-                                                    resolver());
+TEST_CASE(ModuleTokensMatchAst) {
+    add_main("main.cpp", R"cpp(
+export module demo.core;
 
-    // The index knows Declaration/Definition; every other AST modifier
-    // (Readonly, Static, Virtual, ...) is a pinned degradation.
-    auto pinned = SymbolModifiers::to_mask(SymbolModifiers::Declaration) |
-                  SymbolModifiers::to_mask(SymbolModifiers::Definition);
+export int exported_value = 1;
+)cpp");
+    ASSERT_TRUE(compile());
+    extract_rows();
+    expect_tokens_match_ast("main.cpp");
+}
 
+TEST_CASE(ModuleOutlineMatchesAst) {
+    add_main("main.cpp", R"cpp(
+export module demo.core;
+
+export int entry();
+)cpp");
+    ASSERT_TRUE(compile());
+    extract_rows();
+
+    auto ast = feature::document_symbols(*unit);
+    auto projected = feature::index_document_symbols(decls, resolver());
+    ASSERT_EQ(ast.size(), std::size_t(2));
+    ASSERT_EQ(ast[0].name, "demo.core");
+    ASSERT_EQ(ast[0].kind.value_of(), SymbolKind(SymbolKind::Module).value_of());
     ASSERT_EQ(projected.size(), ast.size());
     for(std::size_t i = 0; i < ast.size(); i += 1) {
-        ASSERT_EQ(projected[i].range.begin, ast[i].range.begin);
-        ASSERT_EQ(projected[i].range.end, ast[i].range.end);
+        ASSERT_EQ(projected[i].name, ast[i].name);
         ASSERT_EQ(projected[i].kind.value_of(), ast[i].kind.value_of());
-        ASSERT_EQ(projected[i].modifiers, ast[i].modifiers & pinned);
+        ASSERT_TRUE(projected[i].selection_range == ast[i].selection_range);
     }
 }
 
@@ -192,6 +230,50 @@ int compute() {
         return fold.range.begin == body;
     });
     ASSERT_TRUE(anchored);
+}
+
+TEST_CASE(FoldsMatchAstShape) {
+    // A brace below its declaration's head folds from the head, a block
+    // folds as its declaration's kind, and braces several rows share (the
+    // struct's and the alias's) fold once — as the AST folds them.
+    add_main("main.cpp", R"cpp(
+struct Allman
+{
+    int x;
+    int y;
+};
+
+int compute()
+{
+    int a = 1;
+    return a;
+}
+
+typedef struct {
+    int x;
+    int y;
+} Point;
+)cpp");
+    ASSERT_TRUE(compile());
+    extract_rows();
+
+    auto ast = feature::folding_ranges(*unit);
+    auto projected = feature::index_folding_ranges(unit->main_content(),
+                                                   feature::index_lang_options("main.cpp", false),
+                                                   decls,
+                                                   resolver());
+
+    ASSERT_EQ(projected.size(), std::size_t(3));
+    for(auto& fold: projected) {
+        auto twin = std::ranges::find_if(ast, [&](const feature::FoldingRange& candidate) {
+            return candidate.range == fold.range;
+        });
+        ASSERT_TRUE(twin != ast.end());
+        ASSERT_TRUE(fold.kind == twin->kind);
+        ASSERT_TRUE(fold.lines == twin->lines);
+    }
+    ASSERT_TRUE(projected[0].lines.has_value());
+    ASSERT_TRUE(projected[1].lines.has_value());
 }
 
 TEST_CASE(ConditionalBracesSuppressFold) {
@@ -346,6 +428,27 @@ TEST_CASE(CDialectKeywords) {
     ASSERT_EQ(cpp_tokens[1].kind.value_of(), SymbolKind(SymbolKind::Keyword).value_of());
 }
 
+TEST_CASE(DriverDefaultKeywords) {
+    // The driver turns on `char8_t` from C++20 and the GNU keywords in GNU
+    // modes; the language defaults alone leave both off.
+    llvm::StringRef content = "char8_t c;\ntypeof(c) d;\n";
+    auto tokens = feature::index_semantic_tokens(
+        content,
+        feature::index_lang_options("main.cpp", false, "gnu++20"),
+        {},
+        {},
+        [](index::SymbolHash) -> std::optional<index::SymbolRef> { return std::nullopt; });
+    auto kind_at = [&](std::uint32_t begin) {
+        auto token = std::ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
+            return token.range.begin == begin;
+        });
+        return token == tokens.end() ? SymbolKind(SymbolKind::Invalid).value_of()
+                                     : token->kind.value_of();
+    };
+    ASSERT_EQ(kind_at(0), SymbolKind(SymbolKind::Primitive).value_of());
+    ASSERT_EQ(kind_at(11), SymbolKind(SymbolKind::Keyword).value_of());
+}
+
 TEST_CASE(StandardFromCommand) {
     // `concept` is a plain identifier in C++17: rows built under an older
     // -std must lex with that standard's keyword table, or a newer
@@ -406,6 +509,26 @@ TEST_CASE(LinksFromEdges) {
     ASSERT_EQ(links[0].target, "/tmp/first.h");
     ASSERT_EQ(content.substr(links[1].range.begin, links[1].range.length()), "<second>");
     ASSERT_EQ(links[1].target, "/usr/include/second");
+}
+
+TEST_CASE(HoverDefinitionShape) {
+    // The stored extent is the whole definition; the card shows what the
+    // AST card prints.
+    auto card = [](SymbolKind::Kind kind,
+                   llvm::StringRef text,
+                   index::SymbolFlags flags = index::SymbolFlags::None) {
+        index::SymbolRef info{.name = "name", .kind = kind, .flags = flags};
+        return feature::index_hover(info, text, "").definition;
+    };
+    ASSERT_EQ(card(SymbolKind::Function, "int twice(int x) {\n    return x * 2;\n}"),
+              "int twice(int x)");
+    ASSERT_EQ(card(SymbolKind::Method, "Holder() = default"), "Holder() = default");
+    ASSERT_EQ(card(SymbolKind::Struct, "struct Point {\n    int x;\n}"), "struct Point {}");
+    ASSERT_EQ(card(SymbolKind::Namespace, "namespace app {\nint value;\n}"), "namespace app {}");
+    ASSERT_EQ(card(SymbolKind::Macro, "LIMIT 10"), "#define LIMIT 10");
+    ASSERT_EQ(card(SymbolKind::Variable, "int values[] = {1, 2}"), "int values[] = {1, 2}");
+    ASSERT_EQ(card(SymbolKind::Function, "int entry() {}", index::SymbolFlags::Exported),
+              "export int entry()");
 }
 
 TEST_CASE(CommentBlockExtraction) {

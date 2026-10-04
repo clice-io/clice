@@ -546,6 +546,7 @@ std::string flag_names(index::SymbolFlags flags) {
         {index::SymbolFlags::SpelledInMacro,  "SpelledInMacro" },
         {index::SymbolFlags::SystemHeader,    "SystemHeader"   },
         {index::SymbolFlags::Completable,     "Completable"    },
+        {index::SymbolFlags::Exported,        "Exported"       },
     };
     for(auto [bit, name]: bits) {
         if(index::has_flag(flags, bit)) {

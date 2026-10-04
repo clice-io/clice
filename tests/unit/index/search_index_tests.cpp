@@ -246,6 +246,27 @@ TEST_CASE(Scopes) {
     EXPECT_EQ(names(corpus, built, "Widget<int>::*"), (Names{"paint"}));
 }
 
+TEST_CASE(UnnamedScopes) {
+    // An unnamed enum's enumerators and an anonymous union's members are
+    // named through the enclosing scope, as lookup names them.
+    Corpus corpus;
+    corpus.add("ns", SymbolKind::Namespace);
+    corpus.add("ns::(anonymous enum)",
+               SymbolKind::Enum,
+               SymbolFlags::HasDefinition | SymbolFlags::Unnamed);
+    corpus.add("ns::(anonymous enum)::kSize", SymbolKind::EnumMember);
+    corpus.add("S", SymbolKind::Struct);
+    corpus.add("S::(anonymous union)",
+               SymbolKind::Union,
+               SymbolFlags::HasDefinition | SymbolFlags::Unnamed);
+    corpus.add("S::(anonymous union)::member_a", SymbolKind::Field);
+    auto built = corpus.build();
+    EXPECT_EQ(names(corpus, built, "ns::kSize"), (Names{"kSize"}));
+    EXPECT_EQ(names(corpus, built, "::ns::kSize"), (Names{"kSize"}));
+    EXPECT_TRUE(names(corpus, built, "::kSize").empty());
+    EXPECT_EQ(names(corpus, built, "S::member_a"), (Names{"member_a"}));
+}
+
 TEST_CASE(Filters) {
     auto corpus = sample();
     auto built = corpus.build();

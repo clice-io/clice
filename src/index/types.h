@@ -114,6 +114,8 @@ enum class SymbolFlags : std::uint16_t {
     Completable = 1 << 8,
     /// Three bits holding the NameForm.
     FormMask = 7 << 9,
+    /// Exported by its module (decls::is_exported).
+    Exported = 1 << 12,
 };
 
 constexpr SymbolFlags operator|(SymbolFlags lhs, SymbolFlags rhs) {
@@ -127,6 +129,13 @@ constexpr SymbolFlags& operator|=(SymbolFlags& lhs, SymbolFlags rhs) {
 
 constexpr bool has_flag(SymbolFlags flags, SymbolFlags bit) {
     return (static_cast<std::uint16_t>(flags) & static_cast<std::uint16_t>(bit)) != 0;
+}
+
+/// Whether a qualified name skips this container, as lookup does: an
+/// inline namespace, or an unnamed enum or class whose members its
+/// enclosing scope names.
+constexpr bool transparent_scope(SymbolFlags flags) {
+    return has_flag(flags, SymbolFlags::InlineNamespace) || has_flag(flags, SymbolFlags::Unnamed);
 }
 
 /// The shape of a declaration's name, for consumers that treat special

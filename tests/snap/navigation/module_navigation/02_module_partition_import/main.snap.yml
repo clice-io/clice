@@ -23,5 +23,5 @@ partition_ref:
   declaration:
     - { file: "${WS}/module_navigation/02_module_partition_import/pack_items.cppm", range: "0:14-0:24" }
   references:
-    - { file: "${WS}/module_navigation/02_module_partition_import/pack.cppm", range: "2:14-2:15" }
+    - { file: "${WS}/module_navigation/02_module_partition_import/pack.cppm", range: "2:15-2:20" }
     - { file: "${WS}/module_navigation/02_module_partition_import/pack_items.cppm", range: "0:14-0:24" }

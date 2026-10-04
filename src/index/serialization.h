@@ -161,8 +161,9 @@ namespace clice::index {
 /// C's identity rules; v23: names without linkage outside a function reach
 /// as far as their scope, `defined` operands reference their macro,
 /// dependent operators reference no candidates, and the include pasting a
-/// fragment into a declaration carries the fragment's uses).
-constexpr inline std::uint32_t index_format_version = 23;
+/// fragment into a declaration carries the fragment's uses; v24: symbols a
+/// module exports carry the Exported flag).
+constexpr inline std::uint32_t index_format_version = 24;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more
