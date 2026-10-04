@@ -75,15 +75,17 @@ auto make_modulize_command() {
 }
 
 /// Write the files whose content changed, so a regeneration rebuilds only
-/// what it touched, and remove the ones a previous run left: a stale empty
-/// header in a mirror would hide the real one.
+/// what it touched, and remove the generated files a previous run left: a
+/// stale empty header in a mirror would hide the real one. What a run
+/// generates is the mirrors and, beside them, the units, macro headers and
+/// prelude; nothing else under `out` is touched.
 std::expected<void, std::string> write_files(llvm::StringRef out,
                                              llvm::ArrayRef<analysis::Wrapping::File> files) {
     llvm::StringSet<> written;
     for(auto& file: files) {
+        written.insert(file.path);
         llvm::SmallString<256> path(out);
         llvm::sys::path::append(path, llvm::sys::path::Style::posix, file.path);
-        written.insert(path);
         if(auto existing = vfs::read(path);
            existing && (*existing)->getBuffer() == llvm::StringRef(file.content)) {
             continue;
@@ -98,9 +100,18 @@ std::expected<void, std::string> write_files(llvm::StringRef out,
                 std::format("cannot write {}: {}", path.str().str(), error.message()));
         }
     }
+    auto generated = [](llvm::StringRef relative) {
+        return relative.starts_with("mirror/") ||
+               (!relative.contains('/') &&
+                (relative.ends_with(".cppm") || relative.ends_with(".macros.h") ||
+                 relative == "prelude.h"));
+    };
     std::vector<std::string> stale;
     vfs::walk(out, [&](const vfs::Entry& entry) {
-        if(entry.type == llvm::sys::fs::file_type::regular_file && !written.contains(entry.path)) {
+        auto relative = llvm::sys::path::convert_to_slash(
+            llvm::StringRef(entry.path).drop_front(out.size()).ltrim("/\\"));
+        if(entry.type == llvm::sys::fs::file_type::regular_file && generated(relative) &&
+           !written.contains(relative)) {
             stale.push_back(entry.path);
         }
         return true;

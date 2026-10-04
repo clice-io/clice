@@ -1515,14 +1515,18 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
         if(module == count) {
             continue;
         }
+        // Wrapped is what an entry without a kind says; another entry of
+        // the module may name its kind.
         auto& kind = result.kinds[module];
-        if(kind != ModuleKind::Program && claimed.kind != ModuleKind::Wrapped &&
-           kind != claimed.kind) {
+        if(claimed.kind == ModuleKind::Wrapped) {
+            if(kind == ModuleKind::Program) {
+                kind = ModuleKind::Wrapped;
+            }
+        } else if(kind == ModuleKind::Program || kind == ModuleKind::Wrapped) {
+            kind = claimed.kind;
+        } else if(kind != claimed.kind) {
             return std::unexpected(
                 std::format("module {} is both textual and external", claimed.name));
-        }
-        if(kind == ModuleKind::Program || claimed.kind != ModuleKind::Wrapped) {
-            kind = claimed.kind;
         }
         for(auto& provided: claimed.provides) {
             result.provides[module].insert(provided.getKey());
@@ -2864,9 +2868,15 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             if(facts.files[charged].source) {
                 continue;
             }
-            for(auto* list: {&facts.uses[file], &facts.macro_uses[file]}) {
-                for(auto& use: *list) {
-                    imports[module_of(charged)].insert(module_of(facts.entities[use.entity].owner));
+            for(auto& use: facts.uses[file]) {
+                imports[module_of(charged)].insert(module_of(facts.entities[use.entity].owner));
+            }
+            // The program's switches a library header reads are replayed
+            // ahead of its entries, not imported.
+            for(auto& use: facts.macro_uses[file]) {
+                auto owner = module_of(facts.entities[use.entity].owner);
+                if(partition.kinds[owner] != ModuleKind::Program) {
+                    imports[module_of(charged)].insert(owner);
                 }
             }
             for(auto& use: facts.macro_uses[file]) {

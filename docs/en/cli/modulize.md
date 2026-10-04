@@ -44,7 +44,7 @@ Under `--out`:
 - `mirror/<module>/`: an empty file for each header files of other modules include, by the name they include it with; `mirror/std/` for the standard headers.
 - `prelude.h`: the C library headers still needed, `import std.compat;`, every import, every macro header.
 
-Files whose content did not change keep their timestamps, and files a previous run wrote that the partition no longer produces are removed.
+Files whose content did not change keep their timestamps. Generated files a previous run left that this one no longer produces — mirrors, units, macro headers — are removed; nothing else under `--out` is touched.
 
 On stdout, the build plan: module sources, mirrors and the prelude relative to `--out`, libc++'s sources and each library's include roots as found:
 

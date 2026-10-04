@@ -108,8 +108,8 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
     };
 
     assert(interfaces.size() == partition.modules.size());
-    // The modules standing before every generated one: the standard library
-    // and the modules kept headers, in the partition's order.
+    // The modules standing before every generated one: the standard library,
+    // then the modules kept headers by name.
     std::vector<const Interface*> given;
     llvm::StringMap<const Interface*> generated;
     for(std::uint32_t module = 0; module < partition.modules.size(); module += 1) {
@@ -128,6 +128,13 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
                 break;
         }
     }
+    std::ranges::sort(given, [&](const Interface* lhs, const Interface* rhs) {
+        auto kind = [&](const Interface* interface) {
+            return partition.kinds[partition.module_named(interface->module)];
+        };
+        return std::pair{kind(lhs) != ModuleKind::External, lhs->module} <
+               std::pair{kind(rhs) != ModuleKind::External, rhs->module};
+    });
 
     Wrapping result;
     llvm::StringMap<std::vector<std::string>> imports;
