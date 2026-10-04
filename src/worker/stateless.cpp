@@ -505,21 +505,21 @@ static kota::codec::RawValue handle_format(const worker::FormatParams& params) {
 /// instead of running to completion for a result nobody will read.
 template <typename Params, typename Result, typename Handler>
 static void serve(kota::ipc::BincodePeer& peer, Result cancelled, Handler handler) {
-    peer.on_request([cancelled, handler](RequestContext&,
-                                         const Params& params) -> RequestResult<Params> {
-        auto stop = std::make_shared<std::atomic_bool>(false);
-        co_return co_await kota::queue(
-            [&]() -> Result {
-                if(stop->load(std::memory_order_relaxed)) {
-                    return cancelled;
-                }
-                CrashScope crash_scope(worker::crash_tag(params));
-                auto result = handler(params, stop);
-                release_free_memory();
-                return result;
-            },
-            [stop] { stop->store(true, std::memory_order_relaxed); });
-    });
+    peer.on_request(
+        [cancelled, handler](RequestContext&, const Params& params) -> RequestResult<Params> {
+            auto stop = std::make_shared<std::atomic_bool>(false);
+            co_return co_await kota::queue(
+                [&]() -> Result {
+                    if(stop->load(std::memory_order_relaxed)) {
+                        return cancelled;
+                    }
+                    CrashScope crash_scope(worker::crash_tag(params));
+                    auto result = handler(params, stop);
+                    release_free_memory();
+                    return result;
+                },
+                [stop] { stop->store(true, std::memory_order_relaxed); });
+        });
 }
 
 int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {

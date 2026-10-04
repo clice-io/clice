@@ -76,14 +76,14 @@ ZEST_CASE(WriteRemoves) {
     ASSERT(db != nullptr);
 
     ASSERT(db->write({blob(index::IndexBlobKind::Manifest, "m1", "one"),
-                           blob(index::IndexBlobKind::Manifest, "m2", "two")},
-                          {})
-                    .empty());
+                      blob(index::IndexBlobKind::Manifest, "m2", "two")},
+                     {})
+               .empty());
     ASSERT(db->write(
-                      {
+                 {
     },
-                      {{index::IndexBlobKind::Manifest, "m1"}})
-                    .empty());
+                 {{index::IndexBlobKind::Manifest, "m1"}})
+               .empty());
     ASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
@@ -98,9 +98,9 @@ ZEST_CASE(KindsAreIsolated) {
     ASSERT(db != nullptr);
 
     ASSERT(db->write({blob(index::IndexBlobKind::Shard, "same", "shard"),
-                           blob(index::IndexBlobKind::Manifest, "same", "manifest")},
-                          {})
-                    .empty());
+                      blob(index::IndexBlobKind::Manifest, "same", "manifest")},
+                     {})
+               .empty());
     ASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
@@ -149,9 +149,9 @@ ZEST_CASE(SmallValuesCopiedAligned) {
     ASSERT(db != nullptr);
 
     ASSERT(db->write({blob(index::IndexBlobKind::Manifest, "small", "tiny"),
-                           blob(index::IndexBlobKind::Shard, "big", large_value('b'))},
-                          {})
-                    .empty());
+                      blob(index::IndexBlobKind::Shard, "big", large_value('b'))},
+                     {})
+               .empty());
     ASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
@@ -267,18 +267,18 @@ ZEST_CASE(WritesCoverFreedTail) {
         ASSERT(db->write({blob(index::IndexBlobKind::Shard, "x", large_value('x'))}, {}).empty());
         settle();
         ASSERT(db->write(
-                          {
+                     {
         },
-                          {{index::IndexBlobKind::Shard, "x"}})
-                        .empty());
+                     {{index::IndexBlobKind::Shard, "x"}})
+                   .empty());
         settle();
         ASSERT(db->write(
-                          {
-                              blob(index::IndexBlobKind::CDB, "cdb", "small"),
-                              blob(index::IndexBlobKind::Shard, "h", std::string(1 << 16, 'h'))
+                     {
+                         blob(index::IndexBlobKind::CDB, "cdb", "small"),
+                         blob(index::IndexBlobKind::Shard, "h", std::string(1 << 16, 'h'))
         },
-                          {{index::IndexBlobKind::Shard, "h"}})
-                        .empty());
+                     {{index::IndexBlobKind::Shard, "h"}})
+                   .empty());
     }
 
     MDB_env* env = nullptr;
@@ -312,7 +312,7 @@ ZEST_CASE(DefaultOpenFileBounded) {
     // high-water mark and pass trivially.
     std::uint64_t size = 0;
     ASSERT(!llvm::sys::fs::file_size(path::join(index::library_directory(store, ""), "index.mdb"),
-                                  size));
+                                     size));
     ASSERT((size <= 256ull << 20));
 }
 
@@ -346,8 +346,7 @@ ZEST_CASE(FullMapFailsWholeBatchThenGrows) {
     ASSERT(db->write(puts, {}).empty());
     ASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
-    ASSERT(db->read(index::IndexBlobKind::Shard, "63").buffer->getBuffer() ==
-                large_value('x'));
+    ASSERT(db->read(index::IndexBlobKind::Shard, "63").buffer->getBuffer() == large_value('x'));
 }
 
 ZEST_CASE(ReadOnlyMissingDatabase) {
@@ -409,8 +408,10 @@ ZEST_CASE(LibraryPerConfiguration) {
     ASSERT(debug->write({blob(index::IndexBlobKind::Global, "global", "d")}, {}).empty());
     ASSERT(release->advance_read_snapshot());
     ASSERT(!release->contains(index::IndexBlobKind::Global, "global"));
-    ASSERT(llvm::sys::fs::exists(path::join(index::library_directory(store, "debug"), "index.mdb")));
-    ASSERT(llvm::sys::fs::exists(path::join(index::library_directory(store, "release"), "index.mdb")));
+    ASSERT(
+        llvm::sys::fs::exists(path::join(index::library_directory(store, "debug"), "index.mdb")));
+    ASSERT(
+        llvm::sys::fs::exists(path::join(index::library_directory(store, "release"), "index.mdb")));
 }
 
 ZEST_CASE(LibraryNameSanitized) {

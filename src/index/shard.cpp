@@ -481,9 +481,8 @@ Verdict line_table_ok(BlobView root) {
     // A "\r\n" ending needs a line holding at least those two bytes and a
     // line after it; content that is stored says it itself.
     auto crlf_lines = to_array_ref(root[&ShardBlob::crlf_lines]);
-    if(!crlf_lines.empty() &&
-       (!content.empty() || crlf_lines.back() == 0 ||
-        crlf_lines.size() > (line_lengths.size() + 63) / 64)) {
+    if(!crlf_lines.empty() && (!content.empty() || crlf_lines.back() == 0 ||
+                               crlf_lines.size() > (line_lengths.size() + 63) / 64)) {
         return std::unexpected("CRLF line table is not canonical");
     }
     auto ends_crlf = [&](std::size_t row) {

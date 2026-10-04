@@ -164,7 +164,8 @@ ZEST_CASE(WireCancelInterruptsCompile) {
             auto result = co_await w.peer->send_request(
                 cp,
                 {.token = source.token(), .timeout = std::chrono::seconds(30)});
-            cancelled = !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
+            cancelled =
+                !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
         group.spawn(sender());
         co_await kota::sleep(20, w.loop);

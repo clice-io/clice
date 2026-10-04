@@ -125,7 +125,9 @@ ZEST_CASE(NonASCIILinesTracked) {
     };
     store.apply_change(*session, changes, 2);
 
-    ASSERT(session->text == "\xc3\xa9" "aZ\ncd\n");
+    ASSERT(session->text ==
+           "\xc3\xa9"
+           "aZ\ncd\n");
     ASSERT(session->non_ascii_lines == lsp::non_ascii_lines(session->text));
 }
 

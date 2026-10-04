@@ -81,7 +81,9 @@ public:
             if(!at) {
                 return std::nullopt;
             }
-            return LineColumn{.line = at->line, .column = at->character, .utf16_column = at->character};
+            return LineColumn{.line = at->line,
+                              .column = at->character,
+                              .utf16_column = at->character};
         }
         auto text = std::string_view(content);
         auto at = kota::ipc::lsp::to_position(text,
@@ -91,9 +93,8 @@ public:
         if(!at) {
             return std::nullopt;
         }
-        auto utf16 =
-            kota::ipc::lsp::encoded_length(text.substr(starts[at->line], at->character),
-                                           kota::ipc::lsp::PositionEncoding::UTF16);
+        auto utf16 = kota::ipc::lsp::encoded_length(text.substr(starts[at->line], at->character),
+                                                    kota::ipc::lsp::PositionEncoding::UTF16);
         return LineColumn{.line = at->line, .column = at->character, .utf16_column = utf16};
     }
 
@@ -124,12 +125,13 @@ public:
                 kota::ipc::lsp::to_offset_clamped(content_size, starts, end, CRLFLines{crlf})};
         }
         // Counting bytes as ASCII finds the line's end without reading it.
-        return LocalSourceRange{starts[line],
-                                kota::ipc::lsp::to_offset_clamped(std::string_view(content),
-                                                                  starts,
-                                                                  end,
-                                                                  kota::ipc::lsp::PositionEncoding::UTF8,
-                                                                  kota::ipc::lsp::all_ascii)};
+        return LocalSourceRange{
+            starts[line],
+            kota::ipc::lsp::to_offset_clamped(std::string_view(content),
+                                              starts,
+                                              end,
+                                              kota::ipc::lsp::PositionEncoding::UTF8,
+                                              kota::ipc::lsp::all_ascii)};
     }
 
 private:

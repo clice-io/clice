@@ -507,10 +507,9 @@ ZEST_CASE(SpecializationRelations) {
 
     // Instantiations, explicit or implicit, specialize nothing.
     auto& rows = tu_index.main_file_index.relations[select("box").front().target];
-    ASSERT(llvm::count_if(rows,
-                             [](const index::Relation& relation) {
-                                 return relation.kind == RelationKind::Specialization;
-                             }) == 2);
+    ASSERT(llvm::count_if(rows, [](const index::Relation& relation) {
+               return relation.kind == RelationKind::Specialization;
+           }) == 2);
 }
 
 ZEST_CASE(CallerAndCallee) {
@@ -1227,7 +1226,8 @@ ZEST_CASE(ScopeExternal) {
     std::set<std::string> found;
     for(auto& [hash, symbol]: tu_index.symbols) {
         if(expected.contains(symbol.name)) {
-            ASSERT(static_cast<int>(symbol.scope) == static_cast<int>(index::SymbolScope::External));
+            ASSERT(static_cast<int>(symbol.scope) ==
+                   static_cast<int>(index::SymbolScope::External));
             found.insert(symbol.name);
         }
     }
@@ -1246,7 +1246,8 @@ ZEST_CASE(ScopeFileLocal) {
     std::set<std::string> found;
     for(auto& [hash, symbol]: tu_index.symbols) {
         if(expected.contains(symbol.name)) {
-            ASSERT(static_cast<int>(symbol.scope) == static_cast<int>(index::SymbolScope::FileLocal));
+            ASSERT(static_cast<int>(symbol.scope) ==
+                   static_cast<int>(index::SymbolScope::FileLocal));
             found.insert(symbol.name);
         }
     }

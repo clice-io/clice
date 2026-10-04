@@ -587,8 +587,7 @@ Features::RawResult Features::semantic_tokens(Ticket ticket, kota::cancellation_
                 rows.decls,
                 [&](index::SymbolHash hash) { return query.symbol_info(hash); });
             session->index_served = true;
-            co_return to_raw(
-                feature::semantic_tokens_to_protocol(tokens, session->position_map()));
+            co_return to_raw(feature::semantic_tokens_to_protocol(tokens, session->position_map()));
         }
         case Route::Empty: {
             // The client caches this null, and only a semanticTokens
@@ -632,7 +631,8 @@ Features::RawResult Features::folding_range(Ticket ticket,
                                             kota::cancellation_token token) {
     auto& session = ticket.session;
     auto convert = [&](llvm::ArrayRef<feature::FoldingRange> folds) {
-        return to_raw(feature::folding_ranges_to_protocol(folds, session->position_map(), line_folding_only));
+        return to_raw(
+            feature::folding_ranges_to_protocol(folds, session->position_map(), line_folding_only));
     };
 
     std::optional<index::RowSource> source;
@@ -879,9 +879,8 @@ Features::RawResult Features::references(Ticket ticket,
 }
 
 static kota::ipc::Error rename_refused(std::string message) {
-    return kota::ipc::Error{
-        static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
-        std::move(message)};
+    return kota::ipc::Error{static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
+                            std::move(message)};
 }
 
 /// Refused up front, before the cursor costs a compile.

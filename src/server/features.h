@@ -85,8 +85,7 @@ public:
     /// Full document-link result for a session: the worker's main-file links
     /// merged behind the PCH's cached preamble links.
     kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
-        document_links(Ticket ticket,
-                       kota::cancellation_token token = {});
+        document_links(Ticket ticket, kota::cancellation_token token = {});
 
     /// Go-to-definition, assembled across all providers: preamble directive
     /// targets, the index, and the directives the worker's AST sees, with
@@ -109,16 +108,14 @@ public:
     RawResult hover(Ticket ticket,
                     const protocol::Position& position,
                     kota::cancellation_token token = {});
-    RawResult semantic_tokens(Ticket ticket,
-                              kota::cancellation_token token = {});
+    RawResult semantic_tokens(Ticket ticket, kota::cancellation_token token = {});
     RawResult inlay_hints(Ticket ticket,
                           const protocol::Range& range,
                           kota::cancellation_token token = {});
     RawResult folding_range(Ticket ticket,
                             bool line_folding_only,
                             kota::cancellation_token token = {});
-    RawResult document_symbol(Ticket ticket,
-                              kota::cancellation_token token = {});
+    RawResult document_symbol(Ticket ticket, kota::cancellation_token token = {});
 
     /// Code actions on a range of the buffer: the worker computes them to
     /// completion against its AST, and the index requests they carry
@@ -162,15 +159,9 @@ public:
                          Fid path_id,
                          const protocol::Position& position,
                          bool include_declaration);
-    RawResult declaration(Ticket ticket,
-                          Fid path_id,
-                          const protocol::Position& position);
-    RawResult type_definition(Ticket ticket,
-                              Fid path_id,
-                              const protocol::Position& position);
-    RawResult implementation(Ticket ticket,
-                             Fid path_id,
-                             const protocol::Position& position);
+    RawResult declaration(Ticket ticket, Fid path_id, const protocol::Position& position);
+    RawResult type_definition(Ticket ticket, Fid path_id, const protocol::Position& position);
+    RawResult implementation(Ticket ticket, Fid path_id, const protocol::Position& position);
 
     RawResult call_hierarchy_prepare(Ticket ticket,
                                      Fid path_id,
@@ -187,9 +178,7 @@ public:
     /// Rename from this project's index (see index/rename.h), never a
     /// recompile. prepare_rename answers the name token at the position,
     /// or an error saying why the symbol there cannot be renamed.
-    RawResult prepare_rename(Ticket ticket,
-                             Fid path_id,
-                             const protocol::Position& position);
+    RawResult prepare_rename(Ticket ticket, Fid path_id, const protocol::Position& position);
 
     /// The edits of a rename, each file's versioned against its open
     /// buffer, and what the user should hear about them: the warnings,

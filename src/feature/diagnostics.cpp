@@ -216,7 +216,8 @@ private:
             auto content = unit.file_content(fid);
             auto lines = lsp::line_starts(content);
             converted =
-                PositionMap{.content = content, .lines = lines, .encoding = encoding}.to_range(range);
+                PositionMap{.content = content, .lines = lines, .encoding = encoding}.to_range(
+                    range);
         }
         if(!converted) {
             return;

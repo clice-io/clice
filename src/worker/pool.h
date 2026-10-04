@@ -766,7 +766,7 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
     auto idx = assign_worker(path_id);
     if(idx == SIZE_MAX) {
         co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
-                                                       "No stateful workers available"});
+                                             "No stateful workers available"});
     }
 
     // Own a peer reference across the await: the slot drops its copy the
@@ -786,8 +786,7 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
     if(stateful_workers[idx].generation == gen)
         mark_worker_dead(idx, true, true);
     co_await death->settled.wait();
-    co_await kota::fail(
-        death_error(*death, dispatch.tag, worker::death_identity(idx, gen, true)));
+    co_await kota::fail(death_error(*death, dispatch.tag, worker::death_identity(idx, gen, true)));
 }
 
 template <typename Params>
@@ -802,7 +801,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     auto idx = co_await acquire_stateless_slot(priority);
     if(idx == SIZE_MAX) {
         co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
-                                                       "No stateless workers available"});
+                                             "No stateless workers available"});
     }
 
     StatelessSlot slot(*this, idx);
@@ -825,7 +824,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         // the wire: giving the claim back costs nothing.
         if(low_reclaim_deficit() > 0) {
             co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::cancelled,
-                                                           "Request preempted by the scheduler"});
+                                                 "Request preempted by the scheduler"});
         }
     }
     // The classification channel for scheduler-initiated cancels: the
@@ -874,15 +873,14 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     // cancelled, so the indexer requeues instead of recording a failure.
     if(preempt_src->cancelled())
         co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::cancelled,
-                                                       "Request preempted by the scheduler"});
+                                             "Request preempted by the scheduler"});
     // An error returned by the worker's handler leaves the worker healthy;
     // pass it through untouched.
     if(result.has_value() || !transport_dead)
         co_return std::move(result);
 
     co_await death->settled.wait();
-    co_await kota::fail(
-        death_error(*death, dispatch.tag, worker::death_identity(idx, gen, false)));
+    co_await kota::fail(death_error(*death, dispatch.tag, worker::death_identity(idx, gen, false)));
 }
 
 template <typename Params>

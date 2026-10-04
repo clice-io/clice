@@ -582,14 +582,16 @@ ZEST_CASE(HoverDefinitionShape) {
         index::SymbolRef info{.name = "name", .kind = kind, .flags = flags};
         return feature::index_hover(info, text, "").definition;
     };
-    ASSERT(card(SymbolKind::Function, "int twice(int x) {\n    return x * 2;\n}") == "int twice(int x)");
+    ASSERT(card(SymbolKind::Function, "int twice(int x) {\n    return x * 2;\n}") ==
+           "int twice(int x)");
     ASSERT(card(SymbolKind::Function, "int open() { // }\n    return 0;\n}") == "int open()");
     ASSERT(card(SymbolKind::Method, "Holder() = default") == "Holder() = default");
     ASSERT(card(SymbolKind::Struct, "struct Point {\n    int x;\n}") == "struct Point {}");
     ASSERT(card(SymbolKind::Namespace, "namespace app {\nint value;\n}") == "namespace app {}");
     ASSERT(card(SymbolKind::Macro, "LIMIT 10") == "#define LIMIT 10");
     ASSERT(card(SymbolKind::Variable, "int values[] = {1, 2}") == "int values[] = {1, 2}");
-    ASSERT(card(SymbolKind::Function, "int entry() {}", index::SymbolFlags::Exported) == "export int entry()");
+    ASSERT(card(SymbolKind::Function, "int entry() {}", index::SymbolFlags::Exported) ==
+           "export int entry()");
 }
 
 ZEST_CASE(CommentBlockExtraction) {
@@ -623,7 +625,8 @@ int after();
 )cpp";
 
     auto add_offset = static_cast<std::uint32_t>(content.find("int add"));
-    ASSERT(feature::preceding_comment(content, add_offset) == "Adds two numbers.\nReturns their sum.");
+    ASSERT(feature::preceding_comment(content, add_offset) ==
+           "Adds two numbers.\nReturns their sum.");
 
     // A blank line between the comment and the declaration breaks the
     // attachment.
@@ -642,7 +645,8 @@ int after();
 
     // Interior lines of a block comment need no marker of their own.
     auto release_offset = static_cast<std::uint32_t>(content.find("int release"));
-    ASSERT(feature::preceding_comment(content, release_offset) == "Frees the buffer.\nThen clears it.");
+    ASSERT(feature::preceding_comment(content, release_offset) ==
+           "Frees the buffer.\nThen clears it.");
 
     // A block comment opened behind code trails that code, even when it
     // closes directly above the declaration.

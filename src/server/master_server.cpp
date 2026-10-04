@@ -987,8 +987,9 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             if(!root.empty()) {
                 server.initialize(Spelling(root, Spelling::cwd()));
             }
-            co_await serve_until_shutdown(server,
-                                          accept_connections(server, std::move(acceptor), connections));
+            co_await serve_until_shutdown(
+                server,
+                accept_connections(server, std::move(acceptor), connections));
             co_await server.shutdown_and_cleanup();
         }(server, std::move(*acceptor), connections, ws));
         loop.run();
