@@ -170,7 +170,7 @@ ZEST_CASE(CrashPublishesNote) {
         session->path_id,
         CompileOutput{.version = 1,
                       .source = CommandSource::CDBExact,
-                      .diagnostics = kota::codec::RawValue{R"([{"message":"old"}])"}});
+                      .diagnostics = {protocol::Diagnostic{.message = "old"}}});
 
     int emits = 0;
     auto conn = stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) { emits += 1; });

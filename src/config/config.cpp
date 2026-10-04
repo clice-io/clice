@@ -1,7 +1,6 @@
 #include "config/config.h"
 
 #include <algorithm>
-#include <array>
 #include <initializer_list>
 
 #include "feature/feature.h"
@@ -69,18 +68,6 @@ std::uint32_t default_max_stateless_worker_count() {
     return count;
 }
 
-/// A literal path as the glob that matches only itself.
-static std::string glob_escape(llvm::StringRef literal) {
-    std::string escaped;
-    for(char c: literal) {
-        if(llvm::StringRef(R"(*?[]{}\)").contains(c)) {
-            escaped += '\\';
-        }
-        escaped += c;
-    }
-    return escaped;
-}
-
 /// Compile one pattern against absolute paths: the literal directory before
 /// the first wildcard segment is anchored (a relative one at `anchor`) and
 /// resolved like every path the file table names — a symlinked directory
@@ -89,24 +76,18 @@ static std::string glob_escape(llvm::StringRef literal) {
 static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
                                                             const Spelling& anchor,
                                                             CanonicalRef workspace_root) {
-    // A substituted workspace root is path, never glob syntax: the wildcard
-    // search starts after it, and the literal prefix it lands in is escaped.
-    std::size_t search_from =
-        llvm::StringRef(pattern).starts_with(path::workspace_anchor) ? workspace_root.size() : 0;
-    substitute_workspace(pattern, workspace_root);
-    llvm::StringRef ref(pattern);
+    // A substituted workspace root is path, never glob syntax.
+    substitute_workspace(pattern, kota::GlobPattern::escape(workspace_root.str()));
     std::string text = pattern;
     CanonicalPath root = workspace_root;
-    if(!ref.starts_with("**")) {
-        auto wildcard = ref.find_first_of(R"(*?[{\)", search_from);
-        auto cut = ref.rfind('/', wildcard == llvm::StringRef::npos ? ref.size() : wildcard);
-        auto dir = cut == llvm::StringRef::npos ? llvm::StringRef() : ref.take_front(cut + 1);
-        root = CanonicalPath(Spelling(dir, anchor));
-        text = glob_escape(root);
+    if(!pattern.starts_with("**")) {
+        auto [directory, rest] = kota::GlobPattern::split_root(pattern);
+        root = CanonicalPath(Spelling(directory, anchor));
+        text = kota::GlobPattern::escape(root.str());
         if(!text.ends_with('/')) {
             text += '/';
         }
-        text += cut == llvm::StringRef::npos ? ref : ref.drop_front(cut + 1);
+        text += rest;
     }
     auto glob = kota::GlobPattern::create(text);
     if(!glob) {
@@ -125,7 +106,7 @@ void Config::finalize(CanonicalRef workspace_root) {
     ProjectConfig defaults;
     auto reject_zero = [](auto& field, const auto& fallback, llvm::StringRef name) {
         if(field.value == 0) {
-            LOG_WARN("{} = 0 is invalid; using {}", name, fallback.value);
+            LOG_WARN("{} = 0 is invalid; using {}", name, fallback);
             field = fallback.value;
         }
     };
@@ -278,10 +259,9 @@ llvm::SmallVector<llvm::StringRef> Config::configurations() const {
     return tags;
 }
 
-/// Codec config that rejects unknown keys: the strict validation pass
-/// decodes under it, and the published schema derives its
-/// `additionalProperties: false` from it — the same typo surfaces both
-/// ways.
+/// Codec config the published schema is generated under, for its
+/// `additionalProperties: false`: a key load() warns about as unknown is
+/// one the schema rejects — the same typo surfaces both ways.
 struct DenyUnknownKeys {
     constexpr static bool deny_unknown_fields = true;
 };
@@ -308,7 +288,11 @@ std::optional<Config> Config::load(llvm::StringRef path,
     if(!content)
         return std::nullopt;
 
-    auto result = kota::codec::toml::from_string<Config>((*content)->getBuffer());
+    kota::codec::UnknownFields unknown;
+    auto result = [&] {
+        kota::codec::scoped_context<kota::codec::UnknownFields> collecting(unknown);
+        return kota::codec::toml::from_string<Config>((*content)->getBuffer());
+    }();
     if(!result) {
         LOG_ERROR("Invalid clice.toml {}: {}", path, result.error().to_string());
         if(issues)
@@ -316,16 +300,10 @@ std::optional<Config> Config::load(llvm::StringRef path,
         return std::nullopt;
     }
 
-    // Second, strict decode pass that rejects unknown keys. The lenient
-    // result above still applies — this only surfaces typos (e.g. a
-    // misspelled option silently doing nothing) as Warning issues.
     if(issues) {
-        Config probe{};
-        if(auto strict =
-               kota::codec::toml::from_string<DenyUnknownKeys>((*content)->getBuffer(), probe);
-           !strict) {
-            LOG_WARN("clice.toml {}: {}", path, strict.error().to_string());
-            issues->push_back(make_issue(ConfigIssue::Severity::Warning, path, strict.error()));
+        for(auto& entry: unknown.entries) {
+            LOG_WARN("clice.toml {}: {}", path, entry.to_string());
+            issues->push_back(make_issue(ConfigIssue::Severity::Warning, path, entry));
         }
     }
 
@@ -347,16 +325,15 @@ std::optional<Config> Config::load(llvm::StringRef path,
 }
 
 std::optional<Config> Config::load_from_json(llvm::StringRef json, CanonicalRef workspace_root) {
-    Config config{};
-    auto result = kota::codec::json::from_string(json, config);
-    if(!result) {
-        LOG_WARN("Failed to parse initializationOptions JSON: {}", result.error().message);
+    auto config = kota::codec::json::from_string<Config>(json);
+    if(!config) {
+        LOG_WARN("Failed to parse initializationOptions JSON: {}", config.error().message);
         return std::nullopt;
     }
 
-    config.finalize(workspace_root);
+    config->finalize(workspace_root);
     LOG_INFO("Loaded config from initializationOptions");
-    return config;
+    return std::move(*config);
 }
 
 Config Config::load_from_workspace(CanonicalRef workspace_root,
@@ -437,7 +414,7 @@ void Config::keep_own_cache_dir() {
     auto own = path::join(workspace_root, ".clice");
     path::canonicalize(own);
     LOG_GUIDANCE("Cache directory {} serves the project at {}; {} keeps its cache in {}",
-                 std::string(p.cache_dir),
+                 p.cache_dir,
                  cache_dir_owner(p.cache_dir),
                  workspace_root,
                  own);
@@ -448,95 +425,12 @@ void Config::keep_own_cache_dir() {
     p.cache_dir_defaulted = true;
 }
 
-constexpr std::array MACHINE_DERIVED_FIELDS = {"stateless_worker_count",
-                                               "max_stateless_worker_count"};
-
-/// The fields finalize() rejects `0` for.
-constexpr std::array ZERO_INVALID_FIELDS = {"stateful_worker_count",
-                                            "stateless_worker_count",
-                                            "min_stateless_worker_count"};
-
-/// Scrub the machine-derived fields out of a `default` object: sections
-/// carry whole-object defaults, so the values appear below `default`
-/// keys too, not only in the fields' own schemas.
-static void remove_machine_fields(kota::codec::dyn::Value& value) {
-    if(auto* object = value.get_object()) {
-        for(auto field: MACHINE_DERIVED_FIELDS) {
-            object->remove(field);
-        }
-        for(auto& [key, child]: *object) {
-            remove_machine_fields(child);
-        }
-    } else if(auto* array = value.get_array()) {
-        for(auto& child: *array) {
-            remove_machine_fields(child);
-        }
-    }
-}
-
-/// The schema object of `field` inside a `properties` map, if present.
-static kota::codec::dyn::Object* field_schema(kota::codec::dyn::Object& properties,
-                                              std::string_view field) {
-    if(auto* schema = properties.find(field)) {
-        return schema->get_object();
-    }
-    return nullptr;
-}
-
-/// Patch the field schemas with what the annotations cannot express:
-/// `default`s whose fresh value depends on the running machine are
-/// dropped — a committed schema must be byte-identical on every host, so
-/// the affected fields' descriptions state the derivation instead — the
-/// zero-invalid fields carry the lower bound finalize() enforces, and
-/// the enum fields name their accepted values so editors flag a typo
-/// that would silently fall back to the default.
-static void patch_field_schemas(kota::codec::dyn::Value& value) {
-    if(auto* object = value.get_object()) {
-        for(auto& [key, child]: *object) {
-            if(key == "properties") {
-                if(auto* properties = child.get_object()) {
-                    for(auto field: MACHINE_DERIVED_FIELDS) {
-                        if(auto* schema = field_schema(*properties, field)) {
-                            schema->remove("default");
-                        }
-                    }
-                    for(auto field: ZERO_INVALID_FIELDS) {
-                        if(auto* schema = field_schema(*properties, field)) {
-                            schema->assign("minimum", std::uint64_t{1});
-                        }
-                    }
-                    if(auto* schema = field_schema(*properties, "readonly")) {
-                        schema->assign("enum", kota::codec::dyn::Array{"off", "on", "auto"});
-                    }
-                }
-            } else if(key == "default") {
-                remove_machine_fields(child);
-            }
-            patch_field_schemas(child);
-        }
-    } else if(auto* array = value.get_array()) {
-        for(auto& child: *array) {
-            patch_field_schemas(child);
-        }
-    }
-}
-
 std::expected<std::string, std::string> Config::json_schema() {
-    auto schema = kota::codec::json::schema<Config, DenyUnknownKeys>();
+    auto schema = kota::codec::json::schema_string<Config, DenyUnknownKeys>(/*pretty=*/true);
     if(!schema) {
         return std::unexpected(schema.error().message);
     }
-    patch_field_schemas(*schema);
-
-    auto compact = kota::codec::json::to_string(std::move(*schema));
-    if(!compact) {
-        return std::unexpected(compact.error().message);
-    }
-    auto pretty = kota::codec::json::prettify(*compact);
-    if(!pretty) {
-        return std::unexpected(pretty.error().message);
-    }
-    return std::move(*pretty);
+    return std::move(*schema);
 }
 
 }  // namespace clice

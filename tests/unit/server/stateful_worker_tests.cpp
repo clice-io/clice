@@ -18,9 +18,7 @@ ZEST_CASE(SpawnAndExit) {
     WorkerHandle w;
     ASSERT(w.spawn(true));
 
-    w.peer->close_output();
-    w.loop.schedule(w.peer->run());
-    w.loop.run();
+    w.run([]() -> kota::task<> { co_return; });
 }
 
 ZEST_CASE(CompileRequest) {

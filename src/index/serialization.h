@@ -113,21 +113,6 @@ struct repr<clice::Bitmap, codec::fbs::format> {
     }
 };
 
-/// SymbolKind hides its enum behind constructors, which keeps it out of
-/// reflection; persist the underlying value.
-template <>
-struct repr<clice::SymbolKind, codec::fbs::format> {
-    using type = std::uint8_t;
-
-    static type to(clice::SymbolKind kind) {
-        return kind.value();
-    }
-
-    static clice::SymbolKind from(type value) {
-        return clice::SymbolKind(value);
-    }
-};
-
 }  // namespace kota::meta
 
 namespace clice::index {

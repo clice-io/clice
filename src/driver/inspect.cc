@@ -25,28 +25,12 @@
 #include "llvm/Support/VirtualFileSystem.h"
 #include "clang/Driver/Types.h"
 
-namespace kota::codec {
-
-/// SymbolKind is a struct wrapping its enum for implicit conversions, so
-/// reflection would serialize it as `{"kind_value": ...}`; emit the enum
-/// name instead, matching how plain enums serialize under enum_repr::String.
-template <typename Config>
-struct serialize_visit<json::ValueWriter, clice::SymbolKind, Config> {
-    static bool visit(json::ValueWriter& vis, const clice::SymbolKind& kind) {
-        return vis.visit_str(
-            kota::meta::enum_name(static_cast<clice::SymbolKind::Kind>(kind), "Invalid"));
-    }
-};
-
-}  // namespace kota::codec
-
 namespace clice::driver {
 
 namespace {
 
 struct InspectOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoFlag(names = {"--config-schema"},
              help = "Print the JSON schema of the clice configuration and exit",
@@ -92,11 +76,7 @@ struct InspectOptions {
                  required = false)
     <std::string> configuration;
 
-    DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
-                 names = {"--log-level", "--log-level="},
-                 help = "Log level: trace, debug, info, warn, error, off",
-                 required = false)
-    <std::string> log_level;
+    LogLevelOption log{.log_level = LogLevel::Warn};
 };
 
 /// JSON layout of the inspect output. Field names stay snake_case (the
@@ -1039,38 +1019,28 @@ auto make_command() {
 
 }  // namespace
 
-void add_inspect(kota::deco::cli::SubCommander& root, int& exit_code) {
+void add_inspect(kota::deco::cli::SubCommander& root) {
     auto cmd = make_command();
-    cmd.match_all([&exit_code](InspectOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           // A mode flag like --help: ignores feature/path inputs.
-           if(opts.config_schema) {
-               auto schema = Config::json_schema();
-               if(!schema) {
-                   LOG_ERROR("config schema generation failed: {}", schema.error());
-                   return;
-               }
-               driver::println("{}", *schema);
-               exit_code = 0;
-               return;
-           }
-           if(!apply_log_level(opts.log_level.value_or("warn"))) {
-               return;
-           }
-           logging::stderr_logger("inspect", logging::options);
-           if(!opts.inputs.has_value() || opts.inputs->size() != 2) {
-               auto help = make_command();
-               print_usage(help);
-               return;
-           }
-           exit_code = run_inspect(opts);
-       })
-        .on_error([](auto err) { LOG_ERROR("{}", err.message); });
+    cmd.match_all([](InspectOptions opts) {
+        // A mode flag like --help: ignores feature/path inputs.
+        if(opts.config_schema) {
+            auto schema = Config::json_schema();
+            if(!schema) {
+                LOG_ERROR("config schema generation failed: {}", schema.error());
+                return 1;
+            }
+            driver::println("{}", *schema);
+            return 0;
+        }
+        opts.log.apply();
+        logging::stderr_logger("inspect", logging::options);
+        if(!opts.inputs.has_value() || opts.inputs->size() != 2) {
+            auto help = make_command();
+            print_usage(help);
+            return 1;
+        }
+        return run_inspect(opts);
+    });
 
     root.add({.name = "inspect",
               .description = "Run a feature on source files and print raw results as JSON"},

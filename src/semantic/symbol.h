@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 
+#include "kota/meta/repr.h"
 #include "clang/AST/Decl.h"
 
 namespace clice {
@@ -257,3 +258,18 @@ constexpr bool operator&(RelationKind lhs, RelationKind rhs) {
 }
 
 }  // namespace clice
+
+/// SymbolKind hides its enum behind constructors, which keeps it out of
+/// reflection; it serializes as that enum.
+template <>
+struct kota::meta::repr<clice::SymbolKind> {
+    using type = clice::SymbolKind::Kind;
+
+    static type to(clice::SymbolKind kind) {
+        return kind;
+    }
+
+    static clice::SymbolKind from(type kind) {
+        return kind;
+    }
+};

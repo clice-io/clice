@@ -30,8 +30,7 @@ using kota::deco::decl::KVStyle;
 namespace {
 
 struct IndexOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Workspace root directory (default: current directory)",
@@ -91,16 +90,8 @@ struct IndexOptions {
            required = false)
     <std::string> show_tu;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--log-level", "--log-level="},
-           help = "Log level: trace, debug, info, warn, error, off",
-           required = false)
-    <std::string> log_level;
+    LogLevelOption log;
 };
-
-auto make_command() {
-    return kota::deco::cli::command<IndexOptions>("clice index [OPTIONS]");
-}
 
 std::string format_size(std::uint64_t bytes) {
     if(bytes >= 1024 * 1024) {
@@ -812,59 +803,52 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
 
 }  // namespace
 
-void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path) {
-    auto cmd = make_command();
-    cmd.match_all([&exit_code, self_path](IndexOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           if(!apply_log_level(opts.log_level.value_or("info")))
-               return;
-           logging::stderr_logger("index", logging::options);
+void add_index(kota::deco::cli::SubCommander& root, const char* self_path) {
+    auto cmd = kota::deco::cli::command<IndexOptions>("clice index [OPTIONS]");
+    cmd.match_all([self_path](IndexOptions opts) {
+        opts.log.apply();
+        logging::stderr_logger("index", logging::options);
 
-           auto spelling = workspace_spelling(opts.workspace.value_or(""));
-           CanonicalPath ws(spelling);
-           auto configuration = opts.configuration.value_or("");
-           std::size_t modes = (opts.show_symbol ? 1 : 0) + (opts.show_file ? 1 : 0) +
-                               (opts.show_tu ? 1 : 0) + (opts.stats || opts.variants ? 1 : 0);
-           if(modes > 1) {
-               LOG_ERROR(
-                   "--stats, --variants, --show-symbol, --show-file and --show-tu are "
-                   "separate modes; pass one of them");
-               return;
-           }
-           if(opts.show_symbol || opts.show_file || opts.show_tu || opts.stats || opts.variants) {
-               FileTable files;
-               // Answers name files under the workspace as the command line does.
-               files.spell_root(spelling);
-               Project project{files};
-               CommandResolver commands{project};
-               auto loaded = load_index(project, commands, ws, configuration, /*with_build=*/false);
-               if(!loaded) {
-                   exit_code = 1;
-               } else if(opts.show_symbol) {
-                   exit_code = run_show_symbol(project, *opts.show_symbol);
-               } else if(opts.show_file) {
-                   exit_code = run_show_file(project, *opts.show_file);
-               } else if(opts.show_tu) {
-                   exit_code = run_show_tu(project, *opts.show_tu);
-               } else {
-                   exit_code = run_stats(project,
-                                         loaded->dropped,
-                                         opts.top.value_or(20),
-                                         static_cast<bool>(opts.variants));
-               }
-               return;
-           }
-           exit_code = run_indexing(std::move(spelling),
-                                    std::move(configuration),
-                                    opts.workers.value_or(0),
-                                    self_path);
-       })
-        .on_error([](auto err) { LOG_ERROR("{}", err.message); });
+        auto spelling = workspace_spelling(opts.workspace.value_or(""));
+        CanonicalPath ws(spelling);
+        auto configuration = opts.configuration.value_or("");
+        std::size_t modes = (opts.show_symbol ? 1 : 0) + (opts.show_file ? 1 : 0) +
+                            (opts.show_tu ? 1 : 0) + (opts.stats || opts.variants ? 1 : 0);
+        if(modes > 1) {
+            LOG_ERROR(
+                "--stats, --variants, --show-symbol, --show-file and --show-tu are "
+                "separate modes; pass one of them");
+            return 1;
+        }
+        if(opts.show_symbol || opts.show_file || opts.show_tu || opts.stats || opts.variants) {
+            FileTable files;
+            // Answers name files under the workspace as the command line does.
+            files.spell_root(spelling);
+            Project project{files};
+            CommandResolver commands{project};
+            auto loaded = load_index(project, commands, ws, configuration, /*with_build=*/false);
+            if(!loaded) {
+                return 1;
+            }
+            if(opts.show_symbol) {
+                return run_show_symbol(project, *opts.show_symbol);
+            }
+            if(opts.show_file) {
+                return run_show_file(project, *opts.show_file);
+            }
+            if(opts.show_tu) {
+                return run_show_tu(project, *opts.show_tu);
+            }
+            return run_stats(project,
+                             loaded->dropped,
+                             opts.top.value_or(20),
+                             static_cast<bool>(opts.variants));
+        }
+        return run_indexing(std::move(spelling),
+                            std::move(configuration),
+                            opts.workers.value_or(0),
+                            self_path);
+    });
 
     root.add({.name = "index", .description = "Index a workspace ahead of time"}, std::move(cmd));
 }

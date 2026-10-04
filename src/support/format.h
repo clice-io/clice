@@ -36,6 +36,9 @@ struct std::formatter<llvm::StringRef> : std::formatter<std::string_view> {
     }
 };
 
+template <>
+struct std::formatter<llvm::StringLiteral> : std::formatter<llvm::StringRef> {};
+
 template <std::size_t N>
 struct std::formatter<llvm::SmallString<N>> : std::formatter<llvm::StringRef> {
     using Base = std::formatter<llvm::StringRef>;

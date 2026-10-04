@@ -26,9 +26,6 @@ namespace deco = kota::deco;
 enum class ServerMode : std::uint8_t { Pipe, Socket };
 
 struct ServerOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
-
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "Server mode: pipe (default) or socket (debug)",
            required = false)
@@ -60,12 +57,6 @@ struct ServerOptions {
                "(default: the selected one, else default_configuration)",
            required = false)
     <std::string> configuration;
-
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           names = {"--log-level", "--log-level="},
-           help = "Log level: trace, debug, info, warn, error, off",
-           required = false)
-    <std::string> log_level = "info";
 };
 
 enum class ServerLifecycle : std::uint8_t {
@@ -243,8 +234,8 @@ public:
     /// above files no folder claims.
     std::vector<CanonicalPath> workspace_roots;
 
-    /// The client's initializationOptions (JSON), applied to every project.
-    std::string init_options_json;
+    /// The client's initializationOptions, applied to every project.
+    std::optional<kota::codec::dyn::Value> init_options;
 
     /// The `--configuration` argument: the build configuration this
     /// session runs, over the persisted selection; empty takes the

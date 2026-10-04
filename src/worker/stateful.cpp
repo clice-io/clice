@@ -229,7 +229,7 @@ class StatefulWorker {
     }
 
     RequestResult<worker::CompileParams> serve_compile(PendingGuard pending,
-                                                 const worker::CompileParams& params);
+                                                       const worker::CompileParams& params);
 
 public:
     StatefulWorker(kota::ipc::BincodePeer& peer, std::size_t max_documents) :
@@ -243,167 +243,164 @@ RequestResult<worker::CompileParams>
     auto doc = pending.doc;
     auto strand = co_await doc->strand.scoped_lock();
 
-        // Every exit — including a cancellation that destroys this frame at
-        // the queue await below — must wake the AST waiters before the
-        // strand unlocks: an unset ast_ready would hang every later query
-        // for this document (they observe has_ast == false and return their
-        // missing value; the next Compile sets a real AST).
-        struct [[nodiscard]] CompileGuard {
-            DocumentEntry& doc;
+    // Every exit — including a cancellation that destroys this frame at
+    // the queue await below — must wake the AST waiters before the
+    // strand unlocks: an unset ast_ready would hang every later query
+    // for this document (they observe has_ast == false and return their
+    // missing value; the next Compile sets a real AST).
+    struct [[nodiscard]] CompileGuard {
+        DocumentEntry& doc;
 
-            ~CompileGuard() {
-                doc.ast_ready.set();
-            }
-        } guard{*doc};
+        ~CompileGuard() {
+            doc.ast_ready.set();
+        }
+    } guard{*doc};
 
-        // Copy params to doc AFTER acquiring the strand lock, so that
-        // concurrent Compile requests waiting on the strand don't
-        // overwrite our fields before we use them.
-        doc->version = params.version;
-        doc->text = params.text;
-        doc->directory = params.directory;
-        doc->arguments = params.arguments;
-        doc->pch = params.pch;
-        doc->open_conditionals = params.open_conditionals;
-        doc->preamble_inactive_regions = params.preamble_inactive_regions;
-        doc->pcms = params.pcms;
+    // Copy params to doc AFTER acquiring the strand lock, so that
+    // concurrent Compile requests waiting on the strand don't
+    // overwrite our fields before we use them.
+    doc->version = params.version;
+    doc->text = params.text;
+    doc->directory = params.directory;
+    doc->arguments = params.arguments;
+    doc->pch = params.pch;
+    doc->open_conditionals = params.open_conditionals;
+    doc->preamble_inactive_regions = params.preamble_inactive_regions;
+    doc->pcms = params.pcms;
 
-        // The old AST describes the text this request just replaced: drop
-        // it before the cancellable await, or a cancellation landing while
-        // the work is still queued would wake waiters with the previous
-        // unit installed next to the new buffer — with_ast_or would serve
-        // stale offsets as current. Waiters observe has_ast == false and
-        // return their missing value until a compile lands.
-        doc->has_ast = false;
-        doc->unit = CompilationUnit(nullptr);
+    // The old AST describes the text this request just replaced: drop
+    // it before the cancellable await, or a cancellation landing while
+    // the work is still queued would wake waiters with the previous
+    // unit installed next to the new buffer — with_ast_or would serve
+    // stale offsets as current. Waiters observe has_ast == false and
+    // return their missing value until a compile lands.
+    doc->has_ast = false;
+    doc->unit = CompilationUnit(nullptr);
 
-        // The parse itself is interruptible: CompilationParams::stop is
-        // polled after every top-level declaration, so the queue hook
-        // (fired when this frame is cancelled, as the master's interrupt
-        // does) reaches into the middle of the AST build instead of
-        // waiting for it to finish; an interrupted unit reports
-        // !completed() and the phases after it are skipped like any other
-        // incomplete compile. The document stays coherent at every early
-        // exit (unit and has_ast are set together).
-        auto stop = std::make_shared<std::atomic_bool>(false);
-        auto compile_result = co_await kota::queue(
-            [&]() -> worker::CompileResult {
-                CrashScope crash_scope(worker::crash_tag(params));
-                ScopedTimer timer;
+    // The parse itself is interruptible: CompilationParams::stop is
+    // polled after every top-level declaration, so the queue hook
+    // (fired when this frame is cancelled, as the master's interrupt
+    // does) reaches into the middle of the AST build instead of
+    // waiting for it to finish; an interrupted unit reports
+    // !completed() and the phases after it are skipped like any other
+    // incomplete compile. The document stays coherent at every early
+    // exit (unit and has_ast are set together).
+    auto stop = std::make_shared<std::atomic_bool>(false);
+    auto compile_result = co_await kota::queue(
+        [&]() -> worker::CompileResult {
+            CrashScope crash_scope(worker::crash_tag(params));
+            ScopedTimer timer;
 
-                CompilationParams cp;
-                cp.kind = CompilationKind::Content;
-                fill_args(cp, doc->directory, doc->arguments);
-                cp.workspace = params.workspace;
-                use_artifacts(cp, doc->pch, doc->pcms);
-                cp.add_remapped_file(params.path, doc->text);
-                cp.add_synthesized(params.synthesized);
-                cp.stop = stop;
+            CompilationParams cp;
+            cp.kind = CompilationKind::Content;
+            fill_args(cp, doc->directory, doc->arguments);
+            cp.workspace = params.workspace;
+            use_artifacts(cp, doc->pch, doc->pcms);
+            cp.add_remapped_file(params.path, doc->text);
+            cp.add_synthesized(params.synthesized);
+            cp.stop = stop;
 
-                doc->unit = compile(cp);
-                doc->has_ast = true;
+            doc->unit = compile(cp);
+            doc->has_ast = true;
 
-                worker::CompileResult result;
-                result.version = doc->version;
+            worker::CompileResult result;
+            result.version = doc->version;
 
-                // A failed parse that blames the consumed PCH: either a
-                // diagnostic names the blob's path outright, or it is an
-                // AST-deserialization error naming no other prebuilt input
-                // (that family's messages do not reliably carry the path —
-                // "malformed or corrupted precompiled file: 'Blob ends too
-                // soon'"). User-code failures (missing include, modified
-                // header, bad flags) match neither, so the master never
-                // rebuilds an innocent shared PCH over a failure it did
-                // not cause. An anonymous read error with PCMs in play is
-                // ambiguous; blaming the PCH costs at most one retracted
-                // pair per round and self-corrects on the retry.
-                if(!doc->unit.completed() && !doc->pch.first.empty()) {
-                    result.pch_suspect =
-                        std::ranges::any_of(doc->unit.diagnostics(), [&](auto& diag) {
-                            llvm::StringRef message = diag.message;
-                            if(message.contains(doc->pch.first)) {
-                                return true;
-                            }
-                            if(!diag.id.is_deserialization_error()) {
-                                return false;
-                            }
-                            return std::ranges::none_of(doc->pcms, [&](auto& entry) {
-                                return message.contains(entry.second);
-                            });
-                        });
-                }
-
-                if(doc->unit.completed() && !stop->load(std::memory_order_relaxed)) {
-                    result.build_at = doc->unit.build_at().count();
-                    result.deps = doc->unit.deps();
-
-                    // Build index for main file only (main_file_only=true).
-                    result.tu_index_data = index::build_tu_index(doc->unit, true);
-                }
-
-                if(doc->unit.completed() || doc->unit.fatal_error()) {
-                    auto diags = feature::diagnostics(doc->unit);
-                    if(result.tu_index_data.size() > max_index_bytes()) {
-                        diags.push_back(index_too_large(result.tu_index_data.size()));
-                        result.tu_index_data.clear();
+            // A failed parse that blames the consumed PCH: either a
+            // diagnostic names the blob's path outright, or it is an
+            // AST-deserialization error naming no other prebuilt input
+            // (that family's messages do not reliably carry the path —
+            // "malformed or corrupted precompiled file: 'Blob ends too
+            // soon'"). User-code failures (missing include, modified
+            // header, bad flags) match neither, so the master never
+            // rebuilds an innocent shared PCH over a failure it did
+            // not cause. An anonymous read error with PCMs in play is
+            // ambiguous; blaming the PCH costs at most one retracted
+            // pair per round and self-corrects on the retry.
+            if(!doc->unit.completed() && !doc->pch.first.empty()) {
+                result.pch_suspect = std::ranges::any_of(doc->unit.diagnostics(), [&](auto& diag) {
+                    llvm::StringRef message = diag.message;
+                    if(message.contains(doc->pch.first)) {
+                        return true;
                     }
-                    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diags);
-                    result.diagnostics = kota::codec::RawValue{json ? std::move(*json) : "[]"};
-                    LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
-                             params.path,
-                             timer.ms(),
-                             diags.size(),
-                             doc->unit.fatal_error());
-                } else {
-                    result.status = doc->unit.setup_fail() ? worker::CompileStatus::SetupFail
-                                                           : worker::CompileStatus::Cancelled;
-                    result.diagnostics = kota::codec::RawValue{"[]"};
-                    LOG_WARN("Compile incomplete: path={}, {}ms, setup_fail={}",
-                             params.path,
-                             timer.ms(),
-                             doc->unit.setup_fail());
-                }
+                    if(!diag.id.is_deserialization_error()) {
+                        return false;
+                    }
+                    return std::ranges::none_of(doc->pcms, [&](auto& entry) {
+                        return message.contains(entry.second);
+                    });
+                });
+            }
 
-                // A unit that is neither complete nor a fatal-error result
-                // can never serve a query (with_ast_or refuses it), yet it
-                // pins the consumed artifacts — on Windows a mapped PCH
-                // cannot be replaced on disk, so holding it would block
-                // the master's rebuild of a retracted pair. Drop it last,
-                // after every use of the unit above; queries observe
-                // has_ast == false and return their missing value until a
-                // compile lands.
-                if(!doc->unit.completed() && !doc->unit.fatal_error()) {
-                    doc->unit = CompilationUnit(nullptr);
-                    doc->has_ast = false;
-                }
-                release_free_memory();
-                return result;
-            },
-            [stop] { stop->store(true, std::memory_order_relaxed); });
+            if(doc->unit.completed() && !stop->load(std::memory_order_relaxed)) {
+                result.build_at = doc->unit.build_at().count();
+                result.deps = doc->unit.deps();
 
-        shrink_if_over_limit();
+                // Build index for main file only (main_file_only=true).
+                result.tu_index_data = index::build_tu_index(doc->unit, true);
+            }
+
+            if(doc->unit.completed() || doc->unit.fatal_error()) {
+                auto diags = feature::diagnostics(doc->unit);
+                if(result.tu_index_data.size() > max_index_bytes()) {
+                    diags.push_back(index_too_large(result.tu_index_data.size()));
+                    result.tu_index_data.clear();
+                }
+                LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
+                         params.path,
+                         timer.ms(),
+                         diags.size(),
+                         doc->unit.fatal_error());
+                result.diagnostics = std::move(diags);
+            } else {
+                result.status = doc->unit.setup_fail() ? worker::CompileStatus::SetupFail
+                                                       : worker::CompileStatus::Cancelled;
+                LOG_WARN("Compile incomplete: path={}, {}ms, setup_fail={}",
+                         params.path,
+                         timer.ms(),
+                         doc->unit.setup_fail());
+            }
+
+            // A unit that is neither complete nor a fatal-error result
+            // can never serve a query (with_ast_or refuses it), yet it
+            // pins the consumed artifacts — on Windows a mapped PCH
+            // cannot be replaced on disk, so holding it would block
+            // the master's rebuild of a retracted pair. Drop it last,
+            // after every use of the unit above; queries observe
+            // has_ast == false and return their missing value until a
+            // compile lands.
+            if(!doc->unit.completed() && !doc->unit.fatal_error()) {
+                doc->unit = CompilationUnit(nullptr);
+                doc->has_ast = false;
+            }
+            release_free_memory();
+            return result;
+        },
+        [stop] { stop->store(true, std::memory_order_relaxed); });
+
+    shrink_if_over_limit();
 
     co_return compile_result;
 }
 
 void StatefulWorker::register_handlers() {
     // === Compile ===
-    peer.on_request([this](RequestContext& ctx, const worker::CompileParams& params)
-                        -> RequestResult<worker::CompileParams> {
-        LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
-        PendingGuard pending(get_or_create(params.path));
-        touch_lru(params.path);
-        return serve_compile(std::move(pending), params);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx,
+               const worker::CompileParams& params) -> RequestResult<worker::CompileParams> {
+            LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
+            PendingGuard pending(get_or_create(params.path));
+            touch_lru(params.path);
+            return serve_compile(std::move(pending), params);
+        });
 
     // === DocumentLink ===
     peer.on_request([this](RequestContext& ctx, const worker::DocumentLinkParams& params)
                         -> RequestResult<worker::DocumentLinkParams> {
-        return with_ast_or(
-            "DocumentLink",
-            params,
-            std::vector<feature::DocumentLink>{},
-            [&](DocumentEntry& doc) { return feature::document_links(doc.unit); });
+        return with_ast_or("DocumentLink",
+                           params,
+                           std::vector<feature::DocumentLink>{},
+                           [&](DocumentEntry& doc) { return feature::document_links(doc.unit); });
     });
 
     // === FoldingRange ===

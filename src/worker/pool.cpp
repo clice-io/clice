@@ -26,81 +26,37 @@ namespace {
 kota::task<> drain_stderr(kota::pipe stderr_pipe,
                           std::string prefix,
                           std::shared_ptr<StderrTail> tail) {
-    std::string buffer;
     while(true) {
-        auto result = co_await stderr_pipe.read();
-        if(!result.has_value())
+        auto read = co_await stderr_pipe.read_line();
+        if(!read.has_value() || !read.value()) {
             break;
-        auto& chunk = result.value();
-        if(chunk.empty())
-            break;
-
-        buffer += chunk;
-
-        std::size_t pos = 0;
-        while(true) {
-            auto nl = buffer.find('\n', pos);
-            if(nl == std::string::npos)
-                break;
-            auto line = buffer.substr(pos, nl - pos);
-            // The CRT writes a Windows worker's stderr in text mode.
-            if(line.ends_with('\r')) {
-                line.pop_back();
-            }
-            if(line.starts_with(worker::crashed_in_marker)) {
-                tail->crashed_in = line.substr(worker::crashed_in_marker.size());
-            }
-            if(!line.empty()) {
-                LOG_WARN("{} {}", prefix, line);
-                tail->add(std::move(line));
-            }
-            pos = nl + 1;
         }
-        buffer.erase(0, pos);
+        auto& line = *read.value();
+        if(line.starts_with(worker::crashed_in_marker)) {
+            tail->crashed_in = line.substr(worker::crashed_in_marker.size());
+        }
+        if(!line.empty()) {
+            LOG_WARN("{} {}", prefix, line);
+            tail->add(std::move(line));
+        }
     }
-
-    if(!buffer.empty()) {
-        LOG_WARN("{} {}", prefix, buffer);
-        tail->add(std::move(buffer));
-    }
-    tail->drained = true;
+    tail->drained.set();
 }
 
 /// How a worker died, worded for the user.
 std::string describe_exit(int exit_code, int exit_signal) {
-    if(exit_signal == 0) {
+    kota::process::exit_status exit{.status = exit_code, .term_signal = exit_signal};
+    if(exit_signal != 0) {
+        return "killed by " + exit.to_string();
+    }
 #ifdef _WIN32
-        // A Windows process that crashed exits with the NTSTATUS of its
-        // exception.
-        auto status = static_cast<std::uint32_t>(exit_code);
-        llvm::StringRef exception;
-        switch(status) {
-            case 0x80000003: exception = "breakpoint"; break;
-            case 0xC0000005: exception = "access violation"; break;
-            case 0xC000001D: exception = "illegal instruction"; break;
-            case 0xC00000FD: exception = "stack overflow"; break;
-            case 0xC0000409: exception = "fail fast"; break;
-        }
-        if(!exception.empty()) {
-            return std::format("terminated by exception 0x{:08X} ({})", status, exception);
-        }
-#endif
-        return std::format("exited with code {}", exit_code);
+    // A Windows process that crashed exits with the NTSTATUS of its
+    // exception.
+    if(static_cast<std::uint32_t>(exit_code) >= 0x8000'0000) {
+        return "terminated by " + exit.to_string();
     }
-    llvm::StringRef name;
-    switch(exit_signal) {
-        case SIGILL: name = "SIGILL"; break;
-        case SIGABRT: name = "SIGABRT"; break;
-        case SIGFPE: name = "SIGFPE"; break;
-        case SIGSEGV: name = "SIGSEGV"; break;
-#ifndef _WIN32
-        case SIGBUS: name = "SIGBUS"; break;
-        case SIGKILL: name = "SIGKILL"; break;
-        case SIGTRAP: name = "SIGTRAP"; break;
 #endif
-        default: return std::format("killed by signal {}", exit_signal);
-    }
-    return std::format("killed by signal {} ({})", exit_signal, name);
+    return std::format("exited with code {}", exit_code);
 }
 
 /// IO pump wrapper owning a peer reference, so the peer object outlives its
@@ -380,13 +336,12 @@ kota::task<> WorkerPool::stop() {
 kota::task<> WorkerPool::kill_stragglers() {
     co_await kota::sleep(std::chrono::milliseconds(5000), loop);
     LOG_WARN("Workers still alive 5s after SIGTERM; escalating to SIGKILL");
-    // 9 == SIGKILL by value; Windows' <csignal> does not define the macro.
     for(auto& w: stateless_workers)
         if(w.state == SlotState::Alive)
-            w.proc.kill(9);
+            w.proc.kill();
     for(auto& w: stateful_workers)
         if(w.state == SlotState::Alive)
-            w.proc.kill(9);
+            w.proc.kill();
 }
 
 std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
@@ -464,7 +419,7 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
     if(kill_process) {
         // Make sure the process is really gone so monitor_worker's
         // proc.wait() is guaranteed to deliver a verdict.
-        w.proc.kill(9);
+        w.proc.kill();
     }
 }
 
@@ -531,9 +486,10 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     // grandchild holding the pipe open must not stall the respawn. The
     // slot is already dying, so a shutdown meanwhile skips its reaped pid.
     if(auto tail = workers[index].stderr_tail) {
-        for(int attempt = 0; attempt < 20 && !tail->drained; attempt += 1) {
-            co_await kota::sleep(std::chrono::milliseconds(50), loop);
-        }
+        auto drained = [](std::shared_ptr<StderrTail> tail) -> kota::task<> {
+            co_await tail->drained.wait();
+        };
+        co_await kota::with_timeout(drained(std::move(tail)), std::chrono::seconds(1), loop);
         if(stop_scope.cancelled())
             co_return;
     }
@@ -896,8 +852,6 @@ std::size_t WorkerPool::pick_idle_stateless() {
 
 kota::task<> WorkerPool::monitor_loop() {
     while(true) {
-        // A cancelled child would cancel every sibling in worker_tasks, so
-        // the stop ends this loop by returning.
         co_await kota::with_token(kota::sleep(std::chrono::milliseconds(3000), loop),
                                   stop_scope.token());
         if(stop_scope.cancelled())

@@ -21,6 +21,7 @@ ZEST_SUITE(FormatSupport) {
 ZEST_CASE(FormatLLVMStringRef) {
     llvm::StringRef value = "hello";
     EXPECT(std::format("{}", value) == "hello");
+    EXPECT(std::format("{}", llvm::StringLiteral("hello")) == "hello");
 }
 
 ZEST_CASE(FormatEnumAndStruct) {

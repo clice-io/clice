@@ -25,13 +25,13 @@ void register_control(ProjectServer& srv, kota::ipc::JSONPeer& peer) {
                         -> RequestResult<control::IndexParams> {
         auto active = srv.project.build.active_configuration();
         if(params.configuration != active) {
-            co_return kota::outcome_error(kota::ipc::Error{
+            co_await kota::fail(kota::ipc::Error{
                 std::format("the running clice server indexes configuration '{}', not '{}'",
                             std::string_view(active),
                             params.configuration)});
         }
         if(!srv.project.config.project.enable_indexing.value) {
-            co_return kota::outcome_error(
+            co_await kota::fail(
                 kota::ipc::Error{"the running clice server has background indexing disabled"});
         }
         // Build changes land through the tracker's poll; a request right
@@ -45,7 +45,7 @@ void register_control(ProjectServer& srv, kota::ipc::JSONPeer& peer) {
         }
         auto members = srv.project.build.members();
         if(members.empty()) {
-            co_return kota::outcome_error(kota::ipc::Error{
+            co_await kota::fail(kota::ipc::Error{
                 "nothing to index: the running clice server's build has no translation units"});
         }
         control::IndexResult result;
@@ -67,7 +67,7 @@ void register_control(ProjectServer& srv, kota::ipc::JSONPeer& peer) {
         // rows must be there before the answer.
         srv.sched.pump.claim_report(co_await srv.sched.store.save(srv.sched.pump.save_debt()));
         if(srv.sched.store.has_unsaved_state()) {
-            co_return kota::outcome_error(
+            co_await kota::fail(
                 kota::ipc::Error{"part of the index could not be persisted; see the server log"});
         }
         // Not current after the sweep: the attempt failed, or the serving

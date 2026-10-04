@@ -112,7 +112,7 @@ kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
 
 Features::RawResult Features::stop_reply(Stop stop) {
     if(stop.error) {
-        co_return kota::outcome_error(std::move(*stop.error));
+        co_await kota::fail(std::move(*stop.error));
     }
     co_return serde_raw{"null"};
 }
@@ -322,14 +322,11 @@ std::optional<protocol::Hover> Features::directive_hover(const Session& session,
 
 kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
     Features::directive_links(const Ticket& ticket, kota::cancellation_token token) {
-    auto result = co_await dispatcher.document_links(ticket, std::move(token));
-    if(!result.has_value()) {
-        co_return kota::outcome_error(std::move(result.error()));
-    }
+    auto result = co_await dispatcher.document_links(ticket, std::move(token)).or_fail();
     // The preamble is compiled into the PCH, so the worker's AST only
     // covers the rest of the file — merge the preamble's links in front.
     auto links = find_preamble_links(*ticket.session);
-    links.insert(links.end(), result->begin(), result->end());
+    links.insert(links.end(), result.begin(), result.end());
     co_return links;
 }
 
@@ -354,7 +351,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
     };
 
     switch(co_await pick_route(ticket, {.await_cold_attempt = true})) {
-        case Route::Superseded: co_return kota::outcome_error(content_modified());
+        case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             // Manifest edges cover the whole document (the background
             // index has no preamble split); guard-skipped lines and
@@ -378,12 +375,10 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
         case Route::Ast: break;
     }
 
-    auto result = co_await directive_links(ticket, std::move(token));
-    if(!result.has_value())
-        co_return kota::outcome_error(std::move(result.error()));
+    auto result = co_await directive_links(ticket, std::move(token)).or_fail();
 
     std::vector<protocol::DocumentLink> links;
-    convert(result.value(), links);
+    convert(result, links);
     co_return links;
 }
 
@@ -480,13 +475,10 @@ Features::RawResult Features::definition(Ticket ticket,
         co_return serde_raw{"[]"};
     }
 
-    auto links = co_await directive_links(ticket, std::move(token));
     // A dispatch error is final: a ContentModified in particular must not
     // be replaced by an index answer computed on the newer buffer.
-    if(!links.has_value()) {
-        co_return kota::outcome_error(std::move(links.error()));
-    }
-    if(auto* link = offset ? link_at(*links, *offset) : nullptr) {
+    auto links = co_await directive_links(ticket, std::move(token)).or_fail();
+    if(auto* link = offset ? link_at(links, *offset) : nullptr) {
         co_return to_raw(directive_definition(*link));
     }
 
@@ -506,7 +498,7 @@ Features::RawResult Features::hover(Ticket ticket,
                                     kota::cancellation_token token) {
     auto& session = ticket.session;
     if(!session) {
-        co_return kota::outcome_error(document_not_open());
+        co_await kota::fail(document_not_open());
     }
     auto path_id = session->path_id;
 
@@ -519,7 +511,7 @@ Features::RawResult Features::hover(Ticket ticket,
     };
 
     switch(co_await pick_route(ticket, {})) {
-        case Route::Superseded: co_return kota::outcome_error(content_modified());
+        case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             if(auto card = index_card()) {
                 session->index_served = true;
@@ -539,11 +531,8 @@ Features::RawResult Features::hover(Ticket ticket,
                                                               &index_lang_options(*session))
                            : std::nullopt;
     if(argument && argument->begin <= *offset) {
-        auto links = co_await directive_links(ticket, token);
-        if(!links.has_value()) {
-            co_return kota::outcome_error(std::move(links.error()));
-        }
-        if(auto* link = link_at(*links, *offset)) {
+        auto links = co_await directive_links(ticket, token).or_fail();
+        if(auto* link = link_at(links, *offset)) {
             auto hover = directive_hover(*session, *link);
             co_return hover ? to_raw(*hover) : serde_raw{"null"};
         }
@@ -588,7 +577,7 @@ Features::RawResult Features::semantic_tokens(Ticket ticket, kota::cancellation_
     auto& session = ticket.session;
     std::optional<index::RowSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
-        case Route::Superseded: co_return kota::outcome_error(content_modified());
+        case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             auto rows = feature::extract_index_rows(*source->rows);
             auto tokens = feature::index_semantic_tokens(
@@ -648,7 +637,7 @@ Features::RawResult Features::folding_range(Ticket ticket,
 
     std::optional<index::RowSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
-        case Route::Superseded: co_return kota::outcome_error(content_modified());
+        case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             auto rows = feature::extract_index_rows(*source->rows);
             auto folds = feature::index_folding_ranges(
@@ -669,21 +658,18 @@ Features::RawResult Features::folding_range(Ticket ticket,
         }
         case Route::Ast: break;
     }
-    auto folds = co_await dispatcher.folding_ranges(ticket, std::move(token));
-    if(!folds.has_value()) {
-        co_return kota::outcome_error(std::move(folds.error()));
-    }
-    if(!*folds) {
+    auto folds = co_await dispatcher.folding_ranges(ticket, std::move(token)).or_fail();
+    if(!folds) {
         co_return serde_raw{"null"};
     }
-    co_return convert(**folds);
+    co_return convert(*folds);
 }
 
 Features::RawResult Features::document_symbol(Ticket ticket, kota::cancellation_token token) {
     auto& session = ticket.session;
     std::optional<index::RowSource> source;
     switch(co_await pick_route(ticket, {.await_cold_attempt = true}, &source)) {
-        case Route::Superseded: co_return kota::outcome_error(content_modified());
+        case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             auto rows = feature::extract_index_rows(*source->rows);
             auto symbols = feature::index_document_symbols(rows.decls, [&](index::SymbolHash hash) {
@@ -742,7 +728,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     // didClose, with or without a reopen): the request belongs to the
     // discarded buffer, and only the store can tell.
     if(sessions.find(session->path_id) != session) {
-        co_return kota::outcome_error(content_modified());
+        co_await kota::fail(content_modified());
     }
     auto ticket = Ticket::take(session);
 
@@ -822,8 +808,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 item.text_edit = edit(c);
                 items.push_back(std::move(item));
             }
-            auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(items);
-            co_return serde_raw{json ? std::move(*json) : "[]"};
+            co_return to_raw(items);
         }
         if(pctx.kind == CompletionContext::Import) {
             auto module_names = complete_module_import(project.dep_graph, pctx.prefix);
@@ -840,8 +825,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 };
                 items.push_back(std::move(item));
             }
-            auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(items);
-            co_return serde_raw{json ? std::move(*json) : "[]"};
+            co_return to_raw(items);
         }
     }
 
@@ -929,7 +913,7 @@ Features::RawResult Features::prepare_rename(Ticket ticket,
                                              Fid path_id,
                                              const protocol::Position& position) {
     if(auto refused = refuse_rootless(project)) {
-        co_return kota::outcome_error(std::move(*refused));
+        co_await kota::fail(std::move(*refused));
     }
     if(ticket.session) {
         if(auto stop = co_await nav_gate(ticket)) {
@@ -942,7 +926,7 @@ Features::RawResult Features::prepare_rename(Ticket ticket,
     }
     auto renamed = index::rename_at(query, *cursor);
     if(!renamed) {
-        co_return kota::outcome_error(rename_refused(std::move(renamed.error())));
+        co_await kota::fail(rename_refused(std::move(renamed.error())));
     }
     co_return to_raw(protocol::PrepareRenamePlaceholder{
         .range = to_lsp::range(renamed->token),
@@ -956,12 +940,12 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
                      const protocol::Position& position,
                      std::string new_name) {
     if(auto refused = refuse_rootless(project)) {
-        co_return kota::outcome_error(std::move(*refused));
+        co_await kota::fail(std::move(*refused));
     }
     if(ticket.session) {
         if(auto stop = co_await nav_gate(ticket)) {
             if(stop->error) {
-                co_return kota::outcome_error(std::move(*stop->error));
+                co_await kota::fail(std::move(*stop->error));
             }
             co_return std::nullopt;
         }
@@ -973,7 +957,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
     }
     auto at = index::rename_at(query, *cursor);
     if(!at) {
-        co_return kota::outcome_error(rename_refused(std::move(at.error())));
+        co_await kota::fail(rename_refused(std::move(at.error())));
     }
 
     // The walk, the reads and the sweep run off the loop; only the files
@@ -1005,21 +989,21 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         return result;
     });
     if(ticket.session && !ticket.fresh()) {
-        co_return kota::outcome_error(content_modified());
+        co_await kota::fail(content_modified());
     }
     // Rows indexed during the sweep may link the symbol to more: plan
     // with the group they give now.
     cursor = cursor_at(path_id, position);
     if(!cursor) {
-        co_return kota::outcome_error(content_modified());
+        co_await kota::fail(content_modified());
     }
     auto old_name = std::move(at->target.symbol.symbol.name);
     at = index::rename_at(query, *cursor);
     if(!at) {
-        co_return kota::outcome_error(rename_refused(std::move(at.error())));
+        co_await kota::fail(rename_refused(std::move(at.error())));
     }
     if(at->target.symbol.symbol.name != old_name) {
-        co_return kota::outcome_error(content_modified());
+        co_await kota::fail(content_modified());
     }
 
     auto root = config.workspace_root;
@@ -1061,7 +1045,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
                 "these files changed since they were indexed, or were never indexed: {}",
                 llvm::join(plan.stale, ", ")));
         }
-        co_return kota::outcome_error(rename_refused(
+        co_await kota::fail(rename_refused(
             std::format("cannot rename `{}`: {}", plan.old_name, llvm::join(reasons, "; "))));
     }
 
@@ -1353,7 +1337,7 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
     auto symbol =
         item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
     if(!symbol)
-        co_return kota::outcome_error(item_not_resolved("call hierarchy"));
+        co_await kota::fail(item_not_resolved("call hierarchy"));
 
     std::vector<index::IndexQuery::Edge> callers;
     auto asked = sources(*symbol, path_id);
@@ -1376,7 +1360,7 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
     auto symbol =
         item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
     if(!symbol)
-        co_return kota::outcome_error(item_not_resolved("call hierarchy"));
+        co_await kota::fail(item_not_resolved("call hierarchy"));
 
     std::vector<index::IndexQuery::Edge> callees;
     auto asked = sources(*symbol, path_id);
@@ -1435,7 +1419,7 @@ Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
     auto symbol =
         item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
     if(!symbol)
-        co_return kota::outcome_error(item_not_resolved("type hierarchy"));
+        co_await kota::fail(item_not_resolved("type hierarchy"));
     std::vector<index::IndexQuery::Located> supertypes;
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {
@@ -1451,7 +1435,7 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
     auto symbol =
         item_symbol(query, path_id, cursor_at(path_id, item.selection_range.start), item.data);
     if(!symbol)
-        co_return kota::outcome_error(item_not_resolved("type hierarchy"));
+        co_await kota::fail(item_not_resolved("type hierarchy"));
     std::vector<index::IndexQuery::Located> subtypes;
     auto asked = sources(*symbol, path_id);
     for(auto& [from, named]: asked) {

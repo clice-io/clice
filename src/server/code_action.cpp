@@ -145,10 +145,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         co_return out;
     }
 
-    auto result = co_await dispatcher.code_actions(ticket, range, std::move(token));
-    if(!result.has_value()) {
-        co_return kota::outcome_error(std::move(result.error()));
-    }
+    auto actions = co_await dispatcher.code_actions(ticket, range, std::move(token)).or_fail();
 
     auto path_id = session->path_id;
     auto path = project.file_table.display(path_id);
@@ -312,7 +309,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         }
     };
 
-    for(auto& action: result.value()) {
+    for(auto& action: actions) {
         if(!admits(only, action.kind)) {
             continue;
         }

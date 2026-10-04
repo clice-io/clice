@@ -52,12 +52,19 @@ test("subcommand help", () => {
     for (const name of SUBCOMMANDS) {
         const result = runClice(name, "--help");
         expect(result.status).toBe(0);
-        expect(result.stdout).toContain(`clice ${name}`);
+        // analyze groups commands: its help lists them rather than a usage line.
+        expect(result.stdout).toContain(name === "analyze" ? "modules" : `clice ${name}`);
     }
 });
 
 test("unknown subcommand fails", () => {
-    expect(runClice("bogus").status).not.toBe(0);
+    expect(runClice("bogus").status).toBe(2);
+});
+
+test("unknown option is a usage error", () => {
+    for (const name of SUBCOMMANDS) {
+        expect(runClice(name, "--bogus").status, name).toBe(2);
+    }
 });
 
 test("index subcommand builds and resumes", ({ session }) => {

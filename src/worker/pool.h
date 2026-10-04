@@ -90,7 +90,7 @@ struct StderrTail {
 
     /// The pipe reached EOF. The exit is observed independently of the
     /// pipe, so the crash report waits for this before reading the lines.
-    bool drained = false;
+    kota::event drained;
 
     void add(std::string line) {
         if(lines.size() == capacity) {
@@ -765,7 +765,7 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
 
     auto idx = assign_worker(path_id);
     if(idx == SIZE_MAX) {
-        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
+        co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
                                                        "No stateful workers available"});
     }
 
@@ -786,7 +786,7 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
     if(stateful_workers[idx].generation == gen)
         mark_worker_dead(idx, true, true);
     co_await death->settled.wait();
-    co_return kota::outcome_error(
+    co_await kota::fail(
         death_error(*death, dispatch.tag, worker::death_identity(idx, gen, true)));
 }
 
@@ -801,7 +801,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         note_foreground();
     auto idx = co_await acquire_stateless_slot(priority);
     if(idx == SIZE_MAX) {
-        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
+        co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
                                                        "No stateless workers available"});
     }
 
@@ -813,7 +813,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     // An advisory cancellation that fired while this request queued for a
     // slot: nothing was dispatched, give the claim back untouched.
     if(cancel.cancelled()) {
-        co_return kota::outcome_error(
+        co_await kota::fail(
             kota::ipc::Error{worker::dispatch_errc::cancelled, "Request cancelled by its round"});
     }
 
@@ -824,7 +824,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         // cancel_low_priority). Honor it here, before the request reaches
         // the wire: giving the claim back costs nothing.
         if(low_reclaim_deficit() > 0) {
-            co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::cancelled,
+            co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::cancelled,
                                                            "Request preempted by the scheduler"});
         }
     }
@@ -873,7 +873,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     // the next request off a still-stuck worker. Every shape must surface as
     // cancelled, so the indexer requeues instead of recording a failure.
     if(preempt_src->cancelled())
-        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::cancelled,
+        co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::cancelled,
                                                        "Request preempted by the scheduler"});
     // An error returned by the worker's handler leaves the worker healthy;
     // pass it through untouched.
@@ -881,7 +881,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         co_return std::move(result);
 
     co_await death->settled.wait();
-    co_return kota::outcome_error(
+    co_await kota::fail(
         death_error(*death, dispatch.tag, worker::death_identity(idx, gen, false)));
 }
 

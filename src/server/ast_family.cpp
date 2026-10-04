@@ -17,6 +17,7 @@
 #include "support/timer.h"
 #include "vfs/path.h"
 #include "worker/protocol.h"
+#include "worker/serialize.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
@@ -111,15 +112,15 @@ void append_crash_notes(const Session& session, std::vector<protocol::Diagnostic
 /// of the command line it does, and they appear once. Files with one
 /// preamble share the PCH: related information the build placed in its
 /// own main file moves to `path`.
-static kota::codec::RawValue with_preamble(kota::codec::RawValue diagnostics,
-                                           const index::TUIndex& preamble,
-                                           llvm::StringRef path) {
+static std::vector<protocol::Diagnostic> with_preamble(std::vector<protocol::Diagnostic> own,
+                                                       const index::TUIndex& preamble,
+                                                       llvm::StringRef path) {
     std::vector<protocol::Diagnostic> merged;
     [[maybe_unused]] auto status =
         kota::codec::json::from_string<kota::ipc::lsp_config>(preamble.preamble_diagnostics(),
                                                               merged);
     if(merged.empty()) {
-        return diagnostics;
+        return own;
     }
     auto builder = feature::to_uri(preamble.path(preamble.path_count() - 1));
     auto uri = feature::to_uri(path);
@@ -133,23 +134,15 @@ static kota::codec::RawValue with_preamble(kota::codec::RawValue diagnostics,
             }
         }
     }
-    std::vector<protocol::Diagnostic> own;
-    if(!diagnostics.empty()) {
-        status = kota::codec::json::from_string<kota::ipc::lsp_config>(diagnostics.data, own);
-    }
     llvm::StringSet<> raised;
     for(auto& diagnostic: own) {
-        if(auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostic)) {
-            raised.insert(*json);
-        }
+        raised.insert(to_client_json(diagnostic, ""));
     }
     std::erase_if(merged, [&](const protocol::Diagnostic& diagnostic) {
-        auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostic);
-        return json && raised.contains(*json);
+        return raised.contains(to_client_json(diagnostic, ""));
     });
     std::ranges::move(own, std::back_inserter(merged));
-    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(merged);
-    return kota::codec::RawValue{json ? std::move(*json) : "[]"};
+    return merged;
 }
 
 ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
@@ -273,7 +266,7 @@ void ASTFamily::record_crash(const std::shared_ptr<Session>& session,
                                CompileOutput{
                                    .version = std::nullopt,
                                    .source = previous->output->source,
-                                   .diagnostics = kota::codec::RawValue{},
+                                   .diagnostics = {},
                                    .line_limit = std::nullopt,
                                });
     }
@@ -287,7 +280,7 @@ void ASTFamily::republish(const std::shared_ptr<Session>& session) {
                                CompileOutput{
                                    .version = std::nullopt,
                                    .source = CommandSource::CDBExact,
-                                   .diagnostics = kota::codec::RawValue{},
+                                   .diagnostics = {},
                                    .line_limit = std::nullopt,
                                });
     }
@@ -849,7 +842,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             true,
             [&]() -> RequestResult<worker::CompileParams> {
                 if(session->generation != gen) {
-                    co_return kota::outcome_error(
+                    co_await kota::fail(
                         kota::ipc::Error{worker::dispatch_errc::cancelled, "Compile superseded"});
                 }
                 co_return co_await pool.send_stateful(path_id.raw,
@@ -953,7 +946,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                            CompileOutput{
                                .version = std::nullopt,
                                .source = source,
-                               .diagnostics = kota::codec::RawValue{},
+                               .diagnostics = {},
                                .line_limit = suffix_line_limit,
                            });
             co_return RoundOutcome::Failed;
@@ -978,13 +971,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // changes erase it) so queryContext can dedup identical-flag hosts
         // once the verdict is actually earned, never on a guess.
         if(trial_round) {
-            std::vector<protocol::Diagnostic> diagnostics;
-            if(!result.value().diagnostics.empty()) {
-                [[maybe_unused]] auto status =
-                    kota::codec::json::from_string<kota::ipc::lsp_config>(
-                        result.value().diagnostics.data,
-                        diagnostics);
-            }
+            auto& diagnostics = result.value().diagnostics;
             session->trial_done = true;
             contexts.commands.record_header_mode(path_id, HeaderMode::SelfContained);
 

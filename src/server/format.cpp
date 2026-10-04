@@ -7,10 +7,6 @@
 #include <vector>
 
 #include "compile/diagnostic.h"
-#include "support/logging.h"
-
-#include "kota/codec/json/json.h"
-#include "kota/ipc/codec/json.h"
 
 namespace clice {
 
@@ -55,14 +51,7 @@ static protocol::Diagnostic make_inferred_command_diagnostic(CommandSource sourc
 }
 
 std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output) {
-    std::vector<protocol::Diagnostic> diagnostics;
-    if(!output.diagnostics.empty()) {
-        auto status = kota::codec::json::from_string<kota::ipc::lsp_config>(output.diagnostics.data,
-                                                                            diagnostics);
-        if(!status) {
-            LOG_WARN("Failed to deserialize diagnostics JSON");
-        }
-    }
+    auto diagnostics = output.diagnostics;
 
     // Suffix injection appends an #include past the user's EOF; errors in
     // host code after the include point remap onto those phantom lines.

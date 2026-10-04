@@ -170,7 +170,11 @@ std::string serialize_cdb_snapshot(Project& project,
                                    llvm::ArrayRef<Fid> standalone_debt) {
     auto json =
         kota::codec::json::to_string(build_cdb_snapshot(project, header_hosts, standalone_debt));
-    return json ? std::move(*json) : std::string();
+    if(!json) {
+        LOG_WARN("Failed to serialize the CDB snapshot: {}", json.error().to_string());
+        return {};
+    }
+    return std::move(*json);
 }
 
 /// The artifacts blob: a JSON envelope in the index database, the
@@ -1139,7 +1143,7 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
     }
     for(std::size_t i = 0; i < resident.size(); i += 1) {
         if(!grew && i != 0 && i % rebind_batch == 0) {
-            co_await kota::sleep(std::chrono::milliseconds(0), loop);
+            co_await kota::yield(loop);
         }
         auto path_id = resident[i];
         auto it = project.project_index.shards.find(path_id);

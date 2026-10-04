@@ -197,8 +197,7 @@ struct CompileResult {
     bool pch_suspect = false;
 
     int version;
-    /// Diagnostics serialized as JSON (RawValue) to avoid bincode/serde annotation conflicts.
-    kota::codec::RawValue diagnostics;
+    std::vector<protocol::Diagnostic> diagnostics;
     /// Milliseconds since epoch, sampled before the compile started. Files
     /// whose mtime is past this moment may differ from what the build read.
     std::int64_t build_at = 0;

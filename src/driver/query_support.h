@@ -13,6 +13,7 @@
 #include "index/symbol_query.h"
 #include "vfs/file_system.h"
 #include "vfs/path.h"
+#include "worker/serialize.h"
 
 #include "kota/ipc/codec/json.h"
 #include "llvm/ADT/StringRef.h"
@@ -29,9 +30,10 @@ struct Answer {
     std::vector<std::string> stale;
 };
 
-/// `{"error": "...", "stale": [...]}` on stdout, exit code 1: what kept
-/// the question from being answered, and the files withheld on the way —
-/// a symbol not found may sit in one of them.
+/// `{"error": "...", "stale": [...]}` on stdout, exit code 1 (2 for
+/// arguments that do not parse): what kept the question from being
+/// answered, and the files withheld on the way — a symbol not found may
+/// sit in one of them.
 struct Failure {
     std::string error;
     std::vector<std::string> stale;
@@ -39,8 +41,7 @@ struct Failure {
 
 template <typename T>
 std::string render_json(const T& value) {
-    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(value);
-    return json ? *json : "null";
+    return to_client_json(value, "null");
 }
 
 template <typename T>

@@ -17,8 +17,7 @@ using kota::deco::decl::KVStyle;
 namespace {
 
 struct RefactorOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoInput(meta_var = "<ACTION>", help = "Refactoring to run: rename", required = false)
     <std::vector<std::string>> inputs;
@@ -68,16 +67,8 @@ struct RefactorOptions {
              required = false)
     fresh;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--log-level", "--log-level="},
-           help = "Log level: trace, debug, info, warn, error, off (default: warn)",
-           required = false)
-    <std::string> log_level;
+    LogLevelOption log{.log_level = LogLevel::Warn};
 };
-
-auto make_command() {
-    return kota::deco::cli::command<RefactorOptions>("clice refactor <ACTION> [OPTIONS]");
-}
 
 /// Write the plan's edits, every file's new text computed before the
 /// first is written: a file whose text moved on since it was indexed
@@ -231,27 +222,19 @@ int run_rename(const RefactorOptions& opts, const char* self_path) {
 
 }  // namespace
 
-void add_refactor(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path) {
-    auto cmd = make_command();
-    cmd.match_all([&exit_code, self_path](RefactorOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           if(!apply_log_level(opts.log_level.value_or("warn")))
-               return;
+void add_refactor(kota::deco::cli::SubCommander& root, const char* self_path) {
+    auto cmd = kota::deco::cli::command<RefactorOptions>("clice refactor <ACTION> [OPTIONS]");
+    cmd.match_all([self_path](RefactorOptions opts) {
+           opts.log.apply();
            logging::stderr_logger("refactor", logging::options);
            auto action = opts.inputs && opts.inputs->size() == 1 ? opts.inputs->front() : "";
            if(action != "rename") {
                print_json(Failure{.error = action.empty()
                                                ? "name the refactoring to run: rename"
                                                : std::format("unknown refactoring '{}'", action)});
-               exit_code = 1;
-               return;
+               return 1;
            }
-           exit_code = run_rename(opts, self_path);
+           return run_rename(opts, self_path);
        })
         .on_error([](auto err) { print_json(Failure{.error = err.message}); });
 

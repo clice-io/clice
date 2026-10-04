@@ -106,6 +106,13 @@ void LSPClient::forward_notify_messages() {
     notify_cursor = server.notify_seq;
 }
 
+/// Pushes `params`; a push that cannot be encoded is logged, not lost unseen.
+static void publish(kota::ipc::JSONPeer& peer, const protocol::PublishDiagnosticsParams& params) {
+    if(auto sent = peer.send_notification(params); !sent) {
+        LOG_WARN("Cannot publish the diagnostics of {}: {}", params.uri, sent.error().message);
+    }
+}
+
 /// Fold versioned document changes into the plain `changes` map for a
 /// client without documentChanges support.
 static void unversion(protocol::WorkspaceEdit& edit) {
@@ -206,7 +213,7 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
             });
         }
     }
-    peer.send_notification(params);
+    publish(peer, params);
 }
 
 void LSPClient::publish_aliases(Fid path_id) {
@@ -239,7 +246,7 @@ void LSPClient::register_lifecycle() {
         this->server.pool.foreground_pulse();
         auto& srv = this->server;
         if(srv.lifecycle != ServerLifecycle::Uninitialized) {
-            co_return kota::outcome_error(protocol::Error{"Server already initialized"});
+            co_await kota::fail(protocol::Error{"Server already initialized"});
         }
 
         // Every workspace folder is a project; a client without folder
@@ -287,10 +294,7 @@ void LSPClient::register_lifecycle() {
         }
 
         if(params.initialization_options.has_value() && !params.initialization_options->is_null()) {
-            auto json =
-                kota::codec::json::to_string<kota::ipc::lsp_config>(*params.initialization_options);
-            if(json)
-                srv.init_options_json = std::move(*json);
+            srv.init_options = *params.initialization_options;
         }
 
         srv.lifecycle = ServerLifecycle::Initialized;
@@ -705,10 +709,7 @@ void LSPClient::register_language_features() {
                 [project, links = project->features.document_links(Ticket::take(session),
                                                                    ctx.cancellation)]() mutable
                     -> RawResult {
-                    auto result = co_await std::move(links);
-                    if(!result.has_value())
-                        co_return kota::outcome_error(std::move(result.error()));
-                    co_return to_raw(result.value());
+                    co_return to_raw(co_await std::move(links).or_fail());
                 });
         });
 
@@ -724,17 +725,16 @@ void LSPClient::register_language_features() {
                  actions = project->features.code_action(
                      Ticket::take(session),
                      params.range,
-                     params.context.only.value_or(std::vector<protocol::CodeActionKind>{}),
+                     params.context.only ? llvm::ArrayRef(*params.context.only)
+                                         : llvm::ArrayRef<protocol::CodeActionKind>(),
                      ctx.cancellation)]() mutable -> RawResult {
-                    auto result = co_await std::move(actions);
-                    if(!result.has_value())
-                        co_return kota::outcome_error(std::move(result.error()));
+                    auto result = co_await std::move(actions).or_fail();
                     if(!versioned_edits) {
-                        for(auto& action: result.value()) {
+                        for(auto& action: result) {
                             unversion(*action.edit);
                         }
                     }
-                    co_return to_raw(result.value());
+                    co_return to_raw(result);
                 });
         });
 
@@ -783,14 +783,11 @@ void LSPClient::register_language_features() {
                                                                    params.position,
                                                                    params.new_name)]() mutable
                                    -> RawResult {
-            auto result = co_await std::move(renamed);
-            if(!result.has_value()) {
-                co_return kota::outcome_error(std::move(result.error()));
-            }
-            if(!*result) {
+            auto result = co_await std::move(renamed).or_fail();
+            if(!result) {
                 co_return kota::codec::RawValue{"null"};
             }
-            auto& [edit, notice] = **result;
+            auto& [edit, notice] = *result;
             if(!versioned_edits) {
                 unversion(edit);
             }
@@ -958,7 +955,7 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.uri);
-            co_return to_raw(project->context_service.current_context(session.get(), params));
+            co_return to_raw(project->context_service.current_context(session.get()));
         });
 
     peer.on_request(
@@ -1016,13 +1013,13 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::PollParams& params) -> RawResult {
             auto& srv = this->server;
             if(params.loop != "cdb" && params.loop != "workspace") {
-                co_return kota::outcome_error(
+                co_await kota::fail(
                     kota::ipc::Error{protocol::ErrorCode::InvalidParams,
                                      R"(loop must be "cdb" or "workspace")"});
             }
             if(llvm::none_of(srv.projects,
                              [](auto& project) { return project->tracker != nullptr; })) {
-                co_return kota::outcome_error(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
+                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
                                                                "No workspace is loaded"});
             }
             // Every project ticks; the reply counts the events of all.
@@ -1061,7 +1058,7 @@ void LSPClient::register_extensions() {
             // bloat the file log, so it only exists when the harness asked
             // for it at initialize time.
             if(!this->server.projects.front()->project.config.project.test_hooks.value) {
-                co_return kota::outcome_error(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
+                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
                                                                "test hooks are not enabled"});
             }
             auto count = std::min<std::uint32_t>(params.count, 100'000);
@@ -1166,7 +1163,7 @@ void LSPClient::publish_config_diagnostics() {
         params.uri = feature::to_uri(
             server.files.display(server.files.intern(Spelling::absolute(file.str()))));
         params.diagnostics = std::move(diagnostics);
-        peer.send_notification(params);
+        publish(peer, params);
     }
 }
 
@@ -1188,7 +1185,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
     params.version = output.version;
     params.diagnostics = format_diagnostics(output);
     append_crash_notes(session, params.diagnostics);
-    peer.send_notification(params);
+    publish(peer, params);
     publish_aliases(session.path_id);
 
     // Two cases make the client re-pull whole-document results it already

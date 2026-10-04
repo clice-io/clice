@@ -676,7 +676,6 @@ struct FileScanner {
 kota::task<> scan_impl(CompilationDatabase& cdb,
                        DependencyGraph& graph,
                        ScanReport& report,
-                       kota::event_loop& loop,
                        llvm::ArrayRef<CommandRef> units) {
     auto& file_table = cdb.files();
     auto start_time = std::chrono::steady_clock::now();
@@ -749,11 +748,10 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             if(file_table.dirs.kept(entry.getKey())) {
                 continue;
             }
-            pending_dir_tasks.push_back(kota::queue(
-                [dir_path = entry.getKey().str()]() -> DirEntry {
+            pending_dir_tasks.push_back(
+                kota::queue([dir_path = entry.getKey().str()]() -> DirEntry {
                     return {dir_path, vfs::list(dir_path)};
-                },
-                loop));
+                }));
         }
         LOG_INFO("Launched {} dir cache tasks (running in background)", pending_dir_tasks.size());
     }
@@ -847,8 +845,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 }
                 auto path = file_table.resolve(pid).data();
                 scan_tasks.push_back(kota::queue(
-                    [path, pid, context]() { return scan_file_worker(path, pid, context); },
-                    loop));
+                    [path, pid, context]() { return scan_file_worker(path, pid, context); }));
             }
             wave_cache_hits += pending_warm.size();
             std::move(pending_warm.begin(), pending_warm.end(), std::back_inserter(scan_results));
@@ -902,9 +899,9 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             next_wave.push_back({path_id, context});
             if(!try_warm(path_id, context)) {
                 auto path = file_table.resolve(path_id).data();
-                prefetch_tasks.push_back(kota::queue(
-                    [path, path_id, context]() { return scan_file_worker(path, path_id, context); },
-                    loop));
+                prefetch_tasks.push_back(kota::queue([path, path_id, context]() {
+                    return scan_file_worker(path, path_id, context);
+                }));
             }
         };
 
@@ -983,9 +980,7 @@ ScanReport scan_dependency_graph(CompilationDatabase& cdb,
         return report;
     }
 
-    kota::event_loop loop;
-    loop.schedule(scan_impl(cdb, graph, report, loop, units));
-    loop.run();
+    kota::run(scan_impl(cdb, graph, report, units));
     return report;
 }
 

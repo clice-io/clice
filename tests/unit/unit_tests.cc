@@ -3,14 +3,13 @@
 #include <string_view>
 
 #include "test/platform.h"
+#include "driver/driver.h"
 #include "support/logging.h"
 
 #include "kota/deco/deco.h"
 #include "kota/zest/zest.h"
 
 namespace {
-
-using kota::deco::decl::KVStyle;
 
 struct TestOptions {
     /// One test at a time unless asked: many start workers and compilers of
@@ -22,9 +21,7 @@ struct TestOptions {
         return options;
     }();
 
-    DecoKVStyled(KVStyle::JoinedOrSeparate, help = "log level: trace/debug/info/warn/err";
-                 required = false)
-    <std::string> log_level;
+    clice::driver::LogLevelOption log;
 };
 
 }  // namespace
@@ -39,21 +36,7 @@ int main(int argc, const char** argv) {
 
     auto& opts = parsed->options;
 
-    if(opts.log_level.has_value()) {
-        auto level = *opts.log_level;
-        if(level == "trace") {
-            clice::logging::options.level = clice::logging::Level::trace;
-        } else if(level == "debug") {
-            clice::logging::options.level = clice::logging::Level::debug;
-        } else if(level == "info") {
-            clice::logging::options.level = clice::logging::Level::info;
-        } else if(level == "warn") {
-            clice::logging::options.level = clice::logging::Level::warn;
-        } else if(level == "err") {
-            clice::logging::options.level = clice::logging::Level::err;
-        }
-    }
-
+    opts.log.apply();
     clice::logging::stderr_logger("test", clice::logging::options);
 
     // The workers tests spawn crash on `#pragma clang __debug crash`.

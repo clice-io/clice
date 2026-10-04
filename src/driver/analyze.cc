@@ -23,8 +23,7 @@ using kota::deco::decl::KVStyle;
 namespace {
 
 struct ModulesOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Workspace root directory (default: current directory)",
@@ -117,16 +116,8 @@ struct ModulesOptions {
            required = false)
     <int> limit;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--log-level", "--log-level="},
-           help = "Log level: trace, debug, info, warn, error, off (default: warn)",
-           required = false)
-    <std::string> log_level;
+    LogLevelOption log{.log_level = LogLevel::Warn};
 };
-
-auto make_modules_command() {
-    return kota::deco::cli::command<ModulesOptions>("clice analyze modules [OPTIONS]");
-}
 
 std::vector<std::string> comma_list(llvm::StringRef text) {
     llvm::SmallVector<llvm::StringRef> parts;
@@ -296,50 +287,26 @@ int run_modules(const ModulesOptions& opts) {
 
 }  // namespace
 
-void add_analyze(kota::deco::cli::SubCommander& root, int& exit_code) {
-    auto modules = make_modules_command();
+void add_analyze(kota::deco::cli::SubCommander& root) {
+    auto modules = kota::deco::cli::command<ModulesOptions>("clice analyze modules [OPTIONS]");
     modules
-        .match_all([&exit_code](ModulesOptions opts) {
-            if(opts.help) {
-                auto help = make_modules_command();
-                print_usage(help);
-                exit_code = 0;
-                return;
-            }
-            if(!apply_log_level(opts.log_level.value_or("warn")))
-                return;
+        .match_all([](ModulesOptions opts) {
+            opts.log.apply();
             logging::stderr_logger("analyze", logging::options);
-            exit_code = run_modules(opts);
+            return run_modules(opts);
         })
         .on_error([](auto err) { print_json(Failure{.error = err.message}); });
 
     auto analyze = std::make_shared<kota::deco::cli::SubCommander>(
         "clice analyze <command> [<args>]",
         "Analyses whose facts an agent turns into refactoring decisions");
-    auto usage = [commander = analyze.get(), &exit_code] {
-        driver::println("usage: clice analyze <command> [<args>]\n");
-        print_usage(*commander);
-        exit_code = 0;
-    };
     analyze->add({.name = "modules",
                   .description = "Dependencies between directories, toward a module partition"},
                  std::move(modules));
-    analyze->when_err([usage](auto err) {
-        if(err.type == kota::deco::cli::SubCommandError::Type::MissingSubCommand) {
-            usage();
-        } else {
-            LOG_ERROR("{}", err.message);
-        }
-    });
+    analyze->enable_help().when_err(subcommand_error_handler(*analyze));
 
     root.add({.name = "analyze", .description = "Analyze the indexed workspace for refactoring"},
-             [analyze, usage](std::span<std::string> args) {
-                 if(!args.empty() && (args[0] == "--help" || args[0] == "-h")) {
-                     usage();
-                     return;
-                 }
-                 (*analyze)(args);
-             });
+             [analyze](std::span<std::string> args) { return (*analyze)(args); });
 }
 
 }  // namespace clice::driver

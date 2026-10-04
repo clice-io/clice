@@ -192,6 +192,7 @@ struct ProjectConfig {
     <bool> enable_indexing = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     choices = {"off", "on", "auto"},
                      description =
                          "Read-only serving for open files: \"off\" targets a "
                          "full AST for every open file — builds are pulled by "
@@ -222,6 +223,7 @@ struct ProjectConfig {
     <bool> test_hooks = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     minimum = 1,
                      description =
                          "Number of stateful workers — they hold ASTs in memory "
                          "and serve queries (hover, semantic tokens, ...); `0` is "
@@ -229,6 +231,8 @@ struct ProjectConfig {
     <std::uint32_t> stateful_worker_count = 2;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     schema_default = false,
+                     minimum = 1,
                      description =
                          "Initial number of stateless workers — they handle "
                          "ephemeral tasks (PCH/PCM builds, completion, signature "
@@ -238,12 +242,14 @@ struct ProjectConfig {
 
     /// See WorkerPoolOptions.
     KOTATSU_ANNOTATE(defaulted = true,
+                     minimum = 1,
                      description =
                          "Lower bound for dynamic stateless-worker scaling; `0` "
                          "is invalid and falls back to the default.")
     <std::uint32_t> min_stateless_worker_count = 1;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     schema_default = false,
                      description =
                          "Upper bound for dynamic stateless-worker scaling; `0` "
                          "means the machine's parallelism, which is also the "
@@ -430,8 +436,7 @@ struct Config {
     /// Fields whose defaults derive from the running machine (the worker
     /// counts follow the CPU count) carry no `default` annotation, so the
     /// schema is byte-identical on every host. Unknown properties are
-    /// rejected — the schema-side face of the strict decode pass's typo
-    /// warnings.
+    /// rejected — the schema-side face of load()'s unknown-key warnings.
     static std::expected<std::string, std::string> json_schema();
 };
 

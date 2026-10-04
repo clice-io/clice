@@ -16,6 +16,7 @@
 #include "worker/protocol.h"
 
 #include "kota/async/async.h"
+#include "kota/codec/dyn/decode.h"
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Process.h"
@@ -80,7 +81,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
 
 ProjectServer::~ProjectServer() = default;
 
-void ProjectServer::configure(llvm::StringRef init_options,
+void ProjectServer::configure(const std::optional<kota::codec::dyn::Value>& init_options,
                               llvm::ArrayRef<CanonicalPath> taken_cache_dirs) {
     config_issues.clear();
     config_path.clear();
@@ -96,8 +97,8 @@ void ProjectServer::configure(llvm::StringRef init_options,
             issue.message);
     }
     std::string own_cache_dir = project.config.project.cache_dir;
-    if(!init_options.empty()) {
-        if(auto ov = kota::codec::json::from_string(init_options, project.config); !ov) {
+    if(init_options) {
+        if(auto ov = kota::codec::dyn::from_dyn(*init_options, project.config); !ov) {
             LOG_GUIDANCE("Failed to apply initializationOptions: {}", ov.error().to_string());
         }
     }

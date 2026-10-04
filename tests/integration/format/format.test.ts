@@ -139,7 +139,7 @@ test("an invalid log level is a usage error", ({ session }) => {
 
     const run = runFormat(ws, "--log-level", "loud");
     expect(run.status).toBe(2);
-    expect(run.stderr).toContain("unknown log level");
+    expect(run.stderr).toContain("invalid enum value: loud");
 });
 
 test("a workspace that does not exist fails the run", ({ session }) => {

@@ -9,6 +9,8 @@
 #include "syntax/scan.h"
 #include "vfs/file_table.h"
 
+#include "kota/zest/async.h"
+
 namespace clice::testing {
 namespace {
 
@@ -175,10 +177,9 @@ struct ModuleTestEnv {
     }
 };
 
-ZEST_SUITE(PCMGraphIntegration) {
+ZEST_SUITE(PCMGraphIntegration, kota::zest::LoopFixture) {
 
 ModuleTestEnv env;
-std::optional<kota::event_loop> loop;
 std::optional<GraphShim> cg;
 
 DispatchFn default_dispatch() {
@@ -190,7 +191,6 @@ ResolveFn default_resolver() {
 }
 
 void make_graph(DispatchFn dispatch, ResolveFn resolve) {
-    loop.emplace();
     cg.emplace(std::move(dispatch), std::move(resolve));
 }
 
@@ -206,9 +206,7 @@ void execute(F&& fn) {
         co_await cg->shutdown();
         EXPECT(cg->idle());
     };
-    auto t = wrapper();
-    loop->schedule(t);
-    loop->run();
+    run(wrapper());
 }
 
 /// ============================================================================

@@ -155,12 +155,12 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
         // compile, a crash bar): only the former is the client's cue to
         // re-pull; the latter is the honest "no AST" answer.
         if(!ticket.fresh()) {
-            co_return kota::outcome_error(content_modified());
+            co_await kota::fail(content_modified());
         }
         co_return serde_raw{"null"};
     }
     if(!ticket.fresh()) {
-        co_return kota::outcome_error(content_modified());
+        co_await kota::fail(content_modified());
     }
     auto wait_ms = timer.ms_f();
 
@@ -181,7 +181,7 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
     auto result = co_await ask(ticket, evidence, wp, token, unanswered);
     if(unanswered) {
         if(!ticket.fresh()) {
-            co_return kota::outcome_error(content_modified());
+            co_await kota::fail(content_modified());
         }
         co_return serde_raw{"null"};
     }
@@ -216,12 +216,12 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     ScopedTimer timer;
     if(!co_await ast.ensure_compiled(ticket.session)) {
         if(!ticket.fresh()) {
-            co_return kota::outcome_error(content_modified());
+            co_await kota::fail(content_modified());
         }
         co_return Result{};
     }
     if(!ticket.fresh()) {
-        co_return kota::outcome_error(content_modified());
+        co_await kota::fail(content_modified());
     }
     auto wait_ms = timer.ms_f();
 
@@ -229,7 +229,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     auto result = co_await ask(ticket, evidence, params, token, unanswered);
     if(unanswered) {
         if(!ticket.fresh()) {
-            co_return kota::outcome_error(content_modified());
+            co_await kota::fail(content_modified());
         }
         co_return Result{};
     }
@@ -323,7 +323,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
             co_return serde_raw{"null"};
         }
         LOG_WARN("{}: dependency preparation failed for {}", label, path);
-        co_return kota::outcome_error(kota::ipc::Error{"Dependency preparation failed"});
+        co_await kota::fail(kota::ipc::Error{"Dependency preparation failed"});
     }
     wp.pch = std::move(inputs.pch);
     wp.pcms = std::move(inputs.pcms);
@@ -344,7 +344,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
                session.text.starts_with(carried);
     };
     if(!ticket.fresh() && !snapshot()) {
-        co_return kota::outcome_error(content_modified());
+        co_await kota::fail(content_modified());
     }
 
     if(resolution.synthesized) {

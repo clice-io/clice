@@ -83,7 +83,8 @@ MasterServer::~MasterServer() {
 /// defaults. Absence is stated explicitly so "was my config even read?"
 /// never needs a support round-trip; the stderr mirror puts all of it in
 /// the editor's output panel.
-static void log_configuration(const ProjectServer& project, llvm::StringRef init_options) {
+static void log_configuration(const ProjectServer& project,
+                              const std::optional<kota::codec::dyn::Value>& init_options) {
     if(project.config_path.empty()) {
         LOG_INFO("Configuration file: Missing (project {})", project.root);
     } else {
@@ -92,11 +93,11 @@ static void log_configuration(const ProjectServer& project, llvm::StringRef init
                  project.config_path,
                  text ? (*text)->getBuffer() : llvm::StringRef("<unreadable>"));
     }
-    if(init_options.empty()) {
+    if(!init_options) {
         LOG_INFO("initializationOptions: Missing");
-    } else {
-        auto pretty = kota::codec::json::prettify(init_options);
-        LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : init_options.str());
+    } else if(auto json = kota::codec::json::to_string(*init_options)) {
+        auto pretty = kota::codec::json::prettify(*json);
+        LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : *json);
     }
     if(auto json = kota::codec::json::to_string(project.project.config)) {
         auto pretty = kota::codec::json::prettify(*json);
@@ -115,7 +116,7 @@ void MasterServer::initialize() {
         projects_generation += 1;
     }
     for(auto& project: projects) {
-        project->configure(init_options_json, taken_cache_dirs());
+        project->configure(init_options, taken_cache_dirs());
     }
 
     // One pool serves every project, sized for the most demanding one;
@@ -158,7 +159,7 @@ void MasterServer::initialize() {
         }
     }
     for(auto& project: projects) {
-        log_configuration(*project, init_options_json);
+        log_configuration(*project, init_options);
     }
 
     LOG_INFO("Server ready (projects={}, stateful={}, stateless={})",
@@ -549,8 +550,8 @@ void MasterServer::serve_folders() {
         retired.push_back(project);
     }
     for(auto* project: fresh) {
-        project->configure(init_options_json, taken_cache_dirs());
-        log_configuration(*project, init_options_json);
+        project->configure(init_options, taken_cache_dirs());
+        log_configuration(*project, init_options);
         project->start();
     }
     // Documents may belong elsewhere now: a database under a new root
@@ -736,10 +737,12 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
     // The project offering the chosen item: the file's own first, then the
     // others, in the order query_contexts listed them.
     auto owner = owner_of(path_id).shared_from_this();
+    // The listing spells the URIs the server's way, not the client's.
+    auto context_uri = feature::to_uri(files.display(context_path_id));
     auto offers = [&](ProjectServer& project) {
         return llvm::any_of(project.context_service.contexts(path_id),
                             [&](const ext::ContextItem& item) {
-                                return item.uri == params.context_uri &&
+                                return item.uri == context_uri &&
                                        item.occurrence == params.occurrence &&
                                        item.command_hash == params.command_hash;
                             });

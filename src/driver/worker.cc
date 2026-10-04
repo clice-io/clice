@@ -11,8 +11,7 @@ namespace {
 using kota::deco::decl::KVStyle;
 
 struct WorkerOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoFlag(names = {"--stateful"},
              help = "Run as stateful worker (default: stateless)",
@@ -34,31 +33,19 @@ struct WorkerOptions {
     <std::string> log_dir;
 };
 
-auto make_command() {
-    return kota::deco::cli::command<WorkerOptions>("clice worker [OPTIONS]");
-}
-
 }  // namespace
 
-void add_worker(kota::deco::cli::SubCommander& root, int& exit_code) {
-    auto cmd = make_command();
-    cmd.match_all([&exit_code](WorkerOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           auto name = opts.worker_name.value_or("worker");
-           auto log_dir = opts.log_dir.value_or("");
-           if(opts.stateful) {
-               auto max_docs = opts.max_documents.value_or(default_max_documents);
-               exit_code = run_stateful_worker_mode(name, log_dir, max_docs);
-           } else {
-               exit_code = run_stateless_worker_mode(name, log_dir);
-           }
-       })
-        .on_error([](auto err) { LOG_ERROR("{}", err.message); });
+void add_worker(kota::deco::cli::SubCommander& root) {
+    auto cmd = kota::deco::cli::command<WorkerOptions>("clice worker [OPTIONS]");
+    cmd.match_all([](WorkerOptions opts) {
+        auto name = opts.worker_name.value_or("worker");
+        auto log_dir = opts.log_dir.value_or("");
+        if(opts.stateful) {
+            auto max_docs = opts.max_documents.value_or(default_max_documents);
+            return run_stateful_worker_mode(name, log_dir, max_docs);
+        }
+        return run_stateless_worker_mode(name, log_dir);
+    });
 
     root.add({.name = "worker"}, std::move(cmd));
 }

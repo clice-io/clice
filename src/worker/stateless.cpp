@@ -55,15 +55,14 @@ static std::string serialize_preamble_envelope(CompilationUnit& unit,
     auto links = feature::document_links(unit);
     auto inactive = feature::inactive_regions(unit, {}, 0, preamble_bound);
     auto links_ms = links_timer.ms_f();
-    auto diagnostics =
-        kota::codec::json::to_string<kota::ipc::lsp_config>(feature::diagnostics(unit));
+    auto diagnostics = to_client_json(feature::diagnostics(unit), "[]");
 
     ScopedTimer blob_timer;
     auto blob = index::build_preamble_index(unit,
                                             links,
                                             inactive.regions,
                                             inactive.open_stack,
-                                            diagnostics ? *diagnostics : "[]");
+                                            diagnostics);
     LOG_PERF("index_detail",
              "op=preamble links_ms={:.2f} blob_ms={:.2f} bytes={}",
              links_ms,

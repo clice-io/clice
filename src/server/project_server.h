@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,7 @@
 #include "support/signal.h"
 
 #include "kota/async/async.h"
+#include "kota/codec/dyn/dyn.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -44,12 +46,13 @@ public:
     ~ProjectServer();
 
     /// Load the configuration — clice.toml under the root, overlaid with
-    /// the client's initializationOptions (`init_options`, JSON), then
+    /// the client's initializationOptions (`init_options`), then
     /// finalized — and apply its serving mode. A cache directory belongs
     /// to one project: when the one configured is among
     /// `taken_cache_dirs`, this project falls back to its clice.toml's,
     /// then the default, then runs without one.
-    void configure(llvm::StringRef init_options, llvm::ArrayRef<CanonicalPath> taken_cache_dirs);
+    void configure(const std::optional<kota::codec::dyn::Value>& init_options,
+                   llvm::ArrayRef<CanonicalPath> taken_cache_dirs);
 
     /// Load the project from disk (see bootstrap_project), restore the
     /// editor's context choices, and start its store-lifetime services;
