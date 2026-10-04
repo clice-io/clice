@@ -33,6 +33,13 @@ namespace clice {
 
 namespace {
 
+/// A path that is not UTF-8 is persisted with U+FFFD for its bad bytes, as
+/// JSON holds only UTF-8: it then names no file, and only what it describes
+/// is rebuilt, where a blob that cannot be written would lose everything.
+struct PathJsonConfig {
+    constexpr static auto invalid_utf8 = kota::codec::invalid_utf8::Replace;
+};
+
 /// Entry hash of a file's default selection — the candidate-order winner,
 /// or the default command claiming a file without entries; empty when the
 /// build does not compile it.
@@ -168,8 +175,8 @@ CDBSnapshot build_cdb_snapshot(Project& project,
 std::string serialize_cdb_snapshot(Project& project,
                                    const llvm::DenseMap<Fid, Fid>& header_hosts,
                                    llvm::ArrayRef<Fid> standalone_debt) {
-    auto json =
-        kota::codec::json::to_string(build_cdb_snapshot(project, header_hosts, standalone_debt));
+    auto json = kota::codec::json::to_string<PathJsonConfig>(
+        build_cdb_snapshot(project, header_hosts, standalone_debt));
     if(!json) {
         LOG_WARN("Failed to serialize the CDB snapshot: {}", json.error().to_string());
         return {};
@@ -277,7 +284,7 @@ std::string IndexStore::serialize_artifacts() {
 
     commands.dump_mode_slices(data.header_modes, intern);
 
-    auto json = kota::codec::json::to_string(data);
+    auto json = kota::codec::json::to_string<PathJsonConfig>(data);
     if(!json) {
         LOG_WARN("Failed to serialize the artifacts blob");
         return {};
@@ -1605,10 +1612,8 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     }
     CDBSnapshot persisted;
     if(!kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
-        LOG_ERROR(
-            "Index cache at {} cannot tell which commands built it (is a path not "
-            "UTF-8?); reindexing every file",
-            std::string_view(project.config.project.cache_dir));
+        LOG_ERROR("Index cache at {} cannot tell which commands built it; reindexing every file",
+                  std::string_view(project.config.project.cache_dir));
         cdb_dirty = true;
         llvm::SmallVector<Fid> units(llvm::make_first_range(project.project_index.manifests));
         for(auto unit: units) {
