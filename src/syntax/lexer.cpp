@@ -13,6 +13,7 @@ clang::LangOptions raw_dialect(clang::Language language, clang::LangStandard::Ki
     std::vector<std::string> includes;
     clang::LangOptions::setLangDefaults(options, language, llvm::Triple(), includes, standard);
     options.Char8 = options.CPlusPlus20;
+    options.CPlusPlusModules = options.CPlusPlus20;
     options.GNUKeywords = options.GNUMode;
     options.LineComment = true;
     return options;

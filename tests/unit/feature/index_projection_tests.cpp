@@ -56,14 +56,15 @@ auto resolver() {
 }
 
 /// The projected tokens of the compiled unit equal the AST's, down to the
-/// modifiers the index knows.
+/// modifiers the index knows; both under the Tester's C++20.
 void expect_tokens_match_ast() {
     auto ast = feature::semantic_tokens(*unit);
-    auto projected = feature::index_semantic_tokens(unit->main_content(),
-                                                    feature::index_lang_options("main.cpp", false),
-                                                    occurrences,
-                                                    decls,
-                                                    resolver());
+    auto projected =
+        feature::index_semantic_tokens(unit->main_content(),
+                                       feature::index_lang_options("main.cpp", false, "c++20"),
+                                       occurrences,
+                                       decls,
+                                       resolver());
 
     // The index knows Declaration/Definition; every other AST modifier
     // (Readonly, Static, Virtual, ...) is a pinned degradation.
