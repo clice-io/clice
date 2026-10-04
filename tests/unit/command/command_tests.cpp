@@ -93,6 +93,8 @@ ZEST_CASE(DefaultFilters) {
         "clang++ -Winvalid-pch -Xclang -include -Xclang cmake_pch.hxx {}");
     EXPECT_STRIP("cl.exe /Yufoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp",
                  "cl.exe /FIfoo.h {}");
+    EXPECT_STRIP("cl.exe /Ycfoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp",
+                 "cl.exe /FIfoo.h {}");
 };
 
 ZEST_CASE(ConfigDedup) {

@@ -1,18 +1,13 @@
 #include <algorithm>
-#include <print>
 #include <string>
 #include <vector>
 
 #include "driver/driver.h"
-#include "index/writer_lock.h"
+#include "driver/query_support.h"
 #include "project/configuration.h"
 #include "project/open_index.h"
-#include "sched/batch.h"
-#include "server/control_client.h"
 #include "server/query_commands.h"
-#include "vfs/file_system.h"
 
-#include "kota/ipc/codec/json.h"
 #include "llvm/ADT/STLExtras.h"
 
 namespace clice::driver {
@@ -130,77 +125,6 @@ constexpr llvm::StringLiteral index_methods[] = {"symbolSearch",
                                                  "callGraph",
                                                  "typeHierarchy"};
 
-/// One answer on stdout: `{"result": ..., "stale": [...]}`, the files
-/// whose rows were withheld because their content moved on from the
-/// index (or that the index never held) listed so the reader knows what
-/// the answer lacks.
-template <typename T>
-struct Answer {
-    T result;
-    std::vector<std::string> stale;
-};
-
-/// `{"error": "...", "stale": [...]}` on stdout, exit code 1: what kept
-/// the question from being answered, and the files withheld on the way —
-/// a symbol not found may sit in one of them.
-struct Failure {
-    std::string error;
-    std::vector<std::string> stale;
-};
-
-template <typename T>
-std::string render_json(const T& value) {
-    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(value);
-    return json ? *json : "null";
-}
-
-template <typename T>
-void print_json(const T& value) {
-    std::println("{}", render_json(value));
-}
-
-/// The symbol locator the flags spell, as a name query: `--symbol` an id
-/// (anchored at `--path`), `--name` a name query narrowed to `--path`, or
-/// `--path` and `--line` a place. The path must be a file; one the index has no rows for is noted
-/// as unindexed by the command.
-std::expected<index::SymbolQuery, std::string> locator_of(const QueryOptions& opts,
-                                                          llvm::StringRef absolute) {
-    if(opts.line && *opts.line <= 0) {
-        return std::unexpected("line must be positive");
-    }
-    if(opts.path && !vfs::is_file(absolute)) {
-        return std::unexpected(std::format("no such file: {}", std::string_view(absolute)));
-    }
-    if(opts.symbol) {
-        auto parsed = index::SymbolQuery::parse(*opts.symbol);
-        if(!parsed || !parsed->handle) {
-            return std::unexpected(std::format("invalid symbol id: {}", *opts.symbol));
-        }
-        if(opts.path) {
-            parsed->paths.emplace_back(absolute);
-        }
-        return std::move(*parsed);
-    }
-    // The path is a literal, never query text: it joins the parsed query
-    // as the filter or the place it stands for.
-    if(opts.name) {
-        auto parsed = index::SymbolQuery::parse(*opts.name);
-        if(!parsed) {
-            return std::unexpected(parsed.error());
-        }
-        if(opts.path) {
-            parsed->paths.emplace_back(absolute);
-        }
-        return std::move(*parsed);
-    }
-    if(opts.path && opts.line) {
-        index::SymbolQuery query;
-        query.position = {.path = std::string(absolute), .line = *opts.line};
-        return query;
-    }
-    return std::unexpected("name a symbol with --name, --symbol, or --path and --line");
-}
-
 struct Reply {
     std::string json;
     int exit_code = 0;
@@ -299,59 +223,6 @@ Reply answer(Project& project,
     return reply;
 }
 
-/// Bring the index up to date with the disk before a --fresh answer:
-/// through the serving writer when a server holds the lock, else by a
-/// batch run of this process. Either sweeps the build under the hash
-/// gate, so only units whose inputs changed are recompiled — and an
-/// absent index gets built from nothing. Returns the units that failed
-/// to index.
-std::expected<std::vector<std::string>, std::string> refresh(const Spelling& workspace,
-                                                             llvm::StringRef configuration,
-                                                             const char* self_path) {
-    auto config = Config::load_from_workspace(CanonicalPath(workspace));
-    if(!check_requested_configuration(config, configuration)) {
-        return std::unexpected(
-            std::format("unknown configuration '{}'", std::string_view(configuration)));
-    }
-    auto& cache_dir = config.project.cache_dir;
-    auto writer = index::probe_writer(cache_dir);
-    switch(writer.state) {
-        case index::WriterProbe::State::Server: {
-            auto result = control::request_index(writer.endpoint,
-                                                 resolve_configuration(config, configuration));
-            if(!result) {
-                return std::unexpected(result.error());
-            }
-            return std::move(result->failed);
-        }
-        case index::WriterProbe::State::Held: {
-            return std::unexpected(index::held_writer_message(writer, cache_dir));
-        }
-        case index::WriterProbe::State::Free: break;
-    }
-    auto report_progress = [](const BatchProgress& progress) {
-        std::println(stderr,
-                     "indexing {}/{} units, {} failed",
-                     progress.completed,
-                     progress.total,
-                     progress.failed);
-    };
-    auto result = run_batch_index({
-        .root = workspace,
-        .configuration = configuration.str(),
-        .self_path = self_path,
-        .on_progress = report_progress,
-    });
-    if(!result.completed) {
-        return std::unexpected(result.interrupted ? "indexing interrupted"
-                                                  : "indexing failed; see the log");
-    }
-    if(result.unsaved) {
-        return std::unexpected("part of the index could not be persisted; see the log");
-    }
-    return std::move(result.failed);
-}
-
 int run_query(const QueryOptions& opts, const char* self_path) {
     auto method = opts.method.value_or("");
     bool with_build = llvm::is_contained(build_methods, method);
@@ -401,7 +272,7 @@ int run_query(const QueryOptions& opts, const char* self_path) {
         return 1;
     }
     auto reply = answer(project, contexts, opts, failed, dropped);
-    std::println("{}", reply.json);
+    driver::println("{}", reply.json);
     return reply.exit_code;
 }
 

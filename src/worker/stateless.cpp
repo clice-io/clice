@@ -10,7 +10,6 @@
 #include "feature/feature.h"
 #include "index/tu_index.h"
 #include "support/logging.h"
-#include "support/stderr_sink.h"
 #include "vfs/file_system.h"
 #include "worker/common.h"
 #include "worker/crash_report.h"
@@ -106,10 +105,10 @@ static std::expected<std::string, std::string> artifact_output(llvm::StringRef l
 }
 
 /// The reply of a finished artifact build. Success hands the master the
-/// path to commit and the build's inputs; failure removes the half-written
-/// file and classifies the errors — `internal_error` marks a failure of
-/// the worker's own I/O, never the user's code, and must not be downgraded
-/// to an expected build failure.
+/// path to commit; failure removes the half-written file and classifies
+/// the errors — `internal_error` marks a failure of the worker's own I/O,
+/// never the user's code, and must not be downgraded to an expected build
+/// failure. Either way the reply carries the build's inputs.
 static worker::ArtifactBuildResult land_artifact(llvm::StringRef label,
                                                  bool success,
                                                  const std::string& tmp_path,
@@ -118,11 +117,11 @@ static worker::ArtifactBuildResult land_artifact(llvm::StringRef label,
                                                  std::string errors,
                                                  bool internal_error) {
     worker::ArtifactBuildResult result;
+    result.build_at = build_at;
+    result.deps = deps;
     if(success) {
         result.success = true;
         result.output_path = tmp_path;
-        result.build_at = build_at;
-        result.deps = deps;
         return result;
     }
     vfs::remove(tmp_path);
@@ -536,12 +535,6 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 #endif
 
     logging::stderr_logger(worker_name, logging::options);
-    // A worker's stderr reader is the master's always-running drain — a
-    // trusted party — and the fd is reserved for third-party crash output
-    // (assertion failures, sanitizer reports) whose writers expect blocking
-    // semantics. Undo the sink's non-blocking switch unconditionally: with
-    // no log directory the file_logger below never runs.
-    logging::restore_pipe_blocking();
     if(!log_dir.empty()) {
         // File only: worker stderr is reserved for crash/unexpected output,
         // which the master relays into its own log (see logging taxonomy).

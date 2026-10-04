@@ -181,6 +181,30 @@ public:
     RawResult type_hierarchy_supertypes(Fid path_id, const protocol::TypeHierarchyItem& item);
     RawResult type_hierarchy_subtypes(Fid path_id, const protocol::TypeHierarchyItem& item);
 
+    /// Rename from this project's index (see index/rename.h), never a
+    /// recompile. prepare_rename answers the name token at the position,
+    /// or an error saying why the symbol there cannot be renamed.
+    RawResult prepare_rename(std::shared_ptr<Session> session,
+                             Fid path_id,
+                             const protocol::Position& position);
+
+    /// The edits of a rename, each file's versioned against its open
+    /// buffer, and what the user should hear about them: the warnings,
+    /// the tokens spelling the old name that were left alone, the edits
+    /// reached through a heuristic resolution.
+    struct Renamed {
+        protocol::WorkspaceEdit edit;
+        std::string notice;
+    };
+
+    /// Nullopt when nothing at the position can be renamed or the file
+    /// fails to compile; an error names the conflicts, or the files whose
+    /// rows are not current, that keep the rename from being made.
+    kota::task<std::optional<Renamed>, kota::ipc::Error> rename(std::shared_ptr<Session> session,
+                                                                Fid path_id,
+                                                                const protocol::Position& position,
+                                                                std::string new_name);
+
     /// The project's symbols matching `query`, best first; the master
     /// merges every project's list.
     std::vector<protocol::SymbolInformation> workspace_symbol(llvm::StringRef query);
@@ -268,6 +292,12 @@ private:
     /// — see feature::index_hover.
     std::optional<feature::HoverInfo> index_hover_card(const Session& session,
                                                        const protocol::Position& position);
+
+    /// A module name's card: the module and the unit defining it, named
+    /// the way the user knows the file. Both routes answer it from the
+    /// index, which knows the defining unit across files.
+    feature::HoverInfo module_hover_card(const index::IndexQuery::Cursor& cursor,
+                                         const index::SymbolRef& module);
 
     /// The host source of a header session: the user's persisted choice,
     /// else the resolved header context, else its best-ranked includer;

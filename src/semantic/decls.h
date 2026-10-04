@@ -13,6 +13,11 @@ namespace clice::decls {
 /// specializations, we consider it as a template while clang does not.
 bool is_templated(const clang::Decl* decl);
 
+/// Check whether the decl names an entity its module exports: declared at
+/// namespace scope by an `export` declaration, or a namespace holding one.
+/// Members of an exported class are not exported entities of their own.
+bool is_exported(const clang::Decl* decl);
+
 /// Check whether the decl is an implicit template instantiation.
 bool is_implicit_instantiation(const clang::NamedDecl* decl);
 

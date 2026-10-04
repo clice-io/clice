@@ -21,6 +21,8 @@
 
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -300,18 +302,39 @@ bool ASTFamily::compile_barred(const Session& session) {
 
 void ASTFamily::saved(Session& session) {
     session.quarantine->on_save();
-    // The modules it is and imports retry with it: a crashed build is
-    // refused until a consumer holds a license (see depend_modules). A
-    // module crash leaves the importer's compile standing, so only a fresh
-    // round asks for the module again.
-    if(session.quarantine->crashed(evidence_kind(EvidenceKind::PCM))) {
-        invalidate(session.path_id);
-    }
-    pcm.forgive(session.path_id);
-    for(auto dep: graph.dependencies(node(session.path_id))) {
-        if(dep.family == Family::PCM) {
-            pcm.forgive(Fid{static_cast<std::uint32_t>(dep.key)});
+    // The modules it is and imports, directly or through other modules,
+    // retry with it: a crashed build is refused until a consumer holds a
+    // license (see depend_modules), a failed one until what it read or
+    // looked for changes. A failed build's inputs miss a lookup in a
+    // directory that did not exist yet, so a save retries its failed
+    // preamble too. Either refusal leaves the compile standing, so only a
+    // fresh round asks for the artifact again.
+    bool retry = session.quarantine->crashed(evidence_kind(EvidenceKind::PCM));
+    llvm::SmallVector<Fid> modules{session.path_id};
+    llvm::DenseSet<Fid> seen{session.path_id};
+    auto add_imports = [&](NodeId importer) {
+        for(auto dep: graph.dependencies(importer)) {
+            if(dep.family != Family::PCM || PCMFamily::is_unresolved(dep)) {
+                continue;
+            }
+            auto module = Fid{static_cast<std::uint32_t>(dep.key)};
+            if(seen.insert(module).second) {
+                modules.push_back(module);
+            }
         }
+    };
+    add_imports(node(session.path_id));
+    for(std::size_t i = 0; i < modules.size(); i += 1) {
+        pcm.forgive(modules[i]);
+        retry |= pcm.forget_failure(modules[i]);
+        add_imports({Family::PCM, modules[i].raw});
+    }
+    if(auto projection = projections.projection(session.path_id);
+       projection && projection->failed_pch_key) {
+        retry |= pch.forget_failure(*projection->failed_pch_key);
+    }
+    if(retry) {
+        invalidate(session.path_id);
     }
 }
 
@@ -708,6 +731,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // parses, the profile's stated trade. A failed pair is the same
         // degradation: the compile proceeds preamble-less.
         std::optional<std::string> adopted_pch;
+        std::optional<std::string> failed_pch;
         if(readonly != ReadonlyMode::On) {
             auto plan =
                 plan_pch(path_id, params.text, params.directory, params.arguments, synthesized);
@@ -758,6 +782,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                             if(session->generation == gen && ctx.current()) {
                                 session->quarantine->on_land(pch_kind);
                             }
+                            failed_pch = pch_key;
                             break;
                         case DependResult::Cancelled: co_return RoundOutcome::Stale;
                     }
@@ -999,6 +1024,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         auto& index_data = result.value().tu_index_data;
         auto next = std::make_shared<ASTProjection>();
         next->pch_key = adopted_pch;
+        next->failed_pch_key = failed_pch;
         // The AST and the file index settle together — that pairing is
         // what lets navigation trust the index after ensure_compiled. A
         // compile that produced no index data (fatal error, no AST) must
@@ -1021,6 +1047,12 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         };
 
         auto& entry = projections.entries[path_id];
+        // A document moving off a preamble it failed on releases that
+        // failure: only the preamble's consumers would ever retry it.
+        if(entry.projection && entry.projection->failed_pch_key &&
+           entry.projection->failed_pch_key != failed_pch) {
+            pch.forget_failure(*entry.projection->failed_pch_key);
+        }
         entry.projection = std::move(next);
         entry.deps =
             capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);

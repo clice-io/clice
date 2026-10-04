@@ -91,6 +91,13 @@ public:
         build_crashes.erase(pch_key);
     }
 
+    /// Forget the key's failed build (see build_failures), so the next
+    /// request builds it again: a consumer's save retries it, a consumer
+    /// moving to another key releases it. Returns whether it had failed.
+    bool forget_failure(llvm::StringRef pch_key) {
+        return build_failures.erase(pch_key);
+    }
+
     /// A complete, store-backed, deps-current pair is registered under
     /// the key. Non-const: a passing deps check may repair the snapshot's
     /// stat fast path in place.
@@ -182,6 +189,14 @@ private:
     /// contain it alone: the artifact is shared, so every session with the
     /// same preamble would burn a worker of its own.
     llvm::StringMap<kota::ipc::Error> build_crashes;
+
+    /// The keys whose build failed on errors in the user's code, with what
+    /// that build read and looked for: refused until one of those files
+    /// changes, and forgotten when a consumer is saved or moves to another
+    /// key. The key covers the preamble text and
+    /// the flags, so the same inputs fail the same way — rebuilt, every
+    /// compile of every consumer would pay for the failing build first.
+    llvm::StringMap<DepsSnapshot> build_failures;
 
     /// Consumption strikes per key (see blame); separate from the build
     /// side, which every successful rebuild clears.

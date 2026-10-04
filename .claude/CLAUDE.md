@@ -43,7 +43,7 @@ Distilled from real correction history — these mistakes keep recurring:
 - `src/semantic/` — Semantic analysis: symbol kinds, relations, AST visitor, template resolver
 - `src/syntax/` — Lexer, scanner, token types, dependency graph
 - `src/command/` — CLI parsing, compilation database, toolchain detection
-- `src/driver/` — CLI subcommand entry points: serve, worker, index, inspect, format, lint, query, doc
+- `src/driver/` — CLI subcommand entry points: serve, worker, index, inspect, format, lint, query, refactor, analyze
 - `src/vfs/` — Disk access: reads, statuses, writes, directory walks; the file table and its freshness checks
 - `src/support/` — Utilities: logging, JSON, string helpers
 

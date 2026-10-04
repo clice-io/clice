@@ -339,6 +339,8 @@ struct ArtifactBuildResult {
     /// Milliseconds since epoch, sampled before the build started. Files
     /// whose mtime is past this moment may differ from what the build read.
     std::int64_t build_at = 0;
+    /// What the build read and looked for — on failure too: a build that
+    /// failed on the user's errors fails again until one of them changes.
     std::vector<DepFile> deps;
 };
 

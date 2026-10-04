@@ -62,6 +62,12 @@ struct LexicalInfo {
         /// The identifiers of the dotted partition name; the `private`
         /// keyword for the private fragment.
         llvm::SmallVector<LocalSourceRange, 2> partition_parts;
+
+        /// The written name of a Declaration, partition included.
+        LocalSourceRange name_range() const {
+            auto& last = partition_parts.empty() ? name_parts.back() : partition_parts.back();
+            return {name_parts.front().begin, last.end};
+        }
     };
 
     /// A directive opening, continuing or closing a block of lines,

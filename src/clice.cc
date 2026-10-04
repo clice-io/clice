@@ -1,5 +1,4 @@
 #include <csignal>
-#include <print>
 
 #include "version.h"
 #include "driver/driver.h"
@@ -42,18 +41,19 @@ int main(int argc, const char** argv) {
                                   "A C++ development toolkit built on LLVM/Clang");
 
     auto print_root_usage = [&] {
-        std::println("usage: clice <command> [<args>]\n");
+        driver::println("usage: clice <command> [<args>]\n");
         driver::print_usage(clice);
     };
 
     driver::add_serve(clice, exit_code, self_path);
     driver::add_query(clice, exit_code, self_path);
+    driver::add_refactor(clice, exit_code, self_path);
     driver::add_worker(clice, exit_code);
     driver::add_index(clice, exit_code, self_path);
-    driver::add_doc(clice, exit_code);
     driver::add_lint(clice, exit_code, self_path);
     driver::add_format(clice, exit_code);
     driver::add_inspect(clice, exit_code);
+    driver::add_analyze(clice, exit_code);
 
     clice.when_err([&](auto err) {
         if(err.type == deco::cli::SubCommandError::Type::MissingSubCommand) {
@@ -65,7 +65,7 @@ int main(int argc, const char** argv) {
     });
 
     if(!args.empty() && (args[0] == "--version" || args[0] == "-v")) {
-        std::println("clice version {}", clice::version);
+        driver::println("clice version {}", clice::version);
         return 0;
     }
 

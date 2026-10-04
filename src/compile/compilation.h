@@ -110,7 +110,8 @@ struct PCHInfo {
     /// The content used to build this PCH.
     std::string preamble;
 
-    /// All files involved in building this PCH, with consumed-content hashes.
+    /// All files involved in building this PCH, with consumed-content hashes;
+    /// filled for a build that failed on errors too.
     std::vector<DepFile> deps;
 
     /// The command arguments used to build this PCH.
@@ -140,6 +141,7 @@ struct PCMInfo : ModuleInfo {
     /// with consumed-content hashes. Contains the module source file itself:
     /// unlike the PCH key, the PCM cache key does not embed any content, so
     /// the deps snapshot is the only thing that can see the source change.
+    /// Filled for a build that failed on errors too.
     std::vector<DepFile> deps;
 };
 

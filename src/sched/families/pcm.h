@@ -119,6 +119,12 @@ public:
         build_crashes.erase(module);
     }
 
+    /// An importer's save retries the module's failed build (see
+    /// build_failures). Returns whether it had failed.
+    bool forget_failure(Fid module) {
+        return build_failures.erase(module);
+    }
+
     /// Whether a node is an unresolved-import sentinel.
     static bool is_unresolved(NodeId id) {
         return id.family == Family::PCM && (id.key >> 63) != 0;
@@ -209,6 +215,21 @@ private:
     /// document's quarantine cannot contain it alone: every importer would
     /// burn a worker of its own.
     llvm::DenseMap<Fid, Crash> build_crashes;
+
+    /// A module build that failed on errors in the user's code: the cache
+    /// key it ran under and what it read and looked for, its own source
+    /// and the interfaces it imported included.
+    struct Failure {
+        std::string key;
+        DepsSnapshot deps;
+    };
+
+    /// The modules whose build failed (see Failure): refused until their
+    /// command or one of those files changes, an import that resolved to
+    /// nothing gains a provider, or an importer is saved. Rebuilt on unchanged inputs, every
+    /// compile and completion of every importer would pay for the failing
+    /// build first.
+    llvm::DenseMap<Fid, Failure> build_failures;
 };
 
 }  // namespace clice

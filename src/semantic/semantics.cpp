@@ -615,10 +615,16 @@ private:
         semantics.file_begin = main_file_range.getBegin();
         semantics.pp_ignored.resize(semantics.tokens.size(), false);
 
-        // Tokens preprocessed to nothing (e.g. a disabled region or an empty
-        // macro invocation) never contribute to a selection. Only relevant
-        // when token ownership is recorded at all.
+        // Only relevant when token ownership is recorded at all.
         if(options.main_file_only) {
+            // claim_range() looks up every node's range. Indexed, a range
+            // bounded by expanded tokens resolves by location; otherwise
+            // each lookup binary-searches with isBeforeInTranslationUnit,
+            // whose cost grows with the macro expansions in the file.
+            unit.token_buffer().indexExpandedTokens();
+
+            // Tokens preprocessed to nothing (e.g. a disabled region or an
+            // empty macro invocation) never contribute to a selection.
             for(const clang::syntax::TokenBuffer::Expansion& expansion:
                 unit.expansions_overlapping(semantics.tokens)) {
                 if(expansion.Expanded.empty()) {
@@ -821,9 +827,12 @@ private:
             clang::SourceLocation start = expanded_tokens.front().location();
             clang::FileID fid = SM.getFileID(start);
             // Comparing SourceLocations against bounds is cheaper than getFileID().
+            // A file ID owns its one-past-the-end location too: the parentheses
+            // clang synthesizes around a braced macro argument (`F(T{1, 2})`)
+            // sit there.
             clang::SourceLocation limit = SM.getComposedLoc(fid, SM.getFileIDSize(fid));
             auto batch = expanded_tokens.take_while([&](const clang::syntax::Token& T) {
-                return T.location() >= start && T.location() < limit;
+                return T.location() >= start && T.location() <= limit;
             });
             assert(!batch.empty());
             expanded_tokens = expanded_tokens.drop_front(batch.size());
@@ -1162,6 +1171,25 @@ void refer_name(References& out,
     auto range = written_name(name, decl->getASTContext().getSourceManager());
     auto end = range.getEnd() == range.getBegin() ? clang::SourceLocation() : range.getEnd();
     out.push_back({decl, kind, range.getBegin(), end});
+}
+
+/// Weak references to the candidates a dependent name or an overload set
+/// may mean. A using shadow stands for its target, and each introducing
+/// using-declaration is referenced once: hover picks it when the set is
+/// otherwise ambiguous.
+void refer_candidates(References& out, auto&& candidates, const clang::DeclarationNameInfo& name) {
+    llvm::SmallPtrSet<const clang::UsingDecl*, 2> introducers;
+    for(const clang::NamedDecl* target: candidates) {
+        if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(target)) {
+            if(auto* UD = llvm::dyn_cast<clang::UsingDecl>(shadow->getIntroducer())) {
+                introducers.insert(UD);
+            }
+        }
+        refer_name(out, target->getUnderlyingDecl(), RelationKind::WeakReference, name);
+    }
+    for(const auto* UD: introducers) {
+        refer_name(out, UD, RelationKind::WeakReference, name);
+    }
 }
 
 void stmt_references(const clang::Stmt* S,
@@ -1707,13 +1735,9 @@ void stmt_references(const clang::Stmt* S,
     if(auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(S)) {
         if(resolver) {
             if(call) {
-                for(auto* target: resolver->lookup(call)) {
-                    refer_name(out, target, RelationKind::WeakReference, DSDRE->getNameInfo());
-                }
+                refer_candidates(out, resolver->lookup(call), DSDRE->getNameInfo());
             } else {
-                for(auto* target: resolver->lookup(DSDRE)) {
-                    refer_name(out, target, RelationKind::WeakReference, DSDRE->getNameInfo());
-                }
+                refer_candidates(out, resolver->lookup(DSDRE), DSDRE->getNameInfo());
             }
         }
         return;
@@ -1724,28 +1748,10 @@ void stmt_references(const clang::Stmt* S,
     if(auto* OE = llvm::dyn_cast<clang::OverloadExpr>(S)) {
         /// As a callee, the candidate set shrinks to the overloads that can
         /// accept the call's argument count.
-        llvm::SmallVector<const clang::NamedDecl*, 4> candidates;
         if(call && resolver) {
-            candidates = resolver->lookup(call);
+            refer_candidates(out, resolver->lookup(call), OE->getNameInfo());
         } else {
-            candidates.append(OE->decls_begin(), OE->decls_end());
-        }
-
-        /// Unwrap using shadows to the underlying functions, then reference
-        /// each introducing using-declaration once: hover picks it when the
-        /// overload set is otherwise ambiguous.
-        llvm::SmallPtrSet<const clang::UsingDecl*, 2> introducers;
-        for(auto* target: candidates) {
-            if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(target)) {
-                if(auto* UD = llvm::dyn_cast<clang::UsingDecl>(shadow->getIntroducer())) {
-                    introducers.insert(UD);
-                }
-                target = shadow->getTargetDecl();
-            }
-            refer_name(out, target, RelationKind::WeakReference, OE->getNameInfo());
-        }
-        for(const auto* UD: introducers) {
-            refer_name(out, UD, RelationKind::WeakReference, OE->getNameInfo());
+            refer_candidates(out, OE->decls(), OE->getNameInfo());
         }
         return;
     }
@@ -1772,13 +1778,9 @@ void stmt_references(const clang::Stmt* S,
     if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(S)) {
         if(resolver) {
             if(call) {
-                for(auto* target: resolver->lookup(call)) {
-                    refer_name(out, target, RelationKind::WeakReference, DSME->getMemberNameInfo());
-                }
+                refer_candidates(out, resolver->lookup(call), DSME->getMemberNameInfo());
             } else {
-                for(auto* target: resolver->lookup(DSME)) {
-                    refer_name(out, target, RelationKind::WeakReference, DSME->getMemberNameInfo());
-                }
+                refer_candidates(out, resolver->lookup(DSME), DSME->getMemberNameInfo());
             }
         }
         return;

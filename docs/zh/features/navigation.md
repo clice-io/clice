@@ -154,6 +154,20 @@ tests/snap/navigation/go_to_definition/12_def_auto_keyword.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**依赖调用的重载候选**
+
+依赖调用可能命中多个重载时，会逐一列出这些重载
+
+每个候选各自给出结果：有定义的跳转到定义，没有定义的跳转到声明。
+
+```snap
+tests/snap/navigation/go_to_definition/13_def_overload_candidates.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 隐式目标
@@ -1230,13 +1244,13 @@ tests/snap/navigation/module_navigation/03_module_iface_impl/main.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **以点分隔的模块名称**
 
-以点分隔的模块名称中，只有首段支持导航到模块接口
+以点分隔的模块名称中，每一段都可导航到模块接口
 
-在以点分隔的模块名称的首段上执行“转到定义”，会跳转到该模块的接口单元；点号后的各段尚无法单独解析。
+在以点分隔的模块名称的任意一段上执行“转到定义”，都会跳转到该模块的接口单元；整个名称视为同一个引用。
 
 ```snap
 tests/snap/navigation/module_navigation/04_module_dotted/main.cpp

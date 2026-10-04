@@ -28,6 +28,8 @@ cli:
     - overview
     - index
     - query
+    - refactor
+    - analyze
     - lint
     - format
 

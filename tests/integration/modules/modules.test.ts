@@ -236,6 +236,117 @@ test("failed import reported", async ({ session }) => {
     expect(importError(), JSON.stringify(client.diagnostics.get(uri))).toHaveLength(1);
 });
 
+/// A module whose build fails is not rebuilt for its importer's edits: the
+/// same inputs fail again. Saving a fix is a new input.
+test("failed module waits for its inputs", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("a.cppm", "export module A;\nexport int a() { return broken_in_a; }\n");
+    const main = (n: number) => `import A;\nint main() { return a() + ${n}; }\n`;
+    workspace.write("main.cpp", main(0));
+    workspace.writeEntries(
+        [
+            ["a.cppm", []],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const failedBuilds = () =>
+        client.drainedStderr().toString("utf8").split("BuildPCM failed for module A:").length - 1;
+
+    const [uri] = await client.openAndWait("main.cpp");
+    for (let n = 1; n <= 3; n++) {
+        client.change(uri, n, main(n));
+        await client.waitForRecompile(uri);
+    }
+    expect(failedBuilds()).toBe(1);
+
+    workspace.write("a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    client.save(workspace.uri("a.cppm"));
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+    expect(failedBuilds()).toBe(1);
+});
+
+/// A module that failed for what an interface it imports lacked builds
+/// again once that interface changes.
+test("failed module follows its import", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("b.cppm", "export module B;\nexport int b() { return 1; }\n");
+    workspace.write("a.cppm", "export module A;\nimport B;\nexport int a() { return c(); }\n");
+    workspace.write("main.cpp", "import A;\nint main() { return a(); }\n");
+    workspace.writeEntries(
+        [
+            ["b.cppm", []],
+            ["a.cppm", []],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(uri);
+
+    workspace.write("b.cppm", "export module B;\nexport int c() { return 1; }\n");
+    client.save(workspace.uri("b.cppm"));
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+});
+
+/// A module that failed on an import nothing provided builds again once a
+/// unit declares that module.
+test("failed module follows a new provider", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("m.cppm", "int placeholder;\n");
+    workspace.write("a.cppm", "export module A;\nimport M;\nexport int a() { return m(); }\n");
+    workspace.write("main.cpp", "import A;\nint main() { return a(); }\n");
+    workspace.writeEntries(
+        [
+            ["m.cppm", []],
+            ["a.cppm", []],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(uri);
+
+    workspace.write("m.cppm", "export module M;\nexport int m() { return 1; }\n");
+    client.save(workspace.uri("m.cppm"));
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+});
+
+/// A header that shows up in a search directory missing at the build is no
+/// input the failed module build recorded: saving an importer retries it,
+/// through the modules in between.
+test("failed module retries on save", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write(
+        "b.cppm",
+        'module;\n#include "generated.h"\nexport module B;\nexport int b() { return generated(); }\n',
+    );
+    workspace.write("a.cppm", "export module A;\nimport B;\nexport int a() { return b(); }\n");
+    workspace.write("main.cpp", "import A;\nint main() { return a(); }\n");
+    workspace.writeEntries(
+        [
+            ["b.cppm", [`-I${workspace.path("gen")}`]],
+            ["a.cppm", []],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(uri);
+
+    workspace.write("gen/generated.h", "#pragma once\ninline int generated() { return 1; }\n");
+    client.save(uri);
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+});
+
 /// An import reaching the unit only through its command's forced include
 /// is built before the unit compiles.
 test("forced include imports module", async ({ session }) => {

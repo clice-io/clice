@@ -138,8 +138,11 @@ public:
         }
 
         for(; index < nodes.size(); index += 1) {
-            if(nodes[index].node.kind() == SemanticNode::Kind::MacroDefine) {
-                add_macro(*nodes[index].node.get<MacroRef>());
+            auto& node = nodes[index].node;
+            if(node.kind() == SemanticNode::Kind::MacroDefine) {
+                add_macro(*node.get<MacroRef>());
+            } else if(node.kind() == SemanticNode::Kind::Module) {
+                add_module(*node.get<LexicalInfo::ModuleDeclaration>());
             }
         }
 
@@ -200,6 +203,16 @@ private:
         // invocation site.
         name_range = clang::SourceRange(unit.file_location(name_range.getBegin()),
                                         unit.file_location(name_range.getEnd()));
+
+        // Clang leaves a bound it cannot locate unset, on valid code too:
+        // `short __attribute__((vector_size(16)))`, `Ts...[0]`, an unclosed
+        // `namespace a {`, the typeless `for(x : v)`.
+        if(full_range.getBegin().isInvalid()) {
+            full_range.setBegin(name_range.getBegin());
+        }
+        if(full_range.getEnd().isInvalid()) {
+            full_range.setEnd(name_range.getEnd());
+        }
 
         auto [fid, selection_range] = unit.decompose_range(name_range);
         auto [fid2, range] = unit.decompose_expansion_range(full_range);
@@ -271,6 +284,22 @@ private:
             }
         }
         level->push_back(std::move(symbol));
+    }
+
+    /// The module an interface unit defines; an implementation unit's
+    /// declaration only names a module defined elsewhere.
+    void add_module(const LexicalInfo::ModuleDeclaration& module) {
+        if(module.kind != LexicalInfo::ModuleDeclaration::Kind::Declaration ||
+           !unit.is_module_interface_unit()) {
+            return;
+        }
+        auto name = module.name_range();
+        symbols.push_back({
+            .name = unit.module_name().str(),
+            .kind = SymbolKind::Module,
+            .range = name,
+            .selection_range = name,
+        });
     }
 
     static bool is_supported(const clang::Decl* decl) {

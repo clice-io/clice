@@ -53,7 +53,7 @@ struct Relation {
         target_symbol = std::bit_cast<SymbolHash>(range);
     }
 
-    constexpr auto definition_range() {
+    constexpr auto definition_range() const {
         return std::bit_cast<LocalSourceRange>(target_symbol);
     }
 };
@@ -114,6 +114,11 @@ enum class SymbolFlags : std::uint16_t {
     Completable = 1 << 8,
     /// Three bits holding the NameForm.
     FormMask = 7 << 9,
+    /// Exported by its module (decls::is_exported).
+    Exported = 1 << 12,
+    /// An anonymous struct or union, or an unscoped enum without a name:
+    /// the enclosing scope names its members.
+    AnonymousScope = 1 << 13,
 };
 
 constexpr SymbolFlags operator|(SymbolFlags lhs, SymbolFlags rhs) {
@@ -127,6 +132,12 @@ constexpr SymbolFlags& operator|=(SymbolFlags& lhs, SymbolFlags rhs) {
 
 constexpr bool has_flag(SymbolFlags flags, SymbolFlags bit) {
     return (static_cast<std::uint16_t>(flags) & static_cast<std::uint16_t>(bit)) != 0;
+}
+
+/// Whether a qualified name skips this container, as lookup does.
+constexpr bool transparent_scope(SymbolFlags flags) {
+    return has_flag(flags, SymbolFlags::InlineNamespace) ||
+           has_flag(flags, SymbolFlags::AnonymousScope);
 }
 
 /// The shape of a declaration's name, for consumers that treat special

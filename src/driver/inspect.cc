@@ -1,6 +1,5 @@
 #include <format>
 #include <map>
-#include <print>
 #include <ranges>
 
 #include "command/command.h"
@@ -1030,7 +1029,7 @@ int run_inspect(const InspectOptions& opts) {
         LOG_ERROR("serialization failed: {}", json.error().message);
         return 1;
     }
-    std::println("{}", *json);
+    driver::println("{}", *json);
     return 0;
 }
 
@@ -1056,7 +1055,7 @@ void add_inspect(kota::deco::cli::SubCommander& root, int& exit_code) {
                    LOG_ERROR("config schema generation failed: {}", schema.error());
                    return;
                }
-               std::println("{}", *schema);
+               driver::println("{}", *schema);
                exit_code = 0;
                return;
            }

@@ -148,6 +148,15 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
                  pch_key);
         co_return RoundOutcome::Failed;
     }
+    if(auto it = build_failures.find(pch_key); it != build_failures.end()) {
+        if(!deps_changed(project.file_table, it->second)) {
+            LOG_DEBUG("PCH build for {} skipped: key {} failed on these inputs",
+                      request.file,
+                      pch_key);
+            co_return RoundOutcome::Failed;
+        }
+        build_failures.erase(it);
+    }
 
     // Build a new pair via a stateless worker: it writes the PCH and its
     // pch.idx envelope to the tmp paths allocated here; the store commits
@@ -187,6 +196,12 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     if(!result.has_value() || !result.value().success) {
         if(expected_build_failure(result)) {
             LOG_WARN("PCH build failed for {}: {}", bp.file, build_failure_message(result));
+            if(result.has_value()) {
+                build_failures.insert_or_assign(pch_key,
+                                                capture_deps_snapshot(project.file_table,
+                                                                      result.value().deps,
+                                                                      result.value().build_at));
+            }
         } else {
             LOG_ANOMALY(PCHBuildFail,
                         "PCH build failed for {}: {}",

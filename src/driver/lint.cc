@@ -1,5 +1,3 @@
-#include <print>
-
 #include "driver/driver.h"
 #include "sched/batch.h"
 #include "support/logging.h"
@@ -49,15 +47,15 @@ auto make_command() {
 
 void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
     for(auto& d: diagnostics) {
-        std::println("{}:{}:{}: {}: {} [{}]",
-                     d.file,
-                     d.line,
-                     d.column,
-                     d.error ? "error" : "warning",
-                     d.message,
-                     d.check);
+        driver::println("{}:{}:{}: {}: {} [{}]",
+                        d.file,
+                        d.line,
+                        d.column,
+                        d.error ? "error" : "warning",
+                        d.message,
+                        d.check);
         for(auto& note: d.notes) {
-            std::println("{}:{}:{}: note: {}", note.file, note.line, note.column, note.message);
+            driver::println("{}:{}:{}: note: {}", note.file, note.line, note.column, note.message);
         }
     }
 }
@@ -76,25 +74,25 @@ int run_lint(Spelling root,
     });
     print_findings(result.findings);
     if(result.interrupted) {
-        std::println("Lint interrupted. Rerun `clice lint` for a full report.");
+        driver::println("Lint interrupted. Rerun `clice lint` for a full report.");
         return result.exit_code;
     }
     if(!result.completed) {
         return result.exit_code;
     }
-    std::println("Linted {} translation unit{} in {:.1f}s: {} finding{}.",
-                 result.checked_tus,
-                 plural_s(result.checked_tus),
-                 result.seconds,
-                 result.findings.size(),
-                 plural_s(result.findings.size()));
+    driver::println("Linted {} translation unit{} in {:.1f}s: {} finding{}.",
+                    result.checked_tus,
+                    plural_s(result.checked_tus),
+                    result.seconds,
+                    result.findings.size(),
+                    plural_s(result.findings.size()));
     if(result.failed_tus != 0) {
-        std::println("{} translation unit{} failed to run (see the log); the report is partial.",
-                     result.failed_tus,
-                     plural_s(result.failed_tus));
+        driver::println("{} translation unit{} failed to run (see the log); the report is partial.",
+                        result.failed_tus,
+                        plural_s(result.failed_tus));
     }
     if(result.unsaved) {
-        std::println("Part of the index could not be persisted (see the log).");
+        driver::println("Part of the index could not be persisted (see the log).");
     }
     return result.exit_code;
 }

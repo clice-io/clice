@@ -59,14 +59,14 @@ tests/snap/hover/symbol_information/04_definition_rendering.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#710 -->
+<!-- BEGIN CAPABILITY: supported clangd#710 -->
 
 **Initializer truncation**
 
 Huge initializers render truncated, not in full
 
-The rendered definition omits the initializer, but the evaluated
-`Value` field still spells out all 256 elements.
+The rendered definition omits the initializer, and the evaluated
+`Value` field shows the first ten of its 256 elements.
 
 ```snap
 tests/snap/hover/symbol_information/05_initializer_truncation.cpp
@@ -672,10 +672,11 @@ tests/snap/hover/documentation/12_comment_suppression.cpp
 
 **Definition text at every site**
 
-`#define`, use, `#ifdef` and `#undef` all show the macro's definition
+`#define`, use, `#ifdef`, `defined` and `#undef` all show the macro's definition
 
 A macro's hover card carries its `#define` text wherever the name
-appears: the definition itself, a use, an `#ifdef` guard and an `#undef`.
+appears: the definition itself, a use, an `#ifdef` guard, a `defined`
+test and an `#undef`.
 
 ```snap
 tests/snap/hover/macro_hover/01_macro_definition_sites.cpp
@@ -953,17 +954,33 @@ tests/snap/hover/module_related/01_import_hover.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Module name hover**
 
-Hovering a module name does not list its owning files yet
+Hovering a module name shows the interface unit that defines it
 
-Hovering a module name does not yet list the files or partitions that
-declare it.
+The card names the module and the file of its interface unit, on the
+name in an `import` and in the module declaration alike.
 
 ```snap
-tests/snap/hover/module_related/02_module_name_hover.cpp
+tests/snap/hover/module_related/02_module_name_hover/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Export status hover**
+
+The card of a module's declaration shows whether the module exports it
+
+An exported declaration's definition reads `export`, whether exported
+on its own or in an `export` block; a declaration the module keeps to
+itself, or a member of an exported class, does not.
+
+```snap
+tests/snap/hover/module_related/03_export_status.cpp
 ```
 
 <!-- END CAPABILITY -->

@@ -385,6 +385,25 @@ auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
 
 auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange>;
 
+/// The kind of the fold a declaration's block makes, by the declaration's
+/// kind; none for a declaration owning no block. The AST collector and the
+/// index projection share it, so a block keeps its kind when the AST
+/// takes over.
+auto declaration_fold_kind(SymbolKind kind) -> std::optional<protocol::FoldingRangeKind>;
+
+/// The lines a line-folding client folds for a declaration's `block` when
+/// its brace sits below `head` — the declaration's name, or the keyword
+/// opening the block: from the head's line, which stays visible. Nullopt
+/// when the block keeps its own lines: the brace shares the head's line,
+/// the block hides nothing but its brace line, or one of the sorted
+/// `block_directives` offsets lies between head and brace (the fold would
+/// cut across a conditional branch's).
+auto declaration_lines(llvm::StringRef content,
+                       LocalSourceRange block,
+                       std::uint32_t head,
+                       llvm::ArrayRef<std::uint32_t> block_directives)
+    -> std::optional<LocalSourceRange>;
+
 /// Wire encoding of computed folds, for the worker's AST results and the
 /// master's index projections alike. A `line_folding_only` client folds
 /// whole lines and ignores the character offsets.

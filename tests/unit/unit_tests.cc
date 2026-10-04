@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <string>
 #include <string_view>
 
@@ -48,5 +49,12 @@ int main(int argc, const char** argv) {
 
     clice::logging::stderr_logger("test", clice::logging::options);
 
-    return kota::zest::run_tests(std::move(opts.zest), argc, argv);
+    // The workers tests spawn crash on `#pragma clang __debug crash`.
+#ifdef _WIN32
+    _putenv_s("CLICE_TEST_PRAGMA_CRASH", "1");
+#else
+    setenv("CLICE_TEST_PRAGMA_CRASH", "1", 1);
+#endif
+
+    return kota::zest::run_tests(std::move(opts.zest));
 }

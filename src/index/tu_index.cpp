@@ -101,23 +101,24 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
                  clang::TemplateTemplateParmDecl>(decl)) {
         return SymbolScope::FileLocal;
     }
-    // An alias has no linkage of its own, yet names one entity wherever its
-    // scope reaches: at namespace and class scope it is global (TU-local in
-    // an anonymous namespace), inside a function local.
-    if(llvm::isa<clang::TypedefNameDecl, clang::NamespaceAliasDecl>(decl)) {
-        if(decl->getParentFunctionOrMethod()) {
-            return SymbolScope::FileLocal;
-        }
-        return decl->isInAnonymousNamespace() ? SymbolScope::TULocal : SymbolScope::External;
-    }
     // Module linkage reaches the module's other units, as external
     // linkage reaches every unit.
     auto linkage = decl->getFormalLinkage();
-    if(linkage == clang::Linkage::None)
-        return SymbolScope::FileLocal;
-    if(linkage == clang::Linkage::Internal)
+    if(linkage == clang::Linkage::Internal) {
         return SymbolScope::TULocal;
-    return SymbolScope::External;
+    }
+    if(linkage != clang::Linkage::None) {
+        return SymbolScope::External;
+    }
+    // A name without linkage still reaches as far as its scope does: an
+    // alias, an enumerator of an unnamed enum (every enumerator in C) or a
+    // member of an unnamed class is named from every file including its
+    // header. Only a function's own declarations and a prototype's
+    // parameters stay in their file.
+    if(decl->getParentFunctionOrMethod() || llvm::isa<clang::ParmVarDecl>(decl)) {
+        return SymbolScope::FileLocal;
+    }
+    return decl->isInAnonymousNamespace() ? SymbolScope::TULocal : SymbolScope::External;
 }
 
 NameForm name_form_of(clang::DeclarationName name) {
@@ -341,6 +342,14 @@ public:
         if(auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(decl); ns && ns->isInline()) {
             flags |= SymbolFlags::InlineNamespace;
         }
+        if(auto* record = llvm::dyn_cast<clang::RecordDecl>(decl);
+           record && record->isAnonymousStructOrUnion()) {
+            flags |= SymbolFlags::AnonymousScope;
+        }
+        if(auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(decl);
+           enumeration && !enumeration->isScoped() && !enumeration->getIdentifier()) {
+            flags |= SymbolFlags::AnonymousScope;
+        }
         // `FWD(Expr)` forward-declares a class defined by hand.
         if(llvm::all_of(decl->redecls(), [](const clang::Decl* redecl) {
                return redecl->getLocation().isMacroID();
@@ -352,6 +361,9 @@ public:
         }
         if(is_completable(decl)) {
             flags |= SymbolFlags::Completable;
+        }
+        if(decls::is_exported(decl)) {
+            flags |= SymbolFlags::Exported;
         }
         symbol.flags = with_form(flags, name_form_of(decl->getDeclName()));
         return symbol;
@@ -554,13 +566,9 @@ public:
             if(module.kind != LexicalInfo::ModuleDeclaration::Kind::Declaration) {
                 continue;
             }
-            auto name_begin = module.name_parts.front().begin;
-            auto name_end = (module.partition_parts.empty() ? module.name_parts.back()
-                                                            : module.partition_parts.back())
-                                .end;
             emit(module_name,
                  unit.main_file(),
-                 LocalSourceRange{name_begin, name_end},
+                 module.name_range(),
                  unit.is_module_interface_unit() ? RelationKind::Definition
                                                  : RelationKind::Reference);
             break;
@@ -596,23 +604,89 @@ public:
         return result;
     }
 
-    /// Hierarchy ranges are positions in the caller's document: a call
-    /// written in a file the caller's body includes (`#include "body.inc"`
-    /// inside a function) lands at that include.
-    clang::SourceRange in_caller_file(const clang::NamedDecl* caller, clang::SourceRange range) {
-        auto& SM = unit.context().getSourceManager();
-        auto caller_file = SM.getFileID(SM.getExpansionLoc(caller->getLocation()));
-        auto location = SM.getExpansionLoc(range.getBegin());
-        if(SM.getFileID(location) == caller_file) {
-            return range;
-        }
-        while(SM.getFileID(location) != caller_file) {
-            location = SM.getIncludeLoc(SM.getFileID(location));
-            if(location.isInvalid()) {
-                return range;
+    /// The namespace-scope declaration node `index` lies in, null outside
+    /// any. Memoized like enclosing_function.
+    const clang::Decl* enclosing_top_level(const Semantics& semantics, std::uint32_t index) {
+        auto at_file_scope = [](const clang::DeclContext* context) {
+            return context->isFileContext() ||
+                   llvm::isa<clang::LinkageSpecDecl, clang::ExportDecl>(context);
+        };
+
+        llvm::SmallVector<std::uint32_t> path;
+        const clang::Decl* result = nullptr;
+        for(auto p = index; p != Semantics::invalid; p = semantics.node(p).parent) {
+            if(auto it = top_level_cache.find(p); it != top_level_cache.end()) {
+                result = it->second;
+                break;
+            }
+            path.push_back(p);
+            if(auto* decl = semantics.node(p).node.get<clang::Decl>()) {
+                while(!at_file_scope(decl->getLexicalDeclContext())) {
+                    decl = llvm::cast<clang::Decl>(decl->getLexicalDeclContext());
+                }
+                result = decl;
+                break;
             }
         }
+
+        for(auto p: path) {
+            top_level_cache.try_emplace(p, result);
+        }
+        return result;
+    }
+
+    /// The include inside `host` that pastes in the fragment holding
+    /// `location` (`#include "body.inc"` inside a function); invalid when
+    /// `location` lies in `host`'s file itself or nothing inside `host`
+    /// includes it.
+    clang::SourceLocation pasted_into(const clang::Decl* host, clang::SourceLocation location) {
+        auto& SM = unit.context().getSourceManager();
+        auto host_file = SM.getFileID(SM.getExpansionLoc(host->getLocation()));
+        if(SM.getFileID(location) == host_file) {
+            return {};
+        }
+        while(location.isValid() && SM.getFileID(location) != host_file) {
+            location = SM.getIncludeLoc(SM.getFileID(location));
+        }
+        // Reaching the file is not enough: a redeclaration shares the default
+        // arguments its header's declaration wrote.
+        auto extent = SM.getExpansionRange(host->getSourceRange());
+        if(location.isInvalid() ||
+           !SM.isPointWithin(location, extent.getBegin(), extent.getEnd())) {
+            return {};
+        }
         return location;
+    }
+
+    /// Hierarchy ranges are positions in the caller's document: a call
+    /// written in a fragment the caller's body pastes in lands at that
+    /// include.
+    clang::SourceRange in_caller_file(const clang::NamedDecl* caller, clang::SourceRange range) {
+        auto include = pasted_into(caller, unit.expansion_location(range.getBegin()));
+        return include.isValid() ? clang::SourceRange(include) : range;
+    }
+
+    /// A fragment pasted inside a declaration (an X-macro table included
+    /// into a switch) is the pasting file's text: each name it uses gets a
+    /// Pasted row at that include, while its own rows stay where the
+    /// fragment spells it.
+    void add_pasted_relation(const clang::NamedDecl* decl,
+                             const clang::Decl* host,
+                             clang::SourceLocation location) {
+        if(!host) {
+            return;
+        }
+        auto include = pasted_into(host, location);
+        if(include.isInvalid()) {
+            return;
+        }
+        auto [fid, range] = unit.decompose_range(include);
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
+        Relation relation{.kind = RelationKind::Pasted, .range = range, .target_symbol = 0};
+        index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
     }
 
     /// Decl-pair relation facts: type definitions, inheritance, overrides,
@@ -648,10 +722,7 @@ public:
             // A dependent call reaches every candidate the resolver finds
             // for it, as its weak references do.
             for(auto* candidate: unit.resolver().lookup(CE)) {
-                if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(candidate)) {
-                    candidate = shadow->getTargetDecl();
-                }
-                call(candidate, range);
+                call(candidate->getUnderlyingDecl(), range);
             }
             return;
         }
@@ -896,6 +967,14 @@ public:
                 // finds this row and cursor-site detection finds the
                 // occurrence inside it.
                 add_self_relation(occurrence.decl, occurrence.kind, name);
+
+                if(!occurrence.kind.is_one_of(RelationKind::Declaration,
+                                              RelationKind::Definition,
+                                              RelationKind::WeakReference)) {
+                    add_pasted_relation(occurrence.decl,
+                                        enclosing_top_level(semantics, i),
+                                        location);
+                }
             }
 
             project_relations(semantics, i);
@@ -1097,6 +1176,7 @@ private:
     /// the encode step converts it through tree.path_id.
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;
     llvm::DenseMap<std::uint32_t, const clang::NamedDecl*> enclosing_cache;
+    llvm::DenseMap<std::uint32_t, const clang::Decl*> top_level_cache;
 };
 
 }  // namespace

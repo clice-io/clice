@@ -87,6 +87,31 @@ void drop_cursor_site(std::vector<Site>& sites, const Site& cursor) {
     }
 }
 
+/// `parent`, the parent of `hash`, and the containers above it, outermost
+/// first, transparent ones skipped (see IndexQuery::container_chain), each
+/// resolved through `lookup`.
+llvm::SmallVector<SymbolRef, 4>
+    scope_chain(SymbolHash hash,
+                SymbolHash parent,
+                llvm::function_ref<std::optional<SymbolRef>(SymbolHash)> lookup) {
+    llvm::SmallVector<SymbolRef, 4> chain;
+    // A parent chain follows declaration contexts, so it is acyclic as
+    // built; the guard keeps a corrupted parent column from spinning.
+    llvm::DenseSet<SymbolHash> visited{hash};
+    while(parent != 0 && visited.insert(parent).second) {
+        auto scope = lookup(parent);
+        if(!scope) {
+            break;
+        }
+        parent = scope->parent;
+        if(!transparent_scope(scope->flags)) {
+            chain.push_back(std::move(*scope));
+        }
+    }
+    std::ranges::reverse(chain);
+    return chain;
+}
+
 }  // namespace
 
 bool covers(const Site& row, const Site& cursor) {
@@ -397,26 +422,11 @@ std::optional<SymbolRef> IndexQuery::symbol_info(SymbolHash hash, Fid anchor) co
 }
 
 llvm::SmallVector<SymbolRef, 4> IndexQuery::container_chain(SymbolHash hash) const {
-    llvm::SmallVector<SymbolRef, 4> chain;
     auto symbol = symbol_info(hash);
     if(!symbol) {
-        return chain;
+        return {};
     }
-    // A parent chain follows declaration contexts, so it is acyclic as
-    // built; the guard keeps a corrupted parent column from spinning.
-    llvm::DenseSet<SymbolHash> visited{hash};
-    for(auto parent = symbol->parent; parent != 0 && visited.insert(parent).second;) {
-        auto scope = symbol_info(parent);
-        if(!scope) {
-            break;
-        }
-        parent = scope->parent;
-        if(!has_flag(scope->flags, SymbolFlags::InlineNamespace)) {
-            chain.push_back(std::move(*scope));
-        }
-    }
-    std::ranges::reverse(chain);
-    return chain;
+    return scope_chain(hash, symbol->parent, [&](SymbolHash scope) { return symbol_info(scope); });
 }
 
 std::string IndexQuery::container_name(SymbolHash hash) const {
@@ -765,6 +775,16 @@ std::optional<IndexQuery::Definition> IndexQuery::definition_text(SymbolHash has
     return found;
 }
 
+std::optional<std::string> IndexQuery::serving_text(Fid file) const {
+    auto source = serving(file);
+    if(!source) {
+        return std::nullopt;
+    }
+    std::unique_ptr<llvm::MemoryBuffer> storage;
+    auto text = source_text(*source, storage);
+    return text ? std::optional(text->str()) : std::nullopt;
+}
+
 std::string IndexQuery::context_line(const Site& site) const {
     if(!site.file.valid()) {
         return {};
@@ -830,6 +850,18 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
     // built, and the open sessions' — is judged row by row against the
     // same query.
     NameRanker ranker(query);
+    bool scoped =
+        query.absolute || !query.scope.empty() || query.mode == SymbolQuery::Mode::Members;
+    // Candidates share their containers: each is looked up once per
+    // search, not once per candidate through every open session's table.
+    llvm::DenseMap<SymbolHash, std::optional<SymbolRef>> scopes;
+    auto scope_info = [&](SymbolHash scope) {
+        auto [it, inserted] = scopes.try_emplace(scope);
+        if(inserted) {
+            it->second = symbol_info(scope);
+        }
+        return it->second;
+    };
     auto consider = [&](SymbolHash hash,
                         const SymbolIdentity& identity,
                         llvm::StringRef path,
@@ -850,8 +882,14 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
            })) {
             return;
         }
-        if(query.absolute || !query.scope.empty() || query.mode == SymbolQuery::Mode::Members) {
-            auto containers = container_chain(hash);
+        auto quality =
+            symbol_quality(identity.name, identity.kind, identity.flags, reference_files);
+        auto rank = ranker.rank(identity.name, identity.args, quality, /*lenient=*/true);
+        if(!rank) {
+            return;
+        }
+        if(scoped) {
+            auto containers = scope_chain(hash, identity.parent, scope_info);
             llvm::SmallVector<ScopeEntry, 4> chain;
             for(auto& container: containers) {
                 chain.push_back({.name = container.name, .args = container.args});
@@ -860,12 +898,8 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
                 return;
             }
         }
-        auto quality =
-            symbol_quality(identity.name, identity.kind, identity.flags, reference_files);
-        if(auto rank = ranker.rank(identity.name, identity.args, quality, /*lenient=*/true)) {
-            seen.insert(hash);
-            hits.push_back({*rank, SymbolRef::from(hash, identity)});
-        }
+        seen.insert(hash);
+        hits.push_back({*rank, SymbolRef::from(hash, identity)});
     };
     auto references_of = [&](SymbolHash hash) -> std::uint32_t {
         return index.reference_count(hash);

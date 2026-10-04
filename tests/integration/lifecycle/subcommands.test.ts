@@ -1,12 +1,26 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { waitUntil, type CliceClient } from "@clice/tools/client";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
-const SUBCOMMANDS = ["serve", "query", "worker", "index", "doc", "lint", "format"];
-const STUBS = ["doc"];
+const SUBCOMMANDS = ["serve", "query", "worker", "index", "lint", "format", "analyze"];
 
 function runClice(...args: string[]) {
     return spawnSync(cliceExecutable(), args, { encoding: "utf8", timeout: 30_000 });
+}
+
+function exitOf(child: ChildProcess): Promise<{ code: number | null; signal: string | null }> {
+    return new Promise((resolve) => {
+        child.once("close", (code, signal) => {
+            resolve({ code, signal });
+        });
+    });
+}
+
+function bigSource(): string {
+    return Array.from(
+        { length: 1500 },
+        (_, i) => `int function_number_${i}(int a, int b) { return a + b; }\n`,
+    ).join("");
 }
 
 async function waitSymbol(client: CliceClient, name: string): Promise<boolean> {
@@ -31,16 +45,6 @@ test("root usage lists subcommands", () => {
         for (const name of SUBCOMMANDS) {
             expect(result.stdout).toContain(name);
         }
-    }
-});
-
-test("stubs report unimplemented", () => {
-    // Stubs explain themselves on stderr and exit non-zero: the command is
-    // still unavailable and scripts must be able to detect that.
-    for (const name of STUBS) {
-        const result = runClice(name);
-        expect(result.status).toBe(1);
-        expect(result.stderr).toContain("not implemented");
     }
 });
 
@@ -83,6 +87,50 @@ test("index subcommand builds and resumes", ({ session }) => {
     expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
     expect(stats.stdout).toContain("Translation units: 1");
 });
+
+test.skipIf(process.platform === "win32")(
+    "repeated SIGTERM saves progress",
+    async ({ session }) => {
+        const ws = session.tmpdir();
+        ws.pinCacheDir();
+        const units = Array.from({ length: 24 }, (_, i) => `unit${i}.cpp`);
+        for (const [i, unit] of units.entries()) {
+            ws.write(unit, `#include <map>\n#include <string>\nint unit${i}() { return ${i}; }\n`);
+        }
+        ws.writeCDB(units);
+
+        // GNU timeout signals the child, then its whole process group: the
+        // second SIGTERM must not turn the graceful stop into an exit that
+        // throws the finished units away. One goes out once a unit is indexed,
+        // the other once the first was handled.
+        const child = spawn(
+            cliceExecutable(),
+            ["index", "--workspace", ws.root, "--workers", "1"],
+            {
+                stdio: ["ignore", "pipe", "pipe"],
+            },
+        );
+        const triggers = ["[perf:index] progress=", "Interrupted;"];
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
+        child.stderr.on("data", (chunk: Buffer) => {
+            stderr += chunk.toString();
+            if (triggers.length > 0 && stderr.includes(triggers[0]!)) {
+                triggers.shift();
+                child.kill("SIGTERM");
+            }
+        });
+        const { code } = await exitOf(child);
+        expect(triggers, `stderr: ${stderr}`).toEqual([]);
+        expect(code, `stderr: ${stderr}`).toBe(130);
+        expect(stdout).toContain("progress saved");
+
+        const stats = runClice("index", "--stats", "--workspace", ws.root);
+        expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
+        expect(stats.stdout).toMatch(/Translation units: [1-9]/);
+    },
+);
 
 test("index reports header losing host", async ({ session }) => {
     const ws = session.tmpdir();
@@ -182,4 +230,31 @@ test("lint with index persists both", ({ session }) => {
     const stats = runClice("index", "--stats", "--workspace", ws.root);
     expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
     expect(stats.stdout).toContain("Translation units: 1");
+});
+
+test.skipIf(process.platform === "win32")("output survives merged stderr", ({ session }) => {
+    // `2>&1` shares stderr's file description with stdout: only a serving
+    // master may switch it to non-blocking.
+    const ws = session.tmpdir();
+    ws.write("big.cpp", bigSource());
+    const inspect = ["inspect", "document_symbol", ws.path("big.cpp"), "--flags", '["-std=c++23"]'];
+    const run = spawnSync("sh", ["-c", 'exec "$0" "$@" 2>&1', cliceExecutable(), ...inspect], {
+        encoding: "utf8",
+        timeout: 60_000,
+        maxBuffer: 64 * 1024 * 1024,
+    });
+    expect(run.status, run.stdout.slice(-2000)).toBe(0);
+    expect(run.stdout).toContain("function_number_1499");
+});
+
+test.skipIf(process.platform === "win32")("closed reader ends quietly", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("big.cpp", bigSource());
+    const child = spawn(
+        cliceExecutable(),
+        ["inspect", "document_symbol", ws.path("big.cpp"), "--flags", '["-std=c++23"]'],
+        { stdio: ["ignore", "pipe", "ignore"] },
+    );
+    child.stdout.once("data", () => child.stdout.destroy());
+    expect(await exitOf(child)).toEqual({ code: null, signal: "SIGPIPE" });
 });

@@ -1,17 +1,20 @@
+#include <csignal>
 #include <format>
 #include <string>
 
 #ifndef _WIN32
 #include <fcntl.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
 
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "support/stderr_sink.h"
+#include "support/log_sinks.h"
 
 #include "spdlog/details/log_msg.h"
+#include "llvm/Support/FileSystem.h"
 
 namespace clice::testing {
 
@@ -19,7 +22,8 @@ namespace {
 
 // POSIX-only: the Windows PIPE_NOWAIT path has no unit harness (_pipe
 // buffers are not fillable without a reader thread); it is exercised
-// end-to-end by the integration flood test on the Windows CI runner.
+// end-to-end by the integration flood test on the Windows CI runner. A
+// full disk is simulated by the file size limit, which Windows lacks.
 #ifndef _WIN32
 
 spdlog::details::log_msg info_msg(std::string_view text) {
@@ -208,6 +212,72 @@ ZEST_CASE(RegularFileStaysBlocking) {
 }
 
 };  // ZEST_SUITE(StderrSink)
+
+/// Caps the size of every file the process writes, as a full disk does;
+/// writes past the cap fail with EFBIG instead of raising SIGXFSZ.
+struct FileSizeCap {
+    rlimit saved{};
+    void (*saved_handler)(int) = nullptr;
+
+    explicit FileSizeCap(rlim_t bytes) {
+        ::getrlimit(RLIMIT_FSIZE, &saved);
+        saved_handler = std::signal(SIGXFSZ, SIG_IGN);
+        rlimit capped = saved;
+        capped.rlim_cur = bytes;
+        ::setrlimit(RLIMIT_FSIZE, &capped);
+    }
+
+    ~FileSizeCap() {
+        ::setrlimit(RLIMIT_FSIZE, &saved);
+        std::signal(SIGXFSZ, saved_handler);
+    }
+};
+
+ZEST_SUITE(FileSink) {
+
+ZEST_CASE(FailedWritesDropLines) {
+    TempDir tmp;
+    auto log = tmp.path("session.log");
+    auto sink = logging::FileSink::open(log);
+    ASSERT(sink);
+    (*sink)->log(info_msg("before the disk filled"));
+
+    std::uint64_t size = 0;
+    ASSERT(!static_cast<bool>(llvm::sys::fs::file_size(log, size)));
+    {
+        FileSizeCap cap(size);
+        (*sink)->log(info_msg("lost one"));
+        (*sink)->log(info_msg("lost two"));
+    }
+    EXPECT((*sink)->dropped() == 2u);
+
+    (*sink)->log(info_msg("after space came back"));
+    auto text = read_file(log).value_or("");
+    EXPECT(text.find("lost") == std::string::npos);
+    auto note = text.find("[logging] dropped 2 line(s): File too large\n");
+    ASSERT(note != std::string::npos);
+    EXPECT(text.find("after space came back") > note);
+}
+
+// Linux writes up to the size limit and fails the rest; macOS refuses a
+// write crossing it whole.
+#ifdef __linux__
+ZEST_CASE(TornLineGetsNewline) {
+    TempDir tmp;
+    auto log = tmp.path("session.log");
+    auto sink = logging::FileSink::open(log);
+    ASSERT(sink);
+    {
+        FileSizeCap cap(8);
+        (*sink)->log(info_msg("a line longer than eight bytes"));
+    }
+    (*sink)->log(info_msg("next"));
+    auto text = read_file(log).value_or("");
+    EXPECT(text.find("\n[logging] dropped 1 line(s)") == 8u);
+}
+#endif
+
+};  // ZEST_SUITE(FileSink)
 
 #endif
 

@@ -1,11 +1,12 @@
+#include <format>
 #include <string>
 #include <vector>
 
+#include "test/merge_unit.h"
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
 #include "index/query.h"
-#include "index/shard.h"
 #include "index/tu_index.h"
 #include "project/command_resolver.h"
 #include "project/index_store.h"
@@ -19,13 +20,42 @@
 #include "server/session_store.h"
 #include "worker/pool.h"
 
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
-
 namespace clice::testing {
 namespace {
+
+/// Open buffers reduced to their session tables, counting the tables the
+/// queries visit.
+struct CountingSessions : index::LiveSources {
+    std::vector<index::TUIndex> tables;
+    mutable std::size_t visits = 0;
+
+    bool is_open(Fid) const override {
+        return false;
+    }
+
+    std::optional<index::RowSource> claim(Fid) const override {
+        return std::nullopt;
+    }
+
+    void each_session(llvm::function_ref<bool(const index::RowSource&)>) const override {}
+
+    void each_session_index(llvm::function_ref<bool(const index::TUIndex&)> visit) const override {
+        for(auto& table: tables) {
+            visits += 1;
+            if(!visit(table)) {
+                return;
+            }
+        }
+    }
+
+    void each_preamble(llvm::function_ref<bool(const index::RowSource&)>) const override {}
+
+    void each_overlay(llvm::function_ref<bool(const index::TUIndex&)>) const override {}
+
+    std::shared_ptr<index::TUIndex> preamble_blob(Fid) const override {
+        return nullptr;
+    }
+};
 
 ZEST_SUITE(IndexQuery, Tester) {
 
@@ -57,72 +87,10 @@ std::vector<index::IndexQuery::Located> locate(llvm::StringRef text) {
     return query.locate(*index::SymbolQuery::parse(text));
 }
 
-/// Mirror of the indexer's merge over in-memory sources: project symbols,
-/// per-section shard blobs, and the TU manifest with its contributions —
-/// so live-variant masks and staleness gates behave as in production.
 void merge_into_workspace() {
-    auto wire = index::build_tu_index(*unit);
-    auto view = index::TUIndex::from_bytes(wire);
-    ASSERT(view.loaded());
-
-    auto& project_index = project.project_index;
-    llvm::SmallVector<Fid> file_ids_map;
-    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));
-    }
-    llvm::SmallVector<index::SymbolHash> added;
-    ASSERT(project_index.merge(view, file_ids_map, &added));
-    project.project_index.search_pending.insert(added.begin(), added.end());
-    main_id = file_ids_map[view.path_count() - 1];
-
-    // The consumed-content hash per TU-local path: the section's own
-    // record where rows exist, the wire's hash otherwise — mirroring the
-    // indexer, so FileVersions match the shard generations they pin.
-    llvm::SmallVector<std::uint64_t> consumed(view.path_count(), 0);
-    for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
-        auto local_id = view.section_path(section);
-        auto global_id = file_ids_map[local_id];
-        // A section blob is already the final shard encoding: install the
-        // bytes verbatim, as the indexer's first-variant path does.
-        project.project_index.shards[global_id] = index::Shard::from_buffer(
-            llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
-        consumed[local_id] = project.project_index.shards[global_id].content_hash();
-        if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
-            header_id = global_id;
-        }
-    }
-
-    llvm::SmallVector<VersionID> fv_of;
-    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        auto hash = consumed[i] != 0 ? consumed[i] : view.path_hash(i);
-        fv_of.push_back(project.file_table.intern_version(file_ids_map[i], hash));
-    }
-
-    index::TUManifest manifest;
-    manifest.tu_fv = fv_of[view.path_count() - 1];
-    for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
-        auto node = view.node(i);
-        manifest.nodes.push_back({.file = fv_of[node.file].raw,
-                                  .parent = node.parent,
-                                  .line = node.line,
-                                  .skipped = node.skipped});
-    }
-    llvm::SmallVector<std::uint32_t> contribution_paths;
-    for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
-        manifest.contributions.emplace_back(fv_of[view.section_path(section)],
-                                            view.section_hash(section));
-        contribution_paths.push_back(view.section_path(section));
-    }
-    auto local_fanout = view.local_fanout(contribution_paths);
-    ASSERT(local_fanout);
-    manifest.local_fanout = std::move(*local_fanout);
-
-    for(auto path_id:
-        project_index.apply_manifest(project.file_table, main_id, std::move(manifest))) {
-        auto it = project.project_index.shards.find(path_id);
-        if(it != project.project_index.shards.end()) {
-            it->second.set_live(project_index.live_variants(path_id));
-        }
+    merge_unit(project, *unit, main_id);
+    if(auto header = project.file_table.find(Spelling::absolute(TestVFS::path("header.h")))) {
+        header_id = *header;
     }
 }
 
@@ -294,6 +262,36 @@ ZEST_CASE(SearchSymbols) {
     auto results = search("Searchable");
     ASSERT(!results.empty());
     ASSERT(results.front().symbol.name == "Searchable");
+}
+
+ZEST_CASE(UnnamedScopes) {
+    // An unnamed enum's enumerators and an anonymous union's members are
+    // named through the enclosing scope, as lookup names them.
+    add_main("main.cpp", R"(
+        namespace outer {
+            enum { §(size)⟦§(size)kSize⟧ = 4 };
+            struct Holder { union { int §(member)⟦§(member)member⟧; }; };
+            typedef struct { int §(field)⟦§(field)field⟧; } Point;
+        }
+    )");
+    ASSERT(compile());
+    merge_into_workspace();
+
+    auto at = [&](llvm::StringRef name) {
+        index::SymbolHash found = 0;
+        project.project_index.shards[main_id].lookup(point(name), [&](const index::Occurrence& o) {
+            found = o.target;
+            return false;
+        });
+        return found;
+    };
+    ASSERT(query.qualified_name(at("size")) == "outer::kSize");
+    ASSERT(query.qualified_name(at("member")) == "outer::Holder::member");
+    // An unnamed class with a declarator or a typedef name is no anonymous
+    // scope: lookup never names its members through `outer`.
+    ASSERT(query.qualified_name(at("field")) == "outer::(anonymous struct)::field");
+    ASSERT(search("outer::kSize").size() == std::size_t(1));
+    ASSERT(search("Holder::member").size() == std::size_t(1));
 }
 
 ZEST_CASE(QualifiedNames) {
@@ -592,6 +590,40 @@ ZEST_CASE(DeletedDefinitionFallsBack) {
     auto results = search("removed");
     ASSERT(results.size() == 1U);
     ASSERT(results.front().site.path.ends_with("header.h"));
+}
+
+/// Open `buffers` documents, each declaring its own functions in one
+/// shared namespace.
+void open_buffers(CountingSessions& sessions, int buffers) {
+    for(int buffer = 0; buffer < buffers; buffer += 1) {
+        clear();
+        std::string text = "namespace app { namespace shared {\n";
+        for(int i = 0; i < 40; i += 1) {
+            text += std::format("int fn{}_{}();\n", buffer, i);
+        }
+        text += "} }\n";
+        add_main(std::format("main{}.cpp", buffer), text);
+        ASSERT(compile());
+        sessions.tables.push_back(index::TUIndex::from_buffer(
+            llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit, true))));
+    }
+}
+
+ZEST_CASE(ScopedSearchScalesLinearly) {
+    auto visits_with = [&](int buffers) {
+        CountingSessions sessions;
+        open_buffers(sessions, buffers);
+        index::IndexQuery session_query{project.project_index,
+                                        project.file_table,
+                                        nullptr,
+                                        &sessions};
+        session_query.search(*index::SymbolQuery::parse("app::fn0_1"), 10);
+        return sessions.visits;
+    };
+    // Four times the open buffers: a scan of each buffer's table grows
+    // four times, a lookup through every table per candidate sixteen.
+    auto few = visits_with(2);
+    ASSERT(visits_with(8) <= few * 4);
 }
 
 };  // ZEST_SUITE(IndexQuery)

@@ -8,20 +8,26 @@
 #include <vector>
 
 #include "command/search_config.h"
+#include "index/rename.h"
 #include "project/hosting.h"
 #include "sched/index/pump.h"
 #include "semantic/symbol.h"
 #include "server/ast_family.h"
 #include "server/editor_context.h"
 #include "server/lsp_projection.h"
+#include "server/query_commands.h"
 #include "syntax/completion.h"
 #include "syntax/include_resolver.h"
 #include "vfs/dir_cache.h"
+#include "vfs/file_system.h"
 #include "worker/protocol.h"
 #include "worker/serialize.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 
 namespace clice {
 
@@ -248,6 +254,9 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
     if(!info) {
         return std::nullopt;
     }
+    if(info->kind == SymbolKind::Module) {
+        return module_hover_card(*cursor, *info);
+    }
     std::string definition;
     std::string comment;
     if(auto text = query.definition_text(symbol, cursor->site.file)) {
@@ -256,6 +265,23 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
     }
     auto hover = feature::index_hover(*info, definition, comment);
     hover.symbol_range = cursor->site.range;
+    return hover;
+}
+
+feature::HoverInfo Features::module_hover_card(const index::IndexQuery::Cursor& cursor,
+                                               const index::SymbolRef& module) {
+    feature::HoverInfo hover;
+    hover.name = module.name;
+    hover.kind = SymbolKind::Module;
+    auto units = gather(module.hash,
+                        cursor.site.file,
+                        [&](const index::IndexQuery& from, index::SymbolHash named) {
+                            return from.sites(named, cursor.site.file, RelationKind::Definition);
+                        });
+    if(!units.empty()) {
+        hover.definition = shown(project.file_table, units.front().path);
+    }
+    hover.symbol_range = cursor.site.range;
     return hover;
 }
 
@@ -400,26 +426,32 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
         if(!cursor) {
             return {};
         }
-        // A definition another project compiles (a library's source beside
-        // the application including its header) outranks the declarations
-        // this project alone can offer; standing on a definition, or with
-        // none anywhere, the declarations answer too.
-        auto defined = gather(cursor->symbols,
-                              path_id,
-                              [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                  return from.sites(named, path_id, RelationKind::Definition);
-                              });
-        if(!defined.empty() && llvm::none_of(defined, [&](const index::Site& site) {
-               return index::covers(site, cursor->site);
-           })) {
-            return to_lsp::locations(defined);
+        // Each symbol answers for itself. A definition another project
+        // compiles (a library's source beside the application including
+        // its header) outranks the declarations this project alone can
+        // offer; standing on a definition, or with none anywhere, the
+        // declarations answer too.
+        std::vector<index::Site> result;
+        for(auto symbol: cursor->symbols) {
+            auto defined = gather(symbol,
+                                  path_id,
+                                  [&](const index::IndexQuery& from, index::SymbolHash named) {
+                                      return from.sites(named, path_id, RelationKind::Definition);
+                                  });
+            if(defined.empty() || llvm::any_of(defined, [&](const index::Site& site) {
+                   return index::covers(site, cursor->site);
+               })) {
+                defined =
+                    gather(symbol,
+                           path_id,
+                           [&](const index::IndexQuery& from, index::SymbolHash named) {
+                               return from.definition({.symbols = {named}, .site = cursor->site});
+                           });
+            }
+            llvm::append_range(result, std::move(defined));
         }
-        return to_lsp::locations(
-            gather(cursor->symbols,
-                   path_id,
-                   [&](const index::IndexQuery& from, index::SymbolHash named) {
-                       return from.definition({.symbols = {named}, .site = cursor->site});
-                   }));
+        index::dedup_sites(result);
+        return to_lsp::locations(result);
     };
     if(auto result = index_definition(); !result.empty()) {
         co_return to_raw(result);
@@ -520,6 +552,17 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
         if(auto* link = link_at(*links, *offset)) {
             auto hover = directive_hover(*session, *link);
             co_return hover ? to_raw(*hover) : serde_raw{"null"};
+        }
+    }
+
+    // A module name's card names the unit defining the module, which the
+    // worker cannot see across files: this side answers it, from the index.
+    if(auto cursor = cursor_at(path_id, position)) {
+        auto info = query.symbol_info(cursor->symbols.front(), cursor->site.file);
+        if(info && info->kind == SymbolKind::Module) {
+            co_return to_raw(feature::to_protocol_hover(module_hover_card(*cursor, *info),
+                                                        project.config.hover,
+                                                        session->line_map()));
         }
     }
 
@@ -853,6 +896,222 @@ Features::RawResult Features::references(std::shared_ptr<Session> session,
         [&](const index::IndexQuery& from, index::SymbolHash named) {
             return from.references({.symbols = {named}, .site = cursor->site}, include_declaration);
         })));
+}
+
+static kota::ipc::Error rename_refused(std::string message) {
+    return kota::ipc::Error{kota::ipc::protocol::ErrorCode::RequestFailed, std::move(message)};
+}
+
+/// Refused up front, before the cursor costs a compile.
+static std::optional<kota::ipc::Error> refuse_rootless(const Project& project) {
+    if(project.config.workspace_root.empty()) {
+        return rename_refused("a rename edits the sources of a workspace folder; open one");
+    }
+    return std::nullopt;
+}
+
+/// `title` and up to a handful of `items`, one a line.
+static void list_notice(std::string& notice,
+                        std::string_view title,
+                        llvm::ArrayRef<std::string> items) {
+    constexpr std::size_t shown_items = 5;
+    if(items.empty()) {
+        return;
+    }
+    notice += std::format("{}{}:", notice.empty() ? "" : "\n", title);
+    for(auto& item: items.take_front(shown_items)) {
+        notice += std::format("\n  {}", item);
+    }
+    if(items.size() > shown_items) {
+        notice += std::format("\n  and {} more", items.size() - shown_items);
+    }
+}
+
+Features::RawResult Features::prepare_rename(std::shared_ptr<Session> session,
+                                             Fid path_id,
+                                             const protocol::Position& position) {
+    if(auto refused = refuse_rootless(project)) {
+        co_return kota::outcome_error(std::move(*refused));
+    }
+    if(session) {
+        if(auto stop = co_await nav_gate(Ticket::take(session))) {
+            co_return co_await stop_reply(std::move(*stop));
+        }
+    }
+    auto cursor = cursor_at(path_id, position);
+    if(!cursor) {
+        co_return serde_raw{"null"};
+    }
+    auto renamed = index::rename_at(query, *cursor);
+    if(!renamed) {
+        co_return kota::outcome_error(rename_refused(std::move(renamed.error())));
+    }
+    co_return to_raw(protocol::PrepareRenamePlaceholder{
+        .range = to_lsp::range(renamed->token),
+        .placeholder = renamed->target.symbol.symbol.name,
+    });
+}
+
+kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
+    Features::rename(std::shared_ptr<Session> session,
+                     Fid path_id,
+                     const protocol::Position& position,
+                     std::string new_name) {
+    if(auto refused = refuse_rootless(project)) {
+        co_return kota::outcome_error(std::move(*refused));
+    }
+    std::optional<Ticket> ticket;
+    if(session) {
+        ticket.emplace(Ticket::take(session));
+        if(auto stop = co_await nav_gate(*ticket)) {
+            if(stop->error) {
+                co_return kota::outcome_error(std::move(*stop->error));
+            }
+            co_return std::nullopt;
+        }
+    }
+    auto& config = project.config;
+    auto cursor = cursor_at(path_id, position);
+    if(!cursor) {
+        co_return std::nullopt;
+    }
+    auto at = index::rename_at(query, *cursor);
+    if(!at) {
+        co_return kota::outcome_error(rename_refused(std::move(at.error())));
+    }
+
+    // The walk, the reads and the sweep run off the loop; only the files
+    // spelling a name come back with their text.
+    struct Swept {
+        std::vector<std::string> files;
+        llvm::StringMap<index::SweptText> texts;
+    };
+
+    CanonicalPath cache_dir;
+    if(!config.project.cache_dir.empty()) {
+        cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
+    }
+    auto swept = co_await kota::queue([root = config.workspace_root,
+                                       cache_dir,
+                                       old_name = at->target.symbol.symbol.name,
+                                       new_name] {
+        Swept result;
+        for(auto& source: workspace_sources(root, cache_dir)) {
+            auto path = source.str();
+            if(auto text = vfs::read(path)) {
+                if(auto spelled =
+                       index::sweep_text((*text)->getBuffer().str(), old_name, new_name)) {
+                    result.texts.try_emplace(path, std::move(*spelled));
+                }
+            }
+            result.files.push_back(std::move(path));
+        }
+        return result;
+    });
+    if(ticket && !ticket->fresh()) {
+        co_return kota::outcome_error(content_modified());
+    }
+    if(!swept.has_value()) {
+        co_return kota::outcome_error(rename_refused("the workspace could not be read"));
+    }
+    // Rows indexed during the sweep may link the symbol to more: plan
+    // with the group they give now.
+    cursor = cursor_at(path_id, position);
+    if(!cursor) {
+        co_return kota::outcome_error(content_modified());
+    }
+    auto old_name = std::move(at->target.symbol.symbol.name);
+    at = index::rename_at(query, *cursor);
+    if(!at) {
+        co_return kota::outcome_error(rename_refused(std::move(at.error())));
+    }
+    if(at->target.symbol.symbol.name != old_name) {
+        co_return kota::outcome_error(content_modified());
+    }
+
+    auto root = config.workspace_root;
+    llvm::StringSet<> walked;
+    for(auto& path: swept->files) {
+        walked.insert(path);
+    }
+    auto editable = [&](llvm::StringRef path) {
+        return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
+    };
+    auto read = [&](llvm::StringRef path) -> std::optional<index::SweptText> {
+        auto file = project.file_table.find(Spelling::absolute(path));
+        if(auto document = file ? sessions.find(*file) : nullptr) {
+            return index::sweep_text(document->text, old_name, new_name);
+        }
+        if(auto it = swept->texts.find(path); it != swept->texts.end()) {
+            return it->second;
+        }
+        // An edited file the walk's suffixes left out.
+        if(!walked.contains(path)) {
+            if(auto text = vfs::read(path)) {
+                return index::sweep_text((*text)->getBuffer().str(), old_name, new_name);
+            }
+        }
+        return std::nullopt;
+    };
+    auto plan = index::plan_rename(query,
+                                   project.file_table,
+                                   at->target,
+                                   new_name,
+                                   {.files = swept->files,
+                                    .editable = editable,
+                                    .read = read,
+                                    .units_pending = clice::query::units_pending(project)});
+    if(plan.blocked()) {
+        auto reasons = plan.conflicts;
+        if(!plan.stale.empty()) {
+            reasons.push_back(std::format(
+                "these files changed since they were indexed, or were never indexed: {}",
+                llvm::join(plan.stale, ", ")));
+        }
+        co_return kota::outcome_error(rename_refused(
+            std::format("cannot rename `{}`: {}", plan.old_name, llvm::join(reasons, "; "))));
+    }
+
+    Renamed renamed;
+    using DocumentChange = protocol::variant<protocol::TextDocumentEdit,
+                                             protocol::CreateFile,
+                                             protocol::RenameFile,
+                                             protocol::DeleteFile>;
+    std::vector<DocumentChange> changes;
+    protocol::TextDocumentEdit* change = nullptr;
+    std::vector<std::string> heuristic;
+    for(auto& edit: plan.edits) {
+        if(!change || change->text_document.uri != feature::to_uri(edit.site.path)) {
+            auto document = sessions.find(edit.site.file);
+            protocol::TextDocumentEdit next{
+                .text_document = {.uri = feature::to_uri(edit.site.path),
+                                  .version =
+                                      document ? std::optional(document->version) : std::nullopt},
+            };
+            change = &std::get<protocol::TextDocumentEdit>(changes.emplace_back(std::move(next)));
+        }
+        change->edits.emplace_back(protocol::TextEdit{
+            .range = to_lsp::range(edit.site),
+            .new_text = new_name,
+        });
+        if(edit.heuristic) {
+            heuristic.push_back(std::format("{}:{}", edit.site.path, edit.site.begin.line + 1));
+        }
+    }
+    renamed.edit.document_changes = std::move(changes);
+
+    list_notice(renamed.notice, std::format("Renaming `{}`", plan.old_name), plan.warnings);
+    std::vector<std::string> left;
+    for(auto& note: plan.unconfirmed) {
+        left.push_back(std::format("{}:{}: {} ({})",
+                                   note.site.path,
+                                   note.site.begin.line + 1,
+                                   note.line,
+                                   note.reason));
+    }
+    list_notice(renamed.notice, std::format("Spellings of `{}` left alone", plan.old_name), left);
+    list_notice(renamed.notice, "Renamed through a heuristic resolution", heuristic);
+    co_return renamed;
 }
 
 llvm::SmallVector<Features::Source> Features::peers_of(index::SymbolHash symbol, Fid anchor) {

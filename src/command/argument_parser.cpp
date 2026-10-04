@@ -151,6 +151,7 @@ bool is_discarded_option(unsigned id) {
         /// PCH building.
         case OPT_emit_pch:
         case OPT_include_pch:
+        case OPT__SLASH_Yc:
         case OPT__SLASH_Yu:
         case OPT__SLASH_Fp:
 

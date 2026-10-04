@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <limits>
 #include <optional>
 #include <span>
@@ -75,6 +76,21 @@ bool reserved_key(T value) {
     return value >= std::numeric_limits<T>::max() - 1;
 }
 
+/// A symbol's id on the command line and in JSON answers: `#<hex>`, which
+/// a JavaScript number would round.
+inline std::string symbol_id(SymbolHash hash) {
+    return std::format("#{:016x}", hash);
+}
+
+/// The hash a `#<hex>` id names; nullopt for anything else.
+inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
+    SymbolHash hash = 0;
+    if(!id.consume_front("#") || id.getAsInteger(16, hash) || reserved_key(hash)) {
+        return std::nullopt;
+    }
+    return hash;
+}
+
 }  // namespace clice::index
 
 namespace kota::meta {
@@ -142,8 +158,13 @@ namespace clice::index {
 /// relate to their templates, manifests list the files their internal
 /// symbols span, the global blob carries the reverse include graph,
 /// module linkage is external, and C tags and C-linkage functions follow
-/// C's identity rules).
-constexpr inline std::uint32_t index_format_version = 22;
+/// C's identity rules; v23: names without linkage outside a function reach
+/// as far as their scope, `defined` operands reference their macro,
+/// dependent operators reference no candidates, and the include pasting a
+/// fragment into a declaration carries the fragment's uses; v24: symbols a
+/// module exports carry the Exported flag, and anonymous structs, unions
+/// and enums the AnonymousScope flag).
+constexpr inline std::uint32_t index_format_version = 24;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

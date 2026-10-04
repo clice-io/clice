@@ -152,8 +152,7 @@ ZEST_CASE(Loads) {
     EXPECT(empty.search(*SymbolQuery::parse("foo"), 10, {}).hits.empty());
     EXPECT(built.search(*SymbolQuery::parse("foo"), 100, {}).exhausted);
     EXPECT(!built.search(*SymbolQuery::parse("foo"), 2, {}).exhausted);
-
-}  // namespace
+}
 
 ZEST_CASE(DamagedPosting) {
     auto corpus = sample();
@@ -204,12 +203,12 @@ ZEST_CASE(ExactAndGlob) {
     EXPECT(names(corpus, built, "*foo") == (Names{"Foo", "bar_foo", "foo", "xfoo"}));
     EXPECT(names(corpus, built, "str*") == (Names{"strcpy_s", "strncpy"}));
     EXPECT(names(corpus, built, "*_*") == (Names{"unique_ptr",
-                                                 "upper_bound",
-                                                 "bar_foo",
-                                                 "parse_config",
-                                                 "strcpy_s",
-                                                 "zap_bar_quux",
-                                                 "MAX_SIZE"}));
+                     "upper_bound",
+                     "bar_foo",
+                     "parse_config",
+                     "strcpy_s",
+                     "zap_bar_quux",
+                     "MAX_SIZE"}));
     EXPECT(names(corpus, built, "MAX_*") == (Names{"MAX_SIZE"}));
     EXPECT(names(corpus, built, "??o") == (Names{"Foo", "foo"}));
     Corpus wide;
@@ -245,12 +244,32 @@ ZEST_CASE(Scopes) {
     EXPECT(names(corpus, built, "Widget<int>::*") == (Names{"paint"}));
 }
 
+ZEST_CASE(UnnamedScopes) {
+    // An unnamed enum's enumerators and an anonymous union's members are
+    // named through the enclosing scope, as lookup names them.
+    Corpus corpus;
+    corpus.add("ns", SymbolKind::Namespace);
+    corpus.add("ns::(anonymous enum)",
+               SymbolKind::Enum,
+               SymbolFlags::HasDefinition | SymbolFlags::Unnamed | SymbolFlags::AnonymousScope);
+    corpus.add("ns::(anonymous enum)::kSize", SymbolKind::EnumMember);
+    corpus.add("S", SymbolKind::Struct);
+    corpus.add("S::(anonymous union)",
+               SymbolKind::Union,
+               SymbolFlags::HasDefinition | SymbolFlags::Unnamed | SymbolFlags::AnonymousScope);
+    corpus.add("S::(anonymous union)::member_a", SymbolKind::Field);
+    auto built = corpus.build();
+    EXPECT(names(corpus, built, "ns::kSize") == (Names{"kSize"}));
+    EXPECT(names(corpus, built, "::ns::kSize") == (Names{"kSize"}));
+    EXPECT(names(corpus, built, "::kSize").empty());
+    EXPECT(names(corpus, built, "S::member_a") == (Names{"member_a"}));
+}
+
 ZEST_CASE(Filters) {
     auto corpus = sample();
     auto built = corpus.build();
     EXPECT(names(corpus, built, "foo kind:struct") == (Names{"Foo"}));
-    EXPECT(names(corpus, built, "foo kind:variable,function") ==
-           (Names{"foo", "foobar", "bar_foo", "xfoo"}));
+    EXPECT(names(corpus, built, "foo kind:variable,function") == (Names{"foo", "foobar", "bar_foo", "xfoo"}));
     EXPECT(names(corpus, built, "kind:namespace *") == (Names{"inner", "outer", "v2"}));
     EXPECT(names(corpus, built, "u path:memory") == (Names{"unique_ptr"}));
     EXPECT(names(corpus, built, "u path:/usr/") == (Names{"unique_ptr"}));
@@ -269,7 +288,7 @@ ZEST_CASE(Typos) {
     // A row the clean pass rejected is judged again as a typo.
     EXPECT(names(corpus, built, "aaaaaa") == (Names{"aaaxaaa"}));
     EXPECT((names(corpus, built, "strcp").empty() ||
-            names(corpus, built, "strcp") == Names{"strcpy_s"}));
+                names(corpus, built, "strcp") == Names{"strcpy_s"}));
 }
 
 ZEST_CASE(Quality) {
@@ -281,15 +300,14 @@ ZEST_CASE(Quality) {
     EXPECT(symbol_quality("_Foo", SymbolKind::Function, SymbolFlags::HasDefinition, 1) < plain);
     EXPECT(symbol_quality("foo", SymbolKind::Macro, SymbolFlags::HasDefinition, 1) < plain);
     EXPECT(symbol_quality("foo",
-                          SymbolKind::Function,
-                          SymbolFlags::HasDefinition | SymbolFlags::SystemHeader,
-                          1) < plain);
+                             SymbolKind::Function,
+                             SymbolFlags::HasDefinition | SymbolFlags::SystemHeader,
+                             1) < plain);
     EXPECT(symbol_quality("foo",
-                          SymbolKind::Function,
-                          SymbolFlags::HasDefinition | SymbolFlags::Deprecated,
-                          1) < plain);
-    EXPECT(
-        symbol_quality("foo",
+                             SymbolKind::Function,
+                             SymbolFlags::HasDefinition | SymbolFlags::Deprecated,
+                             1) < plain);
+    EXPECT(symbol_quality("foo",
                        SymbolKind::Function,
                        index::with_form(SymbolFlags::HasDefinition, index::NameForm::Constructor),
                        1) < plain);

@@ -752,14 +752,19 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
         }
         target = *it;
     }
+    // A choice applies to an open document; one closed meanwhile keeps the
+    // choice it had.
+    auto session = find_session(path_id);
+    if(!session) {
+        co_return result;
+    }
     // One project holds the file's choice (compiler routes by it).
     for(auto& project: projects) {
         if(project != target) {
             project->contexts.forget_selection(path_id);
         }
     }
-    auto session = find_session(path_id);
-    if(target != owner && session) {
+    if(target != owner) {
         owner->close_session(path_id);
         owners[path_id] = target.get();
         target->open_session(path_id, session->text, session->version);
@@ -890,6 +895,7 @@ static kota::task<> accept_connections(MasterServer& server,
 }
 
 int run_serve_mode(const ServerOptions& opts, const char* self_path) {
+    logging::options.never_block_stderr = true;
     logging::stderr_logger("master", logging::options);
 
     auto mode = opts.mode.value_or(ServerMode::Pipe);

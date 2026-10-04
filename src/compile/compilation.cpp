@@ -13,6 +13,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/Stack.h"
@@ -79,6 +80,12 @@ std::unique_ptr<clang::CompilerInvocation>
     if(bound != 0) {
         pp_opts.PrecompiledPreambleBytes = {bound, false};
     }
+
+    // `#pragma clang __debug crash` and its kin crash the compiler on
+    // purpose. Tests keep them as a crash a file's content decides.
+    const static bool pragma_crash =
+        llvm::sys::Process::GetEnv("CLICE_TEST_PRAGMA_CRASH").has_value();
+    pp_opts.DisablePragmaDebugCrash = !pragma_crash;
 
     // We don't want to write comment locations into PCM. They are racy and slow
     // to read back. We rely on dynamic index for the comments instead.
@@ -404,7 +411,7 @@ CompilationUnit compile(CompilationParams& params) {
 CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
     assert(!params.output_file.empty() && "PCH file path cannot be empty");
 
-    return run_clang(
+    auto unit = run_clang(
         params,
         std::make_unique<clang::GeneratePCHAction>(),
         [&](clang::CompilerInstance& instance) {
@@ -430,15 +437,18 @@ CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
         [&](CompilationUnitRef unit) {
             out.path = params.output_file.str();
             out.preamble = unit.main_content();
-            out.deps = unit.deps();
             out.arguments = params.arguments;
         });
+    if(unit.completed() || unit.fatal_error()) {
+        out.deps = unit.deps();
+    }
+    return unit;
 }
 
 CompilationUnit compile(CompilationParams& params, PCMInfo& out) {
     assert(!params.output_file.empty() && "PCM file path cannot be empty");
 
-    return run_clang(
+    auto unit = run_clang(
         params,
         std::make_unique<clang::GenerateReducedModuleInterfaceAction>(),
         [&](clang::CompilerInstance& instance) {
@@ -451,18 +461,20 @@ CompilationUnit compile(CompilationParams& params, PCMInfo& out) {
         },
         [&](CompilationUnitRef unit) {
             out.path = params.output_file.str();
-            out.deps = unit.deps();
-            // deps() collects include targets only; the module source is a
-            // build input of its PCM all the same. Canonicalize it like
-            // every other dep — srcPath keeps the command line's raw
-            // spelling, which consumers cannot stat reliably.
-            out.deps.emplace_back(std::string(unit.file_path(unit.main_file())),
-                                  llvm::xxh3_64bits(unit.main_content()));
-
             for(auto& [name, path]: params.pcms) {
                 out.mods.emplace_back(name);
             }
         });
+    if(unit.completed() || unit.fatal_error()) {
+        out.deps = unit.deps();
+        // deps() collects include targets only; the module source is a
+        // build input of its PCM all the same. Canonicalize it like every
+        // other dep — srcPath keeps the command line's raw spelling, which
+        // consumers cannot stat reliably.
+        out.deps.emplace_back(std::string(unit.file_path(unit.main_file())),
+                              llvm::xxh3_64bits(unit.main_content()));
+    }
+    return unit;
 }
 
 CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer* consumer) {

@@ -61,7 +61,11 @@ public:
     /// when it did, else the resolved overload set filtered down to
     /// overloads whose parameter list can accept the call's argument count.
     /// Full overload resolution needs conversion rules (Sema territory);
-    /// arity is the safe, conversion-free subset of it.
+    /// arity is the safe, conversion-free subset of it. A dependent
+    /// operator (`a == b`) gets no candidates: instantiation adds the operands'
+    /// associated operators and the built-in ones, so the operators its
+    /// definition happened to see say nothing, and differ between the
+    /// units including it.
     llvm::SmallVector<const clang::NamedDecl*, 4> lookup(const clang::CallExpr* expr);
 
     /// Resolve the base type through pseudo-instantiation, then look the

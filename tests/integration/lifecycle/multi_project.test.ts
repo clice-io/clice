@@ -39,6 +39,19 @@ function twoProjects(ws: Workspace): void {
     ws.writeCDB(["beta/main.cpp"], { extraArgs: ["-DIN_BETA"], at: "beta/compile_commands.json" });
 }
 
+/// One file both folders' databases list, each under its own flag.
+function sharedFile(ws: Workspace): void {
+    ws.write("alpha/shared.cpp", "int shared() { return 0; }\n");
+    ws.writeCDB(["alpha/shared.cpp"], {
+        extraArgs: ["-DFIRST"],
+        at: "alpha/compile_commands.json",
+    });
+    ws.writeCDB(["alpha/shared.cpp"], {
+        extraArgs: ["-DSECOND"],
+        at: "beta/compile_commands.json",
+    });
+}
+
 /// A library and an application including its header, each its own folder.
 function libraryAndApp(ws: Workspace): void {
     ws.write(
@@ -593,15 +606,7 @@ test("context from another folder", async ({ session }) => {
 
 test("own configuration of another folder", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    workspace.write("alpha/shared.cpp", "int shared() { return 0; }\n");
-    workspace.writeCDB(["alpha/shared.cpp"], {
-        extraArgs: ["-DFIRST"],
-        at: "alpha/compile_commands.json",
-    });
-    workspace.writeCDB(["alpha/shared.cpp"], {
-        extraArgs: ["-DSECOND"],
-        at: "beta/compile_commands.json",
-    });
+    sharedFile(workspace);
     await client.initialize(workspace, { folders: ["alpha", "beta"] });
 
     // Both databases list the file: its owner's entry comes first, the
@@ -616,6 +621,30 @@ test("own configuration of another folder", async ({ session }) => {
         epoch: listed.epoch,
     });
     expect(switched.success).toBe(true);
+    expect((await client.currentContext(shared)).context?.commandHash).toBe(other);
+});
+
+test("a closed file keeps its choice", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    sharedFile(workspace);
+    await client.initialize(workspace, { folders: ["alpha", "beta"] });
+
+    const [shared] = await client.openAndWait("alpha/shared.cpp");
+    const listed = await client.queryContext(shared);
+    const own = listed.contexts.filter((context) => context.uri === shared);
+    expect(own).toHaveLength(2);
+    const first = own[0]!.commandHash!;
+    const other = own[1]!.commandHash!;
+    const switched = await client.switchContext(shared, shared, {
+        commandHash: other,
+        epoch: listed.epoch,
+    });
+    expect(switched.success).toBe(true);
+
+    client.close(shared);
+    const refused = await client.switchContext(shared, shared, { commandHash: first });
+    expect(refused.success).toBe(false);
+    await client.openAndWait("alpha/shared.cpp");
     expect((await client.currentContext(shared)).context?.commandHash).toBe(other);
 });
 

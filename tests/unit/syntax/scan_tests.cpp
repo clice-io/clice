@@ -25,8 +25,7 @@ int x = 1;
     EXPECT(!result.includes[1].conditional);
     EXPECT(result.module_name.empty());
     EXPECT(!result.has_import);
-
-}  // namespace
+}
 
 ZEST_CASE(ImportDetected) {
     // Detection only: the names stay uncollected (imports macro-expand,
@@ -265,7 +264,7 @@ ZEST_CASE(PreciseHonorsWorkingDirectory) {
     EXPECT(!result.includes[0].not_found);
 }
 
-ZEST_CASE(RemapBypassesSharedCache) {
+ZEST_CASE(MainFileNeverCached) {
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     auto main_path = TestVFS::path("main.cpp");
     vfs->add("main.cpp", R"(#include "header.h")");
@@ -274,17 +273,39 @@ ZEST_CASE(RemapBypassesSharedCache) {
     SharedScanCache cache;
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
 
-    // A remapped scan must not seed the path-keyed cache with
-    // overlay-derived directives.
+    // The main file is lexed in full, never through cached directives:
+    // a remapped scan cannot seed the path-keyed cache with the overlay.
     auto remapped = scan_precise(args, TestVFS::root(), llvm::StringRef("int x = 1;"), &cache, vfs);
     EXPECT(remapped.includes.empty());
     EXPECT(!cache.entries.contains(main_path));
 
-    // Poisoned, this scan would hit the overlay's no-directives entry
-    // and miss the disk include.
     auto disk = scan_precise(args, TestVFS::root(), {}, &cache, vfs);
     ASSERT(disk.includes.size() == 1u);
     EXPECT(disk.includes[0].path.find("header.h") != std::string::npos);
+    EXPECT(!cache.entries.contains(main_path));
+}
+
+ZEST_CASE(DirectiveCutAtEnd) {
+    // Typing leaves an `#if(` cut off at the end of the buffer; behind a
+    // forced include, clang's directives lexer crashed on it.
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    auto main_path = TestVFS::path("main.cpp");
+    auto forced = TestVFS::path("empty.h");
+    vfs->add("main.cpp");
+    vfs->add("empty.h");
+
+    auto args = std::vector<const char*>{"clang++",
+                                         "-std=c++20",
+                                         "-include",
+                                         forced.c_str(),
+                                         main_path.c_str()};
+    auto result =
+        scan_precise(args,
+                     TestVFS::root(),
+                     llvm::StringRef("#define VERSION_CODE()\r\n  #if(MSVC)VERSION_CODE("),
+                     nullptr,
+                     vfs);
+    EXPECT(result.modules.empty());
 }
 
 };  // ZEST_SUITE(Scan)

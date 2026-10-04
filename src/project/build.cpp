@@ -465,4 +465,49 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
     return walked;
 }
 
+/// Whether a workspace directory holds no sources a refactoring edits:
+/// hidden, a package cache, the cache directory or a build tree.
+static bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
+    auto name = path::filename(dir);
+    return name.starts_with(".") || name == "node_modules" || dir == cache_dir ||
+           vfs::exists(path::join(dir, "CMakeCache.txt")) ||
+           vfs::exists(path::join(dir, "build.ninja"));
+}
+
+std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cache_dir) {
+    std::vector<CanonicalPath> found;
+    vfs::walk(root, [&](const vfs::Entry& entry) {
+        llvm::SmallString<256> storage;
+        auto spelled = path::canonical(entry.path, storage);
+        if(entry.type == llvm::sys::fs::file_type::directory_file) {
+            return !outside_sources(root.entry(spelled), cache_dir);
+        }
+        if(entry.type != llvm::sys::fs::file_type::regular_file) {
+            return false;
+        }
+        auto path = root.entry(spelled);
+        if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
+           is_context_header_path(path) || path.str().ends_with(".cuh")) {
+            found.push_back(std::move(path));
+        }
+        return false;
+    });
+    return found;
+}
+
+bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) {
+    if(!path::under(file, root) || file == root) {
+        return false;
+    }
+    bool inside = true;
+    path::walk_ancestors(CanonicalRef(file).parent(), [&](CanonicalRef dir) {
+        if(dir == root) {
+            return false;
+        }
+        inside = !outside_sources(dir, cache_dir);
+        return inside;
+    });
+    return inside;
+}
+
 }  // namespace clice

@@ -1,6 +1,7 @@
 #include "compile/directive.h"
 
 #include "compile/implement.h"
+#include "syntax/lexer.h"
 #include "vfs/path.h"
 
 #include "clang/Basic/Module.h"
@@ -199,10 +200,33 @@ public:
             if(!import.name.empty())
                 import.name += '.';
             import.name += name.getIdentifierInfo()->getName();
-            import.name_locations.emplace_back(name.getLoc());
         }
-
         import.full_name = M ? M->getFullModuleName() : import.name;
+
+        // Clang reports a C++20 module name flattened into one component
+        // at its first token — a partition's at its colon — so the written
+        // identifiers are lexed back from there. A name spelled by a macro
+        // has no written tokens past the reported one.
+        auto start = names.front().getLoc();
+        if(start.isMacroID()) {
+            import.name_locations.push_back(start);
+            return;
+        }
+        auto [name_fid, offset] = unit.decompose_location(start);
+        Lexer lexer(unit.file_content(name_fid).substr(offset),
+                    {.lang_opts = &unit.lang_options()});
+        auto token = lexer.advance();
+        if(token.kind == clang::tok::colon) {
+            token = lexer.advance();
+        }
+        while(token.is_identifier()) {
+            import.name_locations.push_back(
+                unit.create_location(name_fid, offset + token.range.begin));
+            if(lexer.advance().kind != clang::tok::period) {
+                break;
+            }
+            token = lexer.advance();
+        }
     }
 
     void HasInclude(clang::SourceLocation location,
@@ -223,6 +247,15 @@ public:
         if(kind != clang::PIK_HashPragma) {
             auto fid = unit.file_id(unit.expansion_location(loc));
             unit->directives[fid].pragma_operators.push_back(loc);
+        }
+    }
+
+    void PragmaDebug(clang::SourceLocation, llvm::StringRef command) override {
+        // `dump` leaves the rest of its line to the parser: directive tokens
+        // TokenBuffer cannot map back to the file (an unreachable there).
+        // Nothing here wants the dump printed.
+        if(command == "dump") {
+            unit->instance->getPreprocessor().DiscardUntilEndOfDirective();
         }
     }
 
@@ -316,6 +349,14 @@ public:
                       const clang::MacroDefinition& definition,
                       clang::SourceRange range,
                       const clang::MacroArgs* args) override {
+        if(auto def = definition.getMacroInfo()) {
+            add_macro(def, MacroRef::Ref, name.getLocation());
+        }
+    }
+
+    void Defined(const clang::Token& name,
+                 const clang::MacroDefinition& definition,
+                 clang::SourceRange) override {
         if(auto def = definition.getMacroInfo()) {
             add_macro(def, MacroRef::Ref, name.getLocation());
         }

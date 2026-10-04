@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <print>
 
+#include "lmdb.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "index/database.h"
@@ -66,8 +67,7 @@ ZEST_CASE(WriteReadRoundTrip) {
     ASSERT(db->contains(index::IndexBlobKind::Global, "global"));
     ASSERT(!db->contains(index::IndexBlobKind::Shard, "missing"));
     ASSERT(!bool(db->read(index::IndexBlobKind::Shard, "missing")));
-
-}  // namespace
+}
 
 ZEST_CASE(WriteRemoves) {
     TempDir tmp;
@@ -76,14 +76,14 @@ ZEST_CASE(WriteRemoves) {
     ASSERT(db != nullptr);
 
     ASSERT(db->write({blob(index::IndexBlobKind::Manifest, "m1", "one"),
-                      blob(index::IndexBlobKind::Manifest, "m2", "two")},
-                     {})
-               .empty());
+                           blob(index::IndexBlobKind::Manifest, "m2", "two")},
+                          {})
+                    .empty());
     ASSERT(db->write(
-                 {
+                      {
     },
-                 {{index::IndexBlobKind::Manifest, "m1"}})
-               .empty());
+                      {{index::IndexBlobKind::Manifest, "m1"}})
+                    .empty());
     ASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
@@ -98,9 +98,9 @@ ZEST_CASE(KindsAreIsolated) {
     ASSERT(db != nullptr);
 
     ASSERT(db->write({blob(index::IndexBlobKind::Shard, "same", "shard"),
-                      blob(index::IndexBlobKind::Manifest, "same", "manifest")},
-                     {})
-               .empty());
+                           blob(index::IndexBlobKind::Manifest, "same", "manifest")},
+                          {})
+                    .empty());
     ASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
@@ -149,9 +149,9 @@ ZEST_CASE(SmallValuesCopiedAligned) {
     ASSERT(db != nullptr);
 
     ASSERT(db->write({blob(index::IndexBlobKind::Manifest, "small", "tiny"),
-                      blob(index::IndexBlobKind::Shard, "big", large_value('b'))},
-                     {})
-               .empty());
+                           blob(index::IndexBlobKind::Shard, "big", large_value('b'))},
+                          {})
+                    .empty());
     ASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
@@ -198,6 +198,107 @@ ZEST_CASE(CorruptDatabaseRebuilds) {
     ASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
 }
 
+/// A database of `count` large blobs written over several commits, so
+/// its pages run well past the two meta pages; returns the file's path.
+std::string populated_database(CacheStore& store, int count) {
+    auto db = index::open_database(store, "");
+    require(db != nullptr, "opening the database failed");
+    for(int i = 0; i < count; i += 1) {
+        auto rejected =
+            db->write({blob(index::IndexBlobKind::Shard, std::to_string(i), large_value('t'))}, {});
+        require(rejected.empty(), "writing a blob failed");
+    }
+    return path::join(index::library_directory(store, ""), "index.mdb");
+}
+
+/// Cuts the file down to its two meta pages: the tree they point at is gone.
+void truncate_to_meta(llvm::StringRef file) {
+    int fd = -1;
+    require(!llvm::sys::fs::openFileForReadWrite(file,
+                                                 fd,
+                                                 llvm::sys::fs::CD_OpenExisting,
+                                                 llvm::sys::fs::OF_None),
+            "opening index.mdb failed");
+    require(!llvm::sys::fs::resize_file(fd, 2 * llvm::sys::Process::getPageSizeEstimate()),
+            "truncating index.mdb failed");
+    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
+}
+
+ZEST_CASE(TruncatedDatabaseRebuilds) {
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    truncate_to_meta(populated_database(store, 8));
+
+    auto db = index::open_database(store, "");
+    ASSERT(db != nullptr);
+    ASSERT(!db->contains(index::IndexBlobKind::Shard, "7"));
+    ASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
+    ASSERT(db->advance_read_snapshot());
+    db->retire_old_snapshot();
+    ASSERT(db->read(index::IndexBlobKind::CDB, "cdb").buffer->getBuffer() == "fresh");
+}
+
+ZEST_CASE(ReadOnlyRefusesTruncated) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp, "ws");
+        truncate_to_meta(populated_database(store, 8));
+    }
+    auto store = open_store(tmp, "ws", /*read_only=*/true);
+    ASSERT(index::open_database(store, "") == nullptr);
+}
+
+ZEST_CASE(WritesCoverFreedTail) {
+    // A batch whose freed pages LMDB hands back to its free list is never
+    // written, and when they sit at the end the file stays shorter than
+    // the pages its meta declares — healthy, yet what a truncation looks
+    // like to a read-only opener. Every commit must cover them.
+    TempDir tmp;
+    std::string file;
+    {
+        auto store = open_store(tmp, "lmdb");
+        file = path::join(index::library_directory(store, ""), "index.mdb");
+        auto db = index::open_database(store, "");
+        ASSERT(db != nullptr);
+        auto settle = [&] {
+            ASSERT(db->advance_read_snapshot());
+            db->retire_old_snapshot();
+        };
+        ASSERT(db->write({blob(index::IndexBlobKind::Shard, "x", large_value('x'))}, {}).empty());
+        settle();
+        ASSERT(db->write(
+                          {
+        },
+                          {{index::IndexBlobKind::Shard, "x"}})
+                        .empty());
+        settle();
+        ASSERT(db->write(
+                          {
+                              blob(index::IndexBlobKind::CDB, "cdb", "small"),
+                              blob(index::IndexBlobKind::Shard, "h", std::string(1 << 16, 'h'))
+        },
+                          {{index::IndexBlobKind::Shard, "h"}})
+                        .empty());
+    }
+
+    MDB_env* env = nullptr;
+    ASSERT(mdb_env_create(&env) == 0);
+    ASSERT(mdb_env_open(env, file.c_str(), MDB_NOSUBDIR | MDB_RDONLY, 0644) == 0);
+    MDB_envinfo info;
+    mdb_env_info(env, &info);
+    MDB_stat db_stat;
+    mdb_env_stat(env, &db_stat);
+    mdb_env_close(env);
+    std::uint64_t size = 0;
+    ASSERT(!static_cast<bool>(llvm::sys::fs::file_size(file, size)));
+    EXPECT(size >= (info.me_last_pgno + 1) * db_stat.ms_psize);
+
+    auto store = open_store(tmp, "lmdb", /*read_only=*/true);
+    auto db = index::open_database(store, "");
+    ASSERT(db != nullptr);
+    ASSERT(db->contains(index::IndexBlobKind::CDB, "cdb"));
+}
+
 ZEST_CASE(DefaultOpenFileBounded) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
@@ -211,7 +312,7 @@ ZEST_CASE(DefaultOpenFileBounded) {
     // high-water mark and pass trivially.
     std::uint64_t size = 0;
     ASSERT(!llvm::sys::fs::file_size(path::join(index::library_directory(store, ""), "index.mdb"),
-                                     size));
+                                  size));
     ASSERT((size <= 256ull << 20));
 }
 
@@ -245,7 +346,8 @@ ZEST_CASE(FullMapFailsWholeBatchThenGrows) {
     ASSERT(db->write(puts, {}).empty());
     ASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
-    ASSERT(db->read(index::IndexBlobKind::Shard, "63").buffer->getBuffer() == large_value('x'));
+    ASSERT(db->read(index::IndexBlobKind::Shard, "63").buffer->getBuffer() ==
+                large_value('x'));
 }
 
 ZEST_CASE(ReadOnlyMissingDatabase) {
@@ -307,10 +409,8 @@ ZEST_CASE(LibraryPerConfiguration) {
     ASSERT(debug->write({blob(index::IndexBlobKind::Global, "global", "d")}, {}).empty());
     ASSERT(release->advance_read_snapshot());
     ASSERT(!release->contains(index::IndexBlobKind::Global, "global"));
-    ASSERT(
-        llvm::sys::fs::exists(path::join(index::library_directory(store, "debug"), "index.mdb")));
-    ASSERT(
-        llvm::sys::fs::exists(path::join(index::library_directory(store, "release"), "index.mdb")));
+    ASSERT(llvm::sys::fs::exists(path::join(index::library_directory(store, "debug"), "index.mdb")));
+    ASSERT(llvm::sys::fs::exists(path::join(index::library_directory(store, "release"), "index.mdb")));
 }
 
 ZEST_CASE(LibraryNameSanitized) {

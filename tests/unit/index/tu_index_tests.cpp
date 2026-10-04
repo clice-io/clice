@@ -117,6 +117,10 @@ bool has(const index::Symbol& symbol, index::SymbolFlags flag) {
     return index::has_flag(symbol.flags, flag);
 }
 
+int scope(llvm::StringRef name) {
+    return static_cast<int>(symbol_named(name).second.scope);
+}
+
 void build_index(llvm::StringRef code,
                  std::source_location location = std::source_location::current()) {
     add_main("main.cpp", code);
@@ -503,9 +507,10 @@ ZEST_CASE(SpecializationRelations) {
 
     // Instantiations, explicit or implicit, specialize nothing.
     auto& rows = tu_index.main_file_index.relations[select("box").front().target];
-    ASSERT(llvm::count_if(rows, [](const index::Relation& relation) {
-               return relation.kind == RelationKind::Specialization;
-           }) == 2);
+    ASSERT(llvm::count_if(rows,
+                             [](const index::Relation& relation) {
+                                 return relation.kind == RelationKind::Specialization;
+                             }) == 2);
 }
 
 ZEST_CASE(CallerAndCallee) {
@@ -805,6 +810,86 @@ ZEST_CASE(MacroRelations) {
     }
     ASSERT(found_definition);
     ASSERT(found_reference);
+}
+
+ZEST_CASE(MacroDefinedOperand) {
+    build_index(R"(
+            #define §(def)FOO 1
+            #if defined(§(paren)⟦§(paren)FOO⟧) && defined §(bare)⟦§(bare)FOO⟧
+            #endif
+        )");
+
+    auto target = select("def").front().target;
+    auto& relations = tu_index.main_file_index.relations[target];
+    for(auto name: {"paren", "bare"}) {
+        auto occurrences = select(name);
+        ASSERT(occurrences.size() == 1U);
+        ASSERT(occurrences.front().target == target);
+        ASSERT(std::ranges::any_of(relations, [&](const index::Relation& relation) {
+            return relation.kind == RelationKind::Reference && relation.range == range(name);
+        }));
+    }
+}
+
+ZEST_CASE(DependentOperatorUnreferenced) {
+    build_index(R"(
+        struct Id {};
+        bool operator==(const Id&, const Id&);
+        int operator<=>(const Id&, const Id&);
+
+        template <typename T>
+        struct Box {
+            T* ptr;
+            bool empty() const { return ptr == nullptr; }
+            bool same(const Box& other) const { return this != &other; }
+            bool ordered(T a, T b) const { return a >= b; }
+        };
+    )");
+
+    for(auto name: {"operator==", "operator<=>"}) {
+        auto& relations = tu_index.main_file_index.relations[symbol_named(name).first];
+        ASSERT(relations.size() == 1U);
+        ASSERT(relations.front().kind == RelationKind::Declaration);
+    }
+}
+
+ZEST_CASE(PastedFragmentUses) {
+    add_file("kinds.inc", "KIND(red)\nKIND(green)\n");
+    add_file("decls.inc", "int helper();\nint value = helper();\n");
+    add_file("take.h", "constexpr int fallback = 1;\nint take(int x = fallback);\n");
+    add_main("main.cpp", R"(
+        #include "decls.inc"
+        #include "take.h"
+        int take(int x) { return x; }
+        enum Color { red, green };
+        int pick(Color color) {
+            switch(color) {
+        #define KIND(name) case name: return helper();
+        #include §(paste)⟦"kinds.inc"⟧
+        #undef KIND
+            }
+            return 0;
+        }
+    )");
+    ASSERT(compile());
+    decode_index(index::build_tu_index(*unit));
+
+    auto pasted_at = [&](llvm::StringRef name) {
+        std::vector<LocalSourceRange> ranges;
+        for(auto& relation: tu_index.main_file_index.relations[symbol_named(name).first]) {
+            if(relation.kind == RelationKind::Pasted) {
+                ranges.push_back(relation.range);
+            }
+        }
+        return ranges;
+    };
+    for(auto name: {"red", "green", "helper"}) {
+        auto ranges = pasted_at(name);
+        ASSERT(ranges.size() == 1U);
+        ASSERT(ranges.front() == range("paste"));
+    }
+    ASSERT(pasted_at("Color").empty());
+    ASSERT(pasted_at("fallback").empty());
 }
 
 ZEST_CASE(ModuleName) {
@@ -1142,8 +1227,7 @@ ZEST_CASE(ScopeExternal) {
     std::set<std::string> found;
     for(auto& [hash, symbol]: tu_index.symbols) {
         if(expected.contains(symbol.name)) {
-            ASSERT(static_cast<int>(symbol.scope) ==
-                   static_cast<int>(index::SymbolScope::External));
+            ASSERT(static_cast<int>(symbol.scope) == static_cast<int>(index::SymbolScope::External));
             found.insert(symbol.name);
         }
     }
@@ -1162,8 +1246,7 @@ ZEST_CASE(ScopeFileLocal) {
     std::set<std::string> found;
     for(auto& [hash, symbol]: tu_index.symbols) {
         if(expected.contains(symbol.name)) {
-            ASSERT(static_cast<int>(symbol.scope) ==
-                   static_cast<int>(index::SymbolScope::FileLocal));
+            ASSERT(static_cast<int>(symbol.scope) == static_cast<int>(index::SymbolScope::FileLocal));
             found.insert(symbol.name);
         }
     }
@@ -1196,12 +1279,88 @@ ZEST_CASE(ScopeModuleLinkage) {
             static int static_var = 0;
         )");
 
-    auto scope = [&](llvm::StringRef name) {
-        return static_cast<int>(symbol_named(name).second.scope);
-    };
     ASSERT(scope("module_var") == static_cast<int>(index::SymbolScope::External));
     ASSERT(scope("exported_var") == static_cast<int>(index::SymbolScope::External));
     ASSERT(scope("static_var") == static_cast<int>(index::SymbolScope::TULocal));
+}
+
+ZEST_CASE(ExportedFlag) {
+    build_index(R"(
+            export module m;
+            export int exported_var = 0;
+            export {
+                int block_fn();
+                struct Exported { void member(); };
+            }
+            export namespace api { int nested(); }
+            export template <typename Param> concept Small = sizeof(Param) < 4;
+            namespace detail { export int open(); }
+            namespace hidden { int closed(); }
+            int module_var = 0;
+            int block_fn() { return 0; }
+        )");
+
+    auto exported = [&](llvm::StringRef name) {
+        return has(symbol_named(name).second, index::SymbolFlags::Exported);
+    };
+    ASSERT(exported("exported_var"));
+    ASSERT(exported("block_fn"));
+    ASSERT(exported("Exported"));
+    ASSERT(exported("nested"));
+    ASSERT(exported("Small"));
+    ASSERT(exported("detail"));
+    ASSERT(!exported("hidden"));
+    ASSERT(!exported("Param"));
+    ASSERT(!exported("member"));
+    ASSERT(!exported("module_var"));
+}
+
+ZEST_CASE(AnonymousScopeFlag) {
+    build_index(R"(
+            enum { unnamed_value };
+            struct Holder { union { int union_member; }; };
+            struct { int declarator_member; } unnamed_object;
+        )");
+
+    auto anonymous = [&](llvm::StringRef member) {
+        auto parent = symbol_named(member).second.parent;
+        return has(tu_index.symbols[parent], index::SymbolFlags::AnonymousScope);
+    };
+    ASSERT(anonymous("unnamed_value"));
+    ASSERT(anonymous("union_member"));
+    ASSERT(!anonymous("declarator_member"));
+}
+
+ZEST_CASE(ScopeNoLinkage) {
+    build_index(R"(
+            enum { unnamed_value };
+            struct { int unnamed_field; } unnamed_object;
+            struct Holder { enum { member_value }; };
+            namespace { enum { hidden_value }; using hidden_alias = int; }
+            typedef void (*callback)(int prototype_param);
+            void host() { enum { local_value }; }
+        )");
+
+    ASSERT(scope("unnamed_value") == static_cast<int>(index::SymbolScope::External));
+    ASSERT(scope("unnamed_field") == static_cast<int>(index::SymbolScope::External));
+    ASSERT(scope("member_value") == static_cast<int>(index::SymbolScope::External));
+    ASSERT(scope("callback") == static_cast<int>(index::SymbolScope::External));
+    ASSERT(scope("hidden_value") == static_cast<int>(index::SymbolScope::TULocal));
+    ASSERT(scope("hidden_alias") == static_cast<int>(index::SymbolScope::TULocal));
+    ASSERT(scope("prototype_param") == static_cast<int>(index::SymbolScope::FileLocal));
+    ASSERT(scope("local_value") == static_cast<int>(index::SymbolScope::FileLocal));
+}
+
+ZEST_CASE(ScopeCEnumerator) {
+    add_main("main.c", R"c(
+            enum color { red };
+            void host(void) { enum { local_value }; }
+        )c");
+    ASSERT(compile("-std=c17"));
+    decode_index(index::build_tu_index(*unit));
+
+    ASSERT(scope("red") == static_cast<int>(index::SymbolScope::External));
+    ASSERT(scope("local_value") == static_cast<int>(index::SymbolScope::FileLocal));
 }
 
 ZEST_CASE(BareNameAndParentChain) {

@@ -43,7 +43,11 @@ namespace {
 class FoldingRangeCollector {
 public:
     explicit FoldingRangeCollector(CompilationUnitRef unit) :
-        unit(unit), content(unit.main_content()) {}
+        unit(unit), content(unit.main_content()) {
+        for(auto& directive: unit.semantics().block_directives()) {
+            block_directives.push_back(directive.range.begin);
+        }
+    }
 
     auto collect() -> std::vector<FoldingRange> {
         auto nodes = unit.semantics().node_entries();
@@ -146,11 +150,9 @@ private:
                 return;
             }
 
-            std::string_view kind = tag->isStruct()  ? "struct"
-                                    : tag->isClass() ? "class"
-                                    : tag->isUnion() ? "union"
-                                                     : "enum";
-            add_declaration_block(tag->getBraceRange(), tag->getLocation(), kind);
+            add_declaration_block(tag->getBraceRange(),
+                                  tag->getLocation(),
+                                  *declaration_fold_kind(SymbolKind::from(tag)));
 
             if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(tag);
                record && !record->isLambda() && !record->isImplicit()) {
@@ -164,7 +166,7 @@ private:
             if(function->doesThisDeclarationHaveABody()) {
                 add_declaration_block(function->getBody()->getSourceRange(),
                                       function->getLocation(),
-                                      "functionBody");
+                                      *declaration_fold_kind(SymbolKind::from(function)));
             }
         }
     }
@@ -410,33 +412,18 @@ private:
         }
     }
 
-    /// A line-folding client starts a declaration's block on the line of
-    /// `head` — the declaration's name, or the keyword opening a namespace,
-    /// linkage or export block — when the brace sits below it, so the
-    /// folded block keeps the head visible. A block hiding nothing but its
-    /// brace line stays unfolded, and a directive between head and brace
-    /// would make the fold cut across a conditional branch's.
+    /// `head` is the declaration's name, or the keyword opening a
+    /// namespace, linkage or export block (declaration_lines).
     void add_declaration_block(clang::SourceRange braces,
                                clang::SourceLocation head,
                                protocol::FoldingRangeKind kind) {
         auto* fold = add_range(braces, std::move(kind), "{...}");
-        if(!fold || content.slice(fold->range.begin, fold->range.end).count('\n') < 2) {
+        if(!fold) {
             return;
         }
-
         auto [fid, offset] = unit.decompose_location(unit.file_location(head));
-        if(fid != unit.main_file() ||
-           line_begin(content, offset) >= line_begin(content, fold->range.begin)) {
-            return;
-        }
-        auto directives = unit.semantics().block_directives();
-        auto next = std::ranges::lower_bound(
-            directives,
-            offset,
-            {},
-            [](const LexicalInfo::BlockDirective& directive) { return directive.range.begin; });
-        if(next == directives.end() || next->range.begin > fold->range.begin) {
-            fold->lines = LocalSourceRange{offset, line_begin(content, fold->range.end) - 1};
+        if(fid == unit.main_file()) {
+            fold->lines = declaration_lines(content, fold->range, offset, block_directives);
         }
     }
 
@@ -537,6 +524,9 @@ private:
     llvm::StringRef content;
     std::vector<FoldingRange> ranges;
 
+    /// Where each conditional or region directive begins, in source order.
+    std::vector<std::uint32_t> block_directives;
+
     /// Using declarations and directives met on the walk, in source order.
     llvm::SmallVector<LocalSourceRange> usings;
 };
@@ -545,6 +535,36 @@ private:
 
 auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange> {
     return FoldingRangeCollector(unit).collect();
+}
+
+auto declaration_fold_kind(SymbolKind kind) -> std::optional<protocol::FoldingRangeKind> {
+    switch(kind) {
+        case SymbolKind::Namespace: return "namespace";
+        case SymbolKind::Class: return "class";
+        case SymbolKind::Struct: return "struct";
+        case SymbolKind::Union: return "union";
+        case SymbolKind::Enum: return "enum";
+        case SymbolKind::Function:
+        case SymbolKind::Method:
+        case SymbolKind::Operator: return "functionBody";
+        default: return std::nullopt;
+    }
+}
+
+auto declaration_lines(llvm::StringRef content,
+                       LocalSourceRange block,
+                       std::uint32_t head,
+                       llvm::ArrayRef<std::uint32_t> block_directives)
+    -> std::optional<LocalSourceRange> {
+    if(content.slice(block.begin, block.end).count('\n') < 2 ||
+       line_begin(content, head) >= line_begin(content, block.begin)) {
+        return std::nullopt;
+    }
+    auto next = std::ranges::lower_bound(block_directives, head);
+    if(next != block_directives.end() && *next <= block.begin) {
+        return std::nullopt;
+    }
+    return LocalSourceRange{head, line_begin(content, block.end) - 1};
 }
 
 auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,

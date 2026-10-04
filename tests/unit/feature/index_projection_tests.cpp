@@ -55,6 +55,31 @@ auto resolver() {
     };
 }
 
+/// The projected tokens of the compiled unit equal the AST's, down to the
+/// modifiers the index knows; both under the Tester's C++20.
+void expect_tokens_match_ast() {
+    auto ast = feature::semantic_tokens(*unit);
+    auto projected =
+        feature::index_semantic_tokens(unit->main_content(),
+                                       feature::index_lang_options("main.cpp", false, "c++20"),
+                                       occurrences,
+                                       decls,
+                                       resolver());
+
+    // The index knows Declaration/Definition; every other AST modifier
+    // (Readonly, Static, Virtual, ...) is a pinned degradation.
+    auto pinned = SymbolModifiers::to_mask(SymbolModifiers::Declaration) |
+                  SymbolModifiers::to_mask(SymbolModifiers::Definition);
+
+    ASSERT(projected.size() == ast.size());
+    for(std::size_t i = 0; i < ast.size(); i += 1) {
+        ASSERT(projected[i].range.begin == ast[i].range.begin);
+        ASSERT(projected[i].range.end == ast[i].range.end);
+        ASSERT(projected[i].kind.value_of() == ast[i].kind.value_of());
+        ASSERT(projected[i].modifiers == (ast[i].modifiers & pinned));
+    }
+}
+
 ZEST_CASE(TokensMatchAst) {
     add_main("main.cpp", R"cpp(
 // a line comment
@@ -85,25 +110,67 @@ int total(Point point, int base) {
 )cpp");
     ASSERT(compile());
     extract_rows();
+    expect_tokens_match_ast();
+}
 
-    auto ast = feature::semantic_tokens(*unit);
-    auto projected = feature::index_semantic_tokens(unit->main_content(),
-                                                    feature::index_lang_options("main.cpp", false),
-                                                    occurrences,
-                                                    decls,
-                                                    resolver());
+ZEST_CASE(ModuleTokensMatchAst) {
+    add_main("main.cpp", R"cpp(
+export module demo.core;
 
-    // The index knows Declaration/Definition; every other AST modifier
-    // (Readonly, Static, Virtual, ...) is a pinned degradation.
-    auto pinned = SymbolModifiers::to_mask(SymbolModifiers::Declaration) |
-                  SymbolModifiers::to_mask(SymbolModifiers::Definition);
+export int exported_value = 1;
+)cpp");
+    ASSERT(compile());
+    extract_rows();
+    expect_tokens_match_ast();
+}
 
+ZEST_CASE(ModuleKeywordsMatchAst) {
+    // The contextual `module` and `import` are keywords only where they
+    // open a declaration or an import; variables of those names stay
+    // variables.
+    add_files("main.cppm", R"(
+#[dep.cppm]
+export module dep;
+export int value = 1;
+
+#[main.cppm]
+module;
+export module demo.core;
+import dep;
+export import dep;
+int use() {
+    int module = value;
+    int import = value;
+module = 2;
+import;
+    return module + import;
+}
+module :private;
+)");
+    ASSERT(compile_with_modules());
+    extract_rows();
+    expect_tokens_match_ast();
+}
+
+ZEST_CASE(ModuleOutlineMatchesAst) {
+    add_main("main.cpp", R"cpp(
+export module demo.core;
+
+export int entry();
+)cpp");
+    ASSERT(compile());
+    extract_rows();
+
+    auto ast = feature::document_symbols(*unit);
+    auto projected = feature::index_document_symbols(decls, resolver());
+    ASSERT(ast.size() == std::size_t(2));
+    ASSERT(ast[0].name == "demo.core");
+    ASSERT(ast[0].kind.value_of() == SymbolKind(SymbolKind::Module).value_of());
     ASSERT(projected.size() == ast.size());
     for(std::size_t i = 0; i < ast.size(); i += 1) {
-        ASSERT(projected[i].range.begin == ast[i].range.begin);
-        ASSERT(projected[i].range.end == ast[i].range.end);
+        ASSERT(projected[i].name == ast[i].name);
         ASSERT(projected[i].kind.value_of() == ast[i].kind.value_of());
-        ASSERT(projected[i].modifiers == (ast[i].modifiers & pinned));
+        ASSERT(projected[i].selection_range == ast[i].selection_range);
     }
 }
 
@@ -192,6 +259,69 @@ int compute() {
         return fold.range.begin == body;
     });
     ASSERT(anchored);
+}
+
+ZEST_CASE(FoldsMatchAstShape) {
+    // A brace below its declaration's head folds from the head, a block
+    // folds as its declaration's kind, and braces several rows share (the
+    // struct's and the alias's) fold once — as the AST folds them.
+    add_main("main.cpp", R"cpp(
+struct Allman
+{
+    int x;
+    int y;
+};
+
+int compute()
+{
+    int a = 1;
+    return a;
+}
+
+typedef struct {
+    int x;
+    int y;
+} Point;
+)cpp");
+    ASSERT(compile());
+    extract_rows();
+
+    auto ast = feature::folding_ranges(*unit);
+    auto projected = feature::index_folding_ranges(unit->main_content(),
+                                                   feature::index_lang_options("main.cpp", false),
+                                                   decls,
+                                                   resolver());
+
+    ASSERT(projected.size() == std::size_t(3));
+    for(auto& fold: projected) {
+        auto twin = std::ranges::find_if(ast, [&](const feature::FoldingRange& candidate) {
+            return candidate.range == fold.range;
+        });
+        ASSERT(twin != ast.end());
+        ASSERT(fold.kind == twin->kind);
+        ASSERT(fold.lines == twin->lines);
+    }
+    ASSERT(projected[0].lines);
+    ASSERT(projected[1].lines);
+}
+
+ZEST_CASE(InitializerFoldsAtBrace) {
+    add_main("main.cpp", R"cpp(
+int values[] =
+{
+    1,
+    2,
+};
+)cpp");
+    ASSERT(compile());
+    extract_rows();
+
+    auto projected = feature::index_folding_ranges(unit->main_content(),
+                                                   feature::index_lang_options("main.cpp", false),
+                                                   decls,
+                                                   resolver());
+    ASSERT(projected.size() == std::size_t(1));
+    ASSERT(!projected[0].lines.has_value());
 }
 
 ZEST_CASE(ConditionalBracesSuppressFold) {
@@ -346,6 +476,41 @@ ZEST_CASE(CDialectKeywords) {
     ASSERT(cpp_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Keyword).value_of());
 }
 
+ZEST_CASE(DriverDefaultKeywords) {
+    // The driver turns on `char8_t` from C++20 and the GNU keywords in GNU
+    // modes; the language defaults alone leave both off.
+    llvm::StringRef content = "char8_t c;\ntypeof(c) d;\n";
+    auto tokens = feature::index_semantic_tokens(
+        content,
+        feature::index_lang_options("main.cpp", false, "gnu++20"),
+        {},
+        {},
+        [](index::SymbolHash) -> std::optional<index::SymbolRef> { return std::nullopt; });
+    auto kind_at = [&](std::uint32_t begin) {
+        auto token = std::ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
+            return token.range.begin == begin;
+        });
+        return token == tokens.end() ? SymbolKind(SymbolKind::Invalid).value_of()
+                                     : token->kind.value_of();
+    };
+    ASSERT(kind_at(0) == SymbolKind(SymbolKind::Primitive).value_of());
+    ASSERT(kind_at(11) == SymbolKind(SymbolKind::Keyword).value_of());
+}
+
+ZEST_CASE(ModuleKeywordsNeedModules) {
+    // Before C++20 a line-leading `module` is a plain name.
+    llvm::StringRef content = "module m;\n";
+    auto tokens = feature::index_semantic_tokens(
+        content,
+        feature::index_lang_options("main.cpp", false, "c++17"),
+        {},
+        {},
+        [](index::SymbolHash) -> std::optional<index::SymbolRef> { return std::nullopt; });
+    ASSERT(std::ranges::none_of(tokens, [](const feature::SemanticToken& token) {
+        return token.kind == SymbolKind::Keyword;
+    }));
+}
+
 ZEST_CASE(StandardFromCommand) {
     // `concept` is a plain identifier in C++17: rows built under an older
     // -std must lex with that standard's keyword table, or a newer
@@ -408,6 +573,25 @@ ZEST_CASE(LinksFromEdges) {
     ASSERT(links[1].target == "/usr/include/second");
 }
 
+ZEST_CASE(HoverDefinitionShape) {
+    // The stored extent is the whole definition; the card shows what the
+    // AST card prints.
+    auto card = [](SymbolKind::Kind kind,
+                   llvm::StringRef text,
+                   index::SymbolFlags flags = index::SymbolFlags::None) {
+        index::SymbolRef info{.name = "name", .kind = kind, .flags = flags};
+        return feature::index_hover(info, text, "").definition;
+    };
+    ASSERT(card(SymbolKind::Function, "int twice(int x) {\n    return x * 2;\n}") == "int twice(int x)");
+    ASSERT(card(SymbolKind::Function, "int open() { // }\n    return 0;\n}") == "int open()");
+    ASSERT(card(SymbolKind::Method, "Holder() = default") == "Holder() = default");
+    ASSERT(card(SymbolKind::Struct, "struct Point {\n    int x;\n}") == "struct Point {}");
+    ASSERT(card(SymbolKind::Namespace, "namespace app {\nint value;\n}") == "namespace app {}");
+    ASSERT(card(SymbolKind::Macro, "LIMIT 10") == "#define LIMIT 10");
+    ASSERT(card(SymbolKind::Variable, "int values[] = {1, 2}") == "int values[] = {1, 2}");
+    ASSERT(card(SymbolKind::Function, "int entry() {}", index::SymbolFlags::Exported) == "export int entry()");
+}
+
 ZEST_CASE(CommentBlockExtraction) {
     llvm::StringRef content = R"cpp(int unrelated;
 
@@ -439,8 +623,7 @@ int after();
 )cpp";
 
     auto add_offset = static_cast<std::uint32_t>(content.find("int add"));
-    ASSERT(feature::preceding_comment(content, add_offset) ==
-           "Adds two numbers.\nReturns their sum.");
+    ASSERT(feature::preceding_comment(content, add_offset) == "Adds two numbers.\nReturns their sum.");
 
     // A blank line between the comment and the declaration breaks the
     // attachment.
@@ -459,8 +642,7 @@ int after();
 
     // Interior lines of a block comment need no marker of their own.
     auto release_offset = static_cast<std::uint32_t>(content.find("int release"));
-    ASSERT(feature::preceding_comment(content, release_offset) ==
-           "Frees the buffer.\nThen clears it.");
+    ASSERT(feature::preceding_comment(content, release_offset) == "Frees the buffer.\nThen clears it.");
 
     // A block comment opened behind code trails that code, even when it
     // closes directly above the declaration.

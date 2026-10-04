@@ -175,6 +175,18 @@ tests/snap/document_symbol/symbol_kinds/07_macro_preamble.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Module declarations**
+
+An interface unit's module declaration outlines the module it defines
+
+```snap
+tests/snap/document_symbol/symbol_kinds/08_kinds_modules.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Symbol Detail
@@ -284,18 +296,6 @@ function
 
 ```snap
 tests/snap/document_symbol/missing_symbols/02_local_symbols.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported -->
-
-**Module declarations**
-
-Module declarations do not appear in the outline yet
-
-```snap
-tests/snap/document_symbol/missing_symbols/03_missing_modules.cpp
 ```
 
 <!-- END CAPABILITY -->

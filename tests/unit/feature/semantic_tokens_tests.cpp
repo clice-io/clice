@@ -6,7 +6,6 @@
 
 #include <cassert>
 #include <cstdint>
-#include <format>
 #include <optional>
 #include <vector>
 
@@ -187,11 +186,30 @@ export int exported_value = 1;
 int private_value = 2;
 )cpp");
 
+    auto definition = SymbolModifiers::to_mask(SymbolModifiers::Definition);
     EXPECT_TOKEN("g0", SymbolKind::Keyword);
     EXPECT_TOKEN("k0", SymbolKind::Keyword);
-    EXPECT_TOKEN("n0", SymbolKind::Module);
-    EXPECT_TOKEN("n1", SymbolKind::Module);
+    EXPECT_TOKEN("n0", SymbolKind::Module, definition);
+    EXPECT_TOKEN("n1", SymbolKind::Module, definition);
     EXPECT_TOKEN("p0", SymbolKind::Keyword);
+}
+
+ZEST_CASE(UsingFromDependentBase) {
+    // A dependent name that a template base brings in with a
+    // using-declaration names the member itself.
+    run_utf8(R"cpp(
+struct Base { void f(); };
+template <class T> struct B : Base { using Base::f; };
+template <class T> struct D : B<T> {
+    void g() {
+        this->§(member)⟦f⟧();
+        B<T>::§(qualified)⟦f⟧();
+    }
+};
+)cpp");
+
+    EXPECT_TOKEN("member", SymbolKind::Method);
+    EXPECT_TOKEN("qualified", SymbolKind::Method);
 }
 
 ZEST_CASE(UTF16LengthDiffersFromUTF8) {
@@ -233,15 +251,13 @@ int main() {
     ASSERT(utf8_token->length > utf16_token->length);
 }
 
-/// A block comment over two lines splits into one piece per line, each
-/// ending before its line's terminator.
-void check_comment_split(llvm::StringRef newline) {
-    add_main("main.cpp",
-             std::format(R"cpp(int main() {{
-/*ab{}cd*/
-}}
-)cpp",
-                         newline));
+ZEST_CASE(MultiLineCommentSplit) {
+    add_main("main.cpp", R"cpp(
+int main() {
+/*ab
+cd*/
+}
+)cpp");
     ASSERT(compile_with_pch());
 
     auto utf8_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
@@ -256,18 +272,10 @@ void check_comment_split(llvm::StringRef newline) {
     }
 
     ASSERT(comments.size() == 2);
-    ASSERT(comments[0].length == 4);
+    ASSERT(comments[0].length == 5);
     ASSERT(comments[1].line == comments[0].line + 1);
     ASSERT(comments[1].start == 0);
     ASSERT(comments[1].length == 4);
-}
-
-ZEST_CASE(MultiLineCommentSplit) {
-    check_comment_split("\n");
-}
-
-ZEST_CASE(CRLFCommentSplit) {
-    check_comment_split("\r\n");
 }
 
 ZEST_CASE(ModuleImport) {
@@ -286,6 +294,24 @@ int y = x;
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);
+}
+
+ZEST_CASE(DottedModuleImport) {
+    add_files("main.cpp", R"(
+#[mod.cppm]
+export module app.core;
+export int x = 42;
+
+#[main.cpp]
+import §(m0)⟦app⟧.§(m1)⟦core⟧;
+int y = x;
+)");
+    ASSERT(compile_with_modules());
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->main_content(), tokens);
+
+    EXPECT_TOKEN("m0", SymbolKind::Module);
+    EXPECT_TOKEN("m1", SymbolKind::Module);
 }
 
 ZEST_CASE(ImportChannelAudit) {

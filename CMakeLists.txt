@@ -104,6 +104,7 @@ else()
     target_compile_options(clice_options INTERFACE
         -fno-rtti
         -fno-exceptions
+        -Werror=return-type
         -Wno-deprecated-declarations
         $<$<COMPILE_LANG_AND_ID:CXX,Clang,AppleClang>:-Wno-undefined-inline>
     )
@@ -136,7 +137,8 @@ add_custom_target(generate_version_header
     COMMENT "Generating version header"
 )
 
-# Layered targets: core <- config <- {project, worker} <- sched <- server.
+# Layered targets: core <- config <- {project, worker} <- sched <- server,
+# and project <- analysis.
 # Each layer may include downward only; the link DAG plus the layering check
 # in CI (`pixi run check-layers`) enforce the boundary — sched and below
 # never see an LSP or server header, and a project never sees scheduling.
@@ -207,9 +209,15 @@ add_dependencies(clice-server generate_version_header)
 target_link_libraries(clice-server PUBLIC clice::sched)
 clice_precompile_headers(clice-server)
 
+file(GLOB_RECURSE CLICE_ANALYSIS_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/analysis/*.cpp")
+add_library(clice-analysis STATIC ${CLICE_ANALYSIS_SOURCES})
+add_library(clice::analysis ALIAS clice-analysis)
+target_link_libraries(clice-analysis PUBLIC clice::project)
+clice_precompile_headers(clice-analysis)
+
 file(GLOB CLICE_DRIVER_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/driver/*.cc")
 add_executable(clice "${PROJECT_SOURCE_DIR}/src/clice.cc" ${CLICE_DRIVER_SOURCES})
-target_link_libraries(clice PRIVATE clice::server kota::deco)
+target_link_libraries(clice PRIVATE clice::server clice::analysis kota::deco)
 if(MINGW)
     target_sources(clice PRIVATE "${PROJECT_SOURCE_DIR}/src/mimalloc.cc")
     target_link_libraries(clice PRIVATE mimalloc-static)

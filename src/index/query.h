@@ -247,9 +247,9 @@ public:
     std::optional<SymbolRef> symbol_info(SymbolHash hash, Fid anchor = {}) const;
 
     /// The containers of a symbol, outermost first: the parent chain up
-    /// to the translation unit or to a parent no table knows, inline
-    /// namespaces skipped (anonymous ones never are parents). Empty at the
-    /// translation unit and for an unknown hash.
+    /// to the translation unit or to a parent no table knows, transparent
+    /// scopes skipped (anonymous namespaces never are parents). Empty at
+    /// the translation unit and for an unknown hash.
     llvm::SmallVector<SymbolRef, 4> container_chain(SymbolHash hash) const;
 
     /// The chain spelled as a qualified name ("ns::Outer" for
@@ -318,6 +318,12 @@ public:
     /// is unavailable (see definition_text on the disk re-read).
     std::string context_line(const Site& site) const;
 
+    /// The text the rows serving `file` were built from — the offsets of
+    /// every site in it index this text; nullopt when no source serves the
+    /// file or its text is unavailable (see definition_text on the disk
+    /// re-read).
+    std::optional<std::string> serving_text(Fid file) const;
+
     /// A symbol together with its canonical site, and the whole
     /// declaration there.
     struct Located {
@@ -331,6 +337,11 @@ public:
     /// The symbols under a cursor, each with its canonical site; one no
     /// source places is left out.
     std::vector<Located> resolve_at(const Cursor& cursor) const;
+
+    /// The distinct targets of the symbol's relations of `kind` (bases,
+    /// overrides, constructors, specializations), each at its canonical
+    /// site; a target no source places is left out.
+    std::vector<Located> located_targets(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
     /// One neighbour of a symbol in a graph: the symbol at its canonical
     /// site and the sites of the relation rows that connect them.
@@ -440,9 +451,6 @@ private:
     /// The distinct target symbols of the symbol's relations of `kind`
     /// (bases, derived types, overrides), in first-seen order.
     llvm::SmallVector<Target> targets(SymbolHash hash, Fid anchor, RelationKind kind) const;
-
-    /// One canonical site per distinct relation target.
-    std::vector<Located> located_targets(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
     /// Whether some unit reported a definition of the symbol: an open
     /// session's table knows only its own unit, the project table all.

@@ -9,7 +9,7 @@ partition_ref:
   declaration:
     - { file: "${WS}/module_partition/geo_shapes.cppm", range: "0:14-0:24" }
   references:
-    - { file: "${WS}/module_partition/geo.cppm", range: "2:14-2:15" }
+    - { file: "${WS}/module_partition/geo.cppm", range: "2:15-2:21" }
     - { file: "${WS}/module_partition/geo_shapes.cppm", range: "0:14-0:24" }
 
 primary_fn:
@@ -45,7 +45,7 @@ partition_name:
   declaration:
     - { file: "${WS}/module_partition/geo_shapes.cppm", range: "0:14-0:24" }
   references:
-    - { file: "${WS}/module_partition/geo.cppm", range: "2:14-2:15" }
+    - { file: "${WS}/module_partition/geo.cppm", range: "2:15-2:21" }
     - { file: "${WS}/module_partition/geo_shapes.cppm", range: "0:14-0:24" }
 
 --- main.cpp

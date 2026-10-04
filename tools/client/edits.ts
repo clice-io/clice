@@ -53,8 +53,17 @@ export function actionsOf(reply: (proto.Command | proto.CodeAction)[] | null): p
 /// The text edits a code action applies to `uri`, from its versioned
 /// document changes.
 export function editsFor(action: proto.CodeAction, uri: string): proto.TextEdit[] {
+    return documentEdits(action.edit, uri);
+}
+
+/// The text edits a workspace edit applies to `uri`, from its versioned
+/// document changes.
+export function documentEdits(
+    edit: proto.WorkspaceEdit | null | undefined,
+    uri: string,
+): proto.TextEdit[] {
     const edits: proto.TextEdit[] = [];
-    for (const change of action.edit?.documentChanges ?? []) {
+    for (const change of edit?.documentChanges ?? []) {
         if (!("textDocument" in change) || change.textDocument.uri !== uri) {
             continue;
         }
