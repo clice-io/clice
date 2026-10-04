@@ -429,8 +429,11 @@ private:
     llvm::DenseMap<std::uint32_t, std::size_t> owner;  // path_id -> worker index
 
     /// Returns the worker owning path_id, assigning the least-loaded live
-    /// worker on first use. SIZE_MAX when no stateful worker is alive. An
-    /// owner is always alive: a death takes its documents off the table.
+    /// worker on first use. SIZE_MAX when no stateful worker is alive, or
+    /// once the pool stops: its workers are still Alive then, but their
+    /// links are closed, and a request failing on one would read as a
+    /// nameless death and be blamed. An owner is always alive: a death
+    /// takes its documents off the table.
     std::size_t assign_worker(std::uint32_t path_id);
     std::size_t pick_least_loaded();
 

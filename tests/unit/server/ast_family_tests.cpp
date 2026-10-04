@@ -274,12 +274,12 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
 
 ZEST_CASE(EditInterruptsStaleCompile) {
     // The didChange path: an edit with NO follow-up request supersedes the
-    // in-flight round — the CancelCompile interrupt makes the worker
+    // in-flight round — cancelling its compile request makes the worker
     // abandon the stale parse, the waiter resolves false (its result is
     // for a buffer that no longer exists — the editor re-requests after
     // an edit), and the next request compiles the fresh content. Liveness
     // pin; the interruption content is pinned by
-    // StatefulWorker.CancelNotificationInterruptsCompile.
+    // StatefulWorker.WireCancelInterruptsCompile.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
@@ -358,7 +358,7 @@ ZEST_CASE(SupersededCompileCancelled) {
     // worker's parse, and the second waiter's respawned round compiles the
     // new content. This pins the supersede path's liveness; the
     // interruption itself is pinned content-wise by
-    // StatefulWorker.CancelNotificationInterruptsCompile.
+    // StatefulWorker.WireCancelInterruptsCompile.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;

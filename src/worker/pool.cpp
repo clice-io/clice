@@ -345,6 +345,10 @@ kota::task<> WorkerPool::kill_stragglers() {
 }
 
 std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
+    if(stop_scope.cancelled()) {
+        return SIZE_MAX;
+    }
+
     auto it = owner.find(path_id);
     if(it != owner.end()) {
         return it->second;

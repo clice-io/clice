@@ -105,6 +105,26 @@ struct [[nodiscard]] PendingGuard {
     }
 };
 
+/// A compile's hold on its document, which wakes the AST waiters when
+/// released: at every exit of the compile, and when a cancel read with the
+/// request destroys its task before it starts. An unset ast_ready would
+/// hang every later query for the document (they observe has_ast == false
+/// and return their missing value; the next Compile sets a real AST).
+struct [[nodiscard]] CompileGuard {
+    PendingGuard pending;
+
+    explicit CompileGuard(std::shared_ptr<DocumentEntry> entry) : pending(std::move(entry)) {}
+
+    CompileGuard(CompileGuard&&) noexcept = default;
+    CompileGuard& operator=(CompileGuard&&) = delete;
+
+    ~CompileGuard() {
+        if(pending.doc) {
+            pending.doc->ast_ready.set();
+        }
+    }
+};
+
 class StatefulWorker {
     kota::ipc::BincodePeer& peer;
     std::size_t max_documents;
@@ -228,7 +248,7 @@ class StatefulWorker {
         return with_ast_or(kind, params, kota::codec::RawValue{"null"}, std::move(fn));
     }
 
-    RequestResult<worker::CompileParams> serve_compile(PendingGuard pending,
+    RequestResult<worker::CompileParams> serve_compile(CompileGuard guard,
                                                        const worker::CompileParams& params);
 
 public:
@@ -239,22 +259,9 @@ public:
 };
 
 RequestResult<worker::CompileParams>
-    StatefulWorker::serve_compile(PendingGuard pending, const worker::CompileParams& params) {
-    auto doc = pending.doc;
+    StatefulWorker::serve_compile(CompileGuard guard, const worker::CompileParams& params) {
+    auto doc = guard.pending.doc;
     auto strand = co_await doc->strand.scoped_lock();
-
-    // Every exit — including a cancellation that destroys this frame at
-    // the queue await below — must wake the AST waiters before the
-    // strand unlocks: an unset ast_ready would hang every later query
-    // for this document (they observe has_ast == false and return their
-    // missing value; the next Compile sets a real AST).
-    struct [[nodiscard]] CompileGuard {
-        DocumentEntry& doc;
-
-        ~CompileGuard() {
-            doc.ast_ready.set();
-        }
-    } guard{*doc};
 
     // Copy params to doc AFTER acquiring the strand lock, so that
     // concurrent Compile requests waiting on the strand don't
@@ -389,9 +396,9 @@ void StatefulWorker::register_handlers() {
         [this](RequestContext& ctx,
                const worker::CompileParams& params) -> RequestResult<worker::CompileParams> {
             LOG_INFO("Compile request: path={}, version={}", params.path, params.version);
-            PendingGuard pending(get_or_create(params.path));
+            CompileGuard guard(get_or_create(params.path));
             touch_lru(params.path);
-            return serve_compile(std::move(pending), params);
+            return serve_compile(std::move(guard), params);
         });
 
     // === DocumentLink ===

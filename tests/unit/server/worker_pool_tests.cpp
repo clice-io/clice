@@ -1874,6 +1874,28 @@ ZEST_CASE(StopReapsWorkers) {
 }
 #endif
 
+ZEST_CASE(StoppedPoolBlamesNothing) {
+    // A stopped pool's stateful workers are still Alive with their links
+    // closed: a request routed to one would die nameless on every attempt
+    // and be blamed for killing its worker.
+    WorkerPoolFixture f;
+    int blames = 0;
+    std::optional<worker::protocol::integer> code;
+    f.run([&]() -> kota::task<> {
+        CO_ASSERT(f.start(0, 2));
+        co_await f.stop();
+        auto result = co_await deliver(
+            f.pool,
+            true,
+            [&] { return f.pool.send_stateful(7, worker::DocumentLinkParams{"/x.cpp"}); },
+            [&](const kota::ipc::Error&) { blames += 1; });
+        CO_ASSERT(!result.has_value());
+        code = result.error().code;
+    });
+    EXPECT(blames == 0);
+    EXPECT(code == worker::dispatch_errc::worker_unavailable);
+}
+
 ZEST_CASE(StatelessRequest) {
     TempDir tmp;
     tmp.touch("test.cpp", "int x = 1;\n");

@@ -67,14 +67,14 @@ ZEST_CASE(HandlerCancelChainsThrough) {
         source.cancel();
         co_await group.join();
 
-        // The worker must have seen the wire cancel: a second compile
-        // completes quickly only if the first parse was interrupted (200k
-        // decls otherwise).
-        cp.version = 2;
-        cp.text = "int x;\n";
-        auto retry = co_await w.peer->send_request(cp, {.timeout = std::chrono::seconds(30)});
-        CO_ASSERT(retry);
-        EXPECT(retry.value().version == 2);
+        // The worker must have seen the wire cancel: an interrupted (or
+        // never started) compile leaves the document without an AST.
+        worker::QueryParams qp;
+        qp.kind = worker::QueryKind::DocumentSymbol;
+        qp.path = src;
+        auto symbols = co_await w.peer->send_request(qp, {.timeout = std::chrono::seconds(30)});
+        CO_ASSERT(symbols);
+        EXPECT(symbols.value().data == "null");
 
         test_done = true;
         w.peer->close_output();

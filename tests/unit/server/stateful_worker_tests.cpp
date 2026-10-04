@@ -1,3 +1,4 @@
+#include <csignal>
 #include <format>
 #include <string>
 #include <vector>
@@ -186,6 +187,62 @@ ZEST_CASE(WireCancelInterruptsCompile) {
     ASSERT(test_done);
 }
 
+#ifndef _WIN32
+ZEST_CASE(UnstartedCompileWakesQueries) {
+    TempDir tmp;
+    tmp.touch("unstarted.cpp", "");
+    auto src = tmp.path("unstarted.cpp");
+
+    WorkerHandle w;
+    ASSERT(w.spawn(true));
+
+    bool test_done = false;
+
+    w.run([&]() -> kota::task<> {
+        worker::CompileParams cp;
+        cp.path = src;
+        cp.version = 1;
+        cp.text = "int x;\n";
+        cp.directory = "/tmp";
+        cp.arguments = make_args(src);
+        cp.pch = {"", 0};
+        cp.pcms = {};
+
+        // Stopped, the worker reads the request and its cancel in one read
+        // once it resumes, so the compile's task never starts.
+        CO_ASSERT(!w.proc.kill(SIGSTOP));
+        kota::cancellation_source source;
+        bool cancelled = false;
+        kota::task_group<> group;
+        auto sender = [&]() -> kota::task<> {
+            auto result = co_await w.peer->send_request(
+                cp,
+                {.token = source.token(), .timeout = std::chrono::seconds(30)});
+            cancelled =
+                !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
+        };
+        group.spawn(sender());
+        co_await kota::sleep(50, w.loop);
+        source.cancel();
+        co_await kota::sleep(50, w.loop);
+        CO_ASSERT(!w.proc.kill(SIGCONT));
+        co_await group.join();
+        CO_ASSERT(cancelled);
+
+        worker::QueryParams qp;
+        qp.kind = worker::QueryKind::DocumentSymbol;
+        qp.path = src;
+        auto symbols = co_await w.peer->send_request(qp, {.timeout = std::chrono::seconds(30)});
+        CO_ASSERT(symbols);
+        EXPECT(symbols.value().data == "null");
+
+        test_done = true;
+    });
+
+    ASSERT(test_done);
+}
+#endif
+
 ZEST_CASE(CancelledQueryFreesStrand) {
     TempDir tmp;
     tmp.touch("query_cancel.cpp", "");
@@ -300,6 +357,39 @@ ZEST_CASE(CompileThenHover) {
     });
 
     ASSERT(test_done);
+}
+
+ZEST_CASE(InvalidUTF8Replaced) {
+    std::string text = "/// caf\xe9\nint foo();\nint x = foo();\n";
+    TempDir tmp;
+    tmp.touch("latin1.cpp", text);
+    auto src = tmp.path("latin1.cpp");
+
+    WorkerHandle w;
+    ASSERT(w.spawn(true));
+
+    std::string hover;
+    w.run([&]() -> kota::task<> {
+        worker::CompileParams cp;
+        cp.path = src;
+        cp.version = 1;
+        cp.text = text;
+        cp.directory = "/tmp";
+        cp.arguments = make_args(src);
+        CO_ASSERT(co_await w.peer->send_request(cp));
+
+        worker::QueryParams hp;
+        hp.kind = worker::QueryKind::Hover;
+        hp.path = src;
+        hp.offset = static_cast<std::uint32_t>(text.find("foo()"));
+        auto result = co_await w.peer->send_request(hp);
+        CO_ASSERT(result);
+        hover = result.value().data;
+    });
+
+    EXPECT(
+        hover.contains("caf"
+                       "\xef\xbf\xbd"));
 }
 
 ZEST_CASE(CodeActionWithoutCompile) {
