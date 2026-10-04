@@ -90,7 +90,13 @@ function writeProject(session: SessionFactory): Workspace {
     // __need___va_list: <cio.h> takes only its type.
     ws.write(
         "third/libc/cva.h",
-        lines("#ifndef CVA_TYPE_ONLY", "#include <cvp.h>", "#endif", "typedef int fake_va;"),
+        lines(
+            "#ifndef CVA_TYPE_ONLY",
+            "int fake_vlen(void);",
+            "#include <cvp.h>",
+            "#endif",
+            "typedef int fake_va;",
+        ),
     );
     ws.write("third/libc/cvp.h", lines("#pragma once", "int fake_vprint(int);"));
     ws.write("third/libc/cputs.h", lines("#pragma once", "int fake_puts(const char*);"));
