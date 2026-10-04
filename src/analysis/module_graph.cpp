@@ -380,7 +380,9 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             // A forced include (-include) has no directive in the includer;
             // its presumed line points at some other text there.
             auto directive = line_text(includer, include_lines.lookup({includer, id})).ltrim();
-            if(!directive.starts_with("#") || !directive.contains("include")) {
+            if(!directive.starts_with("#") || !directive.contains("include") ||
+               !directive.contains(
+                   llvm::sys::path::filename(file.path, llvm::sys::path::Style::posix))) {
                 file.spellings.emplace_back();
                 continue;
             }
@@ -1518,9 +1520,15 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
         return llvm::join(segments, "/");
     };
 
+    // The names a glob claims a file for; a directory module that happens to
+    // share one stays the program's.
+    llvm::StringSet<> claimed_names;
     for(auto& file: facts.files) {
         auto claimed =
             std::ranges::find_if(globs, [&](auto& glob) { return glob.second.match(file.path); });
+        if(claimed != globs.end()) {
+            claimed_names.insert(claimed->first);
+        }
         result.module_of.push_back(module_id(
             claimed != globs.end() ? claimed->first : llvm::StringRef(directory(file.path))));
     }
@@ -1584,9 +1592,9 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
     result.kinds.assign(count, ModuleKind::Program);
     result.provides.resize(count);
     for(auto& claimed: spec.modules) {
-        // A module whose globs claim no scoped file has no entry.
+        // A merge or move can still take a claimed module's files away.
         auto module = result.module_named(claimed.name);
-        if(module == count) {
+        if(!claimed_names.contains(claimed.name) || module == count) {
             continue;
         }
         // Wrapped is what an entry without a kind says; another entry of
@@ -3223,9 +3231,6 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                 if(module_of(file) != module || facts.files[file].source) {
                     continue;
                 }
-                if(facts.files[file].declarations_differ) {
-                    interface.varying.push_back(facts.files[file].path);
-                }
                 for(auto& use: facts.uses[file]) {
                     auto owner = facts.entities[use.entity].owner;
                     auto other = module_of(owner);
@@ -3238,7 +3243,6 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             for(auto header: used) {
                 interface.textual_uses.push_back(header_of(module_of(header), header, {}));
             }
-            std::ranges::sort(interface.varying);
         }
         for(auto& [key, used]: exports[module]) {
             interface.exports.push_back(

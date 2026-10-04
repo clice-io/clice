@@ -769,10 +769,6 @@ struct Interface {
     /// of: what the fragment includes beside the imports.
     std::vector<InterfaceHeader> textual_uses;
 
-    /// Its headers that declare different entities in different units: a
-    /// module keeps one reading of each.
-    std::vector<std::string> varying;
-
     /// Macros other modules use and those their directives expand, in the
     /// order their files define them.
     std::vector<InterfaceMacro> macros;

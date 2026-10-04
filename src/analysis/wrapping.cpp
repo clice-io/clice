@@ -286,9 +286,16 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         unit += "\n";
         // By the name other files include an entry with, where one has an
         // include path position: <foo.h> by its path would #include_next
-        // from the start.
+        // from the start. Two entries one name finds both come by path.
+        llvm::StringMap<std::uint32_t> spelled_by;
         for(auto& entry: interface.entries) {
-            unit += std::format("#include {}\n", operand(entry));
+            spelled_by[operand(entry)] += 1;
+        }
+        for(auto& entry: interface.entries) {
+            auto include = operand(entry);
+            unit += std::format(
+                "#include {}\n",
+                spelled_by[include] > 1 ? std::format("\"{}\"", absolute(entry.file)) : include);
             auto names = mirrorable(entry);
             if(names.empty()) {
                 result.plan.warnings.push_back(
@@ -299,12 +306,6 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
             for(auto& spelled: names) {
                 result.files.push_back({std::format("mirror/{}/{}", name, spelled), ""});
             }
-        }
-        for(auto& file: interface.varying) {
-            result.plan.warnings.push_back(std::format(
-                "{}: {} declares different entities in different units; the module keeps one",
-                name,
-                file));
         }
         for(auto& entry: roots) {
             module.include_roots.push_back(entry.first().str());
