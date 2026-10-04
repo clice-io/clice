@@ -125,6 +125,28 @@ void for_each_identifier(llvm::StringRef text, llvm::function_ref<void(llvm::Str
     }
 }
 
+/// The identifiers a macro definition's replacement list spells: neither
+/// the macro's own name nor its parameters, which name nothing outside it.
+void for_each_expanded(llvm::StringRef directive, llvm::function_ref<void(llvm::StringRef)> visit) {
+    auto text = directive.ltrim();
+    text.consume_front("#");
+    text = text.ltrim();
+    text.consume_front("define");
+    text = text.ltrim().drop_while([](char c) { return llvm::isAlnum(c) || c == '_'; });
+    llvm::SmallVector<llvm::StringRef> parameters;
+    if(text.consume_front("(")) {
+        auto list = text.take_until([](char c) { return c == ')'; });
+        text = text.drop_front(list.size());
+        text.consume_front(")");
+        for_each_identifier(list, [&](llvm::StringRef name) { parameters.push_back(name); });
+    }
+    for_each_identifier(text, [&](llvm::StringRef word) {
+        if(!llvm::is_contained(parameters, word)) {
+            visit(word);
+        }
+    });
+}
+
 /// Whether `text` declares `name` a namespace alias: `namespace name =`.
 bool declares_alias(llvm::StringRef text, llvm::StringRef name) {
     for(auto at = text.find("namespace"); at != llvm::StringRef::npos;
@@ -324,7 +346,13 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     for(std::uint32_t id = 0; id < facts.files.size(); id += 1) {
         auto& file = facts.files[id];
         for(auto includer: file.includers) {
-            auto directive = line_text(includer, include_lines.lookup({includer, id}));
+            // A forced include (-include) has no directive in the includer;
+            // its presumed line points at some other text there.
+            auto directive = line_text(includer, include_lines.lookup({includer, id})).ltrim();
+            if(!directive.starts_with("#") || !directive.contains("include")) {
+                file.spellings.emplace_back();
+                continue;
+            }
             auto open = directive.find_first_of("<\"");
             auto close = open == llvm::StringRef::npos
                              ? open
@@ -336,15 +364,25 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     }
 
     // A directive's text, its continuation lines joined.
+    // A block comment the directive opens runs on to the line closing it:
+    // replayed cut short, it would swallow what follows.
     auto directive_text = [&](std::uint32_t file, std::uint32_t line) {
         std::string text;
-        for(auto current = line;; current += 1) {
-            auto part = line_text(file, current);
-            if(!part.ends_with("\\")) {
-                return text + part.str();
+        for(auto current = line; current <= facts.files[file].lines; current += 1) {
+            auto part = line_text(file, current).rtrim('\r');
+            if(part.ends_with("\\")) {
+                text += part.drop_back();
+                continue;
             }
-            text += part.drop_back();
+            text += part;
+            auto opened = llvm::StringRef(text).rfind("/*");
+            if(opened == llvm::StringRef::npos ||
+               llvm::StringRef(text).drop_front(opened).contains("*/")) {
+                break;
+            }
+            text += ' ';
         }
+        return text;
     };
 
     // A name qualified by its containers, inline namespaces skipped as
@@ -680,7 +718,8 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             continue;
         }
         auto site = std::ranges::find_if(list, [&](const Site& site) {
-            return declares_alias(line_text(site.file, site.line), identity->name);
+            return !facts.files[site.file].source &&
+                   declares_alias(line_text(site.file, site.line), identity->name);
         });
         if(site == list.end()) {
             continue;
@@ -2952,7 +2991,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             continue;
         }
         auto module = module_of(info.owner);
-        for_each_identifier(info.directive, [&](llvm::StringRef word) {
+        for_each_expanded(info.directive, [&](llvm::StringRef word) {
             for(std::uint32_t other = 0; other < count; other += 1) {
                 if(other != module) {
                     for(auto entity: macros_named[other].lookup(word)) {
@@ -3031,7 +3070,9 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             // reader): no chain is longer than the tree.
             for(std::size_t steps = 0; node != none && steps < in.parents.size();
                 node = in.parents[node], steps += 1) {
-                chain.insert(in.files[node]);
+                if(in.files[node] != none) {
+                    chain.insert(in.files[node]);
+                }
             }
             break;
         }
@@ -3133,14 +3174,14 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         llvm::SmallVector<std::uint32_t> pending(macros[module].begin(), macros[module].end());
         auto& closure = macros[module];
         while(!pending.empty()) {
-            for_each_identifier(facts.entities[pending.pop_back_val()].directive,
-                                [&](llvm::StringRef word) {
-                                    for(auto entity: macros_named[module].lookup(word)) {
-                                        if(closure.insert(entity).second) {
-                                            pending.push_back(entity);
-                                        }
-                                    }
-                                });
+            for_each_expanded(facts.entities[pending.pop_back_val()].directive,
+                              [&](llvm::StringRef word) {
+                                  for(auto entity: macros_named[module].lookup(word)) {
+                                      if(closure.insert(entity).second) {
+                                          pending.push_back(entity);
+                                      }
+                                  }
+                              });
         }
         llvm::SmallVector<std::uint32_t> ordered(closure.begin(), closure.end());
         std::ranges::sort(ordered, [&](std::uint32_t lhs, std::uint32_t rhs) {

@@ -71,6 +71,7 @@ The build compiles `stdSources` and each module in order, each with its library'
 ## Known Limitations
 
 - Module units must be built with full BMIs (`-fno-modules-reduced-bmi` on clang): a reduced BMI drops the global module fragment's declarations the purview never names, partial specializations among them.
-- A header holding an internal-linkage entity the program names stays textual: no module can export it.
+- A header holding an internal-linkage entity the program names stays textual: no module can export it. The prelude does not include such a header; a program file that reached it only through the library's emptied headers includes it itself.
+- A header other files include by a name relative to their own directory (`"../foo.h"`) cannot be emptied; modulize warns about it.
 - Every translation unit using a wrapped library has to see it through the module; mixing textual includes of the same headers with the import breaks on redeclarations clang cannot merge.
 - The standard library module is libc++'s.

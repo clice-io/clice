@@ -97,9 +97,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
                                           const std::optional<StdModules>& libcxx,
                                           llvm::StringRef root) {
     auto absolute = [&](llvm::StringRef path) {
-        return llvm::sys::path::is_absolute(path, llvm::sys::path::Style::posix)
-                   ? path.str()
-                   : join_path(root, path);
+        return llvm::sys::path::is_absolute(path) ? path.str() : join_path(root, path);
     };
     auto operand = [&](const InterfaceHeader& header) {
         return llvm::StringRef(header.include).starts_with("<")
@@ -258,9 +256,21 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
             if(entry.name.empty()) {
                 continue;
             }
-            result.files.push_back({std::format("mirror/{}/{}", name, entry.name), ""});
-            if(llvm::StringRef(file).ends_with("/" + entry.name)) {
-                roots.insert(llvm::StringRef(file).drop_back(entry.name.size() + 1));
+            // A name relative to the includer's own directory finds the header
+            // before any directory on the include path.
+            llvm::SmallString<128> spelled(entry.name);
+            llvm::sys::path::remove_dots(spelled, true, llvm::sys::path::Style::posix);
+            if(spelled.starts_with("../") || llvm::sys::path::is_absolute(spelled)) {
+                result.plan.warnings.push_back(
+                    std::format("{}: {} is included as \"{}\", which no mirror can empty",
+                                name,
+                                entry.file,
+                                entry.name));
+                continue;
+            }
+            result.files.push_back({std::format("mirror/{}/{}", name, spelled.str()), ""});
+            if(llvm::StringRef(file).ends_with(("/" + spelled).str())) {
+                roots.insert(llvm::StringRef(file).drop_back(spelled.size() + 1));
             }
         }
         for(auto& entry: roots) {

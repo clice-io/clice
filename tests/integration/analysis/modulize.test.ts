@@ -67,8 +67,8 @@ function writeProject(session: SessionFactory): Workspace {
         "third/std/fakecstdio",
         lines(
             "#pragma once",
-            "#include <cio.h>",
             "#include <cva.h>",
+            "#include <cio.h>",
             "#include <cputs.h>",
             "namespace fakestd { inline int fake_abs(int x) { return x < 0 ? -x : x; } }",
         ),
