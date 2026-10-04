@@ -52,6 +52,7 @@ export {
     logFiles,
     SANITIZER_MARKERS,
 } from "../process_gate.ts";
+export { runProcess, type ProcessOptions, type ProcessResult } from "./process.ts";
 import { withTimeout } from "../promise.ts";
 
 // The harness's timing helpers are reached through this module.

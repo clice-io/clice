@@ -5,10 +5,9 @@
 /// scripts/symbolize.py recovers function/file information from the raw-address
 /// crash log. This is the guarantee that shipped crash logs stay actionable.
 
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { CliceClient, waitUntil } from "@clice/tools/client";
+import { CliceClient, runProcess, waitUntil } from "@clice/tools/client";
 import { REPO_ROOT } from "@clice/tools/compile-commands";
 import { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
@@ -24,13 +23,8 @@ function which(tool: string): boolean {
     });
 }
 
-// llvm-gsymutil floods stdout with its conversion log; match Python's
-// subprocess.run (unbounded capture) so a large log never overflows the
-// default 1 MB buffer and kills the child.
-const SPAWN_OPTS = { encoding: "utf8", maxBuffer: 512 * 1024 * 1024 } as const;
-
-function runTool(...command: string[]): void {
-    const result = spawnSync(command[0]!, command.slice(1), SPAWN_OPTS);
+async function runTool(...command: string[]): Promise<void> {
+    const result = await runProcess(command[0]!, command.slice(1));
     expect(result.status, `${command[0]} failed: ${result.stderr.slice(0, 2000)}`).toBe(0);
 }
 
@@ -58,8 +52,8 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
         const gsymFile = tmp.path("clice.gsym");
         fs.copyFileSync(executable, stripped);
         fs.chmodSync(stripped, 0o755);
-        runTool("llvm-objcopy", "--only-keep-debug", stripped, debugFile);
-        runTool(
+        await runTool("llvm-objcopy", "--only-keep-debug", stripped, debugFile);
+        await runTool(
             "llvm-gsymutil",
             "--convert",
             debugFile,
@@ -68,7 +62,7 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
             "--out-file",
             gsymFile,
         );
-        runTool("llvm-strip", "--strip-debug", "--strip-unneeded", stripped);
+        await runTool("llvm-strip", "--strip-debug", "--strip-unneeded", stripped);
 
         const workspace = new Workspace(tmp.path("ws"));
         workspace.write("main.cpp", "int main() { return 0; }\n");
@@ -126,11 +120,12 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
         expect(raw).toContain("main executable base: 0x");
         expect(raw, "stripped binary must not self-symbolize").not.toContain("logging.cpp");
 
-        const result = spawnSync(
-            "python3",
-            [path.join(REPO_ROOT, "scripts", "symbolize.py"), crashLogs[0]!, "--symbols", gsymFile],
-            SPAWN_OPTS,
-        );
+        const result = await runProcess("python3", [
+            path.join(REPO_ROOT, "scripts", "symbolize.py"),
+            crashLogs[0]!,
+            "--symbols",
+            gsymFile,
+        ]);
         expect(result.status, `symbolize.py failed: ${result.stderr.slice(0, 2000)}`).toBe(0);
         // The crash handler itself is always on the stack; recovering its source
         // file proves rebasing and GSYM lookup both worked.

@@ -1,5 +1,5 @@
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { waitUntil, type CliceClient } from "@clice/tools/client";
+import { spawn, type ChildProcess } from "node:child_process";
+import { runProcess, waitUntil, type CliceClient } from "@clice/tools/client";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 const SUBCOMMANDS = [
@@ -15,7 +15,7 @@ const SUBCOMMANDS = [
 ];
 
 function runClice(...args: string[]) {
-    return spawnSync(cliceExecutable(), args, { encoding: "utf8", timeout: 30_000 });
+    return runProcess(cliceExecutable(), args, { timeout: 30_000 });
 }
 
 function exitOf(child: ChildProcess): Promise<{ code: number | null; signal: string | null }> {
@@ -47,10 +47,10 @@ async function waitSymbol(client: CliceClient, name: string): Promise<boolean> {
     );
 }
 
-test("root usage lists subcommands", () => {
+test("root usage lists subcommands", async () => {
     // Both the bare invocation and --help print the root usage and succeed.
     for (const args of [[], ["--help"]]) {
-        const result = runClice(...args);
+        const result = await runClice(...args);
         expect(result.status).toBe(0);
         for (const name of SUBCOMMANDS) {
             expect(result.stdout).toContain(name);
@@ -58,49 +58,49 @@ test("root usage lists subcommands", () => {
     }
 });
 
-test("subcommand help", () => {
+test("subcommand help", async () => {
     for (const name of SUBCOMMANDS) {
-        const result = runClice(name, "--help");
+        const result = await runClice(name, "--help");
         expect(result.status).toBe(0);
         // analyze groups commands: its help lists them rather than a usage line.
         expect(result.stdout).toContain(name === "analyze" ? "modules" : `clice ${name}`);
     }
 });
 
-test("unknown subcommand fails", () => {
-    expect(runClice("bogus").status).toBe(2);
+test("unknown subcommand fails", async () => {
+    expect((await runClice("bogus")).status).toBe(2);
 });
 
-test("unknown option is a usage error", () => {
+test("unknown option is a usage error", async () => {
     for (const name of SUBCOMMANDS) {
-        expect(runClice(name, "--bogus").status, name).toBe(2);
+        expect((await runClice(name, "--bogus")).status, name).toBe(2);
     }
 });
 
-test("index subcommand builds and resumes", ({ session }) => {
+test("index subcommand builds and resumes", async ({ session }) => {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write("main.cpp", "int add(int a, int b) { return a + b; }\n");
     ws.writeCDB(["main.cpp"]);
 
     // A stats query before any index run reports the missing cache.
-    const empty = runClice("index", "--stats", "--workspace", ws.root);
+    const empty = await runClice("index", "--stats", "--workspace", ws.root);
     expect(empty.status).toBe(1);
     expect(empty.stderr).toContain("No index cache");
 
     const args = ["index", "--workspace", ws.root, "--workers", "2"];
-    const first = runClice(...args);
+    const first = await runClice(...args);
     expect(first.status, `stderr: ${first.stderr}`).toBe(0);
     expect(first.stderr).toContain("] Indexing ");
     expect(first.stdout).toContain("Indexed 1 translation unit in");
 
     // The second run resumes from the persisted index: the hash gate
     // skips the fresh TU without recompiling it.
-    const second = runClice(...args);
+    const second = await runClice(...args);
     expect(second.status, `stderr: ${second.stderr}`).toBe(0);
     expect(second.stderr).not.toContain("] Indexing ");
 
-    const stats = runClice("index", "--stats", "--workspace", ws.root);
+    const stats = await runClice("index", "--stats", "--workspace", ws.root);
     expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
     expect(stats.stdout).toContain("Translation units: 1");
 });
@@ -143,7 +143,7 @@ test.skipIf(process.platform === "win32")(
         expect(code, `stderr: ${stderr}`).toBe(130);
         expect(stdout).toContain("progress saved");
 
-        const stats = runClice("index", "--stats", "--workspace", ws.root);
+        const stats = await runClice("index", "--stats", "--workspace", ws.root);
         expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
         expect(stats.stdout).toMatch(/Translation units: [1-9]/);
     },
@@ -177,7 +177,7 @@ test("index reports header losing host", async ({ session }) => {
     ws.write("main.cpp", "int app_entry() { return 0; }\n");
     ws.writeCDB(["main.cpp"], { extraArgs: ["-DHOST_V2"] });
 
-    const second = runClice("index", "--workspace", ws.root, "--workers", "2");
+    const second = await runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(second.status, `stderr: ${second.stderr}`).toBe(1);
     expect(second.stderr).toContain("stays uncovered");
     expect(second.stdout).toContain("failed to index");
@@ -185,24 +185,24 @@ test("index reports header losing host", async ({ session }) => {
     // The debt persists across runs: the snapshot keeps recording the
     // dropped header, so every rerun retries it and reports the partial
     // index rather than going silently clean.
-    const third = runClice("index", "--workspace", ws.root, "--workers", "2");
+    const third = await runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(third.status, `stderr: ${third.stderr}`).toBe(1);
     expect(third.stderr).toContain("stays uncovered");
 
     // Only deleting the file settles the debt.
     ws.rm("a.h");
-    const fourth = runClice("index", "--workspace", ws.root, "--workers", "2");
+    const fourth = await runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(fourth.status, `stderr: ${fourth.stderr}`).toBe(0);
 });
 
-test("lint subcommand reports findings", ({ session }) => {
+test("lint subcommand reports findings", async ({ session }) => {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(".clang-tidy", 'Checks: "-*,bugprone-integer-division"\n');
     ws.write("main.cpp", "double ratio(int a, int b) {\n    return a / b;\n}\n");
     ws.writeCDB(["main.cpp"]);
 
-    const findings = runClice("lint", "--workspace", ws.root, "--workers", "2");
+    const findings = await runClice("lint", "--workspace", ws.root, "--workers", "2");
     expect(findings.status, `stderr: ${findings.stderr}`).toBe(1);
     expect(findings.stdout).toContain("bugprone-integer-division");
     expect(findings.stdout).toContain("main.cpp:2:12");
@@ -210,12 +210,12 @@ test("lint subcommand reports findings", ({ session }) => {
 
     // The clean rewrite is the negative control: same setup, no finding.
     ws.write("main.cpp", "int add(int a, int b) { return a + b; }\n");
-    const clean = runClice("lint", "--workspace", ws.root, "--workers", "2");
+    const clean = await runClice("lint", "--workspace", ws.root, "--workers", "2");
     expect(clean.status, `stderr: ${clean.stderr}`).toBe(0);
     expect(clean.stdout).toContain("0 findings");
 });
 
-test("lint applies config extra args", ({ session }) => {
+test("lint applies config extra args", async ({ session }) => {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(".clang-tidy", 'Checks: "-*,bugprone-integer-division"\nExtraArgs: ["-DRATIO_DIV"]\n');
@@ -227,39 +227,41 @@ test("lint applies config extra args", ({ session }) => {
     );
     ws.writeCDB(["main.cpp"]);
 
-    const run = runClice("lint", "--workspace", ws.root, "--workers", "2");
+    const run = await runClice("lint", "--workspace", ws.root, "--workers", "2");
     expect(run.status, `stderr: ${run.stderr}`).toBe(1);
     expect(run.stdout).toContain("bugprone-integer-division");
 });
 
-test("lint with index persists both", ({ session }) => {
+test("lint with index persists both", async ({ session }) => {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(".clang-tidy", 'Checks: "-*,bugprone-integer-division"\n');
     ws.write("main.cpp", "double ratio(int a, int b) {\n    return a / b;\n}\n");
     ws.writeCDB(["main.cpp"]);
 
-    const run = runClice("lint", "--index", "--workspace", ws.root, "--workers", "2");
+    const run = await runClice("lint", "--index", "--workspace", ws.root, "--workers", "2");
     expect(run.status, `stderr: ${run.stderr}`).toBe(1);
     expect(run.stdout).toContain("bugprone-integer-division");
 
     // The same parse persisted the index: a stats reader sees the TU.
-    const stats = runClice("index", "--stats", "--workspace", ws.root);
+    const stats = await runClice("index", "--stats", "--workspace", ws.root);
     expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
     expect(stats.stdout).toContain("Translation units: 1");
 });
 
-test.skipIf(process.platform === "win32")("output survives merged stderr", ({ session }) => {
+test.skipIf(process.platform === "win32")("output survives merged stderr", async ({ session }) => {
     // `2>&1` shares stderr's file description with stdout: only a serving
     // master may switch it to non-blocking.
     const ws = session.tmpdir();
     ws.write("big.cpp", bigSource());
     const inspect = ["inspect", "document_symbol", ws.path("big.cpp"), "--flags", '["-std=c++23"]'];
-    const run = spawnSync("sh", ["-c", 'exec "$0" "$@" 2>&1', cliceExecutable(), ...inspect], {
-        encoding: "utf8",
-        timeout: 60_000,
-        maxBuffer: 64 * 1024 * 1024,
-    });
+    const run = await runProcess(
+        "sh",
+        ["-c", 'exec "$0" "$@" 2>&1', cliceExecutable(), ...inspect],
+        {
+            timeout: 60_000,
+        },
+    );
     expect(run.status, run.stdout.slice(-2000)).toBe(0);
     expect(run.stdout).toContain("function_number_1499");
 });
