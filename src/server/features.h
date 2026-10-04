@@ -8,6 +8,7 @@
 #include "feature/feature.h"
 #include "index/query.h"
 #include "project/project.h"
+#include "sched/index/pump.h"
 #include "server/dispatcher.h"
 #include "server/session.h"
 #include "server/session_store.h"
@@ -21,7 +22,6 @@ namespace clice {
 
 class ASTFamily;
 struct EditorContext;
-class IndexPump;
 
 namespace protocol = kota::ipc::protocol;
 
@@ -78,23 +78,26 @@ public:
     std::function<llvm::SmallVector<const index::IndexQuery*>()> peers;
     std::function<const index::IndexQuery*(Fid)> open_in;
 
+    /// The editor's requests take their ticket as the request is dispatched,
+    /// ahead of the messages read with it: an edit among those lands before
+    /// the task starts and supersedes the ticket.
+
     /// Full document-link result for a session: the worker's main-file links
     /// merged behind the PCH's cached preamble links.
     kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
-        document_links(std::shared_ptr<Session> session,
-                       std::optional<kota::cancellation_token> token = {});
+        document_links(Ticket ticket, kota::cancellation_token token = {});
 
     /// Go-to-definition, assembled across all providers: preamble directive
     /// targets, the index, and the directives the worker's AST sees, with
     /// an index retry after the dispatch's compile refreshes a dirty
     /// session.
-    /// @param session may be null (document not open).
+    /// @param ticket has no session for a document not open.
     /// @param token the request's cancellation token, forwarded to the
     /// worker sends (see Dispatcher::query).
-    RawResult definition(std::shared_ptr<Session> session,
+    RawResult definition(Ticket ticket,
                          Fid path_id,
                          const protocol::Position& position,
-                         std::optional<kota::cancellation_token> token = {});
+                         kota::cancellation_token token = {});
 
     /// Whole-document features and hover, routed by readiness (see
     /// pick_route): the AST answers when current, the index projections
@@ -102,19 +105,17 @@ public:
     /// answers with its pinned degraded surface (empty inlay hints). Each
     /// takes the request's cancellation token and forwards it to the
     /// worker sends (see Dispatcher::query).
-    RawResult hover(std::shared_ptr<Session> session,
+    RawResult hover(Ticket ticket,
                     const protocol::Position& position,
-                    std::optional<kota::cancellation_token> token = {});
-    RawResult semantic_tokens(std::shared_ptr<Session> session,
-                              std::optional<kota::cancellation_token> token = {});
-    RawResult inlay_hints(std::shared_ptr<Session> session,
+                    kota::cancellation_token token = {});
+    RawResult semantic_tokens(Ticket ticket, kota::cancellation_token token = {});
+    RawResult inlay_hints(Ticket ticket,
                           const protocol::Range& range,
-                          std::optional<kota::cancellation_token> token = {});
-    RawResult folding_range(std::shared_ptr<Session> session,
+                          kota::cancellation_token token = {});
+    RawResult folding_range(Ticket ticket,
                             bool line_folding_only,
-                            std::optional<kota::cancellation_token> token = {});
-    RawResult document_symbol(std::shared_ptr<Session> session,
-                              std::optional<kota::cancellation_token> token = {});
+                            kota::cancellation_token token = {});
+    RawResult document_symbol(Ticket ticket, kota::cancellation_token token = {});
 
     /// Code actions on a range of the buffer: the worker computes them to
     /// completion against its AST, and the index requests they carry
@@ -123,10 +124,10 @@ public:
     /// is versioned against the buffer it was computed for. `only` is the
     /// client's kind filter (LSP CodeActionContext.only); empty keeps all.
     kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
-        code_action(std::shared_ptr<Session> session,
+        code_action(Ticket ticket,
                     const protocol::Range& range,
                     llvm::ArrayRef<protocol::CodeActionKind> only,
-                    std::optional<kota::cancellation_token> token = {});
+                    kota::cancellation_token token = {});
 
     /// Code completion. Serves preamble contexts (include/import) locally from
     /// the include graph and module map; delegates ordinary code completion to
@@ -136,46 +137,39 @@ public:
                          const protocol::Position& position,
                          const feature::CompletionClient& client,
                          llvm::StringRef trigger_character = {},
-                         std::optional<kota::cancellation_token> token = {});
+                         kota::cancellation_token token = {});
 
     /// Signature help, dispatched as a stateless build. Pauses background
     /// indexing for the request's span.
     RawResult signature_help(std::shared_ptr<Session> session,
                              const protocol::Position& position,
-                             std::optional<kota::cancellation_token> token = {});
+                             kota::cancellation_token token = {});
 
-    /// Whole-document and range formatting on a stateless worker. Pause
-    /// background indexing for the request's span.
+    /// Whole-document formatting, or a range's, on a stateless worker.
+    /// Pauses background indexing for the request's span.
     RawResult formatting(std::shared_ptr<Session> session,
-                         std::optional<kota::cancellation_token> token = {});
-    RawResult range_formatting(std::shared_ptr<Session> session,
-                               const protocol::Range& range,
-                               std::optional<kota::cancellation_token> token = {});
+                         std::optional<protocol::Range> range,
+                         kota::cancellation_token token = {});
 
     /// Index navigation queries. Closed documents are fully serveable from the
     /// index and an empty result is a real answer (returned as []). @param
-    /// session may be null (document not open) — the index is queried anyway.
-    RawResult references(std::shared_ptr<Session> session,
+    /// ticket has no session for a document not open — the index is queried
+    /// anyway.
+    RawResult references(Ticket ticket,
                          Fid path_id,
                          const protocol::Position& position,
                          bool include_declaration);
-    RawResult declaration(std::shared_ptr<Session> session,
-                          Fid path_id,
-                          const protocol::Position& position);
-    RawResult type_definition(std::shared_ptr<Session> session,
-                              Fid path_id,
-                              const protocol::Position& position);
-    RawResult implementation(std::shared_ptr<Session> session,
-                             Fid path_id,
-                             const protocol::Position& position);
+    RawResult declaration(Ticket ticket, Fid path_id, const protocol::Position& position);
+    RawResult type_definition(Ticket ticket, Fid path_id, const protocol::Position& position);
+    RawResult implementation(Ticket ticket, Fid path_id, const protocol::Position& position);
 
-    RawResult call_hierarchy_prepare(std::shared_ptr<Session> session,
+    RawResult call_hierarchy_prepare(Ticket ticket,
                                      Fid path_id,
                                      const protocol::Position& position);
     RawResult call_hierarchy_incoming(Fid path_id, const protocol::CallHierarchyItem& item);
     RawResult call_hierarchy_outgoing(Fid path_id, const protocol::CallHierarchyItem& item);
 
-    RawResult type_hierarchy_prepare(std::shared_ptr<Session> session,
+    RawResult type_hierarchy_prepare(Ticket ticket,
                                      Fid path_id,
                                      const protocol::Position& position);
     RawResult type_hierarchy_supertypes(Fid path_id, const protocol::TypeHierarchyItem& item);
@@ -184,9 +178,7 @@ public:
     /// Rename from this project's index (see index/rename.h), never a
     /// recompile. prepare_rename answers the name token at the position,
     /// or an error saying why the symbol there cannot be renamed.
-    RawResult prepare_rename(std::shared_ptr<Session> session,
-                             Fid path_id,
-                             const protocol::Position& position);
+    RawResult prepare_rename(Ticket ticket, Fid path_id, const protocol::Position& position);
 
     /// The edits of a rename, each file's versioned against its open
     /// buffer, and what the user should hear about them: the warnings,
@@ -200,7 +192,7 @@ public:
     /// Nullopt when nothing at the position can be renamed or the file
     /// fails to compile; an error names the conflicts, or the files whose
     /// rows are not current, that keep the rename from being made.
-    kota::task<std::optional<Renamed>, kota::ipc::Error> rename(std::shared_ptr<Session> session,
+    kota::task<std::optional<Renamed>, kota::ipc::Error> rename(Ticket ticket,
                                                                 Fid path_id,
                                                                 const protocol::Position& position,
                                                                 std::string new_name);
@@ -259,6 +251,14 @@ private:
                                  RouteOptions options,
                                  std::optional<index::RowSource>* source = nullptr);
 
+    /// completion's task, which takes its ticket as it starts.
+    RawResult complete(std::shared_ptr<Session> session,
+                       IndexPump::ScopedPause pause,
+                       const protocol::Position& position,
+                       const feature::CompletionClient& client,
+                       llvm::StringRef trigger_character,
+                       kota::cancellation_token token);
+
     /// What a gate decided instead of the feature's own answer: null (no
     /// source can answer — a failed compile) or ContentModified.
     struct Stop {
@@ -312,7 +312,7 @@ private:
     /// PCH's cached preamble links, then the worker's AST's for the rest.
     /// Module names go through the ordinary index pipeline, not these.
     kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
-        directive_links(const Ticket& ticket, std::optional<kota::cancellation_token> token);
+        directive_links(const Ticket& ticket, kota::cancellation_token token);
 
     /// Go-to-definition and hover on a directive's argument, naming its
     /// target the way the user knows the file.

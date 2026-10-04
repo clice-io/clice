@@ -58,23 +58,18 @@ std::expected<Annotation, std::string> read_annotation(llvm::StringRef path) {
 }
 
 std::expected<Annotation, std::string> git_churn(llvm::StringRef workspace, llvm::StringRef since) {
-    std::expected<std::string, std::string> log;
-    kota::event_loop loop;
-    auto task = [&]() -> kota::task<> {
-        // --relative names the files from the workspace and keeps only
-        // those under it, whatever the repository root is.
-        log = co_await execute({"git",
-                                "log",
-                                std::format("--since={}", std::string_view(since)),
-                                "--format=",
-                                "--name-only",
-                                "--relative",
-                                "-z"},
-                               /*capture_stdout=*/true,
-                               workspace.str());
-    };
-    loop.schedule(task());
-    loop.run();
+    // --relative names the files from the workspace and keeps only
+    // those under it, whatever the repository root is.
+    auto [ended] = kota::run(execute({"git",
+                                      "log",
+                                      std::format("--since={}", std::string_view(since)),
+                                      "--format=",
+                                      "--name-only",
+                                      "--relative",
+                                      "-z"},
+                                     /*capture_stdout=*/true,
+                                     workspace.str()));
+    auto& log = *ended;
     if(!log) {
         return std::unexpected(log.error());
     }

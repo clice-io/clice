@@ -547,9 +547,10 @@ public:
         auto prefix = CompletionPrefix::from(content, offset);
         FuzzyMatcher matcher(prefix.spelling);
 
-        LineMap map(content, encoding);
-        auto typed = to_range(map, prefix.typed);
-        auto whole = to_range(map, prefix.whole);
+        auto lines = lsp::line_starts(content);
+        PositionMap map{.content = content, .lines = lines, .encoding = encoding};
+        auto typed = map.to_range(prefix.typed);
+        auto whole = map.to_range(prefix.whole);
         if(!typed || !whole) {
             return;
         }

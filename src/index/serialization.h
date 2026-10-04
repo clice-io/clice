@@ -113,21 +113,6 @@ struct repr<clice::Bitmap, codec::fbs::format> {
     }
 };
 
-/// SymbolKind hides its enum behind constructors, which keeps it out of
-/// reflection; persist the underlying value.
-template <>
-struct repr<clice::SymbolKind, codec::fbs::format> {
-    using type = std::uint8_t;
-
-    static type to(clice::SymbolKind kind) {
-        return kind.value();
-    }
-
-    static clice::SymbolKind from(type value) {
-        return clice::SymbolKind(value);
-    }
-};
-
 }  // namespace kota::meta
 
 namespace clice::index {
@@ -163,8 +148,9 @@ namespace clice::index {
 /// dependent operators reference no candidates, and the include pasting a
 /// fragment into a declaration carries the fragment's uses; v24: symbols a
 /// module exports carry the Exported flag, and anonymous structs, unions
-/// and enums the AnonymousScope flag).
-constexpr inline std::uint32_t index_format_version = 24;
+/// and enums the AnonymousScope flag; v25: shards mark the lines ending in
+/// "\r\n", whose '\r' is no longer a column of the line).
+constexpr inline std::uint32_t index_format_version = 25;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more
@@ -267,6 +253,12 @@ struct ShardBlob {
     std::vector<std::uint8_t> line_lengths;
     std::vector<std::uint32_t> long_line_rows;
     std::vector<std::uint32_t> long_line_lengths;
+
+    /// A bit for each line ending in "\r\n" — line `n` is bit `n % 64` of
+    /// word `n / 64`, the words ending at the last set bit — for mapping
+    /// positions without the content. Empty when the content is stored,
+    /// whose bytes tell.
+    std::vector<std::uint64_t> crlf_lines;
 
     /// Referenced symbols, sorted by hash; the index into this table is
     /// the symbol id the row columns use.

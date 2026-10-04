@@ -79,10 +79,6 @@ bool is_no_range(std::uint32_t begin, std::uint32_t end) {
     return LocalSourceRange{begin, end} == LocalSourceRange{};
 }
 
-bool is_ascii(llvm::StringRef text) {
-    return llvm::all_of(text, [](char c) { return static_cast<unsigned char>(c) < 0x80; });
-}
-
 /// The symbol-id column of one row table in whichever width the blob
 /// stores; validation proves exactly one width is present.
 struct SymIds {
@@ -453,7 +449,7 @@ Verdict content_ok(BlobView root) {
         return std::unexpected("stored content does not match its recorded size and hash");
     }
     // Pure-ASCII content must be omitted — the canonical form.
-    if(is_ascii(content)) {
+    if(kota::ipc::lsp::is_ascii({content.data(), content.size()})) {
         return std::unexpected("pure-ASCII content stored");
     }
     return {};
@@ -477,29 +473,39 @@ Verdict line_table_ok(BlobView root) {
     }
     std::vector<std::uint32_t> starts;
     if(!content.empty()) {
-        starts =
-            kota::ipc::lsp::build_line_starts(std::string_view(content.data(), content.size()));
+        starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
         if(starts.size() != line_lengths.size()) {
             return std::unexpected("line table does not match the stored content");
         }
     }
+    // A "\r\n" ending needs a line holding at least those two bytes and a
+    // line after it; content that is stored says it itself.
+    auto crlf_lines = to_array_ref(root[&ShardBlob::crlf_lines]);
+    if(!crlf_lines.empty() && (!content.empty() || crlf_lines.back() == 0 ||
+                               crlf_lines.size() > (line_lengths.size() + 63) / 64)) {
+        return std::unexpected("CRLF line table is not canonical");
+    }
+    auto ends_crlf = [&](std::size_t row) {
+        return row / 64 < crlf_lines.size() && ((crlf_lines[row / 64] >> (row % 64)) & 1) != 0;
+    };
     std::uint64_t line_sum = 0;
     std::size_t escape_cursor = 0;
     for(std::size_t row = 0; row < line_lengths.size(); row += 1) {
         if(!starts.empty() && starts[row] != line_sum) {
             return std::unexpected("line table does not match the stored content");
         }
-        auto length = line_lengths[row];
+        std::uint32_t length = line_lengths[row];
         if(length == length_escape) {
-            auto value = long_line_lengths[escape_cursor];
+            length = long_line_lengths[escape_cursor];
             escape_cursor += 1;
-            if(value < length_escape) {
+            if(length < length_escape) {
                 return std::unexpected("escaped line length below the escape threshold");
             }
-            line_sum += value;
-        } else {
-            line_sum += length;
         }
+        if(ends_crlf(row) && (length < 2 || row + 1 == line_lengths.size())) {
+            return std::unexpected("CRLF bit on a line that cannot end in CRLF");
+        }
+        line_sum += length;
     }
     if(line_sum != root[&ShardBlob::content_size]) {
         return std::unexpected("line lengths do not add up to the content size");
@@ -1088,6 +1094,13 @@ std::span<const std::uint32_t> Shard::line_starts() const {
     return line_starts_cache;
 }
 
+std::span<const std::uint64_t> Shard::crlf_lines() const {
+    if(!buffer) {
+        return {};
+    }
+    return to_array_ref(root_of(*buffer)[&ShardBlob::crlf_lines]);
+}
+
 namespace {
 
 /// Working rows during a write: the row as the readers hand it out plus
@@ -1333,6 +1346,7 @@ struct ContentInfo {
     std::vector<std::uint8_t> line_lengths;
     std::vector<std::uint32_t> long_line_rows;
     std::vector<std::uint32_t> long_line_lengths;
+    std::vector<std::uint64_t> crlf_lines;
 };
 
 ContentInfo content_info_of(BlobView root) {
@@ -1346,6 +1360,8 @@ ContentInfo content_info_of(BlobView root) {
     info.line_lengths.assign(lengths.begin(), lengths.end());
     info.long_line_rows.assign(long_rows.begin(), long_rows.end());
     info.long_line_lengths.assign(long_lengths.begin(), long_lengths.end());
+    auto crlf_lines = to_array_ref(root[&ShardBlob::crlf_lines]);
+    info.crlf_lines.assign(crlf_lines.begin(), crlf_lines.end());
     return info;
 }
 
@@ -1353,16 +1369,20 @@ ContentInfo content_info_of(llvm::StringRef content) {
     ContentInfo info;
     info.hash = llvm::xxh3_64bits(content);
     info.size = static_cast<std::uint32_t>(content.size());
-    if(!is_ascii(content)) {
+    bool ascii = kota::ipc::lsp::is_ascii({content.data(), content.size()});
+    if(!ascii) {
         info.content = content;
     }
 
-    auto starts =
-        kota::ipc::lsp::build_line_starts(std::string_view(content.data(), content.size()));
+    auto starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
     info.line_lengths.reserve(starts.size());
     for(std::size_t i = 0; i < starts.size(); i += 1) {
         auto next = i + 1 < starts.size() ? starts[i + 1] : info.size;
         auto length = next - starts[i];
+        if(ascii && i + 1 < starts.size() && length >= 2 && content[next - 2] == '\r') {
+            info.crlf_lines.resize(i / 64 + 1);
+            info.crlf_lines[i / 64] |= std::uint64_t(1) << (i % 64);
+        }
         if(length >= length_escape) {
             info.line_lengths.push_back(length_escape);
             info.long_line_rows.push_back(static_cast<std::uint32_t>(i));
@@ -1534,6 +1554,7 @@ void emit_blob(const MergedRows<MaskT>& merged,
     blob.line_lengths = content.line_lengths;
     blob.long_line_rows = content.long_line_rows;
     blob.long_line_lengths = content.long_line_lengths;
+    blob.crlf_lines = content.crlf_lines;
     blob.variants = std::move(variants);
 
     blob.sym_hashes.assign(referenced.begin(), referenced.end());

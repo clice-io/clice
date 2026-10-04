@@ -152,8 +152,7 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     return all_items;
 }
 
-ext::CurrentContextResult ContextService::current_context(const Session* session,
-                                                          const ext::CurrentContextParams& params) {
+ext::CurrentContextResult ContextService::current_context(const Session* session) {
     ext::CurrentContextResult result;
     const Selection* choice = session ? editor.selection(session->path_id) : nullptr;
     if(choice && choice->host_path_id.valid()) {
@@ -173,7 +172,7 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
     } else if(choice && !choice->command_hash.empty()) {
         auto& ws = project;
         ext::ContextItem item;
-        item.uri = params.uri;
+        item.uri = feature::to_uri(project.file_table.display(session->path_id));
         item.command_hash = choice->command_hash;
         item.label = std::format("config {}", choice->command_hash.substr(0, 8));
         auto path = ws.file_table.resolve(session->path_id);

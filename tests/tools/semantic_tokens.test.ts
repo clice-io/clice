@@ -91,20 +91,23 @@ test("marker focus agrees between inspect and server pieces", () => {
 });
 
 test("multiline token split matches server decode", () => {
-    // A token spanning a blank line: the server splits it per line and the
-    // blank interior piece still encodes (its newline counts), so both
-    // adapters must emit the empty-text entry identically.
-    const content = "/*x\n\ny*/\nint a;\n";
-    const raw = [{ range: { begin: 0, end: 8 }, kind: "Comment", modifiers: 0 }];
+    // A token spanning a blank line: the server splits it per line, each
+    // piece ending before its "\r\n", and emits no empty piece, so both
+    // adapters must skip the blank line identically.
+    const content = "/*x\r\n\r\ny*/\nint a;\n";
+    const raw = [{ range: { begin: 0, end: 10 }, kind: "Comment", modifiers: 0 }];
     const inspected = rawSemanticTokenPieces(raw, Buffer.from(content)).map(
         (piece) => piece.rendered,
     );
     const legend = { tokenTypes: ["comment"], tokenModifiers: [] };
     const decoded = decodeSemanticTokenPieces(
-        [0, 0, 4, 0, 0, 1, 0, 1, 0, 0, 1, 0, 3, 0, 0],
+        [0, 0, 3, 0, 0, 2, 0, 3, 0, 0],
         content.split("\n"),
         legend,
     ).map((piece) => piece.rendered);
     expect(inspected).toEqual(decoded);
-    expect(inspected[1]).toBe('- { loc: "1:0", text: "", kind: comment }');
+    expect(inspected).toEqual([
+        '- { loc: "0:0", text: "/*x", kind: comment }',
+        '- { loc: "2:0", text: "y*/", kind: comment }',
+    ]);
 });

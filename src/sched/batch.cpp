@@ -139,7 +139,7 @@ struct BatchLifetime {
     kota::cancellation_source stop;
     kota::task_group<> aux;
 
-    explicit BatchLifetime(BatchStack& stack) : stack(stack), aux(stack.loop) {
+    explicit BatchLifetime(BatchStack& stack) : stack(stack) {
         aux.spawn(watch_signal(SIGINT, stop, stop_requested));
         aux.spawn(watch_signal(SIGTERM, stop, stop_requested));
         aux.spawn(checkpoint_task(stack));
@@ -395,7 +395,7 @@ kota::task<> run_lint_sweep(BatchStack& stack,
                             const BatchLintOptions& options,
                             llvm::ArrayRef<Fid> tus,
                             LintSweep& sweep) {
-    kota::task_group<> workers(stack.loop);
+    kota::task_group<> workers;
 
     // The dispatch loop runs as a child of `workers`, like the pump's
     // round feeder: a cancel cascades through the join and every in-flight
@@ -596,27 +596,14 @@ std::vector<CanonicalPath> project_files(Project& project,
 }
 
 /// The stderr of one clang-format run; `status` is negative when the
-/// process could not be run or waited for, `error` saying why.
+/// process could not be run or was killed, `error` saying why.
 struct ToolRun {
     std::int64_t status = -1;
     std::string output;
     std::string error;
 };
 
-kota::task<std::string> drain_pipe(kota::pipe pipe) {
-    std::string buffer;
-    while(true) {
-        auto chunk = co_await pipe.read();
-        if(!chunk.has_value() || chunk.value().empty()) {
-            break;
-        }
-        buffer += chunk.value();
-    }
-    co_return buffer;
-}
-
-kota::task<ToolRun> run_clang_format(kota::event_loop& loop,
-                                     const std::string& executable,
+kota::task<ToolRun> run_clang_format(const std::string& executable,
                                      bool check,
                                      llvm::ArrayRef<std::string> chunk) {
     kota::process::options opts;
@@ -629,37 +616,23 @@ kota::task<ToolRun> run_clang_format(kota::event_loop& loop,
         opts.args.push_back("-i");
     }
     opts.args.insert(opts.args.end(), chunk.begin(), chunk.end());
-    opts.streams = {
-        kota::process::stdio::ignore(),
-        kota::process::stdio::ignore(),
-        kota::process::stdio::pipe(false, true),
-    };
-    auto spawn = kota::process::spawn(opts, loop);
-    if(!spawn.has_value()) {
+    auto captured = co_await kota::process::capture(std::move(opts));
+    if(!captured) {
         co_return ToolRun{
-            .error = std::format("cannot run {}: {}", executable, spawn.error().message())};
+            .error = std::format("cannot run {}: {}", executable, captured.error().message())};
     }
-    auto& child = *spawn;
-    auto output = co_await drain_pipe(std::move(child.stderr_pipe));
-    auto exit = co_await child.proc.wait();
-    if(!exit.has_value()) {
+    if(captured->status.term_signal != 0) {
         co_return ToolRun{
-            .output = std::move(output),
-            .error =
-                std::format("{} did not exit cleanly: {}", executable, exit.error().message())};
+            .output = std::move(captured->stderr_data),
+            .error = std::format("{} was killed by {}", executable, captured->status.to_string())};
     }
-    if(exit->term_signal != 0) {
-        co_return ToolRun{
-            .output = std::move(output),
-            .error = std::format("{} was killed by signal {}", executable, exit->term_signal)};
-    }
-    co_return ToolRun{.status = exit->status, .output = std::move(output)};
+    co_return ToolRun{.status = captured->status.status,
+                      .output = std::move(captured->stderr_data)};
 }
 
 /// One of the `jobs` workers: runs the next unclaimed chunk until none is
 /// left.
-kota::task<> format_chunks(kota::event_loop& loop,
-                           const std::string& executable,
+kota::task<> format_chunks(const std::string& executable,
                            bool check,
                            llvm::ArrayRef<std::vector<std::string>> chunks,
                            std::size_t& next,
@@ -667,20 +640,19 @@ kota::task<> format_chunks(kota::event_loop& loop,
     while(next < chunks.size()) {
         auto index = next;
         next += 1;
-        runs[index] = co_await run_clang_format(loop, executable, check, chunks[index]);
+        runs[index] = co_await run_clang_format(executable, check, chunks[index]);
     }
 }
 
-kota::task<> run_format_sweep(kota::event_loop& loop,
-                              const std::string& executable,
+kota::task<> run_format_sweep(const std::string& executable,
                               bool check,
                               std::uint32_t jobs,
                               llvm::ArrayRef<std::vector<std::string>> chunks,
                               std::vector<ToolRun>& runs) {
     std::size_t next = 0;
-    kota::task_group<> workers(loop);
+    kota::task_group<> workers;
     for(std::uint32_t i = 0; i < jobs && i < chunks.size(); i += 1) {
-        workers.spawn(format_chunks(loop, executable, check, chunks, next, runs));
+        workers.spawn(format_chunks(executable, check, chunks, next, runs));
     }
     co_await workers.join();
 }
@@ -831,9 +803,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     std::uint32_t jobs =
         options.jobs != 0 ? options.jobs : std::max(1u, std::thread::hardware_concurrency());
     std::vector<ToolRun> runs(chunks.size());
-    kota::event_loop loop;
-    loop.schedule(run_format_sweep(loop, *executable, options.check, jobs, chunks, runs));
-    loop.run();
+    kota::run(run_format_sweep(*executable, options.check, jobs, chunks, runs));
 
     llvm::StringSet<> unformatted;
     bool failed = false;

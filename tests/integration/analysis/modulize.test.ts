@@ -4,10 +4,8 @@
 /// The libraries, the standard library and its module sources are stand-ins
 /// in the workspace, so no real system header is involved.
 
-import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
-import { promisify } from "node:util";
-import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY, type ProcessResult, runProcess, sleep } from "@clice/tools/client";
 import { type Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test, type SessionFactory } from "../fixtures.ts";
 
@@ -49,30 +47,8 @@ function lines(...text: string[]): string {
     return [...text, ""].join("\n");
 }
 
-interface Run {
-    status: number | null;
-    stdout: string;
-    stderr: string;
-}
-
-/// Asynchronous, so a long run never blocks the vitest worker past its RPC
-/// timeout.
-async function runClice(...args: string[]): Promise<Run> {
-    try {
-        const { stdout, stderr } = await promisify(execFile)(cliceExecutable(), args, {
-            encoding: "utf8",
-            timeout: 120_000,
-            maxBuffer: 64 * 1024 * 1024,
-        });
-        return { status: 0, stdout, stderr };
-    } catch (error) {
-        const failed = error as { code?: unknown; stdout?: string; stderr?: string };
-        return {
-            status: typeof failed.code === "number" ? failed.code : null,
-            stdout: failed.stdout ?? "",
-            stderr: failed.stderr ?? "",
-        };
-    }
+function runClice(...args: string[]): Promise<ProcessResult> {
+    return runProcess(cliceExecutable(), args, { timeout: 120_000 });
 }
 
 /// A program over two libraries, beta including alpha, a standard library
@@ -416,7 +392,7 @@ test("modulize writes the wrapping", async ({ session }) => {
 
 test("modulize partition errors", async ({ session }) => {
     const ws = await writeProject(session);
-    const failure = (run: Run) => {
+    const failure = (run: ProcessResult) => {
         expect(run.status, run.stdout).toBe(1);
         return (JSON.parse(run.stdout) as { error: string }).error;
     };

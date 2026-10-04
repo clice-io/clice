@@ -36,7 +36,6 @@ setup_llvm("23.1.2.4")
 set(KOTA_ENABLE_ZEST ON)
 set(KOTA_ENABLE_TEST OFF)
 set(KOTA_CODEC_ENABLE_SIMDJSON ON)
-set(KOTA_CODEC_ENABLE_YYJSON ON)
 set(KOTA_CODEC_ENABLE_TOML ON)
 # kotatsu fetches the flatbuffers runtime (v25.2.10) for its codec and links it
 # into anything that uses kota::codec; index serialization rides on that copy.
@@ -46,7 +45,7 @@ set(KOTA_ENABLE_RTTI OFF)
 CPMAddPackage(
     NAME kotatsu
     GIT_REPOSITORY https://github.com/clice-io/kotatsu
-    GIT_TAG 626bb08d9221aeb611cb61da617d715ea1c14f71
+    GIT_TAG c1c84489e8d7ed0fc86dd490d1695567151b88ec
 )
 
 set(SPDLOG_USE_STD_FORMAT ON CACHE BOOL "" FORCE)

@@ -21,8 +21,7 @@ using kota::deco::decl::KVStyle;
 namespace {
 
 struct ModulizeOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Workspace root directory (default: current directory)",
@@ -63,16 +62,8 @@ struct ModulizeOptions {
            required = false)
     <std::string> out;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--log-level", "--log-level="},
-           help = "Log level: trace, debug, info, warn, error, off (default: warn)",
-           required = false)
-    <std::string> log_level;
+    LogLevelOption log{.log_level = LogLevel::Warn};
 };
-
-auto make_modulize_command() {
-    return kota::deco::cli::command<ModulizeOptions>("clice modulize [OPTIONS]");
-}
 
 /// Write the files whose content changed, so a regeneration rebuilds only
 /// what it touched, and remove the files the previous run wrote that this
@@ -180,20 +171,13 @@ int run_modulize(const ModulizeOptions& opts) {
 
 }  // namespace
 
-void add_modulize(kota::deco::cli::SubCommander& root, int& exit_code) {
-    auto command = make_modulize_command();
+void add_modulize(kota::deco::cli::SubCommander& root) {
+    auto command = kota::deco::cli::command<ModulizeOptions>("clice modulize [OPTIONS]");
     command
-        .matchAll([&exit_code](ModulizeOptions opts) {
-            if(opts.help) {
-                auto help = make_modulize_command();
-                print_usage(help);
-                exit_code = 0;
-                return;
-            }
-            if(!apply_log_level(opts.log_level.value_or("warn")))
-                return;
+        .match_all([](ModulizeOptions opts) {
+            opts.log.apply();
             logging::stderr_logger("modulize", logging::options);
-            exit_code = run_modulize(opts);
+            return run_modulize(opts);
         })
         .on_error([](auto err) { print_json(Failure{.error = err.message}); });
     root.add({.name = "modulize",

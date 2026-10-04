@@ -2,9 +2,9 @@
 /// and writes them unless a conflict or a stale index stands in the way,
 /// and the editor's prepareRename/rename answer from the same engine.
 
-import { spawnSync } from "node:child_process";
 import { basename } from "node:path";
 import * as proto from "vscode-languageserver-protocol";
+import { runProcess } from "@clice/tools/client";
 import { applyTextEdits } from "@clice/tools/client/edits";
 import { canonicalUri, Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
@@ -69,20 +69,19 @@ function writeProject(session: { tmpdir(): Workspace }): Workspace {
 }
 
 function runClice(...args: string[]) {
-    return spawnSync(cliceExecutable(), args, {
-        encoding: "utf8",
-        timeout: 120_000,
-        maxBuffer: 64 * 1024 * 1024,
-    });
+    return runProcess(cliceExecutable(), args, { timeout: 120_000 });
 }
 
-function index(ws: Workspace) {
-    const run = runClice("index", "--workspace", ws.root, "--workers", "2");
+async function index(ws: Workspace) {
+    const run = await runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(run.status, run.stderr).toBe(0);
 }
 
-function rename(ws: Workspace, ...args: string[]): Answer & { status: number | null } {
-    const run = runClice("refactor", "rename", "--workspace", ws.root, ...args);
+async function rename(
+    ws: Workspace,
+    ...args: string[]
+): Promise<Answer & { status: number | null }> {
+    const run = await runClice("refactor", "rename", "--workspace", ws.root, ...args);
     expect(run.stdout, `stderr: ${run.stderr}`).not.toBe("");
     return { ...(JSON.parse(run.stdout) as Answer), status: run.status };
 }
@@ -94,11 +93,11 @@ function places(renamed: Renamed): string[] {
     );
 }
 
-test("plans without writing", ({ session }) => {
+test("plans without writing", async ({ session }) => {
     const ws = writeProject(session);
-    index(ws);
+    await index(ws);
 
-    const answer = rename(ws, "--name", "compute", "--to", "evaluate", "--dry-run");
+    const answer = await rename(ws, "--name", "compute", "--to", "evaluate", "--dry-run");
     expect(answer.status).toBe(0);
     const renamed = answer.result!;
     expect(renamed.kind).toBe("Function");
@@ -113,11 +112,11 @@ test("plans without writing", ({ session }) => {
     expect(ws.read("main.cpp")).toBe(MAIN);
 });
 
-test("writes the edits", ({ session }) => {
+test("writes the edits", async ({ session }) => {
     const ws = writeProject(session);
-    index(ws);
+    await index(ws);
 
-    const answer = rename(ws, "--name", "Widget", "--to", "Gadget");
+    const answer = await rename(ws, "--name", "Widget", "--to", "Gadget");
     expect(answer.status, answer.error).toBe(0);
     expect(answer.result!.applied).toBe(true);
     expect(ws.read("a.h")).toBe(HEADER.replace("Widget { Widget()", "Gadget { Gadget()"));
@@ -127,47 +126,47 @@ test("writes the edits", ({ session }) => {
     expect(ws.read("other.cpp")).toBe(OTHER);
 });
 
-test("conflicts block the write", ({ session }) => {
+test("conflicts block the write", async ({ session }) => {
     const ws = writeProject(session);
-    index(ws);
+    await index(ws);
 
-    const answer = rename(ws, "--name", "compute", "--to", "Widget");
+    const answer = await rename(ws, "--name", "compute", "--to", "Widget");
     expect(answer.status).toBe(1);
     expect(answer.result!.applied).toBe(false);
     expect(answer.result!.conflicts.join("\n")).toContain("already declared in the same scope");
     expect(ws.read("main.cpp")).toBe(MAIN);
 });
 
-test("a stale index blocks the write", ({ session }) => {
+test("a stale index blocks the write", async ({ session }) => {
     const ws = writeProject(session);
-    index(ws);
+    await index(ws);
     ws.write("other.cpp", OTHER + "int more() { return compute(4); }\n");
 
-    const stale = rename(ws, "--name", "compute", "--to", "evaluate");
+    const stale = await rename(ws, "--name", "compute", "--to", "evaluate");
     expect(stale.status).toBe(1);
     expect(stale.result!.applied).toBe(false);
     expect(stale.result!.stale.map((file) => basename(file))).toContain("other.cpp");
     expect(ws.read("main.cpp")).toBe(MAIN);
 
-    const fresh = rename(ws, "--name", "compute", "--to", "evaluate", "--fresh", "--dry-run");
+    const fresh = await rename(ws, "--name", "compute", "--to", "evaluate", "--fresh", "--dry-run");
     expect(fresh.status, fresh.error).toBe(0);
     expect(places(fresh.result!)).toContain("other.cpp:3:21");
 });
 
-test("refuses what it cannot rename", ({ session }) => {
+test("refuses what it cannot rename", async ({ session }) => {
     const ws = writeProject(session);
-    index(ws);
+    await index(ws);
 
-    const keyword = rename(ws, "--name", "compute", "--to", "int");
+    const keyword = await rename(ws, "--name", "compute", "--to", "int");
     expect(keyword.status).toBe(1);
     expect(keyword.result!.conflicts).toEqual(["`int` is a keyword"]);
 
-    const macro = rename(ws, "--name", "CALL", "--to", "INVOKE");
+    const macro = await rename(ws, "--name", "CALL", "--to", "INVOKE");
     expect(macro.status).toBe(1);
     expect(macro.error).toContain("macro");
 
-    expect(rename(ws, "--name", "compute").error).toContain("--to");
-    const unknown = runClice("refactor", "extract", "--workspace", ws.root);
+    expect((await rename(ws, "--name", "compute")).error).toContain("--to");
+    const unknown = await runClice("refactor", "extract", "--workspace", ws.root);
     expect(unknown.status).toBe(1);
     expect(unknown.stdout).toContain("unknown refactoring");
 });

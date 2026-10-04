@@ -1,10 +1,9 @@
 /// Touching a header (mtime bump, identical content) must not reindex its
 /// closed dependents — the content-hash staleness check is the storm filter.
 
-import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import type * as proto from "vscode-languageserver-protocol";
-import { asLocations, MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { asLocations, MTIME_GRANULARITY, runProcess, sleep } from "@clice/tools/client";
 import { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
 
@@ -13,17 +12,17 @@ const CLOSED_TU = '#include "header.h"\nint use() { return alpha(); }\n';
 
 /// Run a batch `clice index` over the workspace and return how many
 /// translation units its summary reports indexing.
-function batchIndex(workspace: Workspace): number {
+async function batchIndex(workspace: Workspace): Promise<number> {
     const exe = process.env["CLICE_EXECUTABLE"];
     if (!exe) {
         throw new Error("CLICE_EXECUTABLE is not set; point it at build/<type>/bin/clice");
     }
-    const out = execFileSync(exe, ["index", "--workspace", workspace.root], {
-        encoding: "utf8",
+    const run = await runProcess(exe, ["index", "--workspace", workspace.root], {
         timeout: 120_000,
     });
-    const match = /Indexed (\d+) translation unit/.exec(out);
-    expect(match, `clice index reported no summary:\n${out}`).not.toBeNull();
+    expect(run.status, run.stderr).toBe(0);
+    const match = /Indexed (\d+) translation unit/.exec(run.stdout);
+    expect(match, `clice index reported no summary:\n${run.stdout}`).not.toBeNull();
     return Number(match![1]);
 }
 
@@ -35,7 +34,7 @@ test("touch header no reindex", async ({ session }) => {
     workspace.writeCDB(["closed.cpp"]);
 
     // Run 1: index the closed TU into the database.
-    expect(batchIndex(workspace), "the first run indexes the closed TU").toBe(1);
+    expect(await batchIndex(workspace), "the first run indexes the closed TU").toBe(1);
 
     // Touch the header: bump mtime, keep the bytes identical.
     await sleep(MTIME_GRANULARITY);
@@ -45,7 +44,7 @@ test("touch header no reindex", async ({ session }) => {
     // The touch makes the header's stat mismatch its FileVersion stamp;
     // the check re-hashes, proves a mere touch, and the storm filter
     // leaves the closed TU alone.
-    expect(batchIndex(workspace), "a same-content touch must not reindex dependents").toBe(0);
+    expect(await batchIndex(workspace), "a same-content touch must not reindex dependents").toBe(0);
 });
 
 test("deleted source withdraws its rows", async ({ session }) => {
@@ -80,13 +79,13 @@ test("deleted source withdraws its rows", async ({ session }) => {
     await client.shutdown();
 
     const exe = process.env["CLICE_EXECUTABLE"]!;
-    const search = JSON.parse(
-        execFileSync(
-            exe,
-            ["query", "--workspace", ws.root, "--method", "symbolSearch", "--query", "only_in_b"],
-            { encoding: "utf8", timeout: 120_000 },
-        ),
-    ) as { result: { symbols: unknown[] }; stale: string[] };
+    const run = await runProcess(
+        exe,
+        ["query", "--workspace", ws.root, "--method", "symbolSearch", "--query", "only_in_b"],
+        { timeout: 120_000 },
+    );
+    expect(run.status, run.stderr).toBe(0);
+    const search = JSON.parse(run.stdout) as { result: { symbols: unknown[] }; stale: string[] };
     expect(search.result.symbols).toEqual([]);
 });
 
@@ -96,7 +95,7 @@ test("source deleted while down withdrawn", async ({ session }) => {
     ws.write("main.cpp", "int main() { return 0; }\n");
     ws.write("b.cpp", "int only_in_b() { return 2; }\n");
     ws.writeCDB(["main.cpp", "b.cpp"]);
-    expect(batchIndex(ws)).toBe(2);
+    expect(await batchIndex(ws)).toBe(2);
 
     fs.rmSync(ws.path("b.cpp"));
     // No background sweep reaches b.cpp before the query.

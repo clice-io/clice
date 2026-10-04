@@ -2,7 +2,7 @@
 /// the directories of a workspace depend on each other, as the facts an
 /// agent partitions a program into C++20 modules with.
 
-import { spawnSync } from "node:child_process";
+import { runProcess } from "@clice/tools/client";
 import { type Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test, type SessionFactory } from "../fixtures.ts";
 
@@ -292,22 +292,26 @@ function writeProject(session: SessionFactory): Workspace {
 }
 
 function runClice(...args: string[]) {
-    return spawnSync(cliceExecutable(), args, {
-        encoding: "utf8",
-        timeout: 120_000,
-        maxBuffer: 64 * 1024 * 1024,
-    });
+    return runProcess(cliceExecutable(), args, { timeout: 120_000 });
 }
 
-function analyze(ws: Workspace, ...args: string[]): unknown {
-    const run = runClice("analyze", "modules", "--workspace", ws.root, "--scope", SCOPE, ...args);
+async function analyze(ws: Workspace, ...args: string[]): Promise<unknown> {
+    const run = await runClice(
+        "analyze",
+        "modules",
+        "--workspace",
+        ws.root,
+        "--scope",
+        SCOPE,
+        ...args,
+    );
     expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
     return JSON.parse(run.stdout);
 }
 
-function indexed(session: SessionFactory): Workspace {
+async function indexed(session: SessionFactory): Promise<Workspace> {
     const ws = writeProject(session);
-    const run = runClice("index", "--workspace", ws.root, "--workers", "2");
+    const run = await runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(run.status, `stderr: ${run.stderr}`).toBe(0);
     return ws;
 }
@@ -316,9 +320,9 @@ function edge(overview: Overview, from: string, to: string) {
     return overview.edges.find((entry) => entry.from === from && entry.to === to);
 }
 
-test("directory cycle and its cut", ({ session }) => {
-    const ws = indexed(session);
-    const overview = analyze(ws) as Overview;
+test("directory cycle and its cut", async ({ session }) => {
+    const ws = await indexed(session);
+    const overview = (await analyze(ws)) as Overview;
 
     expect(overview.cycles).toHaveLength(1);
     const [cycle] = overview.cycles;
@@ -334,9 +338,9 @@ test("directory cycle and its cut", ({ session }) => {
     expect(edge(overview, "core", "feature")?.implementationEntities).toBeGreaterThan(0);
 });
 
-test("macro expansions and fragments", ({ session }) => {
-    const ws = indexed(session);
-    const overview = analyze(ws) as Overview;
+test("macro expansions and fragments", async ({ session }) => {
+    const ws = await indexed(session);
+    const overview = (await analyze(ws)) as Overview;
 
     // Clock appears in meta/m.h only through a macro body.
     expect(edge(overview, "meta", "util")?.sample).toContain("Clock");
@@ -347,9 +351,9 @@ test("macro expansions and fragments", ({ session }) => {
     expect(edge(overview, "app", "feature")).toBeUndefined();
 });
 
-test("partition cycles and moves", ({ session }) => {
-    const ws = indexed(session);
-    const overview = analyze(ws) as Overview;
+test("partition cycles and moves", async ({ session }) => {
+    const ws = await indexed(session);
+    const overview = (await analyze(ws)) as Overview;
 
     expect(overview.cyclicModules).toBe(2);
     expect(overview.partitionCycles).toEqual([
@@ -392,9 +396,9 @@ test("partition cycles and moves", ({ session }) => {
     expect(overview.obstacles.variantHeaders).toBe(1);
 });
 
-test("module groups and internal headers", ({ session }) => {
-    const ws = indexed(session);
-    const detail = analyze(ws, "--view", "module", "--module", "core") as {
+test("module groups and internal headers", async ({ session }) => {
+    const ws = await indexed(session);
+    const detail = (await analyze(ws, "--view", "module", "--module", "core")) as {
         groups: { consumers: string[]; headers: string[] }[];
         internalHeaders: string[];
     };
@@ -412,10 +416,10 @@ test("module groups and internal headers", ({ session }) => {
     expect(str?.consumers).toEqual(["app", "util"]);
 
     // feature/dup.h is internal to feature.
-    const overview = analyze(ws) as Overview;
+    const overview = (await analyze(ws)) as Overview;
     expect(overview.internalHeaders).toBe(6);
 
-    const impact = analyze(ws, "--view", "impact") as Impact[];
+    const impact = (await analyze(ws, "--view", "impact")) as Impact[];
     expect(impact.find((entry) => entry.path === "core/detail.h")).toMatchObject({
         partitioned: 1,
         internal: true,
@@ -425,11 +429,11 @@ test("module groups and internal headers", ({ session }) => {
     expect(impact.find((entry) => entry.path === "lib/base.h")?.partitioned).toBe(1);
 });
 
-test("hypothetical partitions", ({ session }) => {
-    const ws = indexed(session);
+test("hypothetical partitions", async ({ session }) => {
+    const ws = await indexed(session);
 
     // A module merged away answers to the one it joined.
-    const chained = analyze(ws, "--merge", "core+util,util+meta") as Overview;
+    const chained = (await analyze(ws, "--merge", "core+util,util+meta")) as Overview;
     expect(chained.modules.map((module) => module.name).sort()).toEqual([
         "app",
         "core",
@@ -437,7 +441,7 @@ test("hypothetical partitions", ({ session }) => {
         "lib",
     ]);
 
-    const merged = analyze(ws, "--merge", "core+util") as Overview;
+    const merged = (await analyze(ws, "--merge", "core+util")) as Overview;
     expect(merged.cycles).toHaveLength(0);
     expect(merged.modules.map((module) => module.name).sort()).toEqual([
         "app",
@@ -447,37 +451,37 @@ test("hypothetical partitions", ({ session }) => {
         "meta",
     ]);
 
-    const moved = analyze(ws, "--move", "util/strops.h=core") as Overview;
+    const moved = (await analyze(ws, "--move", "util/strops.h=core")) as Overview;
     expect(moved.modules.find((module) => module.name === "util")?.headers).toBe(5);
     expect(moved.moves.some((move) => move.path === "util/strops.h")).toBe(false);
 
     // With Clock declared in core, core no longer names anything of util.
-    const declared = analyze(ws, "--move-entity", "Clock=core/clock.h") as Overview;
+    const declared = (await analyze(ws, "--move-entity", "Clock=core/clock.h")) as Overview;
     expect(declared.cycles).toHaveLength(0);
     expect(edge(declared, "meta", "core")?.sample).toContain("Clock");
 
-    const detail = analyze(ws, "--view", "edge", "--from", "core", "--to", "util") as {
+    const detail = (await analyze(ws, "--view", "edge", "--from", "core", "--to", "util")) as {
         entities: { id: string; entity: string }[];
     };
     const clock = detail.entities.find((entry) => entry.entity === "Clock");
-    const byId = analyze(ws, "--move-entity", `${clock?.id}=core/clock.h`) as Overview;
+    const byId = (await analyze(ws, "--move-entity", `${clock?.id}=core/clock.h`)) as Overview;
     expect(byId.cycles).toHaveLength(0);
 
     // What the moved definition names moves with it.
-    const carried = analyze(ws, "--move-entity", "Clock=meta/clock.h") as Overview;
+    const carried = (await analyze(ws, "--move-entity", "Clock=meta/clock.h")) as Overview;
     expect(edge(carried, "meta", "core")?.sample).toEqual(
         expect.arrayContaining(["Str", "length"]),
     );
     expect(edge(carried, "core", "meta")?.sample).toContain("Clock");
 });
 
-test("partition files and limits", ({ session }) => {
-    const ws = indexed(session);
+test("partition files and limits", async ({ session }) => {
+    const ws = await indexed(session);
     ws.write(
         "partition.json",
         JSON.stringify({ modules: [{ name: "base", files: ["core/**", "util/**"] }] }),
     );
-    const grouped = analyze(ws, "--partition", ws.path("partition.json")) as Overview;
+    const grouped = (await analyze(ws, "--partition", ws.path("partition.json"))) as Overview;
     expect(grouped.cycles).toHaveLength(0);
     expect(grouped.modules.map((module) => module.name).sort()).toEqual([
         "app",
@@ -487,14 +491,14 @@ test("partition files and limits", ({ session }) => {
         "meta",
     ]);
 
-    const limited = analyze(ws, "--limit", "1") as Overview & { hotspots: unknown[] };
+    const limited = (await analyze(ws, "--limit", "1")) as Overview & { hotspots: unknown[] };
     expect(limited.moves).toHaveLength(1);
     expect(limited.hotspots).toHaveLength(1);
 });
 
-test("file and macro views", ({ session }) => {
-    const ws = indexed(session);
-    const file = analyze(ws, "--view", "file", "--file", "util/clock.h") as {
+test("file and macro views", async ({ session }) => {
+    const ws = await indexed(session);
+    const file = (await analyze(ws, "--view", "file", "--file", "util/clock.h")) as {
         module: string;
         usedBy: { module: string; entities: string[] }[];
     };
@@ -502,13 +506,13 @@ test("file and macro views", ({ session }) => {
     // feature/hook.inc is pasted into app/main.cpp.
     expect(file.usedBy.find((uses) => uses.module === "app")?.entities).toContain("Clock");
     expect(file.usedBy.some((uses) => uses.module === "feature")).toBe(false);
-    const main = analyze(ws, "--view", "file", "--file", "app/main.cpp") as {
+    const main = (await analyze(ws, "--view", "file", "--file", "app/main.cpp")) as {
         uses: { module: string; entities: string[] }[];
     };
     expect(main.uses.find((uses) => uses.module === "util")?.entities).toContain("Clock");
 
     // ENTRY reaches only the fragment its defining source pastes in.
-    const macros = analyze(ws, "--view", "macros") as {
+    const macros = (await analyze(ws, "--view", "macros")) as {
         macro: string;
         definition: string;
         users: { module: string; entities: number }[];
@@ -522,18 +526,18 @@ test("file and macro views", ({ session }) => {
     ]);
 });
 
-test("edge lists entities and users", ({ session }) => {
-    const ws = indexed(session);
+test("edge lists entities and users", async ({ session }) => {
+    const ws = await indexed(session);
     // An enumerator pasted in from a fragment outside the workspace
     // belongs to the header pasting it.
-    const fromApp = analyze(ws, "--view", "edge", "--from", "app", "--to", "core") as {
+    const fromApp = (await analyze(ws, "--view", "edge", "--from", "app", "--to", "core")) as {
         entities: { entity: string; owner: string }[];
     };
     expect(fromApp.entities.find((entry) => entry.entity.endsWith("gamma"))?.owner).toBe(
         "core/names.h",
     );
 
-    const detail = analyze(ws, "--view", "edge", "--from", "util", "--to", "core") as {
+    const detail = (await analyze(ws, "--view", "edge", "--from", "util", "--to", "core")) as {
         entities: { id: string; entity: string; users: string[]; interface: boolean }[];
     };
     expect(detail.entities.map((entry) => entry.entity).sort()).toEqual(["Str", "length"]);
@@ -543,7 +547,7 @@ test("edge lists entities and users", ({ session }) => {
     expect(str?.users).toContain("util/clock.h:3");
 });
 
-test("names a pasted table produces", ({ session }) => {
+test("names a pasted table produces", async ({ session }) => {
     const ws = session.tmpdir();
     const external = session.tmpdir();
     external.write("kinds.inc", "KIND(red)\nKIND(green)\n");
@@ -564,10 +568,10 @@ test("names a pasted table produces", ({ session }) => {
         ),
     );
     ws.writeEntries([["app/name.cpp", [`-I${ws.root}`, `-I${external.root}`]]]);
-    const run = runClice("index", "--workspace", ws.root, "--workers", "2");
+    const run = await runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(run.status, `stderr: ${run.stderr}`).toBe(0);
 
-    const detail = analyze(ws, "--view", "edge", "--from", "app", "--to", "core") as {
+    const detail = (await analyze(ws, "--view", "edge", "--from", "app", "--to", "core")) as {
         entities: { entity: string }[];
     };
     const named = (enumerator: string) =>
@@ -575,9 +579,9 @@ test("names a pasted table produces", ({ session }) => {
     expect([named("red"), named("green"), named("blue")]).toEqual([true, true, false]);
 });
 
-test("obstacles to the rewrite", ({ session }) => {
-    const ws = indexed(session);
-    const obstacles = analyze(ws, "--view", "obstacles") as Obstacles;
+test("obstacles to the rewrite", async ({ session }) => {
+    const ws = await indexed(session);
+    const obstacles = (await analyze(ws, "--view", "obstacles")) as Obstacles;
 
     expect(obstacles.variantHeaders).toContainEqual(
         expect.objectContaining({
@@ -630,21 +634,21 @@ test("obstacles to the rewrite", ({ session }) => {
     ]);
 });
 
-test("annotations weigh the impact", ({ session }) => {
-    const ws = indexed(session);
+test("annotations weigh the impact", async ({ session }) => {
+    const ws = await indexed(session);
     ws.write(
         "compile_time.json",
         JSON.stringify({ name: "compile_time", unit: "s", values: { "app/main.cpp": 10 } }),
     );
 
-    const plain = analyze(ws, "--view", "impact") as Impact[];
-    const weighted = analyze(
+    const plain = (await analyze(ws, "--view", "impact")) as Impact[];
+    const weighted = (await analyze(
         ws,
         "--view",
         "impact",
         "--annotation",
         ws.path("compile_time.json"),
-    ) as Impact[];
+    )) as Impact[];
     // core/fast.h is entered by app/main.cpp alone, but every source
     // imports core or a module whose interface imports it.
     expect(plain.find((entry) => entry.path === "core/fast.h")).toMatchObject({
@@ -657,29 +661,29 @@ test("annotations weigh the impact", ({ session }) => {
     });
 });
 
-test("churn from git history", ({ session }) => {
-    const ws = indexed(session);
-    const git = (...args: string[]) => {
-        const run = spawnSync(
+test("churn from git history", async ({ session }) => {
+    const ws = await indexed(session);
+    const git = async (...args: string[]) => {
+        const run = await runProcess(
             "git",
             ["-c", "user.name=clice", "-c", "user.email=clice@example.com", ...args],
-            { cwd: ws.root, encoding: "utf8" },
+            { cwd: ws.root },
         );
         expect(run.status, run.stderr).toBe(0);
     };
-    git("init", "-q");
-    git("add", "core", "util", "feature", "meta", "lib", "app");
-    git("commit", "-q", "-m", "one");
+    await git("init", "-q");
+    await git("add", "core", "util", "feature", "meta", "lib", "app");
+    await git("commit", "-q", "-m", "one");
 
-    const churned = analyze(ws, "--view", "impact") as Impact[];
+    const churned = (await analyze(ws, "--view", "impact")) as Impact[];
     expect(churned.find((entry) => entry.path === "core/fast.h")?.churn).toBe(1);
-    const unweighted = analyze(ws, "--view", "impact", "--churn-since=") as Impact[];
+    const unweighted = (await analyze(ws, "--view", "impact", "--churn-since=")) as Impact[];
     expect(unweighted.find((entry) => entry.path === "core/fast.h")?.churn).toBeNull();
 });
 
-test("unknown module fails", ({ session }) => {
-    const ws = indexed(session);
-    const run = runClice(
+test("unknown module fails", async ({ session }) => {
+    const ws = await indexed(session);
+    const run = await runClice(
         "analyze",
         "modules",
         "--workspace",
@@ -692,13 +696,15 @@ test("unknown module fails", ({ session }) => {
     expect(run.status).toBe(1);
     expect(JSON.parse(run.stdout)).toEqual({ error: "no module nowhere", stale: [] });
 
-    const failure = (...args: string[]) => {
-        const failed = runClice("analyze", "modules", "--workspace", ws.root, ...args);
+    const failure = async (...args: string[]) => {
+        const failed = await runClice("analyze", "modules", "--workspace", ws.root, ...args);
         expect(failed.status).toBe(1);
         return (JSON.parse(failed.stdout) as { error: string }).error;
     };
-    expect(failure("--view", "file", "--file", "nowhere.h")).toBe("no scoped file nowhere.h");
-    expect(failure("--view", "nope")).toBe("unknown view nope");
-    expect(failure("--view", "edge", "--from", "core")).toBe("--view edge needs --from and --to");
-    expect(failure("--scope", "[")).toMatch(/^invalid --scope glob '\['/);
+    expect(await failure("--view", "file", "--file", "nowhere.h")).toBe("no scoped file nowhere.h");
+    expect(await failure("--view", "nope")).toBe("unknown view nope");
+    expect(await failure("--view", "edge", "--from", "core")).toBe(
+        "--view edge needs --from and --to",
+    );
+    expect(await failure("--scope", "[")).toMatch(/^invalid --scope glob '\['/);
 });

@@ -270,7 +270,7 @@ void add_include(CompilationUnitRef unit,
         for(auto header: symbol->headers()) {
             out.push_back(CodeAction{
                 .title = std::format("Add #include {}", header.name()),
-                .kind = protocol::CodeActionKind::quick_fix,
+                .kind = protocol::CodeActionKind::QuickFix,
                 .edits = {{{insertion.offset, insertion.offset}, insertion.text(header.name())}},
             });
         }
@@ -283,7 +283,7 @@ void add_include(CompilationUnitRef unit,
     }
     out.push_back(CodeAction{
         .title = std::format("Add #include for '{}{}'", name->scope, name->name),
-        .kind = protocol::CodeActionKind::quick_fix,
+        .kind = protocol::CodeActionKind::QuickFix,
         .index = IncludeRequest{.scope = name->scope, .name = name->name, .insertion = insertion},
     });
 }

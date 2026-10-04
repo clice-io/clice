@@ -10,9 +10,9 @@ namespace clice::testing {
 
 namespace {
 
-TEST_SUITE(Hosting) {
+ZEST_SUITE(Hosting) {
 
-TEST_CASE(SourcePriorityBeatsProximity) {
+ZEST_CASE(SourcePriorityBeatsProximity) {
     /// Two units include the header; the one compiled from the database
     /// the header's rule names ranks first even though the other sits next
     /// to the header, and it is the default host.
@@ -49,16 +49,16 @@ TEST_CASE(SourcePriorityBeatsProximity) {
     project.dep_graph.build_reverse_map();
 
     auto ranked = ranked_hosts(project, header);
-    ASSERT_EQ(ranked.size(), 2u);
-    EXPECT_EQ(ranked[0], far);
-    EXPECT_EQ(ranked[1], near);
+    ZASSERT(ranked.size() == 2u);
+    ZEXPECT(ranked[0] == far);
+    ZEXPECT(ranked[1] == near);
     auto host = default_host(project, header);
-    ASSERT_TRUE(host.has_value());
-    EXPECT_EQ(host->file, far);
-    EXPECT_EQ(host->chain.back(), header);
+    ZASSERT(host);
+    ZEXPECT(host->file == far);
+    ZEXPECT(host->chain.back() == header);
 };
 
-TEST_CASE(ProximityWithinSource) {
+ZEST_CASE(ProximityWithinSource) {
     /// Same database: the unit sharing the header's stem wins, then the one
     /// in its directory; a unit the build does not compile is no host.
     TempDir tmp;
@@ -83,10 +83,10 @@ TEST_CASE(ProximityWithinSource) {
     project.dep_graph.build_reverse_map();
 
     auto ranked = ranked_hosts(project, header);
-    ASSERT_EQ(ranked.size(), 3u);
-    EXPECT_EQ(ranked[0], same_stem);
-    EXPECT_EQ(ranked[1], same_dir);
-    EXPECT_EQ(ranked[2], elsewhere);
+    ZASSERT(ranked.size() == 3u);
+    ZEXPECT(ranked[0] == same_stem);
+    ZEXPECT(ranked[1] == same_dir);
+    ZEXPECT(ranked[2] == elsewhere);
 
     /// Equal scores fall back to path order, so the ranking is stable.
     auto first = project.file_table.intern(Spelling::absolute(tmp.path("other/aaa.cpp")));
@@ -95,13 +95,13 @@ TEST_CASE(ProximityWithinSource) {
     project.dep_graph.set_includes(first, 0, {{header}});
     project.dep_graph.build_reverse_map();
     ranked = ranked_hosts(project, header);
-    ASSERT_EQ(ranked.size(), 5u);
-    EXPECT_EQ(ranked[2], first);
-    EXPECT_EQ(ranked[3], second);
-    EXPECT_EQ(ranked[4], elsewhere);
+    ZASSERT(ranked.size() == 5u);
+    ZEXPECT(ranked[2] == first);
+    ZEXPECT(ranked[3] == second);
+    ZEXPECT(ranked[4] == elsewhere);
 };
 
-TEST_CASE(HostsMatchLanguage) {
+ZEST_CASE(HostsMatchLanguage) {
     /// A C unit never hosts a C++ header; an ambiguous `.h` takes any host.
     TempDir tmp;
     tmp.touch("shared/types.hpp", "");
@@ -119,15 +119,15 @@ TEST_CASE(HostsMatchLanguage) {
     project.dep_graph.set_includes(impl, 0, {{hpp}, {plain}});
     project.dep_graph.build_reverse_map();
 
-    EXPECT_TRUE(ranked_hosts(project, hpp).empty());
-    EXPECT_EQ(ranked_hosts(project, plain), llvm::SmallVector<Fid>{impl});
+    ZEXPECT(ranked_hosts(project, hpp).empty());
+    ZEXPECT(ranked_hosts(project, plain) == llvm::SmallVector<Fid>{impl});
 
     /// A source borrows only its own language: a `.cl` or a `.m` next to
     /// the C unit would compile as C under its command.
     auto kernel_cl = project.file_table.intern(Spelling::absolute(tmp.path("c/kernel.cl")));
     auto objc = project.file_table.intern(Spelling::absolute(tmp.path("c/new.m")));
-    EXPECT_FALSE(command_lender(project, kernel_cl).has_value());
-    EXPECT_FALSE(command_lender(project, objc).has_value());
+    ZEXPECT(!command_lender(project, kernel_cl).has_value());
+    ZEXPECT(!command_lender(project, objc).has_value());
 
     /// An Objective-C++ unit is C++ with more: it hosts a C++ header.
     tmp.touch("mac/impl.mm", "");
@@ -139,7 +139,7 @@ TEST_CASE(HostsMatchLanguage) {
     auto impl_mm = project.file_table.intern(Spelling::absolute(tmp.path("mac/impl.mm")));
     project.dep_graph.set_includes(impl_mm, 0, {{hpp}});
     project.dep_graph.build_reverse_map();
-    EXPECT_EQ(ranked_hosts(project, hpp), llvm::SmallVector<Fid>{impl_mm});
+    ZEXPECT(ranked_hosts(project, hpp) == llvm::SmallVector<Fid>{impl_mm});
 
     /// A CUDA unit is C++ with device code: it hosts a C++ header.
     tmp.touch("gpu/kernel.cu", "");
@@ -151,14 +151,14 @@ TEST_CASE(HostsMatchLanguage) {
     auto kernel = project.file_table.intern(Spelling::absolute(tmp.path("gpu/kernel.cu")));
     project.dep_graph.set_includes(kernel, 0, {{hpp}});
     project.dep_graph.build_reverse_map();
-    EXPECT_EQ(ranked_hosts(project, hpp), (llvm::SmallVector<Fid>{kernel, impl_mm}));
+    ZEXPECT(ranked_hosts(project, hpp) == (llvm::SmallVector<Fid>{kernel, impl_mm}));
 
     /// Only headers get that latitude: a C++ source borrowing the CUDA
     /// command would compile as CUDA.
     auto gpu_header = project.file_table.intern(Spelling::absolute(tmp.path("gpu/new.hpp")));
     auto gpu_source = project.file_table.intern(Spelling::absolute(tmp.path("gpu/new.cpp")));
-    EXPECT_EQ(command_lender(project, gpu_header)->unit, kernel);
-    EXPECT_FALSE(command_lender(project, gpu_source).has_value());
+    ZEXPECT(command_lender(project, gpu_header)->unit == kernel);
+    ZEXPECT(!command_lender(project, gpu_source).has_value());
 
     /// A host offers only the commands that fit the header: with a C entry
     /// first and a C++ one second, a `.hpp` sees the second alone.
@@ -174,12 +174,12 @@ TEST_CASE(HostsMatchLanguage) {
     project.dep_graph.set_includes(dual, 0, {{dual_hpp}});
     project.dep_graph.build_reverse_map();
     auto fitting = host_commands(project, dual_hpp, dual);
-    ASSERT_EQ(fitting.size(), 1u);
-    EXPECT_EQ(fitting.front().config, cxx.config);
-    EXPECT_EQ(ranked_hosts(project, dual_hpp), llvm::SmallVector<Fid>{dual});
+    ZASSERT(fitting.size() == 1u);
+    ZEXPECT(fitting.front().config == cxx.config);
+    ZEXPECT(ranked_hosts(project, dual_hpp) == llvm::SmallVector<Fid>{dual});
 };
 
-TEST_CASE(LenderSibling) {
+ZEST_CASE(LenderSibling) {
     /// A file without a command borrows from a unit in its directory, the
     /// one sharing its stem before the first by name; a `.c` only from a C
     /// unit, and nothing when the build has none.
@@ -201,12 +201,12 @@ TEST_CASE(LenderSibling) {
     auto first = project.file_table.intern(Spelling::absolute(tmp.path("src/aaa.cpp")));
     auto other = project.file_table.intern(Spelling::absolute(tmp.path("src/other.cpp")));
     auto plain = project.file_table.intern(Spelling::absolute(tmp.path("src/plain.c")));
-    EXPECT_EQ(command_lender(project, header)->unit, same_stem);
-    EXPECT_EQ(command_lender(project, other)->unit, first);
-    EXPECT_FALSE(command_lender(project, plain).has_value());
+    ZEXPECT(command_lender(project, header)->unit == same_stem);
+    ZEXPECT(command_lender(project, other)->unit == first);
+    ZEXPECT(!command_lender(project, plain).has_value());
 };
 
-TEST_CASE(LenderSearchDir) {
+ZEST_CASE(LenderSearchDir) {
     /// A header under a command's header search directory borrows that
     /// command — the entry that searches there, not the unit's first —
     /// over the unit closest by path; a source there borrows the closest.
@@ -227,15 +227,15 @@ TEST_CASE(LenderSearchDir) {
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.h")));
     auto lender = command_lender(project, header);
-    ASSERT_TRUE(lender.has_value());
-    EXPECT_EQ(lender->unit, searching.file);
-    EXPECT_EQ(lender->config, searching.config);
+    ZASSERT(lender);
+    ZEXPECT(lender->unit == searching.file);
+    ZEXPECT(lender->config == searching.config);
 
     auto source = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.cpp")));
-    EXPECT_EQ(command_lender(project, source)->unit, near.file);
+    ZEXPECT(command_lender(project, source)->unit == near.file);
 };
 
-TEST_CASE(LenderIgnoresCommandless) {
+ZEST_CASE(LenderIgnoresCommandless) {
     /// A member a rule claims with a default command that is no compile
     /// command lends nothing.
     TempDir tmp;
@@ -246,12 +246,12 @@ TEST_CASE(LenderIgnoresCommandless) {
     project.config.rules.push_back(ConfigRule{.default_command = std::string("ccache")});
     project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
-    ASSERT_EQ(project.build.members().size(), 2u);
+    ZASSERT(project.build.members().size() == 2u);
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/new.h")));
-    EXPECT_FALSE(command_lender(project, header).has_value());
+    ZEXPECT(!command_lender(project, header).has_value());
 };
 
-};  // TEST_SUITE(Hosting)
+};  // ZEST_SUITE(Hosting)
 
 }  // namespace
 

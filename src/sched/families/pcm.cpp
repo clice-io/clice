@@ -98,14 +98,11 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
             vfs = std::move(overlay);
         }
         import_scans += 1;
-        // A failed scan finds nothing, as a scan that fails to set up does.
         auto scanned = co_await kota::queue(
             [&] { return scan_precise(arguments, directory, content, nullptr, std::move(vfs)); });
-        if(scanned.has_value()) {
-            imports = {.modules = std::move(scanned->modules),
-                       .module_name = std::move(scanned->module_name),
-                       .is_interface_unit = scanned->is_interface_unit};
-        }
+        imports = {.modules = std::move(scanned.modules),
+                   .module_name = std::move(scanned.module_name),
+                   .is_interface_unit = scanned.is_interface_unit};
         if(content) {
             scan_memos[path_id] = {.directives = directives,
                                    .arguments = arguments_hash,
@@ -288,9 +285,9 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 
     // The interest class is read at dispatch time: a foreground requester
     // may have joined after this round started. The advisory token rides
-    // into the pool, which translates a fire into the cooperative
-    // CancelBuild while this frame keeps awaiting the real reply
-    // (contract 2 — the slot frees only when the worker is truly idle).
+    // into the pool, which cancels the request on the wire while this
+    // frame keeps awaiting the real reply (contract 2 — the slot frees
+    // only when the worker is truly idle).
     auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
     // Sampled before the build reads it: a save landing mid-build is not
     // what crashed.
@@ -337,12 +334,12 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // Commit on the thread pool: it fsyncs the freshly written PCM.
     auto committed =
         co_await kota::queue([&] { return project.store->commit(std::move(pending)); });
-    if(!committed.has_value() || !committed.value().has_value()) {
+    if(!committed.has_value()) {
         LOG_WARN("Failed to commit PCM for module {}", module_name);
         co_return RoundOutcome::Failed;
     }
 
-    auto pcm_path = std::move(committed.value().value());
+    auto pcm_path = std::move(committed.value());
     project.pcm_cache[path_id] = {.path = pcm_path, .key = pcm_key, .deps = inputs()};
     LOG_INFO("Built PCM for module {}: {}", module_name, pcm_path);
 

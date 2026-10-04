@@ -12,16 +12,17 @@
 #include "sched/families/build_common.h"
 #include "server/context_service.h"
 #include "server/editor_context.h"
-#include "server/position.h"
 #include "support/anomaly.h"
 #include "support/logging.h"
 #include "support/timer.h"
 #include "vfs/path.h"
 #include "worker/protocol.h"
+#include "worker/serialize.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/json.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FileSystem.h"
@@ -111,15 +112,15 @@ void append_crash_notes(const Session& session, std::vector<protocol::Diagnostic
 /// of the command line it does, and they appear once. Files with one
 /// preamble share the PCH: related information the build placed in its
 /// own main file moves to `path`.
-static kota::codec::RawValue with_preamble(kota::codec::RawValue diagnostics,
-                                           const index::TUIndex& preamble,
-                                           llvm::StringRef path) {
+static std::vector<protocol::Diagnostic> with_preamble(std::vector<protocol::Diagnostic> own,
+                                                       const index::TUIndex& preamble,
+                                                       llvm::StringRef path) {
     std::vector<protocol::Diagnostic> merged;
     [[maybe_unused]] auto status =
         kota::codec::json::from_string<kota::ipc::lsp_config>(preamble.preamble_diagnostics(),
                                                               merged);
     if(merged.empty()) {
-        return diagnostics;
+        return own;
     }
     auto builder = feature::to_uri(preamble.path(preamble.path_count() - 1));
     auto uri = feature::to_uri(path);
@@ -133,23 +134,15 @@ static kota::codec::RawValue with_preamble(kota::codec::RawValue diagnostics,
             }
         }
     }
-    std::vector<protocol::Diagnostic> own;
-    if(!diagnostics.empty()) {
-        status = kota::codec::json::from_string<kota::ipc::lsp_config>(diagnostics.data, own);
-    }
     llvm::StringSet<> raised;
     for(auto& diagnostic: own) {
-        if(auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostic)) {
-            raised.insert(*json);
-        }
+        raised.insert(to_client_json(diagnostic, ""));
     }
     std::erase_if(merged, [&](const protocol::Diagnostic& diagnostic) {
-        auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(diagnostic);
-        return json && raised.contains(*json);
+        return raised.contains(to_client_json(diagnostic, ""));
     });
     std::ranges::move(own, std::back_inserter(merged));
-    auto json = kota::codec::json::to_string<kota::ipc::lsp_config>(merged);
-    return kota::codec::RawValue{json ? std::move(*json) : "[]"};
+    return merged;
 }
 
 ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
@@ -229,10 +222,9 @@ ASTFamily::ASTFamily(Project& project,
                      PCMFamily& pcm,
                      PCHFamily& pch,
                      WorkerPool& pool,
-                     SessionStore& sessions,
-                     kota::event_loop& loop) :
+                     SessionStore& sessions) :
     project(project), contexts(contexts), graph(graph), pcm(pcm), pch(pch), pool(pool),
-    sessions(sessions), kicks(loop) {}
+    sessions(sessions) {}
 
 void ASTFamily::register_runner() {
     graph.register_family(Family::AST, [this](RoundContext& ctx, NodeId id) {
@@ -274,7 +266,7 @@ void ASTFamily::record_crash(const std::shared_ptr<Session>& session,
                                CompileOutput{
                                    .version = std::nullopt,
                                    .source = previous->output->source,
-                                   .diagnostics = kota::codec::RawValue{},
+                                   .diagnostics = {},
                                    .line_limit = std::nullopt,
                                });
     }
@@ -288,7 +280,7 @@ void ASTFamily::republish(const std::shared_ptr<Session>& session) {
                                CompileOutput{
                                    .version = std::nullopt,
                                    .source = CommandSource::CDBExact,
-                                   .diagnostics = kota::codec::RawValue{},
+                                   .diagnostics = {},
                                    .line_limit = std::nullopt,
                                });
     }
@@ -410,15 +402,10 @@ void ASTFamily::touch(Fid path_id) {
 void ASTFamily::supersede(Fid path_id) {
     touch(path_id);
     graph.update(node(path_id));
-    // Not a wire cancel: the notification flips the compile's stop flag
-    // and the round still observes its real reply (crash accounting
-    // depends on it — contract 2). FIFO order puts it ahead of any
-    // replacement Compile, which can only enter the pipe after this
-    // round lands.
-    if(graph.is_compiling(node(path_id))) {
-        pool.notify_stateful(
-            path_id.raw,
-            worker::CancelCompileParams{std::string(project.file_table.resolve(path_id))});
+    // The round still observes the real reply to its cancelled send
+    // (crash accounting depends on it — contract 2).
+    if(auto it = compile_interrupts.find(path_id); it != compile_interrupts.end()) {
+        it->second->cancel();
     }
 }
 
@@ -473,17 +460,9 @@ void ASTFamily::request_compile(std::shared_ptr<Session> session) {
 }
 
 kota::task<> ASTFamily::stop() {
-    // Sessions, not projection entries: a first compile has no entry
-    // until it lands, and its round is exactly the parse worth
-    // interrupting.
-    sessions.for_each([&](Fid path_id, const Session&) {
-        if(graph.is_compiling(node(path_id))) {
-            pool.notify_stateful(
-                path_id.raw,
-                worker::CancelCompileParams{std::string(project.file_table.resolve(path_id))});
-        }
-        return true;
-    });
+    for(auto& [path_id, interrupt]: compile_interrupts) {
+        interrupt->cancel();
+    }
     kicks.cancel();
     co_await kicks.join();
 }
@@ -825,11 +804,12 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             params.open_conditionals.assign(conditionals.begin(), conditionals.end());
         }
 
-        // The send deliberately carries no token: the master must observe
-        // the request's real outcome — the crash accounting below depends
-        // on it (contract 2). A supersede interrupts the worker with a
-        // CancelCompile notification instead (see supersede/stop), and
-        // the stale reply is discarded at the validity gate below. A death
+        // The send carries the interrupt, not the round's advisory token:
+        // the master must observe the request's real outcome — the crash
+        // accounting below depends on it (contract 2) — and a cancelled
+        // send still awaits the worker's answer. Only a supersede or stop
+        // interrupts the parse (see supersede/stop), and the stale reply
+        // is discarded at the validity gate below. A death
         // that is not this compile's doing resends it once — the attempt
         // only stops early once the buffer moved on, since the next round
         // compiles that.
@@ -847,15 +827,27 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // death on the rebuilt pair is the document's own.
         bool consuming_pch = adopted_pch.has_value();
         bool pch_crashed = false;
+        auto interrupt = std::make_unique<kota::cancellation_source>();
+        auto interrupt_token = interrupt->token();
+        auto* own_interrupt = interrupt.get();
+        compile_interrupts[path_id] = std::move(interrupt);
+        auto release_interrupt = llvm::make_scope_exit([&] {
+            auto it = compile_interrupts.find(path_id);
+            if(it != compile_interrupts.end() && it->second.get() == own_interrupt) {
+                compile_interrupts.erase(it);
+            }
+        });
         auto result = co_await deliver(
             pool,
             true,
             [&]() -> RequestResult<worker::CompileParams> {
                 if(session->generation != gen) {
-                    co_return kota::outcome_error(
+                    co_await kota::fail(
                         kota::ipc::Error{worker::dispatch_errc::cancelled, "Compile superseded"});
                 }
-                co_return co_await pool.send_stateful(path_id.raw, params);
+                co_return co_await pool.send_stateful(path_id.raw,
+                                                      params,
+                                                      {.token = interrupt_token});
             },
             [&](const kota::ipc::Error& error) {
                 if(consuming_pch && session->crashed_pch != *adopted_pch) {
@@ -954,7 +946,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                            CompileOutput{
                                .version = std::nullopt,
                                .source = source,
-                               .diagnostics = kota::codec::RawValue{},
+                               .diagnostics = {},
                                .line_limit = suffix_line_limit,
                            });
             co_return RoundOutcome::Failed;
@@ -979,13 +971,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // changes erase it) so queryContext can dedup identical-flag hosts
         // once the verdict is actually earned, never on a guess.
         if(trial_round) {
-            std::vector<protocol::Diagnostic> diagnostics;
-            if(!result.value().diagnostics.empty()) {
-                [[maybe_unused]] auto status =
-                    kota::codec::json::from_string<kota::ipc::lsp_config>(
-                        result.value().diagnostics.data,
-                        diagnostics);
-            }
+            auto& diagnostics = result.value().diagnostics;
             session->trial_done = true;
             contexts.commands.record_header_mode(path_id, HeaderMode::SelfContained);
 

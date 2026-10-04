@@ -99,7 +99,9 @@ std::string crash_tag(const Params& params) {
 /// in Error::data. One process death fails every request in flight on it;
 /// per-content blame (Quarantine) dedups by this identity so a single death
 /// is counted at most once per document.
-inline protocol::Value death_identity(std::size_t index, unsigned generation, bool stateful) {
+inline kota::codec::dyn::Value death_identity(std::size_t index,
+                                              unsigned generation,
+                                              bool stateful) {
     return std::format("{}:{}:{}", stateful ? "sf" : "sl", index, generation);
 }
 
@@ -107,19 +109,15 @@ inline protocol::Value death_identity(std::size_t index, unsigned generation, bo
 /// error carries none (locally synthesized failures).
 inline std::string_view death_of(const protocol::Error& error) {
     if(error.data.has_value()) {
-        if(auto* id = std::get_if<std::string>(&*error.data)) {
-            return *id;
-        }
+        return error.data->get_string().value_or(std::string_view{});
     }
     return {};
 }
 
-/// True for errors produced by the IPC transport itself (broken pipe, closed
-/// peer) as opposed to errors returned by the remote handler. kota surfaces
-/// transport failures with the default RequestFailed code; clice worker
-/// handlers never return that code, so it identifies a dead worker link.
+/// True for a worker link that closed under a request (broken pipe, dead
+/// process), as opposed to an error the remote handler returned.
 inline bool is_transport_error(const protocol::Error& error) {
-    return error.code == static_cast<protocol::integer>(protocol::ErrorCode::RequestFailed);
+    return error.code == static_cast<protocol::integer>(protocol::ErrorCode::ConnectionClosed);
 }
 
 /// Kind of AST query dispatched to a stateful worker.
@@ -178,7 +176,7 @@ enum class CompileStatus : uint8_t {
     /// The parse produced a usable product — a complete AST, or a fatal
     /// error whose diagnostics describe the user's code.
     Done,
-    /// The parse was interrupted by CancelCompile (superseded round).
+    /// The parse was interrupted (superseded round).
     Cancelled,
     /// The frontend failed before parsing began: bad invocation, or a
     /// prebuilt input (PCH/PCM) clang could not read. Whether the consumed
@@ -199,8 +197,7 @@ struct CompileResult {
     bool pch_suspect = false;
 
     int version;
-    /// Diagnostics serialized as JSON (RawValue) to avoid bincode/serde annotation conflicts.
-    kota::codec::RawValue diagnostics;
+    std::vector<protocol::Diagnostic> diagnostics;
     /// Milliseconds since epoch, sampled before the compile started. Files
     /// whose mtime is past this moment may differ from what the build read.
     std::int64_t build_at = 0;
@@ -415,30 +412,6 @@ struct EvictedParams {
     std::string path;
 };
 
-/// Interrupt the in-flight compile of `path`, if any. Sent at the master's
-/// supersede point instead of wire-cancelling the compile request: the
-/// worker flips the compile's stop flag so clang abandons the stale parse
-/// at the next declaration, while the request still runs to a normal
-/// (incomplete) reply — the master keeps observing the real outcome, so a
-/// worker death during a superseded compile still reaches the document's
-/// quarantine accounting.
-struct CancelCompileParams {
-    std::string path;
-};
-
-/// Interrupt a stateless worker's in-flight build. Sent by the pool's
-/// cooperative cancel instead of wire-cancelling the build request: the
-/// worker flips the build's stop flag so clang abandons the parse at the
-/// next declaration, while the request still runs to a normal (cancelled)
-/// reply. The sender keeps awaiting that reply, so the slot stays busy —
-/// and the cancel-grace deadline stays armed — until the process is
-/// actually free; a wire cancel would resume the sender immediately and
-/// hand the slot out while the worker is still stuck in the old parse.
-/// Carries no build identity: the pool dispatches at most one build per
-/// worker at a time, and pipe ordering pins any follow-up build behind
-/// the cancel.
-struct CancelBuildParams {};
-
 /// Whether a request builds — a compile, a PCH or PCM, an indexing run:
 /// work whose time grows with the translation unit, where a query's never
 /// should.
@@ -526,16 +499,6 @@ struct NotificationTraits<clice::worker::EvictParams> {
 template <>
 struct NotificationTraits<clice::worker::EvictedParams> {
     constexpr inline static std::string_view method = "clice/worker/evicted";
-};
-
-template <>
-struct NotificationTraits<clice::worker::CancelCompileParams> {
-    constexpr inline static std::string_view method = "clice/worker/cancelCompile";
-};
-
-template <>
-struct NotificationTraits<clice::worker::CancelBuildParams> {
-    constexpr inline static std::string_view method = "clice/worker/cancelBuild";
 };
 
 }  // namespace kota::ipc::protocol

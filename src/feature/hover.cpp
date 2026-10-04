@@ -1195,16 +1195,16 @@ void reformat_definition(HoverInfo& info) {
 
 }  // namespace
 
-auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const LineMap& map)
+auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const PositionMap& map)
     -> protocol::Hover {
     auto document = info.present();
 
     protocol::MarkupContent content;
     if(options.parse_comment_as_markdown) {
-        content.kind = protocol::MarkupKind::markdown;
+        content.kind = protocol::MarkupKind::Markdown;
         content.value = document.as_markdown();
     } else {
-        content.kind = protocol::MarkupKind::plain_text;
+        content.kind = protocol::MarkupKind::PlainText;
         content.value = document.as_plain_text();
     }
 
@@ -1213,7 +1213,7 @@ auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const
     };
 
     if(info.symbol_range) {
-        result.range = to_range(map, *info.symbol_range);
+        result.range = map.to_range(*info.symbol_range);
     }
 
     return result;
@@ -1489,8 +1489,7 @@ auto hover(CompilationUnitRef unit,
         return std::nullopt;
     }
 
-    LineMap map(unit.main_content(), unit.line_starts(), encoding);
-    return to_protocol_hover(*info, options, map);
+    return to_protocol_hover(*info, options, main_position_map(unit, encoding));
 }
 
 }  // namespace clice::feature

@@ -40,10 +40,10 @@ inline void use_artifacts(CompilationParams& cp,
     }
 }
 
-/// The largest index blob a worker reply carries. The transport takes a
-/// frame past 64 MiB (kotatsu's limit) for a broken link, and the master
-/// would kill the worker as dead, so a larger index is dropped at the
-/// source; the margin leaves room for the rest of the reply. Tests lower it
+/// The largest index blob a worker reply carries. The transport refuses a
+/// frame past 64 MiB (kotatsu's limit) and the whole reply is lost with it,
+/// so a larger index is dropped at the source and the rest of the reply
+/// still lands; the margin leaves room for that rest. Tests lower it
 /// through CLICE_TEST_MAX_INDEX_BYTES.
 std::size_t max_index_bytes();
 

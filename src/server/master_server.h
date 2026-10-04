@@ -26,9 +26,6 @@ namespace deco = kota::deco;
 enum class ServerMode : std::uint8_t { Pipe, Socket };
 
 struct ServerOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
-
     DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
            help = "Server mode: pipe (default) or socket (debug)",
            required = false)
@@ -60,12 +57,6 @@ struct ServerOptions {
                "(default: the selected one, else default_configuration)",
            required = false)
     <std::string> configuration;
-
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           names = {"--log-level", "--log-level="},
-           help = "Log level: trace, debug, info, warn, error, off",
-           required = false)
-    <std::string> log_level = "info";
 };
 
 enum class ServerLifecycle : std::uint8_t {
@@ -108,6 +99,8 @@ public:
     void initialize();
     void initialize(const Spelling& root);
 
+    /// After the serving phase, which stopped the pool: join the
+    /// background work, shut the projects down and close them.
     kota::task<> shutdown_and_cleanup();
 
     /// The project serving a file: the one its open document was routed
@@ -243,8 +236,8 @@ public:
     /// above files no folder claims.
     std::vector<CanonicalPath> workspace_roots;
 
-    /// The client's initializationOptions (JSON), applied to every project.
-    std::string init_options_json;
+    /// The client's initializationOptions, applied to every project.
+    std::optional<kota::codec::dyn::Value> init_options;
 
     /// The `--configuration` argument: the build configuration this
     /// session runs, over the persisted selection; empty takes the
@@ -325,10 +318,9 @@ private:
     /// The pool's callbacks, routed to the projects owning the documents.
     void wire();
 
-    /// Cancellation scope of the serving phase. run_serve_mode bounds its
-    /// transport tasks with with_token(..., shutdown_token());
-    /// schedule_shutdown() cancels the source, unwinding them so the root
-    /// task proceeds to shutdown_and_cleanup().
+    /// Cancellation scope of the serving phase. run_serve_mode serves until
+    /// it fires; schedule_shutdown() cancels the source, unwinding the
+    /// transport tasks so the root task proceeds to shutdown_and_cleanup().
     kota::cancellation_source shutdown_source;
 
     /// Shutdowns of removed projects and deferred drains of the file

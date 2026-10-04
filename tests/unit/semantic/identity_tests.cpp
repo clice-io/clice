@@ -82,13 +82,13 @@ std::uint64_t macro_entity(Tester& tester, llvm::StringRef file, llvm::StringRef
     LOG_FATAL("no macro {} defined in {}", name, file);
 }
 
-TEST_SUITE(identity, Tester) {
+ZEST_SUITE(identity, Tester) {
 
 std::uint64_t entity(llvm::StringRef marker) {
     return entity_at(*this, "main.cpp", marker);
 }
 
-TEST_CASE(RequiresClauseEquivalence) {
+ZEST_CASE(RequiresClauseEquivalence) {
     add_main("main.cpp", R"cpp(
 template <typename T> struct A;
 
@@ -106,14 +106,14 @@ struct §(12)A<T>;
 template <typename T> requires (__is_same(T, A<FLOAT>))
 struct §(13)A<T>;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_EQ(entity("1"), entity("2"));
-    EXPECT_NE(entity("11"), entity("12"));
-    EXPECT_EQ(entity("12"), entity("13"));
+    ZEXPECT(entity("1") == entity("2"));
+    ZEXPECT(entity("11") != entity("12"));
+    ZEXPECT(entity("12") == entity("13"));
 }
 
-TEST_CASE(ConceptConstraintPosition) {
+ZEST_CASE(ConceptConstraintPosition) {
     add_main("main.cpp", R"cpp(
 template<typename T>
 concept C = requires(T t) { true; };
@@ -126,17 +126,17 @@ struct §(1)A<T, U>;
 template<C T, typename U>
 struct §(2)A<T, U>;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(ConstrainedPackDiffers) {
+ZEST_CASE(ConstrainedPackDiffers) {
     add_main("main.cpp", R"cpp(
 template<typename... Ts>
 struct §(1)A;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_main("main.cpp", R"cpp(
@@ -145,12 +145,12 @@ concept C = requires(T t) { true; };
 template<C... Ts>
 struct §(2)A;
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_NE(entity("1"), entity_at(other, "main.cpp", "2"));
+    ZEXPECT(entity("1") != entity_at(other, "main.cpp", "2"));
 }
 
-TEST_CASE(TemplateArgumentExpression) {
+ZEST_CASE(TemplateArgumentExpression) {
     add_main("main.cpp", R"cpp(
 template <typename T, int N> struct C;
 
@@ -158,13 +158,13 @@ template <int N> struct §(1)C<float, N>;
 template <int M> struct §(2)C<float, M>;
 template <char c> struct §(3)C<float, c>;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_EQ(entity("1"), entity("2"));
-    EXPECT_NE(entity("1"), entity("3"));
+    ZEXPECT(entity("1") == entity("2"));
+    ZEXPECT(entity("1") != entity("3"));
 }
 
-TEST_CASE(FunctionRequiresClause) {
+ZEST_CASE(FunctionRequiresClause) {
     add_main("main.cpp", R"cpp(
 template<typename T>
 void §(1)func(T t) requires (sizeof(T) == 4) {};
@@ -172,17 +172,17 @@ void §(1)func(T t) requires (sizeof(T) == 4) {};
 template<typename T>
 void §(2)func(T t) requires (sizeof(T) == 8) {};
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(VariableTemplateConstraint) {
+ZEST_CASE(VariableTemplateConstraint) {
     add_main("main.cpp", R"cpp(
 template <typename T>
 constexpr T §(1)pi = 3.14;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_main("main.cpp", R"cpp(
@@ -191,31 +191,31 @@ concept integral = requires (T t) { t + 1; };
 template <integral T>
 constexpr T §(2)pi = 3;
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_NE(entity("1"), entity_at(other, "main.cpp", "2"));
+    ZEXPECT(entity("1") != entity_at(other, "main.cpp", "2"));
 }
 
-TEST_CASE(DeducedParameterType) {
+ZEST_CASE(DeducedParameterType) {
     add_main("main.cpp", R"cpp(
 template<typename T>
 struct array {};
 template<typename U, array arr>
 struct §(1)L;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_main("main.cpp", R"cpp(
 template<typename U, int arr>
 struct §(2)L;
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_NE(entity("1"), entity_at(other, "main.cpp", "2"));
+    ZEXPECT(entity("1") != entity_at(other, "main.cpp", "2"));
 }
 
-TEST_CASE(TemplateParamObject) {
+ZEST_CASE(TemplateParamObject) {
     add_main("main.cpp", R"cpp(
 template<typename T> struct array {
   constexpr array(T x_) : x(x_) {}
@@ -225,28 +225,28 @@ template<array U> struct L;
 template<> struct §(1)L<{1}>;
 template<> struct §(2)L<{2}>;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(PlaceholderConstraint) {
+ZEST_CASE(PlaceholderConstraint) {
     add_main("main.cpp", R"cpp(
 template<auto N> struct §(1)M;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_main("main.cpp", R"cpp(
 template<typename T> concept C = requires {requires true;};
 template<C auto N> struct §(2)M;
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_NE(entity("1"), entity_at(other, "main.cpp", "2"));
+    ZEXPECT(entity("1") != entity_at(other, "main.cpp", "2"));
 }
 
-TEST_CASE(DependentTemplateName) {
+ZEST_CASE(DependentTemplateName) {
     llvm::StringRef content = R"cpp(
 template <typename MetaFun>
 struct X {
@@ -261,19 +261,19 @@ struct X {
 };
 )cpp";
     add_main("main.cpp", content);
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 
     Tester again;
     again.add_main("main.cpp", content);
-    ASSERT_TRUE(again.compile());
+    ZASSERT(again.compile());
 
-    EXPECT_EQ(entity("1"), entity_at(again, "main.cpp", "1"));
-    EXPECT_EQ(entity("2"), entity_at(again, "main.cpp", "2"));
+    ZEXPECT(entity("1") == entity_at(again, "main.cpp", "1"));
+    ZEXPECT(entity("2") == entity_at(again, "main.cpp", "2"));
 }
 
-TEST_CASE(DeducingThis) {
+ZEST_CASE(DeducingThis) {
     add_main("main.cpp", R"cpp(
 class A {
 public:
@@ -284,12 +284,12 @@ public:
     void §(2)foo(Self&& s);
 };
 )cpp");
-    ASSERT_TRUE(compile("-std=c++23"));
+    ZASSERT(compile("-std=c++23"));
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(MacroPathDistinct) {
+ZEST_CASE(MacroPathDistinct) {
     add_file("a/x.h", R"cpp(
 #define FOO 1
 )cpp");
@@ -301,24 +301,24 @@ TEST_CASE(MacroPathDistinct) {
 #undef FOO
 #include "b/x.h"
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(macro_entity(*this, "a/x.h", "FOO"), macro_entity(*this, "b/x.h", "FOO"));
+    ZEXPECT(macro_entity(*this, "a/x.h", "FOO") != macro_entity(*this, "b/x.h", "FOO"));
 }
 
-TEST_CASE(NamespaceLambdasDistinct) {
+ZEST_CASE(NamespaceLambdasDistinct) {
     add_main("main.cpp", R"cpp(
 auto §(l1)l1 = [](int) {};
 auto §(l2)l2 = [](int) {};
 void §(a1)accept(decltype(l1));
 void §(a2)accept(decltype(l2));
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("a1"), entity("a2"));
+    ZEXPECT(entity("a1") != entity("a2"));
 }
 
-TEST_CASE(MemberRequiresDistinct) {
+ZEST_CASE(MemberRequiresDistinct) {
     add_main("main.cpp", R"cpp(
 template<typename T> concept C = requires(T t) { t + 1; };
 template<typename T> concept D = requires(T t) { t - 1; };
@@ -327,12 +327,12 @@ template<typename T> struct A {
     void §(2)f() requires D<T>;
 };
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(SpecializationReturnType) {
+ZEST_CASE(SpecializationReturnType) {
     add_main("main.cpp", R"cpp(
 struct X { using A = int; using B = long; };
 template<typename T> typename T::A g();
@@ -340,109 +340,109 @@ template<typename T> typename T::B g();
 template<> X::A §(1)g<X>();
 template<> X::B §(2)g<X>();
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(TemplateFriendDefinition) {
+ZEST_CASE(TemplateFriendDefinition) {
     add_main("main.cpp", R"cpp(
 template<typename T> struct X {
     friend void §(1)f(int);
 };
 void §(2)f(int) {}
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_EQ(entity("1"), entity("2"));
+    ZEXPECT(entity("1") == entity("2"));
 }
 
-TEST_CASE(MemberVariableTemplate) {
+ZEST_CASE(MemberVariableTemplate) {
     add_main("main.cpp", R"cpp(
 struct S {
     template<typename T> static constexpr bool §(1)value = true;
 };
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     auto* decl = find_decl(*this, "main.cpp", "1");
     auto* wrapper = llvm::dyn_cast<clang::VarTemplateDecl>(decl);
-    ASSERT_TRUE(wrapper != nullptr);
-    EXPECT_EQ(unit->entity(wrapper), unit->entity(wrapper->getTemplatedDecl()));
+    ZASSERT(wrapper != nullptr);
+    ZEXPECT(unit->entity(wrapper) == unit->entity(wrapper->getTemplatedDecl()));
 }
 
-TEST_CASE(MemberPointerOverloads) {
+ZEST_CASE(MemberPointerOverloads) {
     add_main("main.cpp", R"cpp(
 struct S { int m; int mf(); };
 void §(1)p(int S::*);
 void §(2)p(int (S::*)());
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(ConversionRenamedParameter) {
+ZEST_CASE(ConversionRenamedParameter) {
     add_main("main.cpp", R"cpp(
 template<typename T> struct A {
     §(1)operator T*();
 };
 template<typename U> A<U>::§(2)operator U*() { return nullptr; }
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_EQ(entity("1"), entity("2"));
+    ZEXPECT(entity("1") == entity("2"));
 }
 
-TEST_CASE(NoexceptPointerOverloads) {
+ZEST_CASE(NoexceptPointerOverloads) {
     add_main("main.cpp", R"cpp(
 void §(1)q(void (*)());
 void §(2)q(void (*)() noexcept);
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(AnonymousNamespaceFiles) {
+ZEST_CASE(AnonymousNamespaceFiles) {
     llvm::StringRef content = R"cpp(
 namespace { struct §(s)S {}; }
 namespace { typedef enum { A } §(e)E; }
 )cpp";
     add_main("a/x.cpp", content);
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_main("b/x.cpp", content);
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_NE(entity_at(*this, "a/x.cpp", "s"), entity_at(other, "b/x.cpp", "s"));
-    EXPECT_NE(entity_at(*this, "a/x.cpp", "e"), entity_at(other, "b/x.cpp", "e"));
+    ZEXPECT(entity_at(*this, "a/x.cpp", "s") != entity_at(other, "b/x.cpp", "s"));
+    ZEXPECT(entity_at(*this, "a/x.cpp", "e") != entity_at(other, "b/x.cpp", "e"));
 }
 
-TEST_CASE(TopLevelConstParameter) {
+ZEST_CASE(TopLevelConstParameter) {
     add_main("main.cpp", R"cpp(
 void §(1)c(const int);
 void §(2)c(int) {}
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_EQ(entity("1"), entity("2"));
+    ZEXPECT(entity("1") == entity("2"));
 }
 
-TEST_CASE(DeclarationArgumentType) {
+ZEST_CASE(DeclarationArgumentType) {
     add_main("main.cpp", R"cpp(
 inline int a[1];
 template<auto> struct X;
 template<> struct §(1)X<a> {};
 template<> struct §(2)X<&a> {};
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(StructuralValuePath) {
+ZEST_CASE(StructuralValuePath) {
     add_main("main.cpp", R"cpp(
 union U { int a; int b; };
 inline U u;
@@ -450,12 +450,12 @@ template<int*> struct X;
 template<> struct §(1)X<&u.a> {};
 template<> struct §(2)X<&u.b> {};
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(ConstrainedFriendLexical) {
+ZEST_CASE(ConstrainedFriendLexical) {
     add_main("main.cpp", R"cpp(
 template<typename T> struct A {
     friend void §(1)h(A) requires (sizeof(T) > 1) {}
@@ -464,22 +464,22 @@ template<typename T> struct B {
     friend void §(2)h(A<T>) requires (sizeof(T) > 1) {}
 };
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(ExternCAcrossNamespaces) {
+ZEST_CASE(ExternCAcrossNamespaces) {
     add_main("main.cpp", R"cpp(
 namespace A { extern "C" void §(1)f(); }
 namespace B { extern "C" void §(2)f(); }
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_EQ(entity("1"), entity("2"));
+    ZEXPECT(entity("1") == entity("2"));
 }
 
-TEST_CASE(IncludedLocals) {
+ZEST_CASE(IncludedLocals) {
     add_file("a.inc", "int §(x)x;");
     add_file("b.inc", "int §(x)x;");
     add_main("main.cpp", R"cpp(
@@ -492,53 +492,53 @@ void f() {
     }
 }
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity_at(*this, "a.inc", "x"), entity_at(*this, "b.inc", "x"));
+    ZEXPECT(entity_at(*this, "a.inc", "x") != entity_at(*this, "b.inc", "x"));
 }
 
-TEST_CASE(SpecializationMemberConstraint) {
+ZEST_CASE(SpecializationMemberConstraint) {
     add_main("main.cpp", R"cpp(
 template<typename T> struct S { static constexpr int n = 0; };
 template<typename U> void §(1)f(U) requires (sizeof(U) == S<int>::n);
 template<typename U> void §(2)f(U) requires (sizeof(U) == S<double>::n);
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(OffsetofMembers) {
+ZEST_CASE(OffsetofMembers) {
     add_main("main.cpp", R"cpp(
 template<typename T> void §(1)f(T) requires (__builtin_offsetof(T, x) == 0);
 template<typename T> void §(2)f(T) requires (__builtin_offsetof(T, y) == 0);
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(ParenthesesDistinct) {
+ZEST_CASE(ParenthesesDistinct) {
     add_main("main.cpp", R"cpp(
 template<int N> void §(1)f() requires (N > 0);
 template<int N> void §(2)f() requires ((N) > 0);
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(DecltypeSizeofDistinct) {
+ZEST_CASE(DecltypeSizeofDistinct) {
     add_main("main.cpp", R"cpp(
 template<typename T> auto §(1)f() -> decltype(sizeof(T));
 template<typename T> auto §(2)f() -> __SIZE_TYPE__;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity("1"), entity("2"));
+    ZEXPECT(entity("1") != entity("2"));
 }
 
-TEST_CASE(ConceptResolvedThroughUsing) {
+ZEST_CASE(ConceptResolvedThroughUsing) {
     add_file("common.h", R"cpp(
 namespace A { template<typename T> concept C = sizeof(T) == 1; }
 namespace B { template<typename T> concept C = sizeof(T) == 2; }
@@ -551,7 +551,7 @@ template<typename T> requires C<T> void §(f)f();
 using A::C;
 #include "h.h"
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_file("common.h", R"cpp(
@@ -566,12 +566,12 @@ template<typename T> requires C<T> void §(f)f();
 using B::C;
 #include "h.h"
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_NE(entity_at(*this, "h.h", "f"), entity_at(other, "h.h", "f"));
+    ZEXPECT(entity_at(*this, "h.h", "f") != entity_at(other, "h.h", "f"));
 }
 
-TEST_CASE(EarlierDecltypeNoEffect) {
+ZEST_CASE(EarlierDecltypeNoEffect) {
     llvm::StringRef header = R"cpp(
 template<typename T> requires C<T> void §(f)f();
 )cpp";
@@ -580,7 +580,7 @@ template<typename T> concept C = true;
 #include "h.h"
 )cpp");
     add_file("h.h", header);
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_file("h.h", header);
@@ -589,18 +589,18 @@ template<typename T> concept C = true;
 template<typename T> using Noise = decltype(::C<T>);
 #include "h.h"
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_EQ(entity_at(*this, "h.h", "f"), entity_at(other, "h.h", "f"));
+    ZEXPECT(entity_at(*this, "h.h", "f") == entity_at(other, "h.h", "f"));
 }
 
-TEST_CASE(MacroRedefinition) {
+ZEST_CASE(MacroRedefinition) {
     add_main("main.cpp", R"cpp(
 #define FOO 1
 #undef FOO
 #define FOO 2
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     std::vector<std::uint64_t> entities;
     for(auto& [fid, directive]: unit->directives()) {
@@ -610,11 +610,11 @@ TEST_CASE(MacroRedefinition) {
             }
         }
     }
-    ASSERT_EQ(entities.size(), 2U);
-    EXPECT_NE(entities[0], entities[1]);
+    ZASSERT(entities.size() == 2U);
+    ZEXPECT(entities[0] != entities[1]);
 }
 
-TEST_CASE(CopyDeductionCandidate) {
+ZEST_CASE(CopyDeductionCandidate) {
     llvm::StringRef header = R"cpp(
 #pragma once
 template<typename §(t)T, typename §(d)D = int>
@@ -630,7 +630,7 @@ Box<char> make();
 #include "box.h"
 Box deduced = make();
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_file("box.h", header);
@@ -638,13 +638,13 @@ Box deduced = make();
 #include "box.h"
 Box<char> spelled = make();
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_EQ(entity_at(*this, "box.h", "t"), entity_at(other, "box.h", "t"));
-    EXPECT_EQ(entity_at(*this, "box.h", "d"), entity_at(other, "box.h", "d"));
+    ZEXPECT(entity_at(*this, "box.h", "t") == entity_at(other, "box.h", "t"));
+    ZEXPECT(entity_at(*this, "box.h", "d") == entity_at(other, "box.h", "d"));
 }
 
-TEST_CASE(CopyDeductionCandidateRedeclared) {
+ZEST_CASE(CopyDeductionCandidateRedeclared) {
     llvm::StringRef header = R"cpp(
 #pragma once
 template<typename T> struct Box;
@@ -657,31 +657,31 @@ Box<char> make();
 #include "box.h"
 Box deduced = make();
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_file("box.h", header);
     other.add_main("b.cpp", R"cpp(
 #include "box.h"
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_EQ(entity_at(*this, "box.h", "t"), entity_at(other, "box.h", "t"));
+    ZEXPECT(entity_at(*this, "box.h", "t") == entity_at(other, "box.h", "t"));
 }
 
-TEST_CASE(ComplexSubobjectArgument) {
+ZEST_CASE(ComplexSubobjectArgument) {
     add_main("main.cpp", R"cpp(
 inline _Complex int z;
 template<int*> struct X;
 template<> struct §(real)X<&__real__ z> {};
 template<> struct §(imag)X<&__imag__ z> {};
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity_at(*this, "main.cpp", "real"), entity_at(*this, "main.cpp", "imag"));
+    ZEXPECT(entity_at(*this, "main.cpp", "real") != entity_at(*this, "main.cpp", "imag"));
 }
 
-TEST_CASE(ImplicitConstructorUse) {
+ZEST_CASE(ImplicitConstructorUse) {
     llvm::StringRef header = R"cpp(
 #pragma once
 struct §(s)S { int x; };
@@ -702,7 +702,7 @@ struct §(s)S { int x; };
 inline S a;
 inline S b(a);
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_file("s.h", header);
@@ -710,12 +710,12 @@ inline S b(a);
 #include "s.h"
 struct T : S { using S::S; };
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_EQ(copy_constructor(*this), copy_constructor(other));
+    ZEXPECT(copy_constructor(*this) == copy_constructor(other));
 }
 
-TEST_CASE(NestedMacroLambdas) {
+ZEST_CASE(NestedMacroLambdas) {
     add_main("main.cpp", R"cpp(
 #define L []{}
 #define BOTH auto a = L; auto b = L;
@@ -723,12 +723,12 @@ BOTH
 void §(f1)f(decltype(a));
 void §(f2)f(decltype(b));
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity_at(*this, "main.cpp", "f1"), entity_at(*this, "main.cpp", "f2"));
+    ZEXPECT(entity_at(*this, "main.cpp", "f1") != entity_at(*this, "main.cpp", "f2"));
 }
 
-TEST_CASE(TemplateNameSpelling) {
+ZEST_CASE(TemplateNameSpelling) {
     llvm::StringRef header = R"cpp(
 #pragma once
 namespace N { template<class> struct A; }
@@ -745,19 +745,19 @@ template<class T> auto §(f)f() -> decltype(v<T, A>);
 #define WARM
 #include "h.h"
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_file("h.h", header);
     other.add_main("b.cpp", R"cpp(
 #include "h.h"
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_EQ(entity_at(*this, "h.h", "f"), entity_at(other, "h.h", "f"));
+    ZEXPECT(entity_at(*this, "h.h", "f") == entity_at(other, "h.h", "f"));
 }
 
-TEST_CASE(ArrayFillerArgument) {
+ZEST_CASE(ArrayFillerArgument) {
     llvm::StringRef header = R"cpp(
 #pragma once
 struct S { int a[2]; };
@@ -774,31 +774,31 @@ void §(f)f(X<S{{0}}>);
 #define WARM
 #include "h.h"
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_file("h.h", header);
     other.add_main("b.cpp", R"cpp(
 #include "h.h"
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_EQ(entity_at(*this, "h.h", "x"), entity_at(other, "h.h", "x"));
-    EXPECT_EQ(entity_at(*this, "h.h", "f"), entity_at(other, "h.h", "f"));
+    ZEXPECT(entity_at(*this, "h.h", "x") == entity_at(other, "h.h", "x"));
+    ZEXPECT(entity_at(*this, "h.h", "f") == entity_at(other, "h.h", "f"));
 }
 
-TEST_CASE(InstantiatedLambdas) {
+ZEST_CASE(InstantiatedLambdas) {
     add_main("main.cpp", R"cpp(
 template<class T> inline auto v = []{};
 void §(f1)f(decltype(v<int>));
 void §(f2)f(decltype(v<double>));
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity_at(*this, "main.cpp", "f1"), entity_at(*this, "main.cpp", "f2"));
+    ZEXPECT(entity_at(*this, "main.cpp", "f1") != entity_at(*this, "main.cpp", "f2"));
 }
 
-TEST_CASE(LocalClassConstructors) {
+ZEST_CASE(LocalClassConstructors) {
     add_main("main.cpp", R"cpp(
 void f() {
     struct §(s)S {};
@@ -807,36 +807,36 @@ void f() {
     S c(static_cast<S&&>(a));
 }
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     auto* record = llvm::cast<clang::CXXRecordDecl>(find_decl(*this, "main.cpp", "s"));
     std::set<std::uint64_t> entities;
     for(auto* ctor: record->ctors()) {
         entities.insert(unit->entity(ctor));
     }
-    EXPECT_EQ(entities.size(), 3U);
+    ZEXPECT(entities.size() == 3U);
 }
 
-TEST_CASE(MacroArgumentTwice) {
+ZEST_CASE(MacroArgumentTwice) {
     add_main("main.cpp", R"cpp(
 #define BOTH(X) auto a = X; auto b = X;
 BOTH([]{})
 void §(f1)f(decltype(a));
 void §(f2)f(decltype(b));
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity_at(*this, "main.cpp", "f1"), entity_at(*this, "main.cpp", "f2"));
+    ZEXPECT(entity_at(*this, "main.cpp", "f1") != entity_at(*this, "main.cpp", "f2"));
 }
 
-TEST_CASE(MacroArgumentPreExpanded) {
+ZEST_CASE(MacroArgumentPreExpanded) {
     add_main("main.cpp", R"cpp(
 #define F void f(decltype([]{})) {}
 #define TWO F F
 #define ID(...) __VA_ARGS__
 ID(TWO)
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     std::set<std::uint64_t> entities;
     for(auto* decl: unit->tu()->decls()) {
@@ -845,21 +845,21 @@ ID(TWO)
             entities.insert(unit->entity(decls::normalize(function)));
         }
     }
-    EXPECT_EQ(entities.size(), 2U);
+    ZEXPECT(entities.size() == 2U);
 }
 
-TEST_CASE(CpuSpecificVersions) {
+ZEST_CASE(CpuSpecificVersions) {
     triple = "x86_64-unknown-linux-gnu";
     add_main("main.cpp", R"cpp(
 __attribute__((cpu_specific(generic))) void §(generic)f() {}
 __attribute__((cpu_specific(pentium_4))) void §(pentium)f() {}
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    EXPECT_NE(entity_at(*this, "main.cpp", "generic"), entity_at(*this, "main.cpp", "pentium"));
+    ZEXPECT(entity_at(*this, "main.cpp", "generic") != entity_at(*this, "main.cpp", "pentium"));
 }
 
-TEST_CASE(NoreturnRedeclarationOrder) {
+ZEST_CASE(NoreturnRedeclarationOrder) {
     llvm::StringRef plain = R"cpp(
 #pragma once
 void §(f)f();
@@ -875,7 +875,7 @@ __attribute__((noreturn)) void §(f)f();
 #include "plain.h"
 #include "attributed.h"
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_file("plain.h", plain);
@@ -884,45 +884,45 @@ __attribute__((noreturn)) void §(f)f();
 #include "attributed.h"
 #include "plain.h"
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_EQ(entity_at(*this, "plain.h", "f"), entity_at(other, "plain.h", "f"));
-    EXPECT_EQ(entity_at(*this, "plain.h", "f"), entity_at(*this, "attributed.h", "f"));
+    ZEXPECT(entity_at(*this, "plain.h", "f") == entity_at(other, "plain.h", "f"));
+    ZEXPECT(entity_at(*this, "plain.h", "f") == entity_at(*this, "attributed.h", "f"));
 }
 
-TEST_CASE(PastedTemplateParameters) {
+ZEST_CASE(PastedTemplateParameters) {
     add_main("main.cpp", R"cpp(
 #define PARAMS class T##1, class T##2
 template<PARAMS> struct §(x)X { T1 a; T2 b; };
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     auto* parameters = llvm::cast<clang::ClassTemplateDecl>(find_decl(*this, "main.cpp", "x"))
                            ->getTemplateParameters();
-    ASSERT_EQ(parameters->size(), 2U);
-    EXPECT_NE(unit->entity(parameters->getParam(0)), unit->entity(parameters->getParam(1)));
+    ZASSERT(parameters->size() == 2U);
+    ZEXPECT(unit->entity(parameters->getParam(0)) != unit->entity(parameters->getParam(1)));
 }
 
-TEST_CASE(FileScopeTypedefs) {
+ZEST_CASE(FileScopeTypedefs) {
     add_main("a.cpp", R"cpp(
 typedef struct { int §(field)x; } §(state)State;
 using §(alias)Result = int;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_main("b.cpp", R"cpp(
 typedef struct { int §(field)x; } §(state)State;
 using §(alias)Result = int;
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
     for(auto marker: {"state", "alias", "field"}) {
-        EXPECT_NE(entity_at(*this, "a.cpp", marker), entity_at(other, "b.cpp", marker));
+        ZEXPECT(entity_at(*this, "a.cpp", marker) != entity_at(other, "b.cpp", marker));
     }
 }
 
-TEST_CASE(CTagsPerFile) {
+ZEST_CASE(CTagsPerFile) {
     llvm::StringRef header = R"c(
 struct §(shared)shared { int x; };
 struct §(opaque)opaque;
@@ -934,7 +934,7 @@ struct §(opaque)opaque;
 #include "common.h"
 struct §(state)state { int x; };
 )c");
-    ASSERT_TRUE(compile("-std=c17"));
+    ZASSERT(compile("-std=c17"));
 
     Tester other;
     other.add_file("common.h", header);
@@ -942,20 +942,20 @@ struct §(state)state { int x; };
 #include "common.h"
 struct §(state)state { int x; };
 )c");
-    ASSERT_TRUE(other.compile("-std=c17"));
+    ZASSERT(other.compile("-std=c17"));
 
-    EXPECT_NE(entity_at(*this, "a.c", "state"), entity_at(other, "b.c", "state"));
-    EXPECT_EQ(entity_at(*this, "common.h", "shared"), entity_at(other, "common.h", "shared"));
-    EXPECT_EQ(entity_at(*this, "common.h", "opaque"), entity_at(other, "common.h", "opaque"));
+    ZEXPECT(entity_at(*this, "a.c", "state") != entity_at(other, "b.c", "state"));
+    ZEXPECT(entity_at(*this, "common.h", "shared") == entity_at(other, "common.h", "shared"));
+    ZEXPECT(entity_at(*this, "common.h", "opaque") == entity_at(other, "common.h", "opaque"));
 }
 
-TEST_CASE(CTagsInContext) {
+ZEST_CASE(CTagsInContext) {
     add_file("part.h", "struct ctx;\nstruct §(part)part { int x; };\n");
     add_main("host.c", R"c(
 struct §(ctx)ctx { int x; };
 #include "part.h"
 )c");
-    ASSERT_TRUE(compile("-std=c17"));
+    ZASSERT(compile("-std=c17"));
 
     /// The header compiled as its host sees it: the host's text before the
     /// include arrives as a fragment the compile -includes, named after
@@ -982,42 +982,42 @@ struct §(ctx)ctx { int x; };
     for(auto& arg: context.owned_args) {
         context.params.arguments.push_back(arg.c_str());
     }
-    ASSERT_TRUE(context.try_compile());
+    ZASSERT(context.try_compile());
 
-    EXPECT_EQ(entity_at(context, "part.h", "ctx"), entity_at(*this, "host.c", "ctx"));
-    EXPECT_EQ(entity_at(context, "part.h", "part"), entity_at(*this, "part.h", "part"));
+    ZEXPECT(entity_at(context, "part.h", "ctx") == entity_at(*this, "host.c", "ctx"));
+    ZEXPECT(entity_at(context, "part.h", "part") == entity_at(*this, "part.h", "part"));
 }
 
-TEST_CASE(CLinkageIgnoresTypes) {
+ZEST_CASE(CLinkageIgnoresTypes) {
     add_main("a.c", R"c(
 typedef int wchar_t;
 int §(f)f();
 void §(g)g(wchar_t c);
 )c");
-    ASSERT_TRUE(compile("-std=c17"));
+    ZASSERT(compile("-std=c17"));
 
     Tester other;
     other.add_main("b.cpp", R"cpp(
 extern "C" int §(f)f(void);
 extern "C" void §(g)g(wchar_t c);
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_EQ(entity_at(*this, "a.c", "f"), entity_at(other, "b.cpp", "f"));
-    EXPECT_EQ(entity_at(*this, "a.c", "g"), entity_at(other, "b.cpp", "g"));
+    ZEXPECT(entity_at(*this, "a.c", "f") == entity_at(other, "b.cpp", "f"));
+    ZEXPECT(entity_at(*this, "a.c", "g") == entity_at(other, "b.cpp", "g"));
 }
 
-TEST_CASE(OverloadableCFunctions) {
+ZEST_CASE(OverloadableCFunctions) {
     add_main("a.c", R"c(
 __attribute__((overloadable)) void §(i)f(int);
 __attribute__((overloadable)) void §(d)f(double);
 )c");
-    ASSERT_TRUE(compile("-std=c17"));
+    ZASSERT(compile("-std=c17"));
 
-    EXPECT_NE(entity_at(*this, "a.c", "i"), entity_at(*this, "a.c", "d"));
+    ZEXPECT(entity_at(*this, "a.c", "i") != entity_at(*this, "a.c", "d"));
 }
 
-TEST_CASE(HeaderAcrossUnits) {
+ZEST_CASE(HeaderAcrossUnits) {
     llvm::StringRef first = R"cpp(
 #pragma once
 namespace ns {
@@ -1047,7 +1047,7 @@ struct §(other)Other {};
 #include "first.h"
 #include "second.h"
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     Tester other;
     other.add_file("first.h", first);
@@ -1056,16 +1056,16 @@ struct §(other)Other {};
 #include "second.h"
 #include "first.h"
 )cpp");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
     for(auto marker: markers) {
-        EXPECT_EQ(entity_at(*this, "first.h", marker), entity_at(other, "first.h", marker));
+        ZEXPECT(entity_at(*this, "first.h", marker) == entity_at(other, "first.h", marker));
     }
-    EXPECT_EQ(macro_entity(*this, "first.h", "MAC"), macro_entity(other, "first.h", "MAC"));
-    EXPECT_NE(entity_at(*this, "first.h", "ov"), entity_at(*this, "first.h", "ov2"));
+    ZEXPECT(macro_entity(*this, "first.h", "MAC") == macro_entity(other, "first.h", "MAC"));
+    ZEXPECT(entity_at(*this, "first.h", "ov") != entity_at(*this, "first.h", "ov2"));
 }
 
-TEST_CASE(ParentChain) {
+ZEST_CASE(ParentChain) {
     add_main("main.cpp", R"cpp(
 namespace §(ns)ns {
 extern "C" { void §(c)c_linkage(); }
@@ -1076,34 +1076,34 @@ namespace { void §(hidden)hidden(); }
 }
 void §(global)global();
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     auto parent = [&](llvm::StringRef marker) {
         return unit->parent(find_decl(*this, "main.cpp", marker));
     };
-    EXPECT_EQ(parent("global"), 0u);
-    EXPECT_EQ(parent("ns"), 0u);
-    EXPECT_EQ(parent("c"), 0u);
-    EXPECT_EQ(parent("box"), entity("ns"));
-    EXPECT_EQ(parent("method"), entity("box"));
-    EXPECT_EQ(parent("spec_method"), entity("spec"));
-    EXPECT_NE(entity("spec"), entity("box"));
-    EXPECT_EQ(parent("local"), entity("fn"));
-    EXPECT_EQ(parent("hidden"), entity("ns"));
+    ZEXPECT(parent("global") == 0u);
+    ZEXPECT(parent("ns") == 0u);
+    ZEXPECT(parent("c") == 0u);
+    ZEXPECT(parent("box") == entity("ns"));
+    ZEXPECT(parent("method") == entity("box"));
+    ZEXPECT(parent("spec_method") == entity("spec"));
+    ZEXPECT(entity("spec") != entity("box"));
+    ZEXPECT(parent("local") == entity("fn"));
+    ZEXPECT(parent("hidden") == entity("ns"));
 }
 
-TEST_CASE(ModuleEntity) {
+ZEST_CASE(ModuleEntity) {
     add_main("main.cpp", "int x;");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     Tester other;
     other.add_main("main.cpp", "int y;");
-    ASSERT_TRUE(other.compile());
+    ZASSERT(other.compile());
 
-    EXPECT_EQ(unit->module_entity("foo"), other.unit->module_entity("foo"));
-    EXPECT_NE(unit->module_entity("foo"), unit->module_entity("foo:part"));
+    ZEXPECT(unit->module_entity("foo") == other.unit->module_entity("foo"));
+    ZEXPECT(unit->module_entity("foo") != unit->module_entity("foo:part"));
 }
 
-};  // TEST_SUITE(identity)
+};  // ZEST_SUITE(identity)
 
 }  // namespace
 

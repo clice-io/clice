@@ -9,8 +9,7 @@ using kota::deco::decl::KVStyle;
 namespace {
 
 struct LintOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Workspace root directory (default: current directory)",
@@ -34,16 +33,8 @@ struct LintOptions {
              required = false)
     index;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--log-level", "--log-level="},
-           help = "Log level: trace, debug, info, warn, error, off",
-           required = false)
-    <std::string> log_level;
+    LogLevelOption log;
 };
-
-auto make_command() {
-    return kota::deco::cli::command<LintOptions>("clice lint [OPTIONS]");
-}
 
 void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
     for(auto& d: diagnostics) {
@@ -99,31 +90,18 @@ int run_lint(Spelling root,
 
 }  // namespace
 
-void add_lint(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path) {
-    auto cmd = make_command();
-    cmd.matchAll([&exit_code, self_path](LintOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           if(!apply_log_level(opts.log_level.value_or("info"))) {
-               exit_code = 2;
-               return;
-           }
-           logging::stderr_logger("lint", logging::options);
+void add_lint(kota::deco::cli::SubCommander& root, const char* self_path) {
+    auto cmd = kota::deco::cli::command<LintOptions>("clice lint [OPTIONS]");
+    cmd.match_all([self_path](LintOptions opts) {
+        opts.log.apply();
+        logging::stderr_logger("lint", logging::options);
 
-           exit_code = run_lint(workspace_spelling(opts.workspace.value_or("")),
-                                opts.configuration.value_or(""),
-                                opts.workers.value_or(0),
-                                static_cast<bool>(opts.index),
-                                self_path);
-       })
-        .on_error([&exit_code](auto err) {
-            LOG_ERROR("{}", err.message);
-            exit_code = 2;
-        });
+        return run_lint(workspace_spelling(opts.workspace.value_or("")),
+                        opts.configuration.value_or(""),
+                        opts.workers.value_or(0),
+                        static_cast<bool>(opts.index),
+                        self_path);
+    });
 
     root.add({.name = "lint", .description = "Lint C++ source files"}, std::move(cmd));
 }

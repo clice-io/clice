@@ -156,6 +156,10 @@ public:
     /// Lazily computed and cached.
     auto line_starts() -> std::span<const std::uint32_t>;
 
+    /// Which lines of the main file hold a byte past ASCII, as
+    /// kota::ipc::lsp::non_ascii_lines() gives. Lazily computed and cached.
+    auto non_ascii_lines() -> std::span<const std::uint64_t>;
+
     /// Check if a file is a builtin file.
     bool is_builtin_file(clang::FileID fid);
 

@@ -5,10 +5,12 @@
 #include <string>
 #include <vector>
 
+#include "feature/position.h"
 #include "server/quarantine.h"
 #include "vfs/file_table.h"
 
-#include "kota/ipc/lsp/position.h"
+#include "kota/ipc/lsp/text.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -72,13 +74,21 @@ struct Session {
     /// bytes" is compared by against disk observations and index rows.
     std::uint64_t hash = 0;
 
-    /// Byte offsets of each line start in `text`, built by `build_line_starts`.
-    /// Updated on didOpen and after every didChange.
+    /// The line tables of `text`: where each line starts, and which lines
+    /// hold a byte past ASCII.
     std::vector<std::uint32_t> line_starts;
+    std::vector<std::uint64_t> non_ascii_lines;
 
-    /// Construct a LineMap borrowing from this session's text and line_starts.
-    kota::ipc::lsp::LineMap line_map() const {
-        return kota::ipc::lsp::LineMap(text, line_starts);
+    /// Rewrite `hash` and the line tables after `text` changed.
+    void sync_text() {
+        hash = llvm::xxh3_64bits(text);
+        line_starts = kota::ipc::lsp::line_starts(text);
+        non_ascii_lines = kota::ipc::lsp::non_ascii_lines(text);
+    }
+
+    /// Positions in `text`, as the editor counts them.
+    feature::PositionMap position_map() const {
+        return {.content = text, .lines = line_starts, .non_ascii = non_ascii_lines};
     }
 
     /// Monotonic generation counter, incremented on every didChange and on close.
@@ -120,7 +130,7 @@ struct Session {
 };
 
 /// A request's claim on the buffer it was asked about: the generation
-/// snapshot taken at the request's entry, before its first suspension.
+/// snapshot taken as the request is dispatched.
 /// Every later decision — adopting a compile product, landing a worker
 /// reply, answering at all — asks `fresh()` first; a didChange or
 /// didClose bumped the generation, and whatever the request computed
@@ -131,8 +141,9 @@ struct Ticket {
     std::shared_ptr<Session> session;
     std::uint64_t generation = 0;
 
+    /// An empty ticket for no session: a document not open.
     static Ticket take(std::shared_ptr<Session> session) {
-        auto generation = session->generation;
+        auto generation = session ? session->generation : 0;
         return {std::move(session), generation};
     }
 

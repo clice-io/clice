@@ -7,9 +7,9 @@
 namespace clice::testing {
 namespace {
 
-TEST_SUITE(CommandResolver) {
+ZEST_SUITE(CommandResolver) {
 
-TEST_CASE(DefaultSourceKeepsOwnCommand) {
+ZEST_CASE(DefaultSourceKeepsOwnCommand) {
     /// A unity build under a default command: main.cpp includes part.cpp
     /// and part.h. The included source is a unit of its own and keeps the
     /// default command the index compiles it with; the header borrows
@@ -35,15 +35,14 @@ TEST_CASE(DefaultSourceKeepsOwnCommand) {
 
     std::string directory;
     std::vector<std::string> arguments;
-    EXPECT_EQ(resolver.resolve_command(part, directory, arguments).source, CommandSource::Default);
-    EXPECT_TRUE(
-        llvm::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
+    ZEXPECT(resolver.resolve_command(part, directory, arguments).source == CommandSource::Default);
+    ZEXPECT(llvm::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
     auto header_resolution = resolver.resolve_command(header, directory, arguments);
-    EXPECT_EQ(header_resolution.source, CommandSource::IncludeGraph);
-    EXPECT_EQ(header_resolution.host, main);
+    ZEXPECT(header_resolution.source == CommandSource::IncludeGraph);
+    ZEXPECT(header_resolution.host == main);
 }
 
-TEST_CASE(UnboundVerdictStaysLocal) {
+ZEST_CASE(UnboundVerdictStaysLocal) {
     // A NeedsContext verdict scored with no disk observation has no hash
     // to validate on load: it serves this session but must neither
     // persist nor, if found in a blob, bypass the content gate — the next
@@ -57,19 +56,19 @@ TEST_CASE(UnboundVerdictStaysLocal) {
     auto id = project.file_table.intern(Spelling::absolute(path));
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext);
-    ASSERT_TRUE(resolver.header_mode(id) == HeaderMode::NeedsContext);
+    ZASSERT(resolver.header_mode(id) == HeaderMode::NeedsContext);
 
     std::vector<CacheModeEntry> slices;
     resolver.dump_mode_slices(slices, [](Fid fid) { return fid.raw; });
-    ASSERT_TRUE(slices.empty());
+    ZASSERT(slices.empty());
 
     CommandResolver restarted(project);
     slices.push_back({id.raw, static_cast<std::uint32_t>(HeaderMode::NeedsContext), 0});
     restarted.load_mode_slices(slices, [&](std::uint32_t) -> std::optional<Fid> { return id; });
-    ASSERT_TRUE(restarted.header_mode(id) == HeaderMode::Unknown);
+    ZASSERT(restarted.header_mode(id) == HeaderMode::Unknown);
 }
 
-TEST_CASE(ModeSliceContentGate) {
+ZEST_CASE(ModeSliceContentGate) {
     // A content-bound verdict survives a restart only while the disk
     // still holds the bytes it was scored on.
     TempDir tmp;
@@ -80,27 +79,27 @@ TEST_CASE(ModeSliceContentGate) {
     auto path = tmp.path("h.h");
     auto id = project.file_table.intern(Spelling::absolute(path));
     auto disk = project.file_table.current(id);
-    ASSERT_TRUE(disk.has_value());
+    ZASSERT(disk);
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
     std::vector<CacheModeEntry> slices;
     resolver.dump_mode_slices(slices, [](Fid fid) { return fid.raw; });
-    ASSERT_EQ(slices.size(), 1u);
+    ZASSERT(slices.size() == 1u);
 
     auto resolve = [&](std::uint32_t) -> std::optional<Fid> {
         return id;
     };
     CommandResolver same_disk(project);
     same_disk.load_mode_slices(slices, resolve);
-    ASSERT_TRUE(same_disk.header_mode(id) == HeaderMode::NeedsContext);
+    ZASSERT(same_disk.header_mode(id) == HeaderMode::NeedsContext);
 
     tmp.touch("h.h", "int y;\n");
     CommandResolver edited(project);
     edited.load_mode_slices(slices, resolve);
-    ASSERT_TRUE(edited.header_mode(id) == HeaderMode::Unknown);
+    ZASSERT(edited.header_mode(id) == HeaderMode::Unknown);
 }
 
-TEST_CASE(VerdictPersistenceMarksDirty) {
+ZEST_CASE(VerdictPersistenceMarksDirty) {
     // The persisted mode slice and the artifacts blob move together: any
     // transition of a content-bound NeedsContext — earned, downgraded by
     // a trial, or reset by a dependency change — must rewrite the blob,
@@ -112,27 +111,27 @@ TEST_CASE(VerdictPersistenceMarksDirty) {
     auto id = project.file_table.intern(Spelling::absolute("/proj/h.h"));
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext, 7);
-    ASSERT_TRUE(project.artifacts_dirty);
+    ZASSERT(project.artifacts_dirty);
 
     project.artifacts_dirty = false;
     resolver.reset_header_mode(id);
-    ASSERT_TRUE(project.artifacts_dirty);
+    ZASSERT(project.artifacts_dirty);
 
     // Unbound verdicts and self-contained impressions are never persisted.
     project.artifacts_dirty = false;
     resolver.record_header_mode(id, HeaderMode::NeedsContext);
     resolver.record_header_mode(id, HeaderMode::SelfContained);
     resolver.reset_header_mode(id);
-    ASSERT_FALSE(project.artifacts_dirty);
+    ZASSERT(!project.artifacts_dirty);
 
     // A trial downgrading a persisted verdict drops it from the blob.
     resolver.record_header_mode(id, HeaderMode::NeedsContext, 7);
     project.artifacts_dirty = false;
     resolver.record_header_mode(id, HeaderMode::SelfContained);
-    ASSERT_TRUE(project.artifacts_dirty);
+    ZASSERT(project.artifacts_dirty);
 }
 
-};  // TEST_SUITE(CommandResolver)
+};  // ZEST_SUITE(CommandResolver)
 
 }  // namespace
 }  // namespace clice::testing

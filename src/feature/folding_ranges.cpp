@@ -77,7 +77,7 @@ public:
         collect_block_directives(unit.semantics().block_directives());
         collect_module_fragments(unit.semantics().module_declarations());
         collect_comments(unit.semantics().comments());
-        add_runs(unit.semantics().include_directives(), protocol::FoldingRangeKind::imports);
+        add_runs(unit.semantics().include_directives(), protocol::FoldingRangeKind::Imports);
         collect_raw_strings(unit.semantics().raw_strings());
         add_runs(usings, "usingDeclaration");
 
@@ -345,7 +345,7 @@ private:
                     if(!regions.empty()) {
                         add_section(regions.pop_back_val()->range.end,
                                     directive.range.begin,
-                                    protocol::FoldingRangeKind::region);
+                                    protocol::FoldingRangeKind::Region);
                     }
                     break;
                 }
@@ -377,10 +377,10 @@ private:
             } else if(begins_line(comment.range.begin)) {
                 // A block comment trailing code would cut across the folds
                 // that start at the end of that code's line.
-                add_range(comment.range, protocol::FoldingRangeKind::comment, "/*...*/");
+                add_range(comment.range, protocol::FoldingRangeKind::Comment, "/*...*/");
             }
         }
-        add_runs(line_comments, protocol::FoldingRangeKind::comment);
+        add_runs(line_comments, protocol::FoldingRangeKind::Comment);
     }
 
     /// A raw string folds on its delimiters, which may carry a custom
@@ -568,21 +568,15 @@ auto declaration_lines(llvm::StringRef content,
 }
 
 auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
-                                llvm::StringRef content,
-                                llvm::ArrayRef<std::uint32_t> line_starts,
-                                PositionEncoding encoding,
+                                const PositionMap& map,
                                 bool line_folding_only) -> std::vector<protocol::FoldingRange> {
-    LineMap map(content,
-                std::span<const std::uint32_t>(line_starts.data(), line_starts.size()),
-                encoding);
-
     std::vector<protocol::FoldingRange> result;
     result.reserve(ranges.size());
 
     for(const auto& item: ranges) {
         auto bounds = line_folding_only ? item.lines.value_or(item.range) : item.range;
-        auto start = to_position(map, bounds.begin);
-        auto end = to_position(map, bounds.end);
+        auto start = map.to_position(bounds.begin);
+        auto end = map.to_position(bounds.end);
         if(!start || !end)
             continue;
 

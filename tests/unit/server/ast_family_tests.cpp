@@ -51,11 +51,11 @@ struct Stack {
     ContextsBlob blob;
     EditorContext contexts{project, commands, blob};
     WorkerPool pool{loop};
-    TaskGraph graph{loop};
+    TaskGraph graph;
     PCMFamily pcm{graph, project, commands, pool};
     PCHFamily pch{graph, project, pool};
     SessionStore sessions;
-    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions, loop};
+    ASTFamily ast{project, contexts, graph, pcm, pch, pool, sessions};
     Dispatcher dispatcher{project, contexts, ast, pool};
 
     Stack() {
@@ -67,7 +67,7 @@ struct Stack {
     std::shared_ptr<Session> open(llvm::StringRef path, std::string text) {
         auto session = sessions.open(project.file_table.intern(Spelling::absolute(path)));
         session->text = std::move(text);
-        session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+        session->sync_text();
         return session;
     }
 
@@ -77,7 +77,7 @@ struct Stack {
 
     void register_pch_store(TempDir& tmp) {
         auto store = CacheStore::open(tmp.path("root"), 1);
-        ASSERT_TRUE(store.has_value());
+        ZASSERT(store);
         store->register_namespace({.name = "pch",
                                    .extension = ".pch",
                                    .aux_extension = ".pch.idx",
@@ -87,9 +87,9 @@ struct Stack {
     }
 };
 
-TEST_SUITE(ASTFamilyGuards) {
+ZEST_SUITE(ASTFamilyGuards) {
 
-TEST_CASE(SupersedeTouchesEntry) {
+ZEST_CASE(SupersedeTouchesEntry) {
     Stack stack;
     auto session = stack.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
@@ -98,11 +98,11 @@ TEST_CASE(SupersedeTouchesEntry) {
 
     stack.ast.supersede(pid);
 
-    ASSERT_FALSE(stack.ast.projections.current(pid));
-    ASSERT_EQ(stack.ast.projections.epoch(pid), epoch + 1);
+    ZASSERT(!stack.ast.projections.current(pid));
+    ZASSERT(stack.ast.projections.epoch(pid) == epoch + 1);
 }
 
-TEST_CASE(InvalidateKeepsProjection) {
+ZEST_CASE(InvalidateKeepsProjection) {
     Stack stack;
     auto session = stack.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
@@ -113,13 +113,13 @@ TEST_CASE(InvalidateKeepsProjection) {
 
     // Only the currency claim is revoked; the products stay for the
     // bounded-staleness consumers (preamble links, hover gap).
-    ASSERT_FALSE(stack.ast.projections.current(pid));
+    ZASSERT(!stack.ast.projections.current(pid));
     auto projection = stack.ast.projections.projection(pid);
-    ASSERT_TRUE(projection != nullptr);
-    ASSERT_TRUE(projection->pch_key.has_value());
+    ZASSERT(projection != nullptr);
+    ZASSERT(projection->pch_key);
 }
 
-TEST_CASE(DropErasesEntry) {
+ZEST_CASE(DropErasesEntry) {
     Stack stack;
     auto session = stack.open("/proj/a.cpp", "int x;\n");
     auto pid = session->path_id;
@@ -127,11 +127,11 @@ TEST_CASE(DropErasesEntry) {
 
     stack.ast.drop(pid);
 
-    ASSERT_TRUE(stack.ast.projections.projection(pid) == nullptr);
-    ASSERT_FALSE(stack.ast.projections.current(pid));
+    ZASSERT(stack.ast.projections.projection(pid) == nullptr);
+    ZASSERT(!stack.ast.projections.current(pid));
 }
 
-TEST_CASE(SwitchIdentityResets) {
+ZEST_CASE(SwitchIdentityResets) {
     Stack stack;
     auto session = stack.open("/proj/h.h", "int x;\n");
     auto pid = session->path_id;
@@ -151,16 +151,16 @@ TEST_CASE(SwitchIdentityResets) {
     // earned under the old one is dropped, but the published output stays
     // until the next compile overwrites it (same as the old world's
     // session fields).
-    ASSERT_EQ(session->generation, generation + 1);
-    ASSERT_FALSE(session->trial_done);
-    ASSERT_FALSE(stack.ast.projections.current(pid));
-    ASSERT_FALSE(stack.ast.projections.entries[pid].deps.has_value());
+    ZASSERT(session->generation == generation + 1);
+    ZASSERT(!session->trial_done);
+    ZASSERT(!stack.ast.projections.current(pid));
+    ZASSERT(!stack.ast.projections.entries[pid].deps.has_value());
     auto after = stack.ast.projections.projection(pid);
-    ASSERT_FALSE(after->pch_key.has_value());
-    ASSERT_TRUE(after->output.has_value());
+    ZASSERT(!after->pch_key.has_value());
+    ZASSERT(after->output);
 }
 
-TEST_CASE(CrashPublishesNote) {
+ZEST_CASE(CrashPublishesNote) {
     // A recorded compile crash publishes its note at once — the bar that
     // follows publishes nothing more — and takes the old diagnostics down:
     // no AST stands behind them anymore.
@@ -170,7 +170,7 @@ TEST_CASE(CrashPublishesNote) {
         session->path_id,
         CompileOutput{.version = 1,
                       .source = CommandSource::CDBExact,
-                      .diagnostics = kota::codec::RawValue{R"([{"message":"old"}])"}});
+                      .diagnostics = {protocol::Diagnostic{.message = "old"}}});
 
     int emits = 0;
     auto conn = stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) { emits += 1; });
@@ -178,31 +178,31 @@ TEST_CASE(CrashPublishesNote) {
         session,
         evidence_kind(EvidenceKind::Compile),
         kota::ipc::Error{worker::dispatch_errc::worker_crashed, "killed by signal 11 (SIGSEGV)"});
-    EXPECT_EQ(emits, 1);
+    ZEXPECT(emits == 1);
     auto projection = stack.ast.projections.projection(session->path_id);
-    ASSERT_TRUE(projection && projection->output.has_value());
-    EXPECT_TRUE(projection->output->diagnostics.empty());
+    ZASSERT((projection && projection->output.has_value()));
+    ZEXPECT(projection->output->diagnostics.empty());
 
     std::vector<protocol::Diagnostic> notes;
     append_crash_notes(*session, notes);
-    ASSERT_EQ(notes.size(), 1u);
+    ZASSERT(notes.size() == 1u);
     auto& message = std::get<std::string>(notes[0].message);
-    EXPECT_TRUE(message.contains("while compiling this file (killed by signal 11 (SIGSEGV))"));
-    EXPECT_TRUE(message.contains("save it"));
+    ZEXPECT(message.contains("while compiling this file (killed by signal 11 (SIGSEGV))"));
+    ZEXPECT(message.contains("save it"));
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
-        CO_ASSERT_FALSE(co_await stack.ast.ensure_compiled(session));
+        ZASSERT(!co_await stack.ast.ensure_compiled(session));
         done = true;
     };
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
-    EXPECT_EQ(emits, 1);
+    ZEXPECT(done);
+    ZEXPECT(emits == 1);
 }
 
-TEST_CASE(ShutdownUnblocksWaiters) {
+ZEST_CASE(ShutdownUnblocksWaiters) {
     // A waiter parked on an in-flight round must resolve at shutdown:
     // ASTFamily::stop interrupts the parse (the send itself carries no
     // token by design), so the round lands promptly and the graph's
@@ -229,9 +229,9 @@ TEST_CASE(ShutdownUnblocksWaiters) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
-        kota::task_group<> group(stack.loop);
+        kota::task_group<> group;
         auto waiter = [&]() -> kota::task<> {
             waiter_ok = co_await stack.ast.ensure_compiled(session);
             waiter_done = true;
@@ -241,8 +241,8 @@ TEST_CASE(ShutdownUnblocksWaiters) {
         for(int i = 0; i < 100 && !stack.is_compiling(session->path_id); ++i) {
             co_await kota::sleep(10);
         }
-        CO_ASSERT_TRUE(stack.is_compiling(session->path_id));
-        CO_ASSERT_FALSE(waiter_done);
+        ZASSERT(stack.is_compiling(session->path_id));
+        ZASSERT(!waiter_done);
 
         co_await stack.ast.stop();
 
@@ -256,9 +256,9 @@ TEST_CASE(ShutdownUnblocksWaiters) {
         }
         co_await group.join();
 
-        EXPECT_TRUE(waiter_done);
-        EXPECT_FALSE(waiter_ok);
-        EXPECT_FALSE(stack.is_compiling(session->path_id));
+        ZEXPECT(waiter_done);
+        ZEXPECT(!waiter_ok);
+        ZEXPECT(!stack.is_compiling(session->path_id));
 
         co_await stack.graph.shutdown();
         co_await stack.pool.stop();
@@ -267,19 +267,19 @@ TEST_CASE(ShutdownUnblocksWaiters) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(EditInterruptsStaleCompile) {
+ZEST_CASE(EditInterruptsStaleCompile) {
     // The didChange path: an edit with NO follow-up request supersedes the
-    // in-flight round — the CancelCompile interrupt makes the worker
+    // in-flight round — cancelling its compile request makes the worker
     // abandon the stale parse, the waiter resolves false (its result is
     // for a buffer that no longer exists — the editor re-requests after
     // an edit), and the next request compiles the fresh content. Liveness
     // pin; the interruption content is pinned by
-    // StatefulWorker.CancelNotificationInterruptsCompile.
+    // StatefulWorker.WireCancelInterruptsCompile.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
@@ -302,9 +302,9 @@ TEST_CASE(EditInterruptsStaleCompile) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
-        kota::task_group<> group(stack.loop);
+        kota::task_group<> group;
         auto waiter = [&]() -> kota::task<> {
             waiter_ok = co_await stack.ast.ensure_compiled(session);
             waiter_done = true;
@@ -314,11 +314,11 @@ TEST_CASE(EditInterruptsStaleCompile) {
         for(int i = 0; i < 100 && !stack.is_compiling(session->path_id); ++i) {
             co_await kota::sleep(10);
         }
-        CO_ASSERT_TRUE(stack.is_compiling(session->path_id));
+        ZASSERT(stack.is_compiling(session->path_id));
 
         // What the didChange handler does: fold the edit in, then supersede.
         session->text = "int fixed;\n";
-        session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+        session->sync_text();
         session->generation += 1;
         stack.ast.supersede(session->path_id);
 
@@ -330,14 +330,14 @@ TEST_CASE(EditInterruptsStaleCompile) {
         }
         co_await group.join();
 
-        CO_ASSERT_TRUE(waiter_done);
-        EXPECT_FALSE(waiter_ok);
+        ZASSERT(waiter_done);
+        ZEXPECT(!waiter_ok);
 
         // The next request (the editor re-queries after an edit) compiles
         // the fresh content.
         bool second_ok = co_await stack.ast.ensure_compiled(session);
-        EXPECT_TRUE(second_ok);
-        EXPECT_TRUE(stack.ast.projections.current(session->path_id));
+        ZEXPECT(second_ok);
+        ZEXPECT(stack.ast.projections.current(session->path_id));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -347,18 +347,18 @@ TEST_CASE(EditInterruptsStaleCompile) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(SupersededCompileCancelled) {
+ZEST_CASE(SupersededCompileCancelled) {
     // An edit mid-compile supersedes the in-flight round: the first waiter
     // abandons (its buffer is gone), the supersede point interrupts the
     // worker's parse, and the second waiter's respawned round compiles the
     // new content. This pins the supersede path's liveness; the
     // interruption itself is pinned content-wise by
-    // StatefulWorker.CancelNotificationInterruptsCompile.
+    // StatefulWorker.WireCancelInterruptsCompile.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
@@ -381,9 +381,9 @@ TEST_CASE(SupersededCompileCancelled) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
-        kota::task_group<> group(stack.loop);
+        kota::task_group<> group;
         auto first = [&]() -> kota::task<> {
             [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
             first_done = true;
@@ -393,11 +393,11 @@ TEST_CASE(SupersededCompileCancelled) {
         for(int i = 0; i < 100 && !stack.is_compiling(session->path_id); ++i) {
             co_await kota::sleep(10);
         }
-        CO_ASSERT_TRUE(stack.is_compiling(session->path_id));
+        ZASSERT(stack.is_compiling(session->path_id));
 
         // The edit lands while the slow compile is in flight.
         session->text = "int fixed;\n";
-        session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+        session->sync_text();
         session->generation += 1;
         stack.ast.supersede(session->path_id);
 
@@ -414,9 +414,9 @@ TEST_CASE(SupersededCompileCancelled) {
         }
         co_await group.join();
 
-        EXPECT_TRUE(first_done);
-        EXPECT_TRUE(second_ok);
-        EXPECT_TRUE(stack.ast.projections.current(session->path_id));
+        ZEXPECT(first_done);
+        ZEXPECT(second_ok);
+        ZEXPECT(stack.ast.projections.current(session->path_id));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -426,12 +426,12 @@ TEST_CASE(SupersededCompileCancelled) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(BufferImportBuildsPCM) {
+ZEST_CASE(BufferImportBuildsPCM) {
     // Imports resolve from the buffer, not the disk: the on-disk TU has
     // no import, so only the round's buffer scan can discover `import m;`
     // and build the PCM before the compile consumes it.
@@ -453,7 +453,7 @@ TEST_CASE(BufferImportBuildsPCM) {
     stack.project.dep_graph.build_reverse_map();
 
     auto store = CacheStore::open(tmp.path("root"), 1);
-    ASSERT_TRUE(store.has_value());
+    ZASSERT(store);
     store->register_namespace({.name = "pch",
                                .extension = ".pch",
                                .aux_extension = ".pch.idx",
@@ -472,7 +472,7 @@ TEST_CASE(BufferImportBuildsPCM) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         ok = co_await stack.ast.ensure_compiled(session);
 
@@ -484,16 +484,16 @@ TEST_CASE(BufferImportBuildsPCM) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
-    EXPECT_TRUE(ok);
-    EXPECT_TRUE(stack.ast.projections.current(session->path_id));
+    ZEXPECT(ok);
+    ZEXPECT(stack.ast.projections.current(session->path_id));
     auto mod_ids = stack.project.dep_graph.lookup_module("m");
-    ASSERT_FALSE(mod_ids.empty());
-    EXPECT_TRUE(stack.project.pcm_cache.contains(mod_ids[0]));
+    ZASSERT(!mod_ids.empty());
+    ZEXPECT(stack.project.pcm_cache.contains(mod_ids[0]));
 }
 
-TEST_CASE(ImportScanPerUnit) {
+ZEST_CASE(ImportScanPerUnit) {
     // In a project with modules only a unit that can import pays the
     // precise scan, and an edit off its directive lines reuses it.
     TempDir tmp;
@@ -521,7 +521,7 @@ TEST_CASE(ImportScanPerUnit) {
     auto main = stack.open(tmp.path("main.cpp"), "import m;\nint main() { return mv(); }\n");
     auto edit = [&](const std::shared_ptr<Session>& session, std::string text) {
         session->text = std::move(text);
-        session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+        session->sync_text();
         session->generation += 1;
         stack.ast.supersede(session->path_id);
     };
@@ -536,19 +536,19 @@ TEST_CASE(ImportScanPerUnit) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
-        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(plain));
+        ZASSERT(co_await stack.ast.ensure_compiled(plain));
         plain_scans = stack.pcm.import_scans;
-        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(main));
+        ZASSERT(co_await stack.ast.ensure_compiled(main));
         first_scans = stack.pcm.import_scans;
 
         edit(main, "import m;\nint main() { return mv() + 1; }\n");
-        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(main));
+        ZASSERT(co_await stack.ast.ensure_compiled(main));
         body_scans = stack.pcm.import_scans;
 
         edit(main, "import m;\n#define TWO 2\nint main() { return mv() + TWO; }\n");
-        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(main));
+        ZASSERT(co_await stack.ast.ensure_compiled(main));
         import_scans = stack.pcm.import_scans;
 
         co_await stack.ast.stop();
@@ -559,16 +559,16 @@ TEST_CASE(ImportScanPerUnit) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
-    EXPECT_EQ(plain_scans, 0u);
+    ZEXPECT(plain_scans == 0u);
     // The document's scan, and the interface's own PCM round.
-    EXPECT_EQ(first_scans, 2u);
-    EXPECT_EQ(body_scans, first_scans);
-    EXPECT_EQ(import_scans, first_scans + 1);
+    ZEXPECT(first_scans == 2u);
+    ZEXPECT(body_scans == first_scans);
+    ZEXPECT(import_scans == first_scans + 1);
 }
 
-TEST_CASE(BufferImportRecorded) {
+ZEST_CASE(BufferImportRecorded) {
     // Zero-provider window: the compile fails on the unresolved import,
     // but the buffer scan must still record the name — the first
     // provider's arrival has nothing else to find this document by (the
@@ -588,7 +588,7 @@ TEST_CASE(BufferImportRecorded) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
 
@@ -600,18 +600,17 @@ TEST_CASE(BufferImportRecorded) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
     // The sentinel edge survives the landing: a first provider's update
     // must reach this document's node.
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) !=
-                dirtied.end());
+    ZEXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(IncludeImportRecorded) {
+ZEST_CASE(IncludeImportRecorded) {
     // Zero-provider window, import introduced by the command: the buffer
     // is lexically importless, so the forced header's import syntax, a
     // graph fact, must trigger the precise scan that records the name.
@@ -638,7 +637,7 @@ TEST_CASE(IncludeImportRecorded) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
 
@@ -650,16 +649,15 @@ TEST_CASE(IncludeImportRecorded) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) !=
-                dirtied.end());
+    ZEXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(HostImportRecorded) {
+ZEST_CASE(HostImportRecorded) {
     // A header compiled through its host's synthesized prefix: the host's
     // import syntax, a graph fact, must trigger the precise scan that
     // records the name.
@@ -685,7 +683,7 @@ TEST_CASE(HostImportRecorded) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
 
@@ -697,18 +695,17 @@ TEST_CASE(HostImportRecorded) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
     auto* context = stack.contexts.header_context(session->path_id);
-    ASSERT_TRUE(context != nullptr && context->synthesized != nullptr);
+    ZASSERT((context != nullptr && context->synthesized != nullptr));
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    EXPECT_TRUE(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) !=
-                dirtied.end());
+    ZEXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(ForcedIncludeSkipsScan) {
+ZEST_CASE(ForcedIncludeSkipsScan) {
     // Neither the command's forced header nor a header compiled through
     // its host has import syntax: no compile pays an import scan.
     TempDir tmp;
@@ -736,7 +733,7 @@ TEST_CASE(ForcedIncludeSkipsScan) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         unit_ok = co_await stack.ast.ensure_compiled(unit);
         header_ok = co_await stack.ast.ensure_compiled(header);
@@ -749,19 +746,19 @@ TEST_CASE(ForcedIncludeSkipsScan) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
-    EXPECT_TRUE(unit_ok);
-    EXPECT_TRUE(header_ok);
-    EXPECT_TRUE(stack.contexts.header_context(header->path_id) != nullptr);
-    EXPECT_EQ(stack.pcm.import_scans, 0u);
+    ZEXPECT(unit_ok);
+    ZEXPECT(header_ok);
+    ZEXPECT(stack.contexts.header_context(header->path_id) != nullptr);
+    ZEXPECT(stack.pcm.import_scans == 0u);
 }
 
-};  // TEST_SUITE(ASTFamilyGuards)
+};  // ZEST_SUITE(ASTFamilyGuards)
 
-TEST_SUITE(DispatcherGuards) {
+ZEST_SUITE(DispatcherGuards) {
 
-TEST_CASE(CrashedCompileBarsBuilds) {
+ZEST_CASE(CrashedCompileBarsBuilds) {
     // A barred compile bars the stateless builds of the same content too —
     // completion parses what the compile crashed on — and they answer
     // empty: the crash note says why, an error would only be a popup.
@@ -776,17 +773,17 @@ TEST_CASE(CrashedCompileBarsBuilds) {
     auto body = [&]() -> kota::task<> {
         // With no worker at all, only the bar can answer without an error.
         auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, "null");
+        ZASSERT(result);
+        ZEXPECT(result.value().data == "null");
         done = true;
     };
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 }
 
-TEST_CASE(CrashedFormatBarsFormat) {
+ZEST_CASE(CrashedFormatBarsFormat) {
     Stack stack;
     auto session = stack.open("/proj/poison.cpp", "int x;\n");
     session->quarantine->on_crash(evidence_kind(EvidenceKind::Format),
@@ -797,17 +794,17 @@ TEST_CASE(CrashedFormatBarsFormat) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         auto result = co_await stack.dispatcher.format(Ticket::take(session), std::nullopt);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, "null");
+        ZASSERT(result);
+        ZEXPECT(result.value().data == "null");
         done = true;
     };
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 }
 
-TEST_CASE(EpochGuardsPCHWrite) {
+ZEST_CASE(EpochGuardsPCHWrite) {
     Stack stack;
     auto session = stack.open("/proj/a.cpp", "int x;");
     auto pid = session->path_id;
@@ -837,14 +834,14 @@ TEST_CASE(EpochGuardsPCHWrite) {
     stack.loop.schedule(task);
     stack.loop.run();
 
-    EXPECT_FALSE(wrote);
+    ZEXPECT(!wrote);
     // The stale continuation left the adopted PCH reference untouched.
     auto projection = stack.ast.projections.projection(pid);
-    ASSERT_TRUE(projection && projection->pch_key.has_value());
-    EXPECT_EQ(*projection->pch_key, std::string("key"));
+    ZASSERT((projection && projection->pch_key.has_value()));
+    ZEXPECT(*projection->pch_key == std::string("key"));
 }
 
-TEST_CASE(PCHCrashBarsDocument) {
+ZEST_CASE(PCHCrashBarsDocument) {
     // A PCH build that kills its stateless worker bars the document: the
     // preamble is its content too. The worker names the build, so the
     // death is blamed at once and the build is not resent.
@@ -867,7 +864,7 @@ TEST_CASE(PCHCrashBarsDocument) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         bool built =
             co_await ASTFamilyFixture::ensure_pch(stack.ast,
@@ -876,12 +873,12 @@ TEST_CASE(PCHCrashBarsDocument) {
                                                   stack.ast.projections.epoch(session->path_id),
                                                   directory,
                                                   arguments);
-        EXPECT_FALSE(built);
-        EXPECT_TRUE(ASTFamily::compile_barred(*session));
+        ZEXPECT(!built);
+        ZEXPECT(ASTFamily::compile_barred(*session));
         auto notes = session->quarantine->notes();
-        CO_ASSERT_EQ(notes.size(), 1u);
-        EXPECT_EQ(notes[0].kind, evidence_kind(EvidenceKind::PCH));
-        EXPECT_EQ(notes[0].strikes, 1u);
+        ZASSERT(notes.size() == 1u);
+        ZEXPECT(notes[0].kind == evidence_kind(EvidenceKind::PCH));
+        ZEXPECT(notes[0].strikes == 1u);
 
         co_await stack.pool.stop();
         done = true;
@@ -889,12 +886,12 @@ TEST_CASE(PCHCrashBarsDocument) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(PCHCrashStopsBuild) {
+ZEST_CASE(PCHCrashStopsBuild) {
     // A PCH crash inside a completion build's dependency prep bars the
     // document after the entry gate: the build stops instead of
     // dispatching the same content to one more worker.
@@ -914,14 +911,14 @@ TEST_CASE(PCHCrashStopsBuild) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, "null");
+        ZASSERT(result);
+        ZEXPECT(result.value().data == "null");
         auto notes = session->quarantine->notes();
-        CO_ASSERT_EQ(notes.size(), 1u);
-        EXPECT_EQ(notes[0].strikes, 1u);
+        ZASSERT(notes.size() == 1u);
+        ZEXPECT(notes[0].strikes == 1u);
 
         co_await stack.pool.stop();
         done = true;
@@ -929,12 +926,12 @@ TEST_CASE(PCHCrashStopsBuild) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(ClientCancelSparesCompile) {
+ZEST_CASE(ClientCancelSparesCompile) {
     // A client's $/cancelRequest tears down one request's frame, never the
     // shared compile it waits on: the detached round serves every waiter.
     // A regression that threads the request token into the shared round
@@ -961,10 +958,10 @@ TEST_CASE(ClientCancelSparesCompile) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         kota::cancellation_source source;
-        kota::task_group<> group(stack.loop);
+        kota::task_group<> group;
         auto cancelled_waiter = [&]() -> kota::task<> {
             auto hover = [&]() -> Dispatcher::RawResult {
                 co_return co_await stack.dispatcher.query(worker::QueryKind::Hover,
@@ -988,7 +985,7 @@ TEST_CASE(ClientCancelSparesCompile) {
         for(int i = 0; i < 100 && !stack.is_compiling(session->path_id); ++i) {
             co_await kota::sleep(10);
         }
-        CO_ASSERT_TRUE(stack.is_compiling(session->path_id));
+        ZASSERT(stack.is_compiling(session->path_id));
         source.cancel();
 
         for(int i = 0; i < 600 && !other_answered; ++i) {
@@ -999,10 +996,10 @@ TEST_CASE(ClientCancelSparesCompile) {
         }
         co_await group.join();
 
-        EXPECT_TRUE(cancelled_returned);
-        EXPECT_TRUE(other_answered);
-        EXPECT_TRUE(stack.ast.projections.current(session->path_id));
-        EXPECT_FALSE(stack.is_compiling(session->path_id));
+        ZEXPECT(cancelled_returned);
+        ZEXPECT(other_answered);
+        ZEXPECT(stack.ast.projections.current(session->path_id));
+        ZEXPECT(!stack.is_compiling(session->path_id));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1012,12 +1009,12 @@ TEST_CASE(ClientCancelSparesCompile) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(StaleReplyLandsContentModified) {
+ZEST_CASE(StaleReplyLandsContentModified) {
     // A reply for a buffer the client edited away never leaves as a value:
     // the landing turns it into ContentModified even when the worker
     // answered after the compile had settled — the edit landed while the
@@ -1043,16 +1040,16 @@ TEST_CASE(StaleReplyLandsContentModified) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         // Warm the AST: the next query's only suspension is its worker send.
         auto warm = co_await stack.dispatcher.query(worker::QueryKind::Hover,
                                                     Ticket::take(session),
                                                     protocol::Position{0, 4});
-        CO_ASSERT_TRUE(warm.has_value());
+        ZASSERT(warm);
 
         auto ticket = Ticket::take(session);
-        kota::task_group<> group(stack.loop);
+        kota::task_group<> group;
         auto tokens = [&]() -> kota::task<> {
             auto result =
                 co_await stack.dispatcher.query(worker::QueryKind::SemanticTokens, ticket);
@@ -1062,10 +1059,10 @@ TEST_CASE(StaleReplyLandsContentModified) {
         // spawn runs the query inline to that suspension, so the pool
         // already reports it in flight: the bump lands provably between
         // dispatch and reply.
-        CO_ASSERT_TRUE(stack.pool.foreground_busy());
+        ZASSERT(stack.pool.foreground_busy());
         session->generation += 1;
         co_await group.join();
-        EXPECT_TRUE(stale);
+        ZEXPECT(stale);
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1075,12 +1072,12 @@ TEST_CASE(StaleReplyLandsContentModified) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(HarmlessKindKeepsBar) {
+ZEST_CASE(HarmlessKindKeepsBar) {
     // A crash of one query kind bars only that kind: a hover on a document
     // whose semantic tokens crashed is ordinary work — it is answered, and
     // the tokens record stays as it was.
@@ -1101,13 +1098,13 @@ TEST_CASE(HarmlessKindKeepsBar) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
                                                       Ticket::take(session),
                                                       protocol::Position{0, 4});
-        EXPECT_TRUE(result.has_value());
-        EXPECT_TRUE(session->quarantine->barred(tokens_kind, Quarantine::Clock::now()));
+        ZEXPECT(result);
+        ZEXPECT(session->quarantine->barred(tokens_kind, Quarantine::Clock::now()));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1117,12 +1114,12 @@ TEST_CASE(HarmlessKindKeepsBar) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(PoisonPreambleShared) {
+ZEST_CASE(PoisonPreambleShared) {
     // One document's quarantine cannot contain a poison preamble alone: the
     // PCH is shared, so every session with the same preamble would
     // re-trigger the build and burn a worker of its own. After one crashed
@@ -1161,7 +1158,7 @@ TEST_CASE(PoisonPreambleShared) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         auto build = [&](const std::shared_ptr<Session>& session) {
             return ASTFamilyFixture::ensure_pch(stack.ast,
@@ -1172,17 +1169,17 @@ TEST_CASE(PoisonPreambleShared) {
                                                 arguments);
         };
         auto pch = evidence_kind(EvidenceKind::PCH);
-        CO_ASSERT_FALSE(co_await build(first));
-        CO_ASSERT_TRUE(first->quarantine->crashed(pch));
-        EXPECT_EQ(deaths, 1);
+        ZASSERT(!co_await build(first));
+        ZASSERT(first->quarantine->crashed(pch));
+        ZEXPECT(deaths == 1);
 
         // Refused without touching a worker, each session barred by the
         // same death.
-        CO_ASSERT_FALSE(co_await build(second));
-        EXPECT_TRUE(second->quarantine->crashed(pch));
-        CO_ASSERT_FALSE(co_await build(third));
-        EXPECT_TRUE(third->quarantine->crashed(pch));
-        EXPECT_EQ(deaths, 1);
+        ZASSERT(!co_await build(second));
+        ZEXPECT(second->quarantine->crashed(pch));
+        ZASSERT(!co_await build(third));
+        ZEXPECT(third->quarantine->crashed(pch));
+        ZEXPECT(deaths == 1);
 
         co_await stack.pool.stop();
         done = true;
@@ -1190,12 +1187,12 @@ TEST_CASE(PoisonPreambleShared) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
 
-TEST_CASE(EpochGuardsPCHWash) {
+ZEST_CASE(EpochGuardsPCHWash) {
     // A successful build whose license epoch moved mid-flight must not
     // clear the session's PCH record: the crash belongs to content the
     // request no longer describes, and clearing it would let a poison
@@ -1220,7 +1217,7 @@ TEST_CASE(EpochGuardsPCHWash) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         auto gen = session->generation;
         auto epoch = stack.ast.projections.epoch(session->path_id);
@@ -1244,10 +1241,10 @@ TEST_CASE(EpochGuardsPCHWash) {
         // The build landed (the shared artifact is cached) and the stale
         // request compiles against it, but it adopted nothing and cleared
         // nothing.
-        EXPECT_TRUE(built);
+        ZEXPECT(built);
         auto projection = stack.ast.projections.projection(session->path_id);
-        EXPECT_TRUE(!projection || !projection->pch_key.has_value());
-        EXPECT_TRUE(session->quarantine->crashed(pch));
+        ZEXPECT((!projection || !projection->pch_key.has_value()));
+        ZEXPECT(session->quarantine->crashed(pch));
 
         // A current request adopts the cached pair and only then clears
         // this session's record.
@@ -1257,10 +1254,10 @@ TEST_CASE(EpochGuardsPCHWash) {
                                                       stack.ast.projections.epoch(session->path_id),
                                                       directory,
                                                       arguments);
-        EXPECT_TRUE(built);
+        ZEXPECT(built);
         projection = stack.ast.projections.projection(session->path_id);
-        EXPECT_TRUE(projection && projection->pch_key.has_value());
-        EXPECT_FALSE(session->quarantine->crashed(pch));
+        ZEXPECT((projection && projection->pch_key.has_value()));
+        ZEXPECT(!session->quarantine->crashed(pch));
 
         co_await stack.graph.shutdown();
         co_await stack.pool.stop();
@@ -1269,10 +1266,10 @@ TEST_CASE(EpochGuardsPCHWash) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 }
 
-TEST_CASE(StaleDepsNoAdopt) {
+ZEST_CASE(StaleDepsNoAdopt) {
     // Adoption is gated on the round outcome, never on leftover cache
     // paths: when the pair's deps went stale and the rebuild fails, every
     // waiter comes back empty-handed — nobody adopts the deps-stale pair
@@ -1313,11 +1310,11 @@ TEST_CASE(StaleDepsNoAdopt) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
-        CO_ASSERT_TRUE(co_await build(builder));
+        ZASSERT(co_await build(builder));
         auto adopted = stack.ast.projections.projection(builder->path_id);
-        CO_ASSERT_TRUE(adopted && adopted->pch_key.has_value());
+        ZASSERT((adopted && adopted->pch_key.has_value()));
         auto builder_key = *adopted->pch_key;
 
         // The header the pair depends on changes into one that cannot
@@ -1334,13 +1331,13 @@ TEST_CASE(StaleDepsNoAdopt) {
         };
         co_await kota::when_all(acquire_first(), acquire_second());
 
-        EXPECT_FALSE(first_built);
-        EXPECT_FALSE(second_built);
+        ZEXPECT(!first_built);
+        ZEXPECT(!second_built);
         // The projection keeps the builder's adoption — the failed rebuild
         // wrote nothing over it, and the stale pair heals on a later
         // successful acquisition.
         auto projection = stack.ast.projections.projection(first->path_id);
-        EXPECT_TRUE(projection && projection->pch_key == builder_key);
+        ZEXPECT((projection && projection->pch_key == builder_key));
 
         co_await stack.graph.shutdown();
         co_await stack.pool.stop();
@@ -1349,10 +1346,10 @@ TEST_CASE(StaleDepsNoAdopt) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 }
 
-TEST_CASE(EvictedDocumentRecompiles) {
+ZEST_CASE(EvictedDocumentRecompiles) {
     // The worker evicts a document behind the master's back (no eviction
     // notice is wired here): the query hears document_unloaded, compiles it
     // there again and answers, never null.
@@ -1371,15 +1368,15 @@ TEST_CASE(EvictedDocumentRecompiles) {
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         opts.max_documents = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
-        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(a));
-        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(b));
+        ZASSERT(co_await stack.ast.ensure_compiled(a));
+        ZASSERT(co_await stack.ast.ensure_compiled(b));
         auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
                                                       Ticket::take(a),
                                                       protocol::Position{0, 5});
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_NE(result.value().data, "null");
+        ZASSERT(result);
+        ZEXPECT(result.value().data != "null");
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1389,10 +1386,10 @@ TEST_CASE(EvictedDocumentRecompiles) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 }
 
-TEST_CASE(AnswerClearsQueryRecord) {
+ZEST_CASE(AnswerClearsQueryRecord) {
     // Only an answer of the kind clears its record, and no compile runs to
     // drop the note: the answer republishes.
     TempDir tmp;
@@ -1413,17 +1410,17 @@ TEST_CASE(AnswerClearsQueryRecord) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT_TRUE(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
-        CO_ASSERT_TRUE(co_await stack.ast.ensure_compiled(a));
+        ZASSERT(co_await stack.ast.ensure_compiled(a));
         auto before = published;
         auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
                                                       Ticket::take(a),
                                                       protocol::Position{0, 5});
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_NE(result.value().data, "null");
-        EXPECT_FALSE(a->quarantine->crashed(hover));
-        EXPECT_EQ(published, before + 1);
+        ZASSERT(result);
+        ZEXPECT(result.value().data != "null");
+        ZEXPECT(!a->quarantine->crashed(hover));
+        ZEXPECT(published == before + 1);
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1433,10 +1430,10 @@ TEST_CASE(AnswerClearsQueryRecord) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT_TRUE(done);
+    ZEXPECT(done);
 }
 
-};  // TEST_SUITE(DispatcherGuards)
+};  // ZEST_SUITE(DispatcherGuards)
 
 }  // namespace
 

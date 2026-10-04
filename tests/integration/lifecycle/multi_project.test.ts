@@ -2,9 +2,14 @@
 /// with its own compilation database and cache, files are routed to the
 /// project that compiles them, and folders come and go at runtime.
 
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
-import { SETTLE_TIME, asLocations, waitUntil, type CliceClient } from "@clice/tools/client";
+import {
+    SETTLE_TIME,
+    asLocations,
+    runProcess,
+    waitUntil,
+    type CliceClient,
+} from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
@@ -197,7 +202,7 @@ test("subproject serves what the folder does not build", async ({ session }) => 
     client.assertNoErrors(vendored, "the listed file stays with the folder");
 });
 
-test("shared cache directory serves one project", ({ session }) => {
+test("shared cache directory serves one project", async ({ session }) => {
     const workspace = session.tmpdir();
     workspace.write("a/main.cpp", "int in_a() { return 0; }\n");
     workspace.write("b/main.cpp", "int in_b() { return 0; }\n");
@@ -207,16 +212,16 @@ test("shared cache directory serves one project", ({ session }) => {
     workspace.write("a/clice.toml", shared);
     workspace.write("b/clice.toml", shared);
     const index = (folder: string) =>
-        spawnSync(
+        runProcess(
             cliceExecutable(),
             ["index", "--workspace", workspace.path(folder), "--workers", "1"],
-            { encoding: "utf8", timeout: INDEX_TIMEOUT },
+            { timeout: INDEX_TIMEOUT },
         );
 
-    expect(index("a").status).toBe(0);
+    expect((await index("a")).status).toBe(0);
     // Run after it, the other project indexes into a cache of its own
     // instead of the first one's.
-    const second = index("b");
+    const second = await index("b");
     expect(second.status, `stderr: ${second.stderr}`).toBe(0);
     expect(second.stdout).toContain("Indexed 1 translation unit");
     expect(fs.existsSync(workspace.path("b/.clice"))).toBe(true);
@@ -702,10 +707,10 @@ test("batch index asks the folder's server", async ({ session }) => {
 
     const [alpha] = await client.openAndWait("alpha/main.cpp");
     expect(await client.waitForIndex(alpha, "beta_fn")).toBe(true);
-    const batch = spawnSync(
+    const batch = await runProcess(
         cliceExecutable(),
         ["index", "--workspace", workspace.path("beta"), "--workers", "1"],
-        { encoding: "utf8", timeout: INDEX_TIMEOUT },
+        { timeout: INDEX_TIMEOUT },
     );
     expect(batch.status, `stderr: ${batch.stderr}`).toBe(0);
     expect(batch.stdout).toContain("through the running clice server");

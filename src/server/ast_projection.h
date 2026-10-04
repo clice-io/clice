@@ -9,10 +9,12 @@
 #include "index/tu_index.h"
 #include "project/project.h"
 
-#include "kota/codec/visit/common.h"
+#include "kota/ipc/lsp/protocol.h"
 #include "llvm/ADT/DenseMap.h"
 
 namespace clice {
+
+namespace protocol = kota::ipc::protocol;
 
 /// The publishable products of the most recent compilation (materialized
 /// whole-document feature results). The data lives in the projection; the
@@ -29,7 +31,7 @@ struct CompileOutput {
     CommandSource source;
 
     /// Worker-produced raw diagnostics (unformatted); empty on failure.
-    kota::codec::RawValue diagnostics;
+    std::vector<protocol::Diagnostic> diagnostics;
 
     /// First phantom line introduced by suffix include injection —
     /// diagnostics at or past it describe text the user cannot see.

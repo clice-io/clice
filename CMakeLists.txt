@@ -254,7 +254,7 @@ if(CLICE_ENABLE_TEST)
         "${PROJECT_SOURCE_DIR}/src"
         "${PROJECT_SOURCE_DIR}/tests/unit"
     )
-    target_link_libraries(unit_tests PRIVATE clice::server kota::zest kota::deco)
+    target_link_libraries(unit_tests PRIVATE clice::server kota::zest::async kota::deco)
     clice_precompile_headers(unit_tests)
     target_compile_definitions(unit_tests PRIVATE
         CLICE_TESTS_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data"

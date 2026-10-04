@@ -55,15 +55,14 @@ static std::string serialize_preamble_envelope(CompilationUnit& unit,
     auto links = feature::document_links(unit);
     auto inactive = feature::inactive_regions(unit, {}, 0, preamble_bound);
     auto links_ms = links_timer.ms_f();
-    auto diagnostics =
-        kota::codec::json::to_string<kota::ipc::lsp_config>(feature::diagnostics(unit));
+    auto diagnostics = to_client_json(feature::diagnostics(unit), "[]");
 
     ScopedTimer blob_timer;
     auto blob = index::build_preamble_index(unit,
                                             links,
                                             inactive.regions,
                                             inactive.open_stack,
-                                            diagnostics ? *diagnostics : "[]");
+                                            diagnostics);
     LOG_PERF("index_detail",
              "op=preamble links_ms={:.2f} blob_ms={:.2f} bytes={}",
              links_ms,
@@ -271,6 +270,16 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
                          /*internal_error=*/false);
 }
 
+/// Where a diagnostic starts, its column counted in bytes as compilers
+/// count them.
+static auto byte_position(CompilationUnitRef unit, const Diagnostic& diagnostic)
+    -> std::optional<kota::ipc::protocol::Position> {
+    auto content = unit.file_content(diagnostic.fid);
+    return kota::ipc::lsp::to_position({content.data(), content.size()},
+                                       diagnostic.range.begin,
+                                       kota::ipc::lsp::PositionEncoding::UTF8);
+}
+
 /// Collect the tidy pass's findings with real per-file locations: unlike
 /// the LSP path, which folds header diagnostics onto their include line,
 /// the CLI reports them where they are. clang-tidy's header-filter
@@ -302,12 +311,11 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
             if(!last_kept || raw.fid.isInvalid() || !raw.range.valid()) {
                 continue;
             }
-            feature::LineMap map(unit.file_content(raw.fid), feature::PositionEncoding::UTF8);
-            if(auto range = feature::to_range(map, raw.range)) {
+            if(auto start = byte_position(unit, raw)) {
                 out.back().notes.push_back({
                     .file = std::string(unit.file_path(raw.fid)),
-                    .line = range->start.line + 1,
-                    .column = range->start.character + 1,
+                    .line = start->line + 1,
+                    .column = start->character + 1,
                     .message = raw.message,
                 });
             }
@@ -338,15 +346,14 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
                 continue;
             }
         }
-        feature::LineMap map(unit.file_content(raw.fid), feature::PositionEncoding::UTF8);
-        auto range = feature::to_range(map, raw.range);
-        if(!range) {
+        auto start = byte_position(unit, raw);
+        if(!start) {
             continue;
         }
         out.push_back({
             .file = std::string(file),
-            .line = range->start.line + 1,
-            .column = range->start.character + 1,
+            .line = start->line + 1,
+            .column = start->character + 1,
             .error =
                 raw.id.level == DiagnosticLevel::Error || raw.id.level == DiagnosticLevel::Fatal,
             .message = raw.message,
@@ -490,38 +497,29 @@ static kota::codec::RawValue handle_format(const worker::FormatParams& params) {
     return to_raw(edits);
 }
 
-/// Register the handler of one request type. Each request arms a fresh
-/// stop flag as the most recent build's — published before the
-/// pool-thread hop so a CancelBuild aimed at it still lands — and runs
-/// the handler on the pool thread. A cancellation (peer close, wire-level
-/// $/cancelRequest) dequeues work that has not started, which answers
-/// `cancelled`; work already on the pool thread learns through the hook:
-/// the flag doubles as CompilationParams::stop, which clang polls after
-/// every top-level declaration, so even the parse itself stops instead of
-/// running to completion for a result nobody will read.
+/// Register the handler of one request type, which runs on the pool
+/// thread. A cancellation (peer close, $/cancelRequest) dequeues work that
+/// has not started; work already on the pool thread learns through the
+/// hook's stop flag, which doubles as CompilationParams::stop: clang polls
+/// it after every top-level declaration, so even the parse itself stops
+/// instead of running to completion for a result nobody will read.
 template <typename Params, typename Result, typename Handler>
-static void serve(kota::ipc::BincodePeer& peer,
-                  std::shared_ptr<std::atomic_bool>& build_stop,
-                  Result cancelled,
-                  Handler handler) {
-    peer.on_request([&build_stop,
-                     cancelled,
-                     handler](RequestContext&, const Params& params) -> RequestResult<Params> {
-        auto stop = std::make_shared<std::atomic_bool>(false);
-        build_stop = stop;
-        auto result = co_await kota::queue(
-            [&]() -> Result {
-                if(stop->load(std::memory_order_relaxed)) {
-                    return cancelled;
-                }
-                CrashScope crash_scope(worker::crash_tag(params));
-                auto result = handler(params, stop);
-                release_free_memory();
-                return result;
-            },
-            [stop] { stop->store(true, std::memory_order_relaxed); });
-        co_return result.value();
-    });
+static void serve(kota::ipc::BincodePeer& peer, Result cancelled, Handler handler) {
+    peer.on_request(
+        [cancelled, handler](RequestContext&, const Params& params) -> RequestResult<Params> {
+            auto stop = std::make_shared<std::atomic_bool>(false);
+            co_return co_await kota::queue(
+                [&]() -> Result {
+                    if(stop->load(std::memory_order_relaxed)) {
+                        return cancelled;
+                    }
+                    CrashScope crash_scope(worker::crash_tag(params));
+                    auto result = handler(params, stop);
+                    release_free_memory();
+                    return result;
+                },
+                [stop] { stop->store(true, std::memory_order_relaxed); });
+        });
 }
 
 int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {
@@ -553,40 +551,25 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         LOG_ERROR("Failed to open stdio transport");
         return 1;
     }
-
-    // Stop flag of the most recent build request, published before its
-    // pool-thread hop so a CancelBuild aimed at it still lands. Never
-    // cleared: the master sends CancelBuild only while it awaits that
-    // build's reply, and pipe ordering pins any follow-up build behind the
-    // cancel, so a set can only ever hit the stale build's flag.
-    std::shared_ptr<std::atomic_bool> build_stop;
+    (*transport_result)->set_remote_max_payload(kota::ipc::default_max_payload);
 
     kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
 
-    peer.on_notification([&build_stop](const worker::CancelBuildParams&) {
-        LOG_DEBUG("CancelBuild notification received");
-        if(build_stop) {
-            build_stop->store(true, std::memory_order_relaxed);
-        }
-    });
-
     const worker::ArtifactBuildResult cancelled_build{.success = false, .error = "Build cancelled"};
-    serve<worker::BuildPCHParams>(peer, build_stop, cancelled_build, &handle_build_pch);
-    serve<worker::BuildPCMParams>(peer, build_stop, cancelled_build, &handle_build_pcm);
+    serve<worker::BuildPCHParams>(peer, cancelled_build, &handle_build_pch);
+    serve<worker::BuildPCMParams>(peer, cancelled_build, &handle_build_pcm);
     serve<worker::TURunParams>(
         peer,
-        build_stop,
         worker::TURunResult{.success = false, .error = "Build cancelled"},
         [](const worker::TURunParams& params, const std::shared_ptr<std::atomic_bool>& stop) {
             ScopedNice guard;
             return handle_turun(params, stop);
         });
     const kota::codec::RawValue cancelled_query{"null"};
-    serve<worker::CompletionParams>(peer, build_stop, cancelled_query, &handle_completion);
-    serve<worker::SignatureHelpParams>(peer, build_stop, cancelled_query, &handle_signature_help);
+    serve<worker::CompletionParams>(peer, cancelled_query, &handle_completion);
+    serve<worker::SignatureHelpParams>(peer, cancelled_query, &handle_signature_help);
     serve<worker::FormatParams>(
         peer,
-        build_stop,
         cancelled_query,
         [](const worker::FormatParams& params, const std::shared_ptr<std::atomic_bool>&) {
             return handle_format(params);

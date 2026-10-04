@@ -232,11 +232,11 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
 - Under `-ffreestanding` clang recognizes no library builtins
   (`getBuiltinID` is 0): logic keyed on builtin recognition behaves
   differently in unit tests than under a hosted `clice inspect`.
-- In a CI log of an aborted unit run, the `[ RUN ]` line before the
-  assertion names an innocent test: stdout is block-buffered on a pipe,
-  stderr is not, and the buffer dies with the process. Take the crashing
-  test from a local backtrace (`lldb --batch -o run -k "bt 40" -- ...`)
-  or run the suspects one by one with `--test-filter=Suite.Case`.
+- A unit test runs in zest's worker process: one that crashes is reported
+  CRASHED under its own name, with what it printed, and the run goes on.
+  A debugger attached to `unit_tests` sees only the runner — take a
+  backtrace with `--no-isolation --test-filter=Suite.Case`, which runs the
+  test in-process (`lldb --batch -o run -k "bt 40" -- ...`).
 - The Tester's driver is the `clang++` on PATH: the cross test legs install
   only the `test-run` env, so they compile against the runner's system
   libstdc++, not conda's. A wrapper script named `clang++` that execs the
@@ -244,14 +244,21 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
 
 ## C++ unit tests (zest)
 
-- zest constructs a fresh suite object for every `TEST_CASE`: no `reset()`
-  / `clear()` helpers, shared initialization goes in `setup()`. A
+- zest constructs a fresh suite object for every `ZEST_CASE`: no `reset()`
+  / `clear()` helpers, shared initialization goes in the suite's
+  constructor (`ZEST_SUITE(Name)` declares `struct NameTEST`). A
   default-constructed `Workspace` already carries the real configuration
   defaults (`Config` guarantees it; `BornValidDefaults` pins it) — no
   defaults initialization is needed.
-- `ASSERT_*` never runs inside a coroutine — sample inside, assert outside.
-  Do not name a local `failed` (the macro's own name). Error codes need
-  `static_cast<bool>` in `ASSERT_FALSE`.
+- A check takes one expression and shows the operands of its top-level
+  comparison: `ZEXPECT(a == b)`, `ZASSERT(result)`. `&&`, `||`, bitwise
+  operators and shifts at the top level do not compile — split the check,
+  or parenthesize it to check one bool.
+- A failed `ZASSERT` ends the test's worker process at once, without
+  unwinding: it works the same in a coroutine, a helper or another thread,
+  but the suite's destructor does not run — cleanup that must happen then
+  goes in a `kota::zest::FatalHook`. Under `--no-isolation` it ends the
+  whole run.
 - Filter with `--test-filter=<name>`; a bare positional name exits 1
   silently.
 - `select("m")` looks up a point while `§(m)⟦...⟧` registers only a range:

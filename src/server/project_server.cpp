@@ -16,6 +16,7 @@
 #include "worker/protocol.h"
 
 #include "kota/async/async.h"
+#include "kota/codec/dyn/decode.h"
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Process.h"
@@ -26,13 +27,12 @@ namespace clice {
 ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     server(server), loop(server.loop), root(std::move(root)), project(server.files),
     sched(loop, project, commands, server.pool),
-    ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions, loop),
+    ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions),
     dispatcher(project, contexts, ast, server.pool),
     live_sources(project, sched.pch, sessions, ast.projections),
     index_query(project.project_index, project.file_table, &freshness, &live_sources),
     features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
-    invalidator(project, sessions, contexts, ast.projections, sched.pcm, sched.store),
-    bg_tasks(loop) {
+    invalidator(project, sessions, contexts, ast.projections, sched.pcm, sched.store) {
     ast.register_runner();
     // The loaded-state budget follows the open-document count; the PCH
     // family cannot see SessionStore, so the project wires the provider.
@@ -81,7 +81,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
 
 ProjectServer::~ProjectServer() = default;
 
-void ProjectServer::configure(llvm::StringRef init_options,
+void ProjectServer::configure(const std::optional<kota::codec::dyn::Value>& init_options,
                               llvm::ArrayRef<CanonicalPath> taken_cache_dirs) {
     config_issues.clear();
     config_path.clear();
@@ -97,8 +97,8 @@ void ProjectServer::configure(llvm::StringRef init_options,
             issue.message);
     }
     std::string own_cache_dir = project.config.project.cache_dir;
-    if(!init_options.empty()) {
-        if(auto ov = kota::codec::json::from_string(init_options, project.config); !ov) {
+    if(init_options) {
+        if(auto ov = kota::codec::dyn::from_dyn(*init_options, project.config); !ov) {
             LOG_GUIDANCE("Failed to apply initializationOptions: {}", ov.error().to_string());
         }
     }
@@ -539,8 +539,8 @@ void ProjectServer::start_control_listener() {
     auto acceptor = kota::tcp::listen(host, 0, {}, loop);
     std::optional<int> port;
     if(acceptor) {
-        if(auto bound = kota::tcp::local_port(*acceptor)) {
-            port = *bound;
+        if(auto bound = acceptor->getsockname()) {
+            port = bound->port;
         }
     }
     if(!port) {

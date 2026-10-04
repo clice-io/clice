@@ -516,7 +516,7 @@ void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out) {
     }
     out.push_back(CodeAction{
         .title = std::move(title),
-        .kind = protocol::CodeActionKind::refactor_rewrite,
+        .kind = protocol::CodeActionKind::RefactorRewrite,
         .edits = std::move(edits),
     });
 }

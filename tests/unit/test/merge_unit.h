@@ -20,7 +20,7 @@ namespace clice::testing {
 inline void merge_unit(Project& project, CompilationUnit& unit, Fid& main) {
     auto wire = index::build_tu_index(unit);
     auto view = index::TUIndex::from_bytes(wire);
-    ASSERT_TRUE(view.loaded());
+    ZASSERT(view.loaded());
 
     auto& project_index = project.project_index;
     llvm::SmallVector<Fid> file_ids_map;
@@ -28,7 +28,7 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& main) {
         file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));
     }
     llvm::SmallVector<index::SymbolHash> added;
-    ASSERT_TRUE(project_index.merge(view, file_ids_map, &added));
+    ZASSERT(project_index.merge(view, file_ids_map, &added));
     project_index.search_pending.insert(added.begin(), added.end());
     main = file_ids_map[view.path_count() - 1];
 
@@ -68,7 +68,7 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& main) {
         contribution_paths.push_back(view.section_path(section));
     }
     auto local_fanout = view.local_fanout(contribution_paths);
-    ASSERT_TRUE(local_fanout.has_value());
+    ZASSERT(local_fanout);
     manifest.local_fanout = std::move(*local_fanout);
 
     for(auto path_id: project_index.apply_manifest(project.file_table, main, std::move(manifest))) {

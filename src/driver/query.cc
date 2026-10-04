@@ -17,8 +17,7 @@ using kota::deco::decl::KVStyle;
 namespace {
 
 struct QueryOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Workspace root directory (default: current directory)",
@@ -102,16 +101,8 @@ struct QueryOptions {
              required = false)
     fresh;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--log-level", "--log-level="},
-           help = "Log level: trace, debug, info, warn, error, off (default: warn)",
-           required = false)
-    <std::string> log_level;
+    LogLevelOption log{.log_level = LogLevel::Warn};
 };
-
-auto make_command() {
-    return kota::deco::cli::command<QueryOptions>("clice query [OPTIONS]");
-}
 
 constexpr llvm::StringLiteral build_methods[] = {"compileCommand",
                                                  "projectFiles",
@@ -278,19 +269,12 @@ int run_query(const QueryOptions& opts, const char* self_path) {
 
 }  // namespace
 
-void add_query(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path) {
-    auto cmd = make_command();
-    cmd.matchAll([&exit_code, self_path](QueryOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           if(!apply_log_level(opts.log_level.value_or("warn")))
-               return;
+void add_query(kota::deco::cli::SubCommander& root, const char* self_path) {
+    auto cmd = kota::deco::cli::command<QueryOptions>("clice query [OPTIONS]");
+    cmd.match_all([self_path](QueryOptions opts) {
+           opts.log.apply();
            logging::stderr_logger("query", logging::options);
-           exit_code = run_query(opts, self_path);
+           return run_query(opts, self_path);
        })
         .on_error([](auto err) { print_json(Failure{.error = err.message}); });
 

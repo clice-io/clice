@@ -641,17 +641,11 @@ private:
 
 class SemanticTokenEncoder {
 public:
-    SemanticTokenEncoder(llvm::StringRef content,
-                         llvm::ArrayRef<std::uint32_t> line_starts,
-                         PositionEncoding encoding,
-                         protocol::SemanticTokens& output) :
-        map(content,
-            std::span<const std::uint32_t>(line_starts.data(), line_starts.size()),
-            encoding),
-        encoding(encoding), output(output) {}
+    SemanticTokenEncoder(const PositionMap& map, protocol::SemanticTokens& output) :
+        map(map), output(output) {}
 
     void append(const SemanticToken& token) {
-        auto content = map.content();
+        auto content = map.content;
         if(!token.range.valid() || token.range.end <= token.range.begin ||
            token.range.end > content.size()) {
             return;
@@ -659,8 +653,8 @@ public:
 
         auto begin = token.range.begin;
         auto end = token.range.end;
-        auto begin_position = to_position(map, begin);
-        auto end_position = to_position(map, end);
+        auto begin_position = map.to_position(begin);
+        auto end_position = map.to_position(end);
         if(!begin_position || !end_position)
             return;
         auto begin_line = static_cast<std::uint32_t>(begin_position->line);
@@ -687,7 +681,11 @@ public:
                 continue;
             }
 
-            auto length = lsp::encoded_length(chunk.substr(chunk_offset, piece_size), encoding);
+            auto piece = chunk.substr(chunk_offset, piece_size - 1);
+            if(piece.ends_with('\r')) {
+                piece.remove_suffix(1);
+            }
+            auto length = lsp::encoded_length(piece, map.encoding);
             emit(line, character, length, token.kind, token.modifiers);
 
             line += 1;
@@ -697,7 +695,7 @@ public:
         }
 
         if(piece_size > 0) {
-            auto length = lsp::encoded_length(chunk.substr(chunk_offset), encoding);
+            auto length = lsp::encoded_length(chunk.substr(chunk_offset), map.encoding);
             emit(line, character, length, token.kind, token.modifiers);
         }
     }
@@ -728,8 +726,7 @@ private:
     }
 
 private:
-    lsp::LineMap map;
-    PositionEncoding encoding;
+    PositionMap map;
     protocol::SemanticTokens& output;
     std::uint32_t last_line = 0;
     std::uint32_t last_start_character = 0;
@@ -745,30 +742,22 @@ auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken> {
 
 auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
     -> protocol::SemanticTokens {
-    return semantic_tokens_to_protocol(semantic_tokens(unit),
-                                       unit.main_content(),
-                                       unit.line_starts(),
-                                       encoding);
+    return semantic_tokens_to_protocol(semantic_tokens(unit), main_position_map(unit, encoding));
 }
 
 auto semantic_tokens(CompilationUnitRef unit,
                      llvm::ArrayRef<std::uint32_t> inactive_regions,
                      PositionEncoding encoding) -> protocol::SemanticTokens {
     SemanticTokensCollector collector(unit, inactive_regions);
-    return semantic_tokens_to_protocol(collector.collect(),
-                                       unit.main_content(),
-                                       unit.line_starts(),
-                                       encoding);
+    return semantic_tokens_to_protocol(collector.collect(), main_position_map(unit, encoding));
 }
 
-auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
-                                 llvm::StringRef content,
-                                 llvm::ArrayRef<std::uint32_t> line_starts,
-                                 PositionEncoding encoding) -> protocol::SemanticTokens {
+auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens, const PositionMap& map)
+    -> protocol::SemanticTokens {
     protocol::SemanticTokens result;
     result.data.reserve(tokens.size() * 5);
 
-    SemanticTokenEncoder encoder(content, line_starts, encoding, result);
+    SemanticTokenEncoder encoder(map, result);
     for(const auto& token: tokens) {
         encoder.append(token);
     }

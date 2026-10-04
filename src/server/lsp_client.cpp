@@ -36,7 +36,7 @@ namespace clice {
 namespace protocol = kota::ipc::protocol;
 namespace refl = kota::meta;
 using kota::ipc::RequestResult;
-using RequestContext = kota::ipc::JsonPeer::RequestContext;
+using RequestContext = kota::ipc::JSONPeer::RequestContext;
 
 /// Error response for feature requests on files with no open session.
 static kota::ipc::Error document_not_open() {
@@ -55,13 +55,21 @@ static bool past_shutdown(ServerLifecycle lifecycle) {
 /// captureless coroutine lambda invoked immediately: parameters are copied
 /// into the frame, captures would dangle.
 template <typename Params>
-static void fire_refresh(kota::event_loop& loop, kota::ipc::JsonPeer& peer, Params params) {
-    loop.schedule([](kota::ipc::JsonPeer* peer, Params request) -> kota::task<> {
+static void fire_refresh(kota::event_loop& loop, kota::ipc::JSONPeer& peer, Params params) {
+    loop.schedule([](kota::ipc::JSONPeer* peer, Params request) -> kota::task<> {
         co_await peer->send_request(request, {.timeout = std::chrono::milliseconds(3000)});
     }(&peer, std::move(params)));
 }
 
-LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
+/// Awaits `task` with the request holding the project it is served in: a
+/// removed project lives on while a request still runs in it.
+template <typename T>
+static kota::task<T, kota::ipc::Error> holding(std::shared_ptr<ProjectServer> project,
+                                               kota::task<T, kota::ipc::Error> task) {
+    co_return co_await std::move(task);
+}
+
+LSPClient::LSPClient(MasterServer& server, kota::ipc::JSONPeer& peer) : server(server), peer(peer) {
     output_conn = server.on_output.connect(
         [this](ProjectServer& project, const std::shared_ptr<Session>& session) {
             push_output(project, *session);
@@ -96,6 +104,13 @@ void LSPClient::forward_notify_messages() {
         });
     }
     notify_cursor = server.notify_seq;
+}
+
+/// Pushes `params`; a push that cannot be encoded is logged, not lost unseen.
+static void publish(kota::ipc::JSONPeer& peer, const protocol::PublishDiagnosticsParams& params) {
+    if(auto sent = peer.send_notification(params); !sent) {
+        LOG_WARN("Cannot publish the diagnostics of {}: {}", params.uri, sent.error().message);
+    }
 }
 
 /// Fold versioned document changes into the plain `changes` map for a
@@ -198,7 +213,7 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
             });
         }
     }
-    peer.send_notification(params);
+    publish(peer, params);
 }
 
 void LSPClient::publish_aliases(Fid path_id) {
@@ -231,13 +246,12 @@ void LSPClient::register_lifecycle() {
         this->server.pool.foreground_pulse();
         auto& srv = this->server;
         if(srv.lifecycle != ServerLifecycle::Uninitialized) {
-            co_return kota::outcome_error(protocol::Error{"Server already initialized"});
+            co_await kota::fail(protocol::Error{"Server already initialized"});
         }
 
         // Every workspace folder is a project; a client without folder
         // support names its one root through rootUri.
-        auto& init = params.lsp__initialize_params;
-        auto& folders = params.workspace_folders_initialize_params.workspace_folders;
+        auto& folders = params.workspace_folders;
         std::vector<Spelling> roots;
         if(folders.has_value() && folders->has_value() && !(*folders)->empty()) {
             for(auto& folder: **folders) {
@@ -245,15 +259,15 @@ void LSPClient::register_lifecycle() {
                     roots.push_back(std::move(*root));
                 }
             }
-        } else if(init.root_uri.has_value()) {
-            if(auto root = uri_to_path(*init.root_uri)) {
+        } else if(params.root_uri.has_value()) {
+            if(auto root = uri_to_path(*params.root_uri)) {
                 roots.push_back(std::move(*root));
             }
         }
         srv.change_folders({}, std::move(roots));
 
-        if(init.capabilities.workspace.has_value()) {
-            auto& ws_caps = *init.capabilities.workspace;
+        if(params.capabilities.workspace.has_value()) {
+            auto& ws_caps = *params.capabilities.workspace;
             semantic_tokens_refresh =
                 ws_caps.semantic_tokens.has_value() && ws_caps.semantic_tokens->refresh_support;
             inlay_hint_refresh =
@@ -264,26 +278,23 @@ void LSPClient::register_lifecycle() {
                 ws_caps.workspace_edit.has_value() && ws_caps.workspace_edit->document_changes;
         }
 
-        if(init.capabilities.text_document.has_value() &&
-           init.capabilities.text_document->folding_range.has_value()) {
-            line_folding_only = init.capabilities.text_document->folding_range->line_folding_only;
+        if(params.capabilities.text_document.has_value() &&
+           params.capabilities.text_document->folding_range.has_value()) {
+            line_folding_only = params.capabilities.text_document->folding_range->line_folding_only;
         }
 
-        if(init.capabilities.text_document.has_value() &&
-           init.capabilities.text_document->completion.has_value() &&
-           init.capabilities.text_document->completion->completion_item.has_value()) {
-            auto& item = *init.capabilities.text_document->completion->completion_item;
+        if(params.capabilities.text_document.has_value() &&
+           params.capabilities.text_document->completion.has_value() &&
+           params.capabilities.text_document->completion->completion_item.has_value()) {
+            auto& item = *params.capabilities.text_document->completion->completion_item;
             completion_client = {
                 .snippets = item.snippet_support,
                 .insert_replace = item.insert_replace_support,
             };
         }
 
-        if(init.initialization_options.has_value()) {
-            auto json =
-                kota::codec::json::to_string<kota::ipc::lsp_config>(*init.initialization_options);
-            if(json)
-                srv.init_options_json = std::move(*json);
+        if(params.initialization_options.has_value() && !params.initialization_options->is_null()) {
+            srv.init_options = *params.initialization_options;
         }
 
         srv.lifecycle = ServerLifecycle::Initialized;
@@ -321,7 +332,7 @@ void LSPClient::register_lifecycle() {
             .work_done_progress = false,
         };
         // RenameOptions only for a client that declared prepareSupport.
-        auto& text_document = init.capabilities.text_document;
+        auto& text_document = params.capabilities.text_document;
         if(text_document && text_document->rename && text_document->rename->prepare_support) {
             caps.rename_provider = protocol::RenameOptions{.prepare_provider = true};
         } else {
@@ -434,10 +445,14 @@ void LSPClient::register_lifecycle() {
     peer.on_request(
         [this](RequestContext& ctx,
                const protocol::ShutdownParams& params) -> RequestResult<protocol::ShutdownParams> {
+            // At dispatch: an exit read right behind the request must find
+            // the server shutting down.
             this->server.pool.foreground_pulse();
             this->server.lifecycle = ServerLifecycle::ShuttingDown;
             LOG_INFO("Shutdown requested");
-            co_return nullptr;
+            return []() -> RequestResult<protocol::ShutdownParams> {
+                co_return nullptr;
+            }();
         });
 
     peer.on_notification([this]([[maybe_unused]] const protocol::ExitParams& params) {
@@ -541,8 +556,8 @@ void LSPClient::register_document_sync() {
         // The edit just made any in-flight compile stale. Supersede it now
         // instead of waiting for the next AST-backed request to observe
         // it: the round's advisory token releases its dependency waits,
-        // and the CancelCompile interrupt keeps a stale parse from
-        // holding up its waiters.
+        // and the interrupt keeps a stale parse from holding up its
+        // waiters.
         project->ast.supersede(path_id);
 
         // Editing is the canonical escalation trigger: from here on the
@@ -625,33 +640,39 @@ void LSPClient::register_document_sync() {
 }
 
 void LSPClient::register_language_features() {
+    // The handlers of document requests take their snapshot — the ticket,
+    // through the feature's entry point — before they return, as the
+    // request is dispatched; their tasks run once the messages read with
+    // the request are dispatched too.
     peer.on_request([this](RequestContext& ctx, const protocol::HoverParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
-        auto [path, path_id, session, project] =
-            resolve_uri(params.text_document_position_params.text_document.uri);
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
-            co_return kota::outcome_error(unserved(path));
-        co_return co_await project->features.hover(session,
-                                                   params.text_document_position_params.position,
-                                                   ctx.cancellation);
+            return kota::outcome_error(unserved(path));
+        return holding(
+            project,
+            project->features.hover(Ticket::take(session), params.position, ctx.cancellation));
     });
 
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
-            if(!session)
-                co_return kota::outcome_error(unserved(path));
-            co_return co_await project->features.semantic_tokens(session, ctx.cancellation);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::SemanticTokensParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        if(!session)
+            return kota::outcome_error(unserved(path));
+        return holding(project,
+                       project->features.semantic_tokens(Ticket::take(session), ctx.cancellation));
+    });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::InlayHintParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
-            co_return kota::outcome_error(unserved(path));
-        co_return co_await project->features.inlay_hints(session, params.range, ctx.cancellation);
+            return kota::outcome_error(unserved(path));
+        return holding(
+            project,
+            project->features.inlay_hints(Ticket::take(session), params.range, ctx.cancellation));
     });
 
     peer.on_request(
@@ -659,62 +680,72 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path));
-            co_return co_await project->features.folding_range(session,
-                                                               line_folding_only,
-                                                               ctx.cancellation);
+                return kota::outcome_error(unserved(path));
+            return holding(project,
+                           project->features.folding_range(Ticket::take(session),
+                                                           line_folding_only,
+                                                           ctx.cancellation));
         });
 
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
-            if(!session)
-                co_return kota::outcome_error(unserved(path));
-            co_return co_await project->features.document_symbol(session, ctx.cancellation);
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentSymbolParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        if(!session)
+            return kota::outcome_error(unserved(path));
+        return holding(project,
+                       project->features.document_symbol(Ticket::take(session), ctx.cancellation));
+    });
 
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::DocumentLinkParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
-            if(!session)
-                co_return kota::outcome_error(unserved(path));
-            auto links = co_await project->features.document_links(session, ctx.cancellation);
-            if(!links.has_value())
-                co_return kota::outcome_error(std::move(links.error()));
-            co_return to_raw(links.value());
-        });
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentLinkParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        if(!session)
+            return kota::outcome_error(unserved(path));
+        return kota::co_invoke(
+            [project,
+             links = project->features.document_links(Ticket::take(session),
+                                                      ctx.cancellation)]() mutable -> RawResult {
+                co_return to_raw(co_await std::move(links).or_fail());
+            });
+    });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path));
-            auto actions = co_await project->features.code_action(
-                session,
-                params.range,
-                params.context.only.value_or(std::vector<protocol::CodeActionKind>{}),
-                ctx.cancellation);
-            if(!actions.has_value())
-                co_return kota::outcome_error(std::move(actions.error()));
-            if(!versioned_edits) {
-                for(auto& action: actions.value()) {
-                    unversion(*action.edit);
-                }
-            }
-            co_return to_raw(actions.value());
+                return kota::outcome_error(unserved(path));
+            return kota::co_invoke(
+                [this,
+                 project,
+                 actions = project->features.code_action(
+                     Ticket::take(session),
+                     params.range,
+                     params.context.only ? llvm::ArrayRef(*params.context.only)
+                                         : llvm::ArrayRef<protocol::CodeActionKind>(),
+                     ctx.cancellation)]() mutable -> RawResult {
+                    auto result = co_await std::move(actions).or_fail();
+                    if(!versioned_edits) {
+                        for(auto& action: result) {
+                            unversion(*action.edit);
+                        }
+                    }
+                    co_return to_raw(result);
+                });
         });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::DefinitionParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
-        auto [path, path_id, session, project] = resolve_uri(uri);
-        co_return co_await project->features.definition(session, path_id, pos, ctx.cancellation);
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DefinitionParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            return holding(project,
+                           project->features.definition(Ticket::take(session),
+                                                        path_id,
+                                                        params.position,
+                                                        ctx.cancellation));
+        });
 
     // The navigation handlers below are index-only: closed documents are
     // fully serveable from the index, and an empty result is a real answer,
@@ -722,106 +753,105 @@ void LSPClient::register_language_features() {
     peer.on_request(
         [this](RequestContext& ctx, const protocol::ReferenceParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
-            auto [path, path_id, session, project] = resolve_uri(uri);
-            co_return co_await project->features.references(session,
-                                                            path_id,
-                                                            pos,
-                                                            params.context.include_declaration);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            return holding(project,
+                           project->features.references(Ticket::take(session),
+                                                        path_id,
+                                                        params.position,
+                                                        params.context.include_declaration));
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::PrepareRenameParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
-            auto [path, path_id, session, project] = resolve_uri(uri);
-            co_return co_await project->features.prepare_rename(session, path_id, pos);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            return holding(
+                project,
+                project->features.prepare_rename(Ticket::take(session), path_id, params.position));
         });
 
     peer.on_request([this](RequestContext& ctx, const protocol::RenameParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
-        auto [path, path_id, session, project] = resolve_uri(uri);
-        auto renamed = co_await project->features.rename(session, path_id, pos, params.new_name);
-        if(!renamed.has_value()) {
-            co_return kota::outcome_error(std::move(renamed.error()));
-        }
-        if(!*renamed) {
-            co_return kota::codec::RawValue{"null"};
-        }
-        auto& [edit, notice] = **renamed;
-        if(!versioned_edits) {
-            unversion(edit);
-        }
-        if(!notice.empty()) {
-            peer.send_notification(protocol::ShowMessageParams{
-                .type = protocol::MessageType::Warning,
-                .message = std::move(notice),
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        return kota::co_invoke(
+            [this,
+             project,
+             renamed = project->features.rename(Ticket::take(session),
+                                                path_id,
+                                                params.position,
+                                                params.new_name)]() mutable -> RawResult {
+                auto result = co_await std::move(renamed).or_fail();
+                if(!result) {
+                    co_return kota::codec::RawValue{"null"};
+                }
+                auto& [edit, notice] = *result;
+                if(!versioned_edits) {
+                    unversion(edit);
+                }
+                if(!notice.empty()) {
+                    peer.send_notification(protocol::ShowMessageParams{
+                        .type = protocol::MessageType::Warning,
+                        .message = std::move(notice),
+                    });
+                }
+                co_return to_raw(edit);
             });
-        }
-        co_return to_raw(edit);
     });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::TypeDefinitionParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
-            auto [path, path_id, session, project] = resolve_uri(uri);
-            co_return co_await project->features.type_definition(session, path_id, pos);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            return holding(
+                project,
+                project->features.type_definition(Ticket::take(session), path_id, params.position));
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::ImplementationParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
-            auto [path, path_id, session, project] = resolve_uri(uri);
-            co_return co_await project->features.implementation(session, path_id, pos);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            return holding(
+                project,
+                project->features.implementation(Ticket::take(session), path_id, params.position));
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::DeclarationParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto& uri = params.text_document_position_params.text_document.uri;
-            auto& pos = params.text_document_position_params.position;
-            auto [path, path_id, session, project] = resolve_uri(uri);
-            co_return co_await project->features.declaration(session, path_id, pos);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            return holding(
+                project,
+                project->features.declaration(Ticket::take(session), path_id, params.position));
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CompletionParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] =
-                resolve_uri(params.text_document_position_params.text_document.uri);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path));
+                return kota::outcome_error(unserved(path));
             llvm::StringRef trigger;
             if(params.context && params.context->trigger_character) {
                 trigger = *params.context->trigger_character;
             }
-            co_return co_await project->features.completion(
-                session,
-                params.text_document_position_params.position,
-                completion_client,
-                trigger,
-                ctx.cancellation);
+            return holding(project,
+                           project->features.completion(session,
+                                                        params.position,
+                                                        completion_client,
+                                                        trigger,
+                                                        ctx.cancellation));
         });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::SignatureHelpParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] =
-                resolve_uri(params.text_document_position_params.text_document.uri);
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path));
-            co_return co_await project->features.signature_help(
-                session,
-                params.text_document_position_params.position,
-                ctx.cancellation);
+                return kota::outcome_error(unserved(path));
+            return holding(
+                project,
+                project->features.signature_help(session, params.position, ctx.cancellation));
         });
 
     peer.on_request(
@@ -829,8 +859,9 @@ void LSPClient::register_language_features() {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
-                co_return kota::outcome_error(unserved(path));
-            co_return co_await project->features.formatting(session, ctx.cancellation);
+                return kota::outcome_error(unserved(path));
+            return holding(project,
+                           project->features.formatting(session, std::nullopt, ctx.cancellation));
         });
 
     peer.on_request([this](RequestContext& ctx,
@@ -838,19 +869,19 @@ void LSPClient::register_language_features() {
         this->server.pool.foreground_pulse();
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
-            co_return kota::outcome_error(unserved(path));
-        co_return co_await project->features.range_formatting(session,
-                                                              params.range,
-                                                              ctx.cancellation);
+            return kota::outcome_error(unserved(path));
+        return holding(project,
+                       project->features.formatting(session, params.range, ctx.cancellation));
     });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::CallHierarchyPrepareParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
-        auto [path, path_id, session, project] = resolve_uri(uri);
-        co_return co_await project->features.call_hierarchy_prepare(session, path_id, pos);
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        return holding(project,
+                       project->features.call_hierarchy_prepare(Ticket::take(session),
+                                                                path_id,
+                                                                params.position));
     });
 
     peer.on_request([this](RequestContext& ctx,
@@ -870,10 +901,11 @@ void LSPClient::register_language_features() {
     peer.on_request([this](RequestContext& ctx,
                            const protocol::TypeHierarchyPrepareParams& params) -> RawResult {
         this->server.pool.foreground_pulse();
-        auto& uri = params.text_document_position_params.text_document.uri;
-        auto& pos = params.text_document_position_params.position;
-        auto [path, path_id, session, project] = resolve_uri(uri);
-        co_return co_await project->features.type_hierarchy_prepare(session, path_id, pos);
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        return holding(project,
+                       project->features.type_hierarchy_prepare(Ticket::take(session),
+                                                                path_id,
+                                                                params.position));
     });
 
     peer.on_request([this](RequestContext& ctx,
@@ -916,7 +948,7 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.uri);
-            co_return to_raw(project->context_service.current_context(session.get(), params));
+            co_return to_raw(project->context_service.current_context(session.get()));
         });
 
     peer.on_request(
@@ -974,14 +1006,13 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::PollParams& params) -> RawResult {
             auto& srv = this->server;
             if(params.loop != "cdb" && params.loop != "workspace") {
-                co_return kota::outcome_error(
-                    kota::ipc::Error{protocol::ErrorCode::InvalidParams,
-                                     R"(loop must be "cdb" or "workspace")"});
+                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidParams,
+                                                     R"(loop must be "cdb" or "workspace")"});
             }
             if(llvm::none_of(srv.projects,
                              [](auto& project) { return project->tracker != nullptr; })) {
-                co_return kota::outcome_error(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
-                                                               "No workspace is loaded"});
+                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
+                                                     "No workspace is loaded"});
             }
             // Every project ticks; the reply counts the events of all.
             std::uint32_t count = 0;
@@ -1019,8 +1050,8 @@ void LSPClient::register_extensions() {
             // bloat the file log, so it only exists when the harness asked
             // for it at initialize time.
             if(!this->server.projects.front()->project.config.project.test_hooks.value) {
-                co_return kota::outcome_error(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
-                                                               "test hooks are not enabled"});
+                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
+                                                     "test hooks are not enabled"});
             }
             auto count = std::min<std::uint32_t>(params.count, 100'000);
             auto size = std::clamp<std::uint32_t>(params.size, 16, 4096);
@@ -1124,7 +1155,7 @@ void LSPClient::publish_config_diagnostics() {
         params.uri = feature::to_uri(
             server.files.display(server.files.intern(Spelling::absolute(file.str()))));
         params.diagnostics = std::move(diagnostics);
-        peer.send_notification(params);
+        publish(peer, params);
     }
 }
 
@@ -1146,7 +1177,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
     params.version = output.version;
     params.diagnostics = format_diagnostics(output);
     append_crash_notes(session, params.diagnostics);
-    peer.send_notification(params);
+    publish(peer, params);
     publish_aliases(session.path_id);
 
     // Two cases make the client re-pull whole-document results it already

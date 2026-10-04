@@ -38,7 +38,7 @@ MasterServer::MasterServer(kota::event_loop& loop,
                            std::string self_path,
                            std::string requested_configuration) :
     loop(loop), pool(loop), requested_configuration(std::move(requested_configuration)),
-    bg_tasks(loop), polling(loop), self_path(std::move(self_path)) {
+    self_path(std::move(self_path)) {
     // Documents opened before initialize land in this project: sessions
     // are plain state, and initialize re-routes them once folders exist.
     projects.push_back(make_project(CanonicalPath()));
@@ -83,7 +83,8 @@ MasterServer::~MasterServer() {
 /// defaults. Absence is stated explicitly so "was my config even read?"
 /// never needs a support round-trip; the stderr mirror puts all of it in
 /// the editor's output panel.
-static void log_configuration(const ProjectServer& project, llvm::StringRef init_options) {
+static void log_configuration(const ProjectServer& project,
+                              const std::optional<kota::codec::dyn::Value>& init_options) {
     if(project.config_path.empty()) {
         LOG_INFO("Configuration file: Missing (project {})", project.root);
     } else {
@@ -92,11 +93,11 @@ static void log_configuration(const ProjectServer& project, llvm::StringRef init
                  project.config_path,
                  text ? (*text)->getBuffer() : llvm::StringRef("<unreadable>"));
     }
-    if(init_options.empty()) {
+    if(!init_options) {
         LOG_INFO("initializationOptions: Missing");
-    } else {
-        auto pretty = kota::codec::json::prettify(init_options);
-        LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : init_options.str());
+    } else if(auto json = kota::codec::json::to_string(*init_options)) {
+        auto pretty = kota::codec::json::prettify(*json);
+        LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : *json);
     }
     if(auto json = kota::codec::json::to_string(project.project.config)) {
         auto pretty = kota::codec::json::prettify(*json);
@@ -115,7 +116,7 @@ void MasterServer::initialize() {
         projects_generation += 1;
     }
     for(auto& project: projects) {
-        project->configure(init_options_json, taken_cache_dirs());
+        project->configure(init_options, taken_cache_dirs());
     }
 
     // One pool serves every project, sized for the most demanding one;
@@ -158,7 +159,7 @@ void MasterServer::initialize() {
         }
     }
     for(auto& project: projects) {
-        log_configuration(*project, init_options_json);
+        log_configuration(*project, init_options);
     }
 
     LOG_INFO("Server ready (projects={}, stateful={}, stateless={})",
@@ -549,8 +550,8 @@ void MasterServer::serve_folders() {
         retired.push_back(project);
     }
     for(auto* project: fresh) {
-        project->configure(init_options_json, taken_cache_dirs());
-        log_configuration(*project, init_options_json);
+        project->configure(init_options, taken_cache_dirs());
+        log_configuration(*project, init_options);
         project->start();
     }
     // Documents may belong elsewhere now: a database under a new root
@@ -736,10 +737,12 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
     // The project offering the chosen item: the file's own first, then the
     // others, in the order query_contexts listed them.
     auto owner = owner_of(path_id).shared_from_this();
+    // The listing spells the URIs the server's way, not the client's.
+    auto context_uri = feature::to_uri(files.display(context_path_id));
     auto offers = [&](ProjectServer& project) {
         return llvm::any_of(project.context_service.contexts(path_id),
                             [&](const ext::ContextItem& item) {
-                                return item.uri == params.context_uri &&
+                                return item.uri == context_uri &&
                                        item.occurrence == params.occurrence &&
                                        item.command_hash == params.command_hash;
                             });
@@ -829,19 +832,33 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     for(auto& project: projects) {
         co_await project->shutdown();
     }
-    co_await pool.stop();
     for(auto& project: projects) {
         project->close();
     }
     lifecycle = ServerLifecycle::Exited;
 }
 
+/// Runs `serving` until the shutdown token fires or it ends on its own. A
+/// cancelled request still waits for its worker's answer, so the pool stops
+/// — killing a worker that would never answer — before `serving` is joined.
+static kota::task<> serve_until_shutdown(MasterServer& server, kota::task<> serving) {
+    auto watch = [](MasterServer& server, kota::task<> serving) -> kota::task<> {
+        co_await kota::with_token(std::move(serving), server.shutdown_token());
+        server.schedule_shutdown();
+    };
+    kota::task_group<> group;
+    group.spawn(watch(server, std::move(serving)));
+    co_await server.shutdown_token().wait().catch_cancel();
+    co_await server.pool.stop();
+    co_await group.join();
+}
+
 struct Connection {
-    std::unique_ptr<kota::ipc::JsonPeer> peer;
+    std::unique_ptr<kota::ipc::JSONPeer> peer;
     std::unique_ptr<LSPClient> lsp_client;
 };
 
-static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
+static kota::task<> run_connection(kota::ipc::JSONPeer* peer,
                                    std::list<Connection>& connections,
                                    std::list<Connection>::iterator pos) {
     co_await peer->run();
@@ -854,8 +871,7 @@ static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
 static kota::task<> accept_connections(MasterServer& server,
                                        kota::tcp::acceptor acceptor,
                                        std::list<Connection>& connections) {
-    auto& loop = kota::event_loop::current();
-    kota::task_group<> group(loop);
+    kota::task_group<> group;
     bool lsp_registered = false;
 
     group.spawn([](MasterServer& server,
@@ -873,7 +889,7 @@ static kota::task<> accept_connections(MasterServer& server,
             LOG_INFO("Client connected");
 
             auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
-            auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
+            auto peer = std::make_unique<kota::ipc::JSONPeer>(loop, std::move(transport));
 
             std::unique_ptr<LSPClient> lsp;
             if(!lsp_registered) {
@@ -933,11 +949,11 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
                 std::make_unique<kota::ipc::RecordingTransport>(std::move(final_transport), record);
         }
 
-        kota::ipc::JsonPeer lsp_peer(loop, std::move(final_transport));
+        kota::ipc::JSONPeer lsp_peer(loop, std::move(final_transport));
         LSPClient lsp_client(server, lsp_peer);
 
         loop.schedule(
-            [](MasterServer& server, kota::ipc::JsonPeer& peer, std::string root) -> kota::task<> {
+            [](MasterServer& server, kota::ipc::JSONPeer& peer, std::string root) -> kota::task<> {
                 // Pre-initialize for standalone (no-editor) use; LSP initialize
                 // will be rejected. Runs inside the loop — before the peer
                 // reads its first message — because initialize() spawns
@@ -945,7 +961,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
                 if(!root.empty()) {
                     server.initialize(Spelling(root, Spelling::cwd()));
                 }
-                co_await kota::with_token(peer.run(), server.shutdown_token());
+                co_await serve_until_shutdown(server, peer.run());
                 co_await server.shutdown_and_cleanup();
             }(server, lsp_peer, ws));
         loop.run();
@@ -970,8 +986,9 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             if(!root.empty()) {
                 server.initialize(Spelling(root, Spelling::cwd()));
             }
-            co_await kota::with_token(accept_connections(server, std::move(acceptor), connections),
-                                      server.shutdown_token());
+            co_await serve_until_shutdown(
+                server,
+                accept_connections(server, std::move(acceptor), connections));
             co_await server.shutdown_and_cleanup();
         }(server, std::move(*acceptor), connections, ws));
         loop.run();

@@ -676,7 +676,6 @@ struct FileScanner {
 kota::task<> scan_impl(CompilationDatabase& cdb,
                        DependencyGraph& graph,
                        ScanReport& report,
-                       kota::event_loop& loop,
                        llvm::ArrayRef<CommandRef> units) {
     auto& file_table = cdb.files();
     auto start_time = std::chrono::steady_clock::now();
@@ -720,7 +719,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         std::shared_ptr<const vfs::Listing> listing;
     };
 
-    std::vector<kota::task<DirEntry, kota::error>> pending_dir_tasks;
+    std::vector<kota::task<DirEntry>> pending_dir_tasks;
     {
         llvm::StringSet<> unique_dirs;
         std::int64_t lookup_us = 0;
@@ -749,11 +748,10 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             if(file_table.dirs.kept(entry.getKey())) {
                 continue;
             }
-            pending_dir_tasks.push_back(kota::queue(
-                [dir_path = entry.getKey().str()]() -> DirEntry {
+            pending_dir_tasks.push_back(
+                kota::queue([dir_path = entry.getKey().str()]() -> DirEntry {
                     return {dir_path, vfs::list(dir_path)};
-                },
-                loop));
+                }));
         }
         LOG_INFO("Launched {} dir cache tasks (running in background)", pending_dir_tasks.size());
     }
@@ -773,7 +771,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     // queued for scanning on the thread pool.  When wave N+1 starts,
     // these tasks are already running (or finished), eliminating most
     // of the Phase 1 wait time for subsequent waves.
-    std::vector<kota::task<FileScanResult, kota::error>> prefetch_tasks;
+    std::vector<kota::task<FileScanResult>> prefetch_tasks;
 
     // Warm path through the shared table: a live stat the shared pair can
     // vouch for pins the bytes' cached lexical scan — a rescan then skips
@@ -825,13 +823,9 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 
         if(!prefetch_tasks.empty()) {
             // Waves 1+: await prefetched scan tasks from previous Phase 2.
-            auto scan_outcome = co_await kota::when_all(std::move(prefetch_tasks));
+            auto scanned = co_await kota::when_all(std::move(prefetch_tasks));
             prefetch_tasks.clear();
-            if(scan_outcome.has_error()) {
-                LOG_ERROR("Prefetch scan failed: {}", scan_outcome.error().message());
-                break;
-            }
-            for(auto& r: *scan_outcome) {
+            for(auto& r: scanned) {
                 if(!r.read_failed) {
                     file_table.observe(r.path_id, r.obs);
                     file_table.scan_results.try_emplace({r.path_id, r.obs.hash}, r.scan_result);
@@ -841,7 +835,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         } else {
             // Wave 0 (or a wave whose discoveries were all warm): probe the
             // warm path and create scan tasks for the rest now.
-            std::vector<kota::task<FileScanResult, kota::error>> scan_tasks;
+            std::vector<kota::task<FileScanResult>> scan_tasks;
             scan_tasks.reserve(current_wave.size());
             for(auto& entry: current_wave) {
                 auto pid = entry.path_id;
@@ -851,8 +845,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 }
                 auto path = file_table.resolve(pid).data();
                 scan_tasks.push_back(kota::queue(
-                    [path, pid, context]() { return scan_file_worker(path, pid, context); },
-                    loop));
+                    [path, pid, context]() { return scan_file_worker(path, pid, context); }));
             }
             wave_cache_hits += pending_warm.size();
             std::move(pending_warm.begin(), pending_warm.end(), std::back_inserter(scan_results));
@@ -864,26 +857,20 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             // max(dir_time, scan_time) instead of dir_time + scan_time.
             if(!pending_dir_tasks.empty()) {
                 auto dir_t0 = std::chrono::steady_clock::now();
-                auto dir_outcome = co_await kota::when_all(std::move(pending_dir_tasks));
+                auto listed = co_await kota::when_all(std::move(pending_dir_tasks));
                 pending_dir_tasks.clear();
-                if(dir_outcome.has_value()) {
-                    for(auto& entry: *dir_outcome) {
-                        scope.adopt(entry.dir_path, std::move(entry.listing));
-                    }
-                    LOG_INFO("Pre-populated dir cache: {} directories", dir_outcome->size());
+                for(auto& entry: listed) {
+                    scope.adopt(entry.dir_path, std::move(entry.listing));
                 }
+                LOG_INFO("Pre-populated dir cache: {} directories", listed.size());
                 auto dir_t1 = std::chrono::steady_clock::now();
                 report.dir_cache_ms =
                     std::chrono::duration_cast<std::chrono::milliseconds>(dir_t1 - dir_t0).count();
             }
 
             if(!scan_tasks.empty()) {
-                auto scan_outcome = co_await kota::when_all(std::move(scan_tasks));
-                if(scan_outcome.has_error()) {
-                    LOG_ERROR("Parallel scan failed: {}", scan_outcome.error().message());
-                    break;
-                }
-                for(auto& r: *scan_outcome) {
+                auto scanned = co_await kota::when_all(std::move(scan_tasks));
+                for(auto& r: scanned) {
                     if(!r.read_failed) {
                         file_table.observe(r.path_id, r.obs);
                         file_table.scan_results.try_emplace({r.path_id, r.obs.hash}, r.scan_result);
@@ -912,9 +899,9 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             next_wave.push_back({path_id, context});
             if(!try_warm(path_id, context)) {
                 auto path = file_table.resolve(path_id).data();
-                prefetch_tasks.push_back(kota::queue(
-                    [path, path_id, context]() { return scan_file_worker(path, path_id, context); },
-                    loop));
+                prefetch_tasks.push_back(kota::queue([path, path_id, context]() {
+                    return scan_file_worker(path, path_id, context);
+                }));
             }
         };
 
@@ -993,9 +980,7 @@ ScanReport scan_dependency_graph(CompilationDatabase& cdb,
         return report;
     }
 
-    kota::event_loop loop;
-    loop.schedule(scan_impl(cdb, graph, report, loop, units));
-    loop.run();
+    kota::run(scan_impl(cdb, graph, report, units));
     return report;
 }
 

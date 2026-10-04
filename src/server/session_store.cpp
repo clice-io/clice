@@ -4,11 +4,7 @@
 #include <utility>
 #include <variant>
 
-#include "server/position.h"
 #include "support/logging.h"
-
-#include "kota/ipc/lsp/position.h"
-#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -57,8 +53,7 @@ void SessionStore::for_each(llvm::function_ref<bool(Fid, const Session&)> visito
 void SessionStore::apply_open(Session& session, std::string text, int version) {
     session.version = version;
     session.text = std::move(text);
-    session.hash = llvm::xxh3_64bits(session.text);
-    session.line_starts = lsp::build_line_starts(session.text);
+    session.sync_text();
     session.generation++;
     if(auto it = parked.find(session.path_id); it != parked.end()) {
         session.quarantine = std::move(it->second.quarantine);
@@ -85,11 +80,11 @@ void SessionStore::apply_change(Session& session,
                         applied = true;
                     }
                 } else {
+                    // The batch's earlier changes left non_ascii_lines
+                    // stale; line_starts is kept current.
+                    feature::PositionMap map{.content = session.text, .lines = session.line_starts};
                     auto& range = c.range;
-                    auto map = session.line_map();
-                    auto start = map.to_offset(range.start);
-                    auto end = map.to_offset(range.end);
-                    if(!start || !end || *start > *end) {
+                    if(!map.to_offset(range.start) || !map.to_offset(range.end)) {
                         // The client's view has drifted from ours (or the
                         // client is buggy). LSP 3.17 requires clamping
                         // positions past the document instead of dropping
@@ -104,20 +99,14 @@ void SessionStore::apply_change(Session& session,
                             range.end.character,
                             session.path_id,
                             version);
-                        start = clamped_offset(map, range.start);
-                        end = clamped_offset(map, range.end);
-                        if(*start > *end) {
-                            // Inverted even after clamping: treat it as an
-                            // empty range at the clamped start.
-                            end = start;
-                        }
                     }
-                    if(llvm::StringRef(session.text).substr(*start, *end - *start) != c.text) {
-                        session.text.replace(*start, *end - *start, c.text);
+                    auto [start, end] = map.to_offset_range(range);
+                    if(llvm::StringRef(session.text).substr(start, end - start) != c.text) {
+                        session.text.replace(start, end - start, c.text);
                         applied = true;
                     }
                 }
-                session.line_starts = lsp::build_line_starts(session.text);
+                session.line_starts = lsp::line_starts(session.text);
             },
             change);
     }
@@ -128,7 +117,7 @@ void SessionStore::apply_change(Session& session,
         session.quarantine->on_change(Quarantine::Clock::now());
     }
 
-    session.hash = llvm::xxh3_64bits(session.text);
+    session.sync_text();
     session.generation++;
 }
 

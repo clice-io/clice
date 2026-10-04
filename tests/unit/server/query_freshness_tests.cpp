@@ -27,7 +27,7 @@
 namespace clice::testing {
 namespace {
 
-TEST_SUITE(QueryFreshness, Tester) {
+ZEST_SUITE(QueryFreshness, Tester) {
 
 kota::event_loop loop;
 FileTable files;
@@ -35,7 +35,7 @@ Project project{files};
 SessionStore store;
 WorkerPool pool{loop};
 CommandResolver resolver{project};
-TaskGraph graph{loop};
+TaskGraph graph;
 PCMFamily pcm{graph, project, resolver, pool};
 ASTProjectionTable projections;
 IndexStore index_store{loop, project, resolver};
@@ -55,13 +55,13 @@ Fid header_id;
 void merge_into_workspace() {
     auto wire = index::build_tu_index(*unit);
     auto view = index::TUIndex::from_bytes(wire);
-    ASSERT_TRUE(view.loaded());
+    ZASSERT(view.loaded());
 
     llvm::SmallVector<Fid> file_ids_map;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));
     }
-    ASSERT_TRUE(project.project_index.merge(view, file_ids_map));
+    ZASSERT(project.project_index.merge(view, file_ids_map));
     main_id = file_ids_map[view.path_count() - 1];
 
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
@@ -93,25 +93,25 @@ std::vector<std::string> reference_files(index::SymbolHash hash) {
     return files;
 }
 
-TEST_CASE(PendingReasonUpgrade) {
+ZEST_CASE(PendingReasonUpgrade) {
     auto file = project.file_table.intern(Spelling::absolute("/proj/upgrade.cpp"));
-    ASSERT_FALSE(indexer.pending_reason(file).has_value());
+    ZASSERT(!indexer.pending_reason(file).has_value());
 
     indexer.enqueue(file, ReindexReason::DepsOnly);
-    ASSERT_TRUE(indexer.pending_reason(file) == ReindexReason::DepsOnly);
-    ASSERT_EQ(indexer.pending_files(), 1u);
+    ZASSERT(indexer.pending_reason(file) == ReindexReason::DepsOnly);
+    ZASSERT(indexer.pending_files() == 1u);
 
     // ContentChanged absorbs a queued DepsOnly without a second queue entry.
     indexer.enqueue(file, ReindexReason::ContentChanged);
-    ASSERT_TRUE(indexer.pending_reason(file) == ReindexReason::ContentChanged);
-    ASSERT_EQ(indexer.pending_files(), 1u);
+    ZASSERT(indexer.pending_reason(file) == ReindexReason::ContentChanged);
+    ZASSERT(indexer.pending_files() == 1u);
 
     // A later deps-only cascade never downgrades it.
     indexer.enqueue(file, ReindexReason::DepsOnly);
-    ASSERT_TRUE(indexer.pending_reason(file) == ReindexReason::ContentChanged);
+    ZASSERT(indexer.pending_reason(file) == ReindexReason::ContentChanged);
 }
 
-TEST_CASE(GateSplitsRows) {
+ZEST_CASE(GateSplitsRows) {
     add_file("header.h", R"(
         int helper() { return 1; }
     )");
@@ -121,65 +121,65 @@ TEST_CASE(GateSplitsRows) {
             return §(use)helper();
         }
     )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_into_workspace();
 
     auto hash = symbol_at(main_id, point("use"));
-    ASSERT_NE(hash, 0UL);
+    ZASSERT(hash != 0UL);
 
     // Baseline: the main TU contributes its reference row, and the
     // definition resolves into the header shard.
-    ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
-    ASSERT_TRUE(index_query.first_site(hash, Fid{}, RelationKind::Definition).has_value());
+    ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
+    ZASSERT(index_query.first_site(hash, Fid{}, RelationKind::Definition));
 
     // Awaiting a reindex for a dependency change only: the disk still
     // holds the text the rows indexed, so they keep serving.
     indexer.enqueue(main_id, ReindexReason::DepsOnly);
-    ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
+    ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
 
     // Line-based resolution in the file works while its rows are current.
     index::SymbolQuery by_line;
     by_line.position = {.path = project.file_table.resolve(main_id).str(), .line = 3};
-    ASSERT_FALSE(disk_query.locate(by_line).empty());
+    ZASSERT(!disk_query.locate(by_line).empty());
 
     // The disk was seen holding other text: the file's contribution is
     // skipped until its rows describe the disk again; other files' rows
     // are unaffected.
     project.file_table.observe(main_id, DiskObservation{.hash = 1});
-    ASSERT_FALSE(std::ranges::contains(reference_files(hash), "main.cpp"));
-    ASSERT_TRUE(index_query.first_site(hash, Fid{}, RelationKind::Definition).has_value());
+    ZASSERT(!std::ranges::contains(reference_files(hash), "main.cpp"));
+    ZASSERT(index_query.first_site(hash, Fid{}, RelationKind::Definition));
 
     // Cursor-style resolution against the stale rows is unresolvable: the
     // line numbers describe text that no longer exists.
-    ASSERT_TRUE(disk_query.locate(by_line).empty());
+    ZASSERT(disk_query.locate(by_line).empty());
 
     // A changed definition file drops out of definition lookups.
     project.file_table.observe(header_id, DiskObservation{.hash = 1});
-    ASSERT_FALSE(index_query.first_site(hash, Fid{}, RelationKind::Definition).has_value());
+    ZASSERT(!index_query.first_site(hash, Fid{}, RelationKind::Definition).has_value());
 
     // With background indexing disabled nothing would ever catch up:
     // last-known rows keep serving instead of leaving a permanent hole.
     gate.options.withhold = false;
-    ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
+    ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
 }
 
-TEST_CASE(DeletedFileWithdrawsRows) {
+ZEST_CASE(DeletedFileWithdrawsRows) {
     add_main("main.cpp", R"(
         int helper() { return 1; }
         int use() { return §(use)helper(); }
     )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_into_workspace();
     auto hash = symbol_at(main_id, point("use"));
-    ASSERT_NE(hash, 0UL);
-    ASSERT_TRUE(std::ranges::contains(reference_files(hash), "main.cpp"));
+    ZASSERT(hash != 0UL);
+    ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
 
     // The rows of a file seen gone point at text that is gone with it.
     project.file_table.saw_missing(main_id);
-    ASSERT_FALSE(std::ranges::contains(reference_files(hash), "main.cpp"));
+    ZASSERT(!std::ranges::contains(reference_files(hash), "main.cpp"));
 }
 
-};  // TEST_SUITE(QueryFreshness)
+};  // ZEST_SUITE(QueryFreshness)
 
 }  // namespace
 }  // namespace clice::testing

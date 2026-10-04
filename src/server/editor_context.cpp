@@ -4,6 +4,7 @@
 #include <utility>
 #include <vector>
 
+#include "support/json.h"
 #include "support/logging.h"
 
 #include "kota/codec/json/json.h"
@@ -94,7 +95,7 @@ std::string EditorContext::serialize() const {
         data.contexts.push_back(std::move(entry));
     }
 
-    auto json = kota::codec::json::to_string(data);
+    auto json = kota::codec::json::to_string<PathJsonConfig>(data);
     if(!json) {
         LOG_WARN("Failed to serialize the contexts blob");
         return {};

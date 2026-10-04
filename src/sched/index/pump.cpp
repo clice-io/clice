@@ -20,7 +20,7 @@ IndexPump::IndexPump(kota::event_loop& loop,
                      TURunFamily& turun,
                      IndexStore& store,
                      WorkerPool& pool) :
-    loop(loop), bg_tasks(loop), project(project), turun(turun), store(store), pool(pool) {
+    loop(loop), project(project), turun(turun), store(store), pool(pool) {
     capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
 }
 
@@ -137,6 +137,11 @@ void IndexPump::resume_indexing() {
 kota::task<> IndexPump::stop() {
     bg_tasks.cancel();
     co_await bg_tasks.join();
+    // Cancelling the round that waited on the idle timer leaves it armed,
+    // and an armed timer keeps the loop running until it fires.
+    if(index_idle_timer) {
+        index_idle_timer->stop();
+    }
     // Cancelled tasks unwind before their settle bookkeeping; release any
     // parked feature request rather than stranding it past shutdown.
     for(auto& waits: llvm::make_second_range(attempt_waits)) {
@@ -174,6 +179,7 @@ void IndexPump::schedule(bool immediate) {
 
     if(!bg_tasks.spawn(run_background_indexing())) {
         indexing_scheduled = false;
+        index_idle_timer->stop();
         LOG_WARN("Failed to spawn background indexing task (task group stopped)");
     }
 }
@@ -460,16 +466,11 @@ kota::task<> IndexPump::run_background_indexing() {
     // Timed at the start of real work; the reporter's token handshake runs
     // off to the side and cannot inflate the reported indexing duration.
     ScopedTimer timer;
-    kota::task_group<> workers(loop);
-
-    // The dispatch loop runs as a child of `workers`, so this frame's only
-    // suspension while children live is the join below: a shutdown cancel
-    // cascades through the join into the group, and the feeder plus every
-    // in-flight task unwind before `workers` is destroyed. Parking the
-    // feeder's waits on this frame instead would let the cancel finalize
-    // the frame — destroying the group with children still in flight.
-    workers.spawn(run_round_feeder(workers, round, round_end, total, dispatched));
-    co_await workers.join();
+    // The dispatch loop runs as the first child of the group it fills, so a
+    // shutdown cancel reaches the feeder and every in-flight task alike.
+    co_await kota::with_task_group([&](kota::task_group<>& workers) {
+        return run_round_feeder(workers, round, round_end, total, dispatched);
+    });
 
     // Skipped files bump `completed` without a Report emit; refresh the
     // materialized count so a subscriber waking up on End reads the truth.

@@ -6,6 +6,7 @@
 
 #include "vfs/file_system.h"
 
+#include "kota/zest/zest.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
@@ -17,9 +18,9 @@ namespace clice::testing {
 /// RAII helper for a temporary directory tree.
 ///
 /// Creates a unique temporary directory on construction and removes it
-/// (recursively) on destruction.  Provides helpers for building paths,
-/// creating sub-directories, and writing files — used across multiple
-/// test suites that need real filesystem state.
+/// (recursively) on destruction, or when a failed ZASSERT ends the test.  Provides helpers for
+/// building paths, creating sub-directories, and writing files — used across multiple test suites
+/// that need real filesystem state.
 ///
 /// Also serves as a cross-platform source of absolute paths: on Windows
 /// the root includes a drive letter, so `path("x")` is absolute everywhere.
@@ -42,6 +43,8 @@ struct TempDir {
     ~TempDir() {
         vfs::remove_all(root.str());
     }
+
+    kota::zest::FatalHook cleanup{[this] { vfs::remove_all(root.str()); }};
 
     TempDir(const TempDir&) = delete;
     TempDir& operator=(const TempDir&) = delete;

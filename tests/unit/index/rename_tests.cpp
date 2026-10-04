@@ -23,7 +23,7 @@ namespace {
 
 using index::RenamePlan;
 
-TEST_SUITE(Rename, Tester) {
+ZEST_SUITE(Rename, Tester) {
 
 TempDir dir;
 FileTable files;
@@ -50,11 +50,11 @@ std::string file(llvm::StringRef name) {
 /// Compile the added sources as one unit, merge its index, and put its
 /// files on disk with the text the index read.
 void merge() {
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_unit(project, *unit, main_id);
     for(auto& entry: sources.all_files) {
         auto path = entry.getKey().str();
-        ASSERT_FALSE(static_cast<bool>(vfs::write(path, entry.second.content)));
+        ZASSERT(!static_cast<bool>(vfs::write(path, entry.second.content)));
         marked[path] = entry.second.nameless_offsets;
         if(!llvm::is_contained(scope, path)) {
             scope.push_back(path);
@@ -65,7 +65,7 @@ void merge() {
 /// A workspace file no unit compiles.
 void write(llvm::StringRef name, llvm::StringRef content) {
     auto path = file(name);
-    ASSERT_FALSE(static_cast<bool>(vfs::write(path, content)));
+    ZASSERT(!static_cast<bool>(vfs::write(path, content)));
     scope.push_back(path);
 }
 
@@ -147,7 +147,7 @@ bool clean(const RenamePlan& plan) {
     return !plan.blocked() && plan.unconfirmed.empty() && plan.warnings.empty();
 }
 
-TEST_CASE(FunctionAcrossUnits) {
+ZEST_CASE(FunctionAcrossUnits) {
     llvm::StringRef header = R"(
         int §compute(int x);
     )";
@@ -168,12 +168,12 @@ TEST_CASE(FunctionAcrossUnits) {
     merge();
 
     auto renamed = rename("compute", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_TRUE(clean(*renamed));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
 }
 
-TEST_CASE(ParameterOfOneFunction) {
+ZEST_CASE(ParameterOfOneFunction) {
     add_main(file("a.cpp"), R"(
         int twice(int §value) { int sum = §value + §(cursor)§value; return sum; }
         int once(int value) { return value; }
@@ -181,12 +181,12 @@ TEST_CASE(ParameterOfOneFunction) {
     merge();
 
     auto renamed = rename_at("cursor", "amount");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_TRUE(clean(*renamed));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
 }
 
-TEST_CASE(ConstructorNamesClass) {
+ZEST_CASE(ConstructorNamesClass) {
     add_file(file("widget.h"), R"(
         struct §Widget {
             §Widget();
@@ -203,18 +203,18 @@ TEST_CASE(ConstructorNamesClass) {
     merge();
 
     auto renamed = rename_at("cursor", "Gadget");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_TRUE(clean(*renamed));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
 
     // The token an editor selects is the name, past the destructor's tilde.
     auto destructor = cursor("dtor");
-    ASSERT_TRUE(destructor.has_value());
-    EXPECT_EQ(destructor->target.symbol.symbol.name, "Widget");
-    EXPECT_EQ(destructor->token.range.begin, point("dtor") + 1);
+    ZASSERT(destructor);
+    ZEXPECT(destructor->target.symbol.symbol.name == "Widget");
+    ZEXPECT(destructor->token.range.begin == point("dtor") + 1);
 }
 
-TEST_CASE(ClassTemplateFamily) {
+ZEST_CASE(ClassTemplateFamily) {
     add_main(file("a.cpp"), R"(
         template <typename T>
         struct §(cursor)§Box {
@@ -237,16 +237,16 @@ TEST_CASE(ClassTemplateFamily) {
     merge();
 
     auto renamed = rename_at("cursor", "Crate");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_TRUE(clean(*renamed));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
 
     auto from_guide = rename_at("guide", "Crate");
-    ASSERT_TRUE(from_guide.has_value());
-    EXPECT_EQ(edits(*from_guide), marks());
+    ZASSERT(from_guide);
+    ZEXPECT(edits(*from_guide) == marks());
 }
 
-TEST_CASE(FunctionTemplateSpecialization) {
+ZEST_CASE(FunctionTemplateSpecialization) {
     add_main(file("a.cpp"), R"(
         template <typename T>
         T §(cursor)§pick(T value) { return value; }
@@ -259,12 +259,12 @@ TEST_CASE(FunctionTemplateSpecialization) {
     merge();
 
     auto renamed = rename_at("cursor", "choose");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_TRUE(clean(*renamed));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
 }
 
-TEST_CASE(VirtualOverrideChain) {
+ZEST_CASE(VirtualOverrideChain) {
     add_main(file("a.cpp"), R"(
         struct Base { virtual void §run(); };
         struct Derived : Base { void §run() override; };
@@ -280,12 +280,12 @@ TEST_CASE(VirtualOverrideChain) {
     merge();
 
     auto renamed = rename("Base::run", "start");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_TRUE(clean(*renamed));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
 }
 
-TEST_CASE(InternalAcrossUnits) {
+ZEST_CASE(InternalAcrossUnits) {
     llvm::StringRef header = R"(
         static int §helper() { return 1; }
     )";
@@ -304,12 +304,12 @@ TEST_CASE(InternalAcrossUnits) {
     merge();
 
     auto renamed = rename_at("cursor", "assist");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_TRUE(clean(*renamed));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
 }
 
-TEST_CASE(NamespaceAndQualifiers) {
+ZEST_CASE(NamespaceAndQualifiers) {
     add_main(file("a.cpp"), R"(
         namespace §(cursor)§math { int one(); }
         namespace §math { int two(); }
@@ -321,12 +321,12 @@ TEST_CASE(NamespaceAndQualifiers) {
     merge();
 
     auto renamed = rename_at("cursor", "algebra");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_TRUE(clean(*renamed));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
 }
 
-TEST_CASE(EnumAndEnumerator) {
+ZEST_CASE(EnumAndEnumerator) {
     add_main(file("a.cpp"), R"(
         enum class Color { §(cursor)§red, green };
         Color pick() { return Color::§red; }
@@ -335,9 +335,9 @@ TEST_CASE(EnumAndEnumerator) {
     merge();
 
     auto renamed = rename_at("cursor", "crimson");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_TRUE(clean(*renamed));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
 
     clear();
     marked.clear();
@@ -347,11 +347,11 @@ TEST_CASE(EnumAndEnumerator) {
     )");
     merge();
     renamed = rename_at("cursor", "Hue");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
 }
 
-TEST_CASE(FieldAndAlias) {
+ZEST_CASE(FieldAndAlias) {
     add_main(file("a.cpp"), R"(
         struct Point {
             int §(cursor)§x;
@@ -363,9 +363,9 @@ TEST_CASE(FieldAndAlias) {
     merge();
 
     auto renamed = rename_at("cursor", "column");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_TRUE(clean(*renamed));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
 
     clear();
     marked.clear();
@@ -376,11 +376,11 @@ TEST_CASE(FieldAndAlias) {
     )");
     merge();
     renamed = rename_at("cursor", "Length");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
 }
 
-TEST_CASE(ConceptAndLabel) {
+ZEST_CASE(ConceptAndLabel) {
     add_main(file("a.cpp"), R"(
         template <typename T>
         concept §(cursor)§Small = sizeof(T) < 4;
@@ -394,9 +394,9 @@ TEST_CASE(ConceptAndLabel) {
     merge();
 
     auto renamed = rename_at("cursor", "Tiny");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_TRUE(clean(*renamed));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
 
     clear();
     marked.clear();
@@ -408,11 +408,11 @@ TEST_CASE(ConceptAndLabel) {
     )");
     merge();
     renamed = rename_at("cursor", "retry");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
 }
 
-TEST_CASE(RefusedSymbols) {
+ZEST_CASE(RefusedSymbols) {
     add_main(file("a.cpp"), R"(
         #define §(macro)LIMIT 10
         struct Number {
@@ -424,19 +424,19 @@ TEST_CASE(RefusedSymbols) {
     merge();
 
     auto plus = rename_at("plus", "add");
-    ASSERT_FALSE(plus.has_value());
-    EXPECT_TRUE(plus.error().contains("named by the language"));
+    ZASSERT(!plus.has_value());
+    ZEXPECT(plus.error().contains("named by the language"));
 
     auto conversion = rename_at("conversion", "to_int");
-    ASSERT_FALSE(conversion.has_value());
-    EXPECT_TRUE(conversion.error().contains("named by the language"));
+    ZASSERT(!conversion.has_value());
+    ZEXPECT(conversion.error().contains("named by the language"));
 
     auto macro = rename_at("macro", "BOUND");
-    ASSERT_FALSE(macro.has_value());
-    EXPECT_TRUE(macro.error().contains("macro"));
+    ZASSERT(!macro.has_value());
+    ZEXPECT(macro.error().contains("macro"));
 }
 
-TEST_CASE(InvalidNewNames) {
+ZEST_CASE(InvalidNewNames) {
     add_main(file("a.cpp"), R"(
         int §(cursor)counter = 0;
     )");
@@ -445,28 +445,28 @@ TEST_CASE(InvalidNewNames) {
     for(auto name:
         {"1st", "two words", "", "class", "char8_t", "co_await", "requires", "restrict", "_Bool"}) {
         auto renamed = rename_at("cursor", name);
-        ASSERT_TRUE(renamed.has_value());
-        EXPECT_EQ(renamed->conflicts.size(), 1U);
-        EXPECT_TRUE(renamed->edits.empty());
+        ZASSERT(renamed);
+        ZEXPECT(renamed->conflicts.size() == 1U);
+        ZEXPECT(renamed->edits.empty());
     }
     for(auto name: {"_Reserved", "two__parts", "_lower"}) {
         auto renamed = rename_at("cursor", name);
-        ASSERT_TRUE(renamed.has_value());
-        EXPECT_FALSE(renamed->blocked());
-        EXPECT_EQ(renamed->warnings.size(), 1U);
+        ZASSERT(renamed);
+        ZEXPECT(!renamed->blocked());
+        ZEXPECT(renamed->warnings.size() == 1U);
     }
 
     auto unicode = rename_at("cursor", "café");
-    ASSERT_TRUE(unicode.has_value());
-    EXPECT_TRUE(unicode->conflicts.empty());
+    ZASSERT(unicode);
+    ZEXPECT(unicode->conflicts.empty());
 
     auto same = rename_at("cursor", "counter");
-    ASSERT_TRUE(same.has_value());
-    EXPECT_TRUE(same->edits.empty());
-    EXPECT_TRUE(clean(*same));
+    ZASSERT(same);
+    ZEXPECT(same->edits.empty());
+    ZEXPECT(clean(*same));
 }
 
-TEST_CASE(SameScopeCollisions) {
+ZEST_CASE(SameScopeCollisions) {
     add_main(file("a.cpp"), R"(
         namespace math {
             int §(value)value;
@@ -484,29 +484,29 @@ TEST_CASE(SameScopeCollisions) {
     merge();
 
     auto value = rename_at("value", "total");
-    ASSERT_TRUE(value.has_value());
-    ASSERT_EQ(value->conflicts.size(), 1U);
-    EXPECT_TRUE(value->conflicts.front().contains("already declared in the same scope"));
+    ZASSERT(value);
+    ZASSERT(value->conflicts.size() == 1U);
+    ZEXPECT(value->conflicts.front().contains("already declared in the same scope"));
 
     auto sum = rename_at("sum", "add");
-    ASSERT_TRUE(sum.has_value());
-    EXPECT_FALSE(sum->blocked());
-    ASSERT_EQ(sum->warnings.size(), 1U);
-    EXPECT_TRUE(sum->warnings.front().contains("overloads"));
+    ZASSERT(sum);
+    ZEXPECT(!sum->blocked());
+    ZASSERT(sum->warnings.size() == 1U);
+    ZEXPECT(sum->warnings.front().contains("overloads"));
 
     auto left = rename_at("left", "right");
-    ASSERT_TRUE(left.has_value());
-    ASSERT_EQ(left->conflicts.size(), 1U);
-    EXPECT_TRUE(left->conflicts.front().contains("merging namespaces"));
+    ZASSERT(left);
+    ZASSERT(left->conflicts.size() == 1U);
+    ZEXPECT(left->conflicts.front().contains("merging namespaces"));
 
     auto local = rename_at("local", "second");
-    ASSERT_TRUE(local.has_value());
-    EXPECT_FALSE(local->blocked());
-    ASSERT_EQ(local->warnings.size(), 1U);
-    EXPECT_TRUE(local->warnings.front().contains("local of the same function"));
+    ZASSERT(local);
+    ZEXPECT(!local->blocked());
+    ZASSERT(local->warnings.size() == 1U);
+    ZEXPECT(local->warnings.front().contains("local of the same function"));
 }
 
-TEST_CASE(ParametersAndLabels) {
+ZEST_CASE(ParametersAndLabels) {
     add_main(file("a.cpp"), R"(
         int sum(int §(param)first, int second) { return first + second; }
         void spin() {
@@ -518,17 +518,17 @@ TEST_CASE(ParametersAndLabels) {
     merge();
 
     auto param = rename_at("param", "second");
-    ASSERT_TRUE(param.has_value());
-    ASSERT_EQ(param->conflicts.size(), 1U);
-    EXPECT_TRUE(param->conflicts.front().contains("parameter of the same function"));
+    ZASSERT(param);
+    ZASSERT(param->conflicts.size() == 1U);
+    ZEXPECT(param->conflicts.front().contains("parameter of the same function"));
 
     auto label = rename_at("label", "done");
-    ASSERT_TRUE(label.has_value());
-    ASSERT_EQ(label->conflicts.size(), 1U);
-    EXPECT_TRUE(label->conflicts.front().contains("label of the same function"));
+    ZASSERT(label);
+    ZASSERT(label->conflicts.size() == 1U);
+    ZEXPECT(label->conflicts.front().contains("label of the same function"));
 }
 
-TEST_CASE(LocalCapturesUse) {
+ZEST_CASE(LocalCapturesUse) {
     add_main(file("a.cpp"), R"(
         int §(cursor)total;
         int consume(int x);
@@ -538,17 +538,17 @@ TEST_CASE(LocalCapturesUse) {
     merge();
 
     auto captured = rename_at("cursor", "sum");
-    ASSERT_TRUE(captured.has_value());
-    EXPECT_FALSE(captured->blocked());
-    ASSERT_EQ(captured->warnings.size(), 1U);
-    EXPECT_TRUE(captured->warnings.front().contains("captures"));
+    ZASSERT(captured);
+    ZEXPECT(!captured->blocked());
+    ZASSERT(captured->warnings.size() == 1U);
+    ZEXPECT(captured->warnings.front().contains("captures"));
 
     auto apart = rename_at("cursor", "amount");
-    ASSERT_TRUE(apart.has_value());
-    EXPECT_TRUE(clean(*apart));
+    ZASSERT(apart);
+    ZEXPECT(clean(*apart));
 }
 
-TEST_CASE(MemberHidesInherited) {
+ZEST_CASE(MemberHidesInherited) {
     add_main(file("a.cpp"), R"(
         struct Base { int inherited; int §(base)own; };
         struct Derived : Base { int §(derived)extra; int added; };
@@ -557,22 +557,22 @@ TEST_CASE(MemberHidesInherited) {
     merge();
 
     auto up = rename_at("derived", "inherited");
-    ASSERT_TRUE(up.has_value());
-    ASSERT_EQ(up->conflicts.size(), 1U);
-    EXPECT_TRUE(up->conflicts.front().contains("member of Base"));
+    ZASSERT(up);
+    ZASSERT(up->conflicts.size() == 1U);
+    ZEXPECT(up->conflicts.front().contains("member of Base"));
 
     auto down = rename_at("base", "added");
-    ASSERT_TRUE(down.has_value());
-    ASSERT_EQ(down->conflicts.size(), 1U);
-    EXPECT_TRUE(down->conflicts.front().contains("member of Derived"));
+    ZASSERT(down);
+    ZASSERT(down->conflicts.size() == 1U);
+    ZEXPECT(down->conflicts.front().contains("member of Derived"));
 
     // Siblings never hide each other's members.
     auto across = rename_at("sibling", "extra");
-    ASSERT_TRUE(across.has_value());
-    EXPECT_TRUE(across->conflicts.empty());
+    ZASSERT(across);
+    ZEXPECT(across->conflicts.empty());
 }
 
-TEST_CASE(EnumeratorLookupScope) {
+ZEST_CASE(EnumeratorLookupScope) {
     add_main(file("a.cpp"), R"(
         enum Color { §(red)red };
         enum Mood { blue };
@@ -582,16 +582,16 @@ TEST_CASE(EnumeratorLookupScope) {
     merge();
 
     auto unscoped = rename_at("red", "blue");
-    ASSERT_TRUE(unscoped.has_value());
-    ASSERT_EQ(unscoped->conflicts.size(), 1U);
-    EXPECT_TRUE(unscoped->conflicts.front().contains("already declared in the same scope"));
+    ZASSERT(unscoped);
+    ZASSERT(unscoped->conflicts.size() == 1U);
+    ZEXPECT(unscoped->conflicts.front().contains("already declared in the same scope"));
 
     auto scoped = rename_at("low", "high");
-    ASSERT_TRUE(scoped.has_value());
-    EXPECT_TRUE(scoped->conflicts.empty());
+    ZASSERT(scoped);
+    ZEXPECT(scoped->conflicts.empty());
 }
 
-TEST_CASE(MemberTakesClassName) {
+ZEST_CASE(MemberTakesClassName) {
     add_main(file("a.cpp"), R"(
         struct Shape { void §(method)draw(); };
         struct §(grid)Grid { int cells; };
@@ -599,17 +599,17 @@ TEST_CASE(MemberTakesClassName) {
     merge();
 
     auto method = rename_at("method", "Shape");
-    ASSERT_TRUE(method.has_value());
-    ASSERT_EQ(method->conflicts.size(), 1U);
-    EXPECT_TRUE(method->conflicts.front().contains("names the class the member belongs to"));
+    ZASSERT(method);
+    ZASSERT(method->conflicts.size() == 1U);
+    ZEXPECT(method->conflicts.front().contains("names the class the member belongs to"));
 
     auto grid = rename_at("grid", "cells");
-    ASSERT_TRUE(grid.has_value());
-    ASSERT_EQ(grid->conflicts.size(), 1U);
-    EXPECT_TRUE(grid->conflicts.front().contains("member of the renamed class"));
+    ZASSERT(grid);
+    ZASSERT(grid->conflicts.size() == 1U);
+    ZEXPECT(grid->conflicts.front().contains("member of the renamed class"));
 }
 
-TEST_CASE(ManySameNamedSymbols) {
+ZEST_CASE(ManySameNamedSymbols) {
     std::string source = "int §(cursor)value;\n";
     for(int i = 0; i < 600; i += 1) {
         source += std::format("namespace n{} {{ int target; }}\n", i);
@@ -619,12 +619,12 @@ TEST_CASE(ManySameNamedSymbols) {
     merge();
 
     auto renamed = rename_at("cursor", "target");
-    ASSERT_TRUE(renamed.has_value());
-    ASSERT_EQ(renamed->conflicts.size(), 1U);
-    EXPECT_TRUE(renamed->conflicts.front().contains("already declared in the same scope"));
+    ZASSERT(renamed);
+    ZASSERT(renamed->conflicts.size() == 1U);
+    ZEXPECT(renamed->conflicts.front().contains("already declared in the same scope"));
 }
 
-TEST_CASE(MacroNameConflict) {
+ZEST_CASE(MacroNameConflict) {
     add_main(file("a.cpp"), R"(
         #define SHADOW 1
         int §(cursor)value = SHADOW;
@@ -632,12 +632,12 @@ TEST_CASE(MacroNameConflict) {
     merge();
 
     auto renamed = rename_at("cursor", "SHADOW");
-    ASSERT_TRUE(renamed.has_value());
-    ASSERT_EQ(renamed->conflicts.size(), 1U);
-    EXPECT_TRUE(renamed->conflicts.front().contains("is a macro"));
+    ZASSERT(renamed);
+    ZASSERT(renamed->conflicts.size() == 1U);
+    ZEXPECT(renamed->conflicts.front().contains("is a macro"));
 }
 
-TEST_CASE(MacroSpellingsUnconfirmed) {
+ZEST_CASE(MacroSpellingsUnconfirmed) {
     add_main(file("a.cpp"), R"(
         int §compute(int x) { return x; }
         #define CALL compute(1)
@@ -646,16 +646,16 @@ TEST_CASE(MacroSpellingsUnconfirmed) {
     merge();
 
     auto renamed = rename("compute", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_FALSE(renamed->blocked());
-    ASSERT_EQ(renamed->unconfirmed.size(), 2U);
-    EXPECT_TRUE(renamed->unconfirmed[0].reason.contains("preprocessor directive"));
-    EXPECT_EQ(renamed->unconfirmed[0].line, "#define CALL compute(1)");
-    EXPECT_TRUE(renamed->unconfirmed[1].reason.contains("written here as `CALL`"));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(!renamed->blocked());
+    ZASSERT(renamed->unconfirmed.size() == 2U);
+    ZEXPECT(renamed->unconfirmed[0].reason.contains("preprocessor directive"));
+    ZEXPECT(renamed->unconfirmed[0].line == "#define CALL compute(1)");
+    ZEXPECT(renamed->unconfirmed[1].reason.contains("written here as `CALL`"));
 }
 
-TEST_CASE(DependentCallHeuristic) {
+ZEST_CASE(DependentCallHeuristic) {
     add_main(file("a.cpp"), R"(
         int §compute(int x) { return x; }
 
@@ -665,14 +665,14 @@ TEST_CASE(DependentCallHeuristic) {
     merge();
 
     auto renamed = rename("compute", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    ASSERT_EQ(renamed->edits.size(), 2U);
-    EXPECT_FALSE(renamed->edits[0].heuristic);
-    EXPECT_TRUE(renamed->edits[1].heuristic);
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZASSERT(renamed->edits.size() == 2U);
+    ZEXPECT(!renamed->edits[0].heuristic);
+    ZEXPECT(renamed->edits[1].heuristic);
 }
 
-TEST_CASE(DependentCallOverloads) {
+ZEST_CASE(DependentCallOverloads) {
     add_main(file("a.cpp"), R"(
         int §(cursor)§compute(int x) { return x; }
         double compute(double x) { return x; }
@@ -683,48 +683,48 @@ TEST_CASE(DependentCallOverloads) {
     merge();
 
     auto renamed = rename_at("cursor", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    ASSERT_EQ(renamed->unconfirmed.size(), 1U);
-    EXPECT_TRUE(renamed->unconfirmed.front().reason.contains("also refers to"));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZASSERT(renamed->unconfirmed.size() == 1U);
+    ZEXPECT(renamed->unconfirmed.front().reason.contains("also refers to"));
 }
 
-TEST_CASE(ChangedFileBlocks) {
+ZEST_CASE(ChangedFileBlocks) {
     add_main(file("a.cpp"), R"(
         int compute(int x) { return x; }
         int use() { return compute(1); }
     )");
     merge();
-    ASSERT_FALSE(static_cast<bool>(vfs::write(file("a.cpp"), R"(int compute(int x) { return x; }
+    ZASSERT(!static_cast<bool>(vfs::write(file("a.cpp"), R"(int compute(int x) { return x; }
 int later() { return 2; }
 )")));
 
     auto renamed = rename("compute", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_TRUE(renamed->blocked());
-    ASSERT_EQ(renamed->stale.size(), 1U);
-    EXPECT_TRUE(renamed->stale.front().ends_with("a.cpp"));
+    ZASSERT(renamed);
+    ZEXPECT(renamed->blocked());
+    ZASSERT(renamed->stale.size() == 1U);
+    ZEXPECT(renamed->stale.front().ends_with("a.cpp"));
 }
 
-TEST_CASE(EditedFileMovedOn) {
+ZEST_CASE(EditedFileMovedOn) {
     // Non-ASCII text is kept with the rows, so no disk read vouches for it.
     add_main(file("a.cpp"), R"(
         // café
         int compute(int x) { return x; }
     )");
     merge();
-    ASSERT_FALSE(static_cast<bool>(vfs::write(file("a.cpp"), R"(// café
+    ZASSERT(!static_cast<bool>(vfs::write(file("a.cpp"), R"(// café
 int renamed(int x) { return x; }
 )")));
 
     auto renamed = rename("compute", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_TRUE(renamed->blocked());
-    ASSERT_EQ(renamed->stale.size(), 1U);
-    EXPECT_TRUE(renamed->stale.front().ends_with("a.cpp"));
+    ZASSERT(renamed);
+    ZEXPECT(renamed->blocked());
+    ZASSERT(renamed->stale.size() == 1U);
+    ZEXPECT(renamed->stale.front().ends_with("a.cpp"));
 }
 
-TEST_CASE(NewNameInChangedFile) {
+ZEST_CASE(NewNameInChangedFile) {
     add_main(file("a.cpp"), R"(
         int compute(int x) { return x; }
     )");
@@ -735,18 +735,18 @@ TEST_CASE(NewNameInChangedFile) {
     )");
     merge();
     // A declaration of the new name the index has not seen yet.
-    ASSERT_FALSE(static_cast<bool>(vfs::write(file("b.cpp"), R"(int other() { return 0; }
+    ZASSERT(!static_cast<bool>(vfs::write(file("b.cpp"), R"(int other() { return 0; }
 int evaluate;
 )")));
 
     auto renamed = rename("compute", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_TRUE(renamed->blocked());
-    ASSERT_EQ(renamed->stale.size(), 1U);
-    EXPECT_TRUE(renamed->stale.front().ends_with("b.cpp"));
+    ZASSERT(renamed);
+    ZEXPECT(renamed->blocked());
+    ZASSERT(renamed->stale.size() == 1U);
+    ZEXPECT(renamed->stale.front().ends_with("b.cpp"));
 }
 
-TEST_CASE(ExtensionlessHeaderEdited) {
+ZEST_CASE(ExtensionlessHeaderEdited) {
     add_file(file("config"), R"(
         int §compute(int x);
     )");
@@ -758,12 +758,12 @@ TEST_CASE(ExtensionlessHeaderEdited) {
     std::erase(scope, file("config"));
 
     auto renamed = rename("compute", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_TRUE(clean(*renamed));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
 }
 
-TEST_CASE(FilesOutsideTheIndex) {
+ZEST_CASE(FilesOutsideTheIndex) {
     add_main(file("a.cpp"), R"(
         int §compute(int x) { return x; }
     )");
@@ -771,22 +771,22 @@ TEST_CASE(FilesOutsideTheIndex) {
     write("notes.cpp", "int other() { return compute(3); }\n");
 
     auto renamed = rename("compute", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_EQ(edits(*renamed), marks());
-    EXPECT_FALSE(renamed->blocked());
-    ASSERT_EQ(renamed->unconfirmed.size(), 1U);
-    EXPECT_TRUE(renamed->unconfirmed.front().reason.contains("holds no rows"));
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(!renamed->blocked());
+    ZASSERT(renamed->unconfirmed.size() == 1U);
+    ZEXPECT(renamed->unconfirmed.front().reason.contains("holds no rows"));
 
     // A unit of the build the index has yet to reach may include it.
     units_pending = true;
     renamed = rename("compute", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
-    EXPECT_TRUE(renamed->blocked());
-    ASSERT_EQ(renamed->stale.size(), 1U);
-    EXPECT_TRUE(renamed->stale.front().ends_with("notes.cpp"));
+    ZASSERT(renamed);
+    ZEXPECT(renamed->blocked());
+    ZASSERT(renamed->stale.size() == 1U);
+    ZEXPECT(renamed->stale.front().ends_with("notes.cpp"));
 }
 
-TEST_CASE(EditOutsideWorkspace) {
+ZEST_CASE(EditOutsideWorkspace) {
     dir.mkdir("vendor");
     add_file(file("vendor/lib.h"), R"(
         int compute(int x);
@@ -800,34 +800,34 @@ TEST_CASE(EditOutsideWorkspace) {
     foreign.insert(file("vendor/lib.h"));
 
     auto renamed = rename("compute", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
-    ASSERT_EQ(renamed->conflicts.size(), 1U);
-    EXPECT_TRUE(renamed->conflicts.front().contains("not a workspace source"));
+    ZASSERT(renamed);
+    ZASSERT(renamed->conflicts.size() == 1U);
+    ZEXPECT(renamed->conflicts.front().contains("not a workspace source"));
 }
 
-TEST_CASE(ApplyRewritesTokens) {
+ZEST_CASE(ApplyRewritesTokens) {
     add_main(file("a.cpp"), R"(
         int compute(int x) { return x > 0 ? compute(x - 1) : 0; }
     )");
     merge();
     auto renamed = rename("compute", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
+    ZASSERT(renamed);
 
     auto text = sources.all_files[file("a.cpp")].content;
     auto applied = index::apply_rename(text, *renamed, main_id, "evaluate");
-    ASSERT_TRUE(applied.has_value());
-    EXPECT_EQ(*applied, R"(
+    ZASSERT(applied);
+    ZEXPECT(*applied == R"(
         int evaluate(int x) { return x > 0 ? evaluate(x - 1) : 0; }
     )");
 
     // The text moved on: a token no longer spells the old name.
-    EXPECT_FALSE(index::apply_rename("int x;", *renamed, main_id, "evaluate").has_value());
+    ZEXPECT(!index::apply_rename("int x;", *renamed, main_id, "evaluate").has_value());
     auto longer = text;
     longer.insert(renamed->edits.front().site.range.end, "d");
-    EXPECT_FALSE(index::apply_rename(longer, *renamed, main_id, "evaluate").has_value());
+    ZEXPECT(!index::apply_rename(longer, *renamed, main_id, "evaluate").has_value());
 }
 
-TEST_CASE(NonAsciiColumns) {
+ZEST_CASE(NonAsciiColumns) {
     add_main(file("a.cpp"), R"(
         int compute(int x) { return x; }
         #define NOTE "é" compute
@@ -835,13 +835,13 @@ TEST_CASE(NonAsciiColumns) {
     merge();
 
     auto renamed = rename("compute", "evaluate");
-    ASSERT_TRUE(renamed.has_value());
-    ASSERT_EQ(renamed->unconfirmed.size(), 1U);
+    ZASSERT(renamed);
+    ZASSERT(renamed->unconfirmed.size() == 1U);
     auto& begin = renamed->unconfirmed.front().site.begin;
-    EXPECT_EQ(begin.utf16_column + 1, begin.column);
+    ZEXPECT(begin.utf16_column + 1 == begin.column);
 }
 
-TEST_CASE(CursorOffTheName) {
+ZEST_CASE(CursorOffTheName) {
     add_main(file("a.cpp"), R"(
         struct Widget { Widget(int); };
         int compute(int x) { return x; }
@@ -852,15 +852,15 @@ TEST_CASE(CursorOffTheName) {
     merge();
 
     auto macro = rename_at("macro", "evaluate");
-    ASSERT_FALSE(macro.has_value());
-    EXPECT_TRUE(macro.error().contains("macro"));
+    ZASSERT(!macro.has_value());
+    ZEXPECT(macro.error().contains("macro"));
 
     auto paren = rename_at("paren", "Gadget");
-    ASSERT_FALSE(paren.has_value());
-    EXPECT_TRUE(paren.error().contains("no name of `Widget`"));
+    ZASSERT(!paren.has_value());
+    ZEXPECT(paren.error().contains("no name of `Widget`"));
 }
 
-};  // TEST_SUITE(Rename)
+};  // ZEST_SUITE(Rename)
 
 }  // namespace
 }  // namespace clice::testing

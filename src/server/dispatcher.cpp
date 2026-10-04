@@ -4,7 +4,6 @@
 #include <utility>
 
 #include "server/editor_context.h"
-#include "server/position.h"
 #include "support/anomaly.h"
 #include "support/logging.h"
 #include "support/timer.h"
@@ -15,7 +14,6 @@
 
 namespace clice {
 
-namespace lsp = kota::ipc::lsp;
 using serde_raw = kota::codec::RawValue;
 
 kota::ipc::Error content_modified() {
@@ -24,11 +22,6 @@ kota::ipc::Error content_modified() {
 }
 
 namespace {
-
-kota::ipc::Error invalid_range() {
-    return kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
-                            "Range start is after its end"};
-}
 
 /// What a request answers when the workers could not serve it.
 template <typename Outcome>
@@ -53,7 +46,7 @@ template <typename Params>
 RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
                                       std::uint8_t evidence,
                                       const Params& params,
-                                      std::optional<kota::cancellation_token> token,
+                                      kota::cancellation_token token,
                                       bool& unanswered) {
     auto unsent = [&] {
         unanswered = true;
@@ -145,7 +138,7 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
                                         const Ticket& ticket,
                                         std::optional<protocol::Position> position,
                                         std::optional<protocol::Range> range,
-                                        std::optional<kota::cancellation_token> token) {
+                                        kota::cancellation_token token) {
     auto& session = *ticket.session;
     auto path_id = session.path_id;
     auto path = std::string(project.file_table.resolve(path_id));
@@ -162,12 +155,12 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
         // compile, a crash bar): only the former is the client's cue to
         // re-pull; the latter is the honest "no AST" answer.
         if(!ticket.fresh()) {
-            co_return kota::outcome_error(content_modified());
+            co_await kota::fail(content_modified());
         }
         co_return serde_raw{"null"};
     }
     if(!ticket.fresh()) {
-        co_return kota::outcome_error(content_modified());
+        co_await kota::fail(content_modified());
     }
     auto wait_ms = timer.ms_f();
 
@@ -176,23 +169,19 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
     wp.path = path;
     wp.config = project.config;
 
-    auto map = session.line_map();
+    auto map = session.position_map();
     if(position) {
-        wp.offset = clamped_offset(map, *position);
+        wp.offset = map.to_offset_clamped(*position);
     }
     if(range) {
-        auto clamped = clamped_range(map, *range);
-        if(!clamped) {
-            co_return kota::outcome_error(invalid_range());
-        }
-        wp.range = *clamped;
+        wp.range = map.to_offset_range(*range);
     }
 
     bool unanswered = false;
     auto result = co_await ask(ticket, evidence, wp, token, unanswered);
     if(unanswered) {
         if(!ticket.fresh()) {
-            co_return kota::outcome_error(content_modified());
+            co_await kota::fail(content_modified());
         }
         co_return serde_raw{"null"};
     }
@@ -214,7 +203,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
                       EvidenceKind kind,
                       llvm::StringRef label,
                       Params params,
-                      std::optional<kota::cancellation_token> token) {
+                      kota::cancellation_token token) {
     using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     auto path_id = session.path_id;
@@ -227,12 +216,12 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     ScopedTimer timer;
     if(!co_await ast.ensure_compiled(ticket.session)) {
         if(!ticket.fresh()) {
-            co_return kota::outcome_error(content_modified());
+            co_await kota::fail(content_modified());
         }
         co_return Result{};
     }
     if(!ticket.fresh()) {
-        co_return kota::outcome_error(content_modified());
+        co_await kota::fail(content_modified());
     }
     auto wait_ms = timer.ms_f();
 
@@ -240,7 +229,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     auto result = co_await ask(ticket, evidence, params, token, unanswered);
     if(unanswered) {
         if(!ticket.fresh()) {
-            co_return kota::outcome_error(content_modified());
+            co_await kota::fail(content_modified());
         }
         co_return Result{};
     }
@@ -257,8 +246,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
 }
 
 kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
-    Dispatcher::document_links(const Ticket& ticket,
-                               std::optional<kota::cancellation_token> token) {
+    Dispatcher::document_links(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
                              EvidenceKind::DocumentLink,
@@ -268,8 +256,7 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
 }
 
 kota::task<std::optional<std::vector<feature::FoldingRange>>, kota::ipc::Error>
-    Dispatcher::folding_ranges(const Ticket& ticket,
-                               std::optional<kota::cancellation_token> token) {
+    Dispatcher::folding_ranges(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
                              EvidenceKind::FoldingRange,
@@ -281,18 +268,15 @@ kota::task<std::optional<std::vector<feature::FoldingRange>>, kota::ipc::Error>
 kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
     Dispatcher::code_actions(const Ticket& ticket,
                              const protocol::Range& range,
-                             std::optional<kota::cancellation_token> token) {
+                             kota::cancellation_token token) {
     // Clamped against the buffer the ticket was taken on: a buffer that
     // moves before the reply lands turns the reply into ContentModified.
-    auto selection = clamped_range(ticket.session->line_map(), range);
-    if(!selection) {
-        co_return kota::outcome_error(invalid_range());
-    }
+    auto selection = ticket.session->position_map().to_offset_range(range);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
                              EvidenceKind::CodeAction,
                              "CodeAction",
-                             worker::CodeActionParams{std::move(path), *selection},
+                             worker::CodeActionParams{std::move(path), selection},
                              std::move(token));
 }
 
@@ -302,7 +286,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
                                               const Ticket& ticket,
                                               protocol::Position position,
                                               Params wp,
-                                              std::optional<kota::cancellation_token> token) {
+                                              kota::cancellation_token token) {
     auto& session = *ticket.session;
     auto path_id = session.path_id;
     auto path = std::string(project.file_table.resolve(path_id));
@@ -319,6 +303,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
 
     wp.file = path;
     wp.text = session.text;
+    wp.offset = session.position_map().to_offset_clamped(position);
     auto resolution = contexts.resolve_command(path_id, wp.directory, wp.arguments);
     wp.config = project.config;
 
@@ -336,7 +321,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
             co_return serde_raw{"null"};
         }
         LOG_WARN("{}: dependency preparation failed for {}", label, path);
-        co_return kota::outcome_error(kota::ipc::Error{"Dependency preparation failed"});
+        co_await kota::fail(kota::ipc::Error{"Dependency preparation failed"});
     }
     wp.pch = std::move(inputs.pch);
     wp.pcms = std::move(inputs.pcms);
@@ -348,9 +333,6 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     }
     auto wait_ms = timer.ms_f();
 
-    lsp::LineMap map(wp.text);
-    wp.offset = clamped_offset(map, position);
-
     // A completion reply stays useful after edits at or past the cursor:
     // its ranges still hold, and the client filters it by what was typed
     // meanwhile.
@@ -360,7 +342,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
                session.text.starts_with(carried);
     };
     if(!ticket.fresh() && !snapshot()) {
-        co_return kota::outcome_error(content_modified());
+        co_await kota::fail(content_modified());
     }
 
     if(resolution.synthesized) {
@@ -389,7 +371,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
 Dispatcher::RawResult Dispatcher::completion(const Ticket& ticket,
                                              const protocol::Position& position,
                                              const feature::CompletionClient& client,
-                                             std::optional<kota::cancellation_token> token) {
+                                             kota::cancellation_token token) {
     return interactive(evidence_kind(EvidenceKind::Completion),
                        "Completion",
                        ticket,
@@ -400,7 +382,7 @@ Dispatcher::RawResult Dispatcher::completion(const Ticket& ticket,
 
 Dispatcher::RawResult Dispatcher::signature_help(const Ticket& ticket,
                                                  const protocol::Position& position,
-                                                 std::optional<kota::cancellation_token> token) {
+                                                 kota::cancellation_token token) {
     return interactive(evidence_kind(EvidenceKind::SignatureHelp),
                        "SignatureHelp",
                        ticket,
@@ -411,7 +393,7 @@ Dispatcher::RawResult Dispatcher::signature_help(const Ticket& ticket,
 
 Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
                                          std::optional<protocol::Range> range,
-                                         std::optional<kota::cancellation_token> token) {
+                                         kota::cancellation_token token) {
     auto& session = *ticket.session;
     auto path = std::string(project.file_table.resolve(session.path_id));
     auto evidence = evidence_kind(EvidenceKind::Format);
@@ -426,13 +408,7 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
     wp.text = session.text;
 
     if(range) {
-        lsp::LineMap map(wp.text);
-        wp.range = {clamped_offset(map, range->start), clamped_offset(map, range->end)};
-        if(wp.range.begin > wp.range.end) {
-            co_return kota::outcome_error(
-                kota::ipc::Error{kota::ipc::protocol::ErrorCode::InvalidParams,
-                                 "Range start is after its end"});
-        }
+        wp.range = session.position_map().to_offset_range(*range);
     }
 
     ScopedTimer timer;

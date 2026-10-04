@@ -6,7 +6,6 @@
 #include "index/site.h"
 #include "index/types.h"
 #include "semantic/symbol.h"
-#include "server/position.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/ipc/lsp/protocol.h"

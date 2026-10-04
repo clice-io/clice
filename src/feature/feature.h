@@ -11,6 +11,7 @@
 
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
+#include "feature/position.h"
 #include "index/manifest.h"
 #include "index/types.h"
 #include "semantic/display.h"
@@ -20,7 +21,6 @@
 #include "vfs/path.h"
 
 #include "kota/codec/macro.h"
-#include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/lsp/uri.h"
 #include "kota/meta/annotation.h"
@@ -34,16 +34,10 @@ class Shard;
 
 namespace clice::feature {
 
-namespace lsp = kota::ipc::lsp;
-namespace protocol = kota::ipc::protocol;
-
 // Feature options double as their clice.toml/initializationOptions config
 // sections: `defaulted = true` lets a decode leave unmentioned fields at
 // their initializers, so those are the single source of every default and a
 // config source only ever overlays what it names.
-
-using kota::ipc::lsp::LineMap;
-using kota::ipc::lsp::PositionEncoding;
 
 /// Render an absolute path as an LSP URI string.
 ///
@@ -58,21 +52,15 @@ inline auto to_uri(llvm::StringRef file) -> std::string {
     return uri->str();
 }
 
-inline auto to_position(const LineMap& map, std::uint32_t offset)
-    -> std::optional<protocol::Position> {
-    if(auto position = map.to_position(offset)) {
-        return *position;
-    }
-    LOG_ANOMALY(PositionMapFail, "offset {} cannot be mapped to a position", offset);
-    return std::nullopt;
-}
-
-inline auto to_range(const LineMap& map, LocalSourceRange range) -> std::optional<protocol::Range> {
-    auto start = to_position(map, range.begin);
-    auto end = to_position(map, range.end);
-    if(!start || !end)
-        return std::nullopt;
-    return protocol::Range{.start = *start, .end = *end};
+/// The main file's positions, over the line tables the unit caches.
+inline auto main_position_map(CompilationUnitRef unit, PositionEncoding encoding) -> PositionMap {
+    auto content = unit.main_content();
+    return {
+        .content = {content.data(), content.size()},
+        .lines = unit.line_starts(),
+        .non_ascii = unit.non_ascii_lines(),
+        .encoding = encoding,
+    };
 }
 
 /// Corresponds to the `[code_completion]` section in clice.toml.
@@ -378,10 +366,8 @@ auto semantic_tokens(CompilationUnitRef unit,
 /// Wire encoding of computed tokens against the text they describe — one
 /// encoder for the worker's AST results and the master's index
 /// projections, so both paths emit byte-identical replies.
-auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
-                                 llvm::StringRef content,
-                                 llvm::ArrayRef<std::uint32_t> line_starts,
-                                 PositionEncoding encoding) -> protocol::SemanticTokens;
+auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens, const PositionMap& map)
+    -> protocol::SemanticTokens;
 
 auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange>;
 
@@ -408,19 +394,14 @@ auto declaration_lines(llvm::StringRef content,
 /// master's index projections alike. A `line_folding_only` client folds
 /// whole lines and ignores the character offsets.
 auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
-                                llvm::StringRef content,
-                                llvm::ArrayRef<std::uint32_t> line_starts,
-                                PositionEncoding encoding,
+                                const PositionMap& map,
                                 bool line_folding_only) -> std::vector<protocol::FoldingRange>;
 
 auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol>;
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol>;
 
-auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
-                                  llvm::StringRef content,
-                                  llvm::ArrayRef<std::uint32_t> line_starts,
-                                  PositionEncoding encoding)
+auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols, const PositionMap& map)
     -> std::vector<protocol::DocumentSymbol>;
 
 auto inlay_hints(CompilationUnitRef unit,
@@ -469,7 +450,7 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
 
 /// Render structured hover information with the configured markup format and
 /// convert its byte range through the caller's current line map.
-auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const LineMap& map)
+auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const PositionMap& map)
     -> protocol::Hover;
 
 auto hover(CompilationUnitRef unit,
@@ -496,9 +477,9 @@ struct TextReplacement {
 /// The kinds the actions produce: the advertised capability, and what a
 /// request's `only` filter is matched against.
 constexpr inline std::array<std::string_view, 3> code_action_kinds = {
-    protocol::CodeActionKind::quick_fix,
-    protocol::CodeActionKind::refactor_inline,
-    protocol::CodeActionKind::refactor_rewrite,
+    protocol::CodeActionKind::QuickFix,
+    protocol::CodeActionKind::RefactorInline,
+    protocol::CodeActionKind::RefactorRewrite,
 };
 
 /// One definition the index vets: dropped when any source knows a

@@ -751,14 +751,8 @@ std::expected<std::vector<std::string>, std::string>
             spec.kind = arguments[i + 1];
     }
 
-    std::expected<std::vector<std::string>, std::string> result;
-    kota::event_loop loop;
-    auto task = [&]() -> kota::task<> {
-        result = co_await query_one(spec);
-    };
-    loop.schedule(task());
-    loop.run();
-    return result;
+    auto [ended] = kota::run(query_one(spec));
+    return std::move(*ended);
 }
 
 Toolchain::ProbeKey Toolchain::probe_key(ConfigID id, InputKind input) {
@@ -1075,14 +1069,8 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(ConfigID id
     if(admission.kind == ProbeAdmission::Kind::Ready) {
         LOG_WARN("Toolchain probe miss: driver={} kind={}", db.config(id).driver, input.value);
 
-        std::expected<std::vector<std::string>, std::string> result;
-        kota::event_loop loop;
-        auto task = [&]() -> kota::task<> {
-            result = co_await query_one(admission.spec);
-        };
-        loop.schedule(task());
-        loop.run();
-
+        auto [ended] = kota::run(query_one(admission.spec));
+        auto& result = *ended;
         land_probe(admission.key, result);
         if(!result) {
             return std::unexpected(std::move(result.error()));
@@ -1133,23 +1121,19 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
         co_return QueryOutcome{std::move(p.key), std::move(result)};
     };
 
-    kota::small_vector<QueryOutcome> outcomes;
-
-    kota::event_loop loop;
-    auto run = [&]() -> kota::task<> {
+    auto query_all = [&]() -> kota::task<kota::small_vector<QueryOutcome>> {
         std::vector<kota::task<QueryOutcome>> tasks;
         tasks.reserve(pending.size());
         for(auto& p: pending) {
             tasks.push_back(make_task(std::move(p)));
         }
 
-        outcomes = co_await kota::when_all(std::move(tasks));
+        co_return co_await kota::when_all(std::move(tasks));
     };
-    loop.schedule(run());
-    loop.run();
+    auto [outcomes] = kota::run(query_all());
 
     std::size_t succeeded = 0;
-    for(auto& o: outcomes) {
+    for(auto& o: *outcomes) {
         if(o.result) {
             succeeded += 1;
         } else {

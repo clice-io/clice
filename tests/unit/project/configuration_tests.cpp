@@ -17,87 +17,87 @@ Config tagged(const TempDir& tmp) {
     return config;
 }
 
-TEST_SUITE(Configuration) {
+ZEST_SUITE(Configuration) {
 
-TEST_CASE(FallbackDefaultElseFirst) {
+ZEST_CASE(FallbackDefaultElseFirst) {
     TempDir tmp;
     auto config = tagged(tmp);
-    EXPECT_EQ(fallback_configuration(config), "release");
+    ZEXPECT(fallback_configuration(config) == "release");
 
     config.default_configuration = "nope";
-    EXPECT_EQ(fallback_configuration(config), "debug");
+    ZEXPECT(fallback_configuration(config) == "debug");
 
     Config untagged;
     untagged.rules.push_back(ConfigRule{.compile_commands = {"."}});
     untagged.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    EXPECT_TRUE(fallback_configuration(untagged).empty());
+    ZEXPECT(fallback_configuration(untagged).empty());
 };
 
-TEST_CASE(SelectionRoundTrips) {
+ZEST_CASE(SelectionRoundTrips) {
     TempDir tmp;
     auto cache_dir = tmp.path(".clice");
-    EXPECT_TRUE(read_selection(cache_dir).empty());
-    ASSERT_TRUE(write_selection(cache_dir, "release").has_value());
-    EXPECT_EQ(read_selection(cache_dir), "release");
-    ASSERT_TRUE(write_selection(cache_dir, "debug").has_value());
-    EXPECT_EQ(read_selection(cache_dir), "debug");
-    EXPECT_TRUE(vfs::exists(path::join(cache_dir, "state.json")));
+    ZEXPECT(read_selection(cache_dir).empty());
+    ZASSERT(write_selection(cache_dir, "release"));
+    ZEXPECT(read_selection(cache_dir) == "release");
+    ZASSERT(write_selection(cache_dir, "debug"));
+    ZEXPECT(read_selection(cache_dir) == "debug");
+    ZEXPECT(vfs::exists(path::join(cache_dir, "state.json")));
 
     tmp.touch(".clice/state.json", "not json");
-    EXPECT_TRUE(read_selection(cache_dir).empty());
-    EXPECT_EQ(read_file(path::join(cache_dir, "state.json")).value_or(""), "not json");
-    EXPECT_TRUE(read_selection("").empty());
+    ZEXPECT(read_selection(cache_dir).empty());
+    ZEXPECT(read_file(path::join(cache_dir, "state.json")).value_or("") == "not json");
+    ZEXPECT(read_selection("").empty());
 };
 
-TEST_CASE(SelectionWriteFails) {
+ZEST_CASE(SelectionWriteFails) {
     TempDir tmp;
-    EXPECT_FALSE(write_selection("", "release").has_value());
+    ZEXPECT(!write_selection("", "release").has_value());
     tmp.touch("blocked", "x");
-    EXPECT_FALSE(write_selection(tmp.path("blocked"), "release").has_value());
+    ZEXPECT(!write_selection(tmp.path("blocked"), "release").has_value());
 };
 
-TEST_CASE(CheckRequested) {
+ZEST_CASE(CheckRequested) {
     TempDir tmp;
     auto config = tagged(tmp);
-    EXPECT_TRUE(declares_configuration(config, "debug"));
-    EXPECT_FALSE(declares_configuration(config, "nope"));
-    EXPECT_TRUE(check_requested_configuration(config, ""));
-    EXPECT_TRUE(check_requested_configuration(config, "release"));
-    EXPECT_FALSE(check_requested_configuration(config, "nope"));
+    ZEXPECT(declares_configuration(config, "debug"));
+    ZEXPECT(!declares_configuration(config, "nope"));
+    ZEXPECT(check_requested_configuration(config, ""));
+    ZEXPECT(check_requested_configuration(config, "release"));
+    ZEXPECT(!check_requested_configuration(config, "nope"));
 };
 
-TEST_CASE(ResolvePrecedence) {
+ZEST_CASE(ResolvePrecedence) {
     TempDir tmp;
     auto config = tagged(tmp);
-    EXPECT_EQ(resolve_configuration(config, ""), "release");
+    ZEXPECT(resolve_configuration(config, "") == "release");
 
-    ASSERT_TRUE(write_selection(config.project.cache_dir, "debug").has_value());
-    EXPECT_EQ(resolve_configuration(config, ""), "debug");
-    EXPECT_EQ(resolve_configuration(config, "release"), "release");
+    ZASSERT(write_selection(config.project.cache_dir, "debug"));
+    ZEXPECT(resolve_configuration(config, "") == "debug");
+    ZEXPECT(resolve_configuration(config, "release") == "release");
 };
 
-TEST_CASE(UnknownNameFallsBack) {
+ZEST_CASE(UnknownNameFallsBack) {
     TempDir tmp;
     auto config = tagged(tmp);
-    EXPECT_EQ(resolve_configuration(config, "nope"), "release");
+    ZEXPECT(resolve_configuration(config, "nope") == "release");
 
-    ASSERT_TRUE(write_selection(config.project.cache_dir, "gone").has_value());
-    EXPECT_EQ(resolve_configuration(config, ""), "release");
-    EXPECT_EQ(read_selection(config.project.cache_dir), "gone");
-    EXPECT_EQ(resolve_configuration(config, "debug"), "debug");
+    ZASSERT(write_selection(config.project.cache_dir, "gone"));
+    ZEXPECT(resolve_configuration(config, "") == "release");
+    ZEXPECT(read_selection(config.project.cache_dir) == "gone");
+    ZEXPECT(resolve_configuration(config, "debug") == "debug");
 };
 
-TEST_CASE(UntaggedIgnoresSelection) {
+ZEST_CASE(UntaggedIgnoresSelection) {
     TempDir tmp;
     Config config;
     config.rules.push_back(ConfigRule{.compile_commands = {"."}});
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT_TRUE(write_selection(config.project.cache_dir, "release").has_value());
-    EXPECT_TRUE(resolve_configuration(config, "").empty());
-    EXPECT_TRUE(resolve_configuration(config, "release").empty());
+    ZASSERT(write_selection(config.project.cache_dir, "release"));
+    ZEXPECT(resolve_configuration(config, "").empty());
+    ZEXPECT(resolve_configuration(config, "release").empty());
 };
 
-};  // TEST_SUITE(Configuration)
+};  // ZEST_SUITE(Configuration)
 
 }  // namespace
 
