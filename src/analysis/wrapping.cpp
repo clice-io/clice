@@ -258,36 +258,47 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
             }
         }
         llvm::StringSet<> roots;
-        auto root_of = [&](const InterfaceHeader& header, llvm::StringRef spelled) {
-            auto file = absolute(header.file);
-            if(llvm::StringRef(file).ends_with(("/" + spelled).str())) {
-                roots.insert(llvm::StringRef(file).drop_back(spelled.size() + 1));
+        // The names a mirror can shadow: inside it, as no `..` or absolute
+        // path is; each also tells the root the header is found under.
+        auto mirrorable = [&](const InterfaceHeader& header) {
+            llvm::SmallVector<std::string> names;
+            for(auto& name: header.names) {
+                llvm::SmallString<128> spelled(name);
+                llvm::sys::path::remove_dots(spelled, true, llvm::sys::path::Style::posix);
+                if(spelled.empty() || spelled.starts_with("../") ||
+                   llvm::sys::path::is_absolute(spelled)) {
+                    continue;
+                }
+                auto file = absolute(header.file);
+                if(llvm::StringRef(file).ends_with(("/" + spelled).str())) {
+                    roots.insert(llvm::StringRef(file).drop_back(spelled.size() + 1));
+                }
+                names.push_back(spelled.str().str());
             }
+            return names;
         };
         // What the imported modules cannot export that its headers name,
         // which the emptied headers no longer bring in.
         for(auto& header: interface.textual_uses) {
             unit += std::format("#include {}\n", operand(header));
-            root_of(header, header.name);
+            mirrorable(header);
         }
         unit += "\n";
+        // By the name other files include an entry with, where one has an
+        // include path position: <foo.h> by its path would #include_next
+        // from the start.
         for(auto& entry: interface.entries) {
-            unit += std::format("#include \"{}\"\n", absolute(entry.file));
-            // A name relative to the includer's own directory finds the header
-            // before any directory on the include path; a macro-expanded
-            // directive leaves none.
-            llvm::SmallString<128> spelled(entry.name);
-            llvm::sys::path::remove_dots(spelled, true, llvm::sys::path::Style::posix);
-            if(spelled.empty() || spelled.starts_with("../") ||
-               llvm::sys::path::is_absolute(spelled)) {
+            unit += std::format("#include {}\n", operand(entry));
+            auto names = mirrorable(entry);
+            if(names.empty()) {
                 result.plan.warnings.push_back(
                     std::format("{}: {} is included by no name a mirror can empty",
                                 name,
                                 entry.file));
-                continue;
             }
-            result.files.push_back({std::format("mirror/{}/{}", name, spelled.str()), ""});
-            root_of(entry, spelled);
+            for(auto& spelled: names) {
+                result.files.push_back({std::format("mirror/{}/{}", name, spelled), ""});
+            }
         }
         for(auto& file: interface.varying) {
             result.plan.warnings.push_back(std::format(

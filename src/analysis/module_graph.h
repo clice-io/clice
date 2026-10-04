@@ -710,9 +710,11 @@ struct InterfaceExport {
 struct InterfaceHeader {
     std::string file;
 
-    /// The name a directive of theirs spells it by, `llvm/ADT/StringRef.h`:
-    /// where a directory first on the include path shadows it.
-    std::string name;
+    /// The names their directives spell it by, `llvm/ADT/StringRef.h`:
+    /// where a directory first on the include path shadows it. A quoted name
+    /// the includer's own directory resolves is none: that directory comes
+    /// first.
+    std::vector<std::string> names;
 
     /// The directive's operand to include it by: `<name>` when some file
     /// spells it so, else its quoted path. A system header resolves by the

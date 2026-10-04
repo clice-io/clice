@@ -90,14 +90,45 @@ bool has_word(llvm::StringRef text, llvm::StringRef word) {
     return false;
 }
 
-/// `text` with its string and character literals emptied and its line
-/// comment cut: the code words of a line.
+/// Whether a block comment `text` opens runs past its end, literals and a
+/// line comment aside.
+bool opens_comment(llvm::StringRef text) {
+    for(std::size_t at = 0; at < text.size(); at += 1) {
+        auto c = text[at];
+        if(c == '"' || c == '\'') {
+            for(at += 1; at < text.size() && text[at] != c; at += 1) {
+                at += text[at] == '\\' ? 1 : 0;
+            }
+        } else if(c == '/' && at + 1 < text.size() && text[at + 1] == '/') {
+            return false;
+        } else if(c == '/' && at + 1 < text.size() && text[at + 1] == '*') {
+            auto close = text.find("*/", at + 2);
+            if(close == llvm::StringRef::npos) {
+                return true;
+            }
+            at = close + 1;
+        }
+    }
+    return false;
+}
+
+/// `text` with its string and character literals emptied and its comments
+/// cut: the code words of a line.
 std::string code_of(llvm::StringRef text) {
     std::string result;
     for(std::size_t at = 0; at < text.size(); at += 1) {
         auto c = text[at];
         if(c == '/' && at + 1 < text.size() && text[at + 1] == '/') {
             break;
+        }
+        if(c == '/' && at + 1 < text.size() && text[at + 1] == '*') {
+            auto close = text.find("*/", at + 2);
+            if(close == llvm::StringRef::npos) {
+                break;
+            }
+            result += ' ';
+            at = close + 1;
+            continue;
         }
         result += c;
         if(c != '"' && c != '\'') {
@@ -375,10 +406,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 continue;
             }
             text += part;
-            auto code = code_of(text);
-            auto opened = llvm::StringRef(code).rfind("/*");
-            if(opened == llvm::StringRef::npos ||
-               llvm::StringRef(code).drop_front(opened).contains("*/")) {
+            if(!opens_comment(text)) {
                 break;
             }
             text += ' ';
@@ -602,10 +630,16 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             if(!text.consume_front("#") || !text.ltrim().starts_with("undef")) {
                 continue;
             }
-            auto redefined = llvm::any_of(sites.lookup(hash), [&](const Site& site) {
+            // Elsewhere, an #undef is one file's cleanup (a consumer dropping
+            // <windows.h>'s min), not the end of the macro.
+            auto here = sites.lookup(hash);
+            auto scoped = facts.files[id].fragment || llvm::any_of(here, [&](const Site& site) {
+                              return site.file == id && site.line < line;
+                          });
+            auto redefined = llvm::any_of(here, [&](const Site& site) {
                 return site.file == id && site.line > line;
             });
-            if(!redefined) {
+            if(scoped && !redefined) {
                 undefined.insert(hash);
             }
         }
@@ -2900,6 +2934,10 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     std::vector<llvm::DenseMap<std::uint32_t, std::pair<std::uint32_t, std::uint32_t>>> because(
         count);
     std::vector<std::map<std::pair<std::string, std::uint32_t>, bool>> exports(count);
+    /// Per header, the modules it names or includes and the macros of other
+    /// modules it reads; a fragment's are its includers'.
+    std::vector<std::set<std::uint32_t>> file_imports(facts.files.size()),
+        file_reads(facts.files.size());
 
     for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
         // A fragment's names are its includers'; the sources implementing
@@ -2909,20 +2947,17 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                 continue;
             }
             for(auto& use: facts.uses[file]) {
-                imports[module_of(charged)].insert(module_of(facts.entities[use.entity].owner));
+                file_imports[charged].insert(module_of(facts.entities[use.entity].owner));
             }
             // The program's switches a library header reads are replayed
             // ahead of its entries, not imported.
             for(auto& use: facts.macro_uses[file]) {
                 auto owner = module_of(facts.entities[use.entity].owner);
                 if(partition.kinds[owner] != ModuleKind::Program) {
-                    imports[module_of(charged)].insert(owner);
+                    file_imports[charged].insert(owner);
                 }
-            }
-            for(auto& use: facts.macro_uses[file]) {
-                if(module_of(facts.entities[use.entity].owner) != module_of(charged) &&
-                   !facts.entities[use.entity].undefined) {
-                    reads[module_of(charged)].insert(use.entity);
+                if(owner != module_of(charged) && !facts.entities[use.entity].undefined) {
+                    file_reads[charged].insert(use.entity);
                 }
             }
         }
@@ -2931,7 +2966,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         }
         auto module = module_of(file);
         for(auto included: facts.files[file].includes) {
-            imports[module].insert(module_of(included));
+            file_imports[file].insert(module_of(included));
         }
         if(!facts.files[file].fragment &&
            llvm::any_of(facts.files[file].includers,
@@ -2985,10 +3020,12 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     }
 
     // A macro another module's directive spells (clang's OPTION expanding
-    // llvm's LLVM_MAKE_OPT_ID_WITH_ID_PREFIX) is used there; one a textual
-    // header expands is used wherever that header compiles, in importers.
-    for(auto& info: facts.entities) {
-        if(info.kind != SymbolKind::Macro) {
+    // llvm's LLVM_MAKE_OPT_ID_WITH_ID_PREFIX) is used where that macro is
+    // expanded; one a textual header expands is used wherever that header
+    // compiles, in importers.
+    for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
+        auto& info = facts.entities[entity];
+        if(info.kind != SymbolKind::Macro || reverse.users[entity].empty()) {
             continue;
         }
         auto module = module_of(info.owner);
@@ -3110,19 +3147,29 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                                .include = std::format("\"{}\"", info.path),
                                .because = std::move(because)};
         for(std::size_t i = 0; i < info.includers.size(); i += 1) {
+            auto includer = info.includers[i];
             llvm::StringRef spelled = info.spellings[i];
-            if(module_of(info.includers[i]) == module || spelled.size() < 2) {
+            if(module_of(includer) == module || spelled.size() < 2) {
                 continue;
             }
-            if(spelled.starts_with("<")) {
-                header.name = spelled.drop_front().drop_back();
+            auto name = spelled.drop_front().drop_back();
+            if(spelled.starts_with("\"")) {
+                llvm::SmallString<256> beside(
+                    llvm::sys::path::parent_path(facts.files[includer].path,
+                                                 llvm::sys::path::Style::posix));
+                llvm::sys::path::append(beside, llvm::sys::path::Style::posix, name);
+                llvm::sys::path::remove_dots(beside, true, llvm::sys::path::Style::posix);
+                if(beside == info.path) {
+                    continue;
+                }
+            } else if(!llvm::StringRef(header.include).starts_with("<")) {
                 header.include = spelled;
-                break;
             }
-            if(header.name.empty()) {
-                header.name = spelled.drop_front().drop_back();
+            if(!llvm::is_contained(header.names, name)) {
+                header.names.push_back(name.str());
             }
         }
+        std::ranges::sort(header.names);
         return header;
     };
 
@@ -3133,6 +3180,17 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         }
         auto& interface = result.emplace_back();
         interface.module = partition.modules[module];
+        // A wrapped module's private headers, which only its sources reach,
+        // are no part of its unit.
+        for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+            if(module_of(file) != module ||
+               (partition.kinds[module] == ModuleKind::Wrapped && !reached[module].contains(file) &&
+                !textual[module].contains(file))) {
+                continue;
+            }
+            imports[module].insert(file_imports[file].begin(), file_imports[file].end());
+            reads[module].insert(file_reads[file].begin(), file_reads[file].end());
+        }
         imports[module].erase(module);
         for(auto imported: imports[module]) {
             interface.imports.push_back(partition.modules[imported]);
@@ -3188,8 +3246,9 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         }
         for(auto& alias: facts.aliases) {
             auto charged = charged_files(facts, alias.file);
-            if(llvm::any_of(charged,
-                            [&](std::uint32_t file) { return module_of(file) == module; })) {
+            if(llvm::any_of(charged, [&](std::uint32_t file) {
+                   return module_of(file) == module && reached[module].contains(file);
+               })) {
                 interface.aliases.push_back({.name = alias.name, .target = alias.target});
             }
         }

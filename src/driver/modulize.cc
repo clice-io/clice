@@ -110,7 +110,8 @@ std::expected<void, std::string> write_files(llvm::StringRef out,
         llvm::SmallVector<llvm::StringRef> lines;
         (*previous)->getBuffer().split(lines, '\n', -1, false);
         for(auto relative: lines) {
-            if(written.contains(relative)) {
+            // A hand-edited manifest reaches nothing outside `out`.
+            if(written.contains(relative) || relative.starts_with("/") || relative.contains("..")) {
                 continue;
             }
             if(auto error = vfs::remove(at(relative))) {

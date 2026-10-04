@@ -4,15 +4,16 @@
 /// The libraries, the standard library and its module sources are stand-ins
 /// in the workspace, so no real system header is involved.
 
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
+import { promisify } from "node:util";
 import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
 import { type Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test, type SessionFactory } from "../fixtures.ts";
 
 interface Header {
     file: string;
-    name: string;
+    names: string[];
     include: string;
     because: string;
 }
@@ -48,19 +49,37 @@ function lines(...text: string[]): string {
     return [...text, ""].join("\n");
 }
 
-function runClice(...args: string[]) {
-    return spawnSync(cliceExecutable(), args, {
-        encoding: "utf8",
-        timeout: 120_000,
-        maxBuffer: 64 * 1024 * 1024,
-    });
+interface Run {
+    status: number | null;
+    stdout: string;
+    stderr: string;
+}
+
+/// Asynchronous, so a long run never blocks the vitest worker past its RPC
+/// timeout.
+async function runClice(...args: string[]): Promise<Run> {
+    try {
+        const { stdout, stderr } = await promisify(execFile)(cliceExecutable(), args, {
+            encoding: "utf8",
+            timeout: 120_000,
+            maxBuffer: 64 * 1024 * 1024,
+        });
+        return { status: 0, stdout, stderr };
+    } catch (error) {
+        const failed = error as { code?: unknown; stdout?: string; stderr?: string };
+        return {
+            status: typeof failed.code === "number" ? failed.code : null,
+            stdout: failed.stdout ?? "",
+            stderr: failed.stderr ?? "",
+        };
+    }
 }
 
 /// A program over two libraries, beta including alpha, a standard library
 /// whose C++ headers include the C library's, and libc++'s module sources
 /// for it: std.cppm includes the headers `import std` stands for and
 /// std.compat exports fake_puts.
-function writeProject(session: SessionFactory): Workspace {
+async function writeProject(session: SessionFactory): Promise<Workspace> {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(
@@ -221,13 +240,13 @@ function writeProject(session: SessionFactory): Workspace {
             ],
         }),
     );
-    const run = runClice("index", "--workspace", ws.root, "--workers", "2");
+    const run = await runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(run.status, `stderr: ${run.stderr}`).toBe(0);
     return ws;
 }
 
-function interfaces(ws: Workspace): Map<string, Interface> {
-    const run = runClice(
+async function interfaces(ws: Workspace): Promise<Map<string, Interface>> {
+    const run = await runClice(
         "analyze",
         "modules",
         "--workspace",
@@ -262,13 +281,13 @@ function modulize(ws: Workspace, partition = ws.path("partition.json")) {
     );
 }
 
-test("library interfaces", ({ session }) => {
-    const ws = writeProject(session);
-    const all = interfaces(ws);
+test("library interfaces", async ({ session }) => {
+    const ws = await writeProject(session);
+    const all = await interfaces(ws);
     const alpha = all.get("alpha")!;
-    expect(alpha.entries.map((entry) => [entry.name, entry.include])).toEqual([
-        ["alpha/alpha.h", "<alpha/alpha.h>"],
-        ["alpha/limits.h", "<alpha/limits.h>"],
+    expect(alpha.entries.map((entry) => [entry.names, entry.include])).toEqual([
+        [["alpha/alpha.h"], "<alpha/alpha.h>"],
+        [["alpha/limits.h"], "<alpha/limits.h>"],
     ]);
     const exported = new Set(alpha.exports.map((entry) => entry.name));
     const wanted = ["alpha::Thing", "alpha::Color", "alpha::red", "alpha::make", "alpha::fake_abs"];
@@ -282,13 +301,16 @@ test("library interfaces", ({ session }) => {
     expect(alpha.reads.map((macro) => macro.name)).toEqual(["ALPHA_WIDE"]);
     // An internal-linkage function the program calls and a static variable
     // each includer initializes: no interface exports them.
-    expect(alpha.textual.map((header) => header.name)).toEqual(["alpha/anchor.h", "alpha/local.h"]);
+    expect(alpha.textual.map((header) => header.names)).toEqual([
+        ["alpha/anchor.h"],
+        ["alpha/local.h"],
+    ]);
     expect(all.get("beta")!.imports).toContain("alpha");
 });
 
-test("C library kept headers", ({ session }) => {
-    const ws = writeProject(session);
-    const all = interfaces(ws);
+test("C library kept headers", async ({ session }) => {
+    const ws = await writeProject(session);
+    const all = await interfaces(ws);
     const libc = all.get("libc")!;
     // main.cpp reaches <cio.h> only through <fakecstdio>, which `import std`
     // empties, while direct.cpp includes it itself; third.cpp's own <cio.h>
@@ -306,9 +328,9 @@ test("C library kept headers", ({ session }) => {
 });
 
 test("modulize writes the wrapping", async ({ session }) => {
-    const ws = writeProject(session);
+    const ws = await writeProject(session);
     ws.write("wrap/custom.cppm", "export module custom;\n");
-    const run = modulize(ws);
+    const run = await modulize(ws);
     expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
     const plan = JSON.parse(run.stdout) as Plan;
 
@@ -332,7 +354,7 @@ test("modulize writes the wrapping", async ({ session }) => {
     expect(alpha).toContain("export namespace al = ::alpha;");
     const wide = alpha.indexOf("#define ALPHA_WIDE 1");
     expect(wide).toBeGreaterThan(-1);
-    expect(wide).toBeLessThan(alpha.indexOf('/alpha/alpha.h"'));
+    expect(wide).toBeLessThan(alpha.indexOf("#include <alpha/alpha.h>"));
     expect(alpha).not.toContain("ALPHA_TMP");
     const beta = ws.read("wrap/beta.cppm");
     expect(beta).toContain("import alpha;");
@@ -371,7 +393,7 @@ test("modulize writes the wrapping", async ({ session }) => {
     // Unchanged files keep their timestamps.
     const before = statSync(ws.path("wrap/alpha.cppm")).mtimeMs;
     await sleep(MTIME_GRANULARITY);
-    expect(modulize(ws).status).toBe(0);
+    expect((await modulize(ws)).status).toBe(0);
     expect(statSync(ws.path("wrap/alpha.cppm")).mtimeMs).toBe(before);
 
     // Without beta, what the last run wrote for it goes; the rest stays.
@@ -385,16 +407,16 @@ test("modulize writes the wrapping", async ({ session }) => {
             ],
         }),
     );
-    expect(modulize(ws, ws.path("alpha.json")).status).toBe(0);
+    expect((await modulize(ws, ws.path("alpha.json"))).status).toBe(0);
     expect(ws.exists("wrap/beta.cppm")).toBe(false);
     expect(ws.exists("wrap/mirror/beta/beta/beta.h")).toBe(false);
     expect(ws.exists("wrap/alpha.cppm")).toBe(true);
     expect(ws.exists("wrap/custom.cppm")).toBe(true);
 });
 
-test("modulize partition errors", ({ session }) => {
-    const ws = writeProject(session);
-    const failure = (run: ReturnType<typeof runClice>) => {
+test("modulize partition errors", async ({ session }) => {
+    const ws = await writeProject(session);
+    const failure = (run: Run) => {
         expect(run.status, run.stdout).toBe(1);
         return (JSON.parse(run.stdout) as { error: string }).error;
     };
@@ -406,7 +428,9 @@ test("modulize partition errors", ({ session }) => {
     const external = partition("external.json", [
         { name: "alpha", files: ["third/alpha/**"], external: true },
     ]);
-    expect(failure(modulize(ws, external))).toContain("only std stands for an existing module");
+    expect(failure(await modulize(ws, external))).toContain(
+        "only std stands for an existing module",
+    );
 
     // <fassert.h> in beta: alpha includes it, beta includes alpha.
     const cycle = partition("cycle.json", [
@@ -415,23 +439,25 @@ test("modulize partition errors", ({ session }) => {
         { name: "libc", files: ["third/libc/**"], textual: true, provides: "std.compat" },
         { name: "alpha", files: ["third/alpha/**"] },
     ]);
-    expect(failure(modulize(ws, cycle))).toBe("modules import each other: alpha -> beta -> alpha");
+    expect(failure(await modulize(ws, cycle))).toBe(
+        "modules import each other: alpha -> beta -> alpha",
+    );
 
     const named = partition("named.json", [{ name: "../escape", files: ["third/alpha/**"] }]);
-    expect(failure(modulize(ws, named))).toContain("not a module name");
+    expect(failure(await modulize(ws, named))).toContain("not a module name");
 
     const flags = partition("flags.json", [
         { name: "std", files: ["third/std/**"], textual: true, external: true },
     ]);
-    expect(failure(modulize(ws, flags))).toContain("both textual and external");
+    expect(failure(await modulize(ws, flags))).toContain("both textual and external");
 
     const both = partition("both.json", [
         { name: "libc", files: ["third/libc/cio.h"], textual: true },
         { name: "libc", files: ["third/libc/**"], external: true },
     ]);
-    expect(failure(modulize(ws, both))).toContain("both textual and external");
+    expect(failure(await modulize(ws, both))).toContain("both textual and external");
 
-    const noStd = runClice(
+    const noStd = await runClice(
         "modulize",
         "--workspace",
         ws.root,
@@ -444,7 +470,7 @@ test("modulize partition errors", ({ session }) => {
     );
     expect(failure(noStd)).toContain("only std.compat, given --std");
 
-    const badStd = runClice(
+    const badStd = await runClice(
         "modulize",
         "--workspace",
         ws.root,
@@ -457,6 +483,6 @@ test("modulize partition errors", ({ session }) => {
     );
     expect(failure(badStd)).toContain("cannot read");
 
-    const missing = runClice("modulize", "--workspace", ws.root, "--out", ws.path("wrap"));
+    const missing = await runClice("modulize", "--workspace", ws.root, "--out", ws.path("wrap"));
     expect(failure(missing)).toContain("--partition and --out");
 });
