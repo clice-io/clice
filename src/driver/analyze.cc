@@ -5,6 +5,7 @@
 
 #include "analysis/annotation.h"
 #include "analysis/module_graph.h"
+#include "driver/analysis_support.h"
 #include "driver/driver.h"
 #include "driver/query_support.h"
 #include "project/command_resolver.h"
@@ -15,6 +16,7 @@
 #include "kota/codec/json/json.h"
 #include "kota/support/glob_pattern.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/Path.h"
 
 namespace clice::driver {
 
@@ -38,9 +40,11 @@ struct ModulesOptions {
            required = false)
     <std::string> configuration;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "What to show: overview (default), edge, module, file, obstacles, macros, impact",
-           required = false)
+    DecoKV(
+        style = KVStyle::JoinedOrSeparate,
+        help =
+            "What to show: overview (default), edge, module, file, obstacles, macros, impact, interface",
+        required = false)
     <std::string> view;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
@@ -51,7 +55,9 @@ struct ModulesOptions {
     DecoKV(style = KVStyle::JoinedOrSeparate, help = "edge: the module named", required = false)
     <std::string> to;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate, help = "module: the module to show", required = false)
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "module, interface: the module to show",
+           required = false)
     <std::string> module;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
@@ -61,9 +67,9 @@ struct ModulesOptions {
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help =
-               "Comma-separated globs over workspace-relative paths: analyze only the files "
-               "they match (default: every indexed file under the workspace outside a dot "
-               "directory)",
+               "Comma-separated globs over workspace-relative paths, absolute ones outside "
+               "the workspace: analyze only the files they match (default: every indexed file "
+               "under the workspace outside a dot directory)",
            required = false)
     <std::string> scope;
 
@@ -80,6 +86,13 @@ struct ModulesOptions {
                R"({"modules": [{"name": "core", "files": ["src/support/**"]}]})",
            required = false)
     <std::string> partition;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help =
+               "libc++'s module sources (share/libc++/v1), for a partition module provided "
+               "by std.compat",
+           required = false)
+    <std::string> std;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Comma-separated hypothetical moves: <path>=<module>",
@@ -128,100 +141,39 @@ auto make_modules_command() {
     return kota::deco::cli::command<ModulesOptions>("clice analyze modules [OPTIONS]");
 }
 
-std::vector<std::string> comma_list(llvm::StringRef text) {
-    llvm::SmallVector<llvm::StringRef> parts;
-    text.split(parts, ',', -1, false);
-    std::vector<std::string> items;
-    for(auto part: parts) {
-        items.push_back(part.trim().str());
-    }
-    return items;
-}
-
-struct PartitionFile {
-    struct Module {
-        std::string name;
-        std::vector<std::string> files;
-    };
-
-    std::vector<Module> modules;
-};
-
-std::expected<analysis::PartitionSpec, std::string> partition_spec(const ModulesOptions& opts) {
-    analysis::PartitionSpec spec{
-        .depth = static_cast<std::uint32_t>(std::max(opts.depth.value_or(0), 0)),
-        .moves = comma_list(opts.move.value_or("")),
-        .merges = comma_list(opts.merge.value_or("")),
-    };
-    if(!opts.partition) {
-        return spec;
-    }
-    auto buffer = vfs::read(*opts.partition);
-    if(!buffer) {
-        return std::unexpected(
-            std::format("cannot read {}: {}", *opts.partition, buffer.error().message()));
-    }
-    PartitionFile file;
-    if(auto result = kota::codec::json::from_string((*buffer)->getBuffer(), file); !result) {
-        return std::unexpected(
-            std::format("{} is not a partition file: {}", *opts.partition, result.error().message));
-    }
-    for(auto& module: file.modules) {
-        spec.modules.emplace_back(std::move(module.name), std::move(module.files));
-    }
-    return spec;
-}
-
 int run_modules(const ModulesOptions& opts) {
     auto fail = [](std::string error, std::vector<std::string> stale = {}) {
         print_json(Failure{.error = std::move(error), .stale = std::move(stale)});
         return 1;
     };
 
-    std::vector<kota::GlobPattern> scope;
-    for(auto& pattern: comma_list(opts.scope.value_or(""))) {
-        auto glob = kota::GlobPattern::create(pattern);
-        if(!glob) {
-            return fail(
-                std::format("invalid --scope glob '{}': {}", pattern, glob.error().message));
+    std::optional<analysis::StdModules> libcxx;
+    if(opts.std) {
+        auto read = analysis::read_std_modules(*opts.std);
+        if(!read) {
+            return fail(read.error());
         }
-        scope.push_back(std::move(*glob));
+        libcxx = std::move(*read);
     }
-    auto spec = partition_spec(opts);
+    auto spec = read_partition(
+        {
+            .depth = static_cast<std::uint32_t>(std::max(opts.depth.value_or(0), 0)),
+            .moves = comma_list(opts.move.value_or("")),
+            .merges = comma_list(opts.merge.value_or("")),
+        },
+        opts.partition.value_or(""),
+        libcxx ? &*libcxx : nullptr);
     if(!spec) {
         return fail(spec.error());
     }
-
-    auto spelling = workspace_spelling(opts.workspace.value_or(""));
-    CanonicalPath root(spelling);
-    FileTable files;
-    files.spell_root(spelling);
-    Project project{files};
-    CommandResolver commands{project};
-    auto loaded = load_index(project,
-                             commands,
-                             root,
+    auto loaded = load_facts(opts.workspace.value_or(""),
                              opts.configuration.value_or(""),
-                             /*with_build=*/false);
+                             opts.scope.value_or(""));
     if(!loaded) {
-        return fail("no usable index; run `clice index` first");
+        print_json(loaded.error());
+        return 1;
     }
-    // A unit withheld as stale or corrupt takes its uses and edges with it.
-    if(!loaded->dropped.empty()) {
-        std::vector<std::string> stale;
-        for(auto unit: loaded->dropped) {
-            stale.emplace_back(files.display(unit));
-        }
-        std::ranges::sort(stale);
-        return fail("the index lacks some units; run `clice index` first", std::move(stale));
-    }
-
-    auto facts = analysis::collect(project, [&](llvm::StringRef path) {
-        if(!scope.empty()) {
-            return llvm::any_of(scope, [&](auto& glob) { return glob.match(path); });
-        }
-        return !path.starts_with(".") && !path.contains("/.");
-    });
+    auto& facts = loaded->facts;
     for(auto& move: comma_list(opts.move_entity.value_or(""))) {
         if(auto moved = analysis::move_entities(facts, move); !moved) {
             return fail(moved.error());
@@ -239,7 +191,7 @@ int run_modules(const ModulesOptions& opts) {
     if(auto since = opts.churn_since.value_or("6.months"); weighted && !since.empty()) {
         // A workspace outside git history has no churn; the results stay
         // unweighted by it rather than failing.
-        if(auto churn = analysis::git_churn(llvm::StringRef(root), since)) {
+        if(auto churn = analysis::git_churn(loaded->root, since)) {
             annotations.list.push_back(std::move(*churn));
         } else {
             LOG_WARN("no churn annotation: {}", churn.error());
@@ -288,6 +240,8 @@ int run_modules(const ModulesOptions& opts) {
         print_json(report.macros());
     } else if(view == "impact") {
         print_json(report.impact());
+    } else if(view == "interface") {
+        return print(report.interface(opts.module.value_or("")));
     } else {
         return fail(std::format("unknown view {}", view));
     }

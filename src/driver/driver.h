@@ -41,6 +41,7 @@ void add_lint(kota::deco::cli::SubCommander& root, int& exit_code, const char* s
 void add_format(kota::deco::cli::SubCommander& root, int& exit_code);
 void add_inspect(kota::deco::cli::SubCommander& root, int& exit_code);
 void add_analyze(kota::deco::cli::SubCommander& root, int& exit_code);
+void add_modulize(kota::deco::cli::SubCommander& root, int& exit_code);
 
 /// Write command output. stdout carries the command's answer: a reader
 /// that went away (`clice … | head`) ends the process by SIGPIPE, as it

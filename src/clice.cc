@@ -54,6 +54,7 @@ int main(int argc, const char** argv) {
     driver::add_format(clice, exit_code);
     driver::add_inspect(clice, exit_code);
     driver::add_analyze(clice, exit_code);
+    driver::add_modulize(clice, exit_code);
 
     clice.when_err([&](auto err) {
         if(err.type == deco::cli::SubCommandError::Type::MissingSubCommand) {

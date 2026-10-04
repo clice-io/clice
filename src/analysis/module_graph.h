@@ -16,6 +16,7 @@
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 
 namespace clice {
 
@@ -27,7 +28,8 @@ namespace clice::analysis {
 
 /// A file of the analyzed scope; its position in Facts::files is its id.
 struct File {
-    /// Workspace-relative, `/`-separated.
+    /// Workspace-relative, `/`-separated; absolute for a file outside the
+    /// workspace, as a third-party header a scope glob takes in.
     std::string path;
 
     /// A translation unit's main file; every other scoped file is a header.
@@ -52,6 +54,15 @@ struct File {
     /// by a guard alike, and the scoped files naming it so.
     std::vector<std::uint32_t> includes;
     std::vector<std::uint32_t> includers;
+
+    /// How each includer's directive names it, `<...>` or `"..."`, in
+    /// `includers` order.
+    std::vector<std::string> spellings;
+
+    /// For a fragment, the includers whose Pasted rows at its directive
+    /// name what it names there: it is a table pasted inside declarations,
+    /// and its own rows are charged to no file.
+    std::vector<std::uint32_t> pasters;
 
     /// Names only some of its row variants carry: uses that follow the
     /// including context, such as the overloads a template's dependent
@@ -116,6 +127,29 @@ struct Entity {
     /// itself and the owner's other entities included: the uses that move
     /// with it.
     std::vector<Use> body;
+
+    /// A variable declared const or constexpr: a value, no state of its
+    /// own per unit.
+    bool constant = false;
+
+    /// The units seeing its declaration, when the file declaring it reads
+    /// differently across units (a header pasted once per implementation,
+    /// a C header declaring into a namespace under C++); empty when every
+    /// unit entering its owner does.
+    std::vector<std::uint32_t> units;
+
+    /// The name a module interface exports it by: its own at namespace
+    /// scope, `ns::E` for an enumerator of an unscoped enum at namespace
+    /// scope; empty for a member, a specialization or a macro.
+    std::string export_name;
+
+    /// A macro's directive, continuation lines joined: what a macro header
+    /// replays for the files importing its module.
+    std::string directive;
+
+    /// A macro definition some #undef removes: a helper scoped to the lines
+    /// between, which no macro header carries.
+    bool undefined = false;
 };
 
 /// A declaration or definition of an entity in a file other than its owner.
@@ -177,8 +211,36 @@ struct DuplicateDefinition {
     std::vector<std::uint32_t> files;
 };
 
+/// A using-declaration a scoped file makes at namespace scope: the name it
+/// declares there, which a module interface exports like any other.
+struct UsingDeclaration {
+    std::string name;
+    std::uint32_t file = 0;
+};
+
+/// A namespace alias a scoped file declares at namespace scope. No
+/// using-declaration exports an alias, so an interface redeclares it.
+struct NamespaceAlias {
+    std::string name;
+
+    /// The namespace it names, qualified from the global namespace.
+    std::string target;
+    std::uint32_t file = 0;
+};
+
 /// What the persisted index says about the scoped files, independent of
 /// any partition into modules.
+struct IncludeTree {
+    /// The unit, `~0u` out of scope.
+    std::uint32_t unit = 0;
+
+    /// Per node: the scoped file, `~0u` out of scope; the including node,
+    /// `~0u` for the unit's own directives; whether a guard skipped it.
+    std::vector<std::uint32_t> files;
+    std::vector<std::uint32_t> parents;
+    std::vector<char> skipped;
+};
+
 struct Facts {
     std::vector<File> files;
     llvm::StringMap<std::uint32_t> file_ids;
@@ -199,16 +261,42 @@ struct Facts {
     std::vector<Specialization> specializations;
     std::vector<DuplicateDefinition> duplicate_definitions;
     std::vector<ConfiguringMacro> configuring_macros;
+    std::vector<NamespaceAlias> aliases;
+    std::vector<UsingDeclaration> usings;
+    /// Each unit's include tree, a node per file entry or guarded directive:
+    /// a header's include edges merged over units claim chains no single
+    /// unit runs (<stdio.h> includes <stdarg.h> for its va_list type alone).
+    std::vector<IncludeTree> trees;
+
+    /// Per scoped file, its (tree, node) pairs, ordered.
+    std::vector<std::vector<std::pair<std::uint32_t, std::uint32_t>>> nodes_of;
 };
 
-/// Read the facts of every indexed file whose workspace-relative path
-/// `in_scope` accepts out of the loaded index.
+/// Read the facts of every indexed file whose path, workspace-relative or
+/// absolute outside the workspace, `in_scope` accepts out of the loaded
+/// index.
 Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_scope);
 
 /// An assignment of every scoped file to a module.
 struct Partition {
     std::vector<std::string> modules;
     std::vector<std::uint32_t> module_of;
+
+    /// Per module: the partition file wraps it, so the files of other
+    /// modules see its headers emptied.
+    std::vector<char> wrapped;
+
+    /// Per module: the partition file keeps it headers, as the C library
+    /// beside `import std`.
+    std::vector<char> textual;
+
+    /// Per module: an existing module interface stands for it, as libc++'s
+    /// std: its files compile as they are there, needing nothing of others.
+    std::vector<char> external;
+
+    /// Per module: the names of its headers another module's interface
+    /// exports, as `std.compat` exports the C library's.
+    std::vector<llvm::StringSet<>> provides;
 
     /// The module so named; `modules.size()` for none.
     std::uint32_t module_named(llvm::StringRef name) const {
@@ -230,6 +318,15 @@ struct PartitionSpec {
 
     /// `a+b+c`: b's and c's files join a.
     std::vector<std::string> merges;
+
+    /// Modules of `modules` that stay headers.
+    std::vector<std::string> textual;
+
+    /// Modules of `modules` an existing module interface stands for.
+    std::vector<std::string> external;
+
+    /// Per module of `modules`, the names another module exports for it.
+    std::vector<std::pair<std::string, std::vector<std::string>>> provides;
 };
 
 std::expected<Partition, std::string> partition(const Facts& facts, const PartitionSpec& spec);
@@ -578,6 +675,90 @@ struct MacroUse {
     std::vector<ModuleLink> users;
 };
 
+struct InterfaceAlias {
+    std::string name;
+    std::string target;
+};
+
+struct InterfaceExport {
+    std::string name;
+
+    /// The header declaring it, one entry per header.
+    std::string file;
+
+    /// Whether files of other modules name it, as opposed to it merely
+    /// being on the surface their units enter.
+    bool used = false;
+};
+
+/// A header as files of other modules include it.
+struct InterfaceHeader {
+    std::string file;
+
+    /// The name a directive of theirs spells it by, `llvm/ADT/StringRef.h`:
+    /// where a directory first on the include path shadows it.
+    std::string name;
+
+    /// The directive's operand to include it by: `<name>` when some file
+    /// spells it so, else its quoted path. A system header resolves by the
+    /// search path alone: <stdio.h> by its path would #include_next itself.
+    std::string include;
+
+    /// For a kept module, one name a file of another module reaches only
+    /// through emptied headers, and that file.
+    std::string because;
+};
+
+struct InterfaceMacro {
+    std::string name;
+
+    /// The module and file defining it.
+    std::string module;
+    std::string file;
+    std::string directive;
+};
+
+/// A module as an interface unit wrapping its headers whole, as a
+/// third-party library's module does: the global module fragment imports
+/// what its headers need and includes its entries, the purview exports its
+/// namespace-scope names, and its macros reach the importers through a
+/// macro header.
+struct Interface {
+    std::string module;
+
+    /// Modules its headers name entities or macros of, or include headers
+    /// of.
+    std::vector<std::string> imports;
+
+    /// Its headers files of other modules include: what the fragment
+    /// includes, and what importers see emptied.
+    std::vector<InterfaceHeader> entries;
+
+    /// Every namespace-scope name its headers provide, internal-linkage ones
+    /// apart: what the purview exports, the names downstream modules'
+    /// headers need included.
+    std::vector<InterfaceExport> exports;
+    std::vector<InterfaceAlias> aliases;
+
+    /// Headers providing an internal-linkage entity other modules name, or
+    /// a non-constant static variable to each file of theirs including
+    /// them: no
+    /// interface exports those, so the headers stay textual wherever the
+    /// module is imported. For a module kept headers, the headers to
+    /// include for what files of other modules name but reach only through
+    /// emptied headers, no imported module providing it.
+    std::vector<InterfaceHeader> textual;
+
+    /// Macros other modules use and those their directives expand, in the
+    /// order their files define them.
+    std::vector<InterfaceMacro> macros;
+
+    /// Macros of other modules its headers read, a switch the program
+    /// defines ahead of a library's include among them: the fragment
+    /// defines the ones of modules it does not import ahead of its entries.
+    std::vector<InterfaceMacro> reads;
+};
+
 /// The answer of each view, shaped for an agent reading JSON: counts first,
 /// names to drill into, long lists capped by `limit`.
 struct Report {
@@ -598,6 +779,9 @@ struct Report {
     /// Macros used outside the file defining them, the input of the
     /// macro-header grouping.
     std::vector<MacroUse> macros() const;
+
+    /// Every module's interface, or the named one's.
+    std::expected<std::vector<Interface>, std::string> interface(llvm::StringRef module) const;
 
     std::vector<Impact> impact() const;
 };
