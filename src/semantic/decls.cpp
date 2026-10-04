@@ -15,6 +15,7 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/Module.h"
 #include "clang/Basic/Specifiers.h"
 
 namespace clice::decls {
@@ -41,8 +42,14 @@ bool is_exported(const clang::Decl* decl) {
        !decl->getDeclContext()->getRedeclContext()->isFileContext()) {
         return false;
     }
-    return llvm::any_of(decl->redecls(),
-                        [](const clang::Decl* redecl) { return redecl->isInExportDeclContext(); });
+    // Clang marks what a named module exports visible to importers — a
+    // namespace too once it holds an exported declaration.
+    return llvm::any_of(decl->redecls(), [](const clang::Decl* redecl) {
+        auto* module = redecl->getOwningModule();
+        return module && module->isNamedModule() &&
+               redecl->getModuleOwnershipKind() ==
+                   clang::Decl::ModuleOwnershipKind::VisibleWhenImported;
+    });
 }
 
 namespace {

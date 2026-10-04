@@ -1298,6 +1298,8 @@ TEST_CASE(ExportedFlag) {
             }
             export namespace api { int nested(); }
             export template <typename Param> concept Small = sizeof(Param) < 4;
+            namespace detail { export int open(); }
+            namespace hidden { int closed(); }
             int module_var = 0;
             int block_fn() { return 0; }
         )");
@@ -1310,6 +1312,8 @@ TEST_CASE(ExportedFlag) {
     ASSERT_TRUE(exported("Exported"));
     ASSERT_TRUE(exported("nested"));
     ASSERT_TRUE(exported("Small"));
+    ASSERT_TRUE(exported("detail"));
+    ASSERT_FALSE(exported("hidden"));
     ASSERT_FALSE(exported("Param"));
     ASSERT_FALSE(exported("member"));
     ASSERT_FALSE(exported("module_var"));

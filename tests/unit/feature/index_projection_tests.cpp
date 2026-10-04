@@ -302,6 +302,25 @@ typedef struct {
     ASSERT_TRUE(projected[1].lines.has_value());
 }
 
+TEST_CASE(InitializerFoldsAtBrace) {
+    add_main("main.cpp", R"cpp(
+int values[] =
+{
+    1,
+    2,
+};
+)cpp");
+    ASSERT_TRUE(compile());
+    extract_rows();
+
+    auto projected = feature::index_folding_ranges(unit->main_content(),
+                                                   feature::index_lang_options("main.cpp", false),
+                                                   decls,
+                                                   resolver());
+    ASSERT_EQ(projected.size(), std::size_t(1));
+    ASSERT_FALSE(projected[0].lines.has_value());
+}
+
 TEST_CASE(ConditionalBracesSuppressFold) {
     // f's branches unbalance braces: any raw pairing ends the fold in a
     // branch the indexed parse never took, so the fold is suppressed. g's
@@ -562,6 +581,7 @@ TEST_CASE(HoverDefinitionShape) {
     };
     ASSERT_EQ(card(SymbolKind::Function, "int twice(int x) {\n    return x * 2;\n}"),
               "int twice(int x)");
+    ASSERT_EQ(card(SymbolKind::Function, "int open() { // }\n    return 0;\n}"), "int open()");
     ASSERT_EQ(card(SymbolKind::Method, "Holder() = default"), "Holder() = default");
     ASSERT_EQ(card(SymbolKind::Struct, "struct Point {\n    int x;\n}"), "struct Point {}");
     ASSERT_EQ(card(SymbolKind::Namespace, "namespace app {\nint value;\n}"), "namespace app {}");

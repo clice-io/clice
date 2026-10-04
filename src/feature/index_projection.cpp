@@ -138,7 +138,7 @@ std::optional<LocalSourceRange> last_brace_group(llvm::ArrayRef<Brace> braces,
 std::optional<llvm::StringRef> before_body(const std::string& text) {
     std::vector<Brace> braces;
     bool in_directive = false;
-    Lexer lexer(text);
+    Lexer lexer(text, {.lang_opts = &index_lang_options("", false)});
     for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
         if(token.is_eod()) {
             in_directive = false;
@@ -570,11 +570,14 @@ auto index_folding_ranges(llvm::StringRef content,
             kind = declaration_fold_kind(info->kind);
         }
 
+        // Only a declaration's own block folds from its head; an
+        // initializer's or a lambda's folds at its brace, as on the AST.
         ranges.push_back({
             .range = *group,
             .kind = kind,
             .collapsed_text = "{...}",
-            .lines = declaration_lines(content, *group, row.range.begin, block_directives),
+            .lines = kind ? declaration_lines(content, *group, row.range.begin, block_directives)
+                          : std::nullopt,
         });
     }
 
