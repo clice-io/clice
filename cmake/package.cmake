@@ -45,7 +45,7 @@ set(KOTA_ENABLE_RTTI OFF)
 CPMAddPackage(
     NAME kotatsu
     GIT_REPOSITORY https://github.com/clice-io/kotatsu
-    GIT_TAG 86b74ce3d84128fa5755534b6894bf5e9268befb
+    GIT_TAG c1c84489e8d7ed0fc86dd490d1695567151b88ec
 )
 
 set(SPDLOG_USE_STD_FORMAT ON CACHE BOOL "" FORCE)
