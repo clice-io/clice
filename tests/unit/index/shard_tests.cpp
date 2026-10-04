@@ -173,7 +173,7 @@ ZEST_CASE(AsciiContentOmitted) {
     ASSERT(shard.content_hash() == llvm::xxh3_64bits(content));
     ASSERT(hash_at(shard, 4) == 111u);
 
-    auto expected = kota::ipc::lsp::build_line_starts(content);
+    auto expected = kota::ipc::lsp::line_starts(content);
     auto starts = shard.line_starts();
     ASSERT(std::vector<std::uint32_t>(starts.begin(), starts.end()) == expected);
 }
@@ -187,7 +187,7 @@ ZEST_CASE(NonAsciiContentStored) {
 
     ASSERT(shard.content() == llvm::StringRef(content));
 
-    auto expected = kota::ipc::lsp::build_line_starts(content);
+    auto expected = kota::ipc::lsp::line_starts(content);
     auto starts = shard.line_starts();
     ASSERT(std::vector<std::uint32_t>(starts.begin(), starts.end()) == expected);
 }
@@ -201,7 +201,7 @@ ZEST_CASE(LongLineEscape) {
     });
     auto shard = make_shard(write_fresh(rows, content));
 
-    auto expected = kota::ipc::lsp::build_line_starts(content);
+    auto expected = kota::ipc::lsp::line_starts(content);
     auto starts = shard.line_starts();
     ASSERT(std::vector<std::uint32_t>(starts.begin(), starts.end()) == expected);
 }
@@ -558,7 +558,7 @@ void fill_content(index::ShardBlob& blob, llvm::StringRef text) {
     blob.line_lengths.clear();
     blob.long_line_rows.clear();
     blob.long_line_lengths.clear();
-    auto starts = kota::ipc::lsp::build_line_starts(std::string_view(text.data(), text.size()));
+    auto starts = kota::ipc::lsp::line_starts(std::string_view(text.data(), text.size()));
     for(std::size_t i = 0; i < starts.size(); i += 1) {
         auto next = i + 1 < starts.size() ? starts[i + 1] : blob.content_size;
         auto length = next - starts[i];

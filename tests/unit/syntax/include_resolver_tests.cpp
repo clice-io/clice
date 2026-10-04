@@ -26,8 +26,7 @@ ZEST_CASE(ScanAngledVsQuoted) {
     EXPECT(result.includes[1].path == "local.h");
     EXPECT(!result.includes[1].is_angled);
     EXPECT(!result.includes[1].is_include_next);
-
-}  // namespace
+}
 
 ZEST_CASE(ScanIncludeNext) {
     auto result = scan_quick(R"(

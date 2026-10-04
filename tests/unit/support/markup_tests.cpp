@@ -152,8 +152,7 @@ ZEST_CASE(Escaping) {  // Check all ASCII punctuation.
            "`````cpp\n"
            "foobarbaz ` `` ``` ```` `\nqux\n"
            "`````");
-
-}  // namespace
+}
 
 ZEST_CASE(ParagraphChunks) {
     Paragraph p;

@@ -13,7 +13,14 @@ namespace {
 using kota::deco::decl::KVStyle;
 
 struct TestOptions {
-    kota::zest::Options zest;
+    /// One test at a time unless asked: many start workers and compilers of
+    /// their own, and running them side by side is not vetted for resource
+    /// contention.
+    kota::zest::Options zest = [] {
+        kota::zest::Options options;
+        options.jobs = 1u;
+        return options;
+    }();
 
     DecoKVStyled(KVStyle::JoinedOrSeparate, help = "log level: trace/debug/info/warn/err";
                  required = false)
@@ -27,7 +34,7 @@ int main(int argc, const char** argv) {
     auto parsed = kota::deco::cli::parse<TestOptions>(args);
 
     if(!parsed.has_value()) {
-        return 1;
+        return kota::deco::cli::parse_error_exit_code;
     }
 
     auto& opts = parsed->options;
@@ -56,5 +63,5 @@ int main(int argc, const char** argv) {
     setenv("CLICE_TEST_PRAGMA_CRASH", "1", 1);
 #endif
 
-    return kota::zest::run_tests(std::move(opts.zest));
+    return kota::zest::run_tests(std::move(opts.zest), argc, argv);
 }

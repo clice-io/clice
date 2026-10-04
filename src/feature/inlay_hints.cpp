@@ -1048,13 +1048,13 @@ auto inlay_hints(CompilationUnitRef unit,
                  const InlayHintsOptions& options,
                  PositionEncoding encoding) -> std::vector<protocol::InlayHint> {
     auto collected = inlay_hints(unit, target, options);
-    LineMap map(unit.main_content(), unit.line_starts(), encoding);
+    auto map = main_position_map(unit, encoding);
 
     std::vector<protocol::InlayHint> hints;
     hints.reserve(collected.size());
 
     for(const auto& hint: collected) {
-        auto pos = to_position(map, hint.offset);
+        auto pos = map.to_position(hint.offset);
         if(!pos)
             continue;
         protocol::InlayHint out{

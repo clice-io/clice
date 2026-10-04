@@ -10,7 +10,6 @@
 #include "index/symbol_query.h"
 #include "server/editor_context.h"
 #include "server/features.h"
-#include "server/position.h"
 #include "syntax/include_resolver.h"
 #include "vfs/file_system.h"
 #include "vfs/path.h"
@@ -132,7 +131,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
     Features::code_action(std::shared_ptr<Session> session,
                           const protocol::Range& range,
                           llvm::ArrayRef<protocol::CodeActionKind> only,
-                          std::optional<kota::cancellation_token> token) {
+                          kota::cancellation_token token) {
     std::vector<protocol::CodeAction> out;
     if(llvm::none_of(feature::code_action_kinds,
                      [&](std::string_view kind) { return admits(only, kind); })) {
@@ -154,7 +153,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
     auto path_id = session->path_id;
     auto path = project.file_table.display(path_id);
     auto uri = feature::to_uri(path);
-    auto map = session->line_map();
+    auto map = session->position_map();
 
     /// The action rendered over main-file replacements, all of them or
     /// none: half an edit set would corrupt the buffer.
@@ -163,7 +162,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                     llvm::ArrayRef<feature::TextReplacement> replacements) {
         std::vector<protocol::TextEdit> edits;
         for(const auto& replacement: replacements) {
-            auto converted = feature::to_range(map, replacement.range);
+            auto converted = map.to_range(replacement.range);
             if(!converted) {
                 return;
             }
@@ -249,11 +248,10 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             } else {
                 return;
             }
-            auto end = feature::to_position(feature::LineMap(content), content.size());
-            if(!end) {
-                return;
-            }
-            edit.range = {*end, *end};
+            auto end = *kota::ipc::lsp::to_position(content,
+                                                    static_cast<std::uint32_t>(content.size()),
+                                                    feature::PositionEncoding::UTF16);
+            edit.range = {end, end};
             edit.new_text =
                 (content.empty() || content.ends_with('\n') ? "\n" : "\n\n") + formatted;
         }

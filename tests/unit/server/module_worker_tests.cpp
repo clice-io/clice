@@ -101,8 +101,7 @@ ZEST_CASE(BuildPCMThenCompileWithImport) {
 
     // Cleanup PCM temp file.
     std::remove(pcm_path.c_str());
-
-}  // namespace
+}
 
 ZEST_CASE(BuildPCMChainThenCompile) {
     TempDir tmp;

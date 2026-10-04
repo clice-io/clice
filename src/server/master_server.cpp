@@ -837,11 +837,11 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
 }
 
 struct Connection {
-    std::unique_ptr<kota::ipc::JsonPeer> peer;
+    std::unique_ptr<kota::ipc::JSONPeer> peer;
     std::unique_ptr<LSPClient> lsp_client;
 };
 
-static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
+static kota::task<> run_connection(kota::ipc::JSONPeer* peer,
                                    std::list<Connection>& connections,
                                    std::list<Connection>::iterator pos) {
     co_await peer->run();
@@ -872,7 +872,7 @@ static kota::task<> accept_connections(MasterServer& server,
             LOG_INFO("Client connected");
 
             auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
-            auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
+            auto peer = std::make_unique<kota::ipc::JSONPeer>(loop, std::move(transport));
 
             std::unique_ptr<LSPClient> lsp;
             if(!lsp_registered) {
@@ -932,11 +932,11 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
                 std::make_unique<kota::ipc::RecordingTransport>(std::move(final_transport), record);
         }
 
-        kota::ipc::JsonPeer lsp_peer(loop, std::move(final_transport));
+        kota::ipc::JSONPeer lsp_peer(loop, std::move(final_transport));
         LSPClient lsp_client(server, lsp_peer);
 
         loop.schedule(
-            [](MasterServer& server, kota::ipc::JsonPeer& peer, std::string root) -> kota::task<> {
+            [](MasterServer& server, kota::ipc::JSONPeer& peer, std::string root) -> kota::task<> {
                 // Pre-initialize for standalone (no-editor) use; LSP initialize
                 // will be rejected. Runs inside the loop — before the peer
                 // reads its first message — because initialize() spawns

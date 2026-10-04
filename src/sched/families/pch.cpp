@@ -179,9 +179,9 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
 
     LOG_DEBUG("Building PCH for {}, bound={}, key={}", bp.file, bp.preamble_bound, pch_key);
 
-    // The advisory token rides into the pool, which translates a fire
-    // into the cooperative CancelBuild while this frame keeps awaiting
-    // the real reply (contract 2). A crash lands on the key; its
+    // The advisory token rides into the pool, which cancels the request
+    // on the wire while this frame keeps awaiting the real reply
+    // (contract 2). A crash lands on the key; its
     // consumers book it on their documents when they find it there.
     auto result = co_await deliver(
         pool,

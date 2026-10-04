@@ -17,8 +17,7 @@ ZEST_SUITE(Canonicalize) {
 ZEST_CASE(StableForSameArgs) {
     std::vector<std::string> args = {"clang++", "-std=c++20", "-DFOO=1", "-I/usr/include"};
     ASSERT(canon(args) == canon(args));
-
-}  // namespace
+}
 
 ZEST_CASE(CodegenFlagsIgnored) {
     // The point of the Frontend profile: pure codegen flags must not

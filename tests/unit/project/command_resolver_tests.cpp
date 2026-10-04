@@ -40,8 +40,7 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
     auto header_resolution = resolver.resolve_command(header, directory, arguments);
     EXPECT(header_resolution.source == CommandSource::IncludeGraph);
     EXPECT(header_resolution.host == main);
-
-}  // namespace
+}
 
 ZEST_CASE(UnboundVerdictStaysLocal) {
     // A NeedsContext verdict scored with no disk observation has no hash

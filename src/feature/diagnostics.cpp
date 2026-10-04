@@ -60,7 +60,7 @@ bool is_note(const Diagnostic& diagnostic) {
 class Presenter {
 public:
     Presenter(CompilationUnitRef unit, PositionEncoding encoding) :
-        unit(unit), encoding(encoding), map(unit.main_content(), unit.line_starts(), encoding) {}
+        unit(unit), encoding(encoding), map(main_position_map(unit, encoding)) {}
 
     /// A diagnostic and the notes clang attached to it, as published on the
     /// main file; nullopt when it does not concern the main file.
@@ -116,7 +116,7 @@ private:
                llvm::ArrayRef<Diagnostic> notes,
                protocol::Diagnostic& diagnostic) {
         if(main.fid == unit.main_file()) {
-            auto range = to_range(map, main.range);
+            auto range = map.to_range(main.range);
             if(!range) {
                 return false;
             }
@@ -150,7 +150,7 @@ private:
                 }
             }
             if(anchor) {
-                auto range = to_range(map, *anchor);
+                auto range = map.to_range(*anchor);
                 if(!range || !relocated.insert(anchor->begin).second) {
                     return false;
                 }
@@ -167,7 +167,7 @@ private:
         if(note == notes.end()) {
             return false;
         }
-        auto range = to_range(map, note->range);
+        auto range = map.to_range(note->range);
         if(!range) {
             return false;
         }
@@ -209,9 +209,15 @@ private:
             return;
         }
 
-        auto converted = fid == unit.main_file()
-                             ? to_range(map, range)
-                             : to_range(LineMap(unit.file_content(fid), encoding), range);
+        std::optional<protocol::Range> converted;
+        if(fid == unit.main_file()) {
+            converted = map.to_range(range);
+        } else {
+            auto content = unit.file_content(fid);
+            auto lines = lsp::line_starts(content);
+            converted =
+                PositionMap{.content = content, .lines = lines, .encoding = encoding}.to_range(range);
+        }
         if(!converted) {
             return;
         }
@@ -231,7 +237,7 @@ private:
 
     CompilationUnitRef unit;
     PositionEncoding encoding;
-    LineMap map;
+    PositionMap map;
 
     /// Where errors from other files were moved to.
     llvm::DenseSet<std::uint32_t> relocated;

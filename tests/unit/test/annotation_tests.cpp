@@ -18,8 +18,7 @@ ZEST_CASE(single_named_point) {
     EXPECT(src.offsets.lookup("a") == 4u);
     EXPECT(src.ranges.empty());
     EXPECT(src.nameless_offsets.empty());
-
-}  // namespace
+}
 
 ZEST_CASE(single_nameless_point) {
     auto src = AnnotatedSource::from("int §x;");

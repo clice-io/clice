@@ -604,7 +604,7 @@ auto index_folding_ranges(llvm::StringRef content,
 auto index_document_links(llvm::StringRef content,
                           const clang::LangOptions& lang_opts,
                           llvm::ArrayRef<IndexIncludeEdge> edges) -> std::vector<DocumentLink> {
-    auto line_starts = kota::ipc::lsp::build_line_starts({content.data(), content.size()});
+    auto line_starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
 
     std::vector<DocumentLink> links;
     for(const auto& edge: edges) {

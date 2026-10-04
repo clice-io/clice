@@ -116,8 +116,7 @@ ZEST_CASE(BuildPCHThenCompile) {
 
     // Cleanup PCH temp file.
     std::remove(pch_path.c_str());
-
-}  // namespace
+}
 
 ZEST_CASE(BlobWriteFailure) {
     TempDir tmp;

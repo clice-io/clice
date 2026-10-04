@@ -93,8 +93,7 @@ ZEST_CASE(StoreAndLookup) {
     // The blob landed inside the versioned namespace directory.
     ASSERT(llvm::StringRef(path).contains("v1"));
     ASSERT(llvm::StringRef(path).ends_with("k1.pch"));
-
-}  // namespace
+}
 
 ZEST_CASE(RootIgnoreMarkers) {
     TempDir tmp;

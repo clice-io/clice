@@ -317,7 +317,7 @@ std::optional<protocol::Hover> Features::directive_hover(const Session& session,
     info.definition = shown(project.file_table, link.target);
     info.symbol_range = link.range;
 
-    auto hover = feature::to_protocol_hover(info, project.config.hover, session.line_map());
+    auto hover = feature::to_protocol_hover(info, project.config.hover, session.position_map());
     if(!hover.range) {
         return std::nullopt;
     }
@@ -325,7 +325,7 @@ std::optional<protocol::Hover> Features::directive_hover(const Session& session,
 }
 
 kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
-    Features::directive_links(const Ticket& ticket, std::optional<kota::cancellation_token> token) {
+    Features::directive_links(const Ticket& ticket, kota::cancellation_token token) {
     auto result = co_await dispatcher.document_links(ticket, std::move(token));
     if(!result.has_value()) {
         co_return kota::outcome_error(std::move(result.error()));
@@ -339,15 +339,15 @@ kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
 
 kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
     Features::document_links(std::shared_ptr<Session> session,
-                             std::optional<kota::cancellation_token> token) {
+                             kota::cancellation_token token) {
     auto ticket = Ticket::take(session);
 
     // Links carry byte offsets; this reply edge converts them.
     auto convert = [&](llvm::ArrayRef<feature::DocumentLink> raw_links,
                        std::vector<protocol::DocumentLink>& links) {
-        auto map = session->line_map();
+        auto map = session->position_map();
         for(const auto& link: raw_links) {
-            auto range = map.to_range(link.range.begin, link.range.end);
+            auto range = map.to_range(link.range);
             if(!range)
                 continue;
             protocol::DocumentLink out{.range = *range};
@@ -395,7 +395,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
 Features::RawResult Features::definition(std::shared_ptr<Session> session,
                                          Fid path_id,
                                          const protocol::Position& position,
-                                         std::optional<kota::cancellation_token> token) {
+                                         kota::cancellation_token token) {
     Ticket ticket;
     if(session) {
         ticket = Ticket::take(session);
@@ -410,7 +410,7 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
     // mid-flight (the round landed as bounded staleness): the cached
     // links may describe a pre-edit preamble — skip, and let the index and
     // worker paths below answer.
-    auto offset = session ? session->line_map().to_offset(position) : std::nullopt;
+    auto offset = session ? session->position_map().to_offset(position) : std::nullopt;
     if(offset && ast.projections.current(path_id)) {
         auto links = find_preamble_links(*session);
         if(auto* link = link_at(links, *offset)) {
@@ -509,7 +509,7 @@ Features::RawResult Features::definition(std::shared_ptr<Session> session,
 
 Features::RawResult Features::hover(std::shared_ptr<Session> session,
                                     const protocol::Position& position,
-                                    std::optional<kota::cancellation_token> token) {
+                                    kota::cancellation_token token) {
     if(!session) {
         co_return kota::outcome_error(document_not_open());
     }
@@ -519,7 +519,7 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
     auto index_card = [&]() -> std::optional<serde_raw> {
         if(auto info = index_hover_card(*session, position)) {
             return to_raw(
-                feature::to_protocol_hover(*info, project.config.hover, session->line_map()));
+                feature::to_protocol_hover(*info, project.config.hover, session->position_map()));
         }
         return std::nullopt;
     };
@@ -539,7 +539,7 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
 
     // A directive's card names its target, which the worker knows only by
     // identity: this side answers it, from the links.
-    auto offset = session->line_map().to_offset(position);
+    auto offset = session->position_map().to_offset(position);
     auto argument = offset ? feature::find_directive_argument(session->text,
                                                               *offset,
                                                               &index_lang_options(*session))
@@ -562,7 +562,7 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
         if(info && info->kind == SymbolKind::Module) {
             co_return to_raw(feature::to_protocol_hover(module_hover_card(*cursor, *info),
                                                         project.config.hover,
-                                                        session->line_map()));
+                                                        session->position_map()));
         }
     }
 
@@ -591,7 +591,7 @@ Features::RawResult Features::hover(std::shared_ptr<Session> session,
 }
 
 Features::RawResult Features::semantic_tokens(std::shared_ptr<Session> session,
-                                              std::optional<kota::cancellation_token> token) {
+                                              kota::cancellation_token token) {
     auto ticket = Ticket::take(session);
     std::optional<index::RowSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
@@ -606,10 +606,7 @@ Features::RawResult Features::semantic_tokens(std::shared_ptr<Session> session,
                 [&](index::SymbolHash hash) { return query.symbol_info(hash); });
             session->index_served = true;
             co_return to_raw(
-                feature::semantic_tokens_to_protocol(tokens,
-                                                     session->text,
-                                                     session->line_starts,
-                                                     feature::PositionEncoding::UTF16));
+                feature::semantic_tokens_to_protocol(tokens, session->position_map()));
         }
         case Route::Empty: {
             // The client caches this null, and only a semanticTokens
@@ -631,7 +628,7 @@ Features::RawResult Features::semantic_tokens(std::shared_ptr<Session> session,
 
 Features::RawResult Features::inlay_hints(std::shared_ptr<Session> session,
                                           const protocol::Range& range,
-                                          std::optional<kota::cancellation_token> token) {
+                                          kota::cancellation_token token) {
     // Inlay hints are Sema products the index cannot project; a session
     // the policy keeps un-compiled answers honestly empty. The compile
     // that follows an escalation pushes an inlayHint refresh, so clients
@@ -649,13 +646,9 @@ Features::RawResult Features::inlay_hints(std::shared_ptr<Session> session,
 
 Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
                                             bool line_folding_only,
-                                            std::optional<kota::cancellation_token> token) {
+                                            kota::cancellation_token token) {
     auto convert = [&](llvm::ArrayRef<feature::FoldingRange> folds) {
-        return to_raw(feature::folding_ranges_to_protocol(folds,
-                                                          session->text,
-                                                          session->line_starts,
-                                                          feature::PositionEncoding::UTF16,
-                                                          line_folding_only));
+        return to_raw(feature::folding_ranges_to_protocol(folds, session->position_map(), line_folding_only));
     };
 
     auto ticket = Ticket::take(session);
@@ -693,7 +686,7 @@ Features::RawResult Features::folding_range(std::shared_ptr<Session> session,
 }
 
 Features::RawResult Features::document_symbol(std::shared_ptr<Session> session,
-                                              std::optional<kota::cancellation_token> token) {
+                                              kota::cancellation_token token) {
     auto ticket = Ticket::take(session);
     std::optional<index::RowSource> source;
     switch(co_await pick_route(ticket, {.await_cold_attempt = true}, &source)) {
@@ -705,10 +698,7 @@ Features::RawResult Features::document_symbol(std::shared_ptr<Session> session,
             });
             session->index_served = true;
             co_return to_raw(
-                feature::document_symbols_to_protocol(symbols,
-                                                      session->text,
-                                                      session->line_starts,
-                                                      feature::PositionEncoding::UTF16));
+                feature::document_symbols_to_protocol(symbols, session->position_map()));
         }
         case Route::Empty: co_return serde_raw{"[]"};
         case Route::Ast: break;
@@ -724,7 +714,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
                                          const protocol::Position& position,
                                          const feature::CompletionClient& client,
                                          llvm::StringRef trigger_character,
-                                         std::optional<kota::cancellation_token> token) {
+                                         kota::cancellation_token token) {
     auto pause = pump.scoped_pause();
 
     // Asking for code completion is edit intent: flip the session out of
@@ -757,7 +747,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
     auto path_id = session->path_id;
     auto path = std::string(project.file_table.resolve(path_id));
 
-    auto map = session->line_map();
+    auto map = session->position_map();
     auto offset = map.to_offset(position);
 
     PreambleCompletionContext pctx;
@@ -817,7 +807,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
                     end += close + 1;
                 }
                 return protocol::TextEdit{
-                    .range = *map.to_range(pctx.replace.begin, end),
+                    .range = *map.to_range({pctx.replace.begin, end}),
                     .new_text = candidate.name + (candidate.is_directory ? '/' : closer),
                 };
             };
@@ -843,7 +833,7 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
                 item.label = name;
                 item.kind = protocol::CompletionItemKind::Module;
                 item.text_edit = protocol::TextEdit{
-                    .range = *map.to_range(pctx.replace.begin, pctx.replace.end),
+                    .range = *map.to_range(pctx.replace),
                     .new_text = name + ";",
                 };
                 items.push_back(std::move(item));
@@ -858,21 +848,21 @@ Features::RawResult Features::completion(std::shared_ptr<Session> session,
 
 Features::RawResult Features::signature_help(std::shared_ptr<Session> session,
                                              const protocol::Position& position,
-                                             std::optional<kota::cancellation_token> token) {
+                                             kota::cancellation_token token) {
     auto pause = pump.scoped_pause();
     ast.escalate(*session);
     co_return co_await dispatcher.signature_help(Ticket::take(session), position, std::move(token));
 }
 
 Features::RawResult Features::formatting(std::shared_ptr<Session> session,
-                                         std::optional<kota::cancellation_token> token) {
+                                         kota::cancellation_token token) {
     auto pause = pump.scoped_pause();
     co_return co_await dispatcher.format(Ticket::take(session), {}, std::move(token));
 }
 
 Features::RawResult Features::range_formatting(std::shared_ptr<Session> session,
                                                const protocol::Range& range,
-                                               std::optional<kota::cancellation_token> token) {
+                                               kota::cancellation_token token) {
     auto pause = pump.scoped_pause();
     co_return co_await dispatcher.format(Ticket::take(session), range, std::move(token));
 }
@@ -899,7 +889,9 @@ Features::RawResult Features::references(std::shared_ptr<Session> session,
 }
 
 static kota::ipc::Error rename_refused(std::string message) {
-    return kota::ipc::Error{kota::ipc::protocol::ErrorCode::RequestFailed, std::move(message)};
+    return kota::ipc::Error{
+        static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
+        std::move(message)};
 }
 
 /// Refused up front, before the cursor costs a compile.
@@ -1011,9 +1003,6 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
     if(ticket && !ticket->fresh()) {
         co_return kota::outcome_error(content_modified());
     }
-    if(!swept.has_value()) {
-        co_return kota::outcome_error(rename_refused("the workspace could not be read"));
-    }
     // Rows indexed during the sweep may link the symbol to more: plan
     // with the group they give now.
     cursor = cursor_at(path_id, position);
@@ -1031,7 +1020,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
 
     auto root = config.workspace_root;
     llvm::StringSet<> walked;
-    for(auto& path: swept->files) {
+    for(auto& path: swept.files) {
         walked.insert(path);
     }
     auto editable = [&](llvm::StringRef path) {
@@ -1042,7 +1031,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         if(auto document = file ? sessions.find(*file) : nullptr) {
             return index::sweep_text(document->text, old_name, new_name);
         }
-        if(auto it = swept->texts.find(path); it != swept->texts.end()) {
+        if(auto it = swept.texts.find(path); it != swept.texts.end()) {
             return it->second;
         }
         // An edited file the walk's suffixes left out.
@@ -1057,7 +1046,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
                                    project.file_table,
                                    at->target,
                                    new_name,
-                                   {.files = swept->files,
+                                   {.files = swept.files,
                                     .editable = editable,
                                     .read = read,
                                     .units_pending = clice::query::units_pending(project)});

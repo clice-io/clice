@@ -114,12 +114,10 @@ inline std::string_view death_of(const protocol::Error& error) {
     return {};
 }
 
-/// True for errors produced by the IPC transport itself (broken pipe, closed
-/// peer) as opposed to errors returned by the remote handler. kota surfaces
-/// transport failures with the default RequestFailed code; clice worker
-/// handlers never return that code, so it identifies a dead worker link.
+/// True for a worker link that closed under a request (broken pipe, dead
+/// process), as opposed to an error the remote handler returned.
 inline bool is_transport_error(const protocol::Error& error) {
-    return error.code == static_cast<protocol::integer>(protocol::ErrorCode::RequestFailed);
+    return error.code == static_cast<protocol::integer>(protocol::ErrorCode::ConnectionClosed);
 }
 
 /// Kind of AST query dispatched to a stateful worker.
@@ -426,19 +424,6 @@ struct CancelCompileParams {
     std::string path;
 };
 
-/// Interrupt a stateless worker's in-flight build. Sent by the pool's
-/// cooperative cancel instead of wire-cancelling the build request: the
-/// worker flips the build's stop flag so clang abandons the parse at the
-/// next declaration, while the request still runs to a normal (cancelled)
-/// reply. The sender keeps awaiting that reply, so the slot stays busy —
-/// and the cancel-grace deadline stays armed — until the process is
-/// actually free; a wire cancel would resume the sender immediately and
-/// hand the slot out while the worker is still stuck in the old parse.
-/// Carries no build identity: the pool dispatches at most one build per
-/// worker at a time, and pipe ordering pins any follow-up build behind
-/// the cancel.
-struct CancelBuildParams {};
-
 /// Whether a request builds — a compile, a PCH or PCM, an indexing run:
 /// work whose time grows with the translation unit, where a query's never
 /// should.
@@ -531,11 +516,6 @@ struct NotificationTraits<clice::worker::EvictedParams> {
 template <>
 struct NotificationTraits<clice::worker::CancelCompileParams> {
     constexpr inline static std::string_view method = "clice/worker/cancelCompile";
-};
-
-template <>
-struct NotificationTraits<clice::worker::CancelBuildParams> {
-    constexpr inline static std::string_view method = "clice/worker/cancelBuild";
 };
 
 }  // namespace kota::ipc::protocol

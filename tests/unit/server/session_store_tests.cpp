@@ -35,10 +35,9 @@ ZEST_CASE(ApplyOpenInitializesBuffer) {
 
     ASSERT(session->version == 3);
     ASSERT(session->text == "int a;\nint b;\n");
-    ASSERT(session->line_starts == lsp::build_line_starts(session->text));
+    ASSERT(session->line_starts == lsp::line_starts(session->text));
     ASSERT(session->generation == 1u);
-
-}  // namespace
+}
 
 ZEST_CASE(RangeReplace) {
     SessionStore store;
@@ -49,7 +48,7 @@ ZEST_CASE(RangeReplace) {
     store.apply_change(*session, change, 2);
 
     ASSERT(session->text == "int a;\nint value;\n");
-    ASSERT(session->line_starts == lsp::build_line_starts(session->text));
+    ASSERT(session->line_starts == lsp::line_starts(session->text));
     ASSERT(session->version == 2);
     ASSERT(session->generation == 2u);
 }
@@ -67,7 +66,7 @@ ZEST_CASE(SequentialChangesFold) {
     store.apply_change(*session, changes, 2);
 
     ASSERT(session->text == "axyz\nQd\n");
-    ASSERT(session->line_starts == lsp::build_line_starts(session->text));
+    ASSERT(session->line_starts == lsp::line_starts(session->text));
     ASSERT(session->generation == 2u);
 }
 
@@ -81,21 +80,53 @@ ZEST_CASE(WholeDocumentReplace) {
     store.apply_change(*session, change, 2);
 
     ASSERT(session->text == "brand\nnew\n");
-    ASSERT(session->line_starts == lsp::build_line_starts(session->text));
+    ASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
-ZEST_CASE(InvertedRangeCollapsed) {
+ZEST_CASE(InvertedRangeSpans) {
     SessionStore store;
     auto session = store.open(Fid{1});
     store.apply_open(*session, "ab\ncd\n", 1);
 
-    // A range whose start lies after its end deletes nothing; the text is
-    // inserted at the start position.
+    // A range whose start lies after its end covers the bytes between its
+    // ends, as vscode-languageserver-textdocument reads it.
     auto change = partial_change(1, 0, 0, 0, "X");
     store.apply_change(*session, change, 2);
 
-    ASSERT(session->text == "ab\nXcd\n");
-    ASSERT(session->line_starts == lsp::build_line_starts(session->text));
+    ASSERT(session->text == "Xcd\n");
+    ASSERT(session->line_starts == lsp::line_starts(session->text));
+}
+
+ZEST_CASE(InsideSurrogatePair) {
+    SessionStore store;
+    auto session = store.open(Fid{1});
+    store.apply_open(*session, "\xf0\x9f\x98\x80x\n", 1);
+
+    // UTF-16 unit 1 is inside the emoji's surrogate pair: the edit lands
+    // at the character's start.
+    auto change = partial_change(0, 1, 0, 1, "Y");
+    store.apply_change(*session, change, 2);
+
+    ASSERT(session->text == "Y\xf0\x9f\x98\x80x\n");
+    ASSERT(session->non_ascii_lines == lsp::non_ascii_lines(session->text));
+}
+
+ZEST_CASE(NonASCIILinesTracked) {
+    SessionStore store;
+    auto session = store.open(Fid{1});
+    store.apply_open(*session, "ab\ncd\n", 1);
+    ASSERT(session->non_ascii_lines.empty());
+
+    // The second change addresses line 1 after the first made line 0
+    // non-ASCII; the positions count UTF-16 units over the new text.
+    protocol::TextDocumentContentChangeEvent changes[] = {
+        partial_change(0, 0, 0, 0, "\xc3\xa9"),
+        partial_change(0, 2, 0, 3, "Z"),
+    };
+    store.apply_change(*session, changes, 2);
+
+    ASSERT(session->text == "\xc3\xa9" "aZ\ncd\n");
+    ASSERT(session->non_ascii_lines == lsp::non_ascii_lines(session->text));
 }
 
 ZEST_CASE(SelectAllDeleteClamped) {
@@ -109,7 +140,7 @@ ZEST_CASE(SelectAllDeleteClamped) {
     store.apply_change(*session, change, 2);
 
     ASSERT(session->text == "");
-    ASSERT(session->line_starts == lsp::build_line_starts(session->text));
+    ASSERT(session->line_starts == lsp::line_starts(session->text));
     ASSERT(session->version == 2);
     ASSERT(session->generation == 2u);
 }
@@ -125,7 +156,7 @@ ZEST_CASE(InsertPastLastLine) {
     store.apply_change(*session, change, 2);
 
     ASSERT(session->text == "int a;\nint b;\n");
-    ASSERT(session->line_starts == lsp::build_line_starts(session->text));
+    ASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
 ZEST_CASE(InsertPastLineEnd) {
@@ -138,7 +169,7 @@ ZEST_CASE(InsertPastLineEnd) {
     store.apply_change(*session, change, 2);
 
     ASSERT(session->text == "abX\ncd\n");
-    ASSERT(session->line_starts == lsp::build_line_starts(session->text));
+    ASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
 ZEST_CASE(ClampedChangeFolds) {
@@ -155,7 +186,7 @@ ZEST_CASE(ClampedChangeFolds) {
     store.apply_change(*session, changes, 2);
 
     ASSERT(session->text == "axyz\ncd\n!");
-    ASSERT(session->line_starts == lsp::build_line_starts(session->text));
+    ASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
 ZEST_CASE(EmptyDocumentClamped) {
@@ -167,7 +198,7 @@ ZEST_CASE(EmptyDocumentClamped) {
     store.apply_change(*session, change, 2);
 
     ASSERT(session->text == "int x;");
-    ASSERT(session->line_starts == lsp::build_line_starts(session->text));
+    ASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
 ZEST_CASE(RangeEndPastEof) {
@@ -181,7 +212,7 @@ ZEST_CASE(RangeEndPastEof) {
     store.apply_change(*session, change, 2);
 
     ASSERT(session->text == "int a;\n");
-    ASSERT(session->line_starts == lsp::build_line_starts(session->text));
+    ASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
 ZEST_CASE(ReopenBumpsGeneration) {

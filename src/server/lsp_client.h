@@ -24,7 +24,7 @@ class ProjectServer;
 
 class LSPClient {
 public:
-    LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer);
+    LSPClient(MasterServer& server, kota::ipc::JSONPeer& peer);
     ~LSPClient();
 
 private:
@@ -81,7 +81,7 @@ private:
     void forward_notify_messages();
 
     MasterServer& server;
-    kota::ipc::JsonPeer& peer;
+    kota::ipc::JSONPeer& peer;
 
     /// The client completed the initialized handshake. Until then the LSP
     /// spec forbids server→client traffic other than window/* messages, so
@@ -202,7 +202,7 @@ private:
 
         /// The active work-done progress token, held across
         /// begin/report/end.
-        std::optional<kota::ipc::lsp::ProgressReporter<kota::ipc::JsonPeer>> reporter;
+        std::optional<kota::ipc::lsp::ProgressReporter<kota::ipc::JSONPeer>> reporter;
     };
 
     std::shared_ptr<IndexProgressState> index_progress = std::make_shared<IndexProgressState>();

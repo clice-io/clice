@@ -483,11 +483,11 @@ CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer*
     auto buffer = params.buffers.find(file);
     assert(buffer != params.buffers.end() && "completion file must be remapped");
     llvm::StringRef content = buffer->second->getBuffer();
-    kota::ipc::lsp::LineMap map({content.data(), content.size()},
-                                kota::ipc::lsp::PositionEncoding::UTF8);
     auto completion_offset =
         static_cast<std::uint32_t>(std::min<std::size_t>(offset, content.size()));
-    auto position = map.to_position(completion_offset);
+    auto position = kota::ipc::lsp::to_position({content.data(), content.size()},
+                                                completion_offset,
+                                                kota::ipc::lsp::PositionEncoding::UTF8);
     assert(position && "clamped completion offset must be mappable");
 
     /// Clang completion locations are 1-based.

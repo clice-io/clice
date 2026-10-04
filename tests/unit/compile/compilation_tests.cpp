@@ -47,8 +47,7 @@ struct Bar {
     add_main("main.cpp", content);
     ASSERT(compile_with_pch());
     ASSERT(unit->top_level_decls().size() == 4U);
-
-}  // namespace
+}
 
 ZEST_CASE(DirectoryAnchorsIncludes) {
     /// The entry's `directory` governs relative search paths in the

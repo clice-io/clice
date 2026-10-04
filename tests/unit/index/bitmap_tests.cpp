@@ -63,8 +63,7 @@ ZEST_CASE(ViewMatchesRead) {  // Array containers alone (no run cookie, offsets 
     auto empty = write_bitmap(Bitmap{});
     ASSERT(view_of(empty));
     EXPECT(view_of(empty)->isEmpty());
-
-}  // namespace
+}
 
 ZEST_CASE(ViewRejectsMalformed) {
     Bitmap bitmap;

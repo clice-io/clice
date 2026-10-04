@@ -18,9 +18,9 @@ namespace clice {
 namespace {
 
 using kota::ipc::RequestResult;
-using RequestContext = kota::ipc::JsonPeer::RequestContext;
+using RequestContext = kota::ipc::JSONPeer::RequestContext;
 
-void register_control(ProjectServer& srv, kota::ipc::JsonPeer& peer) {
+void register_control(ProjectServer& srv, kota::ipc::JSONPeer& peer) {
     peer.on_request([&srv](RequestContext&, const control::IndexParams& params)
                         -> RequestResult<control::IndexParams> {
         auto active = srv.project.build.active_configuration();
@@ -86,9 +86,9 @@ void register_control(ProjectServer& srv, kota::ipc::JsonPeer& peer) {
     });
 }
 
-using Connections = std::list<std::unique_ptr<kota::ipc::JsonPeer>>;
+using Connections = std::list<std::unique_ptr<kota::ipc::JSONPeer>>;
 
-kota::task<> run_connection(kota::ipc::JsonPeer* peer,
+kota::task<> run_connection(kota::ipc::JSONPeer* peer,
                             Connections& connections,
                             Connections::iterator pos) {
     co_await peer->run();
@@ -113,7 +113,7 @@ kota::task<> serve_control(ProjectServer& server, kota::tcp::acceptor acceptor) 
             }
             LOG_DEBUG("Control client connected");
             auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
-            auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
+            auto peer = std::make_unique<kota::ipc::JSONPeer>(loop, std::move(transport));
             register_control(server, *peer);
             auto* peer_ptr = peer.get();
             auto it = connections.emplace(connections.end(), std::move(peer));

@@ -12,8 +12,7 @@ ZEST_CASE(VersionStamps) {
     // would otherwise only surface in crash logs.
     EXPECT(!clice::version.empty());
     EXPECT(!clice::target.empty());
-
-}  // namespace
+}
 
 ZEST_CASE(MainExecutableBase) {
     // Linux relies on the binary being PIE — a non-PIE image has bias 0,

@@ -29,8 +29,7 @@ comment */ int y = 2;
     ASSERT(info.comments[1].kind == Comment::Kind::Block);
     ASSERT(text(content, info.comments[1].range).starts_with("/* block"));
     ASSERT(text(content, info.comments[1].range).ends_with("comment */"));
-
-}  // namespace
+}
 
 ZEST_CASE(CommentInString) {
     llvm::StringRef content = R"(const char* s = "// not a comment";)";

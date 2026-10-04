@@ -44,25 +44,19 @@ llvm::SmallVector<std::uint32_t, 1>
 /// Positions in one text, for the sites of tokens no row spans.
 struct Lines {
     llvm::StringRef text;
-    std::vector<std::uint32_t> starts{0};
+    std::vector<std::uint32_t> starts;
 
-    explicit Lines(llvm::StringRef text) : text(text) {
-        for(std::uint32_t i = 0; i < text.size(); i += 1) {
-            if(text[i] == '\n') {
-                starts.push_back(i + 1);
-            }
-        }
-    }
+    explicit Lines(llvm::StringRef text) :
+        text(text), starts(kota::ipc::lsp::line_starts({text.data(), text.size()})) {}
 
     /// A token's position: never inside a newline.
     LineColumn position(std::uint32_t offset) const {
-        return *Coordinates(text, text.size(), starts).position(offset);
+        return *Coordinates(text, starts).position(offset);
     }
 
     std::string line_of(std::uint32_t offset) const {
-        auto line = std::ranges::upper_bound(starts, offset) - starts.begin() - 1;
-        auto end =
-            static_cast<std::size_t>(line) + 1 < starts.size() ? starts[line + 1] : text.size();
+        auto line = kota::ipc::lsp::line_of(starts, offset);
+        auto end = line + 1 < starts.size() ? starts[line + 1] : text.size();
         return text.slice(starts[line], end).trim().str();
     }
 

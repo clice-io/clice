@@ -17,8 +17,7 @@ SearchConfig extract(llvm::ArrayRef<const char*> args, llvm::StringRef directory
     db.add_command(directory, "main.cpp", args);
     auto& entry = db.candidate_entries(path::join(directory, "main.cpp")).front();
     return extract_search_config(db.config(entry.config).args, directory);
-
-}  // namespace
+}
 
 /// A search directory as extraction spells it: absolute, canonically.
 std::string spelled(const TempDir& tmp, llvm::StringRef relative) {

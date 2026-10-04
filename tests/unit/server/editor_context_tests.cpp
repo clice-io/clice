@@ -64,8 +64,7 @@ ZEST_CASE(EditorCachesContext) {
 
     auto reused = editor.resolve_command(fx.header, directory, arguments);
     ASSERT(reused.synthesized == context->synthesized);
-
-}  // namespace
+}
 
 ZEST_CASE(GuessedTracksEditorOnly) {
     // The invalidator recompiles every editor-guessed file on a database

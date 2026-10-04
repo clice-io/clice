@@ -36,7 +36,7 @@ namespace clice {
 namespace protocol = kota::ipc::protocol;
 namespace refl = kota::meta;
 using kota::ipc::RequestResult;
-using RequestContext = kota::ipc::JsonPeer::RequestContext;
+using RequestContext = kota::ipc::JSONPeer::RequestContext;
 
 /// Error response for feature requests on files with no open session.
 static kota::ipc::Error document_not_open() {
@@ -55,13 +55,13 @@ static bool past_shutdown(ServerLifecycle lifecycle) {
 /// captureless coroutine lambda invoked immediately: parameters are copied
 /// into the frame, captures would dangle.
 template <typename Params>
-static void fire_refresh(kota::event_loop& loop, kota::ipc::JsonPeer& peer, Params params) {
-    loop.schedule([](kota::ipc::JsonPeer* peer, Params request) -> kota::task<> {
+static void fire_refresh(kota::event_loop& loop, kota::ipc::JSONPeer& peer, Params params) {
+    loop.schedule([](kota::ipc::JSONPeer* peer, Params request) -> kota::task<> {
         co_await peer->send_request(request, {.timeout = std::chrono::milliseconds(3000)});
     }(&peer, std::move(params)));
 }
 
-LSPClient::LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer) : server(server), peer(peer) {
+LSPClient::LSPClient(MasterServer& server, kota::ipc::JSONPeer& peer) : server(server), peer(peer) {
     output_conn = server.on_output.connect(
         [this](ProjectServer& project, const std::shared_ptr<Session>& session) {
             push_output(project, *session);
@@ -320,7 +320,7 @@ void LSPClient::register_lifecycle() {
             .work_done_progress = false,
         };
         // RenameOptions only for a client that declared prepareSupport.
-        auto& text_document = init.capabilities.text_document;
+        auto& text_document = params.capabilities.text_document;
         if(text_document && text_document->rename && text_document->rename->prepare_support) {
             caps.rename_provider = protocol::RenameOptions{.prepare_provider = true};
         } else {

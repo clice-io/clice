@@ -19,8 +19,7 @@ ZEST_SUITE(DependencyGraph) {
 ZEST_CASE(LookupModuleEmpty) {
     clice::DependencyGraph graph;
     EXPECT(graph.lookup_module("foo.bar").empty());
-
-}  // namespace
+}
 
 ZEST_CASE(AddAndLookupModule) {
     clice::DependencyGraph graph;

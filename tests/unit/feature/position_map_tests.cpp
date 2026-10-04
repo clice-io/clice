@@ -16,21 +16,22 @@ ZEST_CASE(OutOfRangeAnomaly) {
     std::vector<logging::AnomalyId> trapped;
     logging::set_anomaly_trap_for_testing([&](logging::AnomalyId id) { trapped.push_back(id); });
 
-    feature::LineMap map("int x;\n");
-    EXPECT(!feature::to_position(map, 100).has_value());
-    EXPECT(!feature::to_range(map, {0, 100}).has_value());
+    std::string_view content = "int x;\n";
+    auto lines = kota::ipc::lsp::line_starts(content);
+    feature::PositionMap map{.content = content, .lines = lines};
+    EXPECT(!map.to_position(100).has_value());
+    EXPECT(!map.to_range({0, 100}).has_value());
 
     ASSERT(trapped.size() == 2u);
     EXPECT(trapped[0] == logging::AnomalyId::PositionMapFail);
     EXPECT(trapped[1] == logging::AnomalyId::PositionMapFail);
 
     /// In-range conversions stay silent.
-    EXPECT(feature::to_range(map, {0, 5}));
+    EXPECT(map.to_range({0, 5}));
     EXPECT(trapped.size() == 2u);
 
     logging::reset_anomaly_for_testing();
-
-}  // namespace
+}
 
 };  // ZEST_SUITE(PositionMap)
 

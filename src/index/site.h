@@ -2,7 +2,6 @@
 
 /// Positions in a text version and the sites index rows resolve to.
 
-#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -12,10 +11,12 @@
 #include "syntax/token.h"
 #include "vfs/file_table.h"
 
-#include "kota/ipc/lsp/text.h"
+#include "kota/ipc/lsp/position.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace clice::index {
+
+namespace protocol = kota::ipc::protocol;
 
 /// A position in a text: its 0-based line, and its column from the line
 /// start counted in bytes and in UTF-16 code units — the same number for
@@ -40,16 +41,24 @@ struct Site {
 /// The mapping between one text's byte offsets and positions: an open
 /// buffer's text and line table, or an index blob's. Blobs omit pure-ASCII
 /// text — byte columns are UTF-16 columns there, so the mapping is
-/// line-table arithmetic over the blob's content size; non-ASCII content
-/// counts UTF-16 units over the stored text. Borrowed, never owning.
+/// line-table arithmetic over the blob's content size, with a bit for each
+/// line ending in "\r\n"; non-ASCII content counts UTF-16 units over the
+/// stored text. Borrowed, never owning.
 class Coordinates {
 public:
     Coordinates() = default;
 
-    Coordinates(llvm::StringRef content,
-                std::uint32_t content_size,
-                std::span<const std::uint32_t> line_starts) :
-        content(content), content_size(content_size), starts(line_starts) {}
+    /// A text at hand.
+    Coordinates(llvm::StringRef content, std::span<const std::uint32_t> line_starts) :
+        content(content), content_size(static_cast<std::uint32_t>(content.size())),
+        starts(line_starts) {}
+
+    /// A pure-ASCII text known by its size and line starts; `crlf_lines`
+    /// has bit `n % 64` of word `n / 64` set when line `n` ends in "\r\n".
+    Coordinates(std::uint32_t content_size,
+                std::span<const std::uint32_t> line_starts,
+                std::span<const std::uint64_t> crlf_lines) :
+        content_size(content_size), starts(line_starts), crlf(crlf_lines) {}
 
     /// The text the offsets index, when this source stores it.
     llvm::StringRef text() const {
@@ -61,47 +70,45 @@ public:
         return content_size;
     }
 
-    /// The position of a byte offset; nullopt past the text or inside a
-    /// line's newline.
+    /// The position of a byte offset; nullopt past the text. An offset
+    /// inside a line's newline is at the line's end.
     std::optional<LineColumn> position(std::uint32_t offset) const {
-        if(offset > content_size || starts.empty()) {
-            return std::nullopt;
-        }
-        auto line = line_of(offset);
-        if(offset > line_end(line)) {
-            return std::nullopt;
-        }
-        auto column = offset - starts[line];
-        auto utf16 = content.empty() ? column
-                                     : kota::ipc::lsp::encoded_length(
-                                           std::string_view(content.data() + starts[line], column),
-                                           kota::ipc::lsp::PositionEncoding::UTF16);
-        return LineColumn{.line = line, .column = column, .utf16_column = utf16};
-    }
-
-    /// The byte offset of a line and UTF-16 column, as editors spell
-    /// positions; nullopt outside the text.
-    std::optional<std::uint32_t> offset(std::uint32_t line, std::uint32_t utf16_column) const {
-        auto bounds = line_bounds(line);
-        if(!bounds) {
+        if(starts.empty()) {
             return std::nullopt;
         }
         if(content.empty()) {
-            // Compare against the line length, not the summed offset: the
-            // column is untrusted client input and the sum can wrap.
-            if(utf16_column > bounds->length()) {
+            auto at = kota::ipc::lsp::to_position(content_size, starts, offset, CRLFLines{crlf});
+            if(!at) {
                 return std::nullopt;
             }
-            return bounds->begin + utf16_column;
+            return LineColumn{.line = at->line, .column = at->character, .utf16_column = at->character};
         }
-        auto within = kota::ipc::lsp::encoded_offset(
-            std::string_view(content.data() + bounds->begin, bounds->length()),
-            utf16_column,
-            kota::ipc::lsp::PositionEncoding::UTF16);
-        if(!within) {
+        auto text = std::string_view(content);
+        auto at = kota::ipc::lsp::to_position(text,
+                                              starts,
+                                              offset,
+                                              kota::ipc::lsp::PositionEncoding::UTF8);
+        if(!at) {
             return std::nullopt;
         }
-        return bounds->begin + *within;
+        auto utf16 =
+            kota::ipc::lsp::encoded_length(text.substr(starts[at->line], at->character),
+                                           kota::ipc::lsp::PositionEncoding::UTF16);
+        return LineColumn{.line = at->line, .column = at->character, .utf16_column = utf16};
+    }
+
+    /// The byte offset of a line and UTF-16 column, as editors spell
+    /// positions, a column past the line's end being its end; nullopt past
+    /// the last line or inside a surrogate pair.
+    std::optional<std::uint32_t> offset(std::uint32_t line, std::uint32_t utf16_column) const {
+        protocol::Position position{.line = line, .character = utf16_column};
+        if(content.empty()) {
+            return kota::ipc::lsp::to_offset(content_size, starts, position, CRLFLines{crlf});
+        }
+        return kota::ipc::lsp::to_offset(std::string_view(content),
+                                         starts,
+                                         position,
+                                         kota::ipc::lsp::PositionEncoding::UTF16);
     }
 
     /// A line's byte range, its newline excluded; nullopt past the last
@@ -110,22 +117,34 @@ public:
         if(line >= starts.size()) {
             return std::nullopt;
         }
-        return LocalSourceRange{starts[line], line_end(line)};
+        protocol::Position end{.line = line, .character = UINT32_MAX};
+        if(content.empty()) {
+            return LocalSourceRange{
+                starts[line],
+                kota::ipc::lsp::to_offset_clamped(content_size, starts, end, CRLFLines{crlf})};
+        }
+        // Counting bytes as ASCII finds the line's end without reading it.
+        return LocalSourceRange{starts[line],
+                                kota::ipc::lsp::to_offset_clamped(std::string_view(content),
+                                                                  starts,
+                                                                  end,
+                                                                  kota::ipc::lsp::PositionEncoding::UTF8,
+                                                                  kota::ipc::lsp::all_ascii)};
     }
 
 private:
-    std::uint32_t line_of(std::uint32_t offset) const {
-        auto it = std::ranges::upper_bound(starts, offset);
-        return it == starts.begin() ? 0 : static_cast<std::uint32_t>(it - starts.begin()) - 1;
-    }
+    struct CRLFLines {
+        std::span<const std::uint64_t> bits;
 
-    std::uint32_t line_end(std::uint32_t line) const {
-        return line + 1 < starts.size() ? starts[line + 1] - 1 : content_size;
-    }
+        bool operator()(std::uint32_t line) const {
+            return line / 64 < bits.size() && ((bits[line / 64] >> (line % 64)) & 1) != 0;
+        }
+    };
 
     llvm::StringRef content;
     std::uint32_t content_size = 0;
     std::span<const std::uint32_t> starts;
+    std::span<const std::uint64_t> crlf;
 };
 
 }  // namespace clice::index

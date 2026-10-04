@@ -38,8 +38,7 @@ ZEST_CASE(BoundedRetention) {
     EXPECT(server.notify_log.front().text.ends_with("probe 2"));
     EXPECT(server.notify_log.back().text.ends_with("probe 129"));
     EXPECT(server.notify_seq - server.notify_log.size() == 2u);
-
-}  // namespace
+}
 
 };  // ZEST_SUITE(NotifyLog)
 

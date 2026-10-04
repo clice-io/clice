@@ -61,8 +61,7 @@ ZEST_CASE(FreshWhenUntouched) {
     // The check's read left the file's pair behind: the next check is a
     // stat.
     ASSERT(vouched(pool, dep));
-
-}  // namespace
+}
 
 ZEST_CASE(SnapshotsShareOneVersion) {
     TempDir tmp;

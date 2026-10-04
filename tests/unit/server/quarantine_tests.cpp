@@ -30,8 +30,7 @@ ZEST_CASE(CrashBarsItsKind) {
 
     // A document that sits still is never retried.
     EXPECT(q.barred(compile, t0 + seconds(3600)));
-
-}  // namespace
+}
 
 ZEST_CASE(ChangeRetriesAfterSpacing) {
     Quarantine q;

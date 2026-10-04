@@ -15,8 +15,7 @@ ZEST_CASE(EmitCallsHandlers) {
     auto c2 = signal.connect([&](int v) { sum += v * 10; });
     signal.emit(3);
     ASSERT(sum == 33);
-
-}  // namespace
+}
 
 ZEST_CASE(ConnectOrder) {
     Signal<> signal;

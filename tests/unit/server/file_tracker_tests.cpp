@@ -68,8 +68,7 @@ ZEST_CASE(CDBTickDebounces) {
 
     // Settled: further ticks are quiet.
     ASSERT(tick(tracker, files).empty());
-
-}  // namespace
+}
 
 ZEST_CASE(CDBTickForceImmediate) {
     TempDir tmp;

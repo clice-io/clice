@@ -43,8 +43,7 @@ ZEST_CASE(MarkerAndNotify) {
     auto& [level, message] = capture.notified.front();
     EXPECT(level == NotifyLevel::Error);
     EXPECT(message == "[anomaly:PCHBuildFail] stale build for main.cpp");
-
-}  // namespace
+}
 
 ZEST_CASE(TrapInvokedPerReport) {
     /// The trap fires once per reported (non-suppressed) anomaly. In Debug

@@ -71,8 +71,7 @@ ZEST_CASE(EmptyBatchNoEffects) {
     auto dirty = invalidator.apply({});
 
     ASSERT(dirty.empty());
-
-}  // namespace
+}
 
 ZEST_CASE(NewProviderDirtiesImporters) {
     // Consumers that scanned the name unresolved hold durable edges to

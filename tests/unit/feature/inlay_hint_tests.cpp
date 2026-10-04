@@ -35,9 +35,7 @@ void run(llvm::StringRef code,
     hints = feature::inlay_hints(*unit, range, options, feature::PositionEncoding::UTF8);
 
     hints_map.clear();
-    auto content = unit->main_content();
-    auto line_starts = unit->line_starts();
-    lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
+    auto map = feature::main_position_map(*unit, feature::PositionEncoding::UTF8);
     for(auto& hint: hints) {
         hints_map[*map.to_offset(hint.position)] = hint;
     }

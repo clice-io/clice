@@ -207,18 +207,15 @@ public:
 
     /// Send a request to a stateless worker with priority-aware scheduling.
     ///
-    /// `cancel` is an advisory cancellation: when it fires, the pool sends
-    /// the cooperative CancelBuild to the assigned worker and this call
-    /// KEEPS awaiting the real reply — the slot frees only when the
-    /// process is actually idle, and crash accounting keeps observing the
-    /// real outcome. Never a wire cancel: that would resume the sender
-    /// immediately and hand the slot out while the worker is still stuck
-    /// in the old parse. A cancelled result surfaces as
-    /// dispatch_errc::cancelled.
+    /// `cancel` is an advisory cancellation: when it fires, the request is
+    /// cancelled on the wire and this call KEEPS awaiting the worker's real
+    /// answer — the slot frees only when the process is actually idle, and
+    /// crash accounting keeps observing the real outcome. A cancelled
+    /// result surfaces as dispatch_errc::cancelled.
     template <typename Params>
     RequestResult<Params> send_stateless(const Params& params,
                                          worker::Priority priority,
-                                         std::optional<kota::cancellation_token> cancel = {});
+                                         kota::cancellation_token cancel = {});
 
     /// Send a notification to the stateful worker owning path_id (if any).
     template <typename Params>
@@ -362,7 +359,7 @@ private:
 
         std::chrono::steady_clock::time_point spawn_time{};
 
-        /// Stateless only: marks the in-flight low-priority request as
+        /// Stateless only: cancels the in-flight request, and marks it
         /// scheduler-cancelled so its sender classifies the eventual reply
         /// (cooperative stop or kill) as preemption instead of a failure.
         std::shared_ptr<kota::cancellation_source> preempt_source;
@@ -574,8 +571,8 @@ private:
     void tick_deadlines();
 
     /// Cooperatively cancel up to `count` in-flight low-priority requests:
-    /// a CancelBuild notification trips the worker's stop flag, the compile
-    /// returns at the next declaration boundary, and the sender — which
+    /// the wire cancel trips the worker's stop flag, the compile returns at
+    /// the next declaration boundary, and the sender — which
     /// keeps awaiting the worker's own reply, so the slot stays busy until
     /// the process is actually free — observes dispatch_errc::cancelled.
     /// A victim that ignores the cancel past cancel_grace is killed by the
@@ -796,7 +793,7 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                  worker::Priority priority,
-                                                 std::optional<kota::cancellation_token> cancel) {
+                                                 kota::cancellation_token cancel) {
     // High-priority stateless work (PCH, completion builds, foreground
     // PCMs) is foreground by the priority taxonomy; while it runs or
     // queues, foreground_busy() holds the window open.
@@ -815,12 +812,11 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
 
     // An advisory cancellation that fired while this request queued for a
     // slot: nothing was dispatched, give the claim back untouched.
-    if(cancel && cancel->cancelled()) {
+    if(cancel.cancelled()) {
         co_return kota::outcome_error(
             kota::ipc::Error{worker::dispatch_errc::cancelled, "Request cancelled by its round"});
     }
 
-    std::shared_ptr<kota::cancellation_source> preempt_src;
     if(priority == worker::Priority::Low) {
         // Reclaim demand that arose while this claim's sender was parked
         // (a foreground edge, a queued High) was skipped by the cancel
@@ -832,66 +828,31 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                            "Request preempted by the scheduler"});
         }
     }
-    if(priority == worker::Priority::Low || cancel) {
-        // The classification channel for scheduler-initiated cancels: the
-        // cooperative CancelBuild, the memory-preemption kill and the
-        // caller's advisory token all mark it, and the sender consults it
-        // when the reply arrives.
-        preempt_src = std::make_shared<kota::cancellation_source>();
-        stateless_workers[idx].preempt_source = preempt_src;
-    }
+    // The classification channel for scheduler-initiated cancels: the
+    // cooperative cancel, the memory-preemption kill and the caller's
+    // advisory token all mark it, and the sender consults it when the
+    // reply arrives. Firing it cancels the request on the wire, which
+    // keeps awaiting the worker's real answer.
+    auto preempt_src = std::make_shared<kota::cancellation_source>();
+    stateless_workers[idx].preempt_source = preempt_src;
 
-    // Translate an advisory-token fire into the cooperative CancelBuild
-    // while this frame keeps awaiting the real reply below. The watcher's
-    // scope token fires when this frame exits, standing it down.
-    kota::cancellation_source watch_scope;
-    if(cancel) {
-        auto watcher = [](WorkerPool& pool,
-                          std::size_t idx,
-                          unsigned gen,
-                          std::uint64_t claim,
-                          kota::cancellation_token advisory,
-                          kota::cancellation_token scope,
-                          std::shared_ptr<kota::ipc::BincodePeer> peer,
-                          std::shared_ptr<kota::cancellation_source> preempt) -> kota::task<> {
-            co_await kota::with_token(advisory.wait(), scope);
-            if(!advisory.cancelled()) {
-                co_return;  // the send finished first
-            }
-            // Guarded by generation AND claim: the worker may have died,
-            // and — when the advisory fire races the old reply on one
-            // tick — the freed slot may already carry a queued
-            // successor's claim. The worker's stop flag belongs to
-            // whatever build it armed last, so the successor's healthy
-            // build must see neither the CancelBuild nor the grace
-            // deadline: either would kill it. Fencing the send here also
-            // keeps the worker-side invariant that a CancelBuild only
-            // arrives while the master awaits that build's reply.
-            auto& w = pool.stateless_workers[idx];
-            if(w.generation != gen || w.claim_epoch != claim || w.state != SlotState::Alive ||
-               !w.busy) {
-                co_return;
-            }
-            LOG_DEBUG("Advisory cancel: sending cooperative CancelBuild");
-            peer->send_notification(worker::CancelBuildParams{});
-            preempt->cancel();
-            // Arm the grace deadline like cancel_low_priority does, or
-            // tick_cancel_grace() never reclaims a worker whose build
-            // ignores the stop flag.
-            w.cancel_requested_at = std::chrono::steady_clock::now();
-        };
-        worker_tasks.spawn(watcher(*this,
-                                   idx,
-                                   gen,
-                                   stateless_workers[idx].claim_epoch,
-                                   *cancel,
-                                   watch_scope.token(),
-                                   peer,
-                                   preempt_src));
-    }
+    // Guarded by generation: the worker may have died before this frame
+    // resumed, and its respawned successor must see no grace deadline.
+    auto relay = cancel.on_cancel([this, idx, gen, preempt_src] {
+        auto& w = stateless_workers[idx];
+        if(w.generation != gen || w.state != SlotState::Alive || preempt_src->cancelled()) {
+            return;
+        }
+        LOG_DEBUG("Advisory cancel: cancelling the request");
+        preempt_src->cancel();
+        // Arm the grace deadline like cancel_low_priority does, or
+        // tick_cancel_grace() never reclaims a worker whose build
+        // ignores the stop flag.
+        w.cancel_requested_at = std::chrono::steady_clock::now();
+    });
 
     Dispatch dispatch(*this, idx, false, worker::crash_tag(params), worker::is_build<Params>);
-    auto result = co_await peer->send_request(params);
+    auto result = co_await peer->send_request(params, {.token = preempt_src->token()});
     // The worker link broke mid-request: declare the slot dead now so a
     // caller-side retry cannot land on the same corpse before the monitor
     // observed the exit. This must precede the cancel classification — a
@@ -905,14 +866,13 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         try_dispatch_pending();
     }
 
-    // A scheduler cancel comes back as whatever the worker produced — the
-    // cooperatively stopped build's own reply, or the killed process's
-    // transport error — never as a wire cancel: the sender deliberately
-    // awaits the real reply so the slot frees only once the process is
-    // actually idle again, keeping the grace deadline armed and the next
-    // request off a still-stuck worker. Either shape must surface as
+    // A cancel comes back as whatever the worker answered — RequestCancelled,
+    // the result it had already, or the killed process's transport error:
+    // the request awaits the real answer so the slot frees only once the
+    // process is actually idle again, keeping the grace deadline armed and
+    // the next request off a still-stuck worker. Every shape must surface as
     // cancelled, so the indexer requeues instead of recording a failure.
-    if(preempt_src && preempt_src->cancelled())
+    if(preempt_src->cancelled())
         co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::cancelled,
                                                        "Request preempted by the scheduler"});
     // An error returned by the worker's handler leaves the worker healthy;

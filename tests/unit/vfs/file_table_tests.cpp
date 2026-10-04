@@ -57,8 +57,7 @@ ZEST_CASE(HardlinksReadApart) {
     ASSERT(!pool.cached_hash(b_id, stamp).has_value());
     ASSERT(pool.read(b_id));
     ASSERT(pool.cached_hash(b_id, stamp));
-
-}  // namespace
+}
 
 ZEST_CASE(RenameSaveReads) {
     // An editor-style save (write tmp, rename over) replaces the file.

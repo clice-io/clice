@@ -16,7 +16,7 @@ pixi run unit-test Debug    # debug build
 等价于：
 
 ```bash
-./build/RelWithDebInfo/bin/unit_tests --verbose --jobs 1
+./build/RelWithDebInfo/bin/unit_tests --verbose
 ```
 
 ### 集成测试

@@ -42,8 +42,7 @@ ZEST_CASE(CompileParamsRoundTrip) {
     EXPECT(result.text == params.text);
     EXPECT(result.directory == params.directory);
     EXPECT(result.arguments.size() == params.arguments.size());
-
-}  // namespace
+}
 
 ZEST_CASE(CompileResultRoundTrip) {
     namespace bincode = kota::codec::bincode;

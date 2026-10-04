@@ -67,7 +67,7 @@ struct Stack {
     std::shared_ptr<Session> open(llvm::StringRef path, std::string text) {
         auto session = sessions.open(project.file_table.intern(Spelling::absolute(path)));
         session->text = std::move(text);
-        session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+        session->sync_text();
         return session;
     }
 
@@ -100,8 +100,7 @@ ZEST_CASE(SupersedeTouchesEntry) {
 
     ASSERT(!stack.ast.projections.current(pid));
     ASSERT(stack.ast.projections.epoch(pid) == epoch + 1);
-
-}  // namespace
+}
 
 ZEST_CASE(InvalidateKeepsProjection) {
     Stack stack;
@@ -319,7 +318,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
 
         // What the didChange handler does: fold the edit in, then supersede.
         session->text = "int fixed;\n";
-        session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+        session->sync_text();
         session->generation += 1;
         stack.ast.supersede(session->path_id);
 
@@ -398,7 +397,7 @@ ZEST_CASE(SupersededCompileCancelled) {
 
         // The edit lands while the slow compile is in flight.
         session->text = "int fixed;\n";
-        session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+        session->sync_text();
         session->generation += 1;
         stack.ast.supersede(session->path_id);
 
@@ -522,7 +521,7 @@ ZEST_CASE(ImportScanPerUnit) {
     auto main = stack.open(tmp.path("main.cpp"), "import m;\nint main() { return mv(); }\n");
     auto edit = [&](const std::shared_ptr<Session>& session, std::string text) {
         session->text = std::move(text);
-        session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+        session->sync_text();
         session->generation += 1;
         stack.ast.supersede(session->path_id);
     };

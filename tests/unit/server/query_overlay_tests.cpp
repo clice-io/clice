@@ -83,7 +83,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     auto it = sources.all_files.find(llvm::sys::path::filename(main_path));
     ASSERT(it != sources.all_files.end());
     session->text = it->second.content;
-    session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+    session->sync_text();
 
     auto& entry = projections.entries[path_id];
     auto projection = std::make_shared<ASTProjection>();
@@ -505,7 +505,7 @@ int main() { return 0; }
     // entry keeps serving — the prefix comparison is the freshness check.
     projections.entries[session->path_id].current = false;
     session->text += "int more;\n";
-    session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+    session->sync_text();
     EXPECT(index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition));
 }
 
@@ -520,7 +520,7 @@ int main() { return 0; }
     // preamble moved on; once the buffer no longer starts with the blob's
     // stored preamble text, its rows must not be served.
     session->text = "// drift\n" + session->text;
-    session->line_starts = kota::ipc::lsp::build_line_starts(session->text);
+    session->sync_text();
     EXPECT(!index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition).has_value());
 }
 

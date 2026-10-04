@@ -24,7 +24,10 @@ namespace clice::index {
 namespace {
 
 Coordinates shard_coordinates(const Shard& shard) {
-    return {shard.content(), shard.content_size(), shard.line_starts()};
+    if(!shard.content().empty()) {
+        return {shard.content(), shard.line_starts()};
+    }
+    return {shard.content_size(), shard.line_starts(), shard.crlf_lines()};
 }
 
 LocalSourceRange to_local(const Occurrence& occurrence) {

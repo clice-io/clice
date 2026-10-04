@@ -193,6 +193,7 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::s
     // stdin (parent writes).
     auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(spawn.stdout_pipe),
                                                                   std::move(spawn.stdin_pipe));
+    transport->set_remote_max_payload(kota::ipc::default_max_payload);
     auto peer = std::make_shared<kota::ipc::BincodePeer>(loop, std::move(transport));
 
     auto stderr_tail = std::make_shared<StderrTail>();
@@ -1039,14 +1040,9 @@ void WorkerPool::cancel_low_priority(std::size_t count) {
         if(cancelled >= count)
             break;
         auto& w = stateless_workers[i];
-        w.preempt_source->cancel();
-        // An Alive slot always holds a peer in production (mark_worker_dead
-        // drops the peer and the Alive state in one step); the conditional
-        // exists for fixture-built slots. Either way the source above makes
-        // the sender observe cancelled, and a slot that dies before the
+        // Cancels the request on the wire; a slot that dies before the
         // grace expires has its stamp cleared by the respawn.
-        if(w.peer)
-            w.peer->send_notification(worker::CancelBuildParams{});
+        w.preempt_source->cancel();
         w.cancel_requested_at = std::chrono::steady_clock::now();
         cancelled += 1;
     }

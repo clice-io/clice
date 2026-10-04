@@ -300,7 +300,7 @@ std::string planted_blob(llvm::StringRef text, std::uint64_t variant) {
     blob.format_version = index::index_format_version;
     blob.content_hash = llvm::xxh3_64bits(text);
     blob.content_size = static_cast<std::uint32_t>(text.size());
-    auto starts = kota::ipc::lsp::build_line_starts(std::string_view(text.data(), text.size()));
+    auto starts = kota::ipc::lsp::line_starts(std::string_view(text.data(), text.size()));
     for(std::size_t i = 0; i < starts.size(); i += 1) {
         auto next = i + 1 < starts.size() ? starts[i + 1] : blob.content_size;
         blob.line_lengths.push_back(static_cast<std::uint8_t>(next - starts[i]));
@@ -1388,8 +1388,7 @@ ZEST_CASE(LoadRestoresIndex) {
     // The persisted versions make the untouched TU judge fresh without any
     // reindex.
     ASSERT(!f.need_update(src));
-
-}  // namespace
+}
 
 ZEST_CASE(SettledRebuildPinsSearch) {
     TempDir tmp;

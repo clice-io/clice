@@ -561,8 +561,7 @@ ZEST_CASE(PickLeastLoaded) {
     f.add_stateful(true, 2);
     f.add_stateful(true, 8);
     EXPECT(f.pick_least_loaded() == 1u);
-
-}  // namespace
+}
 
 ZEST_CASE(SkipDeadWorkers) {
     WorkerPoolFixture f;
@@ -1223,11 +1222,12 @@ ZEST_CASE(OperationalErrorCodes) {
 }
 
 ZEST_CASE(TransportErrorClassification) {
-    /// kota surfaces transport failures with the default RequestFailed code;
-    /// remote handler errors carry specific codes and must pass through.
+    /// A closed link is ConnectionClosed; remote handler errors carry other
+    /// codes and must pass through.
     using worker::protocol::Error;
     using worker::protocol::ErrorCode;
-    EXPECT(worker::is_transport_error(Error{"transport closed"}));
+    EXPECT(worker::is_transport_error(Error{ErrorCode::ConnectionClosed, "peer closed"}));
+    EXPECT(!worker::is_transport_error(Error{"handler failed"}));
     EXPECT(!worker::is_transport_error(Error{ErrorCode::InternalError, "handler threw"}));
     EXPECT(!worker::is_transport_error(Error{ErrorCode::RequestCancelled, "cancelled"}));
 }
@@ -1899,8 +1899,8 @@ ZEST_CASE(StatelessRequest) {
 }
 
 ZEST_CASE(AdvisoryCancelCooperates) {
-    // s#1: an advisory-token fire mid-build turns into the cooperative
-    // CancelBuild. The sender keeps awaiting the real reply — the slot
+    // s#1: an advisory-token fire mid-build cancels the request on the
+    // wire. The sender keeps awaiting the real reply — the slot
     // frees only once the worker is actually idle — and the result is
     // classified as a cancellation, with the worker healthy afterwards.
     TempDir tmp;

@@ -151,8 +151,7 @@ ZEST_CASE(Segmentation) {
     EXPECT(segmented("ab\xF0\x9F\x99\x82"
                      "cd") == "+-------");
     EXPECT(segmented("HTMLElement") == "+---+------");
-
-}  // namespace
+}
 
 ZEST_CASE(Accepts) {
     EXPECT(annotated("", "unique_ptr") == "unique_ptr");

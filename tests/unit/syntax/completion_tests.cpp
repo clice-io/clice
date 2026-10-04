@@ -13,8 +13,7 @@ ZEST_CASE(MemberAccess) {
     EXPECT(follows_access_operator("w.", 2));
     EXPECT(follows_access_operator("p->", 3));
     EXPECT(follows_access_operator("std::", 5));
-
-}  // namespace
+}
 
 ZEST_CASE(PackEllipsis) {
     EXPECT(!follows_access_operator("template <typename..", 20));

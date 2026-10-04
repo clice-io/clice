@@ -358,7 +358,10 @@ inline void walk_ancestors(CanonicalRef start, llvm::function_ref<bool(Canonical
 
 }  // namespace clice
 
-template <clice::Canonical T>
+/// Not every Canonical type: an annotated field formats through kotatsu's
+/// annotation formatter, which defers to this one.
+template <typename T>
+    requires std::same_as<T, clice::CanonicalRef> || std::same_as<T, clice::CanonicalPath>
 struct std::formatter<T> : std::formatter<llvm::StringRef> {
     template <typename FormatContext>
     auto format(const T& value, FormatContext& ctx) const {

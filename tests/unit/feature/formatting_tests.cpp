@@ -13,8 +13,7 @@ ZEST_SUITE(Formatting) {
 ZEST_CASE(Simple) {
     auto edits = feature::document_format("main.cpp", "int main() { return 0; }", std::nullopt);
     ASSERT(edits.size() != 0U);
-
-}  // namespace
+}
 
 ZEST_CASE(RangeFormat) {
     llvm::StringRef code = "int x=1;\nint   y =  2 ;\nint z=3;\n";

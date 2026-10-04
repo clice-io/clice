@@ -1,3 +1,4 @@
+#include <chrono>
 #include <format>
 
 #include "test/temp_dir.h"
@@ -14,10 +15,9 @@ ZEST_SUITE(CancelChain) {
 
 // The master-side shape: an LSP handler task raced against its request
 // token, passing the same token into the worker send. When the token
-// fires, the send's internal with_token boundary must resume (not be torn
-// down by the handler's cancellation cascade) and emit the wire
-// $/cancelRequest — proven here by the worker interrupting a 200k-decl
-// parse instead of finishing it.
+// fires, the send emits the wire $/cancelRequest and the handler ends
+// cancelled once the worker has answered — proven here by the worker
+// interrupting a 200k-decl parse instead of finishing it.
 ZEST_CASE(HandlerCancelChainsThrough) {
     TempDir tmp;
     tmp.touch("probe.cpp", "");
@@ -26,14 +26,14 @@ ZEST_CASE(HandlerCancelChainsThrough) {
     WorkerHandle w;
     ASSERT(w.spawn(true));
 
-    bool observed_cancelled_reply = false;
     bool handler_resumed = false;
+    bool handler_cancelled = false;
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
         std::string text;
         text.reserve(1 << 22);
-        for(int i = 0; i < 200'000; ++i) {
+        for(int i = 0; i < 200'000; i += 1) {
             text += std::format("int v{};\n", i);
         }
 
@@ -51,17 +51,15 @@ ZEST_CASE(HandlerCancelChainsThrough) {
         // handler-shaped: the task itself is raced against the token, and
         // the send inside passes the same token down.
         auto handler = [&]() -> kota::task<> {
-            kota::ipc::request_options opts;
-            opts.token = source.token();
-            auto result = co_await w.peer->send_request(cp, opts);
+            [[maybe_unused]] auto result =
+                co_await w.peer->send_request(cp, {.token = source.token()});
             handler_resumed = true;
-            observed_cancelled_reply =
-                !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
 
         kota::task_group<> group;
         auto wrapper = [&]() -> kota::task<> {
-            [[maybe_unused]] auto r = co_await kota::with_token(handler(), source.token());
+            auto result = co_await kota::with_token(handler(), source.token());
+            handler_cancelled = result.is_cancelled();
         };
         group.spawn(wrapper());
 
@@ -69,14 +67,12 @@ ZEST_CASE(HandlerCancelChainsThrough) {
         source.cancel();
         co_await group.join();
 
-        // Whatever happened to the handler, the worker must have seen the
-        // wire cancel: a second compile completes quickly only if the first
-        // parse was interrupted (200k decls otherwise).
+        // The worker must have seen the wire cancel: a second compile
+        // completes quickly only if the first parse was interrupted (200k
+        // decls otherwise).
         cp.version = 2;
         cp.text = "int x;\n";
-        kota::ipc::request_options retry_opts;
-        retry_opts.timeout = std::chrono::milliseconds(30'000);
-        auto retry = co_await w.peer->send_request(cp, retry_opts);
+        auto retry = co_await w.peer->send_request(cp, {.timeout = std::chrono::seconds(30)});
         CO_ASSERT(retry);
         EXPECT(retry.value().version == 2);
 
@@ -85,20 +81,15 @@ ZEST_CASE(HandlerCancelChainsThrough) {
     });
 
     ASSERT(test_done);
-    // The resumption-boundary claim itself: the send must RESUME with a
-    // cancelled error (emitting the wire cancel on the way), not be torn
-    // down by the handler's cancellation cascade.
-    EXPECT(handler_resumed);
-    EXPECT(observed_cancelled_reply);
+    EXPECT(!handler_resumed);
+    EXPECT(handler_cancelled);
+}
 
-}  // namespace
-
-// The scheduler's cooperative cancel of a stateless build takes the
-// CancelBuild-notification path, never a wire cancel: the sender keeps
-// awaiting the build's own reply (the slot must stay busy while the
-// worker is), and the notification trips the stop flag so that reply
-// arrives at the next declaration boundary instead of after the whole TU.
-ZEST_CASE(CancelBuildStopsBuild) {
+// The scheduler's cooperative cancel of a stateless build is a wire cancel
+// whose answer the sender keeps awaiting (the slot must stay busy while the
+// worker is): the stop flag it trips makes that answer arrive at the next
+// declaration boundary instead of after the whole TU.
+ZEST_CASE(WireCancelStopsBuild) {
     TempDir tmp;
     std::string text;
     text.reserve(1 << 22);
@@ -119,19 +110,23 @@ ZEST_CASE(CancelBuildStopsBuild) {
         bp.directory = "/tmp";
         bp.arguments = make_args(src);
 
+        kota::cancellation_source source;
+        std::chrono::steady_clock::time_point cancelled_at;
         auto build = [&]() -> kota::task<> {
-            auto result = co_await w.peer->send_request(bp);
-            // An uninterrupted worker would index all 200k decls and reply
-            // success; the stopped parse must not produce an index.
-            CO_ASSERT(result);
-            EXPECT(!result.value().success);
+            auto result = co_await w.peer->send_request(bp, {.token = source.token()});
+            auto waited = std::chrono::steady_clock::now() - cancelled_at;
+            CO_ASSERT(!result);
+            EXPECT(result.error().code == worker::dispatch_errc::cancelled);
+            // An uninterrupted worker would index all 200k decls first.
+            EXPECT(waited < std::chrono::seconds(5));
         };
 
         kota::task_group<> group;
         group.spawn(build());
 
         co_await kota::sleep(50, w.loop);
-        w.peer->send_notification(worker::CancelBuildParams{});
+        cancelled_at = std::chrono::steady_clock::now();
+        source.cancel();
         co_await group.join();
 
         test_done = true;

@@ -71,8 +71,7 @@ ZEST_CASE(OpenedFilesKeepIdentity) {
     ASSERT(bytes_status->getSize() == 10u);
     ASSERT(text_status->getLastModificationTime() ==
            status->to_llvm(path).getLastModificationTime());
-
-}  // namespace
+}
 
 ZEST_CASE(DirectoriesAndMissing) {
     TempDir tmp;

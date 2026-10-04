@@ -530,6 +530,7 @@ int run_stateful_worker_mode(const std::string& worker_name,
         LOG_ERROR("Failed to open stdio transport");
         return 1;
     }
+    (*transport_result)->set_remote_max_payload(kota::ipc::default_max_payload);
 
     kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
 

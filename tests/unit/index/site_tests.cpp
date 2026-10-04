@@ -16,7 +16,7 @@ std::vector<std::uint32_t> starts = {0, 3, 6};
 ZEST_CASE(AsciiArithmetic) {
     // No stored content: byte columns are UTF-16 columns, mapping is pure
     // line-table arithmetic bounded by the content size.
-    Coordinates map("", 6, starts);
+    Coordinates map(6, starts, {});
 
     auto pos = map.position(4);
     ASSERT(pos);
@@ -31,12 +31,12 @@ ZEST_CASE(AsciiArithmetic) {
     EXPECT(line_end->line == 0u);
     EXPECT(line_end->column == 2u);
 
-    // Past the content, past the line: refused.
+    // Past the content, past the last line: refused. Past a line's end:
+    // its end, a huge column included.
     EXPECT(!map.position(7).has_value());
     EXPECT(!map.offset(3, 0).has_value());
-    EXPECT(!map.offset(0, 3).has_value());
-    // A huge column must not wrap the offset back into bounds.
-    EXPECT(!map.offset(1, 0xfffffffd).has_value());
+    EXPECT(map.offset(0, 3) == std::optional<std::uint32_t>(2));
+    EXPECT(map.offset(1, 0xfffffffd) == std::optional<std::uint32_t>(5));
 
     auto bounds = map.line_bounds(1);
     ASSERT(bounds);
@@ -46,7 +46,7 @@ ZEST_CASE(AsciiArithmetic) {
 }
 
 ZEST_CASE(EmptyLineTable) {
-    Coordinates map("", 6, {});
+    Coordinates map(6, {}, {});
     EXPECT(!map.position(0).has_value());
     EXPECT(!map.offset(0, 0).has_value());
 }
@@ -56,7 +56,7 @@ ZEST_CASE(StoredContentCountsUtf16) {
     // offset past it has a smaller UTF-16 column than its byte column.
     llvm::StringRef content = "ab\né!\n";
     std::vector<std::uint32_t> line_starts = {0, 3, 7};
-    Coordinates map(content, static_cast<std::uint32_t>(content.size()), line_starts);
+    Coordinates map(content, line_starts);
 
     auto pos = map.position(5);
     ASSERT(pos);
@@ -64,6 +64,27 @@ ZEST_CASE(StoredContentCountsUtf16) {
     EXPECT(pos->column == 2u);
     EXPECT(pos->utf16_column == 1u);
     EXPECT(map.offset(1, 1) == std::optional<std::uint32_t>(5));
+}
+
+ZEST_CASE(CRLFLineEnds) {
+    // "ab\r\ncd": the '\r' belongs to the line's end, not its text.
+    std::vector<std::uint32_t> crlf_starts = {0, 4};
+    std::vector<std::uint64_t> crlf_lines = {1};
+    Coordinates ascii(6, crlf_starts, crlf_lines);
+    llvm::StringRef content = "\xc3\xa9\r\ncd";
+    Coordinates stored(content, crlf_starts);
+
+    for(auto* map: {&ascii, &stored}) {
+        for(std::uint32_t offset: {2u, 3u}) {
+            auto pos = map->position(offset);
+            ASSERT(pos);
+            EXPECT(pos->line == 0u);
+            EXPECT(pos->column == 2u);
+        }
+        EXPECT(map->offset(0, 5) == std::optional<std::uint32_t>(2));
+        EXPECT(map->line_bounds(0) == std::optional(LocalSourceRange{0, 2}));
+    }
+    EXPECT(stored.position(3)->utf16_column == 1u);
 }
 
 };  // ZEST_SUITE(Coordinates)

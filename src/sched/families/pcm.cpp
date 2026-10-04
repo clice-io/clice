@@ -285,9 +285,9 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
 
     // The interest class is read at dispatch time: a foreground requester
     // may have joined after this round started. The advisory token rides
-    // into the pool, which translates a fire into the cooperative
-    // CancelBuild while this frame keeps awaiting the real reply
-    // (contract 2 — the slot frees only when the worker is truly idle).
+    // into the pool, which cancels the request on the wire while this
+    // frame keeps awaiting the real reply (contract 2 — the slot frees
+    // only when the worker is truly idle).
     auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
     // Sampled before the build reads it: a save landing mid-build is not
     // what crashed.

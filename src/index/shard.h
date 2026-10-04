@@ -127,6 +127,9 @@ public:
     /// blob's line-length columns on first use.
     std::span<const std::uint32_t> line_starts() const;
 
+    /// Which lines end in "\r\n" (ShardBlob::crlf_lines), read in place.
+    std::span<const std::uint64_t> crlf_lines() const;
+
 private:
     explicit Shard(std::unique_ptr<llvm::MemoryBuffer> buffer);
 

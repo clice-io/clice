@@ -159,10 +159,17 @@ auto CompilationUnitRef::main_content() -> llvm::StringRef {
 auto CompilationUnitRef::line_starts() -> std::span<const std::uint32_t> {
     if(self->line_starts_cache.empty()) {
         auto content = main_content();
-        self->line_starts_cache =
-            kota::ipc::lsp::build_line_starts({content.data(), content.size()});
+        self->line_starts_cache = kota::ipc::lsp::line_starts({content.data(), content.size()});
     }
     return self->line_starts_cache;
+}
+
+auto CompilationUnitRef::non_ascii_lines() -> std::span<const std::uint64_t> {
+    if(!self->non_ascii_cache) {
+        auto content = main_content();
+        self->non_ascii_cache = kota::ipc::lsp::non_ascii_lines({content.data(), content.size()});
+    }
+    return *self->non_ascii_cache;
 }
 
 bool CompilationUnitRef::is_builtin_file(clang::FileID fid) {

@@ -82,7 +82,7 @@ public:
     /// merged behind the PCH's cached preamble links.
     kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
         document_links(std::shared_ptr<Session> session,
-                       std::optional<kota::cancellation_token> token = {});
+                       kota::cancellation_token token = {});
 
     /// Go-to-definition, assembled across all providers: preamble directive
     /// targets, the index, and the directives the worker's AST sees, with
@@ -94,7 +94,7 @@ public:
     RawResult definition(std::shared_ptr<Session> session,
                          Fid path_id,
                          const protocol::Position& position,
-                         std::optional<kota::cancellation_token> token = {});
+                         kota::cancellation_token token = {});
 
     /// Whole-document features and hover, routed by readiness (see
     /// pick_route): the AST answers when current, the index projections
@@ -104,17 +104,17 @@ public:
     /// worker sends (see Dispatcher::query).
     RawResult hover(std::shared_ptr<Session> session,
                     const protocol::Position& position,
-                    std::optional<kota::cancellation_token> token = {});
+                    kota::cancellation_token token = {});
     RawResult semantic_tokens(std::shared_ptr<Session> session,
-                              std::optional<kota::cancellation_token> token = {});
+                              kota::cancellation_token token = {});
     RawResult inlay_hints(std::shared_ptr<Session> session,
                           const protocol::Range& range,
-                          std::optional<kota::cancellation_token> token = {});
+                          kota::cancellation_token token = {});
     RawResult folding_range(std::shared_ptr<Session> session,
                             bool line_folding_only,
-                            std::optional<kota::cancellation_token> token = {});
+                            kota::cancellation_token token = {});
     RawResult document_symbol(std::shared_ptr<Session> session,
-                              std::optional<kota::cancellation_token> token = {});
+                              kota::cancellation_token token = {});
 
     /// Code actions on a range of the buffer: the worker computes them to
     /// completion against its AST, and the index requests they carry
@@ -126,7 +126,7 @@ public:
         code_action(std::shared_ptr<Session> session,
                     const protocol::Range& range,
                     llvm::ArrayRef<protocol::CodeActionKind> only,
-                    std::optional<kota::cancellation_token> token = {});
+                    kota::cancellation_token token = {});
 
     /// Code completion. Serves preamble contexts (include/import) locally from
     /// the include graph and module map; delegates ordinary code completion to
@@ -136,21 +136,21 @@ public:
                          const protocol::Position& position,
                          const feature::CompletionClient& client,
                          llvm::StringRef trigger_character = {},
-                         std::optional<kota::cancellation_token> token = {});
+                         kota::cancellation_token token = {});
 
     /// Signature help, dispatched as a stateless build. Pauses background
     /// indexing for the request's span.
     RawResult signature_help(std::shared_ptr<Session> session,
                              const protocol::Position& position,
-                             std::optional<kota::cancellation_token> token = {});
+                             kota::cancellation_token token = {});
 
     /// Whole-document and range formatting on a stateless worker. Pause
     /// background indexing for the request's span.
     RawResult formatting(std::shared_ptr<Session> session,
-                         std::optional<kota::cancellation_token> token = {});
+                         kota::cancellation_token token = {});
     RawResult range_formatting(std::shared_ptr<Session> session,
                                const protocol::Range& range,
-                               std::optional<kota::cancellation_token> token = {});
+                               kota::cancellation_token token = {});
 
     /// Index navigation queries. Closed documents are fully serveable from the
     /// index and an empty result is a real answer (returned as []). @param
@@ -312,7 +312,7 @@ private:
     /// PCH's cached preamble links, then the worker's AST's for the rest.
     /// Module names go through the ordinary index pipeline, not these.
     kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
-        directive_links(const Ticket& ticket, std::optional<kota::cancellation_token> token);
+        directive_links(const Ticket& ticket, kota::cancellation_token token);
 
     /// Go-to-definition and hover on a directive's argument, naming its
     /// target the way the user knows the file.

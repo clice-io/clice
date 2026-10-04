@@ -68,8 +68,7 @@ ZEST_CASE(Modes) {
     EXPECT(parsed("   ").mode == Mode::Fuzzy);
     EXPECT(parsed("*").mode == Mode::Members);
     EXPECT(parsed("**").mode == Mode::Subtree);
-
-}  // namespace
+}
 
 ZEST_CASE(Scopes) {
     auto qualified = parsed("ns::Foo::bar");

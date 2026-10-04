@@ -72,8 +72,7 @@ ZEST_CASE(WorkspaceAlwaysLooks) {
     auto hash = f.hash_of(fid);
     f.rewrite("src/a.h", "int b;\n");
     ASSERT(f.disk.check(fid, hash) == Verdict::Stale);
-
-}  // namespace
+}
 
 ZEST_CASE(PackageTrustedUntilDue) {
     Fixture f;

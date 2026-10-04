@@ -24,9 +24,9 @@ namespace protocol = kota::ipc::protocol;
 /// LSP's ContentModified: the request's answer would describe a buffer the
 /// client already moved past. Clients keep what they have and re-pull —
 /// unlike a null, which a client is entitled to read as "there is nothing"
-/// (VS Code clears semantic highlighting on one). kota's ErrorCode has no
-/// entry for it.
-constexpr inline protocol::integer content_modified_code = -32801;
+/// (VS Code clears semantic highlighting on one).
+constexpr inline auto content_modified_code =
+    static_cast<protocol::integer>(protocol::LSPErrorCodes::ContentModified);
 
 kota::ipc::Error content_modified();
 
@@ -65,25 +65,25 @@ public:
                     const Ticket& ticket,
                     std::optional<protocol::Position> position = {},
                     std::optional<protocol::Range> range = {},
-                    std::optional<kota::cancellation_token> token = {});
+                    kota::cancellation_token token = {});
 
     /// The main-file document links from the stateful worker holding the
     /// AST; the preamble's live in the PCH envelope (see
     /// PCHState::load_state).
     kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
-        document_links(const Ticket& ticket, std::optional<kota::cancellation_token> token = {});
+        document_links(const Ticket& ticket, kota::cancellation_token token = {});
 
     /// The folding ranges from the stateful worker holding the AST, none
     /// without one.
     kota::task<std::optional<std::vector<feature::FoldingRange>>, kota::ipc::Error>
-        folding_ranges(const Ticket& ticket, std::optional<kota::cancellation_token> token = {});
+        folding_ranges(const Ticket& ticket, kota::cancellation_token token = {});
 
     /// The code actions on a range of the buffer, from the stateful worker
     /// holding the AST; index requests come back unresolved.
     kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
         code_actions(const Ticket& ticket,
                      const protocol::Range& range,
-                     std::optional<kota::cancellation_token> token = {});
+                     kota::cancellation_token token = {});
 
     /// The interactive stateless builds: the buffer and its compile inputs
     /// go to a stateless worker, which compiles a buffer state the shared
@@ -91,16 +91,16 @@ public:
     RawResult completion(const Ticket& ticket,
                          const protocol::Position& position,
                          const feature::CompletionClient& client,
-                         std::optional<kota::cancellation_token> token = {});
+                         kota::cancellation_token token = {});
     RawResult signature_help(const Ticket& ticket,
                              const protocol::Position& position,
-                             std::optional<kota::cancellation_token> token = {});
+                             kota::cancellation_token token = {});
 
     /// Formatting on a stateless worker: no sema runs, but it is still this
     /// document's content on a worker.
     RawResult format(const Ticket& ticket,
                      std::optional<protocol::Range> range = {},
-                     std::optional<kota::cancellation_token> token = {});
+                     kota::cancellation_token token = {});
 
 private:
     /// Shared body of the typed requests to the worker holding the AST
@@ -112,7 +112,7 @@ private:
               EvidenceKind kind,
               llvm::StringRef label,
               Params params,
-              std::optional<kota::cancellation_token> token);
+              kota::cancellation_token token);
 
     /// Shared body of the interactive builds: identical inputs and
     /// quarantine passage, different wire type, evidence slot and label.
@@ -123,7 +123,7 @@ private:
                           const Ticket& ticket,
                           protocol::Position position,
                           Params wp,
-                          std::optional<kota::cancellation_token> token);
+                          kota::cancellation_token token);
 
     /// Send an AST query of kind `evidence` to the worker holding the
     /// document, which the caller compiled. A resend after a worker death
@@ -136,7 +136,7 @@ private:
     RequestResult<Params> ask(const Ticket& ticket,
                               std::uint8_t evidence,
                               const Params& params,
-                              std::optional<kota::cancellation_token> token,
+                              kota::cancellation_token token,
                               bool& unanswered);
 
     /// The single exit of every dispatch: a fresh reply settles the kind's

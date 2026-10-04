@@ -21,8 +21,7 @@ ZEST_SUITE(FormatSupport) {
 ZEST_CASE(FormatLLVMStringRef) {
     llvm::StringRef value = "hello";
     EXPECT(std::format("{}", value) == "hello");
-
-}  // namespace
+}
 
 ZEST_CASE(FormatEnumAndStruct) {
     auto enum_text = std::format("{}", ExampleEnum::Alpha);

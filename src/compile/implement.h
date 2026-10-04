@@ -111,6 +111,10 @@ struct CompilationUnitRef::Self {
     /// Cache for line starts of the main file.
     std::vector<std::uint32_t> line_starts_cache;
 
+    /// Cache for the main file's non-ASCII lines; an ASCII file has none,
+    /// so only nullopt means not built yet.
+    std::optional<std::vector<std::uint64_t>> non_ascii_cache;
+
     llvm::BumpPtrAllocator path_storage;
 
     std::vector<Diagnostic> diagnostics;

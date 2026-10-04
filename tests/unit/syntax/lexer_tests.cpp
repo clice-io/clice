@@ -53,8 +53,7 @@ ZEST_CASE(IgnoreComments) {
         }
         ASSERT(tokens.back().text(content) == "// comment");
     }
-
-}  // namespace
+}
 
 ZEST_CASE(TokenRanges) {
     llvm::StringRef content = "int foo = 42;";

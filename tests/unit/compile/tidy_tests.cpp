@@ -24,8 +24,7 @@ ZEST_CASE(ModulesLinked) {
         expected.erase(entry.getName());
     }
     ASSERT(expected.empty());
-
-}  // namespace
+}
 
 ZEST_CASE(Tidy) {
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();

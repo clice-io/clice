@@ -64,8 +64,7 @@ ZEST_CASE(PrimaryModuleInterface) {
     EXPECT(result.module_name == "mylib");
     EXPECT(result.is_interface_unit);
     EXPECT(!result.need_preprocess);
-
-}  // namespace
+}
 
 // Module implementation unit: module M;
 ZEST_CASE(ModuleImplementationUnit) {

@@ -354,10 +354,10 @@ void sort_symbols(std::vector<DocumentSymbol>& symbols) {
     }
 }
 
-auto to_protocol_symbol(const DocumentSymbol& symbol, const LineMap& map)
+auto to_protocol_symbol(const DocumentSymbol& symbol, const PositionMap& map)
     -> std::optional<protocol::DocumentSymbol> {
-    auto range = to_range(map, symbol.range);
-    auto selection_range = to_range(map, symbol.selection_range);
+    auto range = map.to_range(symbol.range);
+    auto selection_range = map.to_range(symbol.selection_range);
     if(!range || !selection_range)
         return std::nullopt;
 
@@ -396,21 +396,11 @@ auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol> {
 
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol> {
-    return document_symbols_to_protocol(document_symbols(unit),
-                                        unit.main_content(),
-                                        unit.line_starts(),
-                                        encoding);
+    return document_symbols_to_protocol(document_symbols(unit), main_position_map(unit, encoding));
 }
 
-auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
-                                  llvm::StringRef content,
-                                  llvm::ArrayRef<std::uint32_t> line_starts,
-                                  PositionEncoding encoding)
+auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols, const PositionMap& map)
     -> std::vector<protocol::DocumentSymbol> {
-    LineMap map(content,
-                std::span<const std::uint32_t>(line_starts.data(), line_starts.size()),
-                encoding);
-
     std::vector<protocol::DocumentSymbol> result;
     result.reserve(symbols.size());
 

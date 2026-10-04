@@ -105,12 +105,13 @@ auto document_format(llvm::StringRef file,
         return edits;
     }
 
-    LineMap map(content, encoding);
+    auto lines = lsp::line_starts(content);
+    PositionMap map{.content = content, .lines = lines, .encoding = encoding};
 
     for(const auto& replacement: *replacements) {
         auto begin = static_cast<std::uint32_t>(replacement.getOffset());
         auto end = static_cast<std::uint32_t>(begin + replacement.getLength());
-        auto range = to_range(map, {begin, end});
+        auto range = map.to_range({begin, end});
         if(!range)
             continue;
         protocol::TextEdit edit{

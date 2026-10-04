@@ -21,8 +21,7 @@ ZEST_CASE(SpawnAndExit) {
     w.peer->close_output();
     w.loop.schedule(w.peer->run());
     w.loop.run();
-
-}  // namespace
+}
 
 ZEST_CASE(CompileRequest) {
     TempDir tmp;

@@ -82,8 +82,7 @@ int main() {}
 #include <vector>
 #define DEBUG 1
 )");
-
-}  // namespace
+}
 
 ZEST_CASE(MultiLevelChain) {
     llvm::StringMap<std::string> mapping = {
