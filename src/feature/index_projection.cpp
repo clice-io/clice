@@ -282,19 +282,24 @@ auto index_semantic_tokens(llvm::StringRef content,
 
         // The contextual `module` and `import` open a module declaration
         // or an import at the start of a line, behind `export` at most,
-        // and before a name — clang's rule for recognizing them.
+        // and before what clang requires to recognize them.
         bool line_head = token.is_at_start_of_line || after_line_export;
         after_line_export = token.is_at_start_of_line && spelling == "export";
         if(profile.opts.CPlusPlusModules && line_head &&
-           (spelling == "module" || spelling == "import") &&
-           llvm::is_contained({clang::tok::raw_identifier,
-                               clang::tok::colon,
-                               clang::tok::semi,
-                               clang::tok::less,
-                               clang::tok::header_name,
-                               clang::tok::string_literal},
-                              lexer.next().kind)) {
-            lexical = {SymbolKind::Keyword, 0};
+           (spelling == "module" || spelling == "import")) {
+            auto next = lexer.next().kind;
+            if((spelling == "module" &&
+                llvm::is_contained(
+                    {clang::tok::raw_identifier, clang::tok::colon, clang::tok::semi},
+                    next)) ||
+               (spelling == "import" && llvm::is_contained({clang::tok::raw_identifier,
+                                                            clang::tok::colon,
+                                                            clang::tok::less,
+                                                            clang::tok::header_name,
+                                                            clang::tok::string_literal},
+                                                           next))) {
+                lexical = {SymbolKind::Keyword, 0};
+            }
         }
 
         // Directive overlay, driven by the lexer's preprocessor awareness:

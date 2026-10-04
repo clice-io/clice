@@ -273,7 +273,11 @@ feature::HoverInfo Features::module_hover_card(const index::IndexQuery::Cursor& 
     feature::HoverInfo hover;
     hover.name = module.name;
     hover.kind = SymbolKind::Module;
-    auto units = query.sites(module.hash, cursor.site.file, RelationKind::Definition);
+    auto units = gather(module.hash,
+                        cursor.site.file,
+                        [&](const index::IndexQuery& from, index::SymbolHash named) {
+                            return from.sites(named, cursor.site.file, RelationKind::Definition);
+                        });
     if(!units.empty()) {
         hover.definition = shown(project.file_table, units.front().path);
     }

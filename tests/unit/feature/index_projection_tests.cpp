@@ -126,7 +126,8 @@ export int exported_value = 1;
 
 TEST_CASE(ModuleKeywordsMatchAst) {
     // The contextual `module` and `import` are keywords only where they
-    // open a declaration or an import; a variable named `module` stays one.
+    // open a declaration or an import; variables of those names stay
+    // variables.
     add_files("main.cppm", R"(
 #[dep.cppm]
 export module dep;
@@ -139,8 +140,10 @@ import dep;
 export import dep;
 int use() {
     int module = value;
+    int import = value;
 module = 2;
-    return module;
+import;
+    return module + import;
 }
 module :private;
 )");
