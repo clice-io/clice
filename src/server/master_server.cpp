@@ -832,7 +832,6 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     for(auto& project: projects) {
         co_await project->shutdown();
     }
-    co_await pool.stop();
     for(auto& project: projects) {
         project->close();
     }

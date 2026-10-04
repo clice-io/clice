@@ -99,6 +99,8 @@ public:
     void initialize();
     void initialize(const Spelling& root);
 
+    /// After the serving phase, which stopped the pool: join the
+    /// background work, shut the projects down and close them.
     kota::task<> shutdown_and_cleanup();
 
     /// The project serving a file: the one its open document was routed
