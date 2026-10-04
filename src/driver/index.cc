@@ -547,6 +547,7 @@ std::string flag_names(index::SymbolFlags flags) {
         {index::SymbolFlags::SystemHeader,    "SystemHeader"   },
         {index::SymbolFlags::Completable,     "Completable"    },
         {index::SymbolFlags::Exported,        "Exported"       },
+        {index::SymbolFlags::AnonymousScope,  "AnonymousScope" },
     };
     for(auto [bit, name]: bits) {
         if(index::has_flag(flags, bit)) {

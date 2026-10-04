@@ -752,8 +752,19 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
         }
         target = *it;
     }
+    // A choice applies to an open document; one closed meanwhile keeps the
+    // choice it had.
     auto session = find_session(path_id);
-    if(target != owner && session) {
+    if(!session) {
+        co_return result;
+    }
+    // One project holds the file's choice (compiler routes by it).
+    for(auto& project: projects) {
+        if(project != target) {
+            project->contexts.forget_selection(path_id);
+        }
+    }
+    if(target != owner) {
         owner->close_session(path_id);
         owners[path_id] = target.get();
         target->open_session(path_id, session->text, session->version);
@@ -767,12 +778,6 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
     // index cannot give it (union rows). A rejected switch changed no
     // context and owes none.
     if(result.success) {
-        // One project holds the file's choice (compiler routes by it).
-        for(auto& project: projects) {
-            if(project != target) {
-                project->contexts.forget_selection(path_id);
-            }
-        }
         target->ast.escalate(*session);
     }
     co_return result;

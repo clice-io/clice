@@ -162,7 +162,8 @@ namespace clice::index {
 /// as far as their scope, `defined` operands reference their macro,
 /// dependent operators reference no candidates, and the include pasting a
 /// fragment into a declaration carries the fragment's uses; v24: symbols a
-/// module exports carry the Exported flag).
+/// module exports carry the Exported flag, and anonymous structs, unions
+/// and enums the AnonymousScope flag).
 constexpr inline std::uint32_t index_format_version = 24;
 
 /// Serialize a reflected index blob to `os` as a verified-readable

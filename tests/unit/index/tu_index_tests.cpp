@@ -1297,6 +1297,7 @@ TEST_CASE(ExportedFlag) {
                 struct Exported { void member(); };
             }
             export namespace api { int nested(); }
+            export template <typename Param> concept Small = sizeof(Param) < 4;
             int module_var = 0;
             int block_fn() { return 0; }
         )");
@@ -1308,8 +1309,26 @@ TEST_CASE(ExportedFlag) {
     ASSERT_TRUE(exported("block_fn"));
     ASSERT_TRUE(exported("Exported"));
     ASSERT_TRUE(exported("nested"));
+    ASSERT_TRUE(exported("Small"));
+    ASSERT_FALSE(exported("Param"));
     ASSERT_FALSE(exported("member"));
     ASSERT_FALSE(exported("module_var"));
+}
+
+TEST_CASE(AnonymousScopeFlag) {
+    build_index(R"(
+            enum { unnamed_value };
+            struct Holder { union { int union_member; }; };
+            struct { int declarator_member; } unnamed_object;
+        )");
+
+    auto anonymous = [&](llvm::StringRef member) {
+        auto parent = symbol_named(member).second.parent;
+        return has(tu_index.symbols[parent], index::SymbolFlags::AnonymousScope);
+    };
+    ASSERT_TRUE(anonymous("unnamed_value"));
+    ASSERT_TRUE(anonymous("union_member"));
+    ASSERT_FALSE(anonymous("declarator_member"));
 }
 
 TEST_CASE(ScopeNoLinkage) {

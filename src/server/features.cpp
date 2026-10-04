@@ -898,8 +898,7 @@ static kota::ipc::Error rename_refused(std::string message) {
     return kota::ipc::Error{kota::ipc::protocol::ErrorCode::RequestFailed, std::move(message)};
 }
 
-/// A rename edits the sources of a workspace folder: a project without
-/// one refuses it up front, before the cursor costs a compile.
+/// Refused up front, before the cursor costs a compile.
 static std::optional<kota::ipc::Error> refuse_rootless(const Project& project) {
     if(project.config.workspace_root.empty()) {
         return rename_refused("a rename edits the sources of a workspace folder; open one");

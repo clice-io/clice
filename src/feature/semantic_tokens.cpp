@@ -509,8 +509,6 @@ private:
                     /// keywords the lexical pass paints on its own, and the
                     /// separators stay unpainted, matching the import side.
                     anchor_offset(module->keyword.begin, {SymbolKind::Keyword, 0});
-                    /// An interface unit defines its module; an
-                    /// implementation unit references it.
                     Classified name{SymbolKind::Module,
                                     unit.is_module_interface_unit()
                                         ? SymbolModifiers::to_mask(SymbolModifiers::Definition)

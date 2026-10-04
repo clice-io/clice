@@ -39,6 +39,19 @@ function twoProjects(ws: Workspace): void {
     ws.writeCDB(["beta/main.cpp"], { extraArgs: ["-DIN_BETA"], at: "beta/compile_commands.json" });
 }
 
+/// One file both folders' databases list, each under its own flag.
+function sharedFile(ws: Workspace): void {
+    ws.write("alpha/shared.cpp", "int shared() { return 0; }\n");
+    ws.writeCDB(["alpha/shared.cpp"], {
+        extraArgs: ["-DFIRST"],
+        at: "alpha/compile_commands.json",
+    });
+    ws.writeCDB(["alpha/shared.cpp"], {
+        extraArgs: ["-DSECOND"],
+        at: "beta/compile_commands.json",
+    });
+}
+
 /// A library and an application including its header, each its own folder.
 function libraryAndApp(ws: Workspace): void {
     ws.write(
@@ -593,15 +606,7 @@ test("context from another folder", async ({ session }) => {
 
 test("own configuration of another folder", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    workspace.write("alpha/shared.cpp", "int shared() { return 0; }\n");
-    workspace.writeCDB(["alpha/shared.cpp"], {
-        extraArgs: ["-DFIRST"],
-        at: "alpha/compile_commands.json",
-    });
-    workspace.writeCDB(["alpha/shared.cpp"], {
-        extraArgs: ["-DSECOND"],
-        at: "beta/compile_commands.json",
-    });
+    sharedFile(workspace);
     await client.initialize(workspace, { folders: ["alpha", "beta"] });
 
     // Both databases list the file: its owner's entry comes first, the
@@ -621,15 +626,7 @@ test("own configuration of another folder", async ({ session }) => {
 
 test("a closed file keeps its choice", async ({ session }) => {
     const { client, workspace } = session.tmp();
-    workspace.write("alpha/shared.cpp", "int shared() { return 0; }\n");
-    workspace.writeCDB(["alpha/shared.cpp"], {
-        extraArgs: ["-DFIRST"],
-        at: "alpha/compile_commands.json",
-    });
-    workspace.writeCDB(["alpha/shared.cpp"], {
-        extraArgs: ["-DSECOND"],
-        at: "beta/compile_commands.json",
-    });
+    sharedFile(workspace);
     await client.initialize(workspace, { folders: ["alpha", "beta"] });
 
     const [shared] = await client.openAndWait("alpha/shared.cpp");
@@ -644,8 +641,6 @@ test("a closed file keeps its choice", async ({ session }) => {
     });
     expect(switched.success).toBe(true);
 
-    // A switch for a document no longer open fails, and the choice made
-    // before stands.
     client.close(shared);
     const refused = await client.switchContext(shared, shared, { commandHash: first });
     expect(refused.success).toBe(false);

@@ -285,7 +285,8 @@ auto index_semantic_tokens(llvm::StringRef content,
         // and before a name — clang's rule for recognizing them.
         bool line_head = token.is_at_start_of_line || after_line_export;
         after_line_export = token.is_at_start_of_line && spelling == "export";
-        if(line_head && (spelling == "module" || spelling == "import") &&
+        if(profile.opts.CPlusPlusModules && line_head &&
+           (spelling == "module" || spelling == "import") &&
            llvm::is_contained({clang::tok::raw_identifier,
                                clang::tok::colon,
                                clang::tok::semi,
@@ -516,9 +517,8 @@ auto index_folding_ranges(llvm::StringRef content,
                         levels.pop_back();
                     }
                 } else if(spelling == "pragma") {
-                    auto region = lexer.next();
-                    if(!region.is_eod() &&
-                       (region.text(content) == "region" || region.text(content) == "endregion")) {
+                    auto pragma = lexer.next().text(content);
+                    if(pragma == "region" || pragma == "endregion") {
                         block_directives.push_back(hash_begin);
                     }
                 }

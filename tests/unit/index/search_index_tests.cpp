@@ -253,12 +253,12 @@ TEST_CASE(UnnamedScopes) {
     corpus.add("ns", SymbolKind::Namespace);
     corpus.add("ns::(anonymous enum)",
                SymbolKind::Enum,
-               SymbolFlags::HasDefinition | SymbolFlags::Unnamed);
+               SymbolFlags::HasDefinition | SymbolFlags::Unnamed | SymbolFlags::AnonymousScope);
     corpus.add("ns::(anonymous enum)::kSize", SymbolKind::EnumMember);
     corpus.add("S", SymbolKind::Struct);
     corpus.add("S::(anonymous union)",
                SymbolKind::Union,
-               SymbolFlags::HasDefinition | SymbolFlags::Unnamed);
+               SymbolFlags::HasDefinition | SymbolFlags::Unnamed | SymbolFlags::AnonymousScope);
     corpus.add("S::(anonymous union)::member_a", SymbolKind::Field);
     auto built = corpus.build();
     EXPECT_EQ(names(corpus, built, "ns::kSize"), (Names{"kSize"}));

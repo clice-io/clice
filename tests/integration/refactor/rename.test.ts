@@ -237,4 +237,5 @@ test("a rootless server refuses up front", async ({ session }) => {
     const [uri] = await client.openAndWait("main.cpp");
 
     await expect(client.prepareRenameAt(uri, 0, 5)).rejects.toThrow("workspace folder");
+    await expect(client.renameAt(uri, 0, 5, "evaluate")).rejects.toThrow("workspace folder");
 });

@@ -1,10 +1,10 @@
 #include "compile/directive.h"
 
 #include "compile/implement.h"
+#include "syntax/lexer.h"
 #include "vfs/path.h"
 
 #include "clang/Basic/Module.h"
-#include "clang/Lex/Lexer.h"
 #include "clang/Lex/MacroArgs.h"
 #include "clang/Lex/MacroInfo.h"
 #include "clang/Lex/Preprocessor.h"
@@ -213,24 +213,19 @@ public:
             return;
         }
         auto [name_fid, offset] = unit.decompose_location(start);
-        auto content = unit.file_content(name_fid);
-        clang::Lexer lexer(unit.create_location(name_fid, 0),
-                           unit.lang_options(),
-                           content.begin(),
-                           content.begin() + offset,
-                           content.end());
-        clang::Token token;
-        lexer.LexFromRawLexer(token);
-        if(token.is(clang::tok::colon)) {
-            lexer.LexFromRawLexer(token);
+        Lexer lexer(unit.file_content(name_fid).substr(offset),
+                    {.lang_opts = &unit.lang_options()});
+        auto token = lexer.advance();
+        if(token.kind == clang::tok::colon) {
+            token = lexer.advance();
         }
-        while(token.is(clang::tok::raw_identifier)) {
-            import.name_locations.push_back(token.getLocation());
-            lexer.LexFromRawLexer(token);
-            if(token.isNot(clang::tok::period)) {
+        while(token.is_identifier()) {
+            import.name_locations.push_back(
+                unit.create_location(name_fid, offset + token.range.begin));
+            if(lexer.advance().kind != clang::tok::period) {
                 break;
             }
-            lexer.LexFromRawLexer(token);
+            token = lexer.advance();
         }
     }
 

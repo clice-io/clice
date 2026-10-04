@@ -342,6 +342,14 @@ public:
         if(auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(decl); ns && ns->isInline()) {
             flags |= SymbolFlags::InlineNamespace;
         }
+        if(auto* record = llvm::dyn_cast<clang::RecordDecl>(decl);
+           record && record->isAnonymousStructOrUnion()) {
+            flags |= SymbolFlags::AnonymousScope;
+        }
+        if(auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(decl);
+           enumeration && !enumeration->isScoped() && !enumeration->getIdentifier()) {
+            flags |= SymbolFlags::AnonymousScope;
+        }
         // `FWD(Expr)` forward-declares a class defined by hand.
         if(llvm::all_of(decl->redecls(), [](const clang::Decl* redecl) {
                return redecl->getLocation().isMacroID();

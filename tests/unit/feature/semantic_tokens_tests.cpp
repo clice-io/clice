@@ -208,11 +208,8 @@ template <class T> struct D : B<T> {
 };
 )cpp");
 
-    for(auto name: {"member", "qualified"}) {
-        auto* token = find_by_range(name);
-        ASSERT_TRUE(token != nullptr);
-        ASSERT_EQ(token->type, static_cast<std::uint32_t>(SymbolKind::Method));
-    }
+    EXPECT_TOKEN("member", SymbolKind::Method);
+    EXPECT_TOKEN("qualified", SymbolKind::Method);
 }
 
 TEST_CASE(UTF16LengthDiffersFromUTF8) {
@@ -297,6 +294,24 @@ int y = x;
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);
+}
+
+TEST_CASE(DottedModuleImport) {
+    add_files("main.cpp", R"(
+#[mod.cppm]
+export module app.core;
+export int x = 42;
+
+#[main.cpp]
+import §(m0)⟦app⟧.§(m1)⟦core⟧;
+int y = x;
+)");
+    ASSERT_TRUE(compile_with_modules());
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->main_content(), tokens);
+
+    EXPECT_TOKEN("m0", SymbolKind::Module);
+    EXPECT_TOKEN("m1", SymbolKind::Module);
 }
 
 TEST_CASE(ImportChannelAudit) {

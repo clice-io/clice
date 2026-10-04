@@ -57,10 +57,10 @@ auto resolver() {
 
 /// The projected tokens of the compiled unit equal the AST's, down to the
 /// modifiers the index knows.
-void expect_tokens_match_ast(llvm::StringRef file) {
+void expect_tokens_match_ast() {
     auto ast = feature::semantic_tokens(*unit);
     auto projected = feature::index_semantic_tokens(unit->main_content(),
-                                                    feature::index_lang_options(file, false),
+                                                    feature::index_lang_options("main.cpp", false),
                                                     occurrences,
                                                     decls,
                                                     resolver());
@@ -109,7 +109,7 @@ int total(Point point, int base) {
 )cpp");
     ASSERT_TRUE(compile());
     extract_rows();
-    expect_tokens_match_ast("main.cpp");
+    expect_tokens_match_ast();
 }
 
 TEST_CASE(ModuleTokensMatchAst) {
@@ -120,7 +120,32 @@ export int exported_value = 1;
 )cpp");
     ASSERT_TRUE(compile());
     extract_rows();
-    expect_tokens_match_ast("main.cpp");
+    expect_tokens_match_ast();
+}
+
+TEST_CASE(ModuleKeywordsMatchAst) {
+    // The contextual `module` and `import` are keywords only where they
+    // open a declaration or an import; a variable named `module` stays one.
+    add_files("main.cppm", R"(
+#[dep.cppm]
+export module dep;
+export int value = 1;
+
+#[main.cppm]
+module;
+export module demo.core;
+import dep;
+export import dep;
+int use() {
+    int module = value;
+module = 2;
+    return module;
+}
+module :private;
+)");
+    ASSERT_TRUE(compile_with_modules());
+    extract_rows();
+    expect_tokens_match_ast();
 }
 
 TEST_CASE(ModuleOutlineMatchesAst) {
@@ -447,6 +472,20 @@ TEST_CASE(DriverDefaultKeywords) {
     };
     ASSERT_EQ(kind_at(0), SymbolKind(SymbolKind::Primitive).value_of());
     ASSERT_EQ(kind_at(11), SymbolKind(SymbolKind::Keyword).value_of());
+}
+
+TEST_CASE(ModuleKeywordsNeedModules) {
+    // Before C++20 a line-leading `module` is a plain name.
+    llvm::StringRef content = "module m;\n";
+    auto tokens = feature::index_semantic_tokens(
+        content,
+        feature::index_lang_options("main.cpp", false, "c++17"),
+        {},
+        {},
+        [](index::SymbolHash) -> std::optional<index::SymbolRef> { return std::nullopt; });
+    ASSERT_TRUE(std::ranges::none_of(tokens, [](const feature::SemanticToken& token) {
+        return token.kind == SymbolKind::Keyword;
+    }));
 }
 
 TEST_CASE(StandardFromCommand) {

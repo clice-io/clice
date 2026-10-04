@@ -264,6 +264,36 @@ TEST_CASE(SearchSymbols) {
     ASSERT_EQ(results.front().symbol.name, "Searchable");
 }
 
+TEST_CASE(UnnamedScopes) {
+    // An unnamed enum's enumerators and an anonymous union's members are
+    // named through the enclosing scope, as lookup names them.
+    add_main("main.cpp", R"(
+        namespace outer {
+            enum { §(size)⟦§(size)kSize⟧ = 4 };
+            struct Holder { union { int §(member)⟦§(member)member⟧; }; };
+            typedef struct { int §(field)⟦§(field)field⟧; } Point;
+        }
+    )");
+    ASSERT_TRUE(compile());
+    merge_into_workspace();
+
+    auto at = [&](llvm::StringRef name) {
+        index::SymbolHash found = 0;
+        project.project_index.shards[main_id].lookup(point(name), [&](const index::Occurrence& o) {
+            found = o.target;
+            return false;
+        });
+        return found;
+    };
+    ASSERT_EQ(query.qualified_name(at("size")), "outer::kSize");
+    ASSERT_EQ(query.qualified_name(at("member")), "outer::Holder::member");
+    // An unnamed class with a declarator or a typedef name is no anonymous
+    // scope: lookup never names its members through `outer`.
+    ASSERT_EQ(query.qualified_name(at("field")), "outer::(anonymous struct)::field");
+    ASSERT_EQ(search("outer::kSize").size(), std::size_t(1));
+    ASSERT_EQ(search("Holder::member").size(), std::size_t(1));
+}
+
 TEST_CASE(QualifiedNames) {
     add_main("main.cpp", R"(
         namespace outer { inline namespace v2 { namespace inner {

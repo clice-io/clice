@@ -35,7 +35,10 @@ bool is_templated(const clang::Decl* decl) {
 }
 
 bool is_exported(const clang::Decl* decl) {
-    if(!decl->getDeclContext()->getRedeclContext()->isFileContext()) {
+    // A concept's or alias template's parameters sit in the enclosing
+    // context, the `export` block included.
+    if(decl->isTemplateParameter() ||
+       !decl->getDeclContext()->getRedeclContext()->isFileContext()) {
         return false;
     }
     return llvm::any_of(decl->redecls(),
