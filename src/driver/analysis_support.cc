@@ -46,10 +46,18 @@ std::vector<std::string> comma_list(llvm::StringRef text) {
     return items;
 }
 
+std::expected<std::optional<analysis::StdModules>, std::string>
+    read_std(llvm::StringRef directory) {
+    if(directory.empty()) {
+        return std::nullopt;
+    }
+    return analysis::read_std_modules(directory);
+}
+
 std::expected<analysis::PartitionSpec, std::string>
     read_partition(analysis::PartitionSpec spec,
                    llvm::StringRef path,
-                   const analysis::StdModules* libcxx) {
+                   const std::optional<analysis::StdModules>& libcxx) {
     if(path.empty()) {
         return spec;
     }
@@ -64,26 +72,28 @@ std::expected<analysis::PartitionSpec, std::string>
             std::format("{} is not a partition file: {}", path.str(), result.error().message));
     }
     for(auto& module: file.modules) {
+        analysis::PartitionSpec::Module claimed{
+            .name = std::move(module.name),
+            .files = std::move(module.files),
+        };
         if(module.textual.value_or(false)) {
-            spec.textual.push_back(module.name);
+            claimed.kind = analysis::ModuleKind::Textual;
         }
         if(module.external.value_or(false)) {
-            spec.external.push_back(module.name);
+            claimed.kind = analysis::ModuleKind::External;
         }
         if(module.provides) {
             if(*module.provides != "std.compat" || !libcxx) {
                 return std::unexpected(
                     std::format("module {} provided by {}: only std.compat, given --std",
-                                module.name,
+                                claimed.name,
                                 *module.provides));
             }
-            std::vector<std::string> names;
             for(auto& name: libcxx->compat) {
-                names.push_back(name.getKey().str());
+                claimed.provides.insert(name.getKey());
             }
-            spec.provides.emplace_back(module.name, std::move(names));
         }
-        spec.modules.emplace_back(std::move(module.name), std::move(module.files));
+        spec.modules.push_back(std::move(claimed));
     }
     return spec;
 }

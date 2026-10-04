@@ -15,7 +15,6 @@
 #include "vfs/file_system.h"
 #include "vfs/path.h"
 
-#include "kota/meta/enum.h"
 #include "kota/support/glob_pattern.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -268,7 +267,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             includes[includer].push_back(file);
             include_at[{includer.raw, node.line}] = file;
             tree.files.push_back(id_of(file));
-            tree.parents.push_back(node.parent == index::no_node ? none : node.parent);
+            tree.parents.push_back(node.parent);
             tree.skipped.push_back(node.skipped);
             if(auto from = id_of(includer), to = id_of(file); from != none && to != none) {
                 include_lines.try_emplace({from, to}, node.line);
@@ -287,15 +286,6 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 if(auto id = id_of(table.version(version).fid); id != none) {
                     contributors[{id, rows}].push_back(unit);
                 }
-            }
-        }
-    }
-    facts.nodes_of.resize(facts.files.size());
-    for(std::uint32_t tree = 0; tree < facts.trees.size(); tree += 1) {
-        auto& files = facts.trees[tree].files;
-        for(std::uint32_t node = 0; node < files.size(); node += 1) {
-            if(files[node] != none) {
-                facts.nodes_of[files[node]].emplace_back(tree, node);
             }
         }
     }
@@ -558,26 +548,18 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     // anew (<assert.h>, <limits.h>): that #undef ends nothing.
     llvm::DenseSet<index::SymbolHash> undefined;
     for(std::uint32_t id = 0; id < facts.files.size(); id += 1) {
-        auto* shard = index.shard(fids[id]);
-        if(!shard) {
-            continue;
-        }
         for(auto& [offset, hash]: use_rows[id]) {
             if(undefined.contains(hash)) {
                 continue;
             }
+            auto* shard = index.shard(fids[id]);
             auto identity = identity_of(hash, shard);
             if(!identity || identity->kind != SymbolKind::Macro) {
                 continue;
             }
-            line_text(id, 1);
-            auto starts = shard->line_starts();
             auto line = line_of(*shard, offset);
-            if(line == 0 || line > starts.size()) {
-                continue;
-            }
             auto text =
-                llvm::StringRef(contents[id]).substr(starts[line - 1]).split('\n').first.ltrim();
+                text_of(id).substr(shard->line_starts()[line - 1]).split('\n').first.ltrim();
             if(!text.consume_front("#") || !text.ltrim().starts_with("undef")) {
                 continue;
             }
@@ -1338,7 +1320,6 @@ std::expected<void, std::string> move_entities(Facts& facts, llvm::StringRef spe
         facts.files.push_back({.path = path.str()});
         facts.uses.emplace_back();
         facts.macro_uses.emplace_back();
-        facts.nodes_of.emplace_back();
     }
 
     auto moves = [&](std::uint32_t entity) {
@@ -1438,14 +1419,14 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
     };
 
     std::vector<std::pair<llvm::StringRef, kota::GlobPattern>> globs;
-    for(auto& [name, patterns]: spec.modules) {
-        for(auto& pattern: patterns) {
+    for(auto& module: spec.modules) {
+        for(auto& pattern: module.files) {
             auto glob = kota::GlobPattern::create(pattern);
             if(!glob) {
                 return std::unexpected(
                     std::format("invalid glob '{}': {}", pattern, glob.error().message));
             }
-            globs.emplace_back(name, std::move(*glob));
+            globs.emplace_back(module.name, std::move(*glob));
         }
     }
 
@@ -1526,24 +1507,25 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
     result.modules = std::move(modules);
 
     auto count = result.modules.size();
-    result.wrapped.assign(count, false);
-    result.textual.assign(count, false);
-    result.external.assign(count, false);
+    result.kinds.assign(count, ModuleKind::Program);
     result.provides.resize(count);
     for(auto& claimed: spec.modules) {
         // A module whose globs claim no scoped file has no entry.
-        if(auto module = result.module_named(claimed.first); module != count) {
-            auto kept = llvm::is_contained(spec.textual, claimed.first);
-            result.textual[module] = kept;
-            result.wrapped[module] = !kept;
-            result.external[module] = llvm::is_contained(spec.external, claimed.first);
+        auto module = result.module_named(claimed.name);
+        if(module == count) {
+            continue;
         }
-    }
-    for(auto& [name, names]: spec.provides) {
-        if(auto module = result.module_named(name); module != count) {
-            for(auto& provided: names) {
-                result.provides[module].insert(provided);
-            }
+        auto& kind = result.kinds[module];
+        if(kind != ModuleKind::Program && claimed.kind != ModuleKind::Wrapped &&
+           kind != claimed.kind) {
+            return std::unexpected(
+                std::format("module {} is both textual and external", claimed.name));
+        }
+        if(kind == ModuleKind::Program || claimed.kind != ModuleKind::Wrapped) {
+            kind = claimed.kind;
+        }
+        for(auto& provided: claimed.provides) {
+            result.provides[module].insert(provided.getKey());
         }
     }
     return result;
@@ -2779,12 +2761,18 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     // What such a header declares is there only where the user includes it
     // itself: the C library's <time.h> under __need_time_t lacks localtime_r.
     std::vector<std::vector<std::vector<std::uint32_t>>> children(facts.trees.size());
+    /// Per scoped file, its (tree, node) pairs, ordered.
+    std::vector<std::vector<std::pair<std::uint32_t, std::uint32_t>>> nodes_of(facts.files.size());
     for(std::uint32_t tree = 0; tree < facts.trees.size(); tree += 1) {
+        auto& files = facts.trees[tree].files;
         auto& parents = facts.trees[tree].parents;
         children[tree].resize(parents.size());
         for(std::uint32_t node = 0; node < parents.size(); node += 1) {
-            if(parents[node] != none && parents[node] < parents.size()) {
+            if(parents[node] != none) {
                 children[tree][parents[node]].push_back(node);
+            }
+            if(files[node] != none) {
+                nodes_of[files[node]].emplace_back(tree, node);
             }
         }
     }
@@ -2803,7 +2791,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         }
         auto home = module_of(user);
         auto emptied = [&](std::uint32_t file) {
-            return module_of(file) != home && partition.wrapped[module_of(file)];
+            return module_of(file) != home && partition.emptied(module_of(file));
         };
         llvm::SmallVector<std::uint32_t> files;
         llvm::SmallVector<std::pair<std::uint32_t, std::uint32_t>> nodes;
@@ -2821,7 +2809,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             }
         };
         if(contextual(user)) {
-            for(auto [tree, node]: facts.nodes_of[user]) {
+            for(auto [tree, node]: nodes_of[user]) {
                 visit_node(tree, node);
             }
         } else {
@@ -2839,7 +2827,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                     }
                     auto entered = false;
                     if(contextual(included)) {
-                        for(auto [tree, node]: facts.nodes_of[included]) {
+                        for(auto [tree, node]: nodes_of[included]) {
                             auto parent = facts.trees[tree].parents[node];
                             if(parent != none && facts.trees[tree].files[parent] == current &&
                                !facts.trees[tree].skipped[node]) {
@@ -2908,10 +2896,11 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
         auto& info = facts.entities[entity];
         auto module = module_of(info.owner);
-        auto kept = partition.textual[module];
+        auto kept = partition.kinds[module] == ModuleKind::Textual;
         auto& users = reverse.users[entity];
         auto user = llvm::find_if(users, [&](std::uint32_t candidate) {
-            return module_of(candidate) != module && !partition.external[module_of(candidate)] &&
+            return module_of(candidate) != module &&
+                   partition.kinds[module_of(candidate)] != ModuleKind::External &&
                    (!kept || !reaches(candidate, info.owner));
         });
         auto outside = user != users.end();
@@ -2964,7 +2953,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         });
     }
     for(std::uint32_t module = 0; module < count; module += 1) {
-        if(partition.textual[module]) {
+        if(partition.kinds[module] == ModuleKind::Textual) {
             continue;
         }
         for(auto header: textual[module]) {
@@ -3023,11 +3012,13 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     // a unit entering the user.
     auto entry_of = [&](std::uint32_t module, std::uint32_t header, std::uint32_t user) {
         llvm::DenseSet<std::uint32_t> chain;
-        for(auto [tree, node]: facts.nodes_of[header]) {
+        for(auto [tree, node]: nodes_of[header]) {
             auto& in = facts.trees[tree];
             if(in.skipped[node] || (in.unit != user && !llvm::is_contained(in.files, user))) {
                 continue;
             }
+            // A persisted parent column can be cyclic (see the manifest
+            // reader): no chain is longer than the tree.
             for(std::size_t steps = 0; node != none && steps < in.parents.size();
                 node = in.parents[node], steps += 1) {
                 chain.insert(in.files[node]);
@@ -3101,7 +3092,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         std::ranges::sort(interface.entries, {}, &InterfaceHeader::file);
         std::map<std::uint32_t, std::string> included;
         for(auto header: textual[module]) {
-            if(!partition.textual[module]) {
+            if(partition.kinds[module] != ModuleKind::Textual) {
                 included.try_emplace(header);
                 continue;
             }

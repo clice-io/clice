@@ -8,15 +8,9 @@
 #include "driver/analysis_support.h"
 #include "driver/driver.h"
 #include "driver/query_support.h"
-#include "project/command_resolver.h"
-#include "project/open_index.h"
-#include "project/project.h"
-#include "vfs/file_system.h"
 
 #include "kota/codec/json/json.h"
-#include "kota/support/glob_pattern.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/Path.h"
 
 namespace clice::driver {
 
@@ -142,18 +136,14 @@ auto make_modules_command() {
 }
 
 int run_modules(const ModulesOptions& opts) {
-    auto fail = [](std::string error, std::vector<std::string> stale = {}) {
-        print_json(Failure{.error = std::move(error), .stale = std::move(stale)});
+    auto fail = [](std::string error) {
+        print_json(Failure{.error = std::move(error)});
         return 1;
     };
 
-    std::optional<analysis::StdModules> libcxx;
-    if(opts.std) {
-        auto read = analysis::read_std_modules(*opts.std);
-        if(!read) {
-            return fail(read.error());
-        }
-        libcxx = std::move(*read);
+    auto libcxx = read_std(opts.std.value_or(""));
+    if(!libcxx) {
+        return fail(libcxx.error());
     }
     auto spec = read_partition(
         {
@@ -162,7 +152,7 @@ int run_modules(const ModulesOptions& opts) {
             .merges = comma_list(opts.merge.value_or("")),
         },
         opts.partition.value_or(""),
-        libcxx ? &*libcxx : nullptr);
+        *libcxx);
     if(!spec) {
         return fail(spec.error());
     }

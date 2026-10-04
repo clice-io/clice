@@ -46,11 +46,10 @@ Under `--out`:
 
 Files whose content did not change keep their timestamps, and files a previous run wrote that the partition no longer produces are removed.
 
-On stdout, paths relative to `--out`:
+On stdout, the build plan: module sources, mirrors and the prelude relative to `--out`, libc++'s sources and each library's include roots as found:
 
 ```json
 {
-  "out": "...",
   "stdSources": ["share/libc++/v1/std.cppm", "share/libc++/v1/std.compat.cppm"],
   "modules": [
     {

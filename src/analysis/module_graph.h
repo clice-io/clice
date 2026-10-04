@@ -228,8 +228,6 @@ struct NamespaceAlias {
     std::uint32_t file = 0;
 };
 
-/// What the persisted index says about the scoped files, independent of
-/// any partition into modules.
 struct IncludeTree {
     /// The unit, `~0u` out of scope.
     std::uint32_t unit = 0;
@@ -241,6 +239,8 @@ struct IncludeTree {
     std::vector<char> skipped;
 };
 
+/// What the persisted index says about the scoped files, independent of
+/// any partition into modules.
 struct Facts {
     std::vector<File> files;
     llvm::StringMap<std::uint32_t> file_ids;
@@ -267,9 +267,6 @@ struct Facts {
     /// a header's include edges merged over units claim chains no single
     /// unit runs (<stdio.h> includes <stdarg.h> for its va_list type alone).
     std::vector<IncludeTree> trees;
-
-    /// Per scoped file, its (tree, node) pairs, ordered.
-    std::vector<std::vector<std::pair<std::uint32_t, std::uint32_t>>> nodes_of;
 };
 
 /// Read the facts of every indexed file whose path, workspace-relative or
@@ -277,26 +274,39 @@ struct Facts {
 /// index.
 Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_scope);
 
+/// What a module is to the program a partition wraps.
+enum class ModuleKind : std::uint8_t {
+    /// A directory of the program no glob claims: its headers stay.
+    Program,
+
+    /// Wrapped: files of other modules see its headers emptied and import
+    /// a module interface over them.
+    Wrapped,
+
+    /// Kept headers beside the wrapped modules, as the C library beside
+    /// `import std`.
+    Textual,
+
+    /// An existing module interface stands for it, as libc++'s std: its
+    /// headers are emptied, and its files compile as they are there.
+    External,
+};
+
 /// An assignment of every scoped file to a module.
 struct Partition {
     std::vector<std::string> modules;
     std::vector<std::uint32_t> module_of;
 
-    /// Per module: the partition file wraps it, so the files of other
-    /// modules see its headers emptied.
-    std::vector<char> wrapped;
-
-    /// Per module: the partition file keeps it headers, as the C library
-    /// beside `import std`.
-    std::vector<char> textual;
-
-    /// Per module: an existing module interface stands for it, as libc++'s
-    /// std: its files compile as they are there, needing nothing of others.
-    std::vector<char> external;
+    std::vector<ModuleKind> kinds;
 
     /// Per module: the names of its headers another module's interface
     /// exports, as `std.compat` exports the C library's.
     std::vector<llvm::StringSet<>> provides;
+
+    /// Whether files of other modules see the module's headers emptied.
+    bool emptied(std::uint32_t module) const {
+        return kinds[module] == ModuleKind::Wrapped || kinds[module] == ModuleKind::External;
+    }
 
     /// The module so named; `modules.size()` for none.
     std::uint32_t module_named(llvm::StringRef name) const {
@@ -309,24 +319,29 @@ struct PartitionSpec {
     /// whole directory.
     std::uint32_t depth = 0;
 
-    /// Modules claimed by globs over workspace-relative paths, first match
-    /// wins; unclaimed files keep their directory module.
-    std::vector<std::pair<std::string, std::vector<std::string>>> modules;
+    struct Module {
+        std::string name;
+
+        /// Globs over workspace-relative paths, absolute ones outside the
+        /// workspace.
+        std::vector<std::string> files;
+
+        ModuleKind kind = ModuleKind::Wrapped;
+
+        /// The names of its headers another module's interface exports.
+        llvm::StringSet<> provides;
+    };
+
+    /// Modules claimed by globs, first match wins; unclaimed files keep their
+    /// directory module. A name listed again adds globs, and its kind and
+    /// provided names.
+    std::vector<Module> modules;
 
     /// `path=module` reassignments, applied after the globs.
     std::vector<std::string> moves;
 
     /// `a+b+c`: b's and c's files join a.
     std::vector<std::string> merges;
-
-    /// Modules of `modules` that stay headers.
-    std::vector<std::string> textual;
-
-    /// Modules of `modules` an existing module interface stands for.
-    std::vector<std::string> external;
-
-    /// Per module of `modules`, the names another module exports for it.
-    std::vector<std::pair<std::string, std::vector<std::string>>> provides;
 };
 
 std::expected<Partition, std::string> partition(const Facts& facts, const PartitionSpec& spec);
@@ -742,11 +757,10 @@ struct Interface {
 
     /// Headers providing an internal-linkage entity other modules name, or
     /// a non-constant static variable to each file of theirs including
-    /// them: no
-    /// interface exports those, so the headers stay textual wherever the
-    /// module is imported. For a module kept headers, the headers to
-    /// include for what files of other modules name but reach only through
-    /// emptied headers, no imported module providing it.
+    /// them: no interface exports those, so the headers stay textual
+    /// wherever the module is imported. For a module kept headers, the
+    /// headers to include for what files of other modules name but reach
+    /// only through emptied headers, no imported module providing it.
     std::vector<InterfaceHeader> textual;
 
     /// Macros other modules use and those their directives expand, in the

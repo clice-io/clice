@@ -74,19 +74,6 @@ auto make_modulize_command() {
     return kota::deco::cli::command<ModulizeOptions>("clice modulize [OPTIONS]");
 }
 
-/// What the build needs, paths relative to `out`: the modules to compile
-/// and in which order, libc++'s module sources, the directories every
-/// compilation of the program puts first on its include path, and the
-/// prelude it force-includes.
-struct Plan {
-    std::string out;
-    std::vector<std::string> std_sources;
-    std::vector<analysis::Wrapping::Module> modules;
-    std::vector<std::string> mirrors;
-    std::string prelude;
-    std::vector<std::string> warnings;
-};
-
 /// Write the files whose content changed, so a regeneration rebuilds only
 /// what it touched, and remove the ones a previous run left: a stale empty
 /// header in a mirror would hide the real one.
@@ -135,15 +122,11 @@ int run_modulize(const ModulizeOptions& opts) {
     if(!opts.partition || !opts.out) {
         return fail("modulize needs --partition and --out");
     }
-    std::optional<analysis::StdModules> libcxx;
-    if(opts.std) {
-        auto read = analysis::read_std_modules(*opts.std);
-        if(!read) {
-            return fail(read.error());
-        }
-        libcxx = std::move(*read);
+    auto libcxx = read_std(opts.std.value_or(""));
+    if(!libcxx) {
+        return fail(libcxx.error());
     }
-    auto spec = read_partition({}, *opts.partition, libcxx ? &*libcxx : nullptr);
+    auto spec = read_partition({}, *opts.partition, *libcxx);
     if(!spec) {
         return fail(spec.error());
     }
@@ -166,8 +149,7 @@ int run_modulize(const ModulizeOptions& opts) {
     if(!interfaces) {
         return fail(interfaces.error());
     }
-    auto wrapping =
-        analysis::wrap(*partition, *interfaces, libcxx ? &*libcxx : nullptr, loaded->root);
+    auto wrapping = analysis::wrap(*partition, *interfaces, *libcxx, loaded->root);
     if(!wrapping) {
         return fail(wrapping.error());
     }
@@ -176,14 +158,7 @@ int run_modulize(const ModulizeOptions& opts) {
     if(auto written = write_files(out, wrapping->files); !written) {
         return fail(written.error());
     }
-    print_json(Plan{
-        .out = out,
-        .std_sources = std::move(wrapping->std_sources),
-        .modules = std::move(wrapping->modules),
-        .mirrors = std::move(wrapping->mirrors),
-        .prelude = std::move(wrapping->prelude),
-        .warnings = std::move(wrapping->warnings),
-    });
+    print_json(wrapping->plan);
     return 0;
 }
 

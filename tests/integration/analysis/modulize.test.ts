@@ -27,7 +27,6 @@ interface Interface {
 }
 
 interface Plan {
-    out: string;
     stdSources: string[];
     modules: { name: string; source: string; imports: string[]; includeRoots: string[] }[];
     mirrors: string[];
@@ -216,7 +215,7 @@ test("library interfaces", ({ session }) => {
     expect(
         ["alpha::Thing", "alpha::make", "alpha::fake_abs"].filter((n) => exported.has(n)),
     ).toEqual(["alpha::Thing", "alpha::make", "alpha::fake_abs"]);
-    expect(alpha.aliases).toEqual([{ name: "al", target: "alpha" }]);
+    expect(alpha.aliases).toEqual([{ name: "al", target: "::alpha" }]);
     expect(alpha.macros.map((macro) => macro.name)).toEqual(["ALPHA_VERSION", "ALPHA_TWICE"]);
     // An internal-linkage function the program calls: no interface exports
     // it, so its header stays textual.
@@ -262,7 +261,7 @@ test("modulize writes the wrapping", ({ session }) => {
     expect(alpha).toContain("import std.compat;");
     expect(alpha).toContain("export module alpha;");
     expect(alpha).toContain("export namespace alpha {\nusing ::alpha::Thing;");
-    expect(alpha).toContain("export namespace al = alpha;");
+    expect(alpha).toContain("export namespace al = ::alpha;");
     const beta = ws.read("wrap/beta.cppm");
     expect(beta).toContain("import alpha;");
     expect(beta).toContain('#include "alpha.macros.h"');

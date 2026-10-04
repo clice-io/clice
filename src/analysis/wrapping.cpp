@@ -1,6 +1,7 @@
 #include "analysis/wrapping.h"
 
 #include <algorithm>
+#include <cassert>
 #include <format>
 #include <map>
 #include <utility>
@@ -93,7 +94,7 @@ std::expected<StdModules, std::string> read_std_modules(llvm::StringRef director
 
 std::expected<Wrapping, std::string> wrap(const Partition& partition,
                                           llvm::ArrayRef<Interface> interfaces,
-                                          const StdModules* libcxx,
+                                          const std::optional<StdModules>& libcxx,
                                           llvm::StringRef root) {
     auto absolute = [&](llvm::StringRef path) {
         return llvm::sys::path::is_absolute(path, llvm::sys::path::Style::posix)
@@ -106,38 +107,27 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
                    : std::format("\"{}\"", absolute(header.file));
     };
 
-    llvm::StringMap<const Interface*> named;
-    for(auto& interface: interfaces) {
-        named[interface.module] = &interface;
-    }
+    assert(interfaces.size() == partition.modules.size());
     // The modules standing before every generated one: the standard library
     // and the modules kept headers, in the partition's order.
     std::vector<const Interface*> given;
     llvm::StringMap<const Interface*> generated;
     for(std::uint32_t module = 0; module < partition.modules.size(); module += 1) {
-        auto found = named.find(partition.modules[module]);
-        if(found == named.end()) {
-            continue;
-        }
-        if(partition.external[module]) {
-            if(!libcxx || found->first() != "std") {
-                return std::unexpected(std::format(
-                    "module {}: only std stands for an existing module, given libc++'s sources",
-                    found->first().str()));
-            }
-            given.push_back(found->second);
-        } else if(partition.textual[module]) {
-            given.push_back(found->second);
-        } else if(partition.wrapped[module]) {
-            generated[found->first()] = found->second;
+        auto& interface = interfaces[module];
+        switch(partition.kinds[module]) {
+            case ModuleKind::Program: break;
+            case ModuleKind::Wrapped: generated[interface.module] = &interface; break;
+            case ModuleKind::Textual: given.push_back(&interface); break;
+            case ModuleKind::External:
+                if(!libcxx || interface.module != "std") {
+                    return std::unexpected(std::format(
+                        "module {}: only std stands for an existing module, given libc++'s sources",
+                        interface.module));
+                }
+                given.push_back(&interface);
+                break;
         }
     }
-    // The partition file's modules, as opposed to the program's directories.
-    auto declared = [&](llvm::StringRef name) {
-        auto module = partition.module_named(name);
-        return module != partition.modules.size() &&
-               (partition.wrapped[module] || partition.textual[module]);
-    };
 
     Wrapping result;
     llvm::StringMap<std::vector<std::string>> imports;
@@ -146,8 +136,8 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         for(auto& imported: interface->imports) {
             if(generated.contains(imported)) {
                 list.push_back(imported);
-            } else if(!declared(imported)) {
-                result.warnings.push_back(
+            } else if(partition.kinds[partition.module_named(imported)] == ModuleKind::Program) {
+                result.plan.warnings.push_back(
                     std::format("{} imports the program's {}: dropped", name.str(), imported));
             }
         }
@@ -212,8 +202,8 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         result.files.push_back({std::format("{}.macros.h", module->module), macro_header(*module)});
     }
     if(libcxx) {
-        result.std_sources = libcxx->sources;
-        result.mirrors.push_back("mirror/std");
+        result.plan.std_sources = libcxx->sources;
+        result.plan.mirrors.push_back("mirror/std");
         for(auto& header: libcxx->headers) {
             // <version> holds only macros: it stays, for the feature tests.
             if(header != "version") {
@@ -224,7 +214,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
 
     for(auto& name: order) {
         auto& interface = *generated[name];
-        auto& module = result.modules.emplace_back();
+        auto& module = result.plan.modules.emplace_back();
         module.name = name;
         module.source = std::format("{}.cppm", name);
         module.imports = imports[name];
@@ -242,7 +232,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         }
         // Switches the program defines ahead of including the library.
         for(auto& macro: interface.reads) {
-            if(!declared(macro.module)) {
+            if(partition.kinds[partition.module_named(macro.module)] == ModuleKind::Program) {
                 unit += macro.directive + "\n";
             }
         }
@@ -312,7 +302,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         }
         result.files.push_back({module.source, std::move(unit)});
         result.files.push_back({std::format("{}.macros.h", name), macro_header(interface)});
-        result.mirrors.push_back(std::format("mirror/{}", name));
+        result.plan.mirrors.push_back(std::format("mirror/{}", name));
     }
 
     std::string prelude = "#pragma once\n\n" + base;
@@ -322,8 +312,8 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
     for(auto& name: order) {
         prelude += std::format("#include \"{}.macros.h\"\n", name);
     }
-    result.prelude = "prelude.h";
-    result.files.push_back({result.prelude, std::move(prelude)});
+    result.plan.prelude = "prelude.h";
+    result.files.push_back({result.plan.prelude, std::move(prelude)});
     return result;
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <expected>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -59,24 +60,27 @@ struct Wrapping {
         std::vector<std::string> mirrors;
     };
 
+    /// What the build needs, paths relative to the output directory.
+    struct Plan {
+        /// libc++'s module sources, compiled as modules std and std.compat,
+        /// when the partition's std module stands for the C++ headers.
+        std::vector<std::string> std_sources;
+
+        /// In import order.
+        std::vector<Module> modules;
+
+        /// What every compilation of the program puts first on its include
+        /// path, and the header it force-includes.
+        std::vector<std::string> mirrors;
+        std::string prelude;
+
+        /// Imports of modules the partition leaves to the program, dropped:
+        /// a library's header naming the program's entities.
+        std::vector<std::string> warnings;
+    };
+
     std::vector<File> files;
-
-    /// In import order.
-    std::vector<Module> modules;
-
-    /// libc++'s module sources, compiled as modules std and std.compat,
-    /// when the partition's std module stands for the C++ headers.
-    std::vector<std::string> std_sources;
-
-    /// What every compilation of the program puts first on its include
-    /// path, and the header it force-includes; relative to the output
-    /// directory.
-    std::vector<std::string> mirrors;
-    std::string prelude;
-
-    /// Imports of modules the partition leaves to the program, dropped:
-    /// a library's header naming the program's entities.
-    std::vector<std::string> warnings;
+    Plan plan;
 };
 
 /// Wrap the interfaces of a partition's wrapped modules. With `libcxx`, the
@@ -85,7 +89,7 @@ struct Wrapping {
 /// ahead of every import. `root` absolutizes the workspace-relative paths.
 std::expected<Wrapping, std::string> wrap(const Partition& partition,
                                           llvm::ArrayRef<Interface> interfaces,
-                                          const StdModules* libcxx,
+                                          const std::optional<StdModules>& libcxx,
                                           llvm::StringRef root);
 
 }  // namespace clice::analysis
