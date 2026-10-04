@@ -954,17 +954,33 @@ tests/snap/hover/module_related/01_import_hover.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Module name hover**
 
-Hovering a module name does not list its owning files yet
+Hovering a module name shows the interface unit that defines it
 
-Hovering a module name does not yet list the files or partitions that
-declare it.
+The card names the module and the file of its interface unit, on the
+name in an `import` and in the module declaration alike.
 
 ```snap
-tests/snap/hover/module_related/02_module_name_hover.cpp
+tests/snap/hover/module_related/02_module_name_hover/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Export status hover**
+
+The card of a module's declaration shows whether the module exports it
+
+An exported declaration's definition reads `export`, whether exported
+on its own or in an `export` block; a declaration the module keeps to
+itself, or a member of an exported class, does not.
+
+```snap
+tests/snap/hover/module_related/03_export_status.cpp
 ```
 
 <!-- END CAPABILITY -->

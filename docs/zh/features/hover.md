@@ -888,16 +888,30 @@ tests/snap/hover/module_related/01_import_hover.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **模块名悬停**
 
-悬停于模块名时尚不列出其所属文件
+悬停于模块名时显示定义该模块的接口单元
 
-悬停于模块名时，尚不列出声明该模块的文件或分区。
+无论模块名位于 `import` 中还是模块声明中，卡片都会显示模块名及其接口单元所在的文件。
 
 ```snap
-tests/snap/hover/module_related/02_module_name_hover.cpp
+tests/snap/hover/module_related/02_module_name_hover/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**导出状态悬停**
+
+模块中声明的卡片会显示该声明是否被模块导出
+
+已导出声明的卡片中，定义部分会带有 `export`，无论它是单独导出还是位于 `export` 块中；模块未导出、仅在内部使用的声明，以及导出类的成员，则不会带有。
+
+```snap
+tests/snap/hover/module_related/03_export_status.cpp
 ```
 
 <!-- END CAPABILITY -->

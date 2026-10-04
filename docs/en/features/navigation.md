@@ -173,6 +173,21 @@ tests/snap/navigation/go_to_definition/12_def_auto_keyword.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent overload candidates**
+
+A dependent call that may reach several overloads lists each of them
+
+Every candidate answers on its own: the definition where it has one, its
+declaration where it has none.
+
+```snap
+tests/snap/navigation/go_to_definition/13_def_overload_candidates.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Implicit targets
@@ -1369,15 +1384,14 @@ tests/snap/navigation/module_navigation/03_module_iface_impl/main.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Dot-separated module name**
 
-Only the leading segment of a dotted module name navigates to its interface
+Every segment of a dotted module name navigates to its interface
 
-Go-to-definition on the leading segment of a dot-separated module name
-reaches the module's interface unit; the segments after a dot do not
-resolve on their own yet.
+Go-to-definition on any segment of a dot-separated module name reaches
+the module's interface unit; the whole name is one reference.
 
 ```snap
 tests/snap/navigation/module_navigation/04_module_dotted/main.cpp
