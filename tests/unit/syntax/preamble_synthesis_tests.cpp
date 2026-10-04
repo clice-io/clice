@@ -77,8 +77,8 @@ int main() {}
 )"};
 
     auto result = prefix_of({entry}, "/proj/utils.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(*result == R"(#line 1 "/proj/main.cpp"
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #include <vector>
 #define DEBUG 1
 )");
@@ -101,8 +101,8 @@ void util_func();
 )"};
 
     auto result = prefix_of({main_entry, utils_entry}, "/proj/math.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(*result == R"(#line 1 "/proj/main.cpp"
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #line 1 "/proj/utils.h"
 #pragma once
 #include <string>
@@ -122,8 +122,8 @@ ZEST_CASE(SameBasenameHeaders) {
 )"};
 
     auto result = prefix_of({entry}, "/proj/b/config.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(*result == R"(#line 1 "/proj/main.cpp"
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #include "a/config.h"
 )");
 }
@@ -143,8 +143,8 @@ ZEST_CASE(QuotedIncludeKept) {
 )"};
 
     auto result = prefix_of({entry}, "/proj/utils.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(*result == R"(#line 1 "/proj/main.cpp"
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #include <vector>
 #include "types.h"
 )");
@@ -159,7 +159,7 @@ ZEST_CASE(NoMatchFails) {
 )"};
 
     auto result = prefix_of({entry}, "/proj/utils.h", map_resolver(mapping));
-    EXPECT(!result.has_value());
+    ZEXPECT(!result.has_value());
 }
 
 ZEST_CASE(CommentedIncludeIgnored) {
@@ -174,8 +174,8 @@ ZEST_CASE(CommentedIncludeIgnored) {
 )"};
 
     auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(*result == R"(#line 1 "/proj/main.cpp"
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 /*
 #include "target.h"
 */
@@ -191,8 +191,8 @@ ZEST_CASE(LineMarkerEscaping) {
 )"};
 
     auto result = prefix_of({entry}, R"(C:\proj\utils.h)", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(*result == R"(#line 1 "C:\\proj\\main.cpp"
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "C:\\proj\\main.cpp"
 )");
 }
 
@@ -211,10 +211,10 @@ ZEST_CASE(ConditionalShadowSkipped) {
 )"};
 
     auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT(result);
+    ZASSERT(result);
     // The shadowed occurrence of the target itself is blanked (line kept):
     // at compile time the target's path is remapped to the open buffer.
-    EXPECT(*result == R"(#line 1 "/proj/main.cpp"
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #if 0
 
 #endif
@@ -237,8 +237,8 @@ struct A {};
 )"};
 
     auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(*result == R"(#line 1 "/proj/a.h"
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/a.h"
 #ifndef A_H
 #define A_H
 struct A {};
@@ -259,8 +259,8 @@ ZEST_CASE(OnlyConditionalMatch) {
 )"};
 
     auto result = prefix_of({entry}, "/proj/impl.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(*result == R"(#line 1 "/proj/main.cpp"
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #ifdef _WIN32
 #endif
 )");
@@ -278,8 +278,8 @@ ZEST_CASE(DuplicateIncludeFirstCut) {
 )"};
 
     auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(*result == R"(#line 1 "/proj/main.cpp"
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 )");
 }
 
@@ -295,8 +295,8 @@ ZEST_CASE(MacroIncludeIgnored) {
 )"};
 
     auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(*result == R"(#line 1 "/proj/main.cpp"
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #include CONFIG_H
 )");
 }
@@ -312,8 +312,8 @@ ZEST_CASE(IncludeNextKeptVerbatim) {
 )"};
 
     auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(*result == R"(#line 1 "/proj/main.cpp"
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #include_next "impl.h"
 )");
 }
@@ -340,7 +340,7 @@ ZEST_CASE(IncludeNextFollowsChain) {
     };
 
     auto result = prefix_of({host, mid}, "/inc/c/target.h", resolver);
-    ASSERT(result);
+    ZASSERT(result);
 }
 
 ZEST_CASE(OccurrenceSelectsMatch) {
@@ -358,9 +358,9 @@ ZEST_CASE(OccurrenceSelectsMatch) {
 )"};
 
     auto second = prefix_of({entry}, "/proj/list.def", map_resolver(mapping), std::uint32_t(1));
-    ASSERT(second);
+    ZASSERT(second);
     // The other occurrence of the target is blanked (line kept).
-    EXPECT(*second == R"(#line 1 "/proj/main.cpp"
+    ZEXPECT(*second == R"(#line 1 "/proj/main.cpp"
 #define X(name) int name;
 
 #undef X
@@ -368,8 +368,8 @@ ZEST_CASE(OccurrenceSelectsMatch) {
 )");
 
     auto first = prefix_of({entry}, "/proj/list.def", map_resolver(mapping), std::uint32_t(0));
-    ASSERT(first);
-    EXPECT(*first == R"(#line 1 "/proj/main.cpp"
+    ZASSERT(first);
+    ZEXPECT(*first == R"(#line 1 "/proj/main.cpp"
 #define X(name) int name;
 )");
 }
@@ -383,7 +383,7 @@ ZEST_CASE(OccurrenceOutOfRange) {
 )"};
 
     auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping), std::uint32_t(1));
-    EXPECT(!result.has_value());
+    ZEXPECT(!result.has_value());
 }
 
 ZEST_CASE(CrlfLineEndings) {
@@ -395,16 +395,16 @@ ZEST_CASE(CrlfLineEndings) {
     ChainEntry entry{"/proj/main.cpp", "#include \"a.h\"\r\n#include \"target.h\"\r\n"};
 
     auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(*result == "#line 1 \"/proj/main.cpp\"\n#include \"a.h\"\r\n");
+    ZASSERT(result);
+    ZEXPECT(*result == "#line 1 \"/proj/main.cpp\"\n#include \"a.h\"\r\n");
 }
 
 ZEST_CASE(EmptyChain) {
     llvm::StringMap<std::string> empty;
 
     auto result = prefix_of(llvm::ArrayRef<ChainEntry>(), "/proj/x.h", map_resolver(empty));
-    ASSERT(result);
-    EXPECT(*result == "");
+    ZASSERT(result);
+    ZEXPECT(*result == "");
 }
 
 ZEST_CASE(SuffixClosesBraces) {
@@ -422,12 +422,12 @@ ZEST_CASE(SuffixClosesBraces) {
 )"};
 
     auto result = synthesize_context({entry}, "/proj/errors.def", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(flatten(*result, result->prefix) == R"(#line 1 "/proj/main.cpp"
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, result->prefix) == R"(#line 1 "/proj/main.cpp"
 void register_all() {
 #define X(name) handle(name);
 )");
-    EXPECT(flatten(*result, result->suffix) == R"(#line 4 "/proj/main.cpp"
+    ZEXPECT(flatten(*result, result->suffix) == R"(#line 4 "/proj/main.cpp"
 #undef X
 }
 )");
@@ -448,13 +448,13 @@ void tail();
 )"};
 
     auto result = synthesize_context({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(flatten(*result, result->prefix) == R"(#line 1 "/proj/a.h"
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, result->prefix) == R"(#line 1 "/proj/a.h"
 #ifndef A_H
 #define A_H
 #endif
 )");
-    EXPECT(flatten(*result, result->suffix) == R"(#if 1
+    ZEXPECT(flatten(*result, result->suffix) == R"(#if 1
 #line 4 "/proj/a.h"
 void tail();
 #endif
@@ -477,8 +477,8 @@ void mid_tail();
 )"};
 
     auto result = synthesize_context({host, mid}, "/proj/target.h", map_resolver(mapping));
-    ASSERT(result);
-    EXPECT(flatten(*result, result->suffix) == R"(#line 2 "/proj/mid.h"
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, result->suffix) == R"(#line 2 "/proj/mid.h"
 void mid_tail();
 #line 2 "/proj/main.cpp"
 int main() {}
@@ -505,14 +505,14 @@ ZEST_CASE(FragmentsBesideFiles) {
                                      map_resolver(mapping),
                                      std::uint32_t(0),
                                      llvm::StringRef("int t;\n"));
-    ASSERT(result);
-    EXPECT(llvm::sys::path::parent_path(result->prefix) == "/proj");
-    EXPECT(llvm::sys::path::parent_path(result->suffix) == "/proj/lib");
-    ASSERT(result->files.size() == 5u);
+    ZASSERT(result);
+    ZEXPECT(llvm::sys::path::parent_path(result->prefix) == "/proj");
+    ZEXPECT(llvm::sys::path::parent_path(result->suffix) == "/proj/lib");
+    ZASSERT(result->files.size() == 5u);
     auto& [snapshot, content] = result->files.front();
-    EXPECT(llvm::sys::path::parent_path(snapshot) == "/proj/lib");
-    EXPECT(content == "int t;\n");
-    EXPECT(flatten(*result, result->suffix) == R"(#line 2 "/proj/lib/mid.h"
+    ZEXPECT(llvm::sys::path::parent_path(snapshot) == "/proj/lib");
+    ZEXPECT(content == "int t;\n");
+    ZEXPECT(flatten(*result, result->suffix) == R"(#line 2 "/proj/lib/mid.h"
 int t;
 #line 2 "/proj/main.cpp"
 )");

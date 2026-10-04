@@ -32,7 +32,7 @@ struct HostedHeader {
         project.dep_graph.build_reverse_map();
 
         auto disk = project.file_table.current(header);
-        ASSERT(disk);
+        ZASSERT(disk);
         commands.record_header_mode(header, HeaderMode::NeedsContext, disk->hash);
     }
 };
@@ -49,21 +49,21 @@ ZEST_CASE(EditorCachesContext) {
     std::vector<std::string> arguments;
 
     auto background = fx.commands.resolve_command(fx.header, directory, arguments);
-    ASSERT(background.source == CommandSource::IncludeGraph);
-    ASSERT(background.host == fx.host);
-    ASSERT(background.synthesized != nullptr);
-    ASSERT(llvm::is_contained(arguments, background.synthesized->prefix));
-    ASSERT(editor.header_contexts.empty());
+    ZASSERT(background.source == CommandSource::IncludeGraph);
+    ZASSERT(background.host == fx.host);
+    ZASSERT(background.synthesized != nullptr);
+    ZASSERT(llvm::is_contained(arguments, background.synthesized->prefix));
+    ZASSERT(editor.header_contexts.empty());
 
     auto resolution = editor.resolve_command(fx.header, directory, arguments);
-    ASSERT(resolution.source == CommandSource::IncludeGraph);
+    ZASSERT(resolution.source == CommandSource::IncludeGraph);
     auto* context = editor.header_context(fx.header);
-    ASSERT(context != nullptr);
-    ASSERT(resolution.synthesized == context->synthesized);
-    ASSERT(!blob.dirty);
+    ZASSERT(context != nullptr);
+    ZASSERT(resolution.synthesized == context->synthesized);
+    ZASSERT(!blob.dirty);
 
     auto reused = editor.resolve_command(fx.header, directory, arguments);
-    ASSERT(reused.synthesized == context->synthesized);
+    ZASSERT(reused.synthesized == context->synthesized);
 }
 
 ZEST_CASE(GuessedTracksEditorOnly) {
@@ -83,10 +83,10 @@ ZEST_CASE(GuessedTracksEditorOnly) {
     std::vector<std::string> arguments;
 
     commands.resolve_command(file, directory, arguments);
-    ASSERT(!editor.guessed_commands.contains(file));
+    ZASSERT(!editor.guessed_commands.contains(file));
 
-    ASSERT(editor.resolve_command(file, directory, arguments).source == CommandSource::Fallback);
-    ASSERT(editor.guessed_commands.contains(file));
+    ZASSERT(editor.resolve_command(file, directory, arguments).source == CommandSource::Fallback);
+    ZASSERT(editor.guessed_commands.contains(file));
 
     write_cdb(tmp,
               project.cdb,
@@ -94,9 +94,9 @@ ZEST_CASE(GuessedTracksEditorOnly) {
                   {tmp.root, path, {}}
     }));
     commands.resolve_command(file, directory, arguments);
-    ASSERT(editor.guessed_commands.contains(file));
-    ASSERT(editor.resolve_command(file, directory, arguments).source == CommandSource::CDBExact);
-    ASSERT(!editor.guessed_commands.contains(file));
+    ZASSERT(editor.guessed_commands.contains(file));
+    ZASSERT(editor.resolve_command(file, directory, arguments).source == CommandSource::CDBExact);
+    ZASSERT(!editor.guessed_commands.contains(file));
 }
 
 ZEST_CASE(PinSteersEditorOnly) {
@@ -117,7 +117,7 @@ ZEST_CASE(PinSteersEditorOnly) {
 
     auto file = project.file_table.intern(Spelling::absolute(path));
     auto candidates = project.cdb.candidate_entries(path);
-    ASSERT(candidates.size() == 2u);
+    ZASSERT(candidates.size() == 2u);
     // Pin the non-default candidate (candidate order is content-decided,
     // so the defines are read back rather than assumed).
     auto define_of = [&](ConfigID config) -> llvm::StringRef {
@@ -131,12 +131,12 @@ ZEST_CASE(PinSteersEditorOnly) {
     std::string directory;
     std::vector<std::string> arguments;
     resolver.resolve_command(file, directory, arguments);
-    ASSERT(llvm::is_contained(arguments, define_of(pinned)));
+    ZASSERT(llvm::is_contained(arguments, define_of(pinned)));
 
     // ...but background indexing must never see user choices.
     arguments.clear();
     commands.resolve_command(file, directory, arguments);
-    ASSERT(llvm::is_contained(arguments, define_of(candidates.front().config)));
+    ZASSERT(llvm::is_contained(arguments, define_of(candidates.front().config)));
 }
 
 ZEST_CASE(PinBaseSurvivesRules) {
@@ -157,7 +157,7 @@ ZEST_CASE(PinBaseSurvivesRules) {
 
     auto file = project.file_table.intern(Spelling::absolute(path));
     auto candidates = project.cdb.candidate_entries(path);
-    ASSERT(candidates.size() == 2u);
+    ZASSERT(candidates.size() == 2u);
     auto define_of = [&](ConfigID config) -> llvm::StringRef {
         auto argv = print_argv(project.cdb.render_full(config));
         return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
@@ -171,13 +171,13 @@ ZEST_CASE(PinBaseSurvivesRules) {
     std::string directory;
     std::vector<std::string> arguments;
     resolver.resolve_command(file, directory, arguments);
-    ASSERT(llvm::is_contained(arguments, define_of(pinned)));
+    ZASSERT(llvm::is_contained(arguments, define_of(pinned)));
 
     // ...while the same stale hash without a base falls back to the default.
     resolver.selections[file] = Selection{Fid{}, std::nullopt, "0123456789abcdef", ""};
     arguments.clear();
     resolver.resolve_command(file, directory, arguments);
-    ASSERT(llvm::is_contained(arguments, define_of(candidates.front().config)));
+    ZASSERT(llvm::is_contained(arguments, define_of(candidates.front().config)));
 }
 
 ZEST_CASE(ValidateKeepsValidChoice) {
@@ -202,7 +202,7 @@ ZEST_CASE(ValidateKeepsValidChoice) {
     resolver.selections[header] = Selection{host, std::nullopt, ""};
 
     resolver.validate_saved_context(header);
-    ASSERT(resolver.selections.contains(header));
+    ZASSERT(resolver.selections.contains(header));
 }
 
 ZEST_CASE(ValidateDropsGoneOccurrence) {
@@ -229,7 +229,7 @@ ZEST_CASE(ValidateDropsGoneOccurrence) {
     resolver.selections[header] = Selection{host, 1, ""};
 
     resolver.validate_saved_context(header);
-    ASSERT(!resolver.selections.contains(header));
+    ZASSERT(!resolver.selections.contains(header));
 }
 
 ZEST_CASE(ValidateDropsStaleChoice) {
@@ -257,13 +257,13 @@ ZEST_CASE(ValidateDropsStaleChoice) {
     // resurrects from disk at the next start.
     resolver.selections[header] = Selection{host, std::nullopt, ""};
     resolver.validate_saved_context(header);
-    ASSERT(!resolver.selections.contains(header));
-    ASSERT(blob.dirty);
+    ZASSERT(!resolver.selections.contains(header));
+    ZASSERT(blob.dirty);
 
     // A command pin whose hash matches no current CDB entry.
     resolver.selections[main_file] = Selection{Fid{}, std::nullopt, "deadbeef"};
     resolver.validate_saved_context(main_file);
-    ASSERT(!resolver.selections.contains(main_file));
+    ZASSERT(!resolver.selections.contains(main_file));
 }
 
 };  // ZEST_SUITE(EditorContext)

@@ -35,7 +35,7 @@ ZEST_CASE(BuildPCHThenCompile) {
     auto dir = std::string(tmp.root);
 
     WorkerHandle sl;
-    ASSERT(sl.spawn());
+    ZASSERT(sl.spawn());
 
     std::string pch_path;
     bool phase1_done = false;
@@ -58,32 +58,32 @@ ZEST_CASE(BuildPCHThenCompile) {
         params.index_output_path = tmp.path("preamble.pch.idx");
 
         auto result = co_await sl.peer->send_request(params);
-        CO_ASSERT(result);
-        CO_ASSERT(result.value().success);
+        ZASSERT(result);
+        ZASSERT(result.value().success);
         pch_path = result.value().output_path;
-        EXPECT(!pch_path.empty());
+        ZEXPECT(!pch_path.empty());
 
         phase1_done = true;
         sl.peer->close_output();
     });
 
-    ASSERT(phase1_done);
-    ASSERT(!pch_path.empty());
+    ZASSERT(phase1_done);
+    ZASSERT(!pch_path.empty());
 
     // Verify the PCH file exists on disk.
-    ASSERT(llvm::sys::fs::exists(pch_path));
+    ZASSERT(llvm::sys::fs::exists(pch_path));
 
     // The worker wrote the paired preamble envelope: it must load and
     // carry the preamble's document links (the #include of common.h).
     auto state = load_pch_envelope(tmp.path("preamble.pch.idx"));
-    ASSERT(state != nullptr);
+    ZASSERT(state != nullptr);
     bool has_common_link = std::ranges::any_of(state->links(), [&](auto& link) {
         return llvm::StringRef(link.target).ends_with("common.h");
     });
-    EXPECT(has_common_link);
+    ZEXPECT(has_common_link);
 
     WorkerHandle sf;
-    ASSERT(sf.spawn(true));
+    ZASSERT(sf.spawn(true));
 
     bool phase2_done = false;
 
@@ -105,14 +105,14 @@ ZEST_CASE(BuildPCHThenCompile) {
         params.pch = {pch_path, preamble_bound};
 
         auto result = co_await sf.peer->send_request(params);
-        CO_ASSERT(result);
-        EXPECT(result.value().version == 1);
+        ZASSERT(result);
+        ZEXPECT(result.value().version == 1);
 
         phase2_done = true;
         sf.peer->close_output();
     });
 
-    ASSERT(phase2_done);
+    ZASSERT(phase2_done);
 
     // Cleanup PCH temp file.
     std::remove(pch_path.c_str());
@@ -130,7 +130,7 @@ ZEST_CASE(BlobWriteFailure) {
     auto dir = std::string(tmp.root);
 
     WorkerHandle sl;
-    ASSERT(sl.spawn());
+    ZASSERT(sl.spawn());
 
     bool done = false;
     sl.run([&]() -> kota::task<> {
@@ -153,15 +153,15 @@ ZEST_CASE(BlobWriteFailure) {
         params.index_output_path = tmp.path("no_such_dir/preamble.pch.idx");
 
         auto result = co_await sl.peer->send_request(params);
-        CO_ASSERT(result);
-        EXPECT(!result.value().success);
-        EXPECT(!result.value().has_user_errors);
+        ZASSERT(result);
+        ZEXPECT(!result.value().success);
+        ZEXPECT(!result.value().has_user_errors);
 
         done = true;
         sl.peer->close_output();
     });
 
-    ASSERT(done);
+    ZASSERT(done);
 }
 
 ZEST_CASE(CompileWithoutPCHStillWorks) {
@@ -177,7 +177,7 @@ ZEST_CASE(CompileWithoutPCHStillWorks) {
     auto dir = std::string(tmp.root);
 
     WorkerHandle sf;
-    ASSERT(sf.spawn(true));
+    ZASSERT(sf.spawn(true));
 
     bool compile_done = false;
 
@@ -197,14 +197,14 @@ ZEST_CASE(CompileWithoutPCHStillWorks) {
         // pch left as default (empty path, 0 bound).
 
         auto result = co_await sf.peer->send_request(params);
-        CO_ASSERT(result);
-        EXPECT(result.value().version == 1);
+        ZASSERT(result);
+        ZEXPECT(result.value().version == 1);
 
         compile_done = true;
         sf.peer->close_output();
     });
 
-    ASSERT(compile_done);
+    ZASSERT(compile_done);
 }
 
 };  // ZEST_SUITE(PCHWorker)

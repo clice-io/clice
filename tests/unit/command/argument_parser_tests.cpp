@@ -19,29 +19,29 @@ unsigned parse_first(std::vector<std::string> args) {
 }
 
 ZEST_CASE(ParseOptionID) {
-    ASSERT(parse_first({"-g"}) == OPT_g_Flag);
-    ASSERT(parse_first({"-v"}) == OPT_v);
-    ASSERT(parse_first({"-c"}) == OPT_c);
-    ASSERT(parse_first({"-pedantic"}) == OPT_pedantic);
-    ASSERT(parse_first({"--pedantic"}) == OPT_pedantic);
-    ASSERT(parse_first({"-Wno-unused-variable"}) == OPT_W_Joined);
-    ASSERT(parse_first({"-Xclang", "-ast-dump"}) == OPT_Xclang);
-    ASSERT(parse_first({"-Wl,foo"}) == OPT_Wl_COMMA);
-    ASSERT(parse_first({"-o", "out.o"}) == OPT_o);
-    ASSERT(parse_first({"-omain.o"}) == OPT_o);
-    ASSERT(parse_first({"-I", "/usr/include"}) == OPT_I);
-    ASSERT(parse_first({"-x", "c++"}) == OPT_x);
+    ZASSERT(parse_first({"-g"}) == OPT_g_Flag);
+    ZASSERT(parse_first({"-v"}) == OPT_v);
+    ZASSERT(parse_first({"-c"}) == OPT_c);
+    ZASSERT(parse_first({"-pedantic"}) == OPT_pedantic);
+    ZASSERT(parse_first({"--pedantic"}) == OPT_pedantic);
+    ZASSERT(parse_first({"-Wno-unused-variable"}) == OPT_W_Joined);
+    ZASSERT(parse_first({"-Xclang", "-ast-dump"}) == OPT_Xclang);
+    ZASSERT(parse_first({"-Wl,foo"}) == OPT_Wl_COMMA);
+    ZASSERT(parse_first({"-o", "out.o"}) == OPT_o);
+    ZASSERT(parse_first({"-omain.o"}) == OPT_o);
+    ZASSERT(parse_first({"-I", "/usr/include"}) == OPT_I);
+    ZASSERT(parse_first({"-x", "c++"}) == OPT_x);
 };
 
 ZEST_CASE(InputAndUnknown) {
-    ASSERT(parse_first({"main.cpp"}) == OPT_INPUT);
-    ASSERT(parse_first({"--clice-unknown-flag"}) == OPT_UNKNOWN);
+    ZASSERT(parse_first({"main.cpp"}) == OPT_INPUT);
+    ZASSERT(parse_first({"--clice-unknown-flag"}) == OPT_UNKNOWN);
 };
 
 ZEST_CASE(AliasAndDashDash) {
-    ASSERT(parse_first({"--include-directory=/usr/include"}) == OPT_I);
-    ASSERT(parse_first({"--language=c++"}) == OPT_x);
-    ASSERT(parse_first({"--std=c++20"}) == OPT_std_EQ);
+    ZASSERT(parse_first({"--include-directory=/usr/include"}) == OPT_I);
+    ZASSERT(parse_first({"--language=c++"}) == OPT_x);
+    ZASSERT(parse_first({"--std=c++20"}) == OPT_std_EQ);
 
     std::vector<std::string> args = {"-I", "/usr/include", "--", "main.cpp"};
     auto options = kota::option::ParseOptions{.dash_dash_parsing = true};
@@ -51,7 +51,7 @@ ZEST_CASE(AliasAndDashDash) {
             ++count;
         }
     }
-    ASSERT(count == 2u);
+    ZASSERT(count == 2u);
 };
 
 ZEST_CASE(ParseError) {
@@ -62,7 +62,7 @@ ZEST_CASE(ParseError) {
             got_error = true;
         }
     }
-    EXPECT(got_error);
+    ZEXPECT(got_error);
 };
 
 ZEST_CASE(CLVisibility) {
@@ -79,12 +79,12 @@ ZEST_CASE(CLVisibility) {
         return OPT_INVALID;
     };
 
-    ASSERT(parse_with_vis({"/DFOO"}, cl_vis) == OPT_D);
-    ASSERT(parse_with_vis({"-DFOO"}, gcc_vis) == OPT_D);
-    ASSERT(parse_with_vis({"-DFOO"}, cl_vis) == OPT_D);
+    ZASSERT(parse_with_vis({"/DFOO"}, cl_vis) == OPT_D);
+    ZASSERT(parse_with_vis({"-DFOO"}, gcc_vis) == OPT_D);
+    ZASSERT(parse_with_vis({"-DFOO"}, cl_vis) == OPT_D);
     /// /D carries the DXC visibility bit besides CL; a Unix-driver mask must
     /// exclude both or /Data-style paths misparse.
-    ASSERT(parse_with_vis({"/DFOO"}, gcc_vis) == OPT_INPUT);
+    ZASSERT(parse_with_vis({"/DFOO"}, gcc_vis) == OPT_INPUT);
 };
 
 ZEST_CASE(RenderRoundTrip) {
@@ -102,38 +102,38 @@ ZEST_CASE(RenderRoundTrip) {
     };
 
     auto r1 = roundtrip({"-I", "/usr/include"});
-    ASSERT(r1.size() == 2u);
-    ASSERT(r1[0] == "-I");
-    ASSERT(r1[1] == "/usr/include");
+    ZASSERT(r1.size() == 2u);
+    ZASSERT(r1[0] == "-I");
+    ZASSERT(r1[1] == "/usr/include");
 
     auto r2 = roundtrip({"-DFOO=bar"});
-    ASSERT(r2.size() == 2u);
-    ASSERT(r2[0] == "-D");
-    ASSERT(r2[1] == "FOO=bar");
+    ZASSERT(r2.size() == 2u);
+    ZASSERT(r2[0] == "-D");
+    ZASSERT(r2[1] == "FOO=bar");
 
     auto r3 = roundtrip({"-Wno-unused"});
-    ASSERT(r3.size() == 1u);
-    ASSERT(r3[0] == "-Wno-unused");
+    ZASSERT(r3.size() == 1u);
+    ZASSERT(r3[0] == "-Wno-unused");
 
     auto r4 = roundtrip({"-std=c++20"});
-    ASSERT(r4.size() == 1u);
-    ASSERT(r4[0] == "-std=c++20");
+    ZASSERT(r4.size() == 1u);
+    ZASSERT(r4[0] == "-std=c++20");
 };
 
 ZEST_CASE(PrintArgv) {
     std::vector<const char*> args = {"clang++", "-std=c++20", "main.cpp"};
-    ASSERT(print_argv(args) == "clang++ -std=c++20 main.cpp");
+    ZASSERT(print_argv(args) == "clang++ -std=c++20 main.cpp");
 
     std::vector<const char*> empty = {};
-    ASSERT(print_argv(empty) == "");
+    ZASSERT(print_argv(empty) == "");
 
     std::vector<const char*> spaced = {"clang++", "-DFOO=hello world"};
     auto result = print_argv(spaced);
-    EXPECT(llvm::StringRef(result).contains("\""));
+    ZEXPECT(llvm::StringRef(result).contains("\""));
 
     std::vector<const char*> escaped = {"clang++", "-DPATH=C:\\foo"};
     auto result2 = print_argv(escaped);
-    EXPECT(llvm::StringRef(result2).contains("\""));
+    ZEXPECT(llvm::StringRef(result2).contains("\""));
 };
 
 };  // ZEST_SUITE(ArgumentParser)

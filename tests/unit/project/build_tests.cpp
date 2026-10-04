@@ -68,24 +68,24 @@ ZEST_CASE(RuleBoundDatabaseWins) {
     /// the rule matching the file puts its database first, while src/a.cpp
     /// only the workspace database knows.
     Layout layout("rules_bound");
-    ASSERT(layout.cdb.source_count() == 2U);
+    ZASSERT(layout.cdb.source_count() == 2U);
 
     auto x = layout.build.entries(layout.fid("lib/x.cpp"));
-    ASSERT(x.size() == 2U);
-    EXPECT(has_arg(layout.render("lib/x.cpp"), "LIB"));
-    EXPECT(has_arg(layout.render("src/a.cpp"), "ROOT"));
+    ZASSERT(x.size() == 2U);
+    ZEXPECT(has_arg(layout.render("lib/x.cpp"), "LIB"));
+    ZEXPECT(has_arg(layout.render("src/a.cpp"), "ROOT"));
 
     /// Edits accumulate from the rules matching the file, headers included.
     auto edits = layout.build.edits(layout.path("lib/y.hxx")).edits;
-    ASSERT(edits.size() == 1U);
-    EXPECT(edits[0].kind == CommandEdit::Kind::Append);
-    EXPECT(edits[0].flags == (std::vector<std::string>{"-x", "c++-header"}));
-    EXPECT(layout.build.edits(layout.path("lib/x.cpp")).empty());
+    ZASSERT(edits.size() == 1U);
+    ZEXPECT(edits[0].kind == CommandEdit::Kind::Append);
+    ZEXPECT(edits[0].flags == (std::vector<std::string>{"-x", "c++-header"}));
+    ZEXPECT(layout.build.edits(layout.path("lib/x.cpp")).empty());
 
     auto members = layout.build.members();
-    EXPECT(members.size() == 2U);
+    ZEXPECT(members.size() == 2U);
     for(auto member: members) {
-        EXPECT(layout.build.indexed(layout.files.resolve(member)));
+        ZEXPECT(layout.build.indexed(layout.files.resolve(member)));
     }
 };
 
@@ -94,29 +94,29 @@ ZEST_CASE(DefaultCommandMembers) {
     /// its patterns claim, enumerates the matching sources as members, and
     /// a nested rule keeps some of them out of the index.
     Layout layout("default_command_only");
-    EXPECT(layout.build.declared_sources().empty());
-    EXPECT(layout.build.declares_sources());
+    ZEXPECT(layout.build.declared_sources().empty());
+    ZEXPECT(layout.build.declares_sources());
 
     auto commands = layout.build.commands(layout.fid("src/main.cpp"));
-    ASSERT(commands.size() == 1U);
-    EXPECT(commands.front().source == CommandSource::Default);
-    EXPECT(!layout.build.commands(layout.fid("src/main.cpp")).empty());
+    ZASSERT(commands.size() == 1U);
+    ZEXPECT(commands.front().source == CommandSource::Default);
+    ZEXPECT(!layout.build.commands(layout.fid("src/main.cpp")).empty());
     auto rendered = layout.render("src/main.cpp");
-    EXPECT(has_arg(rendered, "DEFAULTED"));
-    EXPECT(has_arg(rendered, layout.path("include")));
+    ZEXPECT(has_arg(rendered, "DEFAULTED"));
+    ZEXPECT(has_arg(rendered, layout.path("include")));
 
     /// A file no rule claims has no command; the builtin fallback serves it.
-    EXPECT(!!layout.build.commands(layout.fid("tools/other.cpp")).empty());
-    EXPECT(has_arg(layout.render("tools/other.cpp"), "clang++"));
+    ZEXPECT(!!layout.build.commands(layout.fid("tools/other.cpp")).empty());
+    ZEXPECT(has_arg(layout.render("tools/other.cpp"), "clang++"));
 
     auto members = layout.build.members();
-    ASSERT(members.size() == 2U);
-    EXPECT(llvm::is_contained(members, layout.fid("src/main.cpp")));
-    EXPECT(llvm::is_contained(members, layout.fid("src/skip/vendored.cpp")));
-    EXPECT(!llvm::is_contained(members, layout.fid("include/lib.h")));
-    EXPECT(!llvm::is_contained(members, layout.fid("tools/other.cpp")));
-    EXPECT(layout.indexed("src/main.cpp"));
-    EXPECT(!layout.indexed("src/skip/vendored.cpp"));
+    ZASSERT(members.size() == 2U);
+    ZEXPECT(llvm::is_contained(members, layout.fid("src/main.cpp")));
+    ZEXPECT(llvm::is_contained(members, layout.fid("src/skip/vendored.cpp")));
+    ZEXPECT(!llvm::is_contained(members, layout.fid("include/lib.h")));
+    ZEXPECT(!llvm::is_contained(members, layout.fid("tools/other.cpp")));
+    ZEXPECT(layout.indexed("src/main.cpp"));
+    ZEXPECT(!layout.indexed("src/skip/vendored.cpp"));
 };
 
 ZEST_CASE(UnitPredicate) {
@@ -124,25 +124,25 @@ ZEST_CASE(UnitPredicate) {
     /// the same rule matches is not, and neither is a file no rule claims. A
     /// database entry makes any file a unit.
     Layout defaults("default_command_only");
-    EXPECT(defaults.build.unit(defaults.fid("src/main.cpp")));
-    EXPECT(!defaults.build.unit(defaults.fid("include/lib.h")));
-    EXPECT(!defaults.build.unit(defaults.fid("tools/other.cpp")));
+    ZEXPECT(defaults.build.unit(defaults.fid("src/main.cpp")));
+    ZEXPECT(!defaults.build.unit(defaults.fid("include/lib.h")));
+    ZEXPECT(!defaults.build.unit(defaults.fid("tools/other.cpp")));
 
     Layout bound("rules_bound");
-    EXPECT(bound.build.unit(bound.fid("lib/x.cpp")));
-    EXPECT(!bound.build.unit(bound.fid("lib/y.hxx")));
+    ZEXPECT(bound.build.unit(bound.fid("lib/x.cpp")));
+    ZEXPECT(!bound.build.unit(bound.fid("lib/y.hxx")));
 };
 
 ZEST_CASE(LintSet) {
     /// Files outside the workspace are never linted; inside it, every
     /// matching rule must keep `lint` on.
     Layout layout("lint_rules");
-    EXPECT(layout.build.lintable(layout.path("src/main.cpp")));
-    EXPECT(layout.build.lintable(layout.path("include/api.h")));
-    EXPECT(!layout.build.lintable(layout.path("vendor/lib.cpp")));
-    EXPECT(!layout.build.lintable(layout.path("vendor/deep/lib.h")));
-    EXPECT(!layout.build.lintable(CanonicalPath(Spelling::absolute("/usr/include/stdio.h"))));
-    EXPECT(
+    ZEXPECT(layout.build.lintable(layout.path("src/main.cpp")));
+    ZEXPECT(layout.build.lintable(layout.path("include/api.h")));
+    ZEXPECT(!layout.build.lintable(layout.path("vendor/lib.cpp")));
+    ZEXPECT(!layout.build.lintable(layout.path("vendor/deep/lib.h")));
+    ZEXPECT(!layout.build.lintable(CanonicalPath(Spelling::absolute("/usr/include/stdio.h"))));
+    ZEXPECT(
         !layout.build.lintable(CanonicalPath(Spelling::absolute(layout.root + "-sibling/x.cpp"))));
 };
 
@@ -154,19 +154,19 @@ ZEST_CASE(LintSetSymlinkedRoot) {
     tmp.touch("real/clice.toml", "[[rules]]\npatterns = [\"vendor/**\"]\nlint = false\n");
     tmp.touch("real/src/main.cpp", "int main() { return 0; }\n");
     tmp.touch("real/vendor/lib.cpp", "int lib() { return 0; }\n");
-    ASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
 
     Config config =
         Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.path("link"))));
-    EXPECT(config.workspace_root.str() ==
-           CanonicalPath(Spelling::absolute(tmp.path("real"))).str());
+    ZEXPECT(config.workspace_root.str() ==
+            CanonicalPath(Spelling::absolute(tmp.path("real"))).str());
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
     build.reset_active(fallback_configuration(config));
-    EXPECT(build.lintable(CanonicalPath(Spelling::absolute(tmp.path("link/src/main.cpp")))));
-    EXPECT(!build.lintable(CanonicalPath(Spelling::absolute(tmp.path("link/vendor/lib.cpp")))));
-    EXPECT(!build.lintable(CanonicalPath(Spelling::absolute(tmp.path("elsewhere/x.cpp")))));
+    ZEXPECT(build.lintable(CanonicalPath(Spelling::absolute(tmp.path("link/src/main.cpp")))));
+    ZEXPECT(!build.lintable(CanonicalPath(Spelling::absolute(tmp.path("link/vendor/lib.cpp")))));
+    ZEXPECT(!build.lintable(CanonicalPath(Spelling::absolute(tmp.path("elsewhere/x.cpp")))));
 };
 
 ZEST_CASE(PatternThroughSymlink) {
@@ -176,14 +176,14 @@ patterns = ["vendor/**"]
 lint = false
 )");
     tmp.touch("third_party/lib.cpp", "int lib() { return 0; }\n");
-    ASSERT(::symlink(tmp.path("third_party").c_str(), tmp.path("vendor").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("third_party").c_str(), tmp.path("vendor").c_str()) == 0);
 
     Config config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.root)));
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
     build.reset_active(fallback_configuration(config));
-    EXPECT(!build.lintable(CanonicalPath(Spelling::absolute(tmp.path("vendor/lib.cpp")))));
+    ZEXPECT(!build.lintable(CanonicalPath(Spelling::absolute(tmp.path("vendor/lib.cpp")))));
 };
 
 ZEST_CASE(WalkResolvesLinks) {
@@ -192,8 +192,8 @@ ZEST_CASE(WalkResolvesLinks) {
     TempDir tmp;
     tmp.touch("src/main.cpp", "int main() {}\n");
     tmp.touch("elsewhere/impl.cpp", "");
-    ASSERT(::symlink(tmp.path("elsewhere/impl.cpp").c_str(), tmp.path("src/alias.cpp").c_str()) ==
-           0);
+    ZASSERT(::symlink(tmp.path("elsewhere/impl.cpp").c_str(), tmp.path("src/alias.cpp").c_str()) ==
+            0);
 
     Config config;
     config.rules.push_back(
@@ -204,9 +204,9 @@ ZEST_CASE(WalkResolvesLinks) {
     Build build{config, cdb, files};
     build.reset_active("");
     auto members = build.members();
-    ASSERT(members.size() == 1U);
-    EXPECT(files.resolve(members.front()) ==
-           CanonicalPath(Spelling::absolute(tmp.path("src/main.cpp"))));
+    ZASSERT(members.size() == 1U);
+    ZEXPECT(files.resolve(members.front()) ==
+            CanonicalPath(Spelling::absolute(tmp.path("src/main.cpp"))));
 };
 #endif
 
@@ -214,11 +214,11 @@ ZEST_CASE(FormatSet) {
     /// The format set reads its own rule field: a `lint = false` directory
     /// still formats, a `format = false` one does not.
     Layout layout("lint_rules");
-    EXPECT(layout.build.formattable(layout.path("src/main.cpp")));
-    EXPECT(layout.build.formattable(layout.path("vendor/lib.cpp")));
-    EXPECT(!layout.build.formattable(layout.path("gen/out.h")));
-    EXPECT(layout.build.lintable(layout.path("gen/out.h")));
-    EXPECT(!layout.build.formattable(CanonicalPath(Spelling::absolute("/usr/include/stdio.h"))));
+    ZEXPECT(layout.build.formattable(layout.path("src/main.cpp")));
+    ZEXPECT(layout.build.formattable(layout.path("vendor/lib.cpp")));
+    ZEXPECT(!layout.build.formattable(layout.path("gen/out.h")));
+    ZEXPECT(layout.build.lintable(layout.path("gen/out.h")));
+    ZEXPECT(!layout.build.formattable(CanonicalPath(Spelling::absolute("/usr/include/stdio.h"))));
 };
 
 ZEST_CASE(PatternRootsEnumerate) {
@@ -241,24 +241,26 @@ ZEST_CASE(PatternRootsEnumerate) {
     config.rules.push_back(under_clice(
         {.patterns = {"../lib/*.cpp"}, .default_command = std::string("clang++ -DLIB")}));
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT(config.compiled_rules.size() == 2U);
-    EXPECT(config.compiled_rules[0].patterns[0].root ==
-           CanonicalPath(Spelling::absolute(tmp.path("src"))));
-    EXPECT(config.compiled_rules[1].patterns[0].root ==
-           CanonicalPath(Spelling::absolute(tmp.path("lib"))));
+    ZASSERT(config.compiled_rules.size() == 2U);
+    ZEXPECT(config.compiled_rules[0].patterns[0].root ==
+            CanonicalPath(Spelling::absolute(tmp.path("src"))));
+    ZEXPECT(config.compiled_rules[1].patterns[0].root ==
+            CanonicalPath(Spelling::absolute(tmp.path("lib"))));
 
     FileTable files;
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
     build.reset_active("");
     auto members = build.members();
-    ASSERT(members.size() == 2U);
-    EXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/main.cpp")))));
-    EXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("lib/util.cpp")))));
-    EXPECT(build.commands(files.intern(Spelling::absolute(tmp.path("other/skip.cpp")))).empty());
+    ZASSERT(members.size() == 2U);
+    ZEXPECT(
+        llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/main.cpp")))));
+    ZEXPECT(
+        llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("lib/util.cpp")))));
+    ZEXPECT(build.commands(files.intern(Spelling::absolute(tmp.path("other/skip.cpp")))).empty());
     auto util = build.commands(files.intern(Spelling::absolute(tmp.path("lib/util.cpp"))));
-    ASSERT(util.size() == 1U);
-    EXPECT(has_arg(cdb.render_full(util.front().config), "LIB"));
+    ZASSERT(util.size() == 1U);
+    ZEXPECT(has_arg(cdb.render_full(util.front().config), "LIB"));
 };
 
 ZEST_CASE(EditHashKeepsAnchor) {
@@ -278,8 +280,8 @@ ZEST_CASE(EditHashKeepsAnchor) {
         CanonicalRef file = main;
         return build.edit_hash(file);
     };
-    EXPECT(hash(tmp.root) == hash(tmp.root));
-    EXPECT(hash(tmp.root) != hash(tmp.path(".clice")));
+    ZEXPECT(hash(tmp.root) == hash(tmp.root));
+    ZEXPECT(hash(tmp.root) != hash(tmp.path(".clice")));
 };
 
 ZEST_CASE(ForcedLanguageMembers) {
@@ -303,10 +305,10 @@ ZEST_CASE(ForcedLanguageMembers) {
     Build build{config, cdb, files};
     build.reset_active("");
     auto members = build.members();
-    ASSERT(members.size() == 3U);
-    EXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/tool")))));
-    EXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/pre.i")))));
-    EXPECT(
+    ZASSERT(members.size() == 3U);
+    ZEXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/tool")))));
+    ZEXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/pre.i")))));
+    ZEXPECT(
         llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/iface.cppm")))));
 };
 
@@ -327,8 +329,8 @@ ZEST_CASE(WorkspaceRuleClaimsKnownSources) {
     Build build{config, cdb, files};
     build.reset_active("");
     auto members = build.members();
-    ASSERT(members.size() == 1U);
-    EXPECT(members.front() == files.intern(Spelling::absolute(tmp.path("main.cpp"))));
+    ZASSERT(members.size() == 1U);
+    ZEXPECT(members.front() == files.intern(Spelling::absolute(tmp.path("main.cpp"))));
 
     config.rules.insert(
         config.rules.begin(),
@@ -336,8 +338,8 @@ ZEST_CASE(WorkspaceRuleClaimsKnownSources) {
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     build.reset_active("");
     members = build.members();
-    EXPECT(members.size() == 2U);
-    EXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("tool")))));
+    ZEXPECT(members.size() == 2U);
+    ZEXPECT(llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("tool")))));
 };
 
 ZEST_CASE(UnitsDeduplicated) {
@@ -367,9 +369,9 @@ ZEST_CASE(UnitsDeduplicated) {
         cdb.load(source);
     }
     auto members = build.members();
-    ASSERT(members.size() == 1U);
-    EXPECT(build.entries(members.front()).size() == 3U);
-    EXPECT(build.units(members).size() == 2U);
+    ZASSERT(members.size() == 1U);
+    ZEXPECT(build.entries(members.front()).size() == 3U);
+    ZEXPECT(build.units(members).size() == 2U);
 };
 
 ZEST_CASE(CudaHeaderNotDefaultSource) {
@@ -386,8 +388,8 @@ ZEST_CASE(CudaHeaderNotDefaultSource) {
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
     build.reset_active("");
-    EXPECT(build.members().size() == 1U);
-    EXPECT(!build.unit(files.intern(Spelling::absolute(tmp.path("cuda/kernel.cuh")))));
+    ZEXPECT(build.members().size() == 1U);
+    ZEXPECT(!build.unit(files.intern(Spelling::absolute(tmp.path("cuda/kernel.cuh")))));
 };
 
 ZEST_CASE(InvalidDefaultCommandIgnored) {
@@ -404,10 +406,10 @@ ZEST_CASE(InvalidDefaultCommandIgnored) {
     Build build{config, cdb, files};
     build.reset_active("");
     auto main = files.intern(Spelling::absolute(tmp.path("main.cpp")));
-    EXPECT(build.commands(main).empty());
-    EXPECT(build.members().size() == 1U);
-    EXPECT(build.builtin(CanonicalPath(Spelling::absolute(tmp.path("main.cpp")))) !=
-           invalid_config);
+    ZEXPECT(build.commands(main).empty());
+    ZEXPECT(build.members().size() == 1U);
+    ZEXPECT(build.builtin(CanonicalPath(Spelling::absolute(tmp.path("main.cpp")))) !=
+            invalid_config);
 };
 
 ZEST_CASE(UnmatchableRuleDeclaresNothing) {
@@ -425,8 +427,8 @@ ZEST_CASE(UnmatchableRuleDeclaresNothing) {
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
     build.reset_active("");
-    EXPECT(!build.declares_sources());
-    EXPECT(build.members().empty());
+    ZEXPECT(!build.declares_sources());
+    ZEXPECT(build.members().empty());
 
     config.rules.push_back(ConfigRule{
         .patterns = {"**/****.{c,cc}"},
@@ -434,7 +436,7 @@ ZEST_CASE(UnmatchableRuleDeclaresNothing) {
     });
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     build.reset_active("");
-    EXPECT(build.declares_sources());
+    ZEXPECT(build.declares_sources());
 };
 
 ZEST_CASE(DiscoveredSourceOrder) {
@@ -459,19 +461,19 @@ ZEST_CASE(DiscoveredSourceOrder) {
     auto build_dir = cdb.add_source(Spelling::absolute(tmp.path("build")));
     auto root = cdb.add_source(Spelling::absolute(tmp.path("compile_commands.json")));
     for(auto id: {sub, build_dir, root}) {
-        ASSERT(cdb.load_source(id));
-        EXPECT(build.discovered(id));
+        ZASSERT(cdb.load_source(id));
+        ZEXPECT(build.discovered(id));
     }
 
     auto main = files.intern(Spelling::absolute(tmp.path("main.cpp")));
-    EXPECT(build.source_order(files.resolve(main)) ==
-           (llvm::SmallVector<SourceID, 4>{root, build_dir, sub}));
-    EXPECT(build.entries(main).front().source == root);
+    ZEXPECT(build.source_order(files.resolve(main)) ==
+            (llvm::SmallVector<SourceID, 4>{root, build_dir, sub}));
+    ZEXPECT(build.entries(main).front().source == root);
 
     cdb.set_present(root, false);
-    EXPECT(build.source_order(files.resolve(main)) ==
-           (llvm::SmallVector<SourceID, 4>{build_dir, sub, root}));
-    EXPECT(build.entries(main).front().source == build_dir);
+    ZEXPECT(build.source_order(files.resolve(main)) ==
+            (llvm::SmallVector<SourceID, 4>{build_dir, sub, root}));
+    ZEXPECT(build.entries(main).front().source == build_dir);
 };
 
 ZEST_CASE(DiscoverEveryNearby) {
@@ -486,19 +488,19 @@ ZEST_CASE(DiscoverEveryNearby) {
     CanonicalPath root(Spelling::absolute(tmp.root));
     Spelling spelled(root);
     auto found = discover_compile_commands(root);
-    ASSERT(found.size() == 3u);
-    EXPECT(found[0].str() == Spelling("compile_commands.json", spelled).str());
-    EXPECT(found[1].str() == Spelling("build/compile_commands.json", spelled).str());
-    EXPECT(found[2].str() == Spelling("out/compile_commands.json", spelled).str());
+    ZASSERT(found.size() == 3u);
+    ZEXPECT(found[0].str() == Spelling("compile_commands.json", spelled).str());
+    ZEXPECT(found[1].str() == Spelling("build/compile_commands.json", spelled).str());
+    ZEXPECT(found[2].str() == Spelling("out/compile_commands.json", spelled).str());
 
     auto above =
         compile_commands_above(CanonicalPath(Spelling::absolute(tmp.path("deep/proj/src"))), root);
-    ASSERT(above.size() == 2u);
-    EXPECT(CanonicalPath(above[0]) ==
-           CanonicalPath(
-               Spelling::absolute(path::join(tmp.root, "deep", "proj", "compile_commands.json"))));
-    EXPECT(CanonicalPath(above[1]) ==
-           CanonicalPath(Spelling::absolute(path::join(tmp.root, "compile_commands.json"))));
+    ZASSERT(above.size() == 2u);
+    ZEXPECT(CanonicalPath(above[0]) ==
+            CanonicalPath(
+                Spelling::absolute(path::join(tmp.root, "deep", "proj", "compile_commands.json"))));
+    ZEXPECT(CanonicalPath(above[1]) ==
+            CanonicalPath(Spelling::absolute(path::join(tmp.root, "compile_commands.json"))));
 };
 
 #ifndef _WIN32
@@ -508,17 +510,17 @@ ZEST_CASE(DiscoverSymlinkedBuild) {
     TempDir tmp;
     tmp.touch("elsewhere/build/compile_commands.json", "[]");
     tmp.mkdir("ws");
-    ASSERT(::symlink(tmp.path("elsewhere/build").c_str(), tmp.path("ws/build").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("elsewhere/build").c_str(), tmp.path("ws/build").c_str()) == 0);
     CanonicalPath root(Spelling::absolute(tmp.path("ws")));
     auto expected = Spelling("build/compile_commands.json", Spelling(root)).str();
 
     auto found = discover_compile_commands(root);
-    ASSERT(found.size() == 1u);
-    EXPECT(found[0].str() == expected);
+    ZASSERT(found.size() == 1u);
+    ZEXPECT(found[0].str() == expected);
 
     auto below = compile_commands_below(root, CanonicalPath());
-    ASSERT(below.size() == 1u);
-    EXPECT(below[0].str() == expected);
+    ZASSERT(below.size() == 1u);
+    ZEXPECT(below[0].str() == expected);
 };
 
 ZEST_CASE(LinkedBuildKeyedByLink) {
@@ -527,15 +529,15 @@ ZEST_CASE(LinkedBuildKeyedByLink) {
     TempDir tmp;
     tmp.touch("out/debug/compile_commands.json", "[]");
     tmp.touch("out/release/compile_commands.json", "[]");
-    ASSERT(::symlink(tmp.path("out/debug").c_str(), tmp.path("build").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("out/debug").c_str(), tmp.path("build").c_str()) == 0);
     FileTable files;
     CompilationDatabase cdb{files};
     auto build = Spelling::absolute(tmp.path("build"));
     auto first = cdb.add_source(build);
 
-    ASSERT(::unlink(tmp.path("build").c_str()) == 0);
-    ASSERT(::symlink(tmp.path("out/release").c_str(), tmp.path("build").c_str()) == 0);
-    EXPECT(cdb.add_source(build) == first);
+    ZASSERT(::unlink(tmp.path("build").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("out/release").c_str(), tmp.path("build").c_str()) == 0);
+    ZEXPECT(cdb.add_source(build) == first);
 };
 #endif
 
@@ -547,15 +549,15 @@ ZEST_CASE(ProjectRootAbove) {
     tmp.touch("app/build/compile_commands.json", "[]");
     tmp.touch("tool/compile_commands.json", "[]");
     tmp.touch("tool/sub/clice.toml", "");
-    EXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("lib/src/deep")))) ==
-           CanonicalPath(Spelling::absolute(path::join(tmp.root, "lib"))));
-    EXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("app/src")))) ==
-           CanonicalPath(Spelling::absolute(tmp.path("app"))));
-    EXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("tool/src")))) ==
-           CanonicalPath(Spelling::absolute(tmp.path("tool"))));
-    EXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("tool/sub/src")))) ==
-           CanonicalPath(Spelling::absolute(tmp.path("tool/sub"))));
-    EXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("none/src")))).empty());
+    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("lib/src/deep")))) ==
+            CanonicalPath(Spelling::absolute(path::join(tmp.root, "lib"))));
+    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("app/src")))) ==
+            CanonicalPath(Spelling::absolute(tmp.path("app"))));
+    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("tool/src")))) ==
+            CanonicalPath(Spelling::absolute(tmp.path("tool"))));
+    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("tool/sub/src")))) ==
+            CanonicalPath(Spelling::absolute(tmp.path("tool/sub"))));
+    ZEXPECT(project_root_above(CanonicalPath(Spelling::absolute(tmp.path("none/src")))).empty());
 };
 
 ZEST_CASE(DefinesProject) {
@@ -567,11 +569,11 @@ ZEST_CASE(DefinesProject) {
     tmp.touch("db/build/compile_commands.json", "[]");
     tmp.touch("plain/src/main.cpp", "");
     tmp.touch("deep/a/b/compile_commands.json", "[]");
-    EXPECT(defines_project(CanonicalPath(Spelling::absolute(tmp.path("toml")))));
-    EXPECT(defines_project(CanonicalPath(Spelling::absolute(tmp.path("hidden")))));
-    EXPECT(defines_project(CanonicalPath(Spelling::absolute(tmp.path("db")))));
-    EXPECT(!defines_project(CanonicalPath(Spelling::absolute(tmp.path("plain")))));
-    EXPECT(!defines_project(CanonicalPath(Spelling::absolute(tmp.path("deep")))));
+    ZEXPECT(defines_project(CanonicalPath(Spelling::absolute(tmp.path("toml")))));
+    ZEXPECT(defines_project(CanonicalPath(Spelling::absolute(tmp.path("hidden")))));
+    ZEXPECT(defines_project(CanonicalPath(Spelling::absolute(tmp.path("db")))));
+    ZEXPECT(!defines_project(CanonicalPath(Spelling::absolute(tmp.path("plain")))));
+    ZEXPECT(!defines_project(CanonicalPath(Spelling::absolute(tmp.path("deep")))));
 };
 
 #ifndef _WIN32
@@ -582,11 +584,11 @@ ZEST_CASE(ResolvedSpelling) {
     tmp.touch("real/file", "");
     [[maybe_unused]] auto linked = ::symlink(tmp.path("real").c_str(), tmp.path("link").c_str());
     auto real = CanonicalPath(Spelling::absolute(tmp.path("real")));
-    EXPECT(CanonicalPath(Spelling::absolute(tmp.path("link"))) == real);
-    EXPECT(CanonicalPath(Spelling::absolute(tmp.path("link/.clice"))).str() ==
-           path::join(real, ".clice"));
-    EXPECT(CanonicalPath(Spelling::absolute(tmp.path("real/.clice"))).str() ==
-           path::join(real, ".clice"));
+    ZEXPECT(CanonicalPath(Spelling::absolute(tmp.path("link"))) == real);
+    ZEXPECT(CanonicalPath(Spelling::absolute(tmp.path("link/.clice"))).str() ==
+            path::join(real, ".clice"));
+    ZEXPECT(CanonicalPath(Spelling::absolute(tmp.path("real/.clice"))).str() ==
+            path::join(real, ".clice"));
 };
 #endif
 
@@ -606,28 +608,28 @@ ZEST_CASE(RefreshDefaultSources) {
     auto refresh = [&] {
         return build.refresh_default_sources(walk_sources(build.source_walk()));
     };
-    ASSERT(build.members().size() == 1u);
-    EXPECT(refresh().empty());
+    ZASSERT(build.members().size() == 1u);
+    ZEXPECT(refresh().empty());
 
     tmp.touch("src/later.cpp", "");
     auto later = files.intern(Spelling::absolute(tmp.path("src/later.cpp")));
-    EXPECT(refresh() == llvm::SmallVector<Fid>{later});
-    EXPECT(refresh().empty());
-    EXPECT(build.members().size() == 2u);
+    ZEXPECT(refresh() == llvm::SmallVector<Fid>{later});
+    ZEXPECT(refresh().empty());
+    ZEXPECT(build.members().size() == 2u);
 
     vfs::remove_all(tmp.path("src/later.cpp"));
-    EXPECT(refresh().empty());
-    EXPECT(build.members().size() == 1u);
+    ZEXPECT(refresh().empty());
+    ZEXPECT(build.members().size() == 1u);
 };
 
 ZEST_CASE(DeclaredSourceOffDiscovery) {
     /// A rule declaring a default command is the whole intent: the database
     /// sitting at the root is not consulted.
     Layout layout("declared_ignores_discovered");
-    EXPECT(layout.build.declares_sources());
-    EXPECT(layout.build.declared_sources().empty());
-    EXPECT(layout.cdb.source_count() == 0U);
-    EXPECT(has_arg(layout.render("main.cpp"), "FROM_RULE"));
+    ZEXPECT(layout.build.declares_sources());
+    ZEXPECT(layout.build.declared_sources().empty());
+    ZEXPECT(layout.cdb.source_count() == 0U);
+    ZEXPECT(has_arg(layout.render("main.cpp"), "FROM_RULE"));
 };
 
 ZEST_CASE(InactiveConfigurationExcluded) {
@@ -655,17 +657,17 @@ ZEST_CASE(InactiveConfigurationExcluded) {
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
     build.reset_active(resolve_configuration(config, ""));
-    EXPECT(build.active_configuration() == "release");
-    ASSERT(build.declared_sources().size() == 1U);
+    ZEXPECT(build.active_configuration() == "release");
+    ZASSERT(build.declared_sources().size() == 1U);
     cdb.load(tmp.path("release"));
     cdb.load(tmp.path("debug"));
-    ASSERT(cdb.source_count() == 2U);
+    ZASSERT(cdb.source_count() == 2U);
 
     auto main = files.intern(Spelling::absolute(tmp.path("main.cpp")));
     auto candidates = build.entries(main);
-    ASSERT(candidates.size() == 1U);
-    EXPECT(has_arg(cdb.render_full(candidates.front().config), "RELEASE"));
-    EXPECT(build.edits(CanonicalPath(Spelling::absolute(tmp.path("main.cpp")))).empty());
+    ZASSERT(candidates.size() == 1U);
+    ZEXPECT(has_arg(cdb.render_full(candidates.front().config), "RELEASE"));
+    ZEXPECT(build.edits(CanonicalPath(Spelling::absolute(tmp.path("main.cpp")))).empty());
 };
 
 ZEST_CASE(InactiveSourceKeepsDiscovery) {
@@ -682,8 +684,8 @@ ZEST_CASE(InactiveSourceKeepsDiscovery) {
     CompilationDatabase cdb{files};
     Build build{config, cdb, files};
     build.reset_active(resolve_configuration(config, ""));
-    EXPECT(!build.declares_sources());
-    EXPECT(build.declared_sources().empty());
+    ZEXPECT(!build.declares_sources());
+    ZEXPECT(build.declared_sources().empty());
 
     /// The database the inactive configuration names is the one discovery
     /// finds at the root: registered, it serves as a discovered source
@@ -694,8 +696,8 @@ ZEST_CASE(InactiveSourceKeepsDiscovery) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    EXPECT(build.entries(files.intern(Spelling::absolute(tmp.path("main.cpp")))).size() == 1U);
-    EXPECT(build.members().size() == 1U);
+    ZEXPECT(build.entries(files.intern(Spelling::absolute(tmp.path("main.cpp")))).size() == 1U);
+    ZEXPECT(build.members().size() == 1U);
 };
 
 ZEST_CASE(EditsAcrossHostAndHeader) {
@@ -717,16 +719,16 @@ ZEST_CASE(EditsAcrossHostAndHeader) {
     CanonicalPath header(Spelling::absolute(tmp.path("include/x.h")));
     CanonicalRef both[] = {host, header};
     auto edits = build.edits(both).edits;
-    ASSERT(edits.size() == 4U);
-    EXPECT(edits[0].flags == (std::vector<std::string>{"-DA"}));
-    EXPECT(edits[1].flags == (std::vector<std::string>{"-DB"}));
-    EXPECT(edits[2].kind == CommandEdit::Kind::Remove);
-    EXPECT(edits[2].flags == (std::vector<std::string>{"-DA"}));
-    EXPECT(edits[3].flags == (std::vector<std::string>{"-DC"}));
+    ZASSERT(edits.size() == 4U);
+    ZEXPECT(edits[0].flags == (std::vector<std::string>{"-DA"}));
+    ZEXPECT(edits[1].flags == (std::vector<std::string>{"-DB"}));
+    ZEXPECT(edits[2].kind == CommandEdit::Kind::Remove);
+    ZEXPECT(edits[2].flags == (std::vector<std::string>{"-DA"}));
+    ZEXPECT(edits[3].flags == (std::vector<std::string>{"-DC"}));
 
     auto header_only = build.edits(header).edits;
-    ASSERT(header_only.size() == 3U);
-    EXPECT(header_only[0].flags == (std::vector<std::string>{"-DB"}));
+    ZASSERT(header_only.size() == 3U);
+    ZEXPECT(header_only[0].flags == (std::vector<std::string>{"-DB"}));
 };
 
 };  // ZEST_SUITE(Build)

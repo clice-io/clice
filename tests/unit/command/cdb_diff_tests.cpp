@@ -49,10 +49,10 @@ ZEST_CASE(AddedEntry) {
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    ASSERT(diff->added.size() == 1U);
-    EXPECT(diff->added[0] == id_of(cdb, tmp, "b.cpp"));
-    EXPECT(diff->removed.empty());
-    EXPECT(diff->changed.empty());
+    ZASSERT(diff->added.size() == 1U);
+    ZEXPECT(diff->added[0] == id_of(cdb, tmp, "b.cpp"));
+    ZEXPECT(diff->removed.empty());
+    ZEXPECT(diff->changed.empty());
 };
 
 ZEST_CASE(RemovedEntry) {
@@ -74,10 +74,10 @@ ZEST_CASE(RemovedEntry) {
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    ASSERT(diff->removed.size() == 1U);
-    EXPECT(diff->removed[0] == id_of(cdb, tmp, "b.cpp"));
-    EXPECT(diff->added.empty());
-    EXPECT(diff->changed.empty());
+    ZASSERT(diff->removed.size() == 1U);
+    ZEXPECT(diff->removed[0] == id_of(cdb, tmp, "b.cpp"));
+    ZEXPECT(diff->added.empty());
+    ZEXPECT(diff->changed.empty());
 };
 
 ZEST_CASE(ChangedFlag) {
@@ -98,10 +98,10 @@ ZEST_CASE(ChangedFlag) {
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    ASSERT(diff->changed.size() == 1U);
-    EXPECT(diff->changed[0] == id_of(cdb, tmp, "a.cpp"));
-    EXPECT(diff->added.empty());
-    EXPECT(diff->removed.empty());
+    ZASSERT(diff->changed.size() == 1U);
+    ZEXPECT(diff->changed[0] == id_of(cdb, tmp, "a.cpp"));
+    ZEXPECT(diff->added.empty());
+    ZEXPECT(diff->removed.empty());
 };
 
 ZEST_CASE(IdenticalReload) {
@@ -118,7 +118,7 @@ ZEST_CASE(IdenticalReload) {
     cdb.load(cdb_path);
 
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
-    EXPECT(diff->empty());
+    ZEXPECT(diff->empty());
 };
 
 ZEST_CASE(ReorderChangesSelection) {
@@ -145,11 +145,11 @@ ZEST_CASE(ReorderChangesSelection) {
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    ASSERT(diff);
-    EXPECT(diff->added.empty());
-    EXPECT(diff->removed.empty());
-    EXPECT(diff->changed ==
-           llvm::SmallVector<Fid>{file_table.intern(Spelling::absolute(tmp.path("a.cpp")))});
+    ZASSERT(diff);
+    ZEXPECT(diff->added.empty());
+    ZEXPECT(diff->removed.empty());
+    ZEXPECT(diff->changed ==
+            llvm::SmallVector<Fid>{file_table.intern(Spelling::absolute(tmp.path("a.cpp")))});
 };
 
 ZEST_CASE(CodegenChangeIgnored) {
@@ -174,7 +174,7 @@ ZEST_CASE(CodegenChangeIgnored) {
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    EXPECT(diff->empty());
+    ZEXPECT(diff->empty());
 };
 
 ZEST_CASE(OptLevelIsSemantic) {
@@ -197,10 +197,10 @@ ZEST_CASE(OptLevelIsSemantic) {
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    ASSERT(diff->changed.size() == 1U);
-    EXPECT(diff->changed[0] == id_of(cdb, tmp, "a.cpp"));
-    EXPECT(diff->added.empty());
-    EXPECT(diff->removed.empty());
+    ZASSERT(diff->changed.size() == 1U);
+    ZEXPECT(diff->changed[0] == id_of(cdb, tmp, "a.cpp"));
+    ZEXPECT(diff->added.empty());
+    ZEXPECT(diff->removed.empty());
 };
 
 ZEST_CASE(MultiEntryOneChanged) {
@@ -224,10 +224,10 @@ ZEST_CASE(MultiEntryOneChanged) {
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    ASSERT(diff->changed.size() == 1U);
-    EXPECT(diff->changed[0] == id_of(cdb, tmp, "a.cpp"));
-    EXPECT(diff->added.empty());
-    EXPECT(diff->removed.empty());
+    ZASSERT(diff->changed.size() == 1U);
+    ZEXPECT(diff->changed[0] == id_of(cdb, tmp, "a.cpp"));
+    ZEXPECT(diff->added.empty());
+    ZEXPECT(diff->removed.empty());
 };
 
 ZEST_CASE(FirstLoadAllAdded) {
@@ -244,11 +244,11 @@ ZEST_CASE(FirstLoadAllAdded) {
     });
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    ASSERT(diff->added.size() == 2U);
-    EXPECT(contains(diff->added, id_of(cdb, tmp, "a.cpp")));
-    EXPECT(contains(diff->added, id_of(cdb, tmp, "b.cpp")));
-    EXPECT(diff->removed.empty());
-    EXPECT(diff->changed.empty());
+    ZASSERT(diff->added.size() == 2U);
+    ZEXPECT(contains(diff->added, id_of(cdb, tmp, "a.cpp")));
+    ZEXPECT(contains(diff->added, id_of(cdb, tmp, "b.cpp")));
+    ZEXPECT(diff->removed.empty());
+    ZEXPECT(diff->changed.empty());
 };
 
 ZEST_CASE(CorruptKeepsEntries) {
@@ -264,19 +264,19 @@ ZEST_CASE(CorruptKeepsEntries) {
                    {tmp.root.str(), "a.cpp", {}}
     });
     cdb.load(cdb_path);
-    ASSERT(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
+    ZASSERT(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
 
     tmp.touch("compile_commands.json", "<<< corrupted compile_commands.json >>>");
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    ASSERT(!diff.has_value());
-    EXPECT(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
+    ZASSERT(!diff.has_value());
+    ZEXPECT(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
 
     auto file = path::join(tmp.root.str(), "a.cpp");
     auto candidates = cdb.candidate_entries(file);
-    ASSERT(candidates.size() == 1U);
-    EXPECT(llvm::StringRef(print_argv(cdb.render_full(candidates.front().config)))
-               .contains("-std=c++20"));
+    ZASSERT(candidates.size() == 1U);
+    ZEXPECT(llvm::StringRef(print_argv(cdb.render_full(candidates.front().config)))
+                .contains("-std=c++20"));
 };
 
 ZEST_CASE(MissingFileFails) {
@@ -296,8 +296,8 @@ ZEST_CASE(MissingFileFails) {
 
     auto diff = cdb.reload_and_diff(cdb.add_source(Spelling::absolute(cdb_path)));
 
-    ASSERT(!diff.has_value());
-    EXPECT(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
+    ZASSERT(!diff.has_value());
+    ZEXPECT(cdb.has_entry(path::join(tmp.root.str(), "a.cpp")));
 };
 
 };  // ZEST_SUITE(ReloadDiff)

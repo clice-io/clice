@@ -21,12 +21,12 @@ ZEST_CASE(content_absorbs_queued) {
     // Within one queued slot ContentChanged absorbs: a deps-only cascade
     // cannot downgrade a file whose own content already changed, and no
     // second slot is owed.
-    EXPECT(ledger.record(Fid{1}, ReindexReason::ContentChanged));
-    EXPECT(!ledger.record(Fid{1}, ReindexReason::DepsOnly));
-    EXPECT(ledger.pending_reason(Fid{1}) == ReindexReason::ContentChanged);
+    ZEXPECT(ledger.record(Fid{1}, ReindexReason::ContentChanged));
+    ZEXPECT(!ledger.record(Fid{1}, ReindexReason::DepsOnly));
+    ZEXPECT(ledger.pending_reason(Fid{1}) == ReindexReason::ContentChanged);
 
-    EXPECT(!ledger.record(Fid{1}, ReindexReason::ContentChanged));
-    EXPECT(ledger.pending_reason(Fid{1}) == ReindexReason::ContentChanged);
+    ZEXPECT(!ledger.record(Fid{1}, ReindexReason::ContentChanged));
+    ZEXPECT(ledger.pending_reason(Fid{1}) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(consumed_pass_owns_debt) {
@@ -35,10 +35,10 @@ ZEST_CASE(consumed_pass_owns_debt) {
     // keeping ContentChanged would suppress the file's rows past it.
     ledger.record(Fid{1}, ReindexReason::ContentChanged);
     auto claim = ledger.claim(Fid{1});
-    ASSERT(claim);
+    ZASSERT(claim);
 
-    EXPECT(ledger.record(Fid{1}, ReindexReason::DepsOnly));
-    EXPECT(ledger.pending_reason(Fid{1}) == ReindexReason::DepsOnly);
+    ZEXPECT(ledger.record(Fid{1}, ReindexReason::DepsOnly));
+    ZEXPECT(ledger.pending_reason(Fid{1}) == ReindexReason::DepsOnly);
 }
 
 ZEST_CASE(settle_spares_newer_debt) {
@@ -46,17 +46,17 @@ ZEST_CASE(settle_spares_newer_debt) {
     // settle must leave it standing, and only the newer claim clears it.
     ledger.record(Fid{1}, ReindexReason::ContentChanged);
     auto old_claim = ledger.claim(Fid{1});
-    ASSERT(old_claim);
+    ZASSERT(old_claim);
     ledger.record(Fid{1}, ReindexReason::ContentChanged);
 
     ledger.settle(*old_claim);
-    EXPECT(ledger.pending_reason(Fid{1}));
+    ZEXPECT(ledger.pending_reason(Fid{1}));
 
     auto fresh = ledger.claim(Fid{1});
-    ASSERT(fresh);
+    ZASSERT(fresh);
     ledger.settle(*fresh);
-    EXPECT(!ledger.pending_reason(Fid{1}).has_value());
-    EXPECT(ledger.empty());
+    ZEXPECT(!ledger.pending_reason(Fid{1}).has_value());
+    ZEXPECT(ledger.empty());
 }
 
 ZEST_CASE(deps_never_supersede) {
@@ -65,18 +65,18 @@ ZEST_CASE(deps_never_supersede) {
     // rows are positionally right and the follow-up covers the drift.
     ledger.record(Fid{1}, ReindexReason::ContentChanged);
     auto claim = ledger.claim(Fid{1});
-    ASSERT(claim);
-    EXPECT(!ledger.superseded(*claim));
+    ZASSERT(claim);
+    ZEXPECT(!ledger.superseded(*claim));
 
     ledger.record(Fid{1}, ReindexReason::DepsOnly);
-    EXPECT(!ledger.superseded(*claim));
+    ZEXPECT(!ledger.superseded(*claim));
 
     ledger.record(Fid{1}, ReindexReason::ContentChanged);
-    EXPECT(ledger.superseded(*claim));
+    ZEXPECT(ledger.superseded(*claim));
 
     // A cleared entry (file removed) also lands nothing.
     ledger.clear(Fid{1});
-    EXPECT(ledger.superseded(*claim));
+    ZEXPECT(ledger.superseded(*claim));
 }
 
 ZEST_CASE(superseded_failure_spends_nothing) {
@@ -85,24 +85,24 @@ ZEST_CASE(superseded_failure_spends_nothing) {
     // work with a full budget of its own.
     ledger.record(Fid{1}, ReindexReason::ContentChanged);
     auto stale = ledger.claim(Fid{1});
-    ASSERT(stale);
+    ZASSERT(stale);
     ledger.record(Fid{1}, ReindexReason::ContentChanged);
 
-    EXPECT(ledger.on_dispatch_failure(*stale, Failure::Lost).verdict == Verdict::Superseded);
+    ZEXPECT(ledger.on_dispatch_failure(*stale, Failure::Lost).verdict == Verdict::Superseded);
 
     // The fresh claim still has the whole budget: `budget` crashes
     // requeue before the next one abandons.
     for(unsigned i = 0; i < budget; i += 1) {
         auto claim = ledger.claim(Fid{1});
-        ASSERT(claim);
+        ZASSERT(claim);
         auto outcome = ledger.on_dispatch_failure(*claim, Failure::Lost);
-        EXPECT(outcome.verdict == Verdict::Requeued);
-        EXPECT(outcome.needs_slot);
+        ZEXPECT(outcome.verdict == Verdict::Requeued);
+        ZEXPECT(outcome.needs_slot);
     }
     auto last = ledger.claim(Fid{1});
-    ASSERT(last);
-    EXPECT(ledger.on_dispatch_failure(*last, Failure::Lost).verdict == Verdict::GaveUp);
-    EXPECT(ledger.empty());
+    ZASSERT(last);
+    ZEXPECT(ledger.on_dispatch_failure(*last, Failure::Lost).verdict == Verdict::GaveUp);
+    ZEXPECT(ledger.empty());
 }
 
 ZEST_CASE(preemption_needs_no_budget) {
@@ -111,8 +111,9 @@ ZEST_CASE(preemption_needs_no_budget) {
     ledger.record(Fid{1}, ReindexReason::DepsOnly);
     for(int i = 0; i < 10; i += 1) {
         auto claim = ledger.claim(Fid{1});
-        ASSERT(claim);
-        EXPECT(ledger.on_dispatch_failure(*claim, Failure::Preempted).verdict == Verdict::Requeued);
+        ZASSERT(claim);
+        ZEXPECT(ledger.on_dispatch_failure(*claim, Failure::Preempted).verdict ==
+                Verdict::Requeued);
     }
 }
 
@@ -122,12 +123,12 @@ ZEST_CASE(requeue_carries_content) {
     // landing, and a failed pass leaves the edit uncovered.
     ledger.record(Fid{1}, ReindexReason::ContentChanged);
     auto claim = ledger.claim(Fid{1});
-    ASSERT(claim);
+    ZASSERT(claim);
     ledger.record(Fid{1}, ReindexReason::DepsOnly);
-    EXPECT(ledger.pending_reason(Fid{1}) == ReindexReason::DepsOnly);
+    ZEXPECT(ledger.pending_reason(Fid{1}) == ReindexReason::DepsOnly);
 
-    EXPECT(ledger.on_dispatch_failure(*claim, Failure::Lost).verdict == Verdict::Requeued);
-    EXPECT(ledger.pending_reason(Fid{1}) == ReindexReason::ContentChanged);
+    ZEXPECT(ledger.on_dispatch_failure(*claim, Failure::Lost).verdict == Verdict::Requeued);
+    ZEXPECT(ledger.pending_reason(Fid{1}) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(own_crash_gives_up) {
@@ -135,19 +136,19 @@ ZEST_CASE(own_crash_gives_up) {
     // the file waits for its content to change.
     ledger.record(Fid{1}, ReindexReason::ContentChanged);
     auto claim = ledger.claim(Fid{1});
-    ASSERT(claim);
-    EXPECT(ledger.on_dispatch_failure(*claim, Failure::Crashed).verdict == Verdict::GaveUp);
-    EXPECT(ledger.empty());
+    ZASSERT(claim);
+    ZEXPECT(ledger.on_dispatch_failure(*claim, Failure::Crashed).verdict == Verdict::GaveUp);
+    ZEXPECT(ledger.empty());
 }
 
 ZEST_CASE(cleared_claim_drops) {
     // A file removed mid-flight has nothing to redo.
     ledger.record(Fid{1}, ReindexReason::ContentChanged);
     auto claim = ledger.claim(Fid{1});
-    ASSERT(claim);
+    ZASSERT(claim);
     ledger.clear(Fid{1});
-    EXPECT(ledger.on_dispatch_failure(*claim, Failure::Lost).verdict == Verdict::Dropped);
-    EXPECT(ledger.empty());
+    ZEXPECT(ledger.on_dispatch_failure(*claim, Failure::Lost).verdict == Verdict::Dropped);
+    ZEXPECT(ledger.empty());
 }
 
 };  // ZEST_SUITE(PendingLedger)

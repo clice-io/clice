@@ -19,36 +19,36 @@ ZEST_CASE(AsciiArithmetic) {
     Coordinates map(6, starts, {});
 
     auto pos = map.position(4);
-    ASSERT(pos);
-    EXPECT(pos->line == 1u);
-    EXPECT(pos->column == 1u);
-    EXPECT(pos->utf16_column == 1u);
-    EXPECT(map.offset(1, 1) == std::optional<std::uint32_t>(4));
+    ZASSERT(pos);
+    ZEXPECT(pos->line == 1u);
+    ZEXPECT(pos->column == 1u);
+    ZEXPECT(pos->utf16_column == 1u);
+    ZEXPECT(map.offset(1, 1) == std::optional<std::uint32_t>(4));
 
     // The newline offset is its line's end position, not the next line.
     auto line_end = map.position(2);
-    ASSERT(line_end);
-    EXPECT(line_end->line == 0u);
-    EXPECT(line_end->column == 2u);
+    ZASSERT(line_end);
+    ZEXPECT(line_end->line == 0u);
+    ZEXPECT(line_end->column == 2u);
 
     // Past the content, past the last line: refused. Past a line's end:
     // its end, a huge column included.
-    EXPECT(!map.position(7).has_value());
-    EXPECT(!map.offset(3, 0).has_value());
-    EXPECT(map.offset(0, 3) == std::optional<std::uint32_t>(2));
-    EXPECT(map.offset(1, 0xfffffffd) == std::optional<std::uint32_t>(5));
+    ZEXPECT(!map.position(7).has_value());
+    ZEXPECT(!map.offset(3, 0).has_value());
+    ZEXPECT(map.offset(0, 3) == std::optional<std::uint32_t>(2));
+    ZEXPECT(map.offset(1, 0xfffffffd) == std::optional<std::uint32_t>(5));
 
     auto bounds = map.line_bounds(1);
-    ASSERT(bounds);
-    EXPECT(bounds->begin == 3u);
-    EXPECT(bounds->end == 5u);
-    EXPECT(!map.line_bounds(3).has_value());
+    ZASSERT(bounds);
+    ZEXPECT(bounds->begin == 3u);
+    ZEXPECT(bounds->end == 5u);
+    ZEXPECT(!map.line_bounds(3).has_value());
 }
 
 ZEST_CASE(EmptyLineTable) {
     Coordinates map(6, {}, {});
-    EXPECT(!map.position(0).has_value());
-    EXPECT(!map.offset(0, 0).has_value());
+    ZEXPECT(!map.position(0).has_value());
+    ZEXPECT(!map.offset(0, 0).has_value());
 }
 
 ZEST_CASE(StoredContentCountsUtf16) {
@@ -59,11 +59,11 @@ ZEST_CASE(StoredContentCountsUtf16) {
     Coordinates map(content, line_starts);
 
     auto pos = map.position(5);
-    ASSERT(pos);
-    EXPECT(pos->line == 1u);
-    EXPECT(pos->column == 2u);
-    EXPECT(pos->utf16_column == 1u);
-    EXPECT(map.offset(1, 1) == std::optional<std::uint32_t>(5));
+    ZASSERT(pos);
+    ZEXPECT(pos->line == 1u);
+    ZEXPECT(pos->column == 2u);
+    ZEXPECT(pos->utf16_column == 1u);
+    ZEXPECT(map.offset(1, 1) == std::optional<std::uint32_t>(5));
 }
 
 ZEST_CASE(CRLFLineEnds) {
@@ -77,14 +77,14 @@ ZEST_CASE(CRLFLineEnds) {
     for(auto* map: {&ascii, &stored}) {
         for(std::uint32_t offset: {2u, 3u}) {
             auto pos = map->position(offset);
-            ASSERT(pos);
-            EXPECT(pos->line == 0u);
-            EXPECT(pos->column == 2u);
+            ZASSERT(pos);
+            ZEXPECT(pos->line == 0u);
+            ZEXPECT(pos->column == 2u);
         }
-        EXPECT(map->offset(0, 5) == std::optional<std::uint32_t>(2));
-        EXPECT(map->line_bounds(0) == std::optional(LocalSourceRange{0, 2}));
+        ZEXPECT(map->offset(0, 5) == std::optional<std::uint32_t>(2));
+        ZEXPECT(map->line_bounds(0) == std::optional(LocalSourceRange{0, 2}));
     }
-    EXPECT(stored.position(3)->utf16_column == 1u);
+    ZEXPECT(stored.position(3)->utf16_column == 1u);
 }
 
 };  // ZEST_SUITE(Coordinates)

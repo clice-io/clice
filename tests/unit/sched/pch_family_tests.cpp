@@ -27,12 +27,12 @@ WorkerPool pool{loop};
 TaskGraph graph;
 PCHFamily pch{graph, project, pool};
 
-void setup() {
+PCHFamilyAcquisitionTEST() {
     tmp.touch("a.cpp", "");
     src = tmp.path("a.cpp");
 
     auto store = CacheStore::open(tmp.path("root"), 1);
-    ASSERT(store);
+    ZASSERT(store);
     store->register_namespace({.name = "pch",
                                .extension = ".pch",
                                .aux_extension = ".pch.idx",
@@ -61,7 +61,7 @@ void execute(F&& fn) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
-        CO_ASSERT(pool.start(opts));
+        ZASSERT(pool.start(opts));
 
         co_await fn();
 
@@ -69,7 +69,7 @@ void execute(F&& fn) {
         co_await pool.stop();
     };
     auto [ran] = run(body());
-    EXPECT(ran.has_value());
+    ZEXPECT(ran.has_value());
 }
 
 ZEST_CASE(PoisonKeyRecordsOnce) {
@@ -95,12 +95,12 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
         co_await kota::when_all(acquire_a(), acquire_b());
     });
 
-    EXPECT(a == PCHFamily::Outcome::Failed);
-    EXPECT(b == PCHFamily::Outcome::Failed);
-    EXPECT(deaths == 1);
+    ZEXPECT(a == PCHFamily::Outcome::Failed);
+    ZEXPECT(b == PCHFamily::Outcome::Failed);
+    ZEXPECT(deaths == 1);
     auto* crash = pch.crashed("shared-key");
-    ASSERT(crash != nullptr);
-    EXPECT(crash->code == worker::dispatch_errc::worker_crashed);
+    ZASSERT(crash != nullptr);
+    ZEXPECT(crash->code == worker::dispatch_errc::worker_crashed);
 
     logging::reset_anomaly_for_testing();
 }
@@ -120,7 +120,7 @@ ZEST_CASE(OwnerGoneStillRecords) {
         auto acquire_owner = [&]() -> kota::task<> {
             auto result =
                 co_await kota::with_token(pch.acquire(request(poison)), owner_scope.token());
-            EXPECT(result.is_cancelled());
+            ZEXPECT(result.is_cancelled());
         };
         auto acquire_joiner = [&]() -> kota::task<> {
             joined = co_await pch.acquire(request(poison));
@@ -132,8 +132,8 @@ ZEST_CASE(OwnerGoneStillRecords) {
         co_await kota::when_all(acquire_owner(), acquire_joiner(), cancel_owner());
     });
 
-    EXPECT(joined == PCHFamily::Outcome::Failed);
-    EXPECT(pch.crashed("shared-key") != nullptr);
+    ZEXPECT(joined == PCHFamily::Outcome::Failed);
+    ZEXPECT(pch.crashed("shared-key") != nullptr);
 
     logging::reset_anomaly_for_testing();
 }
@@ -152,15 +152,15 @@ ZEST_CASE(ForgiveLiftsRefusal) {
         co_await pch.acquire(request(poison));
         // Refused before any dispatch: no second death.
         refused = co_await pch.acquire(request(poison));
-        CO_ASSERT(deaths == 1);
+        ZASSERT(deaths == 1);
 
         pch.forgive("shared-key");
         retried = co_await pch.acquire(request(poison));
     });
 
-    EXPECT(refused == PCHFamily::Outcome::Failed);
-    EXPECT(retried == PCHFamily::Outcome::Failed);
-    EXPECT(deaths == 2);
+    ZEXPECT(refused == PCHFamily::Outcome::Failed);
+    ZEXPECT(retried == PCHFamily::Outcome::Failed);
+    ZEXPECT(deaths == 2);
 
     logging::reset_anomaly_for_testing();
 }
@@ -181,13 +181,13 @@ ZEST_CASE(SharedBuildBothReady) {
         co_await kota::when_all(acquire_a(), acquire_b());
     });
 
-    EXPECT(a == PCHFamily::Outcome::Ready);
-    EXPECT(b == PCHFamily::Outcome::Ready);
-    EXPECT(pch.crashed("shared-key") == nullptr);
+    ZEXPECT(a == PCHFamily::Outcome::Ready);
+    ZEXPECT(b == PCHFamily::Outcome::Ready);
+    ZEXPECT(pch.crashed("shared-key") == nullptr);
     auto it = project.pch_cache.find("shared-key");
-    ASSERT(it != project.pch_cache.end());
-    EXPECT(!it->second.path.empty());
-    EXPECT(!it->second.index_path.empty());
+    ZASSERT(it != project.pch_cache.end());
+    ZEXPECT(!it->second.path.empty());
+    ZEXPECT(!it->second.index_path.empty());
 }
 
 ZEST_CASE(BlameParksKey) {
@@ -206,8 +206,8 @@ ZEST_CASE(BlameParksKey) {
         pch.blame("shared-key");
         parked = co_await pch.acquire(request("#define X 1\n"));
     });
-    EXPECT(cleared == PCHFamily::Outcome::Ready);
-    EXPECT(parked == PCHFamily::Outcome::Failed);
+    ZEXPECT(cleared == PCHFamily::Outcome::Ready);
+    ZEXPECT(parked == PCHFamily::Outcome::Failed);
 }
 
 };  // ZEST_SUITE(PCHFamilyAcquisition)

@@ -43,15 +43,15 @@ ZEST_SUITE(TemplateResolver, Tester) {
 
 void run(llvm::StringRef code) {
     add_main("main.cpp", code);
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
     auto target = finder.expect;
-    ASSERT(!(input.isNull() || target.isNull()));
-    EXPECT(input.getCanonicalType() == target.getCanonicalType());
+    ZASSERT(!(input.isNull() || target.isNull()));
+    ZEXPECT(input.getCanonicalType() == target.getCanonicalType());
 }
 
 ZEST_CASE(TypeParameterType) {
@@ -1929,7 +1929,7 @@ ZEST_CASE(UnresolvedMemberLookup) {
             }
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         const clang::UnresolvedMemberExpr* expr = nullptr;
@@ -1941,10 +1941,10 @@ ZEST_CASE(UnresolvedMemberLookup) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ASSERT(finder.expr != nullptr);
+    ZASSERT(finder.expr != nullptr);
 
     auto members = unit->resolver().lookup(finder.expr);
-    EXPECT(std::ranges::distance(members) == 2);
+    ZEXPECT(std::ranges::distance(members) == 2);
 }
 
 ZEST_CASE(NamespaceOverloadLookup) {
@@ -1961,7 +1961,7 @@ ZEST_CASE(NamespaceOverloadLookup) {
             ns::f<T>(t);
         }
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         const clang::UnresolvedLookupExpr* expr = nullptr;
@@ -1973,10 +1973,10 @@ ZEST_CASE(NamespaceOverloadLookup) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ASSERT(finder.expr != nullptr);
+    ZASSERT(finder.expr != nullptr);
 
     auto members = unit->resolver().lookup(finder.expr);
-    EXPECT(std::ranges::distance(members) == 2);
+    ZEXPECT(std::ranges::distance(members) == 2);
 }
 
 ZEST_CASE(RecursiveDetectorProbe) {
@@ -2018,7 +2018,7 @@ ZEST_CASE(CallArityFilter) {
             }
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         const clang::CallExpr* expr = nullptr;
@@ -2032,12 +2032,12 @@ ZEST_CASE(CallArityFilter) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ASSERT(finder.expr != nullptr);
+    ZASSERT(finder.expr != nullptr);
 
     /// One argument: `foo(int, int)` is filtered out, both single-parameter
     /// overloads survive.
     auto candidates = unit->resolver().lookup(finder.expr);
-    EXPECT(candidates.size() == 2u);
+    ZEXPECT(candidates.size() == 2u);
 }
 
 ZEST_CASE(PackElementCache) {
@@ -2099,15 +2099,15 @@ ZEST_CASE(VoidReference) {
             using expect = void;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
+    ZASSERT(!input.isNull());
     if(input->isReferenceType()) {
-        EXPECT(!input->getPointeeType()->isVoidType());
+        ZEXPECT(!input->getPointeeType()->isVoidType());
     }
 }
 
@@ -2243,17 +2243,17 @@ ZEST_CASE(PointerToReference) {
             using expect = void;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(input->isDependentType());
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
     /// Degrading returns the written `T*`; fabricating `X& *` would not.
     if(input->isPointerType()) {
-        EXPECT(!input->getPointeeType()->isReferenceType());
+        ZEXPECT(!input->getPointeeType()->isReferenceType());
     }
 }
 
@@ -2652,7 +2652,7 @@ ZEST_CASE(QualifiedCallArity) {
             }
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         const clang::CallExpr* expr = nullptr;
@@ -2666,12 +2666,12 @@ ZEST_CASE(QualifiedCallArity) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ASSERT(finder.expr != nullptr);
+    ZASSERT(finder.expr != nullptr);
 
     /// One argument: `foo(int, int)` is filtered out, both single-parameter
     /// overloads survive.
     auto candidates = unit->resolver().lookup(finder.expr);
-    EXPECT(candidates.size() == 2u);
+    ZEXPECT(candidates.size() == 2u);
 }
 
 ZEST_CASE(PackArgumentCall) {
@@ -2689,7 +2689,7 @@ ZEST_CASE(PackArgumentCall) {
             }
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         const clang::CallExpr* expr = nullptr;
@@ -2703,10 +2703,10 @@ ZEST_CASE(PackArgumentCall) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ASSERT(finder.expr != nullptr);
+    ZASSERT(finder.expr != nullptr);
 
     auto candidates = unit->resolver().lookup(finder.expr);
-    EXPECT(candidates.size() == 2u);
+    ZEXPECT(candidates.size() == 2u);
 }
 
 ZEST_CASE(AtomicReference) {
@@ -2723,15 +2723,15 @@ ZEST_CASE(AtomicReference) {
             using expect = void;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
+    ZASSERT(!input.isNull());
     if(auto AT = input->getAs<clang::AtomicType>()) {
-        EXPECT(!AT->getValueType()->isReferenceType());
+        ZEXPECT(!AT->getValueType()->isReferenceType());
     }
 }
 
@@ -2850,7 +2850,7 @@ ZEST_CASE(ArrowWithoutPointer) {
             }
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         const clang::CXXDependentScopeMemberExpr* expr = nullptr;
@@ -2864,10 +2864,10 @@ ZEST_CASE(ArrowWithoutPointer) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ASSERT(finder.expr != nullptr);
+    ZASSERT(finder.expr != nullptr);
 
     auto candidates = unit->resolver().lookup(finder.expr);
-    EXPECT(candidates.empty());
+    ZEXPECT(candidates.empty());
 }
 
 ZEST_CASE(ArrowThroughSmartPointer) {
@@ -2890,7 +2890,7 @@ ZEST_CASE(ArrowThroughSmartPointer) {
             p->val;
         }
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         const clang::CXXDependentScopeMemberExpr* expr = nullptr;
@@ -2904,11 +2904,11 @@ ZEST_CASE(ArrowThroughSmartPointer) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ASSERT(finder.expr != nullptr);
+    ZASSERT(finder.expr != nullptr);
 
     auto candidates = unit->resolver().lookup(finder.expr);
-    ASSERT(!candidates.empty());
-    EXPECT(llvm::isa<clang::FieldDecl>(*candidates.begin()));
+    ZASSERT(!candidates.empty());
+    ZEXPECT(llvm::isa<clang::FieldDecl>(*candidates.begin()));
 }
 
 ZEST_CASE(RecordOfMemberAlias) {
@@ -2925,16 +2925,16 @@ ZEST_CASE(RecordOfMemberAlias) {
             using input = typename Vec<Vec<X>>::value_type;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto* record =
         llvm::dyn_cast_or_null<clang::CXXRecordDecl>(unit->resolver().resolve_tag(finder.input));
-    ASSERT(record != nullptr);
-    EXPECT(record->getName() == "Vec");
-    EXPECT(record->getDescribedClassTemplate() != nullptr);
+    ZASSERT(record != nullptr);
+    ZEXPECT(record->getName() == "Vec");
+    ZEXPECT(record->getDescribedClassTemplate() != nullptr);
 }
 
 ZEST_CASE(RecordOfPartialPattern) {
@@ -2952,14 +2952,14 @@ ZEST_CASE(RecordOfPartialPattern) {
             using input = Traits<X*>;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto* record = unit->resolver().resolve_tag(finder.input);
-    ASSERT(record != nullptr);
-    EXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(record));
+    ZASSERT(record != nullptr);
+    ZEXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(record));
 }
 
 ZEST_CASE(RecordOfParameter) {
@@ -2970,12 +2970,12 @@ ZEST_CASE(RecordOfParameter) {
             using input = X;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    EXPECT(unit->resolver().resolve_tag(finder.input) == nullptr);
+    ZEXPECT(unit->resolver().resolve_tag(finder.input) == nullptr);
 }
 
 ZEST_CASE(MixedPackCandidate) {
@@ -3061,14 +3061,14 @@ ZEST_CASE(NegativeArrayBound) {
             using expect = void;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(!input->isConstantArrayType());
+    ZASSERT(!input.isNull());
+    ZEXPECT(!input->isConstantArrayType());
 }
 
 ZEST_CASE(DecayedParameter) {
@@ -3128,14 +3128,14 @@ ZEST_CASE(CompoundValueDegrade) {
             using expect = void;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(input->isDependentType());
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
 }
 
 ZEST_CASE(TypedValueMismatch) {
@@ -3264,15 +3264,15 @@ ZEST_CASE(AmbiguousPartials) {
             using expect = void;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(input->isDependentType());
-    EXPECT(!(input->isVoidType() || input->isBuiltinType()));
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
+    ZEXPECT(!(input->isVoidType() || input->isBuiltinType()));
 }
 
 ZEST_CASE(DependentNameArgument) {
@@ -3523,16 +3523,16 @@ ZEST_CASE(VoidFunctionParam) {
             using expect = void;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
+    ZASSERT(!input.isNull());
     if(auto FPT = input->getAs<clang::FunctionProtoType>()) {
         for(auto param: FPT->getParamTypes()) {
-            EXPECT(!param->isVoidType());
+            ZEXPECT(!param->isVoidType());
         }
     }
 }
@@ -3553,15 +3553,15 @@ ZEST_CASE(VoidMemberPointee) {
             using expect = void;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
+    ZASSERT(!input.isNull());
     if(auto MPT = input->getAs<clang::MemberPointerType>()) {
-        EXPECT(!MPT->getPointeeType()->isVoidType());
+        ZEXPECT(!MPT->getPointeeType()->isVoidType());
     }
 }
 
@@ -3625,16 +3625,16 @@ ZEST_CASE(SurplusArguments) {
             using expect = void;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
+    ZASSERT(!input.isNull());
     if(auto TST = input->getAs<clang::TemplateSpecializationType>()) {
         auto TD = TST->getTemplateName().getAsTemplateDecl();
-        EXPECT(!(TD && TD->getName() == "target" && TST->template_arguments().size() > 1));
+        ZEXPECT(!(TD && TD->getName() == "target" && TST->template_arguments().size() > 1));
     }
 }
 
@@ -3697,15 +3697,15 @@ ZEST_CASE(FunctionReturnArray) {
             using expect = void;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
+    ZASSERT(!input.isNull());
     if(auto FPT = input->getAs<clang::FunctionProtoType>()) {
-        EXPECT(!FPT->getReturnType()->isArrayType());
+        ZEXPECT(!FPT->getReturnType()->isArrayType());
     }
 }
 
@@ -3836,7 +3836,7 @@ ZEST_CASE(ExplicitObjectArity) {
             }
         };
     )code");
-    ASSERT(compile("-std=c++23"));
+    ZASSERT(compile("-std=c++23"));
 
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         const clang::CallExpr* expr = nullptr;
@@ -3850,12 +3850,12 @@ ZEST_CASE(ExplicitObjectArity) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ASSERT(finder.expr != nullptr);
+    ZASSERT(finder.expr != nullptr);
 
     /// One written argument plus the unspelled object: only the
     /// two-parameter explicit-object overload survives.
     auto candidates = unit->resolver().lookup(finder.expr);
-    EXPECT(candidates.size() == 1u);
+    ZEXPECT(candidates.size() == 1u);
 }
 
 ZEST_CASE(CallArityOccurrences) {
@@ -3873,7 +3873,7 @@ ZEST_CASE(CallArityOccurrences) {
             }
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     auto semantics = Semantics::build(*unit);
     auto entries = semantics.node_entries();
@@ -3882,11 +3882,11 @@ ZEST_CASE(CallArityOccurrences) {
     for(std::uint32_t i = 0; i < entries.size(); i += 1) {
         if(entries[i].node.get<clang::UnresolvedMemberExpr>()) {
             auto occurrences = resolve_occurrences(semantics, i, &unit->resolver());
-            EXPECT(occurrences.size() == 2);
+            ZEXPECT(occurrences.size() == 2);
             found = true;
         }
     }
-    EXPECT(found);
+    ZEXPECT(found);
 }
 
 ZEST_CASE(ConditionalFalseType) {
@@ -3993,15 +3993,15 @@ ZEST_CASE(StandardMap) {
             using expect = V;
         };
     )code");
-    ASSERT(compile_driver());
+    ZASSERT(compile_driver());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
     auto target = finder.expect;
-    ASSERT(!(input.isNull() || target.isNull()));
-    EXPECT(input.getCanonicalType() == target.getCanonicalType());
+    ZASSERT(!(input.isNull() || target.isNull()));
+    ZEXPECT(input.getCanonicalType() == target.getCanonicalType());
 }
 
 ZEST_CASE(StandardString) {
@@ -4014,15 +4014,15 @@ ZEST_CASE(StandardString) {
             using expect = T;
         };
     )code");
-    ASSERT(compile_driver());
+    ZASSERT(compile_driver());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
     auto target = finder.expect;
-    ASSERT(!(input.isNull() || target.isNull()));
-    EXPECT(input.getCanonicalType() == target.getCanonicalType());
+    ZASSERT(!(input.isNull() || target.isNull()));
+    ZEXPECT(input.getCanonicalType() == target.getCanonicalType());
 }
 
 ZEST_CASE(Standard) {
@@ -4035,15 +4035,15 @@ ZEST_CASE(Standard) {
             using expect = T&;
         };
     )code");
-    ASSERT(compile_driver());
+    ZASSERT(compile_driver());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
     auto target = finder.expect;
-    ASSERT(!(input.isNull() || target.isNull()));
-    EXPECT(input.getCanonicalType() == target.getCanonicalType());
+    ZASSERT(!(input.isNull() || target.isNull()));
+    ZEXPECT(input.getCanonicalType() == target.getCanonicalType());
 };
 
 ZEST_CASE(DependentTemplateHead) {
@@ -4063,14 +4063,14 @@ ZEST_CASE(DependentTemplateHead) {
             using expect = void;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(input->isDependentType());
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
 }
 
 ZEST_CASE(CompoundValueMatch) {
@@ -4112,14 +4112,14 @@ ZEST_CASE(CompoundValueUnverified) {
             using input = typename trait<X, X + 2>::type;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(input->isDependentType());
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
 }
 
 ZEST_CASE(CompoundValueConcrete) {
@@ -4215,14 +4215,14 @@ ZEST_CASE(ConstrainedUnknownDegrades) {
             using input = typename P<X*>::type;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(input->isDependentType());
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
 }
 
 ZEST_CASE(ConstrainedBeatsUnconstrained) {
@@ -4302,14 +4302,14 @@ ZEST_CASE(AtomicConstraintUnverified) {
             using input = typename P<X*, int>::type;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(input->isDependentType());
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
 }
 
 ZEST_CASE(PromotedDependentValue) {
@@ -4361,14 +4361,14 @@ ZEST_CASE(DependentConditionalValue) {
             using input = typename P<X>::type;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(!input->isSpecificBuiltinType(clang::BuiltinType::Int));
+    ZASSERT(!input.isNull());
+    ZEXPECT(!input->isSpecificBuiltinType(clang::BuiltinType::Int));
 }
 
 ZEST_CASE(SignedOverflowValue) {
@@ -4395,14 +4395,14 @@ ZEST_CASE(SignedOverflowValue) {
             using input = typename P<X>::type;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(!input->isSpecificBuiltinType(clang::BuiltinType::Int));
+    ZASSERT(!input.isNull());
+    ZEXPECT(!input->isSpecificBuiltinType(clang::BuiltinType::Int));
 }
 
 ZEST_CASE(AmbiguousBaseMember) {
@@ -4425,14 +4425,14 @@ ZEST_CASE(AmbiguousBaseMember) {
             using input = typename Combined<X>::type;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(input->isDependentType());
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
 }
 
 ZEST_CASE(DiamondBaseMember) {
@@ -4563,7 +4563,7 @@ ZEST_CASE(MemberChainLookup) {
             return box.inner.leaf;
         }
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         const clang::CXXDependentScopeMemberExpr* outer = nullptr;
@@ -4577,11 +4577,11 @@ ZEST_CASE(MemberChainLookup) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ASSERT(finder.outer != nullptr);
+    ZASSERT(finder.outer != nullptr);
 
     auto members = unit->resolver().lookup(finder.outer);
-    ASSERT(std::ranges::distance(members) == 1);
-    EXPECT(llvm::isa<clang::FieldDecl>(members.front()));
+    ZASSERT(std::ranges::distance(members) == 1);
+    ZEXPECT(llvm::isa<clang::FieldDecl>(members.front()));
 }
 
 ZEST_CASE(PackParameterMember) {
@@ -4599,7 +4599,7 @@ ZEST_CASE(PackParameterMember) {
             use(boxes.value...);
         }
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         const clang::CXXDependentScopeMemberExpr* expr = nullptr;
@@ -4611,11 +4611,11 @@ ZEST_CASE(PackParameterMember) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ASSERT(finder.expr != nullptr);
+    ZASSERT(finder.expr != nullptr);
 
     auto members = unit->resolver().lookup(finder.expr);
-    ASSERT(std::ranges::distance(members) == 1);
-    EXPECT(llvm::isa<clang::FieldDecl>(members.front()));
+    ZASSERT(std::ranges::distance(members) == 1);
+    ZEXPECT(llvm::isa<clang::FieldDecl>(members.front()));
 }
 
 ZEST_CASE(ReferenceParameterMember) {
@@ -4630,7 +4630,7 @@ ZEST_CASE(ReferenceParameterMember) {
             return gauge.level;
         }
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         const clang::CXXDependentScopeMemberExpr* expr = nullptr;
@@ -4642,11 +4642,11 @@ ZEST_CASE(ReferenceParameterMember) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ASSERT(finder.expr != nullptr);
+    ZASSERT(finder.expr != nullptr);
 
     auto members = unit->resolver().lookup(finder.expr);
-    ASSERT(std::ranges::distance(members) == 1);
-    EXPECT(llvm::isa<clang::FieldDecl>(members.front()));
+    ZASSERT(std::ranges::distance(members) == 1);
+    ZEXPECT(llvm::isa<clang::FieldDecl>(members.front()));
 }
 
 ZEST_CASE(MemberValueDefault) {
@@ -4719,14 +4719,14 @@ ZEST_CASE(DecltypeDeducedTemplateCall) {
             using input = typename decltype(::make(static_cast<X*>(nullptr)))::type;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(input->isDependentType());
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
 }
 
 ZEST_CASE(DependentTypedMemberValue) {
@@ -4787,14 +4787,14 @@ ZEST_CASE(DecltypeCallNeedsADL) {
             using input = typename decltype(make(N::Arg<X>{}))::type;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(input->isDependentType());
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
 }
 
 ZEST_CASE(MutableValueDefault) {
@@ -4821,14 +4821,14 @@ ZEST_CASE(MutableValueDefault) {
             using input = typename Gemm<X>::type;
         };
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
     auto input = unit->resolver().resolve(finder.input);
-    ASSERT(!input.isNull());
-    EXPECT(input->isDependentType());
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
 }
 
 ZEST_CASE(ResolvedCallee) {
@@ -4841,7 +4841,7 @@ ZEST_CASE(ResolvedCallee) {
             take(N, 1);
         }
     )code");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     struct Finder : clang::RecursiveASTVisitor<Finder> {
         const clang::CallExpr* expr = nullptr;
@@ -4853,11 +4853,11 @@ ZEST_CASE(ResolvedCallee) {
     } finder;
 
     finder.TraverseAST(unit->context());
-    ASSERT(finder.expr != nullptr);
+    ZASSERT(finder.expr != nullptr);
 
     auto candidates = unit->resolver().lookup(finder.expr);
-    ASSERT(candidates.size() == 1u);
-    EXPECT(candidates.front()->getName() == "take");
+    ZASSERT(candidates.size() == 1u);
+    ZEXPECT(candidates.front()->getName() == "take");
 }
 
 ZEST_CASE(BrokenCodeSweep) {
@@ -4891,7 +4891,7 @@ ZEST_CASE(BrokenCodeSweep) {
         };
     )code");
     prepare();
-    ASSERT(try_compile());
+    ZASSERT(try_compile());
 
     struct Sweeper : clang::RecursiveASTVisitor<Sweeper> {
         types::TemplateResolver& resolver;
@@ -4922,7 +4922,7 @@ ZEST_CASE(BrokenCodeSweep) {
     } sweeper(unit->resolver());
 
     sweeper.TraverseAST(unit->context());
-    EXPECT(sweeper.visited > 0);
+    ZEXPECT(sweeper.visited > 0);
 }
 
 ZEST_CASE(StandardSweep) {
@@ -4936,7 +4936,7 @@ ZEST_CASE(StandardSweep) {
         #include <memory>
         #include <vector>
     )code");
-    ASSERT(compile_driver());
+    ZASSERT(compile_driver());
 
     struct Sweeper : clang::RecursiveASTVisitor<Sweeper> {
         types::TemplateResolver& resolver;
@@ -4967,7 +4967,7 @@ ZEST_CASE(StandardSweep) {
     } sweeper(unit->resolver());
 
     sweeper.TraverseAST(unit->context());
-    EXPECT(sweeper.visited > 0);
+    ZEXPECT(sweeper.visited > 0);
 }
 
 };  // ZEST_SUITE(TemplateResolver)

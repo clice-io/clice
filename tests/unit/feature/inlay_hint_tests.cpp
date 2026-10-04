@@ -29,7 +29,7 @@ void run(llvm::StringRef code,
          const feature::InlayHintsOptions& options = {},
          std::source_location location = std::source_location::current()) {
     add_main("main.cpp", code);
-    ASSERT(compile_with_pch("-std=c++23"));
+    ZASSERT(compile_with_pch("-std=c++23"));
 
     LocalSourceRange range = LocalSourceRange(0, unit->main_content().size());
     hints = feature::inlay_hints(*unit, range, options, feature::PositionEncoding::UTF8);
@@ -46,12 +46,12 @@ void run(llvm::StringRef code,
         }
     }
 
-    ASSERT(unit->diagnostics().empty());
+    ZASSERT(unit->diagnostics().empty());
 }
 
 void EXPECT_SIZE(std::uint32_t size,
                  std::source_location location = std::source_location::current()) {
-    ASSERT(hints.size() == size);
+    ZASSERT(hints.size() == size);
 }
 
 void EXPECT_HINT(llvm::StringRef pos,
@@ -59,7 +59,7 @@ void EXPECT_HINT(llvm::StringRef pos,
                  std::source_location location = std::source_location::current()) {
     auto offset = point(pos);
     auto it = hints_map.find(offset);
-    ASSERT(it != hints_map.end());
+    ZASSERT(it != hints_map.end());
 
     std::string label;
     if(auto* plain = std::get_if<std::string>(&it->second.label)) {
@@ -70,7 +70,7 @@ void EXPECT_HINT(llvm::StringRef pos,
             label += part.value;
         }
     }
-    ASSERT(label == name);
+    ZASSERT(label == name);
 };
 
 ZEST_CASE(BlockEnd) {

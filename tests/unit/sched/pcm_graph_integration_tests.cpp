@@ -204,7 +204,7 @@ void execute(F&& fn) {
     auto wrapper = [&]() -> kota::task<> {
         co_await fn();
         co_await cg->shutdown();
-        EXPECT(cg->idle());
+        ZEXPECT(cg->idle());
     };
     run(wrapper());
 }
@@ -223,15 +223,15 @@ ZEST_CASE(single_module) {
     });
     env.setup({}, json);
 
-    ASSERT(!env.graph.lookup_module("A").empty());
+    ZASSERT(!env.graph.lookup_module("A").empty());
     auto pid_a = env.lookup("A");
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid_a).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.contains(pid_a));
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.contains(pid_a));
     });
 }
 
@@ -252,16 +252,16 @@ ZEST_CASE(chained_modules) {
 
     auto pid_a = env.lookup("A");
     auto pid_b = env.lookup("B");
-    ASSERT(pid_a != UINT32_MAX);
-    ASSERT(pid_b != UINT32_MAX);
+    ZASSERT(pid_a != UINT32_MAX);
+    ZASSERT(pid_b != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid_b).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.contains(pid_a));
-        EXPECT(env.pcm_paths.contains(pid_b));
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.contains(pid_a));
+        ZEXPECT(env.pcm_paths.contains(pid_b));
     });
 }
 
@@ -292,14 +292,14 @@ ZEST_CASE(diamond_modules) {
     env.setup({}, json);
 
     auto pid_top = env.lookup("Top");
-    ASSERT(pid_top != UINT32_MAX);
+    ZASSERT(pid_top != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid_top).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.size() == 4u);
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.size() == 4u);
     });
 }
 
@@ -323,14 +323,14 @@ ZEST_CASE(dotted_module_name) {
     env.setup({}, json);
 
     auto pid_app = env.lookup("my.app");
-    ASSERT(pid_app != UINT32_MAX);
+    ZASSERT(pid_app != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid_app).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.size() == 2u);
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.size() == 2u);
     });
 }
 
@@ -360,14 +360,14 @@ ZEST_CASE(re_export) {
     env.setup({}, json);
 
     auto pid_user = env.lookup("User");
-    ASSERT(pid_user != UINT32_MAX);
+    ZASSERT(pid_user != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid_user).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.size() == 3u);
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.size() == 3u);
     });
 }
 
@@ -397,14 +397,14 @@ ZEST_CASE(export_block) {
     env.setup({}, json);
 
     auto pid = env.lookup("Consumer");
-    ASSERT(pid != UINT32_MAX);
+    ZASSERT(pid != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.size() == 2u);
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.size() == 2u);
     });
 }
 
@@ -427,14 +427,14 @@ ZEST_CASE(global_module_fragment) {
     env.setup({}, json);
 
     auto pid = env.lookup("GMF");
-    ASSERT(pid != UINT32_MAX);
+    ZASSERT(pid != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.contains(pid));
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.contains(pid));
     });
 }
 
@@ -456,14 +456,14 @@ ZEST_CASE(private_module_fragment) {
     env.setup({}, json);
 
     auto pid = env.lookup("Priv");
-    ASSERT(pid != UINT32_MAX);
+    ZASSERT(pid != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.contains(pid));
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.contains(pid));
     });
 }
 
@@ -490,16 +490,16 @@ ZEST_CASE(partition_interface) {
 
     // The partition is registered as "M:Part", primary as "M".
     auto pid_m = env.lookup("M");
-    ASSERT(pid_m != UINT32_MAX);
-    ASSERT(env.lookup("M:Part") != UINT32_MAX);
+    ZASSERT(pid_m != UINT32_MAX);
+    ZASSERT(env.lookup("M:Part") != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid_m).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
+        ZEXPECT(result);
+        ZEXPECT(*result);
         // Both partition and primary should be compiled.
-        EXPECT(env.pcm_paths.size() == 2u);
+        ZEXPECT(env.pcm_paths.size() == 2u);
     });
 }
 
@@ -528,15 +528,15 @@ ZEST_CASE(multiple_partitions) {
     env.setup({}, json);
 
     auto pid_lib = env.lookup("Lib");
-    ASSERT(pid_lib != UINT32_MAX);
+    ZASSERT(pid_lib != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid_lib).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
+        ZEXPECT(result);
+        ZEXPECT(*result);
         // Lib:A, Lib:B, and Lib.
-        EXPECT(env.pcm_paths.size() == 3u);
+        ZEXPECT(env.pcm_paths.size() == 3u);
     });
 }
 
@@ -565,15 +565,15 @@ ZEST_CASE(partition_chain) {
     env.setup({}, json);
 
     auto pid_sys = env.lookup("Sys");
-    ASSERT(pid_sys != UINT32_MAX);
+    ZASSERT(pid_sys != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid_sys).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
+        ZEXPECT(result);
+        ZEXPECT(*result);
         // Sys:Types, Sys:Core, Sys.
-        EXPECT(env.pcm_paths.size() == 3u);
+        ZEXPECT(env.pcm_paths.size() == 3u);
     });
 }
 
@@ -600,14 +600,14 @@ ZEST_CASE(export_namespace) {
     env.setup({}, json);
 
     auto pid = env.lookup("Calc");
-    ASSERT(pid != UINT32_MAX);
+    ZASSERT(pid != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.size() == 2u);
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.size() == 2u);
     });
 }
 
@@ -635,14 +635,14 @@ ZEST_CASE(gmf_with_import) {
     env.setup({}, json);
 
     auto pid = env.lookup("Combined");
-    ASSERT(pid != UINT32_MAX);
+    ZASSERT(pid != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.size() == 2u);
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.size() == 2u);
     });
 }
 
@@ -681,14 +681,14 @@ ZEST_CASE(deep_chain) {
     env.setup({}, json);
 
     auto pid = env.lookup("M5");
-    ASSERT(pid != UINT32_MAX);
+    ZASSERT(pid != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.size() == 5u);
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.size() == 5u);
     });
 }
 
@@ -712,16 +712,16 @@ ZEST_CASE(independent_modules) {
 
     auto pid_x = env.lookup("X");
     auto pid_y = env.lookup("Y");
-    ASSERT(pid_x != UINT32_MAX);
-    ASSERT(pid_y != UINT32_MAX);
+    ZASSERT(pid_x != UINT32_MAX);
+    ZASSERT(pid_y != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto r1 = co_await cg->compile(pid_x).catch_cancel();
-        EXPECT((r1.has_value() && *r1));
+        ZEXPECT((r1.has_value() && *r1));
         auto r2 = co_await cg->compile(pid_y).catch_cancel();
-        EXPECT((r2.has_value() && *r2));
-        EXPECT(env.pcm_paths.size() == 2u);
+        ZEXPECT((r2.has_value() && *r2));
+        ZEXPECT(env.pcm_paths.size() == 2u);
     });
 }
 
@@ -748,14 +748,14 @@ ZEST_CASE(template_export) {
     env.setup({}, json);
 
     auto pid = env.lookup("UseTmpl");
-    ASSERT(pid != UINT32_MAX);
+    ZASSERT(pid != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.size() == 2u);
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.size() == 2u);
     });
 }
 
@@ -788,14 +788,14 @@ ZEST_CASE(class_export_inheritance) {
     env.setup({}, json);
 
     auto pid = env.lookup("Circle");
-    ASSERT(pid != UINT32_MAX);
+    ZASSERT(pid != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.size() == 2u);
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.size() == 2u);
     });
 }
 
@@ -820,28 +820,28 @@ ZEST_CASE(recompile_after_update) {
 
     auto pid_leaf = env.lookup("Leaf");
     auto pid_mid = env.lookup("Mid");
-    ASSERT(pid_leaf != UINT32_MAX);
-    ASSERT(pid_mid != UINT32_MAX);
+    ZASSERT(pid_leaf != UINT32_MAX);
+    ZASSERT(pid_mid != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         // First compile.
         auto r1 = co_await cg->compile(pid_mid).catch_cancel();
-        EXPECT((r1.has_value() && *r1));
-        EXPECT(env.pcm_paths.size() == 2u);
-        EXPECT(!cg->is_dirty(pid_leaf));
-        EXPECT(!cg->is_dirty(pid_mid));
+        ZEXPECT((r1.has_value() && *r1));
+        ZEXPECT(env.pcm_paths.size() == 2u);
+        ZEXPECT(!cg->is_dirty(pid_leaf));
+        ZEXPECT(!cg->is_dirty(pid_mid));
 
         // Simulate editing Leaf — should cascade to Mid.
         cg->update(pid_leaf);
-        EXPECT(cg->is_dirty(pid_leaf));
-        EXPECT(cg->is_dirty(pid_mid));
+        ZEXPECT(cg->is_dirty(pid_leaf));
+        ZEXPECT(cg->is_dirty(pid_mid));
 
         // Recompile.
         auto r2 = co_await cg->compile(pid_mid).catch_cancel();
-        EXPECT((r2.has_value() && *r2));
-        EXPECT(!cg->is_dirty(pid_leaf));
-        EXPECT(!cg->is_dirty(pid_mid));
+        ZEXPECT((r2.has_value() && *r2));
+        ZEXPECT(!cg->is_dirty(pid_leaf));
+        ZEXPECT(!cg->is_dirty(pid_mid));
     });
 }
 
@@ -868,14 +868,14 @@ ZEST_CASE(partition_with_gmf) {
     env.setup({}, json);
 
     auto pid = env.lookup("Cfg");
-    ASSERT(pid != UINT32_MAX);
+    ZASSERT(pid != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
-        EXPECT(env.pcm_paths.size() == 2u);
+        ZEXPECT(result);
+        ZEXPECT(*result);
+        ZEXPECT(env.pcm_paths.size() == 2u);
     });
 }
 
@@ -906,15 +906,15 @@ ZEST_CASE(partition_external_import) {
     env.setup({}, json);
 
     auto pid_app = env.lookup("App");
-    ASSERT(pid_app != UINT32_MAX);
+    ZASSERT(pid_app != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid_app).catch_cancel();
-        EXPECT(result);
-        EXPECT(*result);
+        ZEXPECT(result);
+        ZEXPECT(*result);
         // Ext, App:Core, App.
-        EXPECT(env.pcm_paths.size() == 3u);
+        ZEXPECT(env.pcm_paths.size() == 3u);
     });
 }
 
@@ -952,38 +952,38 @@ ZEST_CASE(diamond_update_cascade) {
     auto pid_left = env.lookup("Left");
     auto pid_right = env.lookup("Right");
     auto pid_top = env.lookup("Top");
-    ASSERT(pid_base != UINT32_MAX);
-    ASSERT(pid_top != UINT32_MAX);
+    ZASSERT(pid_base != UINT32_MAX);
+    ZASSERT(pid_top != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         // Initial compile.
         auto r1 = co_await cg->compile(pid_top).catch_cancel();
-        EXPECT((r1.has_value() && *r1));
-        EXPECT(env.pcm_paths.size() == 4u);
+        ZEXPECT((r1.has_value() && *r1));
+        ZEXPECT(env.pcm_paths.size() == 4u);
 
         // Save old PCM paths.
         auto old_base_pcm = env.pcm_paths[pid_base];
 
         // Update base: should cascade to Left, Right, Top.
         auto dirtied = cg->update(pid_base);
-        EXPECT(cg->is_dirty(pid_base));
-        EXPECT(cg->is_dirty(pid_left));
-        EXPECT(cg->is_dirty(pid_right));
-        EXPECT(cg->is_dirty(pid_top));
+        ZEXPECT(cg->is_dirty(pid_base));
+        ZEXPECT(cg->is_dirty(pid_left));
+        ZEXPECT(cg->is_dirty(pid_right));
+        ZEXPECT(cg->is_dirty(pid_top));
 
         // Simulate MasterServer: erase stale PCMs for all dirtied nodes.
         for(auto id: dirtied) {
             env.pcm_paths.erase(id);
         }
-        EXPECT(env.pcm_paths.size() == 0u);
+        ZEXPECT(env.pcm_paths.size() == 0u);
 
         // Recompile.
         auto r2 = co_await cg->compile(pid_top).catch_cancel();
-        EXPECT((r2.has_value() && *r2));
-        EXPECT(env.pcm_paths.size() == 4u);
+        ZEXPECT((r2.has_value() && *r2));
+        ZEXPECT(env.pcm_paths.size() == 4u);
         // PCM path should have changed (new temp file).
-        EXPECT(env.pcm_paths[pid_base] != old_base_pcm);
+        ZEXPECT(env.pcm_paths[pid_base] != old_base_pcm);
     });
 }
 
@@ -1014,8 +1014,8 @@ ZEST_CASE(re_resolve_after_update) {
     auto pid_leaf = env.lookup("Leaf");
     auto pid_extra = env.lookup("Extra");
     auto pid_mid = env.lookup("Mid");
-    ASSERT(pid_mid != UINT32_MAX);
-    ASSERT(pid_extra != UINT32_MAX);
+    ZASSERT(pid_mid != UINT32_MAX);
+    ZASSERT(pid_extra != UINT32_MAX);
 
     int resolve_count = 0;
     auto counting_resolver =
@@ -1030,16 +1030,16 @@ ZEST_CASE(re_resolve_after_update) {
     execute([&]() -> kota::task<> {
         // First compile: resolve_fn called once for Mid.
         auto r1 = co_await cg->compile(pid_mid).catch_cancel();
-        EXPECT((r1.has_value() && *r1));
-        EXPECT(resolve_count == 1);
+        ZEXPECT((r1.has_value() && *r1));
+        ZEXPECT(resolve_count == 1);
 
         // Update Mid: resets resolved.
         cg->update(pid_mid);
 
         // Recompile: resolve_fn should be called again.
         auto r2 = co_await cg->compile(pid_mid).catch_cancel();
-        EXPECT((r2.has_value() && *r2));
-        EXPECT(resolve_count == 2);
+        ZEXPECT((r2.has_value() && *r2));
+        ZEXPECT(resolve_count == 2);
     });
 }
 
@@ -1065,19 +1065,19 @@ ZEST_CASE(compile_failure_propagation) {
     env.setup({}, json);
 
     auto pid_bad = env.lookup("Bad");
-    ASSERT(pid_bad != UINT32_MAX);
+    ZASSERT(pid_bad != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         auto result = co_await cg->compile(pid_bad).catch_cancel();
-        EXPECT(result);
+        ZEXPECT(result);
         // Compilation should fail due to undefined symbol.
-        EXPECT(!*result);
+        ZEXPECT(!*result);
         // Good module should still have been compiled successfully.
         auto pid_good = env.lookup("Good");
-        EXPECT(env.pcm_paths.contains(pid_good));
+        ZEXPECT(env.pcm_paths.contains(pid_good));
         // Bad module should NOT have a PCM.
-        EXPECT(!env.pcm_paths.contains(pid_bad));
+        ZEXPECT(!env.pcm_paths.contains(pid_bad));
     });
 }
 
@@ -1103,19 +1103,19 @@ ZEST_CASE(module_implementation_unit) {
     env.setup({}, json);
 
     auto pid_iface = env.lookup("Greeter");
-    ASSERT(pid_iface != UINT32_MAX);
+    ZASSERT(pid_iface != UINT32_MAX);
 
     make_graph();
     execute([&]() -> kota::task<> {
         // Build the interface PCM via CompileGraph.
         auto r1 = co_await cg->compile(pid_iface).catch_cancel();
-        EXPECT((r1.has_value() && *r1));
-        EXPECT(env.pcm_paths.contains(pid_iface));
+        ZEXPECT((r1.has_value() && *r1));
+        ZEXPECT(env.pcm_paths.contains(pid_iface));
 
         // Now compile the implementation unit as Content (like a stateful worker would).
         auto impl_path = env.tmp.path("impl.cpp");
         auto candidates = env.cdb.candidate_entries(impl_path);
-        CO_ASSERT(!candidates.empty());
+        ZASSERT(!candidates.empty());
         auto& impl_entry = candidates.front();
         CommandRef impl_ref{impl_entry.file,
                             impl_entry.config,
@@ -1137,7 +1137,7 @@ ZEST_CASE(module_implementation_unit) {
         }
 
         auto unit = compile(cp);
-        EXPECT(unit.completed());
+        ZEXPECT(unit.completed());
     });
 }
 
@@ -1168,9 +1168,9 @@ ZEST_CASE(shared_dep_import_switch) {
     auto pid_shared = env.lookup("Shared");
     auto pid_a = env.lookup("A");
     auto pid_c = env.lookup("C");
-    ASSERT(pid_shared != UINT32_MAX);
-    ASSERT(pid_a != UINT32_MAX);
-    ASSERT(pid_c != UINT32_MAX);
+    ZASSERT(pid_shared != UINT32_MAX);
+    ZASSERT(pid_a != UINT32_MAX);
+    ZASSERT(pid_c != UINT32_MAX);
 
     // Gate the shared module's dispatch so the import switch can be injected
     // while it is still compiling.
@@ -1211,8 +1211,8 @@ ZEST_CASE(shared_dep_import_switch) {
     execute([&]() -> kota::task<> {
         auto driver = [&]() -> kota::task<> {
             co_await shared_started.wait();
-            EXPECT(cg->refcount(pid_shared) == 1u);
-            EXPECT(shared_calls == 1);
+            ZEXPECT(cg->refcount(pid_shared) == 1u);
+            ZEXPECT(shared_calls == 1);
 
             // Simulate switching `import A` to `import C`: start the new
             // request first, then cancel the old one — the same order the
@@ -1222,9 +1222,9 @@ ZEST_CASE(shared_dep_import_switch) {
             req_a.cancel();
             co_await settle([&] { return !cg->is_compiling(pid_a); });
 
-            EXPECT(cg->is_compiling(pid_shared));
-            EXPECT(cg->refcount(pid_shared) == 1u);
-            EXPECT(shared_calls == 1);
+            ZEXPECT(cg->is_compiling(pid_shared));
+            ZEXPECT(cg->refcount(pid_shared) == 1u);
+            ZEXPECT(shared_calls == 1);
 
             shared_proceed.set();
             co_return;
@@ -1233,12 +1233,12 @@ ZEST_CASE(shared_dep_import_switch) {
         co_await kota::when_all(request_a(), request_c(), driver());
 
         // A was cancelled; C completed using the surviving shared build.
-        EXPECT(!result_a.has_value());
-        EXPECT(result_c == true);
-        EXPECT(shared_calls == 1);
-        EXPECT(env.pcm_paths.contains(pid_shared));
-        EXPECT(env.pcm_paths.contains(pid_c));
-        EXPECT(!env.pcm_paths.contains(pid_a));
+        ZEXPECT(!result_a.has_value());
+        ZEXPECT(result_c == true);
+        ZEXPECT(shared_calls == 1);
+        ZEXPECT(env.pcm_paths.contains(pid_shared));
+        ZEXPECT(env.pcm_paths.contains(pid_c));
+        ZEXPECT(!env.pcm_paths.contains(pid_a));
     });
 }
 
@@ -1269,7 +1269,7 @@ ZEST_CASE(shared_dep_fails_both) {
     auto pid_shared = env.lookup("Shared");
     auto pid_a = env.lookup("A");
     auto pid_c = env.lookup("C");
-    ASSERT(pid_shared != UINT32_MAX);
+    ZASSERT(pid_shared != UINT32_MAX);
 
     // Gate the shared module so both consumers join the same failing round.
     kota::event shared_started;
@@ -1306,7 +1306,7 @@ ZEST_CASE(shared_dep_fails_both) {
             co_await shared_started.wait();
             co_await kota::sleep(1);
             // Both chains hold interest in the same round.
-            EXPECT(cg->refcount(pid_shared) == 2u);
+            ZEXPECT(cg->refcount(pid_shared) == 2u);
             shared_proceed.set();
             co_return;
         };
@@ -1314,12 +1314,12 @@ ZEST_CASE(shared_dep_fails_both) {
         co_await kota::when_all(request_a(), request_c(), driver());
 
         // One failing round, both consumers fail without retry.
-        EXPECT(result_a == false);
-        EXPECT(result_c == false);
-        EXPECT(shared_calls == 1);
-        EXPECT(!env.pcm_paths.contains(pid_shared));
-        EXPECT(!env.pcm_paths.contains(pid_a));
-        EXPECT(!env.pcm_paths.contains(pid_c));
+        ZEXPECT(result_a == false);
+        ZEXPECT(result_c == false);
+        ZEXPECT(shared_calls == 1);
+        ZEXPECT(!env.pcm_paths.contains(pid_shared));
+        ZEXPECT(!env.pcm_paths.contains(pid_a));
+        ZEXPECT(!env.pcm_paths.contains(pid_c));
     });
 }
 

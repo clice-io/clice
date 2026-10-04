@@ -33,10 +33,10 @@ ZEST_CASE(ApplyOpenInitializesBuffer) {
     auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\nint b;\n", 3);
 
-    ASSERT(session->version == 3);
-    ASSERT(session->text == "int a;\nint b;\n");
-    ASSERT(session->line_starts == lsp::line_starts(session->text));
-    ASSERT(session->generation == 1u);
+    ZASSERT(session->version == 3);
+    ZASSERT(session->text == "int a;\nint b;\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->generation == 1u);
 }
 
 ZEST_CASE(RangeReplace) {
@@ -47,10 +47,10 @@ ZEST_CASE(RangeReplace) {
     auto change = partial_change(1, 4, 1, 5, "value");
     store.apply_change(*session, change, 2);
 
-    ASSERT(session->text == "int a;\nint value;\n");
-    ASSERT(session->line_starts == lsp::line_starts(session->text));
-    ASSERT(session->version == 2);
-    ASSERT(session->generation == 2u);
+    ZASSERT(session->text == "int a;\nint value;\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->version == 2);
+    ZASSERT(session->generation == 2u);
 }
 
 ZEST_CASE(SequentialChangesFold) {
@@ -65,9 +65,9 @@ ZEST_CASE(SequentialChangesFold) {
     };
     store.apply_change(*session, changes, 2);
 
-    ASSERT(session->text == "axyz\nQd\n");
-    ASSERT(session->line_starts == lsp::line_starts(session->text));
-    ASSERT(session->generation == 2u);
+    ZASSERT(session->text == "axyz\nQd\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->generation == 2u);
 }
 
 ZEST_CASE(WholeDocumentReplace) {
@@ -79,8 +79,8 @@ ZEST_CASE(WholeDocumentReplace) {
         protocol::TextDocumentContentChangeWholeDocument{.text = "brand\nnew\n"};
     store.apply_change(*session, change, 2);
 
-    ASSERT(session->text == "brand\nnew\n");
-    ASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text == "brand\nnew\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
 ZEST_CASE(InvertedRangeSpans) {
@@ -93,8 +93,8 @@ ZEST_CASE(InvertedRangeSpans) {
     auto change = partial_change(1, 0, 0, 0, "X");
     store.apply_change(*session, change, 2);
 
-    ASSERT(session->text == "Xcd\n");
-    ASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text == "Xcd\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
 ZEST_CASE(InsideSurrogatePair) {
@@ -107,15 +107,15 @@ ZEST_CASE(InsideSurrogatePair) {
     auto change = partial_change(0, 1, 0, 1, "Y");
     store.apply_change(*session, change, 2);
 
-    ASSERT(session->text == "Y\xf0\x9f\x98\x80x\n");
-    ASSERT(session->non_ascii_lines == lsp::non_ascii_lines(session->text));
+    ZASSERT(session->text == "Y\xf0\x9f\x98\x80x\n");
+    ZASSERT(session->non_ascii_lines == lsp::non_ascii_lines(session->text));
 }
 
 ZEST_CASE(NonASCIILinesTracked) {
     SessionStore store;
     auto session = store.open(Fid{1});
     store.apply_open(*session, "ab\ncd\n", 1);
-    ASSERT(session->non_ascii_lines.empty());
+    ZASSERT(session->non_ascii_lines.empty());
 
     // The second change addresses line 1 after the first made line 0
     // non-ASCII; the positions count UTF-16 units over the new text.
@@ -125,10 +125,10 @@ ZEST_CASE(NonASCIILinesTracked) {
     };
     store.apply_change(*session, changes, 2);
 
-    ASSERT(session->text ==
-           "\xc3\xa9"
-           "aZ\ncd\n");
-    ASSERT(session->non_ascii_lines == lsp::non_ascii_lines(session->text));
+    ZASSERT(session->text ==
+            "\xc3\xa9"
+            "aZ\ncd\n");
+    ZASSERT(session->non_ascii_lines == lsp::non_ascii_lines(session->text));
 }
 
 ZEST_CASE(SelectAllDeleteClamped) {
@@ -141,10 +141,10 @@ ZEST_CASE(SelectAllDeleteClamped) {
     auto change = partial_change(0, 0, 99999, 0, "");
     store.apply_change(*session, change, 2);
 
-    ASSERT(session->text == "");
-    ASSERT(session->line_starts == lsp::line_starts(session->text));
-    ASSERT(session->version == 2);
-    ASSERT(session->generation == 2u);
+    ZASSERT(session->text == "");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->version == 2);
+    ZASSERT(session->generation == 2u);
 }
 
 ZEST_CASE(InsertPastLastLine) {
@@ -157,8 +157,8 @@ ZEST_CASE(InsertPastLastLine) {
     auto change = partial_change(2, 0, 2, 0, "int b;\n");
     store.apply_change(*session, change, 2);
 
-    ASSERT(session->text == "int a;\nint b;\n");
-    ASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text == "int a;\nint b;\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
 ZEST_CASE(InsertPastLineEnd) {
@@ -170,8 +170,8 @@ ZEST_CASE(InsertPastLineEnd) {
     auto change = partial_change(0, 9999, 0, 9999, "X");
     store.apply_change(*session, change, 2);
 
-    ASSERT(session->text == "abX\ncd\n");
-    ASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text == "abX\ncd\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
 ZEST_CASE(ClampedChangeFolds) {
@@ -187,8 +187,8 @@ ZEST_CASE(ClampedChangeFolds) {
     };
     store.apply_change(*session, changes, 2);
 
-    ASSERT(session->text == "axyz\ncd\n!");
-    ASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text == "axyz\ncd\n!");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
 ZEST_CASE(EmptyDocumentClamped) {
@@ -199,8 +199,8 @@ ZEST_CASE(EmptyDocumentClamped) {
     auto change = partial_change(5, 3, 8, 0, "int x;");
     store.apply_change(*session, change, 2);
 
-    ASSERT(session->text == "int x;");
-    ASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text == "int x;");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
 ZEST_CASE(RangeEndPastEof) {
@@ -213,8 +213,8 @@ ZEST_CASE(RangeEndPastEof) {
     auto change = partial_change(1, 0, 2, 1, "");
     store.apply_change(*session, change, 2);
 
-    ASSERT(session->text == "int a;\n");
-    ASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->text == "int a;\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
 ZEST_CASE(ReopenBumpsGeneration) {
@@ -223,9 +223,9 @@ ZEST_CASE(ReopenBumpsGeneration) {
     first->generation = 5;
 
     auto second = store.open(Fid{7});
-    ASSERT(first->generation == 6u);
-    ASSERT(first.get() != second.get());
-    ASSERT(store.find(Fid{7}).get() == second.get());
+    ZASSERT(first->generation == 6u);
+    ZASSERT(first.get() != second.get());
+    ZASSERT(store.find(Fid{7}).get() == second.get());
 }
 
 ZEST_CASE(CloseBumpsGeneration) {
@@ -234,8 +234,8 @@ ZEST_CASE(CloseBumpsGeneration) {
     session->generation = 5;
 
     store.close(Fid{7});
-    ASSERT(session->generation == 6u);
-    ASSERT(store.find(Fid{7}) == nullptr);
+    ZASSERT(session->generation == 6u);
+    ZASSERT(store.find(Fid{7}) == nullptr);
 }
 
 ZEST_CASE(ForEachVisitsAll) {
@@ -248,7 +248,7 @@ ZEST_CASE(ForEachVisitsAll) {
         ++visited;
         return true;
     });
-    ASSERT(visited == 2);
+    ZASSERT(visited == 2);
 
     // A false return stops the iteration early.
     visited = 0;
@@ -256,7 +256,7 @@ ZEST_CASE(ForEachVisitsAll) {
         ++visited;
         return false;
     });
-    ASSERT(visited == 1);
+    ZASSERT(visited == 1);
 }
 
 ZEST_CASE(EditLetsCrashRetry) {
@@ -268,9 +268,9 @@ ZEST_CASE(EditLetsCrashRetry) {
 
     auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
     session->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
-    ASSERT(session->quarantine->barred(0, later));
+    ZASSERT(session->quarantine->barred(0, later));
     store.apply_change(*session, partial_change(0, 0, 0, 0, "x"), 2);
-    ASSERT(!session->quarantine->barred(0, later));
+    ZASSERT(!session->quarantine->barred(0, later));
 }
 
 ZEST_CASE(NoopEditNoRetry) {
@@ -285,22 +285,22 @@ ZEST_CASE(NoopEditNoRetry) {
     // and a no-op replacement change nothing — none may send the unchanged
     // crashing bytes to another worker.
     store.apply_change(*session, partial_change(99, 0, 99, 1, ""), 2);
-    ASSERT(session->quarantine->barred(0, later));
+    ZASSERT(session->quarantine->barred(0, later));
 
     store.apply_change(*session, {}, 3);
-    ASSERT(session->quarantine->barred(0, later));
+    ZASSERT(session->quarantine->barred(0, later));
 
     store.apply_change(*session, partial_change(0, 0, 0, 1, "i"), 4);
-    ASSERT(session->quarantine->barred(0, later));
+    ZASSERT(session->quarantine->barred(0, later));
 
     // A whole-document change carrying identical bytes is a no-op too.
     protocol::TextDocumentContentChangeWholeDocument whole;
     whole.text = session->text;
     store.apply_change(*session, protocol::TextDocumentContentChangeEvent(whole), 5);
-    ASSERT(session->quarantine->barred(0, later));
+    ZASSERT(session->quarantine->barred(0, later));
 
     store.apply_change(*session, partial_change(0, 0, 0, 1, "u"), 6);
-    ASSERT(!session->quarantine->barred(0, later));
+    ZASSERT(!session->quarantine->barred(0, later));
 }
 
 ZEST_CASE(ReopenKeepsCrashes) {
@@ -310,19 +310,19 @@ ZEST_CASE(ReopenKeepsCrashes) {
     store.apply_open(*session, "int a;\n", 1);
     session->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
     store.close(Fid{1});
-    ASSERT(session->closed);
+    ZASSERT(session->closed);
 
     // Closing and reopening the same bytes is no retry.
     session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
-    ASSERT(session->quarantine->barred(0, later));
+    ZASSERT(session->quarantine->barred(0, later));
 
     // Reopened on other bytes, the difference counts as a change.
     store.close(Fid{1});
     session = store.open(Fid{1});
     store.apply_open(*session, "int b;\n", 1);
-    ASSERT(session->quarantine->crashed(0));
-    ASSERT(!session->quarantine->barred(0, later));
+    ZASSERT(session->quarantine->crashed(0));
+    ZASSERT(!session->quarantine->barred(0, later));
 }
 
 ZEST_CASE(InFlightAcrossClose) {
@@ -341,14 +341,14 @@ ZEST_CASE(InFlightAcrossClose) {
         store.close(Fid{1});
         reopened = store.open(Fid{1});
         store.apply_open(*reopened, "int a;\n", 1);
-        ASSERT(reopened->quarantine->barred(0, later));
+        ZASSERT(reopened->quarantine->barred(0, later));
     }
-    ASSERT(!reopened->quarantine->barred(0, later));
+    ZASSERT(!reopened->quarantine->barred(0, later));
 
     // A crash of work still in flight on the closed session bars the
     // reopened one.
     closed->quarantine->on_crash(1, "d2", "cause", Quarantine::Clock::now());
-    ASSERT(reopened->quarantine->barred(1, later));
+    ZASSERT(reopened->quarantine->barred(1, later));
 
     // Even when the document had no record at the close.
     auto clean = store.open(Fid{2});
@@ -357,7 +357,7 @@ ZEST_CASE(InFlightAcrossClose) {
     clean->quarantine->on_crash(0, "d3", "cause", Quarantine::Clock::now());
     auto again = store.open(Fid{2});
     store.apply_open(*again, "int b;\n", 1);
-    ASSERT(again->quarantine->barred(0, later));
+    ZASSERT(again->quarantine->barred(0, later));
 }
 
 };  // ZEST_SUITE(SessionStore)

@@ -91,41 +91,41 @@ ZEST_CASE(CacheDirServesOneProject) {
     auto shared = tmp.path("shared");
     CanonicalPath a(Spelling::absolute(tmp.path("a")));
     CanonicalPath b(Spelling::absolute(tmp.path("b")));
-    EXPECT(!owned_elsewhere(shared, b));
+    ZEXPECT(!owned_elsewhere(shared, b));
     claim_cache_dir(shared, a);
-    EXPECT(!owned_elsewhere(shared, a));
-    EXPECT(owned_elsewhere(shared, b));
+    ZEXPECT(!owned_elsewhere(shared, a));
+    ZEXPECT(owned_elsewhere(shared, b));
 
     // One inside its root belongs to that root, whatever it records, and
     // a subproject nested there finds it taken once the root claimed it.
     tmp.touch("a/.clice/owner", b.str() + "\n");
     auto inner = path::join(a, ".clice");
-    EXPECT(!owned_elsewhere(inner, a));
+    ZEXPECT(!owned_elsewhere(inner, a));
     claim_cache_dir(inner, a);
-    EXPECT(owned_elsewhere(inner, CanonicalPath(Spelling::absolute(path::join(a, "sub")))));
+    ZEXPECT(owned_elsewhere(inner, CanonicalPath(Spelling::absolute(path::join(a, "sub")))));
 
     // An owner that no longer exists claims nothing.
     tmp.touch("moved/owner", tmp.path("gone") + "\n");
     auto moved = tmp.path("moved");
-    EXPECT(!owned_elsewhere(moved, b));
+    ZEXPECT(!owned_elsewhere(moved, b));
     claim_cache_dir(moved, b);
-    EXPECT(owned_elsewhere(moved, a));
+    ZEXPECT(owned_elsewhere(moved, a));
 
     tmp.touch("b/clice.toml", std::format("[project]\ncache_dir = '{}'\n", shared));
     auto config = Config::load_from_workspace(b);
     auto own = path::join(b, ".clice");
     path::canonicalize(own);
-    EXPECT(std::string(config.project.cache_dir) == own);
+    ZEXPECT(std::string(config.project.cache_dir) == own);
 };
 
 ZEST_CASE(ParsePartialProject) {
     // A partial decode only touches the fields it names; everything else
     // keeps the field-initializer defaults.
     auto result = kota::codec::toml::from_string<ProjectConfig>(R"(cache_dir = "/tmp/test")");
-    EXPECT(result);
-    EXPECT(std::string_view(result->cache_dir) == "/tmp/test");
-    EXPECT(result->enable_indexing.value == true);
-    EXPECT(result->idle_timeout_ms.value == 3000u);
+    ZEXPECT(result);
+    ZEXPECT(std::string_view(result->cache_dir) == "/tmp/test");
+    ZEXPECT(result->enable_indexing.value == true);
+    ZEXPECT(result->idle_timeout_ms.value == 3000u);
 }
 
 ZEST_CASE(ParseConfigRule) {
@@ -133,11 +133,11 @@ ZEST_CASE(ParseConfigRule) {
 patterns = ["**/*.cpp"]
 append = ["-std=c++20"]
 )");
-    EXPECT(result);
-    EXPECT(result->patterns.size() == 1u);
-    EXPECT(result->patterns[0] == "**/*.cpp");
-    EXPECT(result->append[0] == "-std=c++20");
-    EXPECT(result->remove.empty());
+    ZEXPECT(result);
+    ZEXPECT(result->patterns.size() == 1u);
+    ZEXPECT(result->patterns[0] == "**/*.cpp");
+    ZEXPECT(result->append[0] == "-std=c++20");
+    ZEXPECT(result->remove.empty());
 }
 
 ZEST_CASE(ParseFullConfig) {
@@ -150,11 +150,11 @@ enable_indexing = false
 patterns = ["**/*.cpp"]
 append = ["-std=c++20"]
 )");
-    EXPECT(result);
-    EXPECT(std::string_view(result->project.cache_dir) == "/tmp/test");
-    EXPECT(result->project.enable_indexing.value == false);
-    EXPECT(result->rules.size() == 1u);
-    EXPECT(result->rules[0].patterns[0] == "**/*.cpp");
+    ZEXPECT(result);
+    ZEXPECT(std::string_view(result->project.cache_dir) == "/tmp/test");
+    ZEXPECT(result->project.enable_indexing.value == false);
+    ZEXPECT(result->rules.size() == 1u);
+    ZEXPECT(result->rules[0].patterns[0] == "**/*.cpp");
 }
 
 ZEST_CASE(ParseInlayHints) {
@@ -164,18 +164,18 @@ block_end = true
 parameters = false
 type_name_limit = 64
 )");
-    EXPECT(result);
-    EXPECT(result->inlay_hints.block_end.value == true);
-    EXPECT(result->inlay_hints.parameters.value == false);
-    EXPECT(result->inlay_hints.type_name_limit.value == 64u);
-    EXPECT(result->inlay_hints.designators.value == true);
+    ZEXPECT(result);
+    ZEXPECT(result->inlay_hints.block_end.value == true);
+    ZEXPECT(result->inlay_hints.parameters.value == false);
+    ZEXPECT(result->inlay_hints.type_name_limit.value == 64u);
+    ZEXPECT(result->inlay_hints.designators.value == true);
 }
 
 ZEST_CASE(ParseEmptyConfig) {
     auto result = kota::codec::toml::from_string<Config>("");
-    EXPECT(result);
-    EXPECT(result->rules.empty());
-    EXPECT(std::string_view(result->project.cache_dir).empty());
+    ZEXPECT(result);
+    ZEXPECT(result->rules.empty());
+    ZEXPECT(std::string_view(result->project.cache_dir).empty());
 }
 
 ZEST_CASE(ParseOnlyRules) {
@@ -184,11 +184,11 @@ ZEST_CASE(ParseOnlyRules) {
 patterns = ["*.h"]
 remove = ["-Werror"]
 )");
-    EXPECT(result);
-    EXPECT(result->rules.size() == 1u);
-    EXPECT(result->rules[0].patterns[0] == "*.h");
-    EXPECT(result->rules[0].remove[0] == "-Werror");
-    EXPECT(std::string_view(result->project.cache_dir).empty());
+    ZEXPECT(result);
+    ZEXPECT(result->rules.size() == 1u);
+    ZEXPECT(result->rules[0].patterns[0] == "*.h");
+    ZEXPECT(result->rules[0].remove[0] == "-Werror");
+    ZEXPECT(std::string_view(result->project.cache_dir).empty());
 }
 
 ZEST_CASE(MatchRulesBasic) {
@@ -202,10 +202,10 @@ ZEST_CASE(MatchRulesBasic) {
 
     std::vector<std::string> append, remove;
     match_rules(config, "/src/foo.cpp", append, remove);
-    EXPECT(append.size() == 1u);
-    EXPECT(append[0] == "-std=c++20");
-    EXPECT(remove.size() == 1u);
-    EXPECT(remove[0] == "-std=c++17");
+    ZEXPECT(append.size() == 1u);
+    ZEXPECT(append[0] == "-std=c++20");
+    ZEXPECT(remove.size() == 1u);
+    ZEXPECT(remove[0] == "-std=c++17");
 }
 
 ZEST_CASE(MatchRulesNoMatch) {
@@ -218,8 +218,8 @@ ZEST_CASE(MatchRulesNoMatch) {
 
     std::vector<std::string> append, remove;
     match_rules(config, "/src/foo.h", append, remove);
-    EXPECT(append.empty());
-    EXPECT(remove.empty());
+    ZEXPECT(append.empty());
+    ZEXPECT(remove.empty());
 }
 
 ZEST_CASE(MatchRulesMultiple) {
@@ -236,53 +236,54 @@ ZEST_CASE(MatchRulesMultiple) {
 
     std::vector<std::string> append, remove;
     match_rules(config, "/src/test_foo.cpp", append, remove);
-    EXPECT(append.size() == 2u);
-    EXPECT(append[0] == "-DCPP");
-    EXPECT(append[1] == "-DTEST");
+    ZEXPECT(append.size() == 2u);
+    ZEXPECT(append[0] == "-DCPP");
+    ZEXPECT(append[1] == "-DTEST");
 }
 
 ZEST_CASE(BornValidDefaults) {
     // A default-constructed Config is fully valid without any init step;
     // the option defaults come from the field initializers alone.
     Config config;
-    EXPECT(config.project.enable_indexing.value == true);
-    EXPECT(config.project.idle_timeout_ms.value == 3000u);
-    EXPECT(config.project.test_hooks.value == false);
-    EXPECT(config.project.stateful_worker_count.value == 2u);
-    EXPECT(config.project.stateless_worker_count.value >= 2u);
-    EXPECT(config.project.min_stateless_worker_count.value == 1u);
-    EXPECT(config.project.max_stateless_worker_count.value == default_max_stateless_worker_count());
-    EXPECT(config.project.max_stateless_worker_count.value >=
-           config.project.min_stateless_worker_count.value);
-    EXPECT(config.tracker.workspace_poll_seconds.value == 30u);
-    EXPECT(config.inlay_hints.enabled.value == true);
-    EXPECT(config.inlay_hints.parameters.value == true);
-    EXPECT(config.inlay_hints.deduced_types.value == true);
-    EXPECT(config.inlay_hints.designators.value == true);
-    EXPECT(config.inlay_hints.block_end.value == false);
-    EXPECT(config.inlay_hints.default_arguments.value == false);
-    EXPECT(config.inlay_hints.type_name_limit.value == 32u);
-    EXPECT(config.code_completion.enable_keyword_snippet.value == false);
-    EXPECT(config.code_completion.enable_function_arguments_snippet.value == false);
-    EXPECT(config.code_completion.enable_template_arguments_snippet.value == false);
-    EXPECT(config.code_completion.insert_paren_in_function_call.value == false);
-    EXPECT(config.code_completion.bundle_overloads.value == true);
-    EXPECT(config.code_completion.limit.value == 0u);
+    ZEXPECT(config.project.enable_indexing.value == true);
+    ZEXPECT(config.project.idle_timeout_ms.value == 3000u);
+    ZEXPECT(config.project.test_hooks.value == false);
+    ZEXPECT(config.project.stateful_worker_count.value == 2u);
+    ZEXPECT(config.project.stateless_worker_count.value >= 2u);
+    ZEXPECT(config.project.min_stateless_worker_count.value == 1u);
+    ZEXPECT(config.project.max_stateless_worker_count.value ==
+            default_max_stateless_worker_count());
+    ZEXPECT(config.project.max_stateless_worker_count.value >=
+            config.project.min_stateless_worker_count.value);
+    ZEXPECT(config.tracker.workspace_poll_seconds.value == 30u);
+    ZEXPECT(config.inlay_hints.enabled.value == true);
+    ZEXPECT(config.inlay_hints.parameters.value == true);
+    ZEXPECT(config.inlay_hints.deduced_types.value == true);
+    ZEXPECT(config.inlay_hints.designators.value == true);
+    ZEXPECT(config.inlay_hints.block_end.value == false);
+    ZEXPECT(config.inlay_hints.default_arguments.value == false);
+    ZEXPECT(config.inlay_hints.type_name_limit.value == 32u);
+    ZEXPECT(config.code_completion.enable_keyword_snippet.value == false);
+    ZEXPECT(config.code_completion.enable_function_arguments_snippet.value == false);
+    ZEXPECT(config.code_completion.enable_template_arguments_snippet.value == false);
+    ZEXPECT(config.code_completion.insert_paren_in_function_call.value == false);
+    ZEXPECT(config.code_completion.bundle_overloads.value == true);
+    ZEXPECT(config.code_completion.limit.value == 0u);
 }
 
 ZEST_CASE(FinalizeDerivesPaths) {
     Config config;
     config.finalize(CanonicalPath(Spelling::absolute("/workspace")));
-    EXPECT(!config.project.cache_dir.empty());
-    EXPECT(!config.project.logging_dir.empty());
-    EXPECT(config.project.cache_dir_defaulted.value == true);
+    ZEXPECT(!config.project.cache_dir.empty());
+    ZEXPECT(!config.project.logging_dir.empty());
+    ZEXPECT(config.project.cache_dir_defaulted.value == true);
 }
 
 ZEST_CASE(FinalizeEmptyWorkspace) {
     Config config;
     config.finalize(CanonicalPath());
-    EXPECT(config.project.cache_dir.empty());
-    EXPECT(config.project.logging_dir.empty());
+    ZEXPECT(config.project.cache_dir.empty());
+    ZEXPECT(config.project.logging_dir.empty());
 }
 
 ZEST_CASE(FinalizePreservesSet) {
@@ -292,12 +293,12 @@ ZEST_CASE(FinalizePreservesSet) {
     config.inlay_hints.parameters = false;
     config.inlay_hints.block_end = true;
     config.finalize(CanonicalPath(Spelling::absolute("/workspace")));
-    EXPECT(std::string_view(config.project.cache_dir) ==
-           CanonicalPath(Spelling::absolute("/custom")).str());
-    EXPECT(config.project.cache_dir_defaulted.value == false);
-    EXPECT(config.project.enable_indexing.value == false);
-    EXPECT(config.inlay_hints.parameters.value == false);
-    EXPECT(config.inlay_hints.block_end.value == true);
+    ZEXPECT(std::string_view(config.project.cache_dir) ==
+            CanonicalPath(Spelling::absolute("/custom")).str());
+    ZEXPECT(config.project.cache_dir_defaulted.value == false);
+    ZEXPECT(config.project.enable_indexing.value == false);
+    ZEXPECT(config.inlay_hints.parameters.value == false);
+    ZEXPECT(config.inlay_hints.block_end.value == true);
 }
 
 ZEST_CASE(LoadFromJson) {
@@ -312,25 +313,25 @@ ZEST_CASE(LoadFromJson) {
         ]
     })",
                                          CanonicalPath(Spelling::absolute("/workspace")));
-    EXPECT(result);
-    EXPECT(std::string_view(result->project.cache_dir) ==
-           CanonicalPath(Spelling::absolute("/opt/cache")).str());
-    EXPECT(result->project.enable_indexing.value == false);
-    EXPECT(result->rules.size() == 1u);
-    EXPECT(result->compiled_rules.size() == 1u);
+    ZEXPECT(result);
+    ZEXPECT(std::string_view(result->project.cache_dir) ==
+            CanonicalPath(Spelling::absolute("/opt/cache")).str());
+    ZEXPECT(result->project.enable_indexing.value == false);
+    ZEXPECT(result->rules.size() == 1u);
+    ZEXPECT(result->compiled_rules.size() == 1u);
 }
 
 ZEST_CASE(LoadFromJsonInvalid) {
     auto result =
         Config::load_from_json("{not valid json", CanonicalPath(Spelling::absolute("/workspace")));
-    EXPECT(!result.has_value());
+    ZEXPECT(!result.has_value());
 }
 
 ZEST_CASE(LoadMalformedToml) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project\nbroken");
     auto result = Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)));
-    EXPECT(!result.has_value());
+    ZEXPECT(!result.has_value());
 }
 
 ZEST_CASE(LegacyProjectKeysIgnored) {
@@ -344,15 +345,15 @@ index_dir = "/opt/index"
 worker_memory_limit = 4294967296
 )");
     auto result = Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)));
-    EXPECT(result);
-    EXPECT(std::string_view(result->project.cache_dir) ==
-           CanonicalPath(Spelling("/opt/cache", Spelling::absolute(tmp.root))).str());
+    ZEXPECT(result);
+    ZEXPECT(std::string_view(result->project.cache_dir) ==
+            CanonicalPath(Spelling("/opt/cache", Spelling::absolute(tmp.root))).str());
 }
 
 ZEST_CASE(LoadMissingFile) {
     auto result =
         Config::load("/nonexistent/clice.toml", CanonicalPath(Spelling::absolute("/workspace")));
-    EXPECT(!result.has_value());
+    ZEXPECT(!result.has_value());
 }
 
 ZEST_CASE(WorkspaceVarSubst) {
@@ -367,10 +368,10 @@ ZEST_CASE(WorkspaceVarSubst) {
     config.project.logging_dir = "${workspace}/logs";
     config.rules.push_back(ConfigRule{.compile_commands = {"${workspace}/build"}});
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    EXPECT(std::string_view(config.project.cache_dir) == at("cache"));
-    EXPECT(std::string_view(config.project.logging_dir) == at("logs"));
-    ASSERT(config.compiled_rules.size() == 1u);
-    EXPECT(config.compiled_rules[0].compile_commands[0].str() == at("build"));
+    ZEXPECT(std::string_view(config.project.cache_dir) == at("cache"));
+    ZEXPECT(std::string_view(config.project.logging_dir) == at("logs"));
+    ZASSERT(config.compiled_rules.size() == 1u);
+    ZEXPECT(config.compiled_rules[0].compile_commands[0].str() == at("build"));
 }
 
 ZEST_CASE(ParseRuleSources) {
@@ -387,16 +388,16 @@ patterns = ["third_party/**"]
 default_command = ["clang", "-std=c17"]
 index = false
 )");
-    ASSERT(result);
-    EXPECT(std::string_view(result->default_configuration) == "debug");
-    ASSERT(result->rules.size() == 2u);
-    EXPECT(std::string_view(result->rules[0].configuration) == "debug");
-    EXPECT(result->rules[0].compile_commands.size() == 2u);
-    EXPECT(std::get<std::string>(result->rules[0].default_command) ==
-           "clang++ -std=c++20 -Iinclude");
-    EXPECT(result->rules[0].index);
-    EXPECT(std::get<std::vector<std::string>>(result->rules[1].default_command).size() == 2u);
-    EXPECT(!result->rules[1].index);
+    ZASSERT(result);
+    ZEXPECT(std::string_view(result->default_configuration) == "debug");
+    ZASSERT(result->rules.size() == 2u);
+    ZEXPECT(std::string_view(result->rules[0].configuration) == "debug");
+    ZEXPECT(result->rules[0].compile_commands.size() == 2u);
+    ZEXPECT(std::get<std::string>(result->rules[0].default_command) ==
+            "clang++ -std=c++20 -Iinclude");
+    ZEXPECT(result->rules[0].index);
+    ZEXPECT(std::get<std::vector<std::string>>(result->rules[1].default_command).size() == 2u);
+    ZEXPECT(!result->rules[1].index);
 }
 
 ZEST_CASE(AnchoredRules) {
@@ -432,47 +433,47 @@ compile_commands = ["build", "{}"]
                           at("elsewhere/compile_commands.json")));
 
     auto loaded = Config::load(tmp.path("sub/clice.toml"), CanonicalPath(Spelling::absolute(root)));
-    ASSERT(loaded);
+    ZASSERT(loaded);
     auto& config = *loaded;
 
-    ASSERT(config.compiled_rules.size() == 3u);
-    EXPECT(config.compiled_rules[0].compile_commands[0].str() == at("sub/out/debug"));
-    EXPECT(config.compiled_rules[0].directory.str() == at("sub"));
-    EXPECT(config.compiled_rules[0].patterns[0].root == identity("sub/src"));
-    EXPECT(config.compiled_rules[0].declares_sources());
+    ZASSERT(config.compiled_rules.size() == 3u);
+    ZEXPECT(config.compiled_rules[0].compile_commands[0].str() == at("sub/out/debug"));
+    ZEXPECT(config.compiled_rules[0].directory.str() == at("sub"));
+    ZEXPECT(config.compiled_rules[0].patterns[0].root == identity("sub/src"));
+    ZEXPECT(config.compiled_rules[0].declares_sources());
     /// The string spelling is tokenized, then `${workspace}` substituted
     /// per argument.
-    ASSERT(config.compiled_rules[0].default_command.size() == 3u);
-    EXPECT(config.compiled_rules[0].default_command[2] == "-I" + at("include"));
-    EXPECT(!config.compiled_rules[1].declares_sources());
-    ASSERT(config.compiled_rules[1].patterns.size() == 4u);
-    EXPECT(config.compiled_rules[1].patterns[0].root == CanonicalPath(Spelling::absolute(root)));
-    EXPECT(config.compiled_rules[1].patterns[1].root == identity("gen"));
-    EXPECT(config.compiled_rules[1].patterns[2].root == identity("shared"));
-    EXPECT(config.compiled_rules[1].patterns[3].root == identity("sub"));
-    EXPECT(config.compiled_rules[2].patterns.empty());
-    EXPECT(config.compiled_rules[2].compile_commands[0].str() == at("sub/build"));
-    EXPECT(config.compiled_rules[2].compile_commands[1].str() ==
-           at("elsewhere/compile_commands.json"));
+    ZASSERT(config.compiled_rules[0].default_command.size() == 3u);
+    ZEXPECT(config.compiled_rules[0].default_command[2] == "-I" + at("include"));
+    ZEXPECT(!config.compiled_rules[1].declares_sources());
+    ZASSERT(config.compiled_rules[1].patterns.size() == 4u);
+    ZEXPECT(config.compiled_rules[1].patterns[0].root == CanonicalPath(Spelling::absolute(root)));
+    ZEXPECT(config.compiled_rules[1].patterns[1].root == identity("gen"));
+    ZEXPECT(config.compiled_rules[1].patterns[2].root == identity("shared"));
+    ZEXPECT(config.compiled_rules[1].patterns[3].root == identity("sub"));
+    ZEXPECT(config.compiled_rules[2].patterns.empty());
+    ZEXPECT(config.compiled_rules[2].compile_commands[0].str() == at("sub/build"));
+    ZEXPECT(config.compiled_rules[2].compile_commands[1].str() ==
+            at("elsewhere/compile_commands.json"));
 
     auto tags = config.configurations();
-    ASSERT(tags.size() == 1u);
-    EXPECT(tags[0] == "debug");
+    ZASSERT(tags.size() == 1u);
+    ZEXPECT(tags[0] == "debug");
 
     /// A relative pattern sees only files under its anchor; a bare `*`
     /// names the anchor's direct children.
-    EXPECT(config.matching_rules(identity("sub/src/a.cpp"), "debug").size() == 2u);
-    EXPECT(config.matching_rules(identity("sub/src/a.cpp"), "release").size() == 1u);
-    EXPECT(config.matching_rules(identity("src/a.cpp"), "debug").size() == 1u);
-    EXPECT(config.matching_rules(identity("sub/a.cpp"), "debug").size() == 2u);
+    ZEXPECT(config.matching_rules(identity("sub/src/a.cpp"), "debug").size() == 2u);
+    ZEXPECT(config.matching_rules(identity("sub/src/a.cpp"), "release").size() == 1u);
+    ZEXPECT(config.matching_rules(identity("src/a.cpp"), "debug").size() == 1u);
+    ZEXPECT(config.matching_rules(identity("sub/a.cpp"), "debug").size() == 2u);
     /// `**` and `${workspace}` patterns match the absolute path; `..`
     /// climbs out of the anchor, `*` stays within one segment.
     auto hxx = config.matching_rules(identity("other/tree/x.hxx"), "debug");
-    ASSERT(hxx.size() == 2u);
-    EXPECT(hxx[0]->append.size() == 2u);
-    EXPECT(config.matching_rules(identity("gen/x.cpp"), "debug").size() == 2u);
-    EXPECT(config.matching_rules(identity("shared/x.cpp"), "debug").size() == 2u);
-    EXPECT(config.matching_rules(identity("shared/deep/x.cpp"), "debug").size() == 1u);
+    ZASSERT(hxx.size() == 2u);
+    ZEXPECT(hxx[0]->append.size() == 2u);
+    ZEXPECT(config.matching_rules(identity("gen/x.cpp"), "debug").size() == 2u);
+    ZEXPECT(config.matching_rules(identity("shared/x.cpp"), "debug").size() == 2u);
+    ZEXPECT(config.matching_rules(identity("shared/deep/x.cpp"), "debug").size() == 1u);
 }
 
 ZEST_CASE(InitOptionsAnchorAtWorkspace) {
@@ -497,11 +498,11 @@ compile_commands = ["../build"]
 )");
 
     auto from_file = Config::load_from_workspace(CanonicalPath(Spelling::absolute(root)));
-    ASSERT(from_file.compiled_rules.size() == 2u);
-    EXPECT(from_file.compiled_rules[0].patterns[0].root ==
-           CanonicalPath(Spelling::absolute(at("src"))));
-    EXPECT(from_file.compiled_rules[0].directory.str() == at(".clice"));
-    EXPECT(from_file.compiled_rules[1].compile_commands[0].str() == at(".clice/../build"));
+    ZASSERT(from_file.compiled_rules.size() == 2u);
+    ZEXPECT(from_file.compiled_rules[0].patterns[0].root ==
+            CanonicalPath(Spelling::absolute(at("src"))));
+    ZEXPECT(from_file.compiled_rules[0].directory.str() == at(".clice"));
+    ZEXPECT(from_file.compiled_rules[1].compile_commands[0].str() == at(".clice/../build"));
 
     auto config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(root)),
                                               nullptr,
@@ -510,15 +511,15 @@ compile_commands = ["../build"]
     auto ov = kota::codec::json::from_string(
         R"({ "rules": [{ "patterns": ["src/**"], "compile_commands": ["cmake"] }, { "compile_commands": ["out"] }] })",
         config);
-    ASSERT(ov);
+    ZASSERT(ov);
     config.finalize(CanonicalPath(Spelling::absolute(root)));
 
-    ASSERT(config.compiled_rules.size() == 2u);
-    EXPECT(config.compiled_rules[0].patterns[0].root ==
-           CanonicalPath(Spelling::absolute(at("src"))));
-    EXPECT(config.compiled_rules[0].compile_commands[0].str() == at("cmake"));
-    EXPECT(config.compiled_rules[0].directory.str() == root);
-    EXPECT(config.compiled_rules[1].compile_commands[0].str() == at("out"));
+    ZASSERT(config.compiled_rules.size() == 2u);
+    ZEXPECT(config.compiled_rules[0].patterns[0].root ==
+            CanonicalPath(Spelling::absolute(at("src"))));
+    ZEXPECT(config.compiled_rules[0].compile_commands[0].str() == at("cmake"));
+    ZEXPECT(config.compiled_rules[0].directory.str() == root);
+    ZEXPECT(config.compiled_rules[1].compile_commands[0].str() == at("out"));
 }
 
 ZEST_CASE(RelativeProjectDirsAnchor) {
@@ -536,22 +537,22 @@ ZEST_CASE(RelativeProjectDirsAnchor) {
     tmp.touch("sub/clice.toml", "[project]\ncache_dir = \"cache\"\n");
 
     auto loaded = Config::load(tmp.path("sub/clice.toml"), CanonicalPath(Spelling::absolute(root)));
-    ASSERT(loaded);
-    EXPECT(std::string_view(loaded->project.cache_dir) == at("sub/cache"));
-    EXPECT(std::string_view(loaded->project.logging_dir) == at("sub/cache/logs"));
+    ZASSERT(loaded);
+    ZEXPECT(std::string_view(loaded->project.cache_dir) == at("sub/cache"));
+    ZEXPECT(std::string_view(loaded->project.logging_dir) == at("sub/cache/logs"));
 
     Config config;
     config.project.logging_dir = "logs";
     config.finalize(CanonicalPath(Spelling::absolute(root)));
-    EXPECT(std::string_view(config.project.logging_dir) == at("logs"));
+    ZEXPECT(std::string_view(config.project.logging_dir) == at("logs"));
 }
 
 ZEST_CASE(SourcesOffByDefault) {
     Config config;
     config.rules.push_back(ConfigRule{.patterns = {"**/*"}, .append = {"-DX"}});
     config.finalize(CanonicalPath(Spelling::absolute("/ws")));
-    EXPECT(!config.compiled_rules[0].declares_sources());
-    EXPECT(config.configurations().empty());
+    ZEXPECT(!config.compiled_rules[0].declares_sources());
+    ZEXPECT(config.configurations().empty());
 }
 
 ZEST_CASE(InvalidGlobPattern) {
@@ -569,26 +570,26 @@ ZEST_CASE(InvalidGlobPattern) {
         .append = {"-DCPP"},
     });
     config.finalize(CanonicalPath(Spelling::absolute("/src")));
-    ASSERT(config.compiled_rules.size() == 2u);
-    EXPECT(config.compiled_rules[0].unmatchable);
-    EXPECT(config.compiled_rules[0].declares_sources());
-    EXPECT(!config.compiled_rules[1].unmatchable);
+    ZASSERT(config.compiled_rules.size() == 2u);
+    ZEXPECT(config.compiled_rules[0].unmatchable);
+    ZEXPECT(config.compiled_rules[0].declares_sources());
+    ZEXPECT(!config.compiled_rules[1].unmatchable);
 
     std::vector<std::string> append, remove;
     match_rules(config, "/src/foo.cpp", append, remove);
-    EXPECT(append.size() == 1u);
-    EXPECT(append[0] == "-DCPP");
+    ZEXPECT(append.size() == 1u);
+    ZEXPECT(append[0] == "-DCPP");
 }
 
 ZEST_CASE(ConfigPriorityJson) {
     // initializationOptions-sourced config should override an on-disk default.
     auto from_json = Config::load_from_json(R"({ "project": { "idle_timeout_ms": 42 } })",
                                             CanonicalPath(Spelling::absolute("/workspace")));
-    EXPECT(from_json);
-    EXPECT(from_json->project.idle_timeout_ms.value == 42u);
+    ZEXPECT(from_json);
+    ZEXPECT(from_json->project.idle_timeout_ms.value == 42u);
     // Unset fields still receive defaults.
-    EXPECT(from_json->project.enable_indexing.value == true);
-    EXPECT(from_json->project.stateful_worker_count.value == 2u);
+    ZEXPECT(from_json->project.enable_indexing.value == true);
+    ZEXPECT(from_json->project.stateful_worker_count.value == 2u);
 }
 
 ZEST_CASE(DefaultWorkspaceCache) {
@@ -596,8 +597,8 @@ ZEST_CASE(DefaultWorkspaceCache) {
     CanonicalPath root(Spelling::absolute("/ws/root"));
     config.finalize(root);
 
-    EXPECT(std::string_view(config.project.cache_dir) == root.str() + "/.clice");
-    EXPECT(std::string_view(config.project.logging_dir) == root.str() + "/.clice/logs");
+    ZEXPECT(std::string_view(config.project.cache_dir) == root.str() + "/.clice");
+    ZEXPECT(std::string_view(config.project.logging_dir) == root.str() + "/.clice/logs");
 }
 
 ZEST_CASE(WorkspaceSubstEmpty) {
@@ -607,7 +608,7 @@ ZEST_CASE(WorkspaceSubstEmpty) {
     Config config;
     config.project.cache_dir = "${workspace}/cache";
     config.finalize(CanonicalPath());
-    EXPECT(config.project.cache_dir.empty());
+    ZEXPECT(config.project.cache_dir.empty());
 }
 
 ZEST_CASE(RootlessRulesIgnored) {
@@ -616,7 +617,7 @@ ZEST_CASE(RootlessRulesIgnored) {
     Config config;
     config.rules.push_back(ConfigRule{.patterns = {"src/**"}, .append = {"-DX"}});
     config.finalize(CanonicalPath());
-    EXPECT(config.compiled_rules.empty());
+    ZEXPECT(config.compiled_rules.empty());
 }
 
 ZEST_CASE(HomeExpanded) {
@@ -626,9 +627,9 @@ ZEST_CASE(HomeExpanded) {
     config.project.cache_dir = "~/clice-cache";
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     llvm::SmallString<256> home;
-    ASSERT(llvm::sys::path::home_directory(home));
-    EXPECT(std::string_view(config.project.cache_dir) ==
-           CanonicalPath(Spelling("clice-cache", Spelling::absolute(home))).str());
+    ZASSERT(llvm::sys::path::home_directory(home));
+    ZEXPECT(std::string_view(config.project.cache_dir) ==
+            CanonicalPath(Spelling("clice-cache", Spelling::absolute(home))).str());
 }
 
 ZEST_CASE(WorkspaceSubstRepeated) {
@@ -637,8 +638,8 @@ ZEST_CASE(WorkspaceSubstRepeated) {
     config.project.cache_dir = "${workspace}/a/${workspace}/b";
     CanonicalPath root(Spelling::absolute("/root"));
     config.finalize(root);
-    EXPECT(std::string_view(config.project.cache_dir) ==
-           CanonicalPath(Spelling::absolute(root.str() + "/a/" + root.str() + "/b")).str());
+    ZEXPECT(std::string_view(config.project.cache_dir) ==
+            CanonicalPath(Spelling::absolute(root.str() + "/a/" + root.str() + "/b")).str());
 }
 
 ZEST_CASE(CompileCommandsList) {
@@ -660,13 +661,13 @@ ZEST_CASE(CompileCommandsList) {
                              }
     });
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT(config.compiled_rules.size() == 1u);
+    ZASSERT(config.compiled_rules.size() == 1u);
     auto& databases = config.compiled_rules[0].compile_commands;
-    ASSERT(databases.size() == 4u);
-    EXPECT(databases[0].str() == at("build"));
-    EXPECT(databases[1].str() == at("abs/path/compile_commands.json"));
-    EXPECT(databases[2].str() == at("out"));
-    EXPECT(databases[3].str() == at("build.json/compile_commands.json"));
+    ZASSERT(databases.size() == 4u);
+    ZEXPECT(databases[0].str() == at("build"));
+    ZEXPECT(databases[1].str() == at("abs/path/compile_commands.json"));
+    ZEXPECT(databases[2].str() == at("out"));
+    ZEXPECT(databases[3].str() == at("build.json/compile_commands.json"));
 }
 
 ZEST_CASE(TomlErrorLocated) {
@@ -674,7 +675,7 @@ ZEST_CASE(TomlErrorLocated) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project\ntest_hooks = true\n");
     auto result = Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)));
-    EXPECT(!result.has_value());
+    ZEXPECT(!result.has_value());
 }
 
 // FIXME: assert ConfigIssue::line/column once kotatsu's TOML decoder exposes
@@ -686,9 +687,9 @@ ZEST_CASE(SyntaxIssueReported) {
     std::vector<ConfigIssue> issues;
     auto result =
         Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)), &issues);
-    EXPECT(!result.has_value());
-    ASSERT(issues.size() == 1u);
-    EXPECT(issues[0].severity == ConfigIssue::Severity::Error);
+    ZEXPECT(!result.has_value());
+    ZASSERT(issues.size() == 1u);
+    ZEXPECT(issues[0].severity == ConfigIssue::Severity::Error);
 }
 
 ZEST_CASE(TypeIssueReported) {
@@ -697,10 +698,10 @@ ZEST_CASE(TypeIssueReported) {
     std::vector<ConfigIssue> issues;
     auto result =
         Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)), &issues);
-    EXPECT(!result.has_value());
-    ASSERT(issues.size() == 1u);
-    EXPECT(issues[0].severity == ConfigIssue::Severity::Error);
-    EXPECT(issues[0].message.find("test_hooks") != std::string::npos);
+    ZEXPECT(!result.has_value());
+    ZASSERT(issues.size() == 1u);
+    ZEXPECT(issues[0].severity == ConfigIssue::Severity::Error);
+    ZEXPECT(issues[0].message.find("test_hooks") != std::string::npos);
 }
 
 ZEST_CASE(RemovedKeyIssueWarns) {
@@ -709,10 +710,10 @@ ZEST_CASE(RemovedKeyIssueWarns) {
     std::vector<ConfigIssue> issues;
     auto result =
         Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)), &issues);
-    EXPECT(result);
-    ASSERT(issues.size() == 1u);
-    EXPECT(issues[0].severity == ConfigIssue::Severity::Warning);
-    EXPECT(issues[0].message.find("worker_memory_limit") != std::string::npos);
+    ZEXPECT(result);
+    ZASSERT(issues.size() == 1u);
+    ZEXPECT(issues[0].severity == ConfigIssue::Severity::Warning);
+    ZEXPECT(issues[0].message.find("worker_memory_limit") != std::string::npos);
 }
 
 ZEST_CASE(UnknownFeatureKeyWarns) {
@@ -723,10 +724,10 @@ ZEST_CASE(UnknownFeatureKeyWarns) {
     std::vector<ConfigIssue> issues;
     auto result =
         Config::load(tmp.path("clice.toml"), CanonicalPath(Spelling::absolute(tmp.root)), &issues);
-    EXPECT(result);
-    ASSERT(issues.size() == 1u);
-    EXPECT(issues[0].severity == ConfigIssue::Severity::Warning);
-    EXPECT(issues[0].message.find("blokc_end") != std::string::npos);
+    ZEXPECT(result);
+    ZASSERT(issues.size() == 1u);
+    ZEXPECT(issues[0].severity == ConfigIssue::Severity::Warning);
+    ZEXPECT(issues[0].message.find("blokc_end") != std::string::npos);
 }
 
 ZEST_CASE(ZeroWorkerCountRejected) {
@@ -738,9 +739,9 @@ ZEST_CASE(ZeroWorkerCountRejected) {
     config.project.stateless_worker_count = 0;
     config.project.min_stateless_worker_count = 0;
     config.finalize(CanonicalPath());
-    EXPECT(config.project.stateful_worker_count.value == 2u);
-    EXPECT(config.project.stateless_worker_count.value >= 2u);
-    EXPECT(config.project.min_stateless_worker_count.value == 1u);
+    ZEXPECT(config.project.stateful_worker_count.value == 2u);
+    ZEXPECT(config.project.stateless_worker_count.value >= 2u);
+    ZEXPECT(config.project.min_stateless_worker_count.value == 1u);
 }
 
 ZEST_CASE(NullOptionRejected) {
@@ -749,10 +750,10 @@ ZEST_CASE(NullOptionRejected) {
     // both flat and inside a feature section.
     auto flat = Config::load_from_json(R"({ "project": { "test_hooks": null } })",
                                        CanonicalPath(Spelling::absolute("/ws")));
-    EXPECT(!flat.has_value());
+    ZEXPECT(!flat.has_value());
     auto nested = Config::load_from_json(R"({ "inlay_hints": { "block_end": null } })",
                                          CanonicalPath(Spelling::absolute("/ws")));
-    EXPECT(!nested.has_value());
+    ZEXPECT(!nested.has_value());
 }
 
 ZEST_CASE(WorkspaceMalformedFallback) {
@@ -762,8 +763,8 @@ ZEST_CASE(WorkspaceMalformedFallback) {
     tmp.touch("clice.toml", "[project\ninvalid");
     auto config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.root)));
     // Defaults still applied.
-    EXPECT(config.project.stateful_worker_count.value == 2u);
-    EXPECT(config.project.enable_indexing.value == true);
+    ZEXPECT(config.project.stateful_worker_count.value == 2u);
+    ZEXPECT(config.project.enable_indexing.value == true);
 }
 
 ZEST_CASE(RuleOrderLaterRemoveWins) {
@@ -786,10 +787,10 @@ ZEST_CASE(RuleOrderLaterRemoveWins) {
     cdb.add_command("/src", "/src/a.cpp", std::string_view("clang++ -DFOO a.cpp"));
     Build build{config, cdb, files};
     auto edits = build.edits(CanonicalPath(Spelling::absolute("/src/a.cpp")));
-    ASSERT(edits.edits.size() == 2u);
-    EXPECT(edits.edits[1].kind == CommandEdit::Kind::Remove);
-    EXPECT(print_argv(render_entry(cdb, "/src/a.cpp", edits.options())) ==
-           "clang++ -D BAR " + CanonicalPath(Spelling::absolute("/src/a.cpp")).str());
+    ZASSERT(edits.edits.size() == 2u);
+    ZEXPECT(edits.edits[1].kind == CommandEdit::Kind::Remove);
+    ZEXPECT(print_argv(render_entry(cdb, "/src/a.cpp", edits.options())) ==
+            "clang++ -D BAR " + CanonicalPath(Spelling::absolute("/src/a.cpp")).str());
 }
 
 ZEST_CASE(RuleOrderLaterAppendWins) {
@@ -808,9 +809,9 @@ ZEST_CASE(RuleOrderLaterAppendWins) {
 
     std::vector<std::string> append, remove;
     match_rules(config, "/src/a.cpp", append, remove);
-    EXPECT(append.size() == 2u);
-    EXPECT(append[0] == "-O2");
-    EXPECT(append[1] == "-O3");
+    ZEXPECT(append.size() == 2u);
+    ZEXPECT(append[0] == "-O2");
+    ZEXPECT(append[1] == "-O3");
 }
 
 ZEST_CASE(InitOptionsOverlayPreservesToml) {
@@ -831,25 +832,25 @@ append = ["-DFROM_TOML"]
 
     auto config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.root)));
     auto from_toml = CanonicalPath(Spelling("/from/toml", Spelling::absolute(tmp.root))).str();
-    EXPECT(std::string_view(config.project.cache_dir) == from_toml);
-    EXPECT(config.project.test_hooks.value == true);
-    EXPECT(config.project.idle_timeout_ms.value == 16u);
-    EXPECT(config.compiled_rules.size() == 1u);
+    ZEXPECT(std::string_view(config.project.cache_dir) == from_toml);
+    ZEXPECT(config.project.test_hooks.value == true);
+    ZEXPECT(config.project.idle_timeout_ms.value == 16u);
+    ZEXPECT(config.compiled_rules.size() == 1u);
 
     // Overlay only `idle_timeout_ms` via JSON.
     auto ov = kota::codec::json::from_string(R"({ "project": { "idle_timeout_ms": 99 } })", config);
-    EXPECT(ov);
+    ZEXPECT(ov);
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
 
     // Overridden field.
-    EXPECT(config.project.idle_timeout_ms.value == 99u);
+    ZEXPECT(config.project.idle_timeout_ms.value == 99u);
     // Untouched fields stay at TOML values.
-    EXPECT(std::string_view(config.project.cache_dir) == from_toml);
-    EXPECT(config.project.test_hooks.value == true);
+    ZEXPECT(std::string_view(config.project.cache_dir) == from_toml);
+    ZEXPECT(config.project.test_hooks.value == true);
     // Rules from clice.toml must survive the overlay.
-    EXPECT(config.rules.size() == 1u);
-    EXPECT(config.compiled_rules.size() == 1u);
-    EXPECT(config.rules[0].append[0] == "-DFROM_TOML");
+    ZEXPECT(config.rules.size() == 1u);
+    ZEXPECT(config.compiled_rules.size() == 1u);
+    ZEXPECT(config.rules[0].append[0] == "-DFROM_TOML");
 }
 
 ZEST_CASE(OverlaySectionDeepMerge) {
@@ -873,19 +874,19 @@ bundle_overloads = false
     auto ov = kota::codec::json::from_string(
         R"({ "inlay_hints": { "parameters": false, "block_end": false }, "code_completion": { "limit": 5 } })",
         config);
-    EXPECT(ov);
+    ZEXPECT(ov);
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
 
     // From the TOML layer.
-    EXPECT(config.code_completion.bundle_overloads.value == false);
+    ZEXPECT(config.code_completion.bundle_overloads.value == false);
     // From the JSON overlay, including a nested field both layers set —
     // the later source wins.
-    EXPECT(config.inlay_hints.block_end.value == false);
-    EXPECT(config.inlay_hints.parameters.value == false);
-    EXPECT(config.code_completion.limit.value == 5u);
+    ZEXPECT(config.inlay_hints.block_end.value == false);
+    ZEXPECT(config.inlay_hints.parameters.value == false);
+    ZEXPECT(config.code_completion.limit.value == 5u);
     // Named by nobody: field-initializer defaults.
-    EXPECT(config.inlay_hints.deduced_types.value == true);
-    EXPECT(config.code_completion.insert_paren_in_function_call.value == false);
+    ZEXPECT(config.inlay_hints.deduced_types.value == true);
+    ZEXPECT(config.code_completion.insert_paren_in_function_call.value == false);
 }
 
 ZEST_CASE(InitOptionsOverlayRulesReplace) {
@@ -899,32 +900,32 @@ patterns = ["**/*.cpp"]
 append = ["-DTOML_ONLY"]
 )");
     auto config = Config::load_from_workspace(CanonicalPath(Spelling::absolute(tmp.root)));
-    EXPECT(config.compiled_rules.size() == 1u);
+    ZEXPECT(config.compiled_rules.size() == 1u);
 
     auto ov = kota::codec::json::from_string(
         R"({ "rules": [ { "patterns": ["**/*.cc"], "append": ["-DFROM_JSON"] } ] })",
         config);
-    EXPECT(ov);
+    ZEXPECT(ov);
     config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
 
-    EXPECT(config.rules.size() == 1u);
-    EXPECT(config.rules[0].append[0] == "-DFROM_JSON");
-    EXPECT(config.compiled_rules.size() == 1u);
+    ZEXPECT(config.rules.size() == 1u);
+    ZEXPECT(config.rules[0].append[0] == "-DFROM_JSON");
+    ZEXPECT(config.compiled_rules.size() == 1u);
 
     // Original TOML rule no longer applies.
     std::vector<std::string> append, remove;
     match_rules(config, "/src/x.cpp", append, remove);
-    EXPECT(append.empty());
+    ZEXPECT(append.empty());
     match_rules(config, "/src/x.cc", append, remove);
-    EXPECT(append.size() == 1u);
-    EXPECT(append[0] == "-DFROM_JSON");
+    ZEXPECT(append.size() == 1u);
+    ZEXPECT(append[0] == "-DFROM_JSON");
 }
 
 ZEST_CASE(JsonSchema) {
     auto schema = Config::json_schema();
-    ASSERT(schema);
+    ZASSERT(schema);
     auto doc = kota::codec::json::from_string<kota::codec::dyn::Value>(*schema);
-    ASSERT(doc);
+    ZASSERT(doc);
 
     // Machine-derived worker counts describe their derivation but carry no
     // default value anywhere — neither in their own schema nor inside a
@@ -932,45 +933,45 @@ ZEST_CASE(JsonSchema) {
     // across hosts.
     for(auto field: {"stateless_worker_count", "max_stateless_worker_count"}) {
         const auto* worker = find_property(*doc, field);
-        ASSERT(worker != nullptr);
+        ZASSERT(worker != nullptr);
         const auto* object = worker->get_object();
-        ASSERT(object != nullptr);
-        EXPECT(object->find("description") != nullptr);
-        EXPECT(object->find("default") == nullptr);
-        EXPECT(!default_mentions(*doc, field, false));
+        ZASSERT(object != nullptr);
+        ZEXPECT(object->find("description") != nullptr);
+        ZEXPECT(object->find("default") == nullptr);
+        ZEXPECT(!default_mentions(*doc, field, false));
     }
     // Control: a stable field does appear under the section default.
-    EXPECT(default_mentions(*doc, "idle_timeout_ms", false));
+    ZEXPECT(default_mentions(*doc, "idle_timeout_ms", false));
 
     // A stable field initializer survives as the schema default, and the
     // unsigned field type keeps negative delays out of the schema.
     const auto* idle = find_property(*doc, "idle_timeout_ms");
-    ASSERT(idle != nullptr);
-    EXPECT(idle->get_object()->find("default") != nullptr);
+    ZASSERT(idle != nullptr);
+    ZEXPECT(idle->get_object()->find("default") != nullptr);
     const auto* idle_minimum = idle->get_object()->find("minimum");
-    ASSERT(idle_minimum != nullptr);
-    EXPECT(idle_minimum->get_uint().value_or(1) == 0u);
+    ZASSERT(idle_minimum != nullptr);
+    ZEXPECT(idle_minimum->get_uint().value_or(1) == 0u);
 
     // skip = true fields stay out of the schema entirely.
-    EXPECT(find_property(*doc, "compiled_rules") == nullptr);
+    ZEXPECT(find_property(*doc, "compiled_rules") == nullptr);
 
     // The fields finalize() rejects `0` for carry the matching lower bound.
     for(auto field:
         {"stateful_worker_count", "stateless_worker_count", "min_stateless_worker_count"}) {
         const auto* property = find_property(*doc, field);
-        ASSERT(property != nullptr);
+        ZASSERT(property != nullptr);
         const auto* minimum = property->get_object()->find("minimum");
-        ASSERT(minimum != nullptr);
-        EXPECT(minimum->get_uint().value_or(0) == 1u);
+        ZASSERT(minimum != nullptr);
+        ZEXPECT(minimum->get_uint().value_or(0) == 1u);
     }
 
     // Enum fields name their accepted values, so editors flag a typo that
     // the lenient decode would silently turn into the default.
     const auto* readonly = find_property(*doc, "readonly");
-    ASSERT(readonly != nullptr);
+    ZASSERT(readonly != nullptr);
     const auto* modes = readonly->get_object()->find("enum");
-    ASSERT(modes != nullptr);
-    EXPECT(*modes == kota::codec::dyn::Value(kota::codec::dyn::Array{"off", "on", "auto"}));
+    ZASSERT(modes != nullptr);
+    ZEXPECT(*modes == kota::codec::dyn::Value(kota::codec::dyn::Array{"off", "on", "auto"}));
 
     // Root and every section body reject unknown properties, so editors
     // flag typos the way loading reports unknown keys.
@@ -978,11 +979,11 @@ ZEST_CASE(JsonSchema) {
         const auto* additional = body.get_object()->find("additionalProperties");
         return additional != nullptr && additional->get_bool() == false;
     };
-    EXPECT(denies_unknown(*doc));
+    ZEXPECT(denies_unknown(*doc));
     const auto* defs = doc->get_object()->find("$defs");
-    ASSERT(defs != nullptr);
+    ZASSERT(defs != nullptr);
     for(const auto& [name, body]: *defs->get_object()) {
-        EXPECT(denies_unknown(body));
+        ZEXPECT(denies_unknown(body));
     }
 }
 

@@ -21,15 +21,15 @@ ZEST_SUITE(QuarantineMachine) {
 ZEST_CASE(CrashBarsItsKind) {
     Quarantine q;
     auto t0 = Clock::now();
-    EXPECT(!q.barred(compile, t0));
+    ZEXPECT(!q.barred(compile, t0));
 
     q.on_crash(compile, "d1", "killed by signal 11", t0);
-    EXPECT(q.barred(compile, t0));
-    EXPECT(q.crashed(compile));
-    EXPECT(!q.barred(hover, t0));
+    ZEXPECT(q.barred(compile, t0));
+    ZEXPECT(q.crashed(compile));
+    ZEXPECT(!q.barred(hover, t0));
 
     // A document that sits still is never retried.
-    EXPECT(q.barred(compile, t0 + seconds(3600)));
+    ZEXPECT(q.barred(compile, t0 + seconds(3600)));
 }
 
 ZEST_CASE(ChangeRetriesAfterSpacing) {
@@ -37,8 +37,8 @@ ZEST_CASE(ChangeRetriesAfterSpacing) {
     auto t0 = Clock::now();
     q.on_crash(compile, "d1", "cause", t0);
     q.on_change(t0 + seconds(1));
-    EXPECT(q.barred(compile, t0 + seconds(1)));
-    EXPECT(!q.barred(compile, t0 + Quarantine::retry_spacing));
+    ZEXPECT(q.barred(compile, t0 + seconds(1)));
+    ZEXPECT(!q.barred(compile, t0 + Quarantine::retry_spacing));
 }
 
 ZEST_CASE(StrikesLeaveSaveOnly) {
@@ -49,17 +49,17 @@ ZEST_CASE(StrikesLeaveSaveOnly) {
         q.on_change(t);
         t += seconds(10);
     }
-    EXPECT(q.barred(compile, t));
-    ASSERT(q.notes().size() == 1u);
-    EXPECT(q.notes()[0].save_only);
+    ZEXPECT(q.barred(compile, t));
+    ZASSERT(q.notes().size() == 1u);
+    ZEXPECT(q.notes()[0].save_only);
 
     q.on_save();
-    EXPECT(!q.barred(compile, t));
+    ZEXPECT(!q.barred(compile, t));
 
     // The save starts a fresh run: one crash later, a change retries again.
     q.on_crash(compile, "after-save", "cause", t);
     q.on_change(t);
-    EXPECT(!q.barred(compile, t + seconds(10)));
+    ZEXPECT(!q.barred(compile, t + seconds(10)));
 }
 
 ZEST_CASE(LandClearsRecord) {
@@ -67,9 +67,9 @@ ZEST_CASE(LandClearsRecord) {
     auto t0 = Clock::now();
     q.on_crash(compile, "d1", "cause", t0);
     q.on_land(compile);
-    EXPECT(!q.crashed(compile));
-    EXPECT(!q.barred(compile, t0));
-    EXPECT(q.empty());
+    ZEXPECT(!q.crashed(compile));
+    ZEXPECT(!q.barred(compile, t0));
+    ZEXPECT(q.empty());
 }
 
 ZEST_CASE(DeathCountsOnce) {
@@ -77,13 +77,13 @@ ZEST_CASE(DeathCountsOnce) {
     auto t0 = Clock::now();
     q.on_crash(hover, "d1", "cause", t0);
     q.on_crash(hover, "d1", "cause", t0);
-    ASSERT(q.notes().size() == 1u);
-    EXPECT(q.notes()[0].strikes == 1u);
+    ZASSERT(q.notes().size() == 1u);
+    ZEXPECT(q.notes()[0].strikes == 1u);
 
     // Anonymous evidence always counts.
     q.on_crash(hover, "", "cause", t0);
     q.on_crash(hover, "", "cause", t0);
-    EXPECT(q.notes()[0].strikes == 3u);
+    ZEXPECT(q.notes()[0].strikes == 3u);
 }
 
 ZEST_CASE(AttemptSpendsLicense) {
@@ -93,16 +93,16 @@ ZEST_CASE(AttemptSpendsLicense) {
     q.on_save();
     {
         Quarantine::Attempt attempt(q, compile);
-        EXPECT(q.barred(compile, t0));
+        ZEXPECT(q.barred(compile, t0));
     }
     // Ended without a crash: the license comes back.
-    EXPECT(!q.barred(compile, t0));
+    ZEXPECT(!q.barred(compile, t0));
 
     {
         Quarantine::Attempt attempt(q, compile);
         q.on_crash(compile, "d2", "cause", t0);
     }
-    EXPECT(q.barred(compile, t0 + seconds(10)));
+    ZEXPECT(q.barred(compile, t0 + seconds(10)));
 }
 
 ZEST_CASE(SaveThenCrashKeepsBar) {
@@ -117,18 +117,18 @@ ZEST_CASE(SaveThenCrashKeepsBar) {
         q.on_save();
         q.on_crash(compile, "d2", "cause", t0 + seconds(1));
     }
-    EXPECT(q.barred(compile, t0 + seconds(10)));
+    ZEXPECT(q.barred(compile, t0 + seconds(10)));
 }
 
 ZEST_CASE(SiblingCrashOvertakes) {
     Quarantine q;
     auto t0 = Clock::now();
     Quarantine::Attempt attempt(q, hover);
-    EXPECT(!attempt.overtaken());
+    ZEXPECT(!attempt.overtaken());
     q.on_crash(compile, "d1", "cause", t0);
-    EXPECT(!attempt.overtaken());
+    ZEXPECT(!attempt.overtaken());
     q.on_crash(hover, "d2", "cause", t0);
-    EXPECT(attempt.overtaken());
+    ZEXPECT(attempt.overtaken());
 }
 
 ZEST_CASE(ChangeDuringFlightStands) {
@@ -141,7 +141,7 @@ ZEST_CASE(ChangeDuringFlightStands) {
         q.on_change(t0);
         q.on_crash(compile, "d1", "cause", t0 + seconds(20));
     }
-    EXPECT(!q.barred(compile, t0 + seconds(30)));
+    ZEXPECT(!q.barred(compile, t0 + seconds(30)));
 }
 
 ZEST_CASE(EditingCrashStaysSilent) {
@@ -149,14 +149,14 @@ ZEST_CASE(EditingCrashStaysSilent) {
     auto t0 = Clock::now();
     q.on_change(t0);
     q.on_crash(compile, "d1", "cause", t0 + seconds(1));
-    EXPECT(!q.shows(compile));
-    EXPECT(q.notes().empty());
+    ZEXPECT(!q.shows(compile));
+    ZEXPECT(q.notes().empty());
 
     // A repeat shows.
     q.on_change(t0 + seconds(2));
     q.on_crash(compile, "d2", "cause", t0 + seconds(5));
-    EXPECT(q.shows(compile));
-    EXPECT(q.notes().size() == 1u);
+    ZEXPECT(q.shows(compile));
+    ZEXPECT(q.notes().size() == 1u);
 }
 
 ZEST_CASE(SavedCrashShows) {
@@ -166,7 +166,7 @@ ZEST_CASE(SavedCrashShows) {
     q.on_change(t0);
     q.on_save();
     q.on_crash(compile, "d1", "cause", t0 + seconds(1));
-    EXPECT(q.shows(compile));
+    ZEXPECT(q.shows(compile));
 }
 
 ZEST_CASE(ColdCrashShows) {
@@ -174,23 +174,23 @@ ZEST_CASE(ColdCrashShows) {
     auto t0 = Clock::now();
     q.on_change(t0);
     q.on_crash(hover, "d1", "killed by signal 6 (SIGABRT)", t0 + Quarantine::editing_window);
-    ASSERT(q.notes().size() == 1u);
-    EXPECT(q.notes()[0].kind == hover);
-    EXPECT(q.notes()[0].cause == "killed by signal 6 (SIGABRT)");
-    EXPECT(!q.notes()[0].save_only);
+    ZASSERT(q.notes().size() == 1u);
+    ZEXPECT(q.notes()[0].kind == hover);
+    ZEXPECT(q.notes()[0].cause == "killed by signal 6 (SIGABRT)");
+    ZEXPECT(!q.notes()[0].save_only);
 }
 
 ZEST_CASE(BudgetBlocksAtThreshold) {
     BlameBudget budget;
-    EXPECT(!budget.blocked("key-a"));
+    ZEXPECT(!budget.blocked("key-a"));
 
     budget.on_blame("key-a");
-    EXPECT(!budget.blocked("key-a"));
+    ZEXPECT(!budget.blocked("key-a"));
     budget.on_blame("key-a");
-    EXPECT(budget.blocked("key-a"));
+    ZEXPECT(budget.blocked("key-a"));
 
     // Keys are independent: fresh content (fresh key) starts fresh.
-    EXPECT(!budget.blocked("key-b"));
+    ZEXPECT(!budget.blocked("key-b"));
 }
 
 ZEST_CASE(BudgetClearsOnLand) {
@@ -201,7 +201,7 @@ ZEST_CASE(BudgetClearsOnLand) {
     budget.on_blame("key");
     budget.on_land("key");
     budget.on_blame("key");
-    EXPECT(!budget.blocked("key"));
+    ZEXPECT(!budget.blocked("key"));
 }
 
 ZEST_CASE(BudgetRearmsAfterCooldown) {
@@ -211,7 +211,7 @@ ZEST_CASE(BudgetRearmsAfterCooldown) {
     BlameBudget budget{std::chrono::milliseconds(0)};
     budget.on_blame("key");
     budget.on_blame("key");
-    EXPECT(!budget.blocked("key"));
+    ZEXPECT(!budget.blocked("key"));
 }
 
 };  // ZEST_SUITE(QuarantineMachine)

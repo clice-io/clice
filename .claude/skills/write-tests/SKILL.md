@@ -245,16 +245,20 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
 ## C++ unit tests (zest)
 
 - zest constructs a fresh suite object for every `ZEST_CASE`: no `reset()`
-  / `clear()` helpers, shared initialization goes in `setup()`. A
+  / `clear()` helpers, shared initialization goes in the suite's
+  constructor (`ZEST_SUITE(Name)` declares `struct NameTEST`). A
   default-constructed `Workspace` already carries the real configuration
   defaults (`Config` guarantees it; `BornValidDefaults` pins it) — no
   defaults initialization is needed.
 - A check takes one expression and shows the operands of its top-level
-  comparison: `EXPECT(a == b)`, `ASSERT(result)`. `&&`, `||`, bitwise
+  comparison: `ZEXPECT(a == b)`, `ZASSERT(result)`. `&&`, `||`, bitwise
   operators and shifts at the top level do not compile — split the check,
   or parenthesize it to check one bool.
-- `ASSERT` never runs inside a coroutine (it `return`s) — sample inside,
-  assert outside, or use `CO_ASSERT`.
+- A failed `ZASSERT` ends the test's worker process at once, without
+  unwinding: it works the same in a coroutine, a helper or another thread,
+  but the suite's destructor does not run — cleanup that must happen then
+  goes in a `kota::zest::FatalHook`. Under `--no-isolation` it ends the
+  whole run.
 - Filter with `--test-filter=<name>`; a bare positional name exits 1
   silently.
 - `select("m")` looks up a point while `§(m)⟦...⟧` registers only a range:

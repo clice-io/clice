@@ -117,47 +117,47 @@ ZEST_CASE(TargetError) {
     params.arguments = {"clang++", "-target", "aa-bb-cc", main_path.c_str()};
 
     auto unit = compile(params);
-    ASSERT(unit.setup_fail());
-    ASSERT(unit.diagnostics().size() == 1);
+    ZASSERT(unit.setup_fail());
+    ZASSERT(unit.diagnostics().size() == 1);
 
     auto& diag = unit.diagnostics()[0];
-    EXPECT(diag.id.diagnostic_code() == "err_target_unknown_triple");
-    EXPECT(diag.id.level == DiagnosticLevel::Error);
-    EXPECT(diag.id.source == DiagnosticSource::Clang);
-    EXPECT(diag.fid.isInvalid());
-    EXPECT(!diag.range.valid());
-    EXPECT(diag.message == "unknown target triple 'aa-bb-cc'");
+    ZEXPECT(diag.id.diagnostic_code() == "err_target_unknown_triple");
+    ZEXPECT(diag.id.level == DiagnosticLevel::Error);
+    ZEXPECT(diag.id.source == DiagnosticSource::Clang);
+    ZEXPECT(diag.fid.isInvalid());
+    ZEXPECT(!diag.range.valid());
+    ZEXPECT(diag.message == "unknown target triple 'aa-bb-cc'");
 }
 
 ZEST_CASE(Error) {
     DiagParams dp("int main() { return 0 }");
 
     auto unit = compile(dp.params);
-    ASSERT(unit.completed());
-    ASSERT(unit.diagnostics().size() == 1);
+    ZASSERT(unit.completed());
+    ZASSERT(unit.diagnostics().size() == 1);
 
     auto& diag = unit.diagnostics()[0];
-    EXPECT(diag.id.diagnostic_code() == "err_expected_semi_after_stmt");
-    EXPECT(diag.id.level == DiagnosticLevel::Error);
-    EXPECT(diag.id.source == DiagnosticSource::Clang);
-    EXPECT(diag.fid == unit.main_file());
-    EXPECT(diag.range.valid());
-    EXPECT(diag.message == "expected ';' after return statement");
+    ZEXPECT(diag.id.diagnostic_code() == "err_expected_semi_after_stmt");
+    ZEXPECT(diag.id.level == DiagnosticLevel::Error);
+    ZEXPECT(diag.id.source == DiagnosticSource::Clang);
+    ZEXPECT(diag.fid == unit.main_file());
+    ZEXPECT(diag.range.valid());
+    ZEXPECT(diag.message == "expected ';' after return statement");
 };
 
 ZEST_CASE(Warning) {
     DiagParams dp("int main() { int x; return 0; }", {"-Wall", "-Wunused-variable"});
 
     auto unit = compile(dp.params);
-    ASSERT(unit.completed());
-    ASSERT(unit.diagnostics().size() == 1);
+    ZASSERT(unit.completed());
+    ZASSERT(unit.diagnostics().size() == 1);
 
     auto& diag = unit.diagnostics()[0];
-    EXPECT(diag.id.diagnostic_code() == "warn_unused_variable");
-    EXPECT(diag.id.level == DiagnosticLevel::Warning);
-    EXPECT(diag.id.source == DiagnosticSource::Clang);
-    EXPECT(diag.range.valid());
-    EXPECT(diag.message.find("unused variable") != std::string::npos);
+    ZEXPECT(diag.id.diagnostic_code() == "warn_unused_variable");
+    ZEXPECT(diag.id.level == DiagnosticLevel::Warning);
+    ZEXPECT(diag.id.source == DiagnosticSource::Clang);
+    ZEXPECT(diag.range.valid());
+    ZEXPECT(diag.message.find("unused variable") != std::string::npos);
 }
 
 ZEST_CASE(PCHError) {
@@ -170,7 +170,7 @@ void foo() {}
 
     PCHInfo info;
     auto unit = compile(dp.params, info);
-    ASSERT(unit.fatal_error());
+    ZASSERT(unit.fatal_error());
 }
 
 ZEST_CASE(ASTError) {
@@ -181,7 +181,7 @@ void foo() {}
 )");
 
     auto unit = compile(dp.params);
-    ASSERT(unit.completed());
+    ZASSERT(unit.completed());
 }
 
 ZEST_CASE(CommandLineNote) {
@@ -194,7 +194,7 @@ int main() { return 0; }
                   {"-DFOO=1"});
 
     auto unit = compile(dp.params);
-    ASSERT(unit.completed());
+    ZASSERT(unit.completed());
 
     auto diagnostics = feature::diagnostics(unit);
     bool redefined = false;
@@ -204,11 +204,11 @@ int main() { return 0; }
         }
         if(diag.related_information.has_value()) {
             for(auto& related: *diag.related_information) {
-                ASSERT(!related.location.uri.empty());
+                ZASSERT(!related.location.uri.empty());
             }
         }
     }
-    ASSERT(redefined);
+    ZASSERT(redefined);
 }
 
 };  // ZEST_SUITE(Diagnostic)

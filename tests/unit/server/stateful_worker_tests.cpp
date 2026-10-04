@@ -17,7 +17,7 @@ ZEST_SUITE(StatefulWorker) {
 
 ZEST_CASE(SpawnAndExit) {
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     w.run([]() -> kota::task<> { co_return; });
 }
@@ -28,7 +28,7 @@ ZEST_CASE(CompileRequest) {
     auto src = tmp.path("compile_test.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -43,12 +43,12 @@ ZEST_CASE(CompileRequest) {
         params.pcms = {};
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT(result);
-        EXPECT(result.value().version == 1);
+        ZASSERT(result);
+        ZEXPECT(result.value().version == 1);
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(CancelledCompileFreesStrand) {
@@ -57,7 +57,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
     auto src = tmp.path("cancel_test.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -103,7 +103,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
         co_await kota::sleep(20, w.loop);
         source.cancel();
         co_await group.join();
-        EXPECT(first_failed);
+        ZEXPECT(first_failed);
 
         // The strand must be free again: a second compile of the same
         // document completes instead of hanging behind the cancelled one's
@@ -118,13 +118,13 @@ ZEST_CASE(CancelledCompileFreesStrand) {
         kota::ipc::request_options retry_opts;
         retry_opts.timeout = std::chrono::milliseconds(30'000);
         auto retry = co_await w.peer->send_request(cp, retry_opts);
-        CO_ASSERT(retry);
-        EXPECT(retry.value().version == 2);
+        ZASSERT(retry);
+        ZEXPECT(retry.value().version == 2);
 
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(WireCancelInterruptsCompile) {
@@ -133,7 +133,7 @@ ZEST_CASE(WireCancelInterruptsCompile) {
     auto src = tmp.path("interrupt.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -172,19 +172,19 @@ ZEST_CASE(WireCancelInterruptsCompile) {
         co_await kota::sleep(20, w.loop);
         source.cancel();
         co_await group.join();
-        CO_ASSERT(cancelled);
+        ZASSERT(cancelled);
 
         worker::QueryParams qp;
         qp.kind = worker::QueryKind::DocumentSymbol;
         qp.path = src;
         auto symbols = co_await w.peer->send_request(qp);
-        CO_ASSERT(symbols);
-        EXPECT(symbols.value().data == "null");
+        ZASSERT(symbols);
+        ZEXPECT(symbols.value().data == "null");
 
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 #ifndef _WIN32
@@ -194,7 +194,7 @@ ZEST_CASE(UnstartedCompileWakesQueries) {
     auto src = tmp.path("unstarted.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -210,7 +210,7 @@ ZEST_CASE(UnstartedCompileWakesQueries) {
 
         // Stopped, the worker reads the request and its cancel in one read
         // once it resumes, so the compile's task never starts.
-        CO_ASSERT(!w.proc.kill(SIGSTOP));
+        ZASSERT(!w.proc.kill(SIGSTOP));
         kota::cancellation_source source;
         bool cancelled = false;
         kota::task_group<> group;
@@ -225,21 +225,21 @@ ZEST_CASE(UnstartedCompileWakesQueries) {
         co_await kota::sleep(50, w.loop);
         source.cancel();
         co_await kota::sleep(50, w.loop);
-        CO_ASSERT(!w.proc.kill(SIGCONT));
+        ZASSERT(!w.proc.kill(SIGCONT));
         co_await group.join();
-        CO_ASSERT(cancelled);
+        ZASSERT(cancelled);
 
         worker::QueryParams qp;
         qp.kind = worker::QueryKind::DocumentSymbol;
         qp.path = src;
         auto symbols = co_await w.peer->send_request(qp, {.timeout = std::chrono::seconds(30)});
-        CO_ASSERT(symbols);
-        EXPECT(symbols.value().data == "null");
+        ZASSERT(symbols);
+        ZEXPECT(symbols.value().data == "null");
 
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 #endif
 
@@ -249,7 +249,7 @@ ZEST_CASE(CancelledQueryFreesStrand) {
     auto src = tmp.path("query_cancel.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -263,7 +263,7 @@ ZEST_CASE(CancelledQueryFreesStrand) {
         cp.pch = {"", 0};
         cp.pcms = {};
         auto compiled = co_await w.peer->send_request(cp);
-        CO_ASSERT(compiled);
+        ZASSERT(compiled);
 
         // Queries take the strand through with_ast_or: a cancelled query
         // must release it on unwind like a cancelled compile does.
@@ -287,17 +287,17 @@ ZEST_CASE(CancelledQueryFreesStrand) {
         kota::ipc::request_options retry_opts;
         retry_opts.timeout = std::chrono::milliseconds(30'000);
         auto retry = co_await w.peer->send_request(qp, retry_opts);
-        CO_ASSERT(retry);
+        ZASSERT(retry);
 
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(HoverWithoutCompile) {
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -310,12 +310,12 @@ ZEST_CASE(HoverWithoutCompile) {
         auto result = co_await w.peer->send_request(params);
         // An unknown document is no empty answer: the master hears it was
         // evicted (or never sent) and compiles it again.
-        CO_ASSERT(!result.has_value());
-        EXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(CompileThenHover) {
@@ -325,7 +325,7 @@ ZEST_CASE(CompileThenHover) {
     auto src = tmp.path("hover_test.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -339,7 +339,7 @@ ZEST_CASE(CompileThenHover) {
         cp.arguments = make_args(src);
 
         auto compile_result = co_await w.peer->send_request(cp);
-        CO_ASSERT(compile_result);
+        ZASSERT(compile_result);
 
         // After successful compilation, hover should return info.
         // "int foo() { return 42; }\n" is 25 chars, then char 22 on line 1 = offset 47
@@ -349,14 +349,14 @@ ZEST_CASE(CompileThenHover) {
         hp.offset = 47;  // position of 'foo' in 'return foo();'
 
         auto hover_result = co_await w.peer->send_request(hp);
-        EXPECT(hover_result);
+        ZEXPECT(hover_result);
         // Should return non-null hover info for 'foo'.
-        EXPECT(hover_result.value().data != std::string("null"));
+        ZEXPECT(hover_result.value().data != std::string("null"));
 
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(InvalidUTF8Replaced) {
@@ -366,7 +366,7 @@ ZEST_CASE(InvalidUTF8Replaced) {
     auto src = tmp.path("latin1.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     std::string hover;
     w.run([&]() -> kota::task<> {
@@ -376,25 +376,25 @@ ZEST_CASE(InvalidUTF8Replaced) {
         cp.text = text;
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
-        CO_ASSERT(co_await w.peer->send_request(cp));
+        ZASSERT(co_await w.peer->send_request(cp));
 
         worker::QueryParams hp;
         hp.kind = worker::QueryKind::Hover;
         hp.path = src;
         hp.offset = static_cast<std::uint32_t>(text.find("foo()"));
         auto result = co_await w.peer->send_request(hp);
-        CO_ASSERT(result);
+        ZASSERT(result);
         hover = result.value().data;
     });
 
-    EXPECT(
+    ZEXPECT(
         hover.contains("caf"
                        "\xef\xbf\xbd"));
 }
 
 ZEST_CASE(CodeActionWithoutCompile) {
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -404,17 +404,17 @@ ZEST_CASE(CodeActionWithoutCompile) {
         params.range = {0, 0};
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT(!result.has_value());
-        EXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(SemanticTokensWithoutCompile) {
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -424,17 +424,17 @@ ZEST_CASE(SemanticTokensWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT(!result.has_value());
-        EXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(FoldingRangeWithoutCompile) {
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -443,17 +443,17 @@ ZEST_CASE(FoldingRangeWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT(!result.has_value());
-        EXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(DocumentSymbolWithoutCompile) {
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -463,17 +463,17 @@ ZEST_CASE(DocumentSymbolWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT(!result.has_value());
-        EXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(DocumentLinkWithoutCompile) {
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -482,17 +482,17 @@ ZEST_CASE(DocumentLinkWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT(!result.has_value());
-        EXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(InlayHintsWithoutCompile) {
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -502,12 +502,12 @@ ZEST_CASE(InlayHintsWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT(!result.has_value());
-        EXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(MultipleSequentialRequests) {
@@ -522,7 +522,7 @@ ZEST_CASE(MultipleSequentialRequests) {
     auto src = tmp.path("seq_test.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -536,7 +536,7 @@ ZEST_CASE(MultipleSequentialRequests) {
         cp.arguments = make_args(src);
 
         auto cr = co_await w.peer->send_request(cp);
-        CO_ASSERT(cr);
+        ZASSERT(cr);
 
         // Now send multiple different feature requests sequentially.
         worker::QueryParams hp;
@@ -544,29 +544,29 @@ ZEST_CASE(MultipleSequentialRequests) {
         hp.path = src;
         hp.offset = 4;  // 'foo' on line 0
         auto r1 = co_await w.peer->send_request(hp);
-        EXPECT(r1);
+        ZEXPECT(r1);
 
         worker::CodeActionParams cap;
         cap.path = src;
         cap.range = {4, 4};
         auto r2 = co_await w.peer->send_request(cap);
-        EXPECT(r2);
+        ZEXPECT(r2);
 
         worker::QueryParams stp;
         stp.kind = worker::QueryKind::SemanticTokens;
         stp.path = src;
         auto r3 = co_await w.peer->send_request(stp);
-        EXPECT(r3);
+        ZEXPECT(r3);
 
         worker::FoldingRangeParams frp;
         frp.path = src;
         auto r4 = co_await w.peer->send_request(frp);
-        EXPECT(r4);
+        ZEXPECT(r4);
 
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(MultipleDocuments) {
@@ -582,7 +582,7 @@ ZEST_CASE(MultipleDocuments) {
     }
 
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -597,7 +597,7 @@ ZEST_CASE(MultipleDocuments) {
             cp.arguments = make_args(paths[i]);
 
             auto result = co_await w.peer->send_request(cp);
-            EXPECT(result);
+            ZEXPECT(result);
         }
 
         // Hover on each document after compilation.
@@ -608,18 +608,18 @@ ZEST_CASE(MultipleDocuments) {
             hp.offset = 4;  // 'var_N'
 
             auto result = co_await w.peer->send_request(hp);
-            EXPECT(result);
+            ZEXPECT(result);
         }
 
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(EvictNotification) {
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -636,13 +636,13 @@ ZEST_CASE(EvictNotification) {
         hp.offset = 0;
 
         auto result = co_await w.peer->send_request(hp);
-        CO_ASSERT(!result.has_value());
-        EXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
 
         test_done = true;
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(DocumentLimitEvicts) {
@@ -658,7 +658,7 @@ ZEST_CASE(DocumentLimitEvicts) {
     }
 
     WorkerHandle w;
-    ASSERT(w.spawn(true, /*max_documents=*/2));
+    ZASSERT(w.spawn(true, /*max_documents=*/2));
 
     std::vector<std::string> evicted;
     w.peer->on_notification(
@@ -676,7 +676,7 @@ ZEST_CASE(DocumentLimitEvicts) {
             cp.arguments = make_args(paths[i]);
 
             auto result = co_await w.peer->send_request(cp);
-            EXPECT(result);
+            ZEXPECT(result);
         }
 
         // The third compile overflowed the 2-document cap: the least
@@ -687,14 +687,14 @@ ZEST_CASE(DocumentLimitEvicts) {
         hp.offset = 4;  // 'var_0'
 
         auto result = co_await w.peer->send_request(hp);
-        CO_ASSERT(!result.has_value());
-        EXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
 
         test_done = true;
     });
 
-    ASSERT(test_done);
-    ASSERT(evicted == std::vector<std::string>{paths[0]});
+    ZASSERT(test_done);
+    ZASSERT(evicted == std::vector<std::string>{paths[0]});
 }
 
 ZEST_CASE(BusyDocumentsStay) {
@@ -716,7 +716,7 @@ ZEST_CASE(BusyDocumentsStay) {
     };
 
     WorkerHandle w;
-    ASSERT(w.spawn(true, /*max_documents=*/1));
+    ZASSERT(w.spawn(true, /*max_documents=*/1));
 
     std::vector<std::string> evicted;
     w.peer->on_notification(
@@ -732,14 +732,14 @@ ZEST_CASE(BusyDocumentsStay) {
             cp.directory = "/tmp";
             cp.arguments = make_args(cp.path);
             auto result = co_await w.peer->send_request(cp);
-            EXPECT(result);
+            ZEXPECT(result);
         };
         co_await kota::when_all(compile(0), compile(1));
         test_done = true;
     });
 
-    ASSERT(test_done);
-    ASSERT(evicted == std::vector<std::string>{documents[1].first});
+    ZASSERT(test_done);
+    ZASSERT(evicted == std::vector<std::string>{documents[1].first});
 }
 
 };  // ZEST_SUITE(StatefulWorker)

@@ -18,14 +18,14 @@ ZEST_CASE(ScanAngledVsQuoted) {
 #include "local.h"
 )");
 
-    ASSERT(result.includes.size() == 2u);
-    EXPECT(result.includes[0].path == "vector");
-    EXPECT(result.includes[0].is_angled);
-    EXPECT(!result.includes[0].is_include_next);
+    ZASSERT(result.includes.size() == 2u);
+    ZEXPECT(result.includes[0].path == "vector");
+    ZEXPECT(result.includes[0].is_angled);
+    ZEXPECT(!result.includes[0].is_include_next);
 
-    EXPECT(result.includes[1].path == "local.h");
-    EXPECT(!result.includes[1].is_angled);
-    EXPECT(!result.includes[1].is_include_next);
+    ZEXPECT(result.includes[1].path == "local.h");
+    ZEXPECT(!result.includes[1].is_angled);
+    ZEXPECT(!result.includes[1].is_include_next);
 }
 
 ZEST_CASE(ScanIncludeNext) {
@@ -33,10 +33,10 @@ ZEST_CASE(ScanIncludeNext) {
 #include_next <stdlib.h>
 )");
 
-    ASSERT(result.includes.size() == 1u);
-    EXPECT(result.includes[0].path == "stdlib.h");
-    EXPECT(result.includes[0].is_angled);
-    EXPECT(result.includes[0].is_include_next);
+    ZASSERT(result.includes.size() == 1u);
+    ZEXPECT(result.includes[0].path == "stdlib.h");
+    ZEXPECT(result.includes[0].is_angled);
+    ZEXPECT(result.includes[0].is_include_next);
 }
 
 ZEST_CASE(ScanMixedDirectives) {
@@ -50,22 +50,22 @@ ZEST_CASE(ScanMixedDirectives) {
 #include_next "next_quoted.h"
 )");
 
-    ASSERT(result.includes.size() == 5u);
+    ZASSERT(result.includes.size() == 5u);
 
-    EXPECT(result.includes[0].is_angled);
-    EXPECT(!result.includes[0].conditional);
+    ZEXPECT(result.includes[0].is_angled);
+    ZEXPECT(!result.includes[0].conditional);
 
-    EXPECT(!result.includes[1].is_angled);
-    EXPECT(!result.includes[1].conditional);
+    ZEXPECT(!result.includes[1].is_angled);
+    ZEXPECT(!result.includes[1].conditional);
 
-    EXPECT(result.includes[2].is_angled);
-    EXPECT(result.includes[2].conditional);
+    ZEXPECT(result.includes[2].is_angled);
+    ZEXPECT(result.includes[2].conditional);
 
-    EXPECT(!result.includes[3].is_angled);
-    EXPECT(result.includes[3].conditional);
+    ZEXPECT(!result.includes[3].is_angled);
+    ZEXPECT(result.includes[3].conditional);
 
-    EXPECT(!result.includes[4].is_angled);
-    EXPECT(result.includes[4].is_include_next);
+    ZEXPECT(!result.includes[4].is_angled);
+    ZEXPECT(result.includes[4].is_include_next);
 }
 
 // ============================================================================
@@ -83,8 +83,8 @@ ZEST_CASE(ResolveAbsolutePath) {
 
     auto result = resolve_include(abs_path, false, "", false, 0, config, scope);
 
-    ASSERT(result);
-    EXPECT(llvm::sys::fs::equivalent(result->path, abs_path));
+    ZASSERT(result);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, abs_path));
 }
 
 ZEST_CASE(ResolveQuotedIncludeFromIncluderDir) {
@@ -101,8 +101,8 @@ ZEST_CASE(ResolveQuotedIncludeFromIncluderDir) {
 
     auto result = resolve_include("local.h", false, tmp.path("src"), false, 0, config, scope);
 
-    ASSERT(result);
-    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("src/local.h")));
+    ZASSERT(result);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("src/local.h")));
 }
 
 ZEST_CASE(ResolveAngledIncludeFromSearchDirs) {
@@ -118,8 +118,8 @@ ZEST_CASE(ResolveAngledIncludeFromSearchDirs) {
 
     auto result = resolve_include("sys/types.h", true, "", false, 0, config, scope);
 
-    ASSERT(result);
-    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("include/sys/types.h")));
+    ZASSERT(result);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("include/sys/types.h")));
 }
 
 ZEST_CASE(ResolveAngledSkipsQuotedDirs) {
@@ -137,10 +137,10 @@ ZEST_CASE(ResolveAngledSkipsQuotedDirs) {
 
     auto result = resolve_include("header.h", true, "", false, 0, config, scope);
 
-    ASSERT(result);
+    ZASSERT(result);
     // Angled include should skip quoted dir and find in angled dir.
-    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("angled/header.h")));
-    EXPECT(result->found_dir_idx == 1u);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("angled/header.h")));
+    ZEXPECT(result->found_dir_idx == 1u);
 }
 
 ZEST_CASE(ResolveIncludeNext) {
@@ -159,10 +159,10 @@ ZEST_CASE(ResolveIncludeNext) {
     // Simulate #include_next from a file found at dir index 0.
     auto result = resolve_include("stdlib.h", true, "", true, 0, config, scope);
 
-    ASSERT(result);
+    ZASSERT(result);
     // Should skip dir1 (found_dir_idx=0) and find in dir2.
-    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("dir2/stdlib.h")));
-    EXPECT(result->found_dir_idx == 1u);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("dir2/stdlib.h")));
+    ZEXPECT(result->found_dir_idx == 1u);
 }
 
 ZEST_CASE(ResolveNotFound) {
@@ -177,7 +177,7 @@ ZEST_CASE(ResolveNotFound) {
 
     auto result = resolve_include("nonexistent.h", false, tmp.path("src"), false, 0, config, scope);
 
-    EXPECT(!result.has_value());
+    ZEXPECT(!result.has_value());
 }
 
 ZEST_CASE(ResolveStatCacheHits) {
@@ -194,13 +194,13 @@ ZEST_CASE(ResolveStatCacheHits) {
     // First resolution — populates cache.
     auto result1 = resolve_include("cached.h", true, "", false, 0, config, scope);
 
-    ASSERT(result1);
+    ZASSERT(result1);
 
     // Second resolution — should use cache (no filesystem I/O needed).
     auto result2 = resolve_include("cached.h", true, "", false, 0, config, scope);
 
-    ASSERT(result2);
-    EXPECT(result1->path == result2->path);
+    ZASSERT(result2);
+    ZEXPECT(result1->path == result2->path);
 }
 
 ZEST_CASE(ResolveQuotedFallsBackToSearchDirs) {
@@ -217,8 +217,8 @@ ZEST_CASE(ResolveQuotedFallsBackToSearchDirs) {
 
     auto result = resolve_include("fallback.h", false, tmp.path("src"), false, 0, config, scope);
 
-    ASSERT(result);
-    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("include/fallback.h")));
+    ZASSERT(result);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("include/fallback.h")));
 }
 
 // ============================================================================
@@ -244,9 +244,9 @@ ZEST_CASE(AngledSkipsQuotedDirs) {
 
     // <header.h> should skip iquote, find in idir (Angled before System).
     auto result = resolve_include("header.h", true, "", false, 0, config, scope);
-    ASSERT(result);
-    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("idir/header.h")));
-    EXPECT(result->found_dir_idx == 1u);
+    ZASSERT(result);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("idir/header.h")));
+    ZEXPECT(result->found_dir_idx == 1u);
 }
 
 ZEST_CASE(AngledMissesQuotedOnly) {
@@ -264,7 +264,7 @@ ZEST_CASE(AngledMissesQuotedOnly) {
 
     // <only_here.h> should NOT find it — only in quoted dir.
     auto result = resolve_include("only_here.h", true, "", false, 0, config, scope);
-    EXPECT(!result.has_value());
+    ZEXPECT(!result.has_value());
 }
 
 ZEST_CASE(QuotedSearchesAllDirs) {
@@ -284,8 +284,8 @@ ZEST_CASE(QuotedSearchesAllDirs) {
 
     // "deep.h" is only in system dir, but quoted search goes through all.
     auto result = resolve_include("deep.h", false, "", false, 0, config, scope);
-    ASSERT(result);
-    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("sys/deep.h")));
+    ZASSERT(result);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("sys/deep.h")));
 }
 
 ZEST_CASE(AngledBeforeSystem) {
@@ -304,9 +304,9 @@ ZEST_CASE(AngledBeforeSystem) {
 
     // <priority.h> should find in Angled (index 0) before System (index 1).
     auto result = resolve_include("priority.h", true, "", false, 0, config, scope);
-    ASSERT(result);
-    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("idir/priority.h")));
-    EXPECT(result->found_dir_idx == 0u);
+    ZASSERT(result);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("idir/priority.h")));
+    ZEXPECT(result->found_dir_idx == 0u);
 }
 
 ZEST_CASE(AfterSearchedLast) {
@@ -327,9 +327,9 @@ ZEST_CASE(AfterSearchedLast) {
 
     // <fallback.h> not in angled or sys, found in after.
     auto result = resolve_include("fallback.h", true, "", false, 0, config, scope);
-    ASSERT(result);
-    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("after/fallback.h")));
-    EXPECT(result->found_dir_idx == 2u);
+    ZASSERT(result);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("after/fallback.h")));
+    ZEXPECT(result->found_dir_idx == 2u);
 }
 
 ZEST_CASE(IncludeNextPropagatesIdx) {
@@ -350,10 +350,10 @@ ZEST_CASE(IncludeNextPropagatesIdx) {
 
     // File found at dir1 (index 1) does #include_next <limits.h>
     auto result = resolve_include("limits.h", true, "", true, 1, config, scope);
-    ASSERT(result);
+    ZASSERT(result);
     // Should skip dirs 0-1, find in dir2.
-    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("dir2/limits.h")));
-    EXPECT(result->found_dir_idx == 2u);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("dir2/limits.h")));
+    ZEXPECT(result->found_dir_idx == 2u);
 }
 
 ZEST_CASE(IncludeNextOutsideDirs) {
@@ -374,8 +374,8 @@ ZEST_CASE(IncludeNextOutsideDirs) {
     // looks its #include_next up like a plain include, from the start.
     auto includer =
         resolve_include("a.h", false, tmp.path("src"), false, std::nullopt, config, scope);
-    ASSERT(includer);
-    EXPECT(includer->found_dir_idx == std::nullopt);
+    ZASSERT(includer);
+    ZEXPECT(includer->found_dir_idx == std::nullopt);
 
     auto result = resolve_include("target.h",
                                   false,
@@ -384,9 +384,9 @@ ZEST_CASE(IncludeNextOutsideDirs) {
                                   includer->found_dir_idx,
                                   config,
                                   scope);
-    ASSERT(result);
-    EXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("inc0/target.h")));
-    EXPECT(result->found_dir_idx == 0u);
+    ZASSERT(result);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("inc0/target.h")));
+    ZEXPECT(result->found_dir_idx == 0u);
 }
 
 ZEST_CASE(CaseMatchesVolume) {
@@ -406,11 +406,11 @@ ZEST_CASE(CaseMatchesVolume) {
     vfs::Scope scope(cache);
     auto header = resolve_include("myheader.h", true, "", false, 0, config, scope);
     auto nested = resolve_include("sub/x.h", true, "", false, 0, config, scope);
-    ASSERT(header.has_value() == insensitive);
-    ASSERT(nested.has_value() == insensitive);
+    ZASSERT(header.has_value() == insensitive);
+    ZASSERT(nested.has_value() == insensitive);
     if(insensitive) {
-        EXPECT(llvm::sys::fs::equivalent(header->path, tmp.path("a/MyHeader.h")));
-        EXPECT(nested->found_dir_idx == 1u);
+        ZEXPECT(llvm::sys::fs::equivalent(header->path, tmp.path("a/MyHeader.h")));
+        ZEXPECT(nested->found_dir_idx == 1u);
     }
 }
 
@@ -427,7 +427,7 @@ ZEST_CASE(NormalizationMatchesVolume) {
     vfs::DirCache cache;
     vfs::Scope scope(cache);
     auto result = resolve_include("\xC3\xA9.h", true, "", false, 0, config, scope);
-    ASSERT(result.has_value() == insensitive);
+    ZASSERT(result.has_value() == insensitive);
 }
 
 // TODO: add tests for:

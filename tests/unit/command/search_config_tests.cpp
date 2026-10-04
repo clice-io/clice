@@ -42,15 +42,15 @@ ZEST_CASE(ReordersDirectoryGroups) {
     auto config = extract(args, tmp.root.str());
 
     // Expected order: [quoted | user | stdlib, clang, sysroot]
-    ASSERT(config.dirs.size() == 5u);
-    EXPECT(config.angled_start_idx == 1u);
-    EXPECT(config.system_start_idx == 2u);
+    ZASSERT(config.dirs.size() == 5u);
+    ZEXPECT(config.angled_start_idx == 1u);
+    ZEXPECT(config.system_start_idx == 2u);
 
-    EXPECT(config.dirs[0].path == spelled(tmp, "quoted"));
-    EXPECT(config.dirs[1].path == spelled(tmp, "user"));
-    EXPECT(config.dirs[2].path == spelled(tmp, "stdlib"));
-    EXPECT(config.dirs[3].path == spelled(tmp, "clang"));
-    EXPECT(config.dirs[4].path == spelled(tmp, "sysroot"));
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "quoted"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "user"));
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "stdlib"));
+    ZEXPECT(config.dirs[3].path == spelled(tmp, "clang"));
+    ZEXPECT(config.dirs[4].path == spelled(tmp, "sysroot"));
 }
 
 ZEST_CASE(KeepsForcedIncludes) {
@@ -69,7 +69,7 @@ ZEST_CASE(KeepsForcedIncludes) {
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
 
-    ASSERT(config.forced_includes == (std::vector<std::string>{"b.h", "a.h"}));
+    ZASSERT(config.forced_includes == (std::vector<std::string>{"b.h", "a.h"}));
 }
 
 ZEST_CASE(MarksDriverDirs) {
@@ -85,10 +85,10 @@ ZEST_CASE(MarksDriverDirs) {
                                      tmp.c_path("sysroot"),
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
-    ASSERT(config.dirs.size() == 3u);
-    EXPECT(!config.dirs[0].driver);
-    EXPECT(config.dirs[1].driver);
-    EXPECT(config.dirs[2].driver);
+    ZASSERT(config.dirs.size() == 3u);
+    ZEXPECT(!config.dirs[0].driver);
+    ZEXPECT(config.dirs[1].driver);
+    ZEXPECT(config.dirs[2].driver);
 }
 
 ZEST_CASE(PreservesWithinGroupOrder) {
@@ -105,13 +105,13 @@ ZEST_CASE(PreservesWithinGroupOrder) {
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
 
-    ASSERT(config.dirs.size() == 4u);
-    EXPECT(config.angled_start_idx == 0u);
-    EXPECT(config.system_start_idx == 2u);
-    EXPECT(config.dirs[0].path == spelled(tmp, "b"));
-    EXPECT(config.dirs[1].path == spelled(tmp, "a"));
-    EXPECT(config.dirs[2].path == spelled(tmp, "s2"));
-    EXPECT(config.dirs[3].path == spelled(tmp, "s1"));
+    ZASSERT(config.dirs.size() == 4u);
+    ZEXPECT(config.angled_start_idx == 0u);
+    ZEXPECT(config.system_start_idx == 2u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "b"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "a"));
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "s2"));
+    ZEXPECT(config.dirs[3].path == spelled(tmp, "s1"));
 }
 
 ZEST_CASE(DeduplicatesAngledSystem) {
@@ -127,11 +127,11 @@ ZEST_CASE(DeduplicatesAngledSystem) {
     auto config = extract(args, tmp.root.str());
 
     // /shared in both Angled and System → keep Angled copy.
-    ASSERT(config.dirs.size() == 2u);
-    EXPECT(config.angled_start_idx == 0u);
-    EXPECT(config.system_start_idx == 1u);
-    EXPECT(config.dirs[0].path == spelled(tmp, "shared"));
-    EXPECT(config.dirs[1].path == spelled(tmp, "only_sys"));
+    ZASSERT(config.dirs.size() == 2u);
+    ZEXPECT(config.angled_start_idx == 0u);
+    ZEXPECT(config.system_start_idx == 1u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "shared"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "only_sys"));
 }
 
 ZEST_CASE(QuotedAngledSamePathKeptInBoth) {
@@ -150,11 +150,11 @@ ZEST_CASE(QuotedAngledSamePathKeptInBoth) {
     auto config = extract(args, tmp.root.str());
 
     // "shared" must appear in both Quoted and Angled segments.
-    ASSERT(config.dirs.size() == 3u);
-    EXPECT(config.angled_start_idx == 1u);
-    EXPECT(config.dirs[0].path == spelled(tmp, "shared"));  // Quoted
-    EXPECT(config.dirs[1].path == spelled(tmp, "shared"));  // Angled (not deduped)
-    EXPECT(config.dirs[2].path == spelled(tmp, "other"));
+    ZASSERT(config.dirs.size() == 3u);
+    ZEXPECT(config.angled_start_idx == 1u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "shared"));  // Quoted
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "shared"));  // Angled (not deduped)
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "other"));
 }
 
 ZEST_CASE(DeduplicateAdjustsIndices) {
@@ -175,13 +175,13 @@ ZEST_CASE(DeduplicateAdjustsIndices) {
 
     // Before dedup: [q | dup, a2 | dup, s] angled=1, system=3
     // dup in system removed. system_start_idx stays 3.
-    ASSERT(config.dirs.size() == 4u);
-    EXPECT(config.angled_start_idx == 1u);
-    EXPECT(config.system_start_idx == 3u);
-    EXPECT(config.dirs[0].path == spelled(tmp, "q"));
-    EXPECT(config.dirs[1].path == spelled(tmp, "dup"));
-    EXPECT(config.dirs[2].path == spelled(tmp, "a2"));
-    EXPECT(config.dirs[3].path == spelled(tmp, "s"));
+    ZASSERT(config.dirs.size() == 4u);
+    ZEXPECT(config.angled_start_idx == 1u);
+    ZEXPECT(config.system_start_idx == 3u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "q"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "dup"));
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "a2"));
+    ZEXPECT(config.dirs[3].path == spelled(tmp, "s"));
 }
 
 ZEST_CASE(PrefixIncludeOptions) {
@@ -205,13 +205,13 @@ ZEST_CASE(PrefixIncludeOptions) {
     auto config = extract(args, tmp.root.str());
 
     // -iwithprefixbefore → Angled, -iwithprefix → After
-    ASSERT(config.dirs.size() == 3u);
-    EXPECT(config.angled_start_idx == 0u);
-    EXPECT(config.system_start_idx == 1u);
-    EXPECT(config.after_start_idx == 1u);
-    EXPECT(config.dirs[0].path == spelled(tmp, "gcc/12/include"));
-    EXPECT(config.dirs[1].path == spelled(tmp, "gcc/12/lib"));
-    EXPECT(config.dirs[2].path == spelled(tmp, "gcc/13/include"));
+    ZASSERT(config.dirs.size() == 3u);
+    ZEXPECT(config.angled_start_idx == 0u);
+    ZEXPECT(config.system_start_idx == 1u);
+    ZEXPECT(config.after_start_idx == 1u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "gcc/12/include"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "gcc/12/lib"));
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "gcc/13/include"));
 }
 
 ZEST_CASE(DirafterGroup) {
@@ -226,13 +226,13 @@ ZEST_CASE(DirafterGroup) {
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
 
-    ASSERT(config.dirs.size() == 3u);
-    EXPECT(config.angled_start_idx == 0u);
-    EXPECT(config.system_start_idx == 1u);
-    EXPECT(config.after_start_idx == 2u);
-    EXPECT(config.dirs[0].path == spelled(tmp, "user"));
-    EXPECT(config.dirs[1].path == spelled(tmp, "sys"));
-    EXPECT(config.dirs[2].path == spelled(tmp, "fallback"));
+    ZASSERT(config.dirs.size() == 3u);
+    ZEXPECT(config.angled_start_idx == 0u);
+    ZEXPECT(config.system_start_idx == 1u);
+    ZEXPECT(config.after_start_idx == 2u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "user"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "sys"));
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "fallback"));
 }
 
 ZEST_CASE(DirafterDeduplication) {
@@ -247,11 +247,11 @@ ZEST_CASE(DirafterDeduplication) {
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
 
-    ASSERT(config.dirs.size() == 2u);
-    EXPECT(config.angled_start_idx == 0u);
-    EXPECT(config.after_start_idx == 1u);
-    EXPECT(config.dirs[0].path == spelled(tmp, "shared"));
-    EXPECT(config.dirs[1].path == spelled(tmp, "extra"));
+    ZASSERT(config.dirs.size() == 2u);
+    ZEXPECT(config.angled_start_idx == 0u);
+    ZEXPECT(config.after_start_idx == 1u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "shared"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "extra"));
 }
 
 ZEST_CASE(LastSysrootWins) {
@@ -265,14 +265,14 @@ ZEST_CASE(LastSysrootWins) {
                                      "-I=/inc",
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
-    ASSERT(config.dirs.size() == 1u);
-    EXPECT(config.dirs[0].path == spelled(tmp, "two/inc"));
+    ZASSERT(config.dirs.size() == 1u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "two/inc"));
 
     auto isysroot = tmp.path("three");
     args = {"clang++", "-isysroot", isysroot.c_str(), second.c_str(), "-I=/inc", "main.cpp"};
     config = extract(args, tmp.root.str());
-    ASSERT(config.dirs.size() == 1u);
-    EXPECT(config.dirs[0].path == spelled(tmp, "three/inc"));
+    ZASSERT(config.dirs.size() == 1u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "three/inc"));
 }
 
 };  // ZEST_SUITE(ExtractSearchConfig)

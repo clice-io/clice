@@ -127,7 +127,7 @@ std::vector<DecodedToken> decoded;
 
 void run_utf8(llvm::StringRef code) {
     add_main("main.cpp", code);
-    ASSERT(compile_with_pch());
+    ZASSERT(compile_with_pch());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 }
@@ -146,9 +146,9 @@ void EXPECT_TOKEN(llvm::StringRef name,
                   SymbolKind::Kind expected_kind,
                   std::uint32_t expected_modifiers = 0) {
     auto* token = find_by_range(name);
-    ASSERT(token != nullptr);
-    ASSERT(token->type == static_cast<std::uint32_t>(expected_kind));
-    ASSERT(token->modifiers == expected_modifiers);
+    ZASSERT(token != nullptr);
+    ZASSERT(token->type == static_cast<std::uint32_t>(expected_kind));
+    ZASSERT(token->modifiers == expected_modifiers);
 }
 
 ZEST_CASE(PreambleDefineUnderPch) {
@@ -219,7 +219,7 @@ int main() {
 §(lit)⟦u8"你"⟧;
 }
 )cpp");
-    ASSERT(compile_with_pch());
+    ZASSERT(compile_with_pch());
 
     auto utf8_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     auto utf16_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF16);
@@ -237,7 +237,7 @@ int main() {
             break;
         }
     }
-    ASSERT(utf8_token);
+    ZASSERT(utf8_token);
 
     std::optional<DecodedToken> utf16_token;
     for(const auto& token: utf16) {
@@ -247,9 +247,9 @@ int main() {
             break;
         }
     }
-    ASSERT(utf16_token);
+    ZASSERT(utf16_token);
 
-    ASSERT(utf8_token->length > utf16_token->length);
+    ZASSERT(utf8_token->length > utf16_token->length);
 }
 
 /// A block comment over two lines splits into one piece per line, each
@@ -261,7 +261,7 @@ void check_comment_split(llvm::StringRef newline) {
 }}
 )cpp",
                          newline));
-    ASSERT(compile_with_pch());
+    ZASSERT(compile_with_pch());
 
     auto utf8_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     auto relative = decode_relative_tokens(utf8_tokens);
@@ -274,11 +274,11 @@ void check_comment_split(llvm::StringRef newline) {
         }
     }
 
-    ASSERT(comments.size() == 2);
-    ASSERT(comments[0].length == 4);
-    ASSERT(comments[1].line == comments[0].line + 1);
-    ASSERT(comments[1].start == 0);
-    ASSERT(comments[1].length == 4);
+    ZASSERT(comments.size() == 2);
+    ZASSERT(comments[0].length == 4);
+    ZASSERT(comments[1].line == comments[0].line + 1);
+    ZASSERT(comments[1].start == 0);
+    ZASSERT(comments[1].length == 4);
 }
 
 ZEST_CASE(MultiLineCommentSplit) {
@@ -299,7 +299,7 @@ export int x = 42;
 §(kw)⟦import⟧ §(mod)⟦foo⟧;
 int y = x;
 )");
-    ASSERT(compile_with_modules());
+    ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
@@ -317,7 +317,7 @@ export int x = 42;
 import §(m0)⟦app⟧.§(m1)⟦core⟧;
 int y = x;
 )");
-    ASSERT(compile_with_modules());
+    ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
@@ -345,16 +345,16 @@ import a;
 export import b;
 import :part;
 )");
-    ASSERT(compile_with_modules());
+    ZASSERT(compile_with_modules());
 
     // The preprocessor callback channel must record every import form the
     // AST records: a named import, an export-import and a partition import
     // (whose full name resolves through the owning module).
     auto& imports = unit->directives()[unit->main_file()].imports;
-    ASSERT(imports.size() == 3U);
-    ASSERT(imports[0].name == "a");
-    ASSERT(imports[1].name == "b");
-    ASSERT(imports[2].name == "foo:part");
+    ZASSERT(imports.size() == 3U);
+    ZASSERT(imports[0].name == "a");
+    ZASSERT(imports[1].name == "b");
+    ZASSERT(imports[2].name == "foo:part");
 
     std::size_t ast_imports = 0;
     auto count = [&](const clang::Decl* decl, auto& self) -> void {
@@ -370,7 +370,7 @@ import :part;
     for(auto* decl: unit->context().getTranslationUnitDecl()->decls()) {
         count(decl, count);
     }
-    ASSERT(ast_imports == 3U);
+    ZASSERT(ast_imports == 3U);
 }
 
 ZEST_CASE(ModulePartitionImport) {
@@ -383,7 +383,7 @@ export int x = 42;
 export module foo;
 export §(kw)⟦import⟧ :§(part)⟦part⟧;
 )");
-    ASSERT(compile_with_modules());
+    ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
@@ -401,7 +401,7 @@ export int x = 42;
 §(kw)⟦module⟧ §(mod)⟦foo⟧;
 int y = §(ref)⟦x⟧;
 )");
-    ASSERT(compile_with_modules());
+    ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
@@ -420,7 +420,7 @@ export int x = 42;
 export module bar;
 export §(kw)⟦import⟧ §(mod)⟦foo⟧;
 )");
-    ASSERT(compile_with_modules());
+    ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 

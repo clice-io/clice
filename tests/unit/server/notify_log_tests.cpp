@@ -30,14 +30,14 @@ ZEST_CASE(BoundedRetention) {
 
     spdlog::set_level(saved_level);
 
-    EXPECT(server.notify_seq == 130u);
-    EXPECT(wakeups == 130u);
-    ASSERT(server.notify_log.size() == 128u);
+    ZEXPECT(server.notify_seq == 130u);
+    ZEXPECT(wakeups == 130u);
+    ZASSERT(server.notify_log.size() == 128u);
     // Drop-oldest: the first two messages were evicted, and the sequence
     // arithmetic keeps addressing the retained window.
-    EXPECT(server.notify_log.front().text.ends_with("probe 2"));
-    EXPECT(server.notify_log.back().text.ends_with("probe 129"));
-    EXPECT(server.notify_seq - server.notify_log.size() == 2u);
+    ZEXPECT(server.notify_log.front().text.ends_with("probe 2"));
+    ZEXPECT(server.notify_log.back().text.ends_with("probe 129"));
+    ZEXPECT(server.notify_seq - server.notify_log.size() == 2u);
 }
 
 };  // ZEST_SUITE(NotifyLog)

@@ -14,7 +14,7 @@ std::vector<feature::DocumentLink> links;
 
 void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
     add_files("main.cpp", source);
-    ASSERT(compile(standard));
+    ZASSERT(compile(standard));
     links = feature::document_links(*unit);
 }
 
@@ -22,10 +22,10 @@ void EXPECT_LINK(std::size_t index, llvm::StringRef name, llvm::StringRef path) 
     auto& link = links[index];
     auto expected = range(name, "main.cpp");
 
-    ASSERT(link.range.begin == expected.begin);
-    ASSERT(link.range.end == expected.end);
+    ZASSERT(link.range.begin == expected.begin);
+    ZASSERT(link.range.end == expected.end);
 
-    ASSERT(llvm::StringRef(link.target) == path);
+    ZASSERT(llvm::StringRef(link.target) == path);
 }
 
 ZEST_CASE(DirectiveArgumentFromFilename) {
@@ -33,8 +33,8 @@ ZEST_CASE(DirectiveArgumentFromFilename) {
     auto offset = static_cast<std::uint32_t>(content.find("test.h"));
     auto result = feature::find_directive_argument(content, offset, nullptr);
 
-    ASSERT(result);
-    ASSERT(content.substr(result->begin, result->length()) == R"("test.h")");
+    ZASSERT(result);
+    ZASSERT(content.substr(result->begin, result->length()) == R"("test.h")");
 }
 
 ZEST_CASE(Include) {
@@ -58,7 +58,7 @@ ZEST_CASE(Include) {
 #include §(5)⟦"guard_macro.h"§⟧
 )cpp");
 
-    ASSERT(links.size() == 6U);
+    ZASSERT(links.size() == 6U);
     EXPECT_LINK(0, "0", TestVFS::path("test.h"));
     EXPECT_LINK(1, "1", TestVFS::path("test.h"));
     EXPECT_LINK(2, "2", TestVFS::path("pragma_once.h"));
@@ -81,7 +81,7 @@ ZEST_CASE(HasInclude) {
 #endif
 )cpp");
 
-    ASSERT(links.size() == 2U);
+    ZASSERT(links.size() == 2U);
     EXPECT_LINK(0, "0", TestVFS::path("test.h"));
     EXPECT_LINK(1, "1", TestVFS::path("test.h"));
 }
@@ -95,7 +95,7 @@ ZEST_CASE(MacroInclude) {
 #include §(0)⟦HEADER§⟧
 )cpp");
 
-    ASSERT(links.size() == 1U);
+    ZASSERT(links.size() == 1U);
     EXPECT_LINK(0, "0", TestVFS::path("test.h"));
 }
 
@@ -114,7 +114,7 @@ ZEST_CASE(HasIncludeTwice) {
 )cpp");
 
     // Two include links, then the two operator arguments.
-    ASSERT(links.size() == 4U);
+    ZASSERT(links.size() == 4U);
     EXPECT_LINK(2, "0", TestVFS::path("a.h"));
     EXPECT_LINK(3, "1", TestVFS::path("b.h"));
 }
@@ -130,7 +130,7 @@ ZEST_CASE(ImportNamedMacro) {
 #include §(0)⟦import§⟧
 )cpp");
 
-    ASSERT(links.size() == 1U);
+    ZASSERT(links.size() == 1U);
     EXPECT_LINK(0, "0", TestVFS::path("test.h"));
 }
 
@@ -146,7 +146,7 @@ const char e[] = {
 )cpp",
         "-std=c++23");
 
-    ASSERT(links.size() == 1U);
+    ZASSERT(links.size() == 1U);
     EXPECT_LINK(0, "0", TestVFS::path("bytes.bin"));
 }
 
@@ -164,7 +164,7 @@ ABCDE
 )cpp",
         "-std=c++23");
 
-    ASSERT(links.size() == 1U);
+    ZASSERT(links.size() == 1U);
     EXPECT_LINK(0, "0", TestVFS::path("data.bin"));
 }
 
@@ -174,7 +174,7 @@ ZEST_CASE(MissingInclude) {
 #include "missing.h"
 )cpp");
 
-    ASSERT(links.empty());
+    ZASSERT(links.empty());
 }
 
 };  // ZEST_SUITE(document_link)

@@ -77,21 +77,21 @@ ZEST_CASE(MergeCollectsExternalSymbols) {
         static int local_fn() { return 1; }
         int use() { return external_fn() + local_fn(); }
     )");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     clice::FileTable pool;
     index::ProjectIndex project;
     auto view = build_view();
-    ASSERT(view.loaded());
-    ASSERT(project.merge(view, intern_paths(view, pool)));
+    ZASSERT(view.loaded());
+    ZASSERT(project.merge(view, intern_paths(view, pool)));
 
     auto external = find_symbol(project, "external_fn");
-    ASSERT(external != 0);
+    ZASSERT(external != 0);
     // Referenced from both the header (declaration) and the main file.
-    ASSERT(project.reference_count(external) >= 2);
+    ZASSERT(project.reference_count(external) >= 2);
 
     // Non-External symbols never reach the project table.
-    ASSERT(find_symbol(project, "local_fn") == 0u);
+    ZASSERT(find_symbol(project, "local_fn") == 0u);
 }
 
 ZEST_CASE(MergeUnionsSymbolFacts) {
@@ -102,25 +102,25 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
         #include "shared.h"
         int use() { return lib::shared_fn(); }
     )");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     clice::FileTable pool;
     index::ProjectIndex project;
     auto view = build_view();
-    ASSERT(view.loaded());
-    ASSERT(project.merge(view, intern_paths(view, pool)));
+    ZASSERT(view.loaded());
+    ZASSERT(project.merge(view, intern_paths(view, pool)));
 
     // A declaration-only unit places the symbol at its declaring header.
     auto hash = find_symbol(project, "shared_fn");
-    ASSERT(hash != 0);
+    ZASSERT(hash != 0);
     auto declared = project.identity_of(hash);
-    ASSERT(declared);
-    ASSERT(declared->parent == find_symbol(project, "lib"));
-    ASSERT(!index::has_flag(declared->flags, index::SymbolFlags::HasDefinition));
+    ZASSERT(declared);
+    ZASSERT(declared->parent == find_symbol(project, "lib"));
+    ZASSERT(!index::has_flag(declared->flags, index::SymbolFlags::HasDefinition));
     auto header = pool.find(
         Spelling::absolute(view.path(0).ends_with("shared.h") ? view.path(0) : view.path(1)));
-    ASSERT(header);
-    ASSERT(declared->file == header->raw);
+    ZASSERT(header);
+    ZASSERT(declared->file == header->raw);
 
     // The defining unit moves the canonical file to its definition and
     // adds its bits to the union.
@@ -132,21 +132,21 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
         #include "shared.h"
         [[deprecated]] int lib::shared_fn() { return 1; }
     )");
-    ASSERT(definer.compile());
+    ZASSERT(definer.compile());
     std::string definer_wire = index::build_tu_index(*definer.unit);
     auto definer_view = index::TUIndex::from_bytes(definer_wire);
-    ASSERT(definer_view.loaded());
-    ASSERT(project.merge(definer_view, intern_paths(definer_view, pool)));
+    ZASSERT(definer_view.loaded());
+    ZASSERT(project.merge(definer_view, intern_paths(definer_view, pool)));
 
     auto defined = project.identity_of(hash);
-    ASSERT(defined);
-    ASSERT(index::has_flag(defined->flags, index::SymbolFlags::HasDefinition));
-    ASSERT(index::has_flag(defined->flags, index::SymbolFlags::Deprecated));
+    ZASSERT(defined);
+    ZASSERT(index::has_flag(defined->flags, index::SymbolFlags::HasDefinition));
+    ZASSERT(index::has_flag(defined->flags, index::SymbolFlags::Deprecated));
     auto definition =
         pool.find(Spelling::absolute(definer_view.path(definer_view.path_count() - 1)));
-    ASSERT(definition);
-    ASSERT(defined->file == definition->raw);
-    ASSERT(project.reference_count(hash) == 3u);
+    ZASSERT(definition);
+    ZASSERT(defined->file == definition->raw);
+    ZASSERT(project.reference_count(hash) == 3u);
 
     // The table never retracts a unit's report, so a definition that
     // moved to another unit must still win the file over the old bit.
@@ -158,14 +158,14 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
         #include "shared.h"
         int lib::shared_fn() { return 2; }
     )");
-    ASSERT(mover.compile());
+    ZASSERT(mover.compile());
     std::string mover_wire = index::build_tu_index(*mover.unit);
     auto mover_view = index::TUIndex::from_bytes(mover_wire);
-    ASSERT(mover_view.loaded());
-    ASSERT(project.merge(mover_view, intern_paths(mover_view, pool)));
+    ZASSERT(mover_view.loaded());
+    ZASSERT(project.merge(mover_view, intern_paths(mover_view, pool)));
     auto moved = pool.find(Spelling::absolute(mover_view.path(mover_view.path_count() - 1)));
-    ASSERT(moved);
-    ASSERT(project.identity_of(hash)->file == moved->raw);
+    ZASSERT(moved);
+    ZASSERT(project.identity_of(hash)->file == moved->raw);
 }
 
 ZEST_CASE(MergePicksOneSpelling) {
@@ -197,7 +197,7 @@ ZEST_CASE(MergePicksOneSpelling) {
     spelled_signed.symbols[42] = {.name = "X", .args = "<signed int>"};
     auto int_bytes = kota::codec::fbs::to_bytes(spelled_int);
     auto signed_bytes = kota::codec::fbs::to_bytes(spelled_signed);
-    ASSERT((int_bytes.has_value() && signed_bytes.has_value()));
+    ZASSERT((int_bytes.has_value() && signed_bytes.has_value()));
 
     clice::FileTable pool;
     for(auto [first, second]: {
@@ -207,9 +207,9 @@ ZEST_CASE(MergePicksOneSpelling) {
         index::ProjectIndex project;
         auto first_view = index::TUIndex::from_bytes(bytes_of(*first));
         auto second_view = index::TUIndex::from_bytes(bytes_of(*second));
-        ASSERT(project.merge(first_view, intern_paths(first_view, pool)));
-        ASSERT(project.merge(second_view, intern_paths(second_view, pool)));
-        ASSERT(project.identity_of(42)->args == "<int>");
+        ZASSERT(project.merge(first_view, intern_paths(first_view, pool)));
+        ZASSERT(project.merge(second_view, intern_paths(second_view, pool)));
+        ZASSERT(project.identity_of(42)->args == "<int>");
     }
 }
 
@@ -247,13 +247,13 @@ ZEST_CASE(MergeRejectsBadBitmap) {
     // Control: the mirror layout matches — the view sees the symbol and a
     // valid image merges.
     auto valid = kota::codec::fbs::to_bytes(mirror);
-    ASSERT(valid);
+    ZASSERT(valid);
     auto valid_view = index::TUIndex::from_bytes(bytes_of(*valid));
-    ASSERT(valid_view.loaded());
+    ZASSERT(valid_view.loaded());
     clice::FileTable pool;
     index::ProjectIndex accepting;
-    ASSERT(accepting.merge(valid_view, intern_paths(valid_view, pool)));
-    ASSERT(find_symbol(accepting, "good_sym") == 42u);
+    ZASSERT(accepting.merge(valid_view, intern_paths(valid_view, pool)));
+    ZASSERT(find_symbol(accepting, "good_sym") == 42u);
 
     // One malformed image rejects the whole result: merged bits would
     // persist behind versions that match the disk, with the lost ones
@@ -263,12 +263,12 @@ ZEST_CASE(MergeRejectsBadBitmap) {
         .reference_files = {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}},
     };
     auto corrupt = kota::codec::fbs::to_bytes(mirror);
-    ASSERT(corrupt);
+    ZASSERT(corrupt);
     auto corrupt_view = index::TUIndex::from_bytes(bytes_of(*corrupt));
-    ASSERT(corrupt_view.loaded());
+    ZASSERT(corrupt_view.loaded());
     index::ProjectIndex rejecting;
-    ASSERT(!rejecting.merge(corrupt_view, intern_paths(corrupt_view, pool)));
-    ASSERT(rejecting.symbol_count() == 0u);
+    ZASSERT(!rejecting.merge(corrupt_view, intern_paths(corrupt_view, pool)));
+    ZASSERT(rejecting.symbol_count() == 0u);
 
     // An id past the path table is the same corruption in a decodable
     // coat: silently dropped, the symbol's relations would sit in a shard
@@ -278,23 +278,23 @@ ZEST_CASE(MergeRejectsBadBitmap) {
     stray.add(7);
     mirror.symbols[43] = {.name = "bad_sym", .reference_files = index::write_bitmap(stray)};
     auto out_of_range = kota::codec::fbs::to_bytes(mirror);
-    ASSERT(out_of_range);
+    ZASSERT(out_of_range);
     auto stray_view = index::TUIndex::from_bytes(bytes_of(*out_of_range));
-    ASSERT(stray_view.loaded());
+    ZASSERT(stray_view.loaded());
     index::ProjectIndex bounding;
-    ASSERT(!bounding.merge(stray_view, intern_paths(stray_view, pool)));
-    ASSERT(bounding.symbol_count() == 0u);
+    ZASSERT(!bounding.merge(stray_view, intern_paths(stray_view, pool)));
+    ZASSERT(bounding.symbol_count() == 0u);
 }
 
 ZEST_CASE(FileVersionInterning) {
     clice::FileTable pool;
     auto a = pool.intern_version(Fid{7}, 0x1111);
-    ASSERT(pool.intern_version(Fid{7}, 0x1111) == a);
+    ZASSERT(pool.intern_version(Fid{7}, 0x1111) == a);
 
     auto b = pool.intern_version(Fid{7}, 0x2222);
-    ASSERT(b != a);
-    ASSERT(pool.version(b).fid.raw == 7u);
-    ASSERT(pool.version(b).content_hash == 0x2222u);
+    ZASSERT(b != a);
+    ZASSERT(pool.version(b).fid.raw == 7u);
+    ZASSERT(pool.version(b).content_hash == 0x2222u);
 }
 
 ZEST_CASE(ManifestContributions) {
@@ -320,8 +320,8 @@ ZEST_CASE(ManifestContributions) {
                                                10
     },
                                            manifest_for(tu1_fv, {{fv_a, 100}, {fv_b, 200}}));
-    ASSERT(affected.size() == std::size_t(2));
-    ASSERT(project.live_variants(Fid{1}).size() == std::size_t(1));
+    ZASSERT(affected.size() == std::size_t(2));
+    ZASSERT(project.live_variants(Fid{1}).size() == std::size_t(1));
 
     // TU 2 shares file 1's variant: the live set does not grow.
     project.apply_manifest(pool,
@@ -329,7 +329,7 @@ ZEST_CASE(ManifestContributions) {
                                11
     },
                            manifest_for(tu2_fv, {{fv_a, 100}}));
-    ASSERT(project.live_variants(Fid{1}).size() == std::size_t(1));
+    ZASSERT(project.live_variants(Fid{1}).size() == std::size_t(1));
 
     // TU 1 re-indexes with a new variant for file 1 and drops file 2: both
     // hashes stay live on file 1 (TU 2 still holds the old one), file 2
@@ -339,16 +339,16 @@ ZEST_CASE(ManifestContributions) {
                                10
     },
                            manifest_for(tu1_fv, {{fv_a, 300}}));
-    ASSERT(project.live_variants(Fid{1}).size() == std::size_t(2));
-    ASSERT(project.live_variants(Fid{2}).empty());
+    ZASSERT(project.live_variants(Fid{1}).size() == std::size_t(2));
+    ZASSERT(project.live_variants(Fid{2}).empty());
 
     project.remove_manifest(pool, Fid{11});
     auto live = project.live_variants(Fid{1});
-    ASSERT(live.size() == std::size_t(1));
-    ASSERT(live.front() == 300u);
+    ZASSERT(live.size() == std::size_t(1));
+    ZASSERT(live.front() == 300u);
 
     project.remove_manifest(pool, Fid{10});
-    ASSERT(project.contributions.empty());
+    ZASSERT(project.contributions.empty());
 }
 
 ZEST_CASE(RepeatedAbsentPlace) {
@@ -360,9 +360,9 @@ ZEST_CASE(RepeatedAbsentPlace) {
     manifest.absent = {place, place};
 
     project.apply_manifest(pool, Fid{10}, std::move(manifest));
-    ASSERT(project.manifests[Fid{10}].absent.size() == std::size_t(1));
+    ZASSERT(project.manifests[Fid{10}].absent.size() == std::size_t(1));
     project.remove_manifest(pool, Fid{10});
-    ASSERT(project.probed.empty());
+    ZASSERT(project.probed.empty());
 }
 
 ZEST_CASE(GlobalRoundTripWithRealMerge) {
@@ -370,14 +370,14 @@ ZEST_CASE(GlobalRoundTripWithRealMerge) {
         int global_value = 42;
         int reader() { return global_value; }
     )");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     clice::FileTable pool;
     index::ProjectIndex project;
     auto view = build_view();
-    ASSERT(view.loaded());
+    ZASSERT(view.loaded());
     auto file_ids_map = intern_paths(view, pool);
-    ASSERT(project.merge(view, file_ids_map));
+    ZASSERT(project.merge(view, file_ids_map));
 
     // A manifest referencing the main file keeps its FileVersion alive
     // through the write's garbage collection.
@@ -394,14 +394,14 @@ ZEST_CASE(GlobalRoundTripWithRealMerge) {
     clice::FileTable fresh;
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ASSERT(loaded.load_global(buf.str(), fresh, pins));
+    ZASSERT(loaded.load_global(buf.str(), fresh, pins));
 
     auto symbol = find_symbol(loaded, "global_value");
-    ASSERT(symbol != 0);
+    ZASSERT(symbol != 0);
     auto main_path = pool.resolve(file_ids_map[view.path_count() - 1]);
     auto fresh_id = fresh.find(Spelling::absolute(main_path));
-    ASSERT(fresh_id);
-    ASSERT(llvm::is_contained(reference_files(loaded, symbol), fresh_id->raw));
+    ZASSERT(fresh_id);
+    ZASSERT(llvm::is_contained(reference_files(loaded, symbol), fresh_id->raw));
 }
 
 ZEST_CASE(LazyShardsStayPut) {
@@ -410,9 +410,9 @@ ZEST_CASE(LazyShardsStayPut) {
     // taking a shard and reading it again.
     TempDir tmp;
     auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
-    ASSERT(store);
+    ZASSERT(store);
     auto db = index::open_database(*store, "");
-    ASSERT(db != nullptr);
+    ZASSERT(db != nullptr);
 
     clice::FileTable writer_files;
     index::ProjectIndex writer;
@@ -439,22 +439,22 @@ ZEST_CASE(LazyShardsStayPut) {
         auto file = files.intern(Spelling::absolute(std::format("/proj/f{}.cpp", i)));
         puts.push_back({index::IndexBlobKind::Shard, project.key_of(files, file), shard});
     }
-    ASSERT(db->write(puts, {}).empty());
-    ASSERT(db->advance_read_snapshot());
+    ZASSERT(db->write(puts, {}).empty());
+    ZASSERT(db->advance_read_snapshot());
 
-    ASSERT(project.open(*db, files));
+    ZASSERT(project.open(*db, files));
     auto first = files.intern(Spelling::absolute("/proj/f0.cpp"));
     const auto* held = project.shard(first);
-    ASSERT(held != nullptr);
+    ZASSERT(held != nullptr);
     for(std::uint32_t i = 1; i < count; i += 1) {
-        ASSERT(project.shard(files.intern(Spelling::absolute(std::format("/proj/f{}.cpp", i)))) !=
-               nullptr);
+        ZASSERT(project.shard(files.intern(Spelling::absolute(std::format("/proj/f{}.cpp", i)))) !=
+                nullptr);
     }
-    ASSERT(project.shard(first) == held);
-    ASSERT(held->content_hash() == llvm::xxh3_64bits(content));
+    ZASSERT(project.shard(first) == held);
+    ZASSERT(held->content_hash() == llvm::xxh3_64bits(content));
     // A file the database holds no rows for is asked once and stays absent.
-    ASSERT(project.shard(files.intern(Spelling::absolute("/proj/none.cpp"))) == nullptr);
-    ASSERT(project.shard(files.intern(Spelling::absolute("/proj/none.cpp"))) == nullptr);
+    ZASSERT(project.shard(files.intern(Spelling::absolute("/proj/none.cpp"))) == nullptr);
+    ZASSERT(project.shard(files.intern(Spelling::absolute("/proj/none.cpp"))) == nullptr);
 }
 
 ZEST_CASE(ReaderFanoutAcrossUnits) {
@@ -463,9 +463,9 @@ ZEST_CASE(ReaderFanoutAcrossUnits) {
     // through the persisted reverse include graph.
     TempDir tmp;
     auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
-    ASSERT(store);
+    ZASSERT(store);
     auto db = index::open_database(*store, "");
-    ASSERT(db != nullptr);
+    ZASSERT(db != nullptr);
 
     constexpr index::SymbolHash helper = 99;
     clice::FileTable pool;
@@ -505,22 +505,22 @@ ZEST_CASE(ReaderFanoutAcrossUnits) {
     llvm::raw_string_ostream global_os(global);
     writer.serialize_global(global_os, pool);
     puts.push_back({index::IndexBlobKind::Global, "global", global});
-    ASSERT(db->write(puts, {}).empty());
-    ASSERT(db->advance_read_snapshot());
+    ZASSERT(db->write(puts, {}).empty());
+    ZASSERT(db->advance_read_snapshot());
 
     clice::FileTable files;
     index::ProjectIndex reader;
-    ASSERT(reader.open(*db, files));
+    ZASSERT(reader.open(*db, files));
     llvm::SmallVector<Fid> reached;
     reader.each_fanout_file(helper,
                             files.intern(Spelling::absolute("/proj/a.cpp")),
                             files,
                             [&](Fid file) { reached.push_back(file); });
-    ASSERT(reached.size() == 3u);
+    ZASSERT(reached.size() == 3u);
     for(auto name: {"/proj/a.cpp", "/proj/b.cpp", "/proj/util.h"}) {
         auto file = files.find(Spelling::absolute(name));
-        ASSERT(file);
-        ASSERT(llvm::is_contained(reached, *file));
+        ZASSERT(file);
+        ZASSERT(llvm::is_contained(reached, *file));
     }
 }
 

@@ -35,11 +35,11 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
 
     std::string directory;
     std::vector<std::string> arguments;
-    EXPECT(resolver.resolve_command(part, directory, arguments).source == CommandSource::Default);
-    EXPECT(llvm::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
+    ZEXPECT(resolver.resolve_command(part, directory, arguments).source == CommandSource::Default);
+    ZEXPECT(llvm::any_of(arguments, [](llvm::StringRef arg) { return arg.contains("DEFAULTED"); }));
     auto header_resolution = resolver.resolve_command(header, directory, arguments);
-    EXPECT(header_resolution.source == CommandSource::IncludeGraph);
-    EXPECT(header_resolution.host == main);
+    ZEXPECT(header_resolution.source == CommandSource::IncludeGraph);
+    ZEXPECT(header_resolution.host == main);
 }
 
 ZEST_CASE(UnboundVerdictStaysLocal) {
@@ -56,16 +56,16 @@ ZEST_CASE(UnboundVerdictStaysLocal) {
     auto id = project.file_table.intern(Spelling::absolute(path));
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext);
-    ASSERT(resolver.header_mode(id) == HeaderMode::NeedsContext);
+    ZASSERT(resolver.header_mode(id) == HeaderMode::NeedsContext);
 
     std::vector<CacheModeEntry> slices;
     resolver.dump_mode_slices(slices, [](Fid fid) { return fid.raw; });
-    ASSERT(slices.empty());
+    ZASSERT(slices.empty());
 
     CommandResolver restarted(project);
     slices.push_back({id.raw, static_cast<std::uint32_t>(HeaderMode::NeedsContext), 0});
     restarted.load_mode_slices(slices, [&](std::uint32_t) -> std::optional<Fid> { return id; });
-    ASSERT(restarted.header_mode(id) == HeaderMode::Unknown);
+    ZASSERT(restarted.header_mode(id) == HeaderMode::Unknown);
 }
 
 ZEST_CASE(ModeSliceContentGate) {
@@ -79,24 +79,24 @@ ZEST_CASE(ModeSliceContentGate) {
     auto path = tmp.path("h.h");
     auto id = project.file_table.intern(Spelling::absolute(path));
     auto disk = project.file_table.current(id);
-    ASSERT(disk);
+    ZASSERT(disk);
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
     std::vector<CacheModeEntry> slices;
     resolver.dump_mode_slices(slices, [](Fid fid) { return fid.raw; });
-    ASSERT(slices.size() == 1u);
+    ZASSERT(slices.size() == 1u);
 
     auto resolve = [&](std::uint32_t) -> std::optional<Fid> {
         return id;
     };
     CommandResolver same_disk(project);
     same_disk.load_mode_slices(slices, resolve);
-    ASSERT(same_disk.header_mode(id) == HeaderMode::NeedsContext);
+    ZASSERT(same_disk.header_mode(id) == HeaderMode::NeedsContext);
 
     tmp.touch("h.h", "int y;\n");
     CommandResolver edited(project);
     edited.load_mode_slices(slices, resolve);
-    ASSERT(edited.header_mode(id) == HeaderMode::Unknown);
+    ZASSERT(edited.header_mode(id) == HeaderMode::Unknown);
 }
 
 ZEST_CASE(VerdictPersistenceMarksDirty) {
@@ -111,24 +111,24 @@ ZEST_CASE(VerdictPersistenceMarksDirty) {
     auto id = project.file_table.intern(Spelling::absolute("/proj/h.h"));
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext, 7);
-    ASSERT(project.artifacts_dirty);
+    ZASSERT(project.artifacts_dirty);
 
     project.artifacts_dirty = false;
     resolver.reset_header_mode(id);
-    ASSERT(project.artifacts_dirty);
+    ZASSERT(project.artifacts_dirty);
 
     // Unbound verdicts and self-contained impressions are never persisted.
     project.artifacts_dirty = false;
     resolver.record_header_mode(id, HeaderMode::NeedsContext);
     resolver.record_header_mode(id, HeaderMode::SelfContained);
     resolver.reset_header_mode(id);
-    ASSERT(!project.artifacts_dirty);
+    ZASSERT(!project.artifacts_dirty);
 
     // A trial downgrading a persisted verdict drops it from the blob.
     resolver.record_header_mode(id, HeaderMode::NeedsContext, 7);
     project.artifacts_dirty = false;
     resolver.record_header_mode(id, HeaderMode::SelfContained);
-    ASSERT(project.artifacts_dirty);
+    ZASSERT(project.artifacts_dirty);
 }
 
 };  // ZEST_SUITE(CommandResolver)

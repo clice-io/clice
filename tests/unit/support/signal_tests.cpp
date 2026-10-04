@@ -14,7 +14,7 @@ ZEST_CASE(EmitCallsHandlers) {
     auto c1 = signal.connect([&](int v) { sum += v; });
     auto c2 = signal.connect([&](int v) { sum += v * 10; });
     signal.emit(3);
-    ASSERT(sum == 33);
+    ZASSERT(sum == 33);
 }
 
 ZEST_CASE(ConnectOrder) {
@@ -24,7 +24,7 @@ ZEST_CASE(ConnectOrder) {
     auto c2 = signal.connect([&] { order.push_back(2); });
     auto c3 = signal.connect([&] { order.push_back(3); });
     signal.emit();
-    ASSERT(order == (std::vector<int>{1, 2, 3}));
+    ZASSERT(order == (std::vector<int>{1, 2, 3}));
 }
 
 ZEST_CASE(DisconnectOnDestruction) {
@@ -35,7 +35,7 @@ ZEST_CASE(DisconnectOnDestruction) {
         signal.emit();
     }
     signal.emit();
-    ASSERT(calls == 1);
+    ZASSERT(calls == 1);
 }
 
 ZEST_CASE(ExplicitDisconnect) {
@@ -44,7 +44,7 @@ ZEST_CASE(ExplicitDisconnect) {
     auto conn = signal.connect([&] { calls += 1; });
     conn.disconnect();
     signal.emit();
-    ASSERT(calls == 0);
+    ZASSERT(calls == 0);
 }
 
 ZEST_CASE(MoveTransfersConnection) {
@@ -56,10 +56,10 @@ ZEST_CASE(MoveTransfersConnection) {
         held = std::move(conn);
     }
     signal.emit();
-    ASSERT(calls == 1);
+    ZASSERT(calls == 1);
     held.disconnect();
     signal.emit();
-    ASSERT(calls == 1);
+    ZASSERT(calls == 1);
 }
 
 ZEST_CASE(ConnectionOutlivesSignal) {

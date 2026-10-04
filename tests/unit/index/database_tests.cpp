@@ -50,95 +50,95 @@ ZEST_CASE(WriteReadRoundTrip) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
+    ZASSERT(db != nullptr);
 
     auto rejected = db->write({blob(index::IndexBlobKind::Shard, "a", large_value('a')),
                                blob(index::IndexBlobKind::Global, "global", "gg")},
                               {});
-    ASSERT(rejected.empty());
+    ZASSERT(rejected.empty());
     // Reads serve the resident snapshot; committed writes become
     // visible only after an advance.
-    ASSERT(db->advance_read_snapshot());
+    ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
     auto shard = db->read(index::IndexBlobKind::Shard, "a");
-    ASSERT(bool(shard));
-    ASSERT(shard.buffer->getBuffer() == large_value('a'));
-    ASSERT(db->contains(index::IndexBlobKind::Global, "global"));
-    ASSERT(!db->contains(index::IndexBlobKind::Shard, "missing"));
-    ASSERT(!bool(db->read(index::IndexBlobKind::Shard, "missing")));
+    ZASSERT(bool(shard));
+    ZASSERT(shard.buffer->getBuffer() == large_value('a'));
+    ZASSERT(db->contains(index::IndexBlobKind::Global, "global"));
+    ZASSERT(!db->contains(index::IndexBlobKind::Shard, "missing"));
+    ZASSERT(!bool(db->read(index::IndexBlobKind::Shard, "missing")));
 }
 
 ZEST_CASE(WriteRemoves) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
+    ZASSERT(db != nullptr);
 
-    ASSERT(db->write({blob(index::IndexBlobKind::Manifest, "m1", "one"),
-                      blob(index::IndexBlobKind::Manifest, "m2", "two")},
-                     {})
-               .empty());
-    ASSERT(db->write(
-                 {
+    ZASSERT(db->write({blob(index::IndexBlobKind::Manifest, "m1", "one"),
+                       blob(index::IndexBlobKind::Manifest, "m2", "two")},
+                      {})
+                .empty());
+    ZASSERT(db->write(
+                  {
     },
-                 {{index::IndexBlobKind::Manifest, "m1"}})
-               .empty());
-    ASSERT(db->advance_read_snapshot());
+                  {{index::IndexBlobKind::Manifest, "m1"}})
+                .empty());
+    ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
-    ASSERT(!db->contains(index::IndexBlobKind::Manifest, "m1"));
-    ASSERT(db->contains(index::IndexBlobKind::Manifest, "m2"));
+    ZASSERT(!db->contains(index::IndexBlobKind::Manifest, "m1"));
+    ZASSERT(db->contains(index::IndexBlobKind::Manifest, "m2"));
 }
 
 ZEST_CASE(KindsAreIsolated) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
+    ZASSERT(db != nullptr);
 
-    ASSERT(db->write({blob(index::IndexBlobKind::Shard, "same", "shard"),
-                      blob(index::IndexBlobKind::Manifest, "same", "manifest")},
-                     {})
-               .empty());
-    ASSERT(db->advance_read_snapshot());
+    ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "same", "shard"),
+                       blob(index::IndexBlobKind::Manifest, "same", "manifest")},
+                      {})
+                .empty());
+    ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
     llvm::SmallVector<std::string> shard_keys;
     db->for_each_key(index::IndexBlobKind::Shard,
                      [&](llvm::StringRef key) { shard_keys.push_back(key.str()); });
-    ASSERT(shard_keys.size() == 1);
-    ASSERT(shard_keys.front() == "same");
-    ASSERT(db->read(index::IndexBlobKind::Manifest, "same").buffer->getBuffer() == "manifest");
-    ASSERT(!db->contains(index::IndexBlobKind::Global, "same"));
+    ZASSERT(shard_keys.size() == 1);
+    ZASSERT(shard_keys.front() == "same");
+    ZASSERT(db->read(index::IndexBlobKind::Manifest, "same").buffer->getBuffer() == "manifest");
+    ZASSERT(!db->contains(index::IndexBlobKind::Global, "same"));
 }
 
 ZEST_CASE(SnapshotPinsUntilAdvance) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
+    ZASSERT(db != nullptr);
 
-    ASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('1'))}, {}).empty());
-    ASSERT(db->advance_read_snapshot());
+    ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('1'))}, {}).empty());
+    ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
     auto before = db->read(index::IndexBlobKind::Shard, "k");
-    ASSERT(bool(before));
+    ZASSERT(bool(before));
 
     // Committed writes stay invisible to the resident snapshot until the
     // next advance; the borrowed buffer keeps serving the old bytes.
-    ASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('2'))}, {}).empty());
-    ASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('1'));
-    ASSERT(before.buffer->getBuffer() == large_value('1'));
+    ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('2'))}, {}).empty());
+    ZASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('1'));
+    ZASSERT(before.buffer->getBuffer() == large_value('1'));
 
     auto advanced = db->advance_read_snapshot();
-    ASSERT(advanced);
-    ASSERT(*advanced != 0);
+    ZASSERT(advanced);
+    ZASSERT(*advanced != 0);
     // Old and new snapshots serve their own bytes side by side until the
     // old one retires — the migration window's core invariant.
-    ASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('2'));
-    ASSERT(before.buffer->getBuffer() == large_value('1'));
+    ZASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('2'));
+    ZASSERT(before.buffer->getBuffer() == large_value('1'));
     db->retire_old_snapshot();
 }
 
@@ -146,26 +146,26 @@ ZEST_CASE(SmallValuesCopiedAligned) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
+    ZASSERT(db != nullptr);
 
-    ASSERT(db->write({blob(index::IndexBlobKind::Manifest, "small", "tiny"),
-                      blob(index::IndexBlobKind::Shard, "big", large_value('b'))},
-                     {})
-               .empty());
-    ASSERT(db->advance_read_snapshot());
+    ZASSERT(db->write({blob(index::IndexBlobKind::Manifest, "small", "tiny"),
+                       blob(index::IndexBlobKind::Shard, "big", large_value('b'))},
+                      {})
+                .empty());
+    ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
 
     // Inline leaf values are only 2-aligned, so they must come back as an
     // owned copy (generation 0); overflow-page values are borrowed.
     auto small = db->read(index::IndexBlobKind::Manifest, "small");
-    ASSERT(bool(small));
-    ASSERT(small.generation == 0);
-    ASSERT(reinterpret_cast<std::uintptr_t>(small.buffer->getBufferStart()) % 8 == 0);
+    ZASSERT(bool(small));
+    ZASSERT(small.generation == 0);
+    ZASSERT(reinterpret_cast<std::uintptr_t>(small.buffer->getBufferStart()) % 8 == 0);
 
     auto big = db->read(index::IndexBlobKind::Shard, "big");
-    ASSERT(bool(big));
-    ASSERT(big.generation != 0);
-    ASSERT(reinterpret_cast<std::uintptr_t>(big.buffer->getBufferStart()) % 8 == 0);
+    ZASSERT(bool(big));
+    ZASSERT(big.generation != 0);
+    ZASSERT(reinterpret_cast<std::uintptr_t>(big.buffer->getBufferStart()) % 8 == 0);
 }
 
 ZEST_CASE(ReopenServesPersistedBlobs) {
@@ -173,12 +173,12 @@ ZEST_CASE(ReopenServesPersistedBlobs) {
     auto store = open_store(tmp, "lmdb");
     {
         auto db = index::open_database(store, "");
-        ASSERT(db != nullptr);
-        ASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "snapshot")}, {}).empty());
+        ZASSERT(db != nullptr);
+        ZASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "snapshot")}, {}).empty());
     }
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
-    ASSERT(db->read(index::IndexBlobKind::CDB, "cdb").buffer->getBuffer() == "snapshot");
+    ZASSERT(db != nullptr);
+    ZASSERT(db->read(index::IndexBlobKind::CDB, "cdb").buffer->getBuffer() == "snapshot");
 }
 
 ZEST_CASE(CorruptDatabaseRebuilds) {
@@ -193,9 +193,9 @@ ZEST_CASE(CorruptDatabaseRebuilds) {
         os << "this is not an lmdb file, not even close, but long enough to map";
     }
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
-    ASSERT(!db->contains(index::IndexBlobKind::CDB, "cdb"));
-    ASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
+    ZASSERT(db != nullptr);
+    ZASSERT(!db->contains(index::IndexBlobKind::CDB, "cdb"));
+    ZASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
 }
 
 /// A database of `count` large blobs written over several commits, so
@@ -230,12 +230,12 @@ ZEST_CASE(TruncatedDatabaseRebuilds) {
     truncate_to_meta(populated_database(store, 8));
 
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
-    ASSERT(!db->contains(index::IndexBlobKind::Shard, "7"));
-    ASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
-    ASSERT(db->advance_read_snapshot());
+    ZASSERT(db != nullptr);
+    ZASSERT(!db->contains(index::IndexBlobKind::Shard, "7"));
+    ZASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "fresh")}, {}).empty());
+    ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
-    ASSERT(db->read(index::IndexBlobKind::CDB, "cdb").buffer->getBuffer() == "fresh");
+    ZASSERT(db->read(index::IndexBlobKind::CDB, "cdb").buffer->getBuffer() == "fresh");
 }
 
 ZEST_CASE(ReadOnlyRefusesTruncated) {
@@ -245,7 +245,7 @@ ZEST_CASE(ReadOnlyRefusesTruncated) {
         truncate_to_meta(populated_database(store, 8));
     }
     auto store = open_store(tmp, "ws", /*read_only=*/true);
-    ASSERT(index::open_database(store, "") == nullptr);
+    ZASSERT(index::open_database(store, "") == nullptr);
 }
 
 ZEST_CASE(WritesCoverFreedTail) {
@@ -259,61 +259,61 @@ ZEST_CASE(WritesCoverFreedTail) {
         auto store = open_store(tmp, "lmdb");
         file = path::join(index::library_directory(store, ""), "index.mdb");
         auto db = index::open_database(store, "");
-        ASSERT(db != nullptr);
+        ZASSERT(db != nullptr);
         auto settle = [&] {
-            ASSERT(db->advance_read_snapshot());
+            ZASSERT(db->advance_read_snapshot());
             db->retire_old_snapshot();
         };
-        ASSERT(db->write({blob(index::IndexBlobKind::Shard, "x", large_value('x'))}, {}).empty());
+        ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "x", large_value('x'))}, {}).empty());
         settle();
-        ASSERT(db->write(
-                     {
+        ZASSERT(db->write(
+                      {
         },
-                     {{index::IndexBlobKind::Shard, "x"}})
-                   .empty());
+                      {{index::IndexBlobKind::Shard, "x"}})
+                    .empty());
         settle();
-        ASSERT(db->write(
-                     {
-                         blob(index::IndexBlobKind::CDB, "cdb", "small"),
-                         blob(index::IndexBlobKind::Shard, "h", std::string(1 << 16, 'h'))
+        ZASSERT(db->write(
+                      {
+                          blob(index::IndexBlobKind::CDB, "cdb", "small"),
+                          blob(index::IndexBlobKind::Shard, "h", std::string(1 << 16, 'h'))
         },
-                     {{index::IndexBlobKind::Shard, "h"}})
-                   .empty());
+                      {{index::IndexBlobKind::Shard, "h"}})
+                    .empty());
     }
 
     MDB_env* env = nullptr;
-    ASSERT(mdb_env_create(&env) == 0);
-    ASSERT(mdb_env_open(env, file.c_str(), MDB_NOSUBDIR | MDB_RDONLY, 0644) == 0);
+    ZASSERT(mdb_env_create(&env) == 0);
+    ZASSERT(mdb_env_open(env, file.c_str(), MDB_NOSUBDIR | MDB_RDONLY, 0644) == 0);
     MDB_envinfo info;
     mdb_env_info(env, &info);
     MDB_stat db_stat;
     mdb_env_stat(env, &db_stat);
     mdb_env_close(env);
     std::uint64_t size = 0;
-    ASSERT(!static_cast<bool>(llvm::sys::fs::file_size(file, size)));
-    EXPECT(size >= (info.me_last_pgno + 1) * db_stat.ms_psize);
+    ZASSERT(!static_cast<bool>(llvm::sys::fs::file_size(file, size)));
+    ZEXPECT(size >= (info.me_last_pgno + 1) * db_stat.ms_psize);
 
     auto store = open_store(tmp, "lmdb", /*read_only=*/true);
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
-    ASSERT(db->contains(index::IndexBlobKind::CDB, "cdb"));
+    ZASSERT(db != nullptr);
+    ZASSERT(db->contains(index::IndexBlobKind::CDB, "cdb"));
 }
 
 ZEST_CASE(DefaultOpenFileBounded) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
-    ASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "x")}, {}).empty());
+    ZASSERT(db != nullptr);
+    ZASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "x")}, {}).empty());
 
     // On Windows the mapping extends index.mdb to the whole mapsize, so
     // this pins the small default (a 64 GiB logical file is the bug the
     // default exists to avoid); POSIX file sizes track the data
     // high-water mark and pass trivially.
     std::uint64_t size = 0;
-    ASSERT(!llvm::sys::fs::file_size(path::join(index::library_directory(store, ""), "index.mdb"),
-                                     size));
-    ASSERT((size <= 256ull << 20));
+    ZASSERT(!llvm::sys::fs::file_size(path::join(index::library_directory(store, ""), "index.mdb"),
+                                      size));
+    ZASSERT((size <= 256ull << 20));
 }
 
 ZEST_CASE(FullMapFailsWholeBatchThenGrows) {
@@ -321,32 +321,32 @@ ZEST_CASE(FullMapFailsWholeBatchThenGrows) {
     auto store = open_store(tmp, "lmdb");
     // Small enough that a handful of large values exhausts it.
     auto db = index::open_lmdb_database(store, "", 256 * 1024);
-    ASSERT(db != nullptr);
+    ZASSERT(db != nullptr);
 
     std::vector<index::BlobDatabase::Blob> puts;
     for(int i = 0; i < 64; i += 1) {
         puts.push_back(blob(index::IndexBlobKind::Shard, std::to_string(i), large_value('x')));
     }
     auto rejected = db->write(puts, {});
-    ASSERT(rejected.size() == puts.size());
-    ASSERT(!db->contains(index::IndexBlobKind::Shard, "0"));
+    ZASSERT(rejected.size() == puts.size());
+    ZASSERT(!db->contains(index::IndexBlobKind::Shard, "0"));
 
     auto grown = db->grow();
-    ASSERT(grown);
-    ASSERT(*grown);
+    ZASSERT(grown);
+    ZASSERT(*grown);
     // grow() opened a fresh snapshot, so this proves the failed batch
     // really committed nothing (the pre-grow check only saw the pinned
     // old snapshot).
-    ASSERT(!db->contains(index::IndexBlobKind::Shard, "0"));
+    ZASSERT(!db->contains(index::IndexBlobKind::Shard, "0"));
     // A second grow without a latched full map is a no-op.
     auto again = db->grow();
-    ASSERT(again);
-    ASSERT(!*again);
+    ZASSERT(again);
+    ZASSERT(!*again);
 
-    ASSERT(db->write(puts, {}).empty());
-    ASSERT(db->advance_read_snapshot());
+    ZASSERT(db->write(puts, {}).empty());
+    ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
-    ASSERT(db->read(index::IndexBlobKind::Shard, "63").buffer->getBuffer() == large_value('x'));
+    ZASSERT(db->read(index::IndexBlobKind::Shard, "63").buffer->getBuffer() == large_value('x'));
 }
 
 ZEST_CASE(ReadOnlyMissingDatabase) {
@@ -357,8 +357,8 @@ ZEST_CASE(ReadOnlyMissingDatabase) {
     // disabled rather than creating an index.mdb a read-only session must
     // not leave behind.
     auto db = index::open_database(store, "", /*read_only=*/true);
-    ASSERT(db == nullptr);
-    ASSERT(!llvm::sys::fs::exists(index::library_directory(store, "")));
+    ZASSERT(db == nullptr);
+    ZASSERT(!llvm::sys::fs::exists(index::library_directory(store, "")));
 }
 
 ZEST_CASE(ReadOnlyServesExistingDatabase) {
@@ -366,14 +366,14 @@ ZEST_CASE(ReadOnlyServesExistingDatabase) {
     {
         auto store = open_store(tmp, "ws");
         auto db = index::open_database(store, "");
-        ASSERT(db != nullptr);
-        ASSERT(db->write({blob(index::IndexBlobKind::Global, "global", "gg")}, {}).empty());
+        ZASSERT(db != nullptr);
+        ZASSERT(db->write({blob(index::IndexBlobKind::Global, "global", "gg")}, {}).empty());
     }
     auto store = open_store(tmp, "ws", /*read_only=*/true);
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
-    ASSERT(db->contains(index::IndexBlobKind::Global, "global"));
-    ASSERT(db->read(index::IndexBlobKind::Global, "global").buffer->getBuffer() == "gg");
+    ZASSERT(db != nullptr);
+    ZASSERT(db->contains(index::IndexBlobKind::Global, "global"));
+    ZASSERT(db->read(index::IndexBlobKind::Global, "global").buffer->getBuffer() == "gg");
 }
 
 ZEST_CASE(CondemnedDatabaseDeletesOnClose) {
@@ -381,14 +381,14 @@ ZEST_CASE(CondemnedDatabaseDeletesOnClose) {
     auto store = open_store(tmp, "lmdb");
     {
         auto db = index::open_database(store, "");
-        ASSERT(db != nullptr);
-        ASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "bytes")}, {}).empty());
+        ZASSERT(db != nullptr);
+        ZASSERT(db->write({blob(index::IndexBlobKind::CDB, "cdb", "bytes")}, {}).empty());
         db->condemn();
     }
-    ASSERT(!llvm::sys::fs::exists(path::join(index::library_directory(store, ""), "index.mdb")));
+    ZASSERT(!llvm::sys::fs::exists(path::join(index::library_directory(store, ""), "index.mdb")));
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
-    ASSERT(!db->contains(index::IndexBlobKind::CDB, "cdb"));
+    ZASSERT(db != nullptr);
+    ZASSERT(!db->contains(index::IndexBlobKind::CDB, "cdb"));
 }
 
 ZEST_CASE(LibraryPerConfiguration) {
@@ -396,21 +396,22 @@ ZEST_CASE(LibraryPerConfiguration) {
     /// anonymous one named `default`; what one holds the other never sees.
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    EXPECT(index::library_directory(store, "") == path::join(store.base_dir(), "index", "default"));
+    ZEXPECT(index::library_directory(store, "") ==
+            path::join(store.base_dir(), "index", "default"));
     auto library = index::library_directory(store, "release");
-    EXPECT(path::parent_path(library) == path::join(store.base_dir(), "index"));
-    EXPECT(path::filename(library).starts_with("release~"));
+    ZEXPECT(path::parent_path(library) == path::join(store.base_dir(), "index"));
+    ZEXPECT(path::filename(library).starts_with("release~"));
 
     auto debug = index::open_database(store, "debug");
     auto release = index::open_database(store, "release");
-    ASSERT(debug != nullptr);
-    ASSERT(release != nullptr);
-    ASSERT(debug->write({blob(index::IndexBlobKind::Global, "global", "d")}, {}).empty());
-    ASSERT(release->advance_read_snapshot());
-    ASSERT(!release->contains(index::IndexBlobKind::Global, "global"));
-    ASSERT(
+    ZASSERT(debug != nullptr);
+    ZASSERT(release != nullptr);
+    ZASSERT(debug->write({blob(index::IndexBlobKind::Global, "global", "d")}, {}).empty());
+    ZASSERT(release->advance_read_snapshot());
+    ZASSERT(!release->contains(index::IndexBlobKind::Global, "global"));
+    ZASSERT(
         llvm::sys::fs::exists(path::join(index::library_directory(store, "debug"), "index.mdb")));
-    ASSERT(
+    ZASSERT(
         llvm::sys::fs::exists(path::join(index::library_directory(store, "release"), "index.mdb")));
 }
 
@@ -427,16 +428,16 @@ ZEST_CASE(LibraryNameSanitized) {
         auto full = name(configuration);
         return llvm::StringRef(full).rsplit('~').first.str();
     };
-    EXPECT(prefix("Debug-x86_64.v2") == "debug-x86_64_v2");
-    EXPECT(name("Debug") != name("debug"));
-    EXPECT(prefix("linux/arm") == "linux_arm");
-    EXPECT(name("linux/arm") != name("linux\\arm"));
-    EXPECT(name("linux/arm") != name("linux arm"));
-    EXPECT(prefix("a~b") == "a_b");
-    EXPECT(prefix("release.") == "release_");
-    EXPECT(prefix("..") == "__");
-    EXPECT(name("default") != "default");
-    EXPECT(prefix(std::string(40, 'x')) == std::string(32, 'x'));
+    ZEXPECT(prefix("Debug-x86_64.v2") == "debug-x86_64_v2");
+    ZEXPECT(name("Debug") != name("debug"));
+    ZEXPECT(prefix("linux/arm") == "linux_arm");
+    ZEXPECT(name("linux/arm") != name("linux\\arm"));
+    ZEXPECT(name("linux/arm") != name("linux arm"));
+    ZEXPECT(prefix("a~b") == "a_b");
+    ZEXPECT(prefix("release.") == "release_");
+    ZEXPECT(prefix("..") == "__");
+    ZEXPECT(name("default") != "default");
+    ZEXPECT(prefix(std::string(40, 'x')) == std::string(32, 'x'));
 }
 
 ZEST_CASE(LibraryBlockedByFile) {
@@ -444,32 +445,32 @@ ZEST_CASE(LibraryBlockedByFile) {
     auto store = open_store(tmp, "lmdb");
     auto library = index::library_directory(store, "x");
     auto ec = llvm::sys::fs::create_directories(path::parent_path(library));
-    ASSERT(!ec);
-    ASSERT(!vfs::write(library, "x"));
-    ASSERT(index::open_database(store, "x") == nullptr);
+    ZASSERT(!ec);
+    ZASSERT(!vfs::write(library, "x"));
+    ZASSERT(index::open_database(store, "x") == nullptr);
 }
 
 ZEST_CASE(WriterLockAtCacheRoot) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto lock = index::WriterLock::acquire(store.root_dir());
-    ASSERT(lock);
+    ZASSERT(lock);
     // The lock guards the cache directory, not a configuration's library,
     // and opening a library takes none. (Contention itself is between
     // processes: POSIX record locks are per process, so a second
     // acquisition in this one would succeed.)
-    ASSERT(llvm::sys::fs::exists(path::join(store.root_dir(), "index.lock")));
+    ZASSERT(llvm::sys::fs::exists(path::join(store.root_dir(), "index.lock")));
     auto db = index::open_database(store, "x");
-    ASSERT(db != nullptr);
-    ASSERT(!llvm::sys::fs::exists(path::join(index::library_directory(store, "x"), "index.lock")));
+    ZASSERT(db != nullptr);
+    ZASSERT(!llvm::sys::fs::exists(path::join(index::library_directory(store, "x"), "index.lock")));
 #ifndef _WIN32
     auto held = read_file(path::join(store.root_dir(), "index.lock"));
-    ASSERT(held);
-    ASSERT(llvm::StringRef(*held).trim() == std::to_string(llvm::sys::Process::getProcessId()));
+    ZASSERT(held);
+    ZASSERT(llvm::StringRef(*held).trim() == std::to_string(llvm::sys::Process::getProcessId()));
 #endif
     lock.reset();
     auto released = read_file(path::join(store.root_dir(), "index.lock"));
-    ASSERT((released.has_value() && released->empty()));
+    ZASSERT((released.has_value() && released->empty()));
 }
 
 ZEST_CASE(ProbeIgnoresStaleEndpoint) {
@@ -477,42 +478,42 @@ ZEST_CASE(ProbeIgnoresStaleEndpoint) {
     auto store = open_store(tmp, "lmdb");
     auto cache_dir = store.root_dir();
     index::write_endpoint(cache_dir, {.pid = 1, .version = "x", .host = "127.0.0.1", .port = 1});
-    ASSERT(llvm::sys::fs::exists(path::join(cache_dir, "server.json")));
+    ZASSERT(llvm::sys::fs::exists(path::join(cache_dir, "server.json")));
 
     // Nobody holds the lock: the record is a crash's residue, swept by
     // the probe.
     auto probe = index::probe_writer(cache_dir);
-    ASSERT(probe.state == index::WriterProbe::State::Free);
-    ASSERT(!llvm::sys::fs::exists(path::join(cache_dir, "server.json")));
+    ZASSERT(probe.state == index::WriterProbe::State::Free);
+    ZASSERT(!llvm::sys::fs::exists(path::join(cache_dir, "server.json")));
 
     index::write_endpoint(cache_dir, {.pid = 1, .version = "x", .host = "127.0.0.1", .port = 1});
     index::remove_endpoint(cache_dir);
-    ASSERT(!llvm::sys::fs::exists(path::join(cache_dir, "server.json")));
+    ZASSERT(!llvm::sys::fs::exists(path::join(cache_dir, "server.json")));
 }
 
 ZEST_CASE(OutstandingSnapshotsStack) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto db = index::open_database(store, "");
-    ASSERT(db != nullptr);
+    ZASSERT(db != nullptr);
 
-    ASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('1'))}, {}).empty());
-    ASSERT(db->advance_read_snapshot());
+    ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('1'))}, {}).empty());
+    ZASSERT(db->advance_read_snapshot());
     db->retire_old_snapshot();
     auto lease = db->read(index::IndexBlobKind::Shard, "k");
-    ASSERT(bool(lease));
+    ZASSERT(bool(lease));
 
     // A cancelled migration leaves its old snapshot outstanding and the
     // next advance stacks another; every stacked snapshot keeps its
     // borrowers alive until one retire clears them all.
-    ASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('2'))}, {}).empty());
-    ASSERT(db->advance_read_snapshot());
-    ASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('3'))}, {}).empty());
-    ASSERT(db->advance_read_snapshot());
-    ASSERT(lease.buffer->getBuffer() == large_value('1'));
-    ASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
+    ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('2'))}, {}).empty());
+    ZASSERT(db->advance_read_snapshot());
+    ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "k", large_value('3'))}, {}).empty());
+    ZASSERT(db->advance_read_snapshot());
+    ZASSERT(lease.buffer->getBuffer() == large_value('1'));
+    ZASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
     db->retire_old_snapshot();
-    ASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
+    ZASSERT(db->read(index::IndexBlobKind::Shard, "k").buffer->getBuffer() == large_value('3'));
 }
 
 };  // ZEST_SUITE(IndexDatabase)

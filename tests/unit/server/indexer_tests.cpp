@@ -316,7 +316,7 @@ std::string planted_blob(llvm::StringRef text, std::uint64_t variant) {
 
 void open_store(TempDir& tmp, Project& project) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
-    ASSERT(store);
+    ZASSERT(store);
     project.store.emplace(std::move(*store));
     project.index_db = index::open_lmdb_database(*project.store, "");
 }
@@ -325,11 +325,11 @@ void open_store(TempDir& tmp, Project& project) {
 /// lock), as the residue of a crash or a foreign writer.
 void inject_blob(TempDir& tmp, index::IndexBlobKind kind, llvm::StringRef key, std::string bytes) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
-    ASSERT(store);
+    ZASSERT(store);
     auto db = index::open_lmdb_database(*store, "");
-    ASSERT(db != nullptr);
+    ZASSERT(db != nullptr);
     index::BlobDatabase::Blob blob{kind, key.str(), std::move(bytes)};
-    ASSERT(db->write(blob, {}).empty());
+    ZASSERT(db->write(blob, {}).empty());
 }
 
 /// The storage key of a file's shard or manifest blob (the database's naming).
@@ -364,14 +364,14 @@ void drop_index(Fid id) {
 ZEST_CASE(MergeRejectsGarbage) {
     // A worker shipping corrupted bytes (torn write, stale format) must not
     // crash the master or leave partial state behind.
-    ASSERT(project.project_index.shards.empty());
-    ASSERT(project.project_index.symbol_count() == 0u);
+    ZASSERT(project.project_index.shards.empty());
+    ZASSERT(project.project_index.symbol_count() == 0u);
 
     std::string garbage = "definitely not a flatbuffer, but long enough to try";
-    ASSERT(!merge(garbage.data(), garbage.size()));
+    ZASSERT(!merge(garbage.data(), garbage.size()));
 
-    ASSERT(project.project_index.shards.empty());
-    ASSERT(project.project_index.symbol_count() == 0u);
+    ZASSERT(project.project_index.shards.empty());
+    ZASSERT(project.project_index.symbol_count() == 0u);
 }
 
 ZEST_CASE(MergeIgnoresDiskDrift) {
@@ -380,13 +380,13 @@ ZEST_CASE(MergeIgnoresDiskDrift) {
     auto src = tmp.path("main.cpp");
 
     auto indexed = index_file(tmp, src);
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
 
     merge(indexed.data.data(), indexed.data.size());
     auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto it = project.project_index.shards.find(path_id);
-    ASSERT(it != project.project_index.shards.end());
-    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int value() { return 1; }\n"));
+    ZASSERT(it != project.project_index.shards.end());
+    ZASSERT(it->second.content_hash() == llvm::xxh3_64bits("int value() { return 1; }\n"));
 
     // The disk moved on since the rows were indexed. The blob is
     // self-contained — its rows pair with the generation it embeds, never
@@ -394,15 +394,15 @@ ZEST_CASE(MergeIgnoresDiskDrift) {
     // gating owns the drift.
     tmp.touch("main.cpp", "int renamed() { return 2; }\n");
     merge(indexed.data.data(), indexed.data.size());
-    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int value() { return 1; }\n"));
-    ASSERT(it->second.variants().size() == std::size_t(1));
-    ASSERT(project.project_index.contributions.lookup(path_id).contains(path_id));
+    ZASSERT(it->second.content_hash() == llvm::xxh3_64bits("int value() { return 1; }\n"));
+    ZASSERT(it->second.variants().size() == std::size_t(1));
+    ZASSERT(project.project_index.contributions.lookup(path_id).contains(path_id));
 
     // Rows built from the settled content open a new generation.
     auto fresh = index_file(tmp, src);
-    ASSERT(!fresh.data.empty());
+    ZASSERT(!fresh.data.empty());
     merge(fresh.data.data(), fresh.data.size());
-    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int renamed() { return 2; }\n"));
+    ZASSERT(it->second.content_hash() == llvm::xxh3_64bits("int renamed() { return 2; }\n"));
 }
 
 ZEST_CASE(SaveCommitsDirtyShard) {
@@ -412,11 +412,11 @@ ZEST_CASE(SaveCommitsDirtyShard) {
     open_store(tmp, project);
 
     auto indexed = index_file(tmp, src);
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
     merge(indexed.data.data(), indexed.data.size());
 
     auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
-    ASSERT(index_store.pending_shard_writes() == 1u);
+    ZASSERT(index_store.pending_shard_writes() == 1u);
 
     // Named body: a temporary lambda's captures die with the statement
     // while the coroutine frame still references them.
@@ -430,11 +430,11 @@ ZEST_CASE(SaveCommitsDirtyShard) {
     // Committed: the dirty state is drained and the shard still answers
     // identically.
     auto it = project.project_index.shards.find(path_id);
-    ASSERT(it != project.project_index.shards.end());
-    ASSERT(index_store.pending_shard_writes() == 0u);
-    ASSERT(index_store.last_save_shards() == 1u);
-    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int flip_value() { return 1; }\n"));
-    ASSERT(project.project_index.contributions.lookup(path_id).contains(path_id));
+    ZASSERT(it != project.project_index.shards.end());
+    ZASSERT(index_store.pending_shard_writes() == 0u);
+    ZASSERT(index_store.last_save_shards() == 1u);
+    ZASSERT(it->second.content_hash() == llvm::xxh3_64bits("int flip_value() { return 1; }\n"));
+    ZASSERT(project.project_index.contributions.lookup(path_id).contains(path_id));
 }
 
 ZEST_CASE(SaveMigratesShardViews) {
@@ -484,20 +484,20 @@ ZEST_CASE(SaveMigratesShardViews) {
     };
 
     auto store = CacheStore::open(tmp.path("cache"), 1);
-    ASSERT(store);
+    ZASSERT(store);
     project.store.emplace(std::move(*store));
     auto spy = std::make_unique<SnapshotSpy>();
     spy->real = index::open_lmdb_database(*project.store, "");
-    ASSERT(spy->real != nullptr);
+    ZASSERT(spy->real != nullptr);
     auto* probe = spy.get();
     project.index_db = std::move(spy);
 
     auto indexed = index_file(tmp, src);
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
     merge(indexed.data.data(), indexed.data.size());
     auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto before = project.project_index.shards.find(path_id);
-    ASSERT(before != project.project_index.shards.end());
+    ZASSERT(before != project.project_index.shards.end());
     auto variants_before = before->second.variants();
     const char* bytes_before = before->second.bytes().data();
 
@@ -511,14 +511,14 @@ ZEST_CASE(SaveMigratesShardViews) {
     // Rebound: the shard now serves the database's snapshot view — the
     // same bytes at a different address — with the verification state and
     // variant set carried over.
-    ASSERT(probe->advances == 1);
-    ASSERT(probe->retires == 1);
+    ZASSERT(probe->advances == 1);
+    ZASSERT(probe->retires == 1);
     auto it = project.project_index.shards.find(path_id);
-    ASSERT(it != project.project_index.shards.end());
-    ASSERT(it->second.loaded());
-    ASSERT(it->second.bytes().data() != bytes_before);
-    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int migrate_value() { return 1; }\n"));
-    ASSERT(it->second.variants() == variants_before);
+    ZASSERT(it != project.project_index.shards.end());
+    ZASSERT(it->second.loaded());
+    ZASSERT(it->second.bytes().data() != bytes_before);
+    ZASSERT(it->second.content_hash() == llvm::xxh3_64bits("int migrate_value() { return 1; }\n"));
+    ZASSERT(it->second.variants() == variants_before);
 }
 
 ZEST_CASE(GrowFailureShedsCleanShards) {
@@ -576,8 +576,8 @@ ZEST_CASE(GrowFailureShedsCleanShards) {
 
     auto indexed_clean = index_file(tmp, tmp.path("clean.cpp"));
     auto indexed_dirty = index_file(tmp, tmp.path("dirty.cpp"));
-    ASSERT(!indexed_clean.data.empty());
-    ASSERT(!indexed_dirty.data.empty());
+    ZASSERT(!indexed_clean.data.empty());
+    ZASSERT(!indexed_dirty.data.empty());
 
     auto spy = std::make_unique<FailingGrow>();
     spy->real = std::move(project.index_db);
@@ -600,9 +600,9 @@ ZEST_CASE(GrowFailureShedsCleanShards) {
     loop.schedule(task);
     loop.run();
 
-    ASSERT(!project.project_index.shards.contains(clean_id));
-    ASSERT(project.project_index.shards.contains(dirty_id));
-    ASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
+    ZASSERT(!project.project_index.shards.contains(clean_id));
+    ZASSERT(project.project_index.shards.contains(dirty_id));
+    ZASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(MidSaveMergeKept) {
@@ -612,7 +612,7 @@ ZEST_CASE(MidSaveMergeKept) {
     open_store(tmp, project);
 
     auto indexed = index_file(tmp, src);
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
     merge(indexed.data.data(), indexed.data.size());
     auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
 
@@ -620,7 +620,7 @@ ZEST_CASE(MidSaveMergeKept) {
     // in-memory event.
     tmp.touch("main.cpp", "int second_value() { return 2; }\n");
     auto fresh = index_file(tmp, src);
-    ASSERT(!fresh.data.empty());
+    ZASSERT(!fresh.data.empty());
 
     // The merge task runs when save() suspends at its write await: it
     // lands after the dirty snapshot was taken and cleared, exactly the
@@ -643,14 +643,14 @@ ZEST_CASE(MidSaveMergeKept) {
     // Sampled while save() awaited its commit: the settle gauge must keep
     // covering the in-flight batch, or a stats poll in that window reads
     // "settled" with last_save_shards still holding its reset.
-    ASSERT(mid_save_pending >= 1);
+    ZASSERT(mid_save_pending >= 1);
 
     // The save committed the pre-merge snapshot: the shard keeps the new
     // content and stays dirty so the next save commits it.
     auto it = project.project_index.shards.find(path_id);
-    ASSERT(it != project.project_index.shards.end());
-    ASSERT(index_store.pending_shard_writes() == 1u);
-    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int second_value() { return 2; }\n"));
+    ZASSERT(it != project.project_index.shards.end());
+    ZASSERT(index_store.pending_shard_writes() == 1u);
+    ZASSERT(it->second.content_hash() == llvm::xxh3_64bits("int second_value() { return 2; }\n"));
 
     auto again_body = [&]() -> kota::task<> {
         co_await async_save();
@@ -660,8 +660,8 @@ ZEST_CASE(MidSaveMergeKept) {
     loop.run();
 
     it = project.project_index.shards.find(path_id);
-    ASSERT(index_store.pending_shard_writes() == 0u);
-    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int second_value() { return 2; }\n"));
+    ZASSERT(index_store.pending_shard_writes() == 0u);
+    ZASSERT(it->second.content_hash() == llvm::xxh3_64bits("int second_value() { return 2; }\n"));
 }
 
 ZEST_CASE(MergeHitWritesNothing) {
@@ -671,7 +671,7 @@ ZEST_CASE(MergeHitWritesNothing) {
     open_store(tmp, project);
 
     auto indexed = index_file(tmp, src);
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
     merge(indexed.data.data(), indexed.data.size());
     auto save_body = [&]() -> kota::task<> {
         co_await async_save();
@@ -679,13 +679,13 @@ ZEST_CASE(MergeHitWritesNothing) {
     auto task = save_body();
     loop.schedule(task);
     loop.run();
-    ASSERT(index_store.pending_shard_writes() == 0u);
+    ZASSERT(index_store.pending_shard_writes() == 0u);
 
     // A re-merge whose rows the shard already stores is the steady state of
     // every background round: it must record contributions and touch no
     // blob at all.
     merge(indexed.data.data(), indexed.data.size());
-    ASSERT(index_store.pending_shard_writes() == 0u);
+    ZASSERT(index_store.pending_shard_writes() == 0u);
 }
 
 ZEST_CASE(SharedHeaderVariants) {
@@ -698,8 +698,8 @@ ZEST_CASE(SharedHeaderVariants) {
 
     auto a = index_file(tmp, tmp.path("a.cpp"));
     auto b = index_file(tmp, tmp.path("b.cpp"), {"-DMODE"});
-    ASSERT(!a.data.empty());
-    ASSERT(!b.data.empty());
+    ZASSERT(!a.data.empty());
+    ZASSERT(!b.data.empty());
 
     // Two TUs preprocess the header differently: both variants coexist in
     // one blob, each TU's contribution live.
@@ -707,26 +707,26 @@ ZEST_CASE(SharedHeaderVariants) {
     merge(b.data.data(), b.data.size());
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
     auto& shard = project.project_index.shards[header_id];
-    ASSERT(shard.variants().size() == std::size_t(2));
-    ASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(2));
+    ZASSERT(shard.variants().size() == std::size_t(2));
+    ZASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(2));
 
     // A third TU sharing a's preprocessing hits the stored variant: the
     // set does not grow, and neither existing contribution is disturbed.
     tmp.touch("c.cpp", "#include \"shared.h\"\nint c() { return shared_fn(); }\n");
     auto c = index_file(tmp, tmp.path("c.cpp"));
-    ASSERT(!c.data.empty());
+    ZASSERT(!c.data.empty());
     merge(c.data.data(), c.data.size());
-    ASSERT(shard.variants().size() == std::size_t(2));
-    ASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(3));
+    ZASSERT(shard.variants().size() == std::size_t(2));
+    ZASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(3));
 
     // Re-indexing a TU whose header rows are unchanged must not disturb
     // the other TUs' variants either.
     tmp.touch("a.cpp", "#include \"shared.h\"\nint a2() { return shared_fn(); }\n");
     auto fresh = index_file(tmp, tmp.path("a.cpp"));
-    ASSERT(!fresh.data.empty());
+    ZASSERT(!fresh.data.empty());
     merge(fresh.data.data(), fresh.data.size());
-    ASSERT(shard.variants().size() == std::size_t(2));
-    ASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(3));
+    ZASSERT(shard.variants().size() == std::size_t(2));
+    ZASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(3));
 }
 
 ZEST_CASE(HeaderRegenerationReplaces) {
@@ -736,12 +736,12 @@ ZEST_CASE(HeaderRegenerationReplaces) {
     auto src = tmp.path("main.cpp");
 
     auto v1 = index_file(tmp, src);
-    ASSERT(!v1.data.empty());
+    ZASSERT(!v1.data.empty());
     merge(v1.data.data(), v1.data.size());
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
     auto tu_id = project.file_table.intern(Spelling::absolute(v1.tu_path));
     auto old_hash = project.project_index.contributions.lookup(header_id).lookup(tu_id);
-    ASSERT(old_hash != 0);
+    ZASSERT(old_hash != 0);
 
     // The header changes, a reindex captures it — and the header changes
     // AGAIN before the result merges. The worker's bytes are their own
@@ -749,18 +749,18 @@ ZEST_CASE(HeaderRegenerationReplaces) {
     // freshness gating owns the remaining drift.
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 2; }\n");
     auto v2 = index_file(tmp, src);
-    ASSERT(!v2.data.empty());
+    ZASSERT(!v2.data.empty());
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 3; }\n");
 
     merge(v2.data.data(), v2.data.size());
     auto new_hash = project.project_index.contributions.lookup(header_id).lookup(tu_id);
-    ASSERT(new_hash != 0);
-    ASSERT(new_hash != old_hash);
-    ASSERT(project.project_index.shards[header_id].has_variant(new_hash));
+    ZASSERT(new_hash != 0);
+    ZASSERT(new_hash != old_hash);
+    ZASSERT(project.project_index.shards[header_id].has_variant(new_hash));
     // A new content generation never shares row storage with the old one.
-    ASSERT(!project.project_index.shards[header_id].has_variant(old_hash));
-    ASSERT(project.project_index.shards[header_id].content_hash() ==
-           llvm::xxh3_64bits("#pragma once\ninline int dep() { return 2; }\n"));
+    ZASSERT(!project.project_index.shards[header_id].has_variant(old_hash));
+    ZASSERT(project.project_index.shards[header_id].content_hash() ==
+            llvm::xxh3_64bits("#pragma once\ninline int dep() { return 2; }\n"));
 }
 
 ZEST_CASE(SaveCompactsAndRetires) {
@@ -774,12 +774,12 @@ ZEST_CASE(SaveCompactsAndRetires) {
 
     auto a = index_file(tmp, tmp.path("a.cpp"));
     auto b = index_file(tmp, tmp.path("b.cpp"), {"-DMODE"});
-    ASSERT(!a.data.empty());
-    ASSERT(!b.data.empty());
+    ZASSERT(!a.data.empty());
+    ZASSERT(!b.data.empty());
     merge(a.data.data(), a.data.size());
     merge(b.data.data(), b.data.size());
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
-    ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(2));
+    ZASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(2));
 
     auto save = [&] {
         auto body = [&]() -> kota::task<> {
@@ -795,27 +795,27 @@ ZEST_CASE(SaveCompactsAndRetires) {
     // erases the dead rows for real.
     tmp.touch("b.cpp", "int b() { return 2; }\n");
     auto b2 = index_file(tmp, tmp.path("b.cpp"));
-    ASSERT(!b2.data.empty());
+    ZASSERT(!b2.data.empty());
     merge(b2.data.data(), b2.data.size());
-    ASSERT(project.project_index.shards[header_id].has_dead_variants());
+    ZASSERT(project.project_index.shards[header_id].has_dead_variants());
     save();
-    ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
+    ZASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
 
     // a drops it too: no contribution is left, so the shard retires from
     // memory and from storage — with no owner left to re-enqueue.
     tmp.touch("a.cpp", "int a() { return 3; }\n");
     auto a2 = index_file(tmp, tmp.path("a.cpp"));
-    ASSERT(!a2.data.empty());
+    ZASSERT(!a2.data.empty());
     merge(a2.data.data(), a2.data.size());
     save();
-    ASSERT(!project.project_index.shards.contains(header_id));
-    ASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
-                .has_value());
+    ZASSERT(!project.project_index.shards.contains(header_id));
+    ZASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
+                 .has_value());
     bool on_disk = false;
     auto key = blob_key(project.file_table.resolve(header_id));
     project.index_db->for_each_key(index::IndexBlobKind::Shard,
                                    [&](llvm::StringRef k) { on_disk |= k == key; });
-    ASSERT(!on_disk);
+    ZASSERT(!on_disk);
 }
 
 ZEST_CASE(SaveRetiresPinnedShard) {
@@ -829,12 +829,12 @@ ZEST_CASE(SaveRetiresPinnedShard) {
 
     auto a = index_file(tmp, tmp.path("pa.cpp"));
     auto b = index_file(tmp, tmp.path("pb.cpp"), {"-DMODE"});
-    ASSERT(!a.data.empty());
-    ASSERT(!b.data.empty());
+    ZASSERT(!a.data.empty());
+    ZASSERT(!b.data.empty());
     merge(a.data.data(), a.data.size());
     merge(b.data.data(), b.data.size());
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("pinned.h")));
-    ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(2));
+    ZASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(2));
 
     // The header moves to a new content generation and only pa catches up:
     // the blob starts over with pa's variant, while pb's manifest still
@@ -843,9 +843,9 @@ ZEST_CASE(SaveRetiresPinnedShard) {
               "#pragma once\n#ifdef MODE\nint pin_mode();\n#endif\n"
               "inline int pin_fn() { return 2; }\n");
     auto a2 = index_file(tmp, tmp.path("pa.cpp"));
-    ASSERT(!a2.data.empty());
+    ZASSERT(!a2.data.empty());
     merge(a2.data.data(), a2.data.size());
-    ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
+    ZASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
 
     // The rebuild re-enqueued pb; its pass then runs and fails, consuming
     // the slot — the state the retirement below must repair on its own.
@@ -862,19 +862,19 @@ ZEST_CASE(SaveRetiresPinnedShard) {
     loop.schedule(task);
     loop.run();
 
-    ASSERT(!project.project_index.shards.contains(header_id));
+    ZASSERT(!project.project_index.shards.contains(header_id));
     bool on_disk = false;
     auto key = blob_key(project.file_table.resolve(header_id));
     project.index_db->for_each_key(index::IndexBlobKind::Shard,
                                    [&](llvm::StringRef k) { on_disk |= k == key; });
-    ASSERT(!on_disk);
+    ZASSERT(!on_disk);
 
     // pb's manifest survives, still pinning rows the retirement made
     // unservable; nothing else in this process would rebuild them (a
     // reverted header even reads fresh by hash), so the retirement must
     // re-enqueue pb itself.
-    ASSERT(pump.pending_reason(project.file_table.intern(Spelling::absolute(b.tu_path))) ==
-           ReindexReason::ContentChanged);
+    ZASSERT(pump.pending_reason(project.file_table.intern(Spelling::absolute(b.tu_path))) ==
+            ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(RebuildRequeuesPinnedOwner) {
@@ -887,12 +887,12 @@ ZEST_CASE(RebuildRequeuesPinnedOwner) {
 
     auto a = index_file(tmp, tmp.path("ga.cpp"));
     auto b = index_file(tmp, tmp.path("gb.cpp"), {"-DMODE"});
-    ASSERT(!a.data.empty());
-    ASSERT(!b.data.empty());
+    ZASSERT(!a.data.empty());
+    ZASSERT(!b.data.empty());
     merge(a.data.data(), a.data.size());
     merge(b.data.data(), b.data.size());
     auto b_tu = project.file_table.intern(Spelling::absolute(b.tu_path));
-    ASSERT(!pump.pending_reason(b_tu).has_value());
+    ZASSERT(!pump.pending_reason(b_tu).has_value());
 
     // The header moves to a new content generation and only ga catches up:
     // the rebuilt blob discards gb's variant. With no pending slot left for
@@ -903,15 +903,15 @@ ZEST_CASE(RebuildRequeuesPinnedOwner) {
               "#pragma once\n#ifdef MODE\nint gen_mode();\n#endif\n"
               "inline int gen_fn() { return 2; }\n");
     auto a2 = index_file(tmp, tmp.path("ga.cpp"));
-    ASSERT(!a2.data.empty());
+    ZASSERT(!a2.data.empty());
     merge(a2.data.data(), a2.data.size());
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
-    ASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
+    ZASSERT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
 
-    ASSERT(pump.pending_reason(b_tu) == ReindexReason::ContentChanged);
+    ZASSERT(pump.pending_reason(b_tu) == ReindexReason::ContentChanged);
     // ga's own fresh pin is stored: the rebuild must not re-enqueue it.
-    ASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
-                .has_value());
+    ZASSERT(!pump.pending_reason(project.file_table.intern(Spelling::absolute(a2.tu_path)))
+                 .has_value());
 }
 
 ZEST_CASE(RejectsCorruptSection) {
@@ -920,19 +920,19 @@ ZEST_CASE(RejectsCorruptSection) {
     tmp.touch("cor_main.cpp", "#include \"cor.h\"\nint use_cor() { return cor(); }\n");
 
     auto indexed = index_file(tmp, tmp.path("cor_main.cpp"));
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
 
     // Corrupt the main file's blob bytes in place: the outer wire still
     // verifies (sections are opaque bytes to it), only the blob's byte
     // identity check against the recorded section hash fails.
     std::string corrupt = indexed.data;
     auto tampered = index::TUIndex::from_bytes(corrupt);
-    ASSERT(tampered.loaded());
+    ZASSERT(tampered.loaded());
     auto main_section = tampered.section_of(tampered.path_count() - 1);
-    ASSERT(main_section);
+    ZASSERT(main_section);
     auto blob = tampered.section_blob(*main_section);
     auto pos = llvm::StringRef(corrupt).find(blob);
-    ASSERT(pos != llvm::StringRef::npos);
+    ZASSERT(pos != llvm::StringRef::npos);
     for(std::size_t i = 0; i < blob.size(); i += 1) {
         corrupt[pos + i] = 'X';
     }
@@ -944,19 +944,19 @@ ZEST_CASE(RejectsCorruptSection) {
     merge(corrupt.data(), corrupt.size());
     auto tu_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("cor.h")));
-    ASSERT(!project.project_index.manifests.contains(tu_id));
-    ASSERT(!project.project_index.shards.contains(header_id));
+    ZASSERT(!project.project_index.manifests.contains(tu_id));
+    ZASSERT(!project.project_index.shards.contains(header_id));
     // No global trace either: symbol identities from an untrusted result
     // would stay canonical for their hashes forever (later merges only
     // fill empty names), and stray FileVersions would persist with the
     // next save.
-    ASSERT(project.project_index.symbol_count() == 0u);
-    ASSERT(project.file_table.versions.empty());
+    ZASSERT(project.project_index.symbol_count() == 0u);
+    ZASSERT(project.file_table.versions.empty());
 
     // The intact result still lands afterwards.
     merge(indexed.data.data(), indexed.data.size());
-    ASSERT(project.project_index.manifests.contains(tu_id));
-    ASSERT(project.project_index.shards.contains(header_id));
+    ZASSERT(project.project_index.manifests.contains(tu_id));
+    ZASSERT(project.project_index.shards.contains(header_id));
 }
 
 ZEST_CASE(HashlessRemergeHits) {
@@ -964,22 +964,22 @@ ZEST_CASE(HashlessRemergeHits) {
     tmp.touch("pcm.cpp", "int hashless_fn() { return 7; }\n");
     auto src = tmp.path("pcm.cpp");
     auto indexed = index_file(tmp, src);
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
 
     // A file behind a PCM ships no consumed-content hash; the variant
     // identity is the blob's own byte hash, so membership needs no
     // content vouching at all.
     auto wire = strip_path_hashes(indexed.data);
-    ASSERT(!wire.empty());
+    ZASSERT(!wire.empty());
 
     merge(wire.data(), wire.size());
     auto path_id = project.file_table.intern(Spelling::absolute(src));
-    ASSERT(project.project_index.shards[path_id].variants().size() == std::size_t(1));
+    ZASSERT(project.project_index.shards[path_id].variants().size() == std::size_t(1));
 
     // Re-merging the same rows must register as a hit, not append the
     // stored variant to the blob a second time.
     merge(wire.data(), wire.size());
-    ASSERT(project.project_index.shards[path_id].variants().size() == std::size_t(1));
+    ZASSERT(project.project_index.shards[path_id].variants().size() == std::size_t(1));
 }
 
 ZEST_CASE(FailedWriteNotCounted) {
@@ -1025,9 +1025,9 @@ ZEST_CASE(FailedWriteNotCounted) {
     project.index_db = std::make_unique<FailingStorage>();
 
     auto indexed = index_file(tmp, src);
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
     merge(indexed.data.data(), indexed.data.size());
-    ASSERT(index_store.pending_shard_writes() == 1u);
+    ZASSERT(index_store.pending_shard_writes() == 1u);
 
     auto save = [&] {
         auto body = [&]() -> kota::task<> {
@@ -1038,16 +1038,16 @@ ZEST_CASE(FailedWriteNotCounted) {
         loop.run();
     };
     save();
-    ASSERT(index_store.last_save_shards() == 0u);
+    ZASSERT(index_store.last_save_shards() == 0u);
     // The failed batch is re-dirtied rather than discarded, so a later
     // save has it to retry and the cache converges once the storage
     // recovers.
-    ASSERT(index_store.pending_shard_writes() == 1u);
+    ZASSERT(index_store.pending_shard_writes() == 1u);
 
     open_store(tmp, project);
     save();
-    ASSERT(index_store.last_save_shards() == 1u);
-    ASSERT(index_store.pending_shard_writes() == 0u);
+    ZASSERT(index_store.last_save_shards() == 1u);
+    ZASSERT(index_store.pending_shard_writes() == 0u);
 }
 
 ZEST_CASE(WriteCorruptionRebuildsDatabase) {
@@ -1117,8 +1117,8 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
 
     auto indexed_clean = index_file(tmp, tmp.path("clean.cpp"));
     auto indexed_dirty = index_file(tmp, tmp.path("dirty.cpp"));
-    ASSERT(!indexed_clean.data.empty());
-    ASSERT(!indexed_dirty.data.empty());
+    ZASSERT(!indexed_clean.data.empty());
+    ZASSERT(!indexed_dirty.data.empty());
 
     auto save = [&] {
         auto body = [&]() -> kota::task<> {
@@ -1135,19 +1135,19 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
     probe->fail = true;
     save();
 
-    ASSERT(condemned);
-    ASSERT(project.index_db != nullptr);
+    ZASSERT(condemned);
+    ZASSERT(project.index_db != nullptr);
     auto clean_id = project.file_table.intern(Spelling::absolute(indexed_clean.tu_path));
     auto dirty_id = project.file_table.intern(Spelling::absolute(indexed_dirty.tu_path));
-    ASSERT(!project.project_index.shards.contains(clean_id));
-    ASSERT(project.project_index.shards.contains(dirty_id));
-    ASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
-    ASSERT(index_store.last_save_shards() == 0u);
+    ZASSERT(!project.project_index.shards.contains(clean_id));
+    ZASSERT(project.project_index.shards.contains(dirty_id));
+    ZASSERT(pump.pending_reason(clean_id) == ReindexReason::ContentChanged);
+    ZASSERT(index_store.last_save_shards() == 0u);
 
     // The next save re-persists everything servable into the fresh database.
     save();
-    ASSERT(index_store.last_save_shards() == 1u);
-    ASSERT(!index_store.has_unsaved_state());
+    ZASSERT(index_store.last_save_shards() == 1u);
+    ZASSERT(!index_store.has_unsaved_state());
 }
 
 ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
@@ -1206,7 +1206,7 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
     project.index_db = std::move(spy);
 
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
     merge(indexed.data.data(), indexed.data.size());
 
     auto save = [&] {
@@ -1220,16 +1220,16 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
     save();
 
     auto path_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
-    ASSERT(condemned);
-    ASSERT(project.index_db != nullptr);
-    ASSERT(!project.project_index.shards.contains(path_id));
-    ASSERT(pump.pending_reason(path_id) == ReindexReason::ContentChanged);
-    ASSERT(index_store.last_save_shards() == 0u);
+    ZASSERT(condemned);
+    ZASSERT(project.index_db != nullptr);
+    ZASSERT(!project.project_index.shards.contains(path_id));
+    ZASSERT(pump.pending_reason(path_id) == ReindexReason::ContentChanged);
+    ZASSERT(index_store.last_save_shards() == 0u);
 
     // The re-dirtied manifests, global and CDB snapshot re-persist into
     // the fresh database.
     save();
-    ASSERT(!index_store.has_unsaved_state());
+    ZASSERT(!index_store.has_unsaved_state());
 }
 
 };  // ZEST_SUITE(IndexerMerge)
@@ -1270,18 +1270,18 @@ ZEST_CASE(CreatedHeaderStales) {
     tmp.touch("main.cpp", "#include \"gen.h\"\nint use() { return 0; }\n");
     auto src = tmp.path("main.cpp");
     auto indexed = index_file(tmp, src);
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
     IndexerFixture f;
     f.merge(indexed.data.data(), indexed.data.size());
     auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto gen = f.project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
-    ASSERT(f.project.project_index.probed.lookup(gen).contains(tu));
-    ASSERT(f.project.file_table.seen_missing(gen));
-    ASSERT(!f.need_update(src));
+    ZASSERT(f.project.project_index.probed.lookup(gen).contains(tu));
+    ZASSERT(f.project.file_table.seen_missing(gen));
+    ZASSERT(!f.need_update(src));
 
     tmp.touch("gen.h", "int make();\n");
     f.clear_verdicts();
-    ASSERT(f.need_update(src));
+    ZASSERT(f.need_update(src));
 }
 
 #ifndef _WIN32
@@ -1291,48 +1291,48 @@ ZEST_CASE(AbsentSpellingsOnePlace) {
     TempDir tmp;
     tmp.touch("main.cpp", "#include \"gen.h\"\nint use() { return 0; }\n");
     tmp.mkdir("real");
-    ASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
     auto src = tmp.path("main.cpp");
     auto indexed = index_file(tmp, src, {"-I" + tmp.path("real"), "-I" + tmp.path("link")});
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
     IndexerFixture f;
     f.merge(indexed.data.data(), indexed.data.size());
     f.merge(indexed.data.data(), indexed.data.size());
     auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto& manifest = f.project.project_index.manifests.find(tu)->second;
     auto place = f.project.file_table.intern(Spelling::absolute(tmp.path("real/gen.h")));
-    ASSERT(llvm::count_if(manifest.absent, [&](VersionID fv) {
-               return f.project.file_table.version(fv).fid == place;
-           }) == 1);
+    ZASSERT(llvm::count_if(manifest.absent, [&](VersionID fv) {
+                return f.project.file_table.version(fv).fid == place;
+            }) == 1);
 }
 #endif
 
 ZEST_CASE(TouchStaysFresh) {
     Indexed x;
-    ASSERT(x.setup());
-    ASSERT(!x.f.need_update(x.src));
+    ZASSERT(x.setup());
+    ZASSERT(!x.f.need_update(x.src));
 
     // Same bytes, new mtime: the stat fast path misses, the hash proves a
     // mere touch, and nothing persisted needs rewriting.
-    ASSERT(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
+    ZASSERT(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
     x.f.reset_global_dirty();
     x.f.clear_verdicts();
-    ASSERT(!x.f.need_update(x.src));
-    ASSERT(!x.f.global_dirty());
+    ZASSERT(!x.f.need_update(x.src));
+    ZASSERT(!x.f.global_dirty());
 }
 
 ZEST_CASE(PreservedMtimeEditStale) {
     Indexed x;
-    ASSERT(x.setup());
+    ZASSERT(x.setup());
     auto recorded = file_mtime_ns(x.header);
 
     // Different content restored to the recorded mtime (rsync -t, git
     // restore-mtime): equality of the stat is not enough — the size moved,
     // and the hash check must catch the edit.
     x.tmp.touch("dep.h", "#pragma once\ninline int dep() { return 12345; }\n");
-    ASSERT(set_file_mtime(x.header, recorded));
+    ZASSERT(set_file_mtime(x.header, recorded));
     x.f.clear_verdicts();
-    ASSERT(x.f.need_update(x.src));
+    ZASSERT(x.f.need_update(x.src));
 }
 
 ZEST_CASE(AllDepsChecked) {
@@ -1344,17 +1344,17 @@ ZEST_CASE(AllDepsChecked) {
               "int use() { return first() + second(); }\n");
     IndexerFixture f;
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
     f.merge(indexed.data.data(), indexed.data.size());
-    ASSERT(!f.need_update(tmp.path("main.cpp")));
+    ZASSERT(!f.need_update(tmp.path("main.cpp")));
 
     // Only the second dependency changes; a partial iteration would call
     // the TU fresh.
     auto recorded = file_mtime_ns(tmp.path("second.h"));
     tmp.touch("second.h", "#pragma once\ninline int second() { return 22222; }\n");
-    ASSERT(set_file_mtime(tmp.path("second.h"), recorded));
+    ZASSERT(set_file_mtime(tmp.path("second.h"), recorded));
     f.clear_verdicts();
-    ASSERT(f.need_update(tmp.path("main.cpp")));
+    ZASSERT(f.need_update(tmp.path("main.cpp")));
 }
 
 };  // ZEST_SUITE(IndexerStaleness)
@@ -1371,7 +1371,7 @@ ZEST_CASE(LoadRestoresIndex) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
     }
@@ -1382,12 +1382,12 @@ ZEST_CASE(LoadRestoresIndex) {
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
-    ASSERT(f.project.project_index.shards.contains(tu_id));
-    ASSERT(f.project.project_index.shards.contains(header_id));
-    ASSERT(f.project.project_index.contributions.lookup(header_id).contains(tu_id));
+    ZASSERT(f.project.project_index.shards.contains(tu_id));
+    ZASSERT(f.project.project_index.shards.contains(header_id));
+    ZASSERT(f.project.project_index.contributions.lookup(header_id).contains(tu_id));
     // The persisted versions make the untouched TU judge fresh without any
     // reindex.
-    ASSERT(!f.need_update(src));
+    ZASSERT(!f.need_update(src));
 }
 
 ZEST_CASE(SettledRebuildPinsSearch) {
@@ -1399,21 +1399,21 @@ ZEST_CASE(SettledRebuildPinsSearch) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         // The plain save persists the table; the settled one then rebuilds
         // the search index with no other change to write.
         f.save();
-        ASSERT(!f.global_dirty());
-        ASSERT(!f.project.project_index.search_index.loaded());
+        ZASSERT(!f.global_dirty());
+        ZASSERT(!f.project.project_index.search_index.loaded());
         f.save(/*settle=*/true);
-        ASSERT(f.project.project_index.search_index.loaded());
+        ZASSERT(f.project.project_index.search_index.loaded());
     }
 
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-    ASSERT(f.project.project_index.search_index.loaded());
+    ZASSERT(f.project.project_index.search_index.loaded());
 }
 
 ZEST_CASE(LoadHealsBrokenShard) {
@@ -1430,7 +1430,7 @@ ZEST_CASE(LoadHealsBrokenShard) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
         header_key = blob_key(f.project.file_table.resolve(
@@ -1449,16 +1449,16 @@ ZEST_CASE(LoadHealsBrokenShard) {
     // is dropped and the TU re-enqueued — no CDB entry would ever re-index
     // a header otherwise. The orphan is swept.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(f.project.project_index.manifests.empty());
-    ASSERT(f.pump.pending_reason(tu_id));
+    ZASSERT(f.project.project_index.manifests.empty());
+    ZASSERT(f.pump.pending_reason(tu_id));
 
     // The dropped manifest also retired the TU's contribution to the
     // OTHER header: its loaded shard's live mask must follow, or it keeps
     // serving a variant nothing contributes any more.
     auto extra_id = f.project.file_table.intern(Spelling::absolute(tmp.path("extra.h")));
     auto extra_it = f.project.project_index.shards.find(extra_id);
-    ASSERT(extra_it != f.project.project_index.shards.end());
-    ASSERT(extra_it->second.has_dead_variants());
+    ZASSERT(extra_it != f.project.project_index.shards.end());
+    ZASSERT(extra_it->second.has_dead_variants());
 
     // Load defers blob cleanup into the first save (no synchronous
     // database commits on the startup event loop); the orphan dies there.
@@ -1472,7 +1472,7 @@ ZEST_CASE(LoadHealsBrokenShard) {
     f.project.index_db->for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
         orphan_alive |= key == "deadbeefdeadbeef";
     });
-    ASSERT(!orphan_alive);
+    ZASSERT(!orphan_alive);
 }
 
 ZEST_CASE(ReadOnlyLoadKeepsDisk) {
@@ -1487,7 +1487,7 @@ ZEST_CASE(ReadOnlyLoadKeepsDisk) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
         header_key = blob_key(f.project.file_table.resolve(
@@ -1506,8 +1506,8 @@ ZEST_CASE(ReadOnlyLoadKeepsDisk) {
     // The in-memory sweeps still run: the unservable header drops its
     // contributing TU's manifest and re-enqueues the TU.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(f.project.project_index.manifests.empty());
-    ASSERT(f.pump.pending_reason(tu_id));
+    ZASSERT(f.project.project_index.manifests.empty());
+    ZASSERT(f.pump.pending_reason(tu_id));
 
     // But every blob survives on disk — a server running concurrently may
     // still reference what this reader judged stale.
@@ -1519,9 +1519,9 @@ ZEST_CASE(ReadOnlyLoadKeepsDisk) {
     f.project.index_db->for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
         manifest_alive |= key == manifest_key;
     });
-    ASSERT(header_alive);
-    ASSERT(orphan_alive);
-    ASSERT(manifest_alive);
+    ZASSERT(header_alive);
+    ZASSERT(orphan_alive);
+    ZASSERT(manifest_alive);
 }
 
 ZEST_CASE(LoadHealsMissingVariant) {
@@ -1535,7 +1535,7 @@ ZEST_CASE(LoadHealsMissingVariant) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
         header_key = blob_key(f.project.file_table.resolve(
@@ -1558,8 +1558,8 @@ ZEST_CASE(LoadHealsMissingVariant) {
     // unservable as an unreadable one: the TU's manifest goes and the TU
     // re-enqueues.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(f.project.project_index.manifests.empty());
-    ASSERT(f.pump.pending_reason(tu_id));
+    ZASSERT(f.project.project_index.manifests.empty());
+    ZASSERT(f.pump.pending_reason(tu_id));
 }
 
 ZEST_CASE(LoadHealsWrongGeneration) {
@@ -1574,13 +1574,13 @@ ZEST_CASE(LoadHealsWrongGeneration) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
         auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
         rows_hash = f.project.project_index.contributions.lookup(header_id).lookup(tu_id);
-        ASSERT(rows_hash != 0);
+        ZASSERT(rows_hash != 0);
         header_key = blob_key(f.project.file_table.resolve(header_id));
     }
 
@@ -1599,8 +1599,8 @@ ZEST_CASE(LoadHealsWrongGeneration) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(f.project.project_index.manifests.empty());
-    ASSERT(f.pump.pending_reason(tu_id));
+    ZASSERT(f.project.project_index.manifests.empty());
+    ZASSERT(f.pump.pending_reason(tu_id));
 }
 
 ZEST_CASE(LoadDropsNewerManifest) {
@@ -1612,7 +1612,7 @@ ZEST_CASE(LoadDropsNewerManifest) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
 
@@ -1645,8 +1645,8 @@ ZEST_CASE(LoadDropsNewerManifest) {
     // The raced manifest is dropped and its TU re-enqueued; the reindex
     // rewrites the manifest and the global together.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(f.project.project_index.manifests.empty());
-    ASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZASSERT(f.project.project_index.manifests.empty());
+    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(LoadDropsLostManifest) {
@@ -1658,7 +1658,7 @@ ZEST_CASE(LoadDropsLostManifest) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
 
@@ -1689,8 +1689,8 @@ ZEST_CASE(LoadDropsLostManifest) {
     // The mistamped manifest is dropped and the TU re-enqueued instead of
     // the previous reindex's dependency set and rows serving as current.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(f.project.project_index.manifests.empty());
-    ASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZASSERT(f.project.project_index.manifests.empty());
+    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(LoadRequeuesStaleManifest) {
@@ -1704,7 +1704,7 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
 
@@ -1719,7 +1719,7 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
                 header_fv = VersionID{fv};
             }
         }
-        ASSERT(header_fv.valid());
+        ZASSERT(header_fv.valid());
         index::TUManifest stale;
         stale.tu_fv = header_fv;
         stale = f.project.project_index.export_manifest(stale);
@@ -1742,8 +1742,8 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
     // of losing its persisted index forever; the blob itself dies at the
     // first save (load defers cleanup off the startup event loop).
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
-    ASSERT(!f.project.project_index.manifests.contains(header_id));
+    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+    ZASSERT(!f.project.project_index.manifests.contains(header_id));
     auto save_body = [&]() -> kota::task<> {
         co_await f.async_save();
     };
@@ -1754,12 +1754,12 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
     f.project.index_db->for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
         stale_alive |= key == blob_key(header);
     });
-    ASSERT(!stale_alive);
+    ZASSERT(!stale_alive);
 
     // The TU whose manifest resolved is untouched.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(f.project.project_index.manifests.contains(tu_id));
-    ASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(f.project.project_index.manifests.contains(tu_id));
+    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(DeferredSweepYieldsToFreshWrite) {
@@ -1771,7 +1771,7 @@ ZEST_CASE(DeferredSweepYieldsToFreshWrite) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
         // The indexer keys blobs by the pool-canonical path, which need
@@ -1796,13 +1796,13 @@ ZEST_CASE(DeferredSweepYieldsToFreshWrite) {
 
     IndexerFixture f;
     open_store(tmp, f.project);
-    ASSERT(f.load());
+    ZASSERT(f.load());
 
     // The swept TU re-indexes before the first save, so that save both
     // re-writes and (deferred) removes the same keys — the fresh write
     // must win or the file never persists again.
     auto indexed = index_file(tmp, src);
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
     f.merge(indexed.data.data(), indexed.data.size());
     f.save();
 
@@ -1814,8 +1814,8 @@ ZEST_CASE(DeferredSweepYieldsToFreshWrite) {
     bool shard_alive = false;
     f.project.index_db->for_each_key(index::IndexBlobKind::Shard,
                                      [&](llvm::StringRef k) { shard_alive |= k == key; });
-    ASSERT(manifest_alive);
-    ASSERT(shard_alive);
+    ZASSERT(manifest_alive);
+    ZASSERT(shard_alive);
 }
 
 ZEST_CASE(LmdbLoadServesAcrossSaves) {
@@ -1825,41 +1825,41 @@ ZEST_CASE(LmdbLoadServesAcrossSaves) {
 
     auto open_lmdb = [&](Project& project) {
         auto store = CacheStore::open(tmp.path("cache"), 1);
-        ASSERT(store);
+        ZASSERT(store);
         project.store.emplace(std::move(*store));
         project.index_db = index::open_lmdb_database(*project.store, "");
-        ASSERT(project.index_db != nullptr);
+        ZASSERT(project.index_db != nullptr);
     };
 
     {
         IndexerFixture f;
         open_lmdb(f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
     }
 
     IndexerFixture f;
     open_lmdb(f.project);
-    ASSERT(f.load());
+    ZASSERT(f.load());
     auto path_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(f.project.project_index.shards.contains(path_id));
+    ZASSERT(f.project.project_index.shards.contains(path_id));
 
     // The loaded shard borrows the open-time snapshot. A save that commits
     // anything advances and retires it — the shard must come out rebound
     // onto the fresh snapshot, still serving.
     tmp.touch("other.cpp", "int other_value() { return 2; }\n");
     auto other = index_file(tmp, tmp.path("other.cpp"));
-    ASSERT(!other.data.empty());
+    ZASSERT(!other.data.empty());
     f.merge(other.data.data(), other.data.size());
     f.save();
 
     auto it = f.project.project_index.shards.find(path_id);
-    ASSERT(it != f.project.project_index.shards.end());
-    ASSERT(it->second.loaded());
-    ASSERT(it->second.content_hash() == llvm::xxh3_64bits("int lmdb_value() { return 1; }\n"));
-    ASSERT(!it->second.bytes().empty());
+    ZASSERT(it != f.project.project_index.shards.end());
+    ZASSERT(it->second.loaded());
+    ZASSERT(it->second.content_hash() == llvm::xxh3_64bits("int lmdb_value() { return 1; }\n"));
+    ZASSERT(!it->second.bytes().empty());
 }
 
 ZEST_CASE(CorruptGlobalCondemnsDatabase) {
@@ -1913,9 +1913,9 @@ ZEST_CASE(CorruptGlobalCondemnsDatabase) {
     spy->condemned = &condemned;
     f.project.index_db = std::move(spy);
 
-    ASSERT(f.load());
-    ASSERT(condemned);
-    ASSERT(f.project.index_db != nullptr);
+    ZASSERT(f.load());
+    ZASSERT(condemned);
+    ZASSERT(f.project.index_db != nullptr);
 }
 
 ZEST_CASE(CorruptShardCondemnsDatabase) {
@@ -1928,7 +1928,7 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         tu_path = indexed.tu_path;
         f.save();
@@ -1992,21 +1992,21 @@ ZEST_CASE(CorruptShardCondemnsDatabase) {
     wrapper->condemned = &condemned;
     f.project.index_db = std::move(wrapper);
 
-    ASSERT(f.load());
-    ASSERT(condemned);
-    ASSERT(f.project.project_index.shards.empty());
-    ASSERT(f.project.project_index.symbol_count() == 0u);
+    ZASSERT(f.load());
+    ZASSERT(condemned);
+    ZASSERT(f.project.project_index.shards.empty());
+    ZASSERT(f.project.project_index.symbol_count() == 0u);
 
     // The TU has no CDB entry, so nothing else records the debt: it is
     // re-enqueued before the adopted state unwinds, and the fresh
     // database's first save persists it as standalone debt.
-    ASSERT(f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tu_path))) ==
-           ReindexReason::ContentChanged);
-    ASSERT(f.project.index_db != nullptr);
+    ZASSERT(f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(tu_path))) ==
+            ReindexReason::ContentChanged);
+    ZASSERT(f.project.index_db != nullptr);
     f.save();
     auto snapshot = f.project.index_db->read(index::IndexBlobKind::CDB, "cdb");
-    ASSERT(snapshot);
-    ASSERT(snapshot.buffer->getBuffer().contains("main.cpp"));
+    ZASSERT(snapshot);
+    ZASSERT(snapshot.buffer->getBuffer().contains("main.cpp"));
 }
 
 ZEST_CASE(UnreadableGlobalPreserved) {
@@ -2018,7 +2018,7 @@ ZEST_CASE(UnreadableGlobalPreserved) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
     }
@@ -2067,15 +2067,15 @@ ZEST_CASE(UnreadableGlobalPreserved) {
         wrapper->real = std::move(f.project.index_db);
         f.project.index_db = std::move(wrapper);
         f.load();
-        ASSERT(f.project.project_index.manifests.empty());
-        ASSERT(f.project.index_db == nullptr);
+        ZASSERT(f.project.project_index.manifests.empty());
+        ZASSERT(f.project.index_db == nullptr);
     }
 
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-    ASSERT(!f.project.project_index.manifests.empty());
-    ASSERT(!f.project.project_index.shards.empty());
+    ZASSERT(!f.project.project_index.manifests.empty());
+    ZASSERT(!f.project.project_index.shards.empty());
 }
 
 ZEST_CASE(DropIndexEvictsPersisted) {
@@ -2088,15 +2088,15 @@ ZEST_CASE(DropIndexEvictsPersisted) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
 
         // The compile command changed: content freshness cannot see it, so
         // the TU's index is dropped wholesale and staleness flips at once.
         f.drop_index(f.project.file_table.intern(Spelling::absolute(src)));
-        ASSERT(f.project.project_index.manifests.empty());
-        ASSERT(f.need_update(src));
+        ZASSERT(f.project.project_index.manifests.empty());
+        ZASSERT(f.need_update(src));
         f.save();
     }
 
@@ -2105,9 +2105,9 @@ ZEST_CASE(DropIndexEvictsPersisted) {
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
-    ASSERT(f.project.project_index.manifests.empty());
-    ASSERT(f.project.project_index.shards.empty());
-    ASSERT(f.need_update(src));
+    ZASSERT(f.project.project_index.manifests.empty());
+    ZASSERT(f.project.project_index.shards.empty());
+    ZASSERT(f.need_update(src));
 }
 
 ZEST_CASE(OfflineCommandChangeReindexed) {
@@ -2120,7 +2120,7 @@ ZEST_CASE(OfflineCommandChangeReindexed) {
         open_store(tmp, f.project);
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
     }
@@ -2133,8 +2133,8 @@ ZEST_CASE(OfflineCommandChangeReindexed) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(!f.project.project_index.manifests.contains(tu_id));
-    ASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZASSERT(!f.project.project_index.manifests.contains(tu_id));
+    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(UnchangedCommandKept) {
@@ -2147,7 +2147,7 @@ ZEST_CASE(UnchangedCommandKept) {
         open_store(tmp, f.project);
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
     }
@@ -2158,8 +2158,8 @@ ZEST_CASE(UnchangedCommandKept) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(f.project.project_index.manifests.contains(tu_id));
-    ASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(f.project.project_index.manifests.contains(tu_id));
+    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(RemovedEntryKeepsIndex) {
@@ -2172,7 +2172,7 @@ ZEST_CASE(RemovedEntryKeepsIndex) {
         open_store(tmp, f.project);
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
+        ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
     }
@@ -2184,8 +2184,8 @@ ZEST_CASE(RemovedEntryKeepsIndex) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(f.project.project_index.manifests.contains(tu_id));
-    ASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(f.project.project_index.manifests.contains(tu_id));
+    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(UndeclaredSourceRetires) {
@@ -2212,8 +2212,8 @@ ZEST_CASE(UndeclaredSourceRetires) {
         open_store(tmp, f.project);
         load_declared(f, {"a", "b"});
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
     }
 
@@ -2226,8 +2226,8 @@ ZEST_CASE(UndeclaredSourceRetires) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(!f.project.project_index.manifests.contains(tu_id));
-    ASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(!f.project.project_index.manifests.contains(tu_id));
+    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(SourceRelocationPersists) {
@@ -2254,8 +2254,8 @@ ZEST_CASE(SourceRelocationPersists) {
         open_store(tmp, f.project);
         load_declared(f);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
     }
 
@@ -2270,7 +2270,7 @@ ZEST_CASE(SourceRelocationPersists) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(f.pump.pending_reason(tu_id));
+    ZASSERT(f.pump.pending_reason(tu_id));
 }
 
 ZEST_CASE(DiscoveredRelocationRetires) {
@@ -2293,8 +2293,8 @@ ZEST_CASE(DiscoveredRelocationRetires) {
         tmp.touch("compile_commands.json", listing("main.cpp"));
         f.project.cdb.load(tmp.path("compile_commands.json"));
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
     }
 
@@ -2310,7 +2310,7 @@ ZEST_CASE(DiscoveredRelocationRetires) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(!f.project.project_index.manifests.contains(tu_id));
+    ZASSERT(!f.project.project_index.manifests.contains(tu_id));
 }
 
 ZEST_CASE(DefaultCommandKept) {
@@ -2327,8 +2327,8 @@ ZEST_CASE(DefaultCommandKept) {
         open_store(tmp, f.project);
         claim(f);
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
     }
 
@@ -2340,8 +2340,8 @@ ZEST_CASE(DefaultCommandKept) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(f.project.project_index.manifests.contains(tu_id));
-    ASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(f.project.project_index.manifests.contains(tu_id));
+    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(UnclaimedDefaultRetires) {
@@ -2355,8 +2355,8 @@ ZEST_CASE(UnclaimedDefaultRetires) {
         f.project.config.rules.push_back(ConfigRule{.default_command = std::string("clang++ -c")});
         f.project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
     }
 
@@ -2368,8 +2368,8 @@ ZEST_CASE(UnclaimedDefaultRetires) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(!f.project.project_index.manifests.contains(tu_id));
-    ASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(!f.project.project_index.manifests.contains(tu_id));
+    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(ExcludedRuleDropsIndex) {
@@ -2382,8 +2382,8 @@ ZEST_CASE(ExcludedRuleDropsIndex) {
         open_store(tmp, f.project);
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
     }
 
@@ -2397,8 +2397,8 @@ ZEST_CASE(ExcludedRuleDropsIndex) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(!f.project.project_index.manifests.contains(tu_id));
-    ASSERT(!f.pump.pending_reason(tu_id).has_value());
+    ZASSERT(!f.project.project_index.manifests.contains(tu_id));
+    ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
 ZEST_CASE(RuleChangeReindexed) {
@@ -2411,8 +2411,8 @@ ZEST_CASE(RuleChangeReindexed) {
         open_store(tmp, f.project);
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
     }
 
@@ -2430,8 +2430,8 @@ ZEST_CASE(RuleChangeReindexed) {
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-    ASSERT(!f.project.project_index.manifests.contains(tu_id));
-    ASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
+    ZASSERT(!f.project.project_index.manifests.contains(tu_id));
+    ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(HostChangeDropsHeader) {
@@ -2448,8 +2448,8 @@ ZEST_CASE(HostChangeDropsHeader) {
         // A standalone pass over the header, as a borrowed-context index
         // produces it; the host source itself was never indexed.
         auto indexed = index_file(tmp, header);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
     }
 
@@ -2465,8 +2465,8 @@ ZEST_CASE(HostChangeDropsHeader) {
     f.project.dep_graph.build_reverse_map();
     f.load();
 
-    ASSERT(!f.project.project_index.manifests.contains(header_id));
-    ASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+    ZASSERT(!f.project.project_index.manifests.contains(header_id));
+    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(HeaderRuleChangeReindexed) {
@@ -2478,8 +2478,8 @@ ZEST_CASE(HeaderRuleChangeReindexed) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto indexed = index_file(tmp, header);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
     }
 
@@ -2495,8 +2495,8 @@ ZEST_CASE(HeaderRuleChangeReindexed) {
     f.load();
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ASSERT(!f.project.project_index.manifests.contains(header_id));
-    ASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+    ZASSERT(!f.project.project_index.manifests.contains(header_id));
+    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(RecordedHostChangeDrops) {
@@ -2511,8 +2511,8 @@ ZEST_CASE(RecordedHostChangeDrops) {
         open_store(tmp, f.project);
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
         auto indexed = index_file(tmp, header);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
                           f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
@@ -2527,8 +2527,8 @@ ZEST_CASE(RecordedHostChangeDrops) {
     f.load();
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ASSERT(!f.project.project_index.manifests.contains(header_id));
-    ASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+    ZASSERT(!f.project.project_index.manifests.contains(header_id));
+    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(ExcludedHostChangeDrops) {
@@ -2549,8 +2549,8 @@ ZEST_CASE(ExcludedHostChangeDrops) {
         open_store(tmp, f.project);
         claim(f, "clang++ -DFOO=1 -c");
         auto indexed = index_file(tmp, header);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
                           f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
@@ -2569,8 +2569,8 @@ ZEST_CASE(ExcludedHostChangeDrops) {
     f.project.dep_graph.build_reverse_map();
     f.load();
 
-    ASSERT(!f.project.project_index.manifests.contains(header_id));
-    ASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+    ZASSERT(!f.project.project_index.manifests.contains(header_id));
+    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(PinnedHostKeepsHeader) {
@@ -2588,8 +2588,8 @@ ZEST_CASE(PinnedHostKeepsHeader) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
         f.project.cdb.add_command(tmp.root, other, llvm::StringRef("clang++ -c other.cpp"));
         auto indexed = index_file(tmp, header);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
                           f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
@@ -2610,8 +2610,8 @@ ZEST_CASE(PinnedHostKeepsHeader) {
     f.project.dep_graph.build_reverse_map();
     f.load();
 
-    ASSERT(f.project.project_index.manifests.contains(header_id));
-    ASSERT(!f.pump.pending_reason(header_id).has_value());
+    ZASSERT(f.project.project_index.manifests.contains(header_id));
+    ZASSERT(!f.pump.pending_reason(header_id).has_value());
 }
 
 ZEST_CASE(UnreachableHostRebuilds) {
@@ -2626,8 +2626,8 @@ ZEST_CASE(UnreachableHostRebuilds) {
         open_store(tmp, f.project);
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
         auto indexed = index_file(tmp, header);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
                           f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
@@ -2642,8 +2642,8 @@ ZEST_CASE(UnreachableHostRebuilds) {
     f.load();
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ASSERT(f.project.project_index.manifests.contains(header_id));
-    ASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+    ZASSERT(f.project.project_index.manifests.contains(header_id));
+    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(CDBWriteFailureRetried) {
@@ -2708,22 +2708,22 @@ ZEST_CASE(CDBWriteFailureRetried) {
     f.project.index_db = std::move(failing);
 
     auto indexed = index_file(tmp, src);
-    ASSERT(!indexed.data.empty());
-    ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+    ZASSERT(!indexed.data.empty());
+    ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
     f.save();
 
     // The snapshot rides the batch behind the index state it describes.
-    ASSERT(int(storage->written.back()) == int(index::IndexBlobKind::CDB));
-    ASSERT(!storage->real->contains(index::IndexBlobKind::CDB, "cdb"));
+    ZASSERT(int(storage->written.back()) == int(index::IndexBlobKind::CDB));
+    ZASSERT(!storage->real->contains(index::IndexBlobKind::CDB, "cdb"));
 
     // Nothing else is dirty any more, yet the failed snapshot alone must
     // drive the next save until it lands — and until it does, the state
     // counts as unsaved (`clice index` fails on it after the final save).
-    ASSERT(f.index_store.has_unsaved_state());
+    ZASSERT(f.index_store.has_unsaved_state());
     storage->fail_cdb = false;
     f.save();
-    ASSERT(storage->real->contains(index::IndexBlobKind::CDB, "cdb"));
-    ASSERT(!f.index_store.has_unsaved_state());
+    ZASSERT(storage->real->contains(index::IndexBlobKind::CDB, "cdb"));
+    ZASSERT(!f.index_store.has_unsaved_state());
 }
 
 ZEST_CASE(MissingSnapshotRewritten) {
@@ -2736,8 +2736,8 @@ ZEST_CASE(MissingSnapshotRewritten) {
         open_store(tmp, f.project);
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
         // The global landed but the final CDB write never did: the rest of
         // the index is intact.
@@ -2753,10 +2753,10 @@ ZEST_CASE(MissingSnapshotRewritten) {
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
     f.load();
-    ASSERT(f.index_store.has_unsaved_state());
+    ZASSERT(f.index_store.has_unsaved_state());
     f.save();
-    ASSERT(f.project.index_db->contains(index::IndexBlobKind::CDB, "cdb"));
-    ASSERT(!f.index_store.has_unsaved_state());
+    ZASSERT(f.project.index_db->contains(index::IndexBlobKind::CDB, "cdb"));
+    ZASSERT(!f.index_store.has_unsaved_state());
 }
 
 ZEST_CASE(DroppedHeaderDebtRetried) {
@@ -2771,8 +2771,8 @@ ZEST_CASE(DroppedHeaderDebtRetried) {
         open_store(tmp, f.project);
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
         auto indexed = index_file(tmp, header);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
                           f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
@@ -2788,8 +2788,8 @@ ZEST_CASE(DroppedHeaderDebtRetried) {
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
         f.load();
         auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-        ASSERT(!f.project.project_index.manifests.contains(header_id));
-        ASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+        ZASSERT(!f.project.project_index.manifests.contains(header_id));
+        ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
         f.save();
     }
 
@@ -2799,8 +2799,8 @@ ZEST_CASE(DroppedHeaderDebtRetried) {
     f.load();
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
-    ASSERT(!f.project.project_index.manifests.contains(header_id));
-    ASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
+    ZASSERT(!f.project.project_index.manifests.contains(header_id));
+    ZASSERT(f.pump.pending_reason(header_id) == ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(VanishedHeaderDebtDies) {
@@ -2815,8 +2815,8 @@ ZEST_CASE(VanishedHeaderDebtDies) {
         open_store(tmp, f.project);
         f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=1 -c main.cpp"));
         auto indexed = index_file(tmp, header);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.set_header_host(f.project.file_table.intern(Spelling::absolute(header)),
                           f.project.file_table.intern(Spelling::absolute(src)));
         f.save();
@@ -2833,13 +2833,13 @@ ZEST_CASE(VanishedHeaderDebtDies) {
     // The header was deleted while its debt entry sat in the snapshot: a
     // retry could never succeed, so the debt dies instead of keeping every
     // later run partial forever.
-    ASSERT(!llvm::sys::fs::remove(header));
+    ZASSERT(!llvm::sys::fs::remove(header));
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -DFOO=2 -c main.cpp"));
     f.load();
-    ASSERT(!f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(header)))
-                .has_value());
+    ZASSERT(!f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(header)))
+                 .has_value());
 }
 
 ZEST_CASE(StaleFormatDropsPch) {
@@ -2864,11 +2864,11 @@ ZEST_CASE(StaleFormatDropsPch) {
         IndexerFixture f;
         setup(f);
         auto pending = f.project.store->begin_store("pch", "k");
-        ASSERT(!vfs::write(pending.tmp_path, "pch-bytes"));
-        ASSERT(f.project.store->commit(std::move(pending)));
+        ZASSERT(!vfs::write(pending.tmp_path, "pch-bytes"));
+        ZASSERT(f.project.store->commit(std::move(pending)));
         auto aux = f.project.store->begin_store_aux("pch", "k");
-        ASSERT(!vfs::write(aux.tmp_path, "idx-bytes"));
-        ASSERT(f.project.store->commit(std::move(aux)));
+        ZASSERT(!vfs::write(aux.tmp_path, "idx-bytes"));
+        ZASSERT(f.project.store->commit(std::move(aux)));
 
         auto dep_id = f.project.file_table.intern(Spelling::absolute(dep_path));
         auto& st = f.project.pch_cache["k"];
@@ -2880,7 +2880,7 @@ ZEST_CASE(StaleFormatDropsPch) {
         f.save();
 
         auto blob = f.project.index_db->read(index::IndexBlobKind::Artifacts, "artifacts");
-        ASSERT(bool(blob));
+        ZASSERT(bool(blob));
         artifacts = blob.buffer->getBuffer().str();
     }
 
@@ -2889,22 +2889,22 @@ ZEST_CASE(StaleFormatDropsPch) {
         IndexerFixture f;
         setup(f);
         f.load();
-        ASSERT(f.project.pch_cache.size() == std::size_t(1));
+        ZASSERT(f.project.pch_cache.size() == std::size_t(1));
 
         // Put back the blob as an older binary would have written it.
         auto current = std::format("\"pch_index_format\":{}", index::index_format_version);
         auto stale = std::format("\"pch_index_format\":{}", index::index_format_version - 1);
         auto pos = artifacts.find(current);
-        ASSERT(pos != std::string::npos);
+        ZASSERT(pos != std::string::npos);
         artifacts.replace(pos, current.size(), stale);
         index::BlobDatabase::Blob blob{index::IndexBlobKind::Artifacts, "artifacts", artifacts};
-        ASSERT(f.project.index_db->write(blob, {}).empty());
+        ZASSERT(f.project.index_db->write(blob, {}).empty());
     }
 
     IndexerFixture f;
     setup(f);
     f.load();
-    ASSERT(f.project.pch_cache.empty());
+    ZASSERT(f.project.pch_cache.empty());
 }
 
 ZEST_CASE(DeplessPcmDropped) {
@@ -2925,8 +2925,8 @@ ZEST_CASE(DeplessPcmDropped) {
         IndexerFixture f;
         setup(f);
         auto pending = f.project.store->begin_store("pcm", "k");
-        ASSERT(!vfs::write(pending.tmp_path, "pcm-bytes"));
-        ASSERT(f.project.store->commit(std::move(pending)));
+        ZASSERT(!vfs::write(pending.tmp_path, "pcm-bytes"));
+        ZASSERT(f.project.store->commit(std::move(pending)));
 
         auto& st = f.project.pcm_cache[f.project.file_table.intern(Spelling::absolute(src))];
         st.path = "m.pcm";
@@ -2937,14 +2937,14 @@ ZEST_CASE(DeplessPcmDropped) {
         // The premise: the dep-less entry was persisted, so the tail
         // assertion exercises the load-side drop, not a write-side skip.
         auto blob = f.project.index_db->read(index::IndexBlobKind::Artifacts, "artifacts");
-        ASSERT(bool(blob));
-        ASSERT(blob.buffer->getBuffer().contains("\"key\":\"k\""));
+        ZASSERT(bool(blob));
+        ZASSERT(blob.buffer->getBuffer().contains("\"key\":\"k\""));
     }
 
     IndexerFixture f;
     setup(f);
     f.load();
-    ASSERT(f.project.pcm_cache.empty());
+    ZASSERT(f.project.pcm_cache.empty());
 }
 
 ZEST_CASE(HeaderModePersisted) {
@@ -2959,7 +2959,7 @@ ZEST_CASE(HeaderModePersisted) {
         open_store(tmp, f.project);
         auto id = f.project.file_table.intern(Spelling::absolute(path));
         auto disk = f.project.file_table.current(id);
-        ASSERT(disk);
+        ZASSERT(disk);
         f.commands.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
         f.project.mark_artifacts_dirty();
         f.save();
@@ -2969,7 +2969,7 @@ ZEST_CASE(HeaderModePersisted) {
     open_store(tmp, f.project);
     f.load();
     auto id = f.project.file_table.intern(Spelling::absolute(path));
-    ASSERT(f.commands.header_mode(id) == HeaderMode::NeedsContext);
+    ZASSERT(f.commands.header_mode(id) == HeaderMode::NeedsContext);
 }
 
 ZEST_CASE(ContextsBlobRoundTrip) {
@@ -2994,8 +2994,8 @@ ZEST_CASE(ContextsBlobRoundTrip) {
         editor.mark_dirty();
         auto ticket = f.index_store.contexts.ticket;
         f.save();
-        ASSERT(!f.index_store.contexts.dirty);
-        ASSERT(f.index_store.contexts.committed_ticket == ticket);
+        ZASSERT(!f.index_store.contexts.dirty);
+        ZASSERT(f.index_store.contexts.committed_ticket == ticket);
     }
 
     IndexerFixture f;
@@ -3006,12 +3006,12 @@ ZEST_CASE(ContextsBlobRoundTrip) {
     auto host = f.project.file_table.intern(Spelling::absolute(host_path));
     auto header = f.project.file_table.intern(Spelling::absolute(header_path));
     auto* saved = editor.selection(header);
-    ASSERT(saved != nullptr);
-    ASSERT(saved->host_path_id == host);
-    ASSERT(saved->occurrence == std::optional<std::uint32_t>(1));
-    ASSERT(saved->command_hash == "applied");
-    ASSERT(saved->base_hash == "base");
-    ASSERT(!f.index_store.contexts.dirty);
+    ZASSERT(saved != nullptr);
+    ZASSERT(saved->host_path_id == host);
+    ZASSERT(saved->occurrence == std::optional<std::uint32_t>(1));
+    ZASSERT(saved->command_hash == "applied");
+    ZASSERT(saved->base_hash == "base");
+    ZASSERT(!f.index_store.contexts.dirty);
 }
 
 ZEST_CASE(UnownedContextsPassThrough) {
@@ -3029,16 +3029,16 @@ ZEST_CASE(UnownedContextsPassThrough) {
     f.project.mark_artifacts_dirty();
     f.save();
     auto kept = f.project.index_db->read(index::IndexBlobKind::Contexts, "contexts");
-    ASSERT(bool(kept));
-    ASSERT(kept.buffer->getBuffer() == bytes);
+    ZASSERT(bool(kept));
+    ZASSERT(kept.buffer->getBuffer() == bytes);
 
     f.reopen_database();
-    ASSERT(f.project.index_db != nullptr);
-    ASSERT(!bool(f.project.index_db->read(index::IndexBlobKind::Contexts, "contexts")));
+    ZASSERT(f.project.index_db != nullptr);
+    ZASSERT(!bool(f.project.index_db->read(index::IndexBlobKind::Contexts, "contexts")));
     f.save();
     auto rewritten = f.project.index_db->read(index::IndexBlobKind::Contexts, "contexts");
-    ASSERT(bool(rewritten));
-    ASSERT(rewritten.buffer->getBuffer() == bytes);
+    ZASSERT(bool(rewritten));
+    ZASSERT(rewritten.buffer->getBuffer() == bytes);
 }
 
 ZEST_CASE(NoContextsNoRewrite) {
@@ -3050,7 +3050,7 @@ ZEST_CASE(NoContextsNoRewrite) {
     f.load();
     f.reopen_database();
     f.save();
-    ASSERT(!bool(f.project.index_db->read(index::IndexBlobKind::Contexts, "contexts")));
+    ZASSERT(!bool(f.project.index_db->read(index::IndexBlobKind::Contexts, "contexts")));
 }
 
 };  // ZEST_SUITE(IndexerLoad)
@@ -3065,11 +3065,11 @@ ZEST_CASE(PreemptionKeepsBudget) {
     // A preemption under memory pressure requeues without spending the
     // crash budget, no matter how often it repeats.
     for(unsigned i = 0; i < 2 * IndexerFixture::budget; ++i) {
-        ASSERT(int(f.fail(id, PendingLedger::Failure::Preempted)) ==
-               int(IndexerFixture::Verdict::Requeued));
+        ZASSERT(int(f.fail(id, PendingLedger::Failure::Preempted)) ==
+                int(IndexerFixture::Verdict::Requeued));
     }
-    ASSERT(f.attempts(id) == 0u);
-    ASSERT(f.pump.pending_reason(id));
+    ZASSERT(f.attempts(id) == 0u);
+    ZASSERT(f.pump.pending_reason(id));
 }
 
 ZEST_CASE(OwnCrashGivesUp) {
@@ -3079,9 +3079,9 @@ ZEST_CASE(OwnCrashGivesUp) {
 
     // The run named by its dying worker would crash the next one too: the
     // file waits for its content to change.
-    ASSERT(int(f.fail(id, PendingLedger::Failure::Crashed)) ==
-           int(IndexerFixture::Verdict::GaveUp));
-    ASSERT(!f.pump.pending_reason(id).has_value());
+    ZASSERT(int(f.fail(id, PendingLedger::Failure::Crashed)) ==
+            int(IndexerFixture::Verdict::GaveUp));
+    ZASSERT(!f.pump.pending_reason(id).has_value());
 }
 
 ZEST_CASE(LostSpendsBudget) {
@@ -3090,23 +3090,23 @@ ZEST_CASE(LostSpendsBudget) {
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
     for(unsigned i = 0; i < IndexerFixture::budget; ++i) {
-        ASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) ==
-               int(IndexerFixture::Verdict::Requeued));
+        ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) ==
+                int(IndexerFixture::Verdict::Requeued));
     }
-    ASSERT(f.attempts(id) == IndexerFixture::budget);
+    ZASSERT(f.attempts(id) == IndexerFixture::budget);
 
     // A preemption still requeues a file whose budget is spent: dropping
     // it would erase the pending state and serve the stale shard as fresh.
     // Only the next lost run gives up.
-    ASSERT(int(f.fail(id, PendingLedger::Failure::Preempted)) ==
-           int(IndexerFixture::Verdict::Requeued));
-    ASSERT(f.attempts(id) == IndexerFixture::budget);
+    ZASSERT(int(f.fail(id, PendingLedger::Failure::Preempted)) ==
+            int(IndexerFixture::Verdict::Requeued));
+    ZASSERT(f.attempts(id) == IndexerFixture::budget);
 
     // Giving up clears the pending slot: nothing is left to requeue, and
     // the stale shard serves as fresh — the accepted cost of abandoning.
-    ASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) == int(IndexerFixture::Verdict::GaveUp));
-    ASSERT(!f.pump.pending_reason(id).has_value());
-    ASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) == int(IndexerFixture::Verdict::Dropped));
+    ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) == int(IndexerFixture::Verdict::GaveUp));
+    ZASSERT(!f.pump.pending_reason(id).has_value());
+    ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) == int(IndexerFixture::Verdict::Dropped));
 }
 
 ZEST_CASE(StaleCrashKeepsBudget) {
@@ -3119,10 +3119,10 @@ ZEST_CASE(StaleCrashKeepsBudget) {
     // the stale crash must not spend the fixed content's budget or touch
     // its pending slot.
     f.pump.enqueue(id, ReindexReason::ContentChanged);
-    ASSERT(int(f.fail_at(id, stale, PendingLedger::Failure::Lost)) ==
-           int(IndexerFixture::Verdict::Superseded));
-    ASSERT(f.attempts(id) == 0u);
-    ASSERT(f.pump.pending_reason(id));
+    ZASSERT(int(f.fail_at(id, stale, PendingLedger::Failure::Lost)) ==
+            int(IndexerFixture::Verdict::Superseded));
+    ZASSERT(f.attempts(id) == 0u);
+    ZASSERT(f.pump.pending_reason(id));
 }
 
 ZEST_CASE(DepsDowngradeKeepsDebt) {
@@ -3137,12 +3137,12 @@ ZEST_CASE(DepsDowngradeKeepsDebt) {
     // debt or the stale shard stops being suppressed.
     f.consume(id);
     f.pump.enqueue(id, ReindexReason::DepsOnly);
-    ASSERT(int(*f.pump.pending_reason(id)) == int(ReindexReason::DepsOnly));
+    ZASSERT(int(*f.pump.pending_reason(id)) == int(ReindexReason::DepsOnly));
 
-    ASSERT(int(f.fail_at(id, launch, PendingLedger::Failure::Lost)) ==
-           int(IndexerFixture::Verdict::Requeued));
-    ASSERT(int(*f.pump.pending_reason(id)) == int(ReindexReason::ContentChanged));
-    ASSERT(f.attempts(id) == 1u);
+    ZASSERT(int(f.fail_at(id, launch, PendingLedger::Failure::Lost)) ==
+            int(IndexerFixture::Verdict::Requeued));
+    ZASSERT(int(*f.pump.pending_reason(id)) == int(ReindexReason::ContentChanged));
+    ZASSERT(f.attempts(id) == 1u);
 }
 
 ZEST_CASE(GaveUpClearsDowngraded) {
@@ -3157,15 +3157,15 @@ ZEST_CASE(GaveUpClearsDowngraded) {
     // is doomed, and the give-up already accepted the staleness.
     f.consume(id);
     f.pump.enqueue(id, ReindexReason::DepsOnly);
-    ASSERT(int(f.fail_at(id, launch, PendingLedger::Failure::Lost)) ==
-           int(IndexerFixture::Verdict::GaveUp));
-    ASSERT(!f.pump.pending_reason(id).has_value());
+    ZASSERT(int(f.fail_at(id, launch, PendingLedger::Failure::Lost)) ==
+            int(IndexerFixture::Verdict::GaveUp));
+    ZASSERT(!f.pump.pending_reason(id).has_value());
 }
 
 ZEST_CASE(DroppedWithoutPending) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/gone.cpp"));
-    ASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) == int(IndexerFixture::Verdict::Dropped));
+    ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) == int(IndexerFixture::Verdict::Dropped));
 }
 
 ZEST_CASE(AttemptWaitPerTicket) {
@@ -3201,11 +3201,11 @@ ZEST_CASE(AttemptWaitPerTicket) {
     // the waiter through every follow-up would park a feature request for
     // as long as edits keep landing.
     f.settle(id, launch);
-    ASSERT(first_woke);
-    ASSERT(!second_woke);
+    ZASSERT(first_woke);
+    ZASSERT(!second_woke);
 
     f.settle(id, f.ticket(id));
-    ASSERT(second_woke);
+    ZASSERT(second_woke);
 }
 
 ZEST_CASE(ContentChangeResetsBudget) {
@@ -3213,18 +3213,21 @@ ZEST_CASE(ContentChangeResetsBudget) {
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/fixed.cpp"));
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
-    ASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) == int(IndexerFixture::Verdict::Requeued));
-    ASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) == int(IndexerFixture::Verdict::Requeued));
-    ASSERT(f.attempts(id) == 2u);
+    ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) ==
+            int(IndexerFixture::Verdict::Requeued));
+    ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) ==
+            int(IndexerFixture::Verdict::Requeued));
+    ZASSERT(f.attempts(id) == 2u);
 
     // The user fixes the file: new content starts a fresh poison budget.
     f.pump.enqueue(id, ReindexReason::ContentChanged);
-    ASSERT(f.attempts(id) == 0u);
+    ZASSERT(f.attempts(id) == 0u);
 
     // A deps-only cascade is not new content and keeps the ledger.
-    ASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) == int(IndexerFixture::Verdict::Requeued));
+    ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) ==
+            int(IndexerFixture::Verdict::Requeued));
     f.pump.enqueue(id, ReindexReason::DepsOnly);
-    ASSERT(f.attempts(id) == 1u);
+    ZASSERT(f.attempts(id) == 1u);
 }
 
 ZEST_CASE(RoundSnapshotBoundary) {
@@ -3258,17 +3261,17 @@ ZEST_CASE(RoundSnapshotBoundary) {
 
     f.run_round();
 
-    ASSERT(grew);
-    ASSERT(first_end.total == 2u);
-    ASSERT(first_end.dispatched == 2u);
-    ASSERT(first_end.completed == 2u);
-    ASSERT(f.pump.pending_files() == 1u);
+    ZASSERT(grew);
+    ZASSERT(first_end.total == 2u);
+    ZASSERT(first_end.dispatched == 2u);
+    ZASSERT(first_end.completed == 2u);
+    ZASSERT(f.pump.pending_files() == 1u);
 
     f.run_round();
 
-    ASSERT(f.pump.pending_files() == 0u);
-    ASSERT(f.pump.failed().size() == 3u);
-    ASSERT(f.pump.is_idle());
+    ZASSERT(f.pump.pending_files() == 0u);
+    ZASSERT(f.pump.failed().size() == 3u);
+    ZASSERT(f.pump.is_idle());
 }
 
 ZEST_CASE(PauseResumesRound) {
@@ -3301,10 +3304,10 @@ ZEST_CASE(PauseResumesRound) {
     f.loop.schedule(resumer);
     f.loop.run();
 
-    ASSERT(paused);
-    ASSERT(f.pump.pending_files() == 0u);
-    ASSERT(f.pump.failed().size() == 2u);
-    ASSERT(f.pump.is_idle());
+    ZASSERT(paused);
+    ZASSERT(f.pump.pending_files() == 0u);
+    ZASSERT(f.pump.failed().size() == 2u);
+    ZASSERT(f.pump.is_idle());
 }
 
 };  // ZEST_SUITE(IndexerRequeue)
@@ -3320,15 +3323,15 @@ ZEST_CASE(MergeReportsRowsChanged) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
-    ASSERT(!indexed.data.empty());
+    ZASSERT(!indexed.data.empty());
 
     llvm::SmallVector<Fid> notified;
     auto conn = f.pump.on_rows_changed.connect(
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
-    ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+    ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
 
-    ASSERT(llvm::is_contained(notified,
-                              f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
+    ZASSERT(llvm::is_contained(notified,
+                               f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
 }
 
 ZEST_CASE(DropReportsServedRows) {
@@ -3341,8 +3344,8 @@ ZEST_CASE(DropReportsServedRows) {
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
-    ASSERT(!indexed.data.empty());
-    ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+    ZASSERT(!indexed.data.empty());
+    ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
@@ -3351,11 +3354,11 @@ ZEST_CASE(DropReportsServedRows) {
     auto conn = f.pump.on_rows_changed.connect(
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     auto report = f.index_store.drop_index(tu_id);
-    ASSERT(llvm::is_contained(report.rows_changed(), tu_id));
-    ASSERT(llvm::is_contained(report.rows_changed(), header_id));
+    ZASSERT(llvm::is_contained(report.rows_changed(), tu_id));
+    ZASSERT(llvm::is_contained(report.rows_changed(), header_id));
 
     f.pump.claim_report(report);
-    ASSERT(llvm::is_contained(notified, header_id));
+    ZASSERT(llvm::is_contained(notified, header_id));
 }
 
 ZEST_CASE(RetireReportsRowsChanged) {
@@ -3368,27 +3371,27 @@ ZEST_CASE(RetireReportsRowsChanged) {
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
     open_store(tmp, f.project);
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
-    ASSERT(!indexed.data.empty());
-    ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+    ZASSERT(!indexed.data.empty());
+    ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
     f.save();
 
     // The TU stops including the header: its contribution dies, and the
     // next save retires the header's shard entirely.
     tmp.touch("main.cpp", "int use() { return 0; }\n");
     auto second = index_file(tmp, tmp.path("main.cpp"));
-    ASSERT(!second.data.empty());
-    ASSERT(f.merge(second.data.data(), second.data.size()));
+    ZASSERT(!second.data.empty());
+    ZASSERT(f.merge(second.data.data(), second.data.size()));
 
     auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
-    ASSERT(f.project.project_index.shards.contains(header_id));
+    ZASSERT(f.project.project_index.shards.contains(header_id));
 
     llvm::SmallVector<Fid> notified;
     auto conn = f.pump.on_rows_changed.connect(
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     f.save();
 
-    ASSERT(!f.project.project_index.shards.contains(header_id));
-    ASSERT(llvm::is_contained(notified, header_id));
+    ZASSERT(!f.project.project_index.shards.contains(header_id));
+    ZASSERT(llvm::is_contained(notified, header_id));
 }
 
 ZEST_CASE(FailedStandaloneInSnapshot) {
@@ -3410,8 +3413,8 @@ ZEST_CASE(FailedStandaloneInSnapshot) {
         // Something dirty so the save writes at all; the snapshot rides
         // the same batch.
         auto indexed = index_file(tmp, src);
-        ASSERT(!indexed.data.empty());
-        ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+        ZASSERT(!indexed.data.empty());
+        ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
     }
 
@@ -3419,8 +3422,8 @@ ZEST_CASE(FailedStandaloneInSnapshot) {
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
     f.load();
-    ASSERT(f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(header))) ==
-           ReindexReason::ContentChanged);
+    ZASSERT(f.pump.pending_reason(f.project.file_table.intern(Spelling::absolute(header))) ==
+            ReindexReason::ContentChanged);
 }
 
 ZEST_CASE(LateDebtShutdownRetry) {
@@ -3478,8 +3481,8 @@ ZEST_CASE(LateDebtShutdownRetry) {
 
     f.mark_failed(f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h"))));
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
-    ASSERT(!indexed.data.empty());
-    ASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+    ZASSERT(!indexed.data.empty());
+    ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
 
     IndexStore::Report report;
     auto body = [&]() -> kota::task<> {
@@ -3489,15 +3492,15 @@ ZEST_CASE(LateDebtShutdownRetry) {
     f.loop.schedule(task);
     f.loop.run();
 
-    ASSERT(report.snapshot_stale);
+    ZASSERT(report.snapshot_stale);
     f.pump.claim_report(report);
 
     // The retry persists into the freshly reopened database, snapshot
     // included.
     f.save();
     auto blob = f.project.index_db->read(index::IndexBlobKind::CDB, "cdb");
-    ASSERT(bool(blob));
-    ASSERT(llvm::StringRef(blob.buffer->getBuffer()).contains("dep.h"));
+    ZASSERT(bool(blob));
+    ZASSERT(llvm::StringRef(blob.buffer->getBuffer()).contains("dep.h"));
 }
 
 ZEST_CASE(BoostRearmsIdleTimer) {
@@ -3514,8 +3517,8 @@ ZEST_CASE(BoostRearmsIdleTimer) {
     f.pump.boost(id);
     f.loop.run();
 
-    ASSERT(f.pump.is_idle());
-    ASSERT(f.pump.failed().size() == 1u);
+    ZASSERT(f.pump.is_idle());
+    ZASSERT(f.pump.failed().size() == 1u);
 }
 
 };  // ZEST_SUITE(IndexReports)
@@ -3548,7 +3551,7 @@ ZEST_CASE(ModuleLintScanParity) {
     f.project.dep_graph.build_reverse_map();
 
     auto store = CacheStore::open(tmp.path("root"), 1);
-    ASSERT(store);
+    ZASSERT(store);
     store->register_namespace(
         {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
@@ -3568,7 +3571,7 @@ ZEST_CASE(ModuleLintScanParity) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
-        CO_ASSERT(f.pool.start(opts));
+        ZASSERT(f.pool.start(opts));
 
         outcome = co_await f.turun.run(n_id, std::move(plan), {});
 
@@ -3579,13 +3582,13 @@ ZEST_CASE(ModuleLintScanParity) {
     auto task = body();
     f.loop.schedule(task);
     f.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
-    EXPECT(outcome.verdict == TURunFamily::Verdict::Completed);
+    ZEXPECT(outcome.verdict == TURunFamily::Verdict::Completed);
     // The finding inside the gated region proves the parse saw the
     // extras and consumed the edge-built PCM.
-    ASSERT(!outcome.tidy_diagnostics.empty());
-    EXPECT(outcome.tidy_diagnostics[0].check == "bugprone-integer-division");
+    ZASSERT(!outcome.tidy_diagnostics.empty());
+    ZEXPECT(outcome.tidy_diagnostics[0].check == "bugprone-integer-division");
 }
 
 };  // ZEST_SUITE(TURunLint)

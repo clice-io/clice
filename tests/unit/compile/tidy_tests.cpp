@@ -23,7 +23,7 @@ ZEST_CASE(ModulesLinked) {
     for(auto& entry: clang::tidy::ClangTidyModuleRegistry::entries()) {
         expected.erase(entry.getName());
     }
-    ASSERT(expected.empty());
+    ZASSERT(expected.empty());
 }
 
 ZEST_CASE(Tidy) {
@@ -36,8 +36,8 @@ ZEST_CASE(Tidy) {
     params.vfs = vfs;
     params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
     auto unit = compile(params);
-    ASSERT(unit.completed());
-    ASSERT(!unit.diagnostics().empty());
+    ZASSERT(unit.completed());
+    ZASSERT(!unit.diagnostics().empty());
 }
 
 ZEST_CASE(PlannedCheckFires) {
@@ -53,16 +53,16 @@ ZEST_CASE(PlannedCheckFires) {
     params.vfs = vfs;
     params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
     auto unit = compile(params);
-    ASSERT(unit.completed());
+    ZASSERT(unit.completed());
 
     bool fired = false;
     for(auto& diag: unit.diagnostics()) {
         if(diag.id.source == DiagnosticSource::ClangTidy) {
-            ASSERT(diag.id.name == "bugprone-integer-division");
+            ZASSERT(diag.id.name == "bugprone-integer-division");
             fired = true;
         }
     }
-    ASSERT(fired);
+    ZASSERT(fired);
 }
 
 ZEST_CASE(HeaderFilterTraversesHeaders) {
@@ -81,16 +81,16 @@ ZEST_CASE(HeaderFilterTraversesHeaders) {
     params.vfs = vfs;
     params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
     auto unit = compile(params);
-    ASSERT(unit.completed());
+    ZASSERT(unit.completed());
 
     bool header_finding = false;
     for(auto& diag: unit.diagnostics()) {
         if(diag.id.source == DiagnosticSource::ClangTidy && diag.fid != unit.main_file()) {
-            ASSERT(diag.id.name == "bugprone-integer-division");
+            ZASSERT(diag.id.name == "bugprone-integer-division");
             header_finding = true;
         }
     }
-    ASSERT(header_finding);
+    ZASSERT(header_finding);
 }
 
 ZEST_CASE(HeaderNolint) {
@@ -108,17 +108,17 @@ ZEST_CASE(HeaderNolint) {
     params.vfs = vfs;
     params.arguments = {"clang++", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
     auto unit = compile(params);
-    ASSERT(unit.completed());
+    ZASSERT(unit.completed());
     // A suppressed finding stays in the stream at the Ignored level.
     bool suppressed = false;
     for(auto& diag: unit.diagnostics()) {
-        EXPECT((diag.id.source != DiagnosticSource::ClangTidy ||
-                diag.id.level == DiagnosticLevel::Ignored));
+        ZEXPECT((diag.id.source != DiagnosticSource::ClangTidy ||
+                 diag.id.level == DiagnosticLevel::Ignored));
         suppressed |= diag.id.source == DiagnosticSource::ClangTidy &&
                       diag.id.name == "bugprone-integer-division" &&
                       diag.id.level == DiagnosticLevel::Ignored;
     }
-    ASSERT(suppressed);
+    ZASSERT(suppressed);
 }
 
 ZEST_CASE(ResolveConfigChain) {
@@ -134,21 +134,21 @@ ZEST_CASE(ResolveConfigChain) {
     // Nested configs merge with clang-tidy's own semantics: the child
     // appends to the inherited parent list.
     auto params = tidy::resolve_tidy_params(tmp.path("sub/a.cpp"));
-    ASSERT(params.checks.contains("bugprone-*"));
-    ASSERT(params.checks.contains("modernize-*"));
+    ZASSERT(params.checks.contains("bugprone-*"));
+    ZASSERT(params.checks.contains("modernize-*"));
 
     auto parent = tidy::resolve_tidy_params(tmp.path("a.cpp"));
-    ASSERT(parent.checks.contains("bugprone-*"));
-    ASSERT(!parent.checks.contains("modernize-*"));
-    ASSERT(parent.warnings_as_errors == "bugprone-*");
-    ASSERT(parent.header_filter == ".*");
-    ASSERT(parent.exclude_header_filter == "third_party/.*");
+    ZASSERT(parent.checks.contains("bugprone-*"));
+    ZASSERT(!parent.checks.contains("modernize-*"));
+    ZASSERT(parent.warnings_as_errors == "bugprone-*");
+    ZASSERT(parent.header_filter == ".*");
+    ZASSERT(parent.exclude_header_filter == "third_party/.*");
 }
 
 ZEST_CASE(ResolveWithoutConfig) {
     TempDir tmp;
     tmp.touch("a.cpp");
-    ASSERT(tidy::resolve_tidy_params(tmp.path("a.cpp")).checks.empty());
+    ZASSERT(tidy::resolve_tidy_params(tmp.path("a.cpp")).checks.empty());
 }
 
 ZEST_CASE(ExtraArgsCommandSplit) {
@@ -159,8 +159,8 @@ ZEST_CASE(ExtraArgsCommandSplit) {
                                           {"-std=c++17", "-Wall", "-fno-exceptions"});
     std::vector<std::string> prepend = {"-std=c++17", "-fno-exceptions"};
     std::vector<std::string> append = {"-DFOO=1", "-Wp,-DY=2"};
-    ASSERT(split.prepend == prepend);
-    ASSERT(split.append == append);
+    ZASSERT(split.prepend == prepend);
+    ZASSERT(split.append == append);
 
     // A -X<tool> pair filters on its operand's verdict — dropping just
     // the operand would leave the forwarder to eat the next argument.
@@ -168,7 +168,7 @@ ZEST_CASE(ExtraArgsCommandSplit) {
         {"-Xclang", "-Wno-unused", "-Xclang", "-fno-exceptions", "-Xclang"},
         {});
     std::vector<std::string> kept = {"-Xclang", "-fno-exceptions", "-Xclang"};
-    ASSERT(pairs.append == kept);
+    ZASSERT(pairs.append == kept);
 }
 
 };  // ZEST_SUITE(ClangTidy)

@@ -560,7 +560,7 @@ ZEST_CASE(PickLeastLoaded) {
     f.add_stateful(true, 5);
     f.add_stateful(true, 2);
     f.add_stateful(true, 8);
-    EXPECT(f.pick_least_loaded() == 1u);
+    ZEXPECT(f.pick_least_loaded() == 1u);
 }
 
 ZEST_CASE(SkipDeadWorkers) {
@@ -568,7 +568,7 @@ ZEST_CASE(SkipDeadWorkers) {
     f.add_stateful(false, 0);
     f.add_stateful(true, 5);
     f.add_stateful(true, 3);
-    EXPECT(f.pick_least_loaded() == 2u);
+    ZEXPECT(f.pick_least_loaded() == 2u);
 }
 
 ZEST_CASE(StaleEvictionIgnored) {
@@ -579,22 +579,22 @@ ZEST_CASE(StaleEvictionIgnored) {
 
     // An eviction from a worker that lost ownership (probe reassignment
     // left it a stale copy) must not unseat the current owner.
-    EXPECT(!f.pool.remove_owner_from(7, idx + 1));
-    EXPECT(f.has_owner(7));
+    ZEXPECT(!f.pool.remove_owner_from(7, idx + 1));
+    ZEXPECT(f.has_owner(7));
 
-    EXPECT(f.pool.remove_owner_from(7, idx));
-    EXPECT(!f.has_owner(7));
-    EXPECT(f.stateful_owned(idx) == 0u);
+    ZEXPECT(f.pool.remove_owner_from(7, idx));
+    ZEXPECT(!f.has_owner(7));
+    ZEXPECT(f.stateful_owned(idx) == 0u);
 }
 
 ZEST_CASE(AllDeadNoAssignment) {
     WorkerPoolFixture f;
     f.add_stateful(false, 0);
     f.add_stateful(false, 0);
-    EXPECT(f.pick_least_loaded() == SIZE_MAX);
-    EXPECT(f.assign_worker(100) == SIZE_MAX);
+    ZEXPECT(f.pick_least_loaded() == SIZE_MAX);
+    ZEXPECT(f.assign_worker(100) == SIZE_MAX);
     // A failed assignment must not pin the document to a dead worker.
-    EXPECT(!f.has_owner(100));
+    ZEXPECT(!f.has_owner(100));
 }
 
 ZEST_CASE(AssignNewPath) {
@@ -602,9 +602,9 @@ ZEST_CASE(AssignNewPath) {
     f.add_stateful(true, 0);
     f.add_stateful(true, 0);
     auto idx = f.assign_worker(100);
-    EXPECT(f.stateful_owned(idx) == 1u);
-    EXPECT(f.has_owner(100));
-    EXPECT(f.owner_of(100) == idx);
+    ZEXPECT(f.stateful_owned(idx) == 1u);
+    ZEXPECT(f.has_owner(100));
+    ZEXPECT(f.owner_of(100) == idx);
 }
 
 ZEST_CASE(PathAffinity) {
@@ -613,8 +613,8 @@ ZEST_CASE(PathAffinity) {
     f.add_stateful(true, 0);
     auto a = f.assign_worker(100);
     auto b = f.assign_worker(100);
-    EXPECT(a == b);
-    EXPECT(f.stateful_owned(a) == 1u);
+    ZEXPECT(a == b);
+    ZEXPECT(f.stateful_owned(a) == 1u);
 }
 
 ZEST_CASE(LoadBalancing) {
@@ -623,17 +623,17 @@ ZEST_CASE(LoadBalancing) {
     f.add_stateful(true, 0);
     auto a = f.assign_worker(100);
     auto b = f.assign_worker(200);
-    EXPECT(a != b);
+    ZEXPECT(a != b);
 }
 
 ZEST_CASE(RemoveOwner) {
     WorkerPoolFixture f;
     f.add_stateful(true, 0);
     f.assign_worker(100);
-    EXPECT(f.stateful_owned(0) == 1u);
+    ZEXPECT(f.stateful_owned(0) == 1u);
     f.remove_owner(100);
-    EXPECT(f.stateful_owned(0) == 0u);
-    EXPECT(!f.has_owner(100));
+    ZEXPECT(f.stateful_owned(0) == 0u);
+    ZEXPECT(!f.has_owner(100));
 }
 
 ZEST_CASE(RemoveNonexistent) {
@@ -649,12 +649,12 @@ ZEST_CASE(DeathClearsOwner) {
     f.assign_worker(100);
     f.assign_worker(200);
     f.assign_worker(300);
-    EXPECT(f.stateful_owned(0) == 2u);
+    ZEXPECT(f.stateful_owned(0) == 2u);
     f.mark_dead(0, true);
-    EXPECT(f.stateful_owned(0) == 0u);
-    EXPECT(!f.has_owner(100));
-    EXPECT(!f.has_owner(300));
-    EXPECT(f.has_owner(200));
+    ZEXPECT(f.stateful_owned(0) == 0u);
+    ZEXPECT(!f.has_owner(100));
+    ZEXPECT(!f.has_owner(300));
+    ZEXPECT(f.has_owner(200));
 }
 
 ZEST_CASE(RebalanceAfterClose) {
@@ -664,19 +664,19 @@ ZEST_CASE(RebalanceAfterClose) {
     f.assign_worker(100);
     f.assign_worker(200);
     f.assign_worker(300);
-    EXPECT(f.stateful_owned(0) == 2u);
-    EXPECT(f.stateful_owned(1) == 1u);
+    ZEXPECT(f.stateful_owned(0) == 2u);
+    ZEXPECT(f.stateful_owned(1) == 1u);
 
     // Closing documents shrinks the owner table and load counts.
     f.remove_owner(100);
     f.remove_owner(300);
-    EXPECT(f.stateful_owned(0) == 0u);
-    EXPECT(!f.has_owner(100));
-    EXPECT(!f.has_owner(300));
+    ZEXPECT(f.stateful_owned(0) == 0u);
+    ZEXPECT(!f.has_owner(100));
+    ZEXPECT(!f.has_owner(300));
 
     // New assignments go to the now least-loaded worker.
-    EXPECT(f.assign_worker(400) == 0u);
-    EXPECT(f.stateful_owned(0) == 1u);
+    ZEXPECT(f.assign_worker(400) == 0u);
+    ZEXPECT(f.stateful_owned(0) == 1u);
 }
 
 };  // ZEST_SUITE(WorkerPoolStateful)
@@ -688,21 +688,21 @@ ZEST_CASE(PickIdleBasic) {
     f.add_stateless(true, true);
     f.add_stateless(true, false);
     f.add_stateless(true, false);
-    EXPECT(f.pick_idle() == 1u);
+    ZEXPECT(f.pick_idle() == 1u);
 }
 
 ZEST_CASE(PickIdleSkipsDead) {
     WorkerPoolFixture f;
     f.add_stateless(false, false);
     f.add_stateless(true, false);
-    EXPECT(f.pick_idle() == 1u);
+    ZEXPECT(f.pick_idle() == 1u);
 }
 
 ZEST_CASE(PickIdleNoneAvailable) {
     WorkerPoolFixture f;
     f.add_stateless(true, true);
     f.add_stateless(false, false);
-    EXPECT(f.pick_idle() == SIZE_MAX);
+    ZEXPECT(f.pick_idle() == SIZE_MAX);
 }
 
 ZEST_CASE(AcquireHighImmediate) {
@@ -713,11 +713,11 @@ ZEST_CASE(AcquireHighImmediate) {
     bool done = false;
     f.run([&]() -> kota::task<> {
         auto idx = co_await f.acquire_slot(worker::Priority::High);
-        EXPECT(f.is_busy(idx));
-        EXPECT(f.busy_count() == 1u);
+        ZEXPECT(f.is_busy(idx));
+        ZEXPECT(f.busy_count() == 1u);
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(AcquireLowImmediate) {
@@ -727,10 +727,10 @@ ZEST_CASE(AcquireLowImmediate) {
     bool done = false;
     f.run([&]() -> kota::task<> {
         auto idx = co_await f.acquire_slot(worker::Priority::Low);
-        EXPECT(f.is_busy(idx));
+        ZEXPECT(f.is_busy(idx));
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(HighBypassesLimit) {
@@ -740,10 +740,10 @@ ZEST_CASE(HighBypassesLimit) {
     bool done = false;
     f.run([&]() -> kota::task<> {
         auto idx = co_await f.acquire_slot(worker::Priority::High);
-        EXPECT(f.is_busy(idx));
+        ZEXPECT(f.is_busy(idx));
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(HighDispatchedFirst) {
@@ -751,8 +751,8 @@ ZEST_CASE(HighDispatchedFirst) {
     f.add_stateless(true, true);
     f.set_low_limit(1);
     auto r = f.test_priority_dispatch(0);
-    EXPECT(r.high_dispatched);
-    EXPECT(!r.low_dispatched);
+    ZEXPECT(r.high_dispatched);
+    ZEXPECT(!r.low_dispatched);
 }
 
 ZEST_CASE(LowLimitEnforced) {
@@ -761,10 +761,10 @@ ZEST_CASE(LowLimitEnforced) {
     f.add_stateless();
     f.set_low_limit(1);
     auto r = f.test_low_dispatch(2);
-    EXPECT(r.dispatched == 1u);
-    EXPECT(r.busy_at_dispatch == 1u);
+    ZEXPECT(r.dispatched == 1u);
+    ZEXPECT(r.busy_at_dispatch == 1u);
     // Destroying the unconsumed waiters released their claims.
-    EXPECT(f.busy_count() == 0u);
+    ZEXPECT(f.busy_count() == 0u);
 }
 
 ZEST_CASE(ReleaseDispatchesPending) {
@@ -772,14 +772,14 @@ ZEST_CASE(ReleaseDispatchesPending) {
     f.add_stateless(true, true);
     f.set_low_limit(1);
     auto r = f.test_release_dispatches();
-    EXPECT(!r.pending_before);
-    EXPECT(r.dispatched_after);
+    ZEXPECT(!r.pending_before);
+    ZEXPECT(r.dispatched_after);
 }
 
 ZEST_CASE(SlotRAIIRelease) {
     WorkerPoolFixture f;
     f.add_stateless();
-    EXPECT(f.test_slot_raii(0));
+    ZEXPECT(f.test_slot_raii(0));
 }
 
 ZEST_CASE(ConcurrencyLimit) {
@@ -808,8 +808,8 @@ ZEST_CASE(ConcurrencyLimit) {
         co_await group.join();
         done = true;
     });
-    EXPECT(done);
-    EXPECT(max_concurrent == 1);
+    ZEXPECT(done);
+    ZEXPECT(max_concurrent == 1);
 }
 
 ZEST_CASE(PriorityOrdering) {
@@ -845,34 +845,34 @@ ZEST_CASE(PriorityOrdering) {
         co_await group.join();
         done = true;
     });
-    EXPECT(done);
-    EXPECT(high_order < low_order);
+    ZEXPECT(done);
+    ZEXPECT(high_order < low_order);
 }
 
 ZEST_CASE(SingleWorkerShared) {
     WorkerPoolFixture f;
     f.add_stateless();
     f.set_low_limit(1);
-    EXPECT(f.max_low_limit() == 1u);
+    ZEXPECT(f.max_low_limit() == 1u);
 
     bool done = false;
     f.run([&]() -> kota::task<> {
         auto low = co_await f.acquire_slot(worker::Priority::Low);
-        EXPECT(f.is_busy(low));
+        ZEXPECT(f.is_busy(low));
         f.release_slot(low);
 
         auto high = co_await f.acquire_slot(worker::Priority::High);
-        EXPECT(f.is_busy(high));
+        ZEXPECT(f.is_busy(high));
         f.release_slot(high);
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(PendingCleanupOnDestroy) {
     WorkerPoolFixture f;
-    EXPECT(f.test_pending_cleanup_high());
-    EXPECT(f.test_pending_cleanup_low());
+    ZEXPECT(f.test_pending_cleanup_high());
+    ZEXPECT(f.test_pending_cleanup_low());
 }
 
 ZEST_CASE(DispatchClearsQueue) {
@@ -880,9 +880,9 @@ ZEST_CASE(DispatchClearsQueue) {
     f.add_stateless(true, true);
     f.set_low_limit(1);
     auto r = f.test_dispatch_clears_queue();
-    EXPECT(r.dispatched);
-    EXPECT(r.queue_cleared);
-    EXPECT(r.queue_ptr_nulled);
+    ZEXPECT(r.dispatched);
+    ZEXPECT(r.queue_cleared);
+    ZEXPECT(r.queue_ptr_nulled);
 }
 
 ZEST_CASE(FreshAcquireRespectsQueue) {
@@ -906,22 +906,22 @@ ZEST_CASE(FreshAcquireRespectsQueue) {
 
         // The fresh acquire lined up behind the queued waiter instead of
         // claiming the idle worker over its head.
-        EXPECT(!acquired);
-        EXPECT(f.high_queue_size() == 2u);
+        ZEXPECT(!acquired);
+        ZEXPECT(f.high_queue_size() == 2u);
 
         // The idle worker goes to the queued waiter first.
         f.dispatch_pending();
-        EXPECT(!acquired);
-        EXPECT(f.is_busy(0));
+        ZEXPECT(!acquired);
+        ZEXPECT(f.is_busy(0));
 
         // Destroying the unconsumed claim releases the slot to the fresh
         // waiter.
         queued.reset();
         co_await group.join();
-        EXPECT(acquired);
+        ZEXPECT(acquired);
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(EffectiveLimitClamped) {
@@ -933,8 +933,8 @@ ZEST_CASE(EffectiveLimitClamped) {
     // Capacity 3 caps the effective allowance regardless of low_limit; no
     // standing reservation — foreground bursts reclaim slots through the
     // foreground cap and the deficit cancel instead.
-    EXPECT(f.max_low_limit() == 3u);
-    EXPECT(f.effective_low_limit() == 3u);
+    ZEXPECT(f.max_low_limit() == 3u);
+    ZEXPECT(f.effective_low_limit() == 3u);
 }
 
 ZEST_CASE(LowCapCountsLive) {
@@ -949,8 +949,8 @@ ZEST_CASE(LowCapCountsLive) {
     // A slot awaiting respawn is future capacity, not schedulable now: the
     // ceiling must track the two live workers, not the three allocated
     // slots, for the whole respawn window.
-    EXPECT(f.max_low_limit() == 2u);
-    EXPECT(f.effective_low_limit() == 2u);
+    ZEXPECT(f.max_low_limit() == 2u);
+    ZEXPECT(f.effective_low_limit() == 2u);
 }
 
 ZEST_CASE(LowCapSkipsRetiring) {
@@ -964,8 +964,8 @@ ZEST_CASE(LowCapSkipsRetiring) {
 
     // A retiring slot is alive but takes no new work, so it must not
     // count toward the schedulable ceiling.
-    EXPECT(f.max_low_limit() == 2u);
-    EXPECT(f.effective_low_limit() == 2u);
+    ZEXPECT(f.max_low_limit() == 2u);
+    ZEXPECT(f.effective_low_limit() == 2u);
 }
 
 ZEST_CASE(ForegroundCapClampsBudget) {
@@ -978,11 +978,11 @@ ZEST_CASE(ForegroundCapClampsBudget) {
     f.set_max_stateless(10);
 
     // Idle: the full schedulable capacity, no standing reservation.
-    EXPECT(f.pool.effective_low_limit() == 4u);
+    ZEXPECT(f.pool.effective_low_limit() == 4u);
 
     // Active: 30% of the configured capacity, not of the live slot count.
     f.pool.foreground_pulse();
-    EXPECT(f.pool.effective_low_limit() == 3u);
+    ZEXPECT(f.pool.effective_low_limit() == 3u);
 }
 
 ZEST_CASE(ForegroundCancelsExcess) {
@@ -1003,11 +1003,11 @@ ZEST_CASE(ForegroundCancelsExcess) {
     // newest claim first, cooperatively (slots stay alive).
     f.pool.foreground_pulse();
 
-    EXPECT(f.cancel_asked(3));
-    EXPECT(sources[3]->cancelled());
-    EXPECT((!f.cancel_asked(0) && !f.cancel_asked(1) && !f.cancel_asked(2)));
-    EXPECT((!sources[0]->cancelled() && !sources[1]->cancelled()));
-    EXPECT(f.state(3) == WorkerPoolFixture::SlotState::Alive);
+    ZEXPECT(f.cancel_asked(3));
+    ZEXPECT(sources[3]->cancelled());
+    ZEXPECT((!f.cancel_asked(0) && !f.cancel_asked(1) && !f.cancel_asked(2)));
+    ZEXPECT((!sources[0]->cancelled() && !sources[1]->cancelled()));
+    ZEXPECT(f.state(3) == WorkerPoolFixture::SlotState::Alive);
 }
 
 ZEST_CASE(ForegroundHoldExpires) {
@@ -1018,16 +1018,16 @@ ZEST_CASE(ForegroundHoldExpires) {
     f.set_max_stateless(10);
 
     f.pool.foreground_pulse();
-    EXPECT(f.pool.effective_low_limit() == 3u);
+    ZEXPECT(f.pool.effective_low_limit() == 3u);
 
     // Still inside the hold window: the tick keeps the clamp.
     f.tick_foreground();
-    EXPECT(f.pool.effective_low_limit() == 3u);
+    ZEXPECT(f.pool.effective_low_limit() == 3u);
 
     // Rewind the last activity past the hold: the tick reopens the budget.
     f.rewind_fg_activity();
     f.tick_foreground();
-    EXPECT(f.pool.effective_low_limit() == 2u);
+    ZEXPECT(f.pool.effective_low_limit() == 2u);
 }
 
 ZEST_CASE(GraceKillReclaims) {
@@ -1038,13 +1038,13 @@ ZEST_CASE(GraceKillReclaims) {
 
     // Within the grace window the worker lives on.
     f.tick_cancel_grace();
-    EXPECT(f.state(0) == WorkerPoolFixture::SlotState::Alive);
+    ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Alive);
 
     // Past it, the stuck process is reclaimed like a memory preemption:
     // no crash accounting, immediate respawn.
     f.expire_cancel_grace(0);
     f.tick_cancel_grace();
-    EXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
+    ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
 }
 
 ZEST_CASE(CancelSkipsUnarmedSlots) {
@@ -1060,9 +1060,9 @@ ZEST_CASE(CancelSkipsUnarmedSlots) {
 
     // Only the armed slot may be stamped — stamping the un-asked one would
     // get a request that never saw a cancel grace-killed.
-    EXPECT(f.cancel_asked(0));
-    EXPECT(armed->cancelled());
-    EXPECT(!f.cancel_asked(1));
+    ZEXPECT(f.cancel_asked(0));
+    ZEXPECT(armed->cancelled());
+    ZEXPECT(!f.cancel_asked(1));
 }
 
 ZEST_CASE(CancelSkipsAskedSlots) {
@@ -1078,7 +1078,7 @@ ZEST_CASE(CancelSkipsAskedSlots) {
     f.cancel_low(1);
 
     // The second ask must move on to the older claim instead of re-asking.
-    EXPECT((f.cancel_asked(0) && f.cancel_asked(1)));
+    ZEXPECT((f.cancel_asked(0) && f.cancel_asked(1)));
 }
 
 ZEST_CASE(DeficitSurvivesUnarmedSweep) {
@@ -1092,14 +1092,14 @@ ZEST_CASE(DeficitSurvivesUnarmedSweep) {
     // The rising edge finds only unarmed claims: the sweep stamps nothing,
     // but the demand survives for the arming re-check to honor.
     f.pool.foreground_pulse();
-    EXPECT((!f.cancel_asked(0) && !f.cancel_asked(1) && !f.cancel_asked(2) && !f.cancel_asked(3)));
-    EXPECT(f.reclaim_deficit() == 1u);
+    ZEXPECT((!f.cancel_asked(0) && !f.cancel_asked(1) && !f.cancel_asked(2) && !f.cancel_asked(3)));
+    ZEXPECT(f.reclaim_deficit() == 1u);
 
     // Once a sender arms and the ask lands, the deficit is covered.
     f.arm_cancel_source(3);
     f.cancel_low(f.reclaim_deficit());
-    EXPECT(f.cancel_asked(3));
-    EXPECT(f.reclaim_deficit() == 0u);
+    ZEXPECT(f.cancel_asked(3));
+    ZEXPECT(f.reclaim_deficit() == 0u);
 }
 
 ZEST_CASE(DeficitCountsQueuedHigh) {
@@ -1110,14 +1110,14 @@ ZEST_CASE(DeficitCountsQueuedHigh) {
 
     // Within budget and no High demand: nothing owed. A queued High with
     // no idle slot owes one low even though the budget alone allows it.
-    EXPECT(f.reclaim_deficit() == 0u);
+    ZEXPECT(f.reclaim_deficit() == 0u);
     f.queue_high();
-    EXPECT(f.reclaim_deficit() == 1u);
+    ZEXPECT(f.reclaim_deficit() == 1u);
 
     // An ask already in flight covers the queued High.
     f.arm_cancel_source(0);
     f.cancel_low(1);
-    EXPECT(f.reclaim_deficit() == 0u);
+    ZEXPECT(f.reclaim_deficit() == 0u);
 }
 
 };  // ZEST_SUITE(WorkerPoolScheduling)
@@ -1130,13 +1130,13 @@ ZEST_CASE(StatelessCleanup) {
     f.add_stateless(true, false);
     f.set_low_limit(2);
 
-    EXPECT(f.alive_count() == 2u);
-    EXPECT(f.busy_count() == 1u);
+    ZEXPECT(f.alive_count() == 2u);
+    ZEXPECT(f.busy_count() == 1u);
 
     f.simulate_crash(0, false);
 
-    EXPECT(f.alive_count() == 1u);
-    EXPECT(f.busy_count() == 0u);
+    ZEXPECT(f.alive_count() == 1u);
+    ZEXPECT(f.busy_count() == 0u);
 }
 
 ZEST_CASE(StatefulLostDocuments) {
@@ -1148,7 +1148,7 @@ ZEST_CASE(StatefulLostDocuments) {
     auto w0 = f.assign_worker(100);
     auto w1 = f.assign_worker(200);
     f.assign_worker(300);
-    ASSERT(w0 != w1);
+    ZASSERT(w0 != w1);
 
     // Record which docs worker 0 owns before crashing it
     llvm::SmallVector<std::uint32_t> expected;
@@ -1159,21 +1159,21 @@ ZEST_CASE(StatefulLostDocuments) {
 
     f.simulate_crash(0, true);
 
-    ASSERT(f.crash_reports.size() == 1u);
+    ZASSERT(f.crash_reports.size() == 1u);
     auto& report = f.crash_reports[0];
-    EXPECT(report.stateful);
-    EXPECT(report.worker_index == 0u);
-    EXPECT(report.lost_documents.size() == expected.size());
+    ZEXPECT(report.stateful);
+    ZEXPECT(report.worker_index == 0u);
+    ZEXPECT(report.lost_documents.size() == expected.size());
 
     for(auto path_id: expected) {
-        EXPECT(!f.has_owner(path_id));
-        EXPECT(llvm::is_contained(report.lost_documents, path_id));
+        ZEXPECT(!f.has_owner(path_id));
+        ZEXPECT(llvm::is_contained(report.lost_documents, path_id));
     }
 
     // Other worker's documents are preserved
     for(auto id: {100u, 200u, 300u}) {
         if(!llvm::is_contained(expected, id))
-            EXPECT(f.has_owner(id));
+            ZEXPECT(f.has_owner(id));
     }
 }
 
@@ -1188,8 +1188,8 @@ ZEST_CASE(CrashReportsAnomaly) {
 
     f.simulate_crash(0, false, 0, 11);
 
-    ASSERT(trapped.size() == 1u);
-    EXPECT(trapped[0] == logging::AnomalyId::WorkerCrash);
+    ZASSERT(trapped.size() == 1u);
+    ZEXPECT(trapped[0] == logging::AnomalyId::WorkerCrash);
 }
 
 ZEST_CASE(SpawnFailReportsAnomaly) {
@@ -1203,22 +1203,22 @@ ZEST_CASE(SpawnFailReportsAnomaly) {
     opts.self_path = "/nonexistent/clice-binary";
     opts.stateless_count = 1;
     opts.stateful_count = 0;
-    EXPECT(!f.pool.start(opts));
+    ZEXPECT(!f.pool.start(opts));
 
-    ASSERT(trapped.size() == 1u);
-    EXPECT(trapped[0] == logging::AnomalyId::WorkerSpawnFail);
+    ZASSERT(trapped.size() == 1u);
+    ZEXPECT(trapped[0] == logging::AnomalyId::WorkerSpawnFail);
 }
 
 ZEST_CASE(OperationalErrorCodes) {
     /// Dispatch failures marked operational must never classify as anomalies.
     using worker::protocol::Error;
-    EXPECT(worker::is_operational_error(Error{worker::dispatch_errc::cancelled, "x"}));
-    EXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_unavailable, "x"}));
-    EXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_crashed, "x"}));
-    EXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_lost, "x"}));
-    EXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_died, "x"}));
-    EXPECT(worker::is_operational_error(Error{worker::dispatch_errc::document_unloaded, "x"}));
-    EXPECT(!worker::is_operational_error(Error{"plain failure"}));
+    ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::cancelled, "x"}));
+    ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_unavailable, "x"}));
+    ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_crashed, "x"}));
+    ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_lost, "x"}));
+    ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::worker_died, "x"}));
+    ZEXPECT(worker::is_operational_error(Error{worker::dispatch_errc::document_unloaded, "x"}));
+    ZEXPECT(!worker::is_operational_error(Error{"plain failure"}));
 }
 
 ZEST_CASE(TransportErrorClassification) {
@@ -1226,10 +1226,10 @@ ZEST_CASE(TransportErrorClassification) {
     /// codes and must pass through.
     using worker::protocol::Error;
     using worker::protocol::ErrorCode;
-    EXPECT(worker::is_transport_error(Error{ErrorCode::ConnectionClosed, "peer closed"}));
-    EXPECT(!worker::is_transport_error(Error{"handler failed"}));
-    EXPECT(!worker::is_transport_error(Error{ErrorCode::InternalError, "handler threw"}));
-    EXPECT(!worker::is_transport_error(Error{ErrorCode::RequestCancelled, "cancelled"}));
+    ZEXPECT(worker::is_transport_error(Error{ErrorCode::ConnectionClosed, "peer closed"}));
+    ZEXPECT(!worker::is_transport_error(Error{"handler failed"}));
+    ZEXPECT(!worker::is_transport_error(Error{ErrorCode::InternalError, "handler threw"}));
+    ZEXPECT(!worker::is_transport_error(Error{ErrorCode::RequestCancelled, "cancelled"}));
 }
 
 ZEST_CASE(CrashInfoSignal) {
@@ -1238,10 +1238,10 @@ ZEST_CASE(CrashInfoSignal) {
 
     f.simulate_crash(0, false, 0, 11);
 
-    ASSERT(f.crash_reports.size() == 1u);
-    EXPECT(f.crash_reports[0].exit_signal == 11);
-    EXPECT(f.crash_reports[0].exit_code == 0);
-    EXPECT(!f.crash_reports[0].stateful);
+    ZASSERT(f.crash_reports.size() == 1u);
+    ZEXPECT(f.crash_reports[0].exit_signal == 11);
+    ZEXPECT(f.crash_reports[0].exit_code == 0);
+    ZEXPECT(!f.crash_reports[0].stateful);
 }
 
 ZEST_CASE(CrashInfoExitCode) {
@@ -1250,9 +1250,9 @@ ZEST_CASE(CrashInfoExitCode) {
 
     f.simulate_crash(0, false, 42, 0);
 
-    ASSERT(f.crash_reports.size() == 1u);
-    EXPECT(f.crash_reports[0].exit_code == 42);
-    EXPECT(f.crash_reports[0].exit_signal == 0);
+    ZASSERT(f.crash_reports.size() == 1u);
+    ZEXPECT(f.crash_reports[0].exit_code == 42);
+    ZEXPECT(f.crash_reports[0].exit_signal == 0);
 }
 
 ZEST_CASE(WillRestartWithinBudget) {
@@ -1263,10 +1263,10 @@ ZEST_CASE(WillRestartWithinBudget) {
 
     auto should_restart = f.simulate_crash(0, false);
 
-    EXPECT(should_restart);
-    ASSERT(f.crash_reports.size() == 1u);
-    EXPECT(f.crash_reports[0].will_restart);
-    EXPECT(f.crash_reports[0].crash_streak == 2u);
+    ZEXPECT(should_restart);
+    ZASSERT(f.crash_reports.size() == 1u);
+    ZEXPECT(f.crash_reports[0].will_restart);
+    ZEXPECT(f.crash_reports[0].crash_streak == 2u);
 }
 
 ZEST_CASE(CrashBudgetExhausted) {
@@ -1277,10 +1277,10 @@ ZEST_CASE(CrashBudgetExhausted) {
 
     auto should_restart = f.simulate_crash(0, false);
 
-    EXPECT(!should_restart);
-    ASSERT(f.crash_reports.size() == 1u);
-    EXPECT(!f.crash_reports[0].will_restart);
-    EXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dead);
+    ZEXPECT(!should_restart);
+    ZASSERT(f.crash_reports.size() == 1u);
+    ZEXPECT(!f.crash_reports[0].will_restart);
+    ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dead);
 }
 
 ZEST_CASE(HealthyUptimeResetsStreak) {
@@ -1294,8 +1294,8 @@ ZEST_CASE(HealthyUptimeResetsStreak) {
 
     auto should_restart = f.simulate_crash(0, false);
 
-    EXPECT(should_restart);
-    EXPECT(f.crash_streak(0) == 1u);
+    ZEXPECT(should_restart);
+    ZEXPECT(f.crash_streak(0) == 1u);
 }
 
 ZEST_CASE(NamedCrashKeepsBudget) {
@@ -1308,8 +1308,8 @@ ZEST_CASE(NamedCrashKeepsBudget) {
     // the streak stays where it was and the slot respawns.
     auto should_restart = f.simulate_crash(0, true);
 
-    EXPECT(should_restart);
-    EXPECT(f.crash_streak(0, true) == 2u);
+    ZEXPECT(should_restart);
+    ZEXPECT(f.crash_streak(0, true) == 2u);
 }
 
 ZEST_CASE(DeathNamesItsRequest) {
@@ -1319,40 +1319,40 @@ ZEST_CASE(DeathNamesItsRequest) {
 
     using namespace worker::dispatch_errc;
     auto own = WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp");
-    EXPECT(own.code == worker_crashed);
-    EXPECT(own.message == death.cause);
-    EXPECT(worker::death_of(own) == "sf:0:1");
-    EXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /b.cpp").code ==
-           worker_lost);
+    ZEXPECT(own.code == worker_crashed);
+    ZEXPECT(own.message == death.cause);
+    ZEXPECT(worker::death_of(own) == "sf:0:1");
+    ZEXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /b.cpp").code ==
+            worker_lost);
 
     death.culprit.clear();
-    EXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp").code ==
-           worker_died);
+    ZEXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp").code ==
+            worker_died);
 }
 
 ZEST_CASE(DeathFreesDocuments) {
     WorkerPoolFixture f;
     f.add_stateful(true);
     f.add_stateful(true);
-    ASSERT(f.assign_worker(1) == 0u);
+    ZASSERT(f.assign_worker(1) == 0u);
 
     // A request routed in the window before the crash report must not
     // land on the corpse: the death itself frees the document.
     f.mark_dead(0, true);
-    EXPECT(f.assign_worker(1) == 1u);
+    ZEXPECT(f.assign_worker(1) == 1u);
 
     f.simulate_crash(0, true);
-    ASSERT(f.crash_reports.size() == 1u);
-    ASSERT(f.crash_reports[0].lost_documents.size() == 1u);
-    EXPECT(f.crash_reports[0].lost_documents[0] == 1u);
+    ZASSERT(f.crash_reports.size() == 1u);
+    ZASSERT(f.crash_reports[0].lost_documents.size() == 1u);
+    ZEXPECT(f.crash_reports[0].lost_documents[0] == 1u);
 }
 
 ZEST_CASE(DeliverBlamesOwnCrash) {
     WorkerPoolFixture f;
     auto delivery = f.deliver_through({worker::dispatch_errc::worker_crashed});
-    EXPECT(delivery.sends == 1);
-    EXPECT(delivery.blames == 1);
-    EXPECT(!delivery.answered);
+    ZEXPECT(delivery.sends == 1);
+    ZEXPECT(delivery.blames == 1);
+    ZEXPECT(!delivery.answered);
 }
 
 ZEST_CASE(DeliverResendsVictimsOnce) {
@@ -1362,9 +1362,9 @@ ZEST_CASE(DeliverResendsVictimsOnce) {
     for(auto code: {worker_lost, worker_died}) {
         WorkerPoolFixture f;
         auto delivery = f.deliver_through({code});
-        EXPECT(delivery.sends == 2);
-        EXPECT(delivery.blames == 0);
-        EXPECT(delivery.answered);
+        ZEXPECT(delivery.sends == 2);
+        ZEXPECT(delivery.blames == 0);
+        ZEXPECT(delivery.answered);
     }
     // Only once, and a second death blames the request only when neither
     // named one.
@@ -1375,15 +1375,15 @@ ZEST_CASE(DeliverResendsVictimsOnce) {
     }) {
         WorkerPoolFixture f;
         auto delivery = f.deliver_through(codes);
-        EXPECT(delivery.sends == 2);
-        EXPECT(delivery.blames == 0);
-        EXPECT(!delivery.answered);
+        ZEXPECT(delivery.sends == 2);
+        ZEXPECT(delivery.blames == 0);
+        ZEXPECT(!delivery.answered);
     }
     WorkerPoolFixture f;
     auto delivery = f.deliver_through({worker_died, worker_died});
-    EXPECT(delivery.sends == 2);
-    EXPECT(delivery.blames == 1);
-    EXPECT(!delivery.answered);
+    ZEXPECT(delivery.sends == 2);
+    ZEXPECT(delivery.blames == 1);
+    ZEXPECT(!delivery.answered);
 }
 
 ZEST_CASE(DeliverWaitsForCapacity) {
@@ -1392,17 +1392,17 @@ ZEST_CASE(DeliverWaitsForCapacity) {
         // No slot will ever serve again: the request gives up.
         WorkerPoolFixture f;
         auto delivery = f.deliver_through({worker_unavailable});
-        EXPECT(delivery.sends == 1);
-        EXPECT(!delivery.answered);
+        ZEXPECT(delivery.sends == 1);
+        ZEXPECT(!delivery.answered);
     }
     // A serving slot: capacity windows are waited out, not counted as
     // resends.
     WorkerPoolFixture f;
     f.add_stateful(true);
     auto delivery = f.deliver_through({worker_unavailable, worker_unavailable});
-    EXPECT(delivery.sends == 3);
-    EXPECT(delivery.blames == 0);
-    EXPECT(delivery.answered);
+    ZEXPECT(delivery.sends == 3);
+    ZEXPECT(delivery.blames == 0);
+    ZEXPECT(delivery.answered);
 }
 
 ZEST_CASE(DeadlineKillsAndNames) {
@@ -1424,13 +1424,13 @@ ZEST_CASE(DeadlineKillsAndNames) {
     auto queued = f.dispatch(2, true, "clice/worker/query:Hover /d.cpp", std::chrono::seconds(5));
 
     f.tick_deadlines();
-    EXPECT(f.state(2, true) == WorkerPoolFixture::SlotState::Alive);
-    EXPECT(f.state(0, true) == WorkerPoolFixture::SlotState::Alive);
-    EXPECT(f.state(1, true) == WorkerPoolFixture::SlotState::Dying);
-    EXPECT(f.death(1, true)->culprit == "clice/worker/query:Hover /b.cpp");
-    EXPECT(f.death(1, true)->cause.contains("1 seconds"));
-    EXPECT(f.state(0, false) == WorkerPoolFixture::SlotState::Dying);
-    EXPECT(f.death(0, false)->culprit == "clice/worker/tuRun /c.cpp");
+    ZEXPECT(f.state(2, true) == WorkerPoolFixture::SlotState::Alive);
+    ZEXPECT(f.state(0, true) == WorkerPoolFixture::SlotState::Alive);
+    ZEXPECT(f.state(1, true) == WorkerPoolFixture::SlotState::Dying);
+    ZEXPECT(f.death(1, true)->culprit == "clice/worker/query:Hover /b.cpp");
+    ZEXPECT(f.death(1, true)->cause.contains("1 seconds"));
+    ZEXPECT(f.state(0, false) == WorkerPoolFixture::SlotState::Dying);
+    ZEXPECT(f.death(0, false)->culprit == "clice/worker/tuRun /c.cpp");
 }
 
 ZEST_CASE(BackoffDelaySchedule) {
@@ -1438,12 +1438,12 @@ ZEST_CASE(BackoffDelaySchedule) {
     using ms = std::chrono::milliseconds;
     // First crash respawns immediately; later ones back off exponentially,
     // capped so a long streak cannot produce absurd delays.
-    EXPECT(f.backoff_delay(0) == ms(0));
-    EXPECT(f.backoff_delay(1) == ms(0));
-    EXPECT(f.backoff_delay(2) == ms(500));
-    EXPECT(f.backoff_delay(3) == ms(1000));
-    EXPECT(f.backoff_delay(4) == ms(2000));
-    EXPECT(f.backoff_delay(10) == ms(8000));
+    ZEXPECT(f.backoff_delay(0) == ms(0));
+    ZEXPECT(f.backoff_delay(1) == ms(0));
+    ZEXPECT(f.backoff_delay(2) == ms(500));
+    ZEXPECT(f.backoff_delay(3) == ms(1000));
+    ZEXPECT(f.backoff_delay(4) == ms(2000));
+    ZEXPECT(f.backoff_delay(10) == ms(8000));
 }
 
 ZEST_CASE(MarkDeadRemovesSlot) {
@@ -1452,20 +1452,20 @@ ZEST_CASE(MarkDeadRemovesSlot) {
     f.add_stateless(true, false);
     f.set_low_limit(2);
 
-    EXPECT(f.busy_count() == 1u);
+    ZEXPECT(f.busy_count() == 1u);
     f.mark_dead(0);
 
-    EXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
-    EXPECT(f.generation(0) == 1u);
-    EXPECT(f.busy_count() == 0u);
+    ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
+    ZEXPECT(f.generation(0) == 1u);
+    ZEXPECT(f.busy_count() == 0u);
     // The dying slot still counts as future capacity (its verdict is
     // pending), but is not schedulable.
-    EXPECT(f.capacity() == 2u);
-    EXPECT(f.pick_idle() == 1u);
+    ZEXPECT(f.capacity() == 2u);
+    ZEXPECT(f.pick_idle() == 1u);
 
     // Idempotent: a second mark (e.g. the monitor's) is a no-op.
     f.mark_dead(0);
-    EXPECT(f.generation(0) == 1u);
+    ZEXPECT(f.generation(0) == 1u);
 }
 
 ZEST_CASE(ReleaseIdempotent) {
@@ -1473,11 +1473,11 @@ ZEST_CASE(ReleaseIdempotent) {
     f.add_stateless(true, true);
     f.set_low_limit(1);
 
-    EXPECT(f.busy_count() == 1u);
+    ZEXPECT(f.busy_count() == 1u);
     f.release_slot(0);
-    EXPECT(f.busy_count() == 0u);
+    ZEXPECT(f.busy_count() == 0u);
     f.release_slot(0);
-    EXPECT(f.busy_count() == 0u);
+    ZEXPECT(f.busy_count() == 0u);
 }
 
 ZEST_CASE(CrashThenRelease) {
@@ -1486,11 +1486,11 @@ ZEST_CASE(CrashThenRelease) {
     f.set_low_limit(1);
 
     f.simulate_crash(0, false);
-    EXPECT(f.busy_count() == 0u);
+    ZEXPECT(f.busy_count() == 0u);
 
     // StatelessSlot destructor would call release_slot — must not underflow
     f.release_slot(0);
-    EXPECT(f.busy_count() == 0u);
+    ZEXPECT(f.busy_count() == 0u);
 }
 
 ZEST_CASE(StatefulCrashClearsOwnership) {
@@ -1507,35 +1507,35 @@ ZEST_CASE(StatefulCrashClearsOwnership) {
 
     f.simulate_crash(idx0, true);
 
-    EXPECT(!f.has_owner(10));
-    EXPECT(f.stateful_owned(idx0) == 0u);
-    EXPECT(f.stateful_owned(other_idx) == other_owned_before);
+    ZEXPECT(!f.has_owner(10));
+    ZEXPECT(f.stateful_owned(idx0) == 0u);
+    ZEXPECT(f.stateful_owned(other_idx) == other_owned_before);
 }
 
 ZEST_CASE(AIMDBackoff) {
     WorkerPoolFixture f;
     f.set_low_limit(8);
     f.apply_backoff();
-    EXPECT(f.low_limit() == 6u);
+    ZEXPECT(f.low_limit() == 6u);
     f.apply_backoff();
-    EXPECT(f.low_limit() == 4u);
+    ZEXPECT(f.low_limit() == 4u);
     f.apply_backoff();
-    EXPECT(f.low_limit() == 3u);
+    ZEXPECT(f.low_limit() == 3u);
     f.apply_backoff();
-    EXPECT(f.low_limit() == 2u);
+    ZEXPECT(f.low_limit() == 2u);
 }
 
 ZEST_CASE(AIMDMinimum) {
     WorkerPoolFixture f;
     f.set_low_limit(1);
     f.apply_backoff();
-    EXPECT(f.low_limit() == 1u);
+    ZEXPECT(f.low_limit() == 1u);
 
     // A zeroed budget is the memory controller's deliberate shutdown; a
     // crash must not lift it back to 1 before recovery is observed.
     f.set_low_limit(0);
     f.apply_backoff();
-    EXPECT(f.low_limit() == 0u);
+    ZEXPECT(f.low_limit() == 0u);
 }
 
 ZEST_CASE(CrashAppliesBackoff) {
@@ -1545,7 +1545,7 @@ ZEST_CASE(CrashAppliesBackoff) {
 
     f.simulate_crash(0, false);
 
-    EXPECT(f.low_limit() == 6u);
+    ZEXPECT(f.low_limit() == 6u);
 }
 
 ZEST_CASE(IdleStatelessCrash) {
@@ -1554,14 +1554,14 @@ ZEST_CASE(IdleStatelessCrash) {
     f.add_stateless(true, false);
     f.set_low_limit(2);
 
-    EXPECT(f.alive_count() == 2u);
-    EXPECT(f.busy_count() == 0u);
+    ZEXPECT(f.alive_count() == 2u);
+    ZEXPECT(f.busy_count() == 0u);
 
     f.simulate_crash(0, false);
 
-    EXPECT(f.alive_count() == 1u);
-    EXPECT(f.busy_count() == 0u);
-    EXPECT(!f.worker_alive(0));
+    ZEXPECT(f.alive_count() == 1u);
+    ZEXPECT(f.busy_count() == 0u);
+    ZEXPECT(!f.worker_alive(0));
 }
 
 ZEST_CASE(RapidCrashSequence) {
@@ -1575,18 +1575,18 @@ ZEST_CASE(RapidCrashSequence) {
     f.simulate_crash(1, false);
     f.simulate_crash(2, false);
 
-    EXPECT(f.alive_count() == 0u);
-    EXPECT(f.busy_count() == 0u);
-    EXPECT(f.crash_reports.size() == 3u);
-    EXPECT(f.low_limit() < 8u);
+    ZEXPECT(f.alive_count() == 0u);
+    ZEXPECT(f.busy_count() == 0u);
+    ZEXPECT(f.crash_reports.size() == 3u);
+    ZEXPECT(f.low_limit() < 8u);
 }
 
 ZEST_CASE(BackoffSetsCooldown) {
     WorkerPoolFixture f;
     f.set_low_limit(8);
-    EXPECT(f.get_backoff_cooldown() == 0u);
+    ZEXPECT(f.get_backoff_cooldown() == 0u);
     f.apply_backoff();
-    EXPECT(f.get_backoff_cooldown() > 0u);
+    ZEXPECT(f.get_backoff_cooldown() > 0u);
 }
 
 ZEST_CASE(CrashSetsCooldown) {
@@ -1596,8 +1596,8 @@ ZEST_CASE(CrashSetsCooldown) {
 
     f.simulate_crash(0, false);
 
-    EXPECT(f.low_limit() == 6u);
-    EXPECT(f.get_backoff_cooldown() > 0u);
+    ZEXPECT(f.low_limit() == 6u);
+    ZEXPECT(f.get_backoff_cooldown() > 0u);
 }
 
 ZEST_CASE(StatefulCrashNoCooldown) {
@@ -1606,7 +1606,7 @@ ZEST_CASE(StatefulCrashNoCooldown) {
 
     f.simulate_crash(0, true);
 
-    EXPECT(f.get_backoff_cooldown() == 0u);
+    ZEXPECT(f.get_backoff_cooldown() == 0u);
 }
 
 ZEST_CASE(DeadPoolReturnsError) {
@@ -1616,16 +1616,16 @@ ZEST_CASE(DeadPoolReturnsError) {
     f.set_max_crash_streak(0);
 
     f.simulate_crash(0, false);
-    EXPECT(f.alive_count() == 0u);
-    EXPECT(f.capacity() == 0u);
+    ZEXPECT(f.alive_count() == 0u);
+    ZEXPECT(f.capacity() == 0u);
 
     bool done = false;
     f.run([&]() -> kota::task<> {
         auto idx = co_await f.acquire_slot(worker::Priority::High);
-        EXPECT(idx == SIZE_MAX);
+        ZEXPECT(idx == SIZE_MAX);
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(DeadPoolDrainsPending) {
@@ -1635,23 +1635,23 @@ ZEST_CASE(DeadPoolDrainsPending) {
     f.set_max_crash_streak(0);
 
     auto r = f.test_dead_pool_drain();
-    EXPECT(r.drained);
-    EXPECT(r.assigned_worker == SIZE_MAX);
-    EXPECT(f.high_queue_size() == 0u);
+    ZEXPECT(r.drained);
+    ZEXPECT(r.assigned_worker == SIZE_MAX);
+    ZEXPECT(f.high_queue_size() == 0u);
 }
 
 ZEST_CASE(SlotGenGuard) {
     WorkerPoolFixture f;
     f.add_stateless(true, true);
     f.set_low_limit(1);
-    EXPECT(f.test_slot_gen_guard());
+    ZEXPECT(f.test_slot_gen_guard());
 }
 
 ZEST_CASE(PendingClaimGenGuard) {
     WorkerPoolFixture f;
     f.add_stateless();
     f.set_low_limit(1);
-    EXPECT(f.test_pending_gen_guard());
+    ZEXPECT(f.test_pending_gen_guard());
 }
 
 ZEST_CASE(CrashBudgetBoundary) {
@@ -1661,12 +1661,12 @@ ZEST_CASE(CrashBudgetBoundary) {
     f.set_crash_streak(0, false, 2);
 
     // Exactly at the budget: the streak reaches 3 == max, still restarts.
-    EXPECT(f.simulate_crash(0, false));
-    EXPECT(f.crash_streak(0) == 3u);
+    ZEXPECT(f.simulate_crash(0, false));
+    ZEXPECT(f.crash_streak(0) == 3u);
 
     // One past the budget: give up.
-    EXPECT(!f.simulate_crash(0, false));
-    EXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dead);
+    ZEXPECT(!f.simulate_crash(0, false));
+    ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dead);
 }
 
 ZEST_CASE(StatefulDyingUnavailable) {
@@ -1681,11 +1681,11 @@ ZEST_CASE(StatefulDyingUnavailable) {
     bool done = false;
     f.run([&]() -> kota::task<> {
         auto result = co_await f.pool.send_stateful(7, worker::DocumentLinkParams{"/x.cpp"});
-        CO_ASSERT(!result.has_value());
-        EXPECT(result.error().code == worker::dispatch_errc::worker_unavailable);
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::worker_unavailable);
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(DyingSlotKeepsWaiters) {
@@ -1697,8 +1697,8 @@ ZEST_CASE(DyingSlotKeepsWaiters) {
     f.set_low_limit(1);
 
     f.mark_dead(0);
-    EXPECT(f.test_low_dispatch(1).dispatched == 0u);
-    EXPECT(f.low_queue_size() == 0u);  // helper destroys its waiters
+    ZEXPECT(f.test_low_dispatch(1).dispatched == 0u);
+    ZEXPECT(f.low_queue_size() == 0u);  // helper destroys its waiters
 }
 
 ZEST_CASE(MaxLowLimitShrinks) {
@@ -1713,8 +1713,8 @@ ZEST_CASE(MaxLowLimitShrinks) {
 
     // Capacity dropped to 2, so the ceiling tracks it; the crash AIMD
     // independently walked the stored allowance down to 1.
-    EXPECT(f.max_low_limit() == 2u);
-    EXPECT(f.effective_low_limit() == 1u);
+    ZEXPECT(f.max_low_limit() == 2u);
+    ZEXPECT(f.effective_low_limit() == 1u);
 }
 
 };  // ZEST_SUITE(WorkerPoolCrash)
@@ -1729,14 +1729,14 @@ ZEST_CASE(PreemptKillsLowWorkers) {
 
     f.preempt(2);
 
-    EXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
-    EXPECT(f.preempted(0));
-    EXPECT(f.state(1) == WorkerPoolFixture::SlotState::Alive);
-    EXPECT(f.is_busy(1));
-    EXPECT(f.low_busy() == 0u);
+    ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
+    ZEXPECT(f.preempted(0));
+    ZEXPECT(f.state(1) == WorkerPoolFixture::SlotState::Alive);
+    ZEXPECT(f.is_busy(1));
+    ZEXPECT(f.low_busy() == 0u);
     // Preemption is not a crash: no report, no crash accounting.
-    EXPECT(f.crash_reports.empty());
-    EXPECT(f.crash_streak(0) == 0u);
+    ZEXPECT(f.crash_reports.empty());
+    ZEXPECT(f.crash_streak(0) == 0u);
 }
 
 ZEST_CASE(PreemptCreditsHealthyRun) {
@@ -1749,7 +1749,7 @@ ZEST_CASE(PreemptCreditsHealthyRun) {
 
     // The healthy interval before the preemption clears the stale streak,
     // exactly as the next crash's accounting would have.
-    EXPECT(f.crash_streak(0) == 0u);
+    ZEXPECT(f.crash_streak(0) == 0u);
 }
 
 ZEST_CASE(PreemptKeepsYoungStreak) {
@@ -1762,7 +1762,7 @@ ZEST_CASE(PreemptKeepsYoungStreak) {
 
     // A slot that has not yet earned the healthy credit keeps its streak:
     // preemption neither punishes nor forgives.
-    EXPECT(f.crash_streak(0) == 2u);
+    ZEXPECT(f.crash_streak(0) == 2u);
 }
 
 ZEST_CASE(SevereMemoryTick) {
@@ -1778,11 +1778,11 @@ ZEST_CASE(SevereMemoryTick) {
     // concurrency that ran into the pressure, not back at it. Zero, not
     // one: any allowance left would let the preemption's own dispatch
     // kick admit a fresh compile into the pressure being relieved.
-    EXPECT(f.low_limit() == 0u);
-    EXPECT(f.w_max() == 1u);
-    EXPECT(f.low_busy() == 0u);
-    EXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
-    EXPECT(f.state(1) == WorkerPoolFixture::SlotState::Dying);
+    ZEXPECT(f.low_limit() == 0u);
+    ZEXPECT(f.w_max() == 1u);
+    ZEXPECT(f.low_busy() == 0u);
+    ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
+    ZEXPECT(f.state(1) == WorkerPoolFixture::SlotState::Dying);
 }
 
 ZEST_CASE(PressureDecrementsLimit) {
@@ -1793,8 +1793,8 @@ ZEST_CASE(PressureDecrementsLimit) {
     f.set_low_limit(2);
 
     f.tick_memory(0.15);
-    EXPECT(f.low_limit() == 1u);
-    EXPECT(f.w_max() == 2u);
+    ZEXPECT(f.low_limit() == 1u);
+    ZEXPECT(f.w_max() == 2u);
 }
 
 ZEST_CASE(RecoveryClosesGap) {
@@ -1806,9 +1806,9 @@ ZEST_CASE(RecoveryClosesGap) {
     f.set_w_max(8);
 
     f.tick_memory(0.5);
-    EXPECT(f.low_limit() == 5u);  // gap 6 → +3
+    ZEXPECT(f.low_limit() == 5u);  // gap 6 → +3
     f.tick_memory(0.5);
-    EXPECT(f.low_limit() == 6u);  // gap 3 → +1 (integer halving)
+    ZEXPECT(f.low_limit() == 6u);  // gap 3 → +1 (integer halving)
 }
 
 ZEST_CASE(CooldownSkipsDecrement) {
@@ -1822,8 +1822,8 @@ ZEST_CASE(CooldownSkipsDecrement) {
     f.set_low_limit(2);
     f.tick_memory(0.15);
     // Cooldown consumed instead of a second decrement.
-    EXPECT(f.low_limit() == 2u);
-    EXPECT(f.get_backoff_cooldown() < 3u);
+    ZEXPECT(f.low_limit() == 2u);
+    ZEXPECT(f.get_backoff_cooldown() < 3u);
 }
 
 };  // ZEST_SUITE(WorkerPoolMemory)
@@ -1834,11 +1834,11 @@ ZEST_CASE(StartAndStop) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(2, 1));
+        ZASSERT(f.start(2, 1));
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(StopIsPrompt) {
@@ -1847,13 +1847,13 @@ ZEST_CASE(StopIsPrompt) {
     WorkerPoolFixture f;
     std::chrono::milliseconds elapsed{};
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(2, 0));
+        ZASSERT(f.start(2, 0));
         auto begin = std::chrono::steady_clock::now();
         co_await f.stop();
         elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - begin);
     });
-    EXPECT(elapsed.count() < 1500);
+    ZEXPECT(elapsed.count() < 1500);
 }
 
 #ifndef _WIN32
@@ -1863,14 +1863,14 @@ ZEST_CASE(StopReapsWorkers) {
     WorkerPoolFixture f;
     std::vector<int> errors;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(2, 0));
+        ZASSERT(f.start(2, 0));
         std::vector<int> pids = {f.worker_pid(0), f.worker_pid(1)};
         co_await f.stop();
         for(auto pid: pids) {
             errors.push_back(::kill(pid, 0) == 0 ? 0 : errno);
         }
     });
-    EXPECT(errors == std::vector<int>{ESRCH, ESRCH});
+    ZEXPECT(errors == std::vector<int>{ESRCH, ESRCH});
 }
 #endif
 
@@ -1882,18 +1882,18 @@ ZEST_CASE(StoppedPoolBlamesNothing) {
     int blames = 0;
     std::optional<worker::protocol::integer> code;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(0, 2));
+        ZASSERT(f.start(0, 2));
         co_await f.stop();
         auto result = co_await deliver(
             f.pool,
             true,
             [&] { return f.pool.send_stateful(7, worker::DocumentLinkParams{"/x.cpp"}); },
             [&](const kota::ipc::Error&) { blames += 1; });
-        CO_ASSERT(!result.has_value());
+        ZASSERT(!result.has_value());
         code = result.error().code;
     });
-    EXPECT(blames == 0);
-    EXPECT(code == worker::dispatch_errc::worker_unavailable);
+    ZEXPECT(blames == 0);
+    ZEXPECT(code == worker::dispatch_errc::worker_unavailable);
 }
 
 ZEST_CASE(StatelessRequest) {
@@ -1904,7 +1904,7 @@ ZEST_CASE(StatelessRequest) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(2, 0));
+        ZASSERT(f.start(2, 0));
 
         worker::TURunParams params;
         params.index = true;
@@ -1913,11 +1913,11 @@ ZEST_CASE(StatelessRequest) {
         params.arguments = make_args(src);
 
         auto result = co_await f.pool.send_stateless(params, worker::Priority::Low);
-        EXPECT(result);
+        ZEXPECT(result);
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(AdvisoryCancelCooperates) {
@@ -1938,7 +1938,7 @@ ZEST_CASE(AdvisoryCancelCooperates) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(1, 0));
+        ZASSERT(f.start(1, 0));
 
         worker::TURunParams params;
         params.index = true;
@@ -1960,7 +1960,7 @@ ZEST_CASE(AdvisoryCancelCooperates) {
             co_return;
         };
         co_await kota::when_all(sender(), driver());
-        EXPECT(cancelled);
+        ZEXPECT(cancelled);
 
         // The worker replied and survived: the same slot serves the next
         // request.
@@ -1970,22 +1970,22 @@ ZEST_CASE(AdvisoryCancelCooperates) {
         follow.directory = "/tmp";
         follow.arguments = make_args(small_src);
         auto result = co_await f.pool.send_stateless(follow, worker::Priority::Low);
-        EXPECT(result);
+        ZEXPECT(result);
 
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(CrashAndRestart) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(2, 0));
+        ZASSERT(f.start(2, 0));
 
         auto pid = f.worker_pid(0);
-        EXPECT(pid > 0);
+        ZEXPECT(pid > 0);
 
         f.kill_worker(0);
 
@@ -1996,20 +1996,20 @@ ZEST_CASE(CrashAndRestart) {
             if(f.worker_alive(0) && f.worker_pid(0) != pid)
                 break;
         }
-        EXPECT(f.worker_alive(0));
-        EXPECT(f.worker_pid(0) != pid);
+        ZEXPECT(f.worker_alive(0));
+        ZEXPECT(f.worker_pid(0) != pid);
 
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(DeadSlotRevives) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(1, 0));
+        ZASSERT(f.start(1, 0));
         f.set_revive_after(std::chrono::milliseconds(300));
         f.set_max_crash_streak(0);
 
@@ -2018,20 +2018,20 @@ ZEST_CASE(DeadSlotRevives) {
         for(int i = 0; i < 50 && !f.slot_dead(0); ++i) {
             co_await kota::sleep(100);
         }
-        EXPECT(f.slot_dead(0));
+        ZEXPECT(f.slot_dead(0));
 
         // ...and is revived with a fresh budget after the cooldown: the
         // pool never stays at zero workers forever.
         for(int i = 0; i < 100 && !f.worker_alive(0); ++i) {
             co_await kota::sleep(100);
         }
-        EXPECT(f.worker_alive(0));
-        EXPECT(f.crash_streak(0) == 0u);
+        ZEXPECT(f.worker_alive(0));
+        ZEXPECT(f.crash_streak(0) == 0u);
 
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(FloorAboveStartupKept) {
@@ -2041,57 +2041,57 @@ ZEST_CASE(FloorAboveStartupKept) {
         // A floor configured above the startup count survives start():
         // scale-up may grow past it later, and idle scale-down must hold
         // the configured warm set instead of shrinking back to startup.
-        CO_ASSERT(f.start(2, 0, /*min_stateless=*/4));
-        EXPECT(f.min_stateless() == 4u);
+        ZASSERT(f.start(2, 0, /*min_stateless=*/4));
+        ZEXPECT(f.min_stateless() == 4u);
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(RetiringHoldsScaleUp) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(2, 0));
+        ZASSERT(f.start(2, 0));
         f.set_max_stateless(2);
         f.set_retiring(0);
 
         // The retiring worker still holds its process until the monitor
         // reaps it: a replacement now would run three processes against a
         // ceiling of two, worsening the pressure that retired it.
-        EXPECT(!f.scale_up());
-        EXPECT(f.stateless_count() == 2u);
+        ZEXPECT(!f.scale_up());
+        ZEXPECT(f.stateless_count() == 2u);
 
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(RevivesSlotsGate) {
     // Revival — and with it the indexer's requeue-on-unavailable — is only
     // promised by a started pool with a nonzero cooldown.
     WorkerPoolFixture f;
-    EXPECT(!f.pool.revives_slots());
+    ZEXPECT(!f.pool.revives_slots());
 
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(1, 0));
-        EXPECT(f.pool.revives_slots());
+        ZASSERT(f.start(1, 0));
+        ZEXPECT(f.pool.revives_slots());
         f.set_revive_after(std::chrono::milliseconds(0));
-        EXPECT(!f.pool.revives_slots());
+        ZEXPECT(!f.pool.revives_slots());
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(ScaleUpRevivesDead) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(2, 0));
+        ZASSERT(f.start(2, 0));
         // Cooldown far in the future: only scale-up can bring the slot back.
         f.set_revive_after(std::chrono::minutes(10));
         f.set_max_crash_streak(0);
@@ -2100,55 +2100,55 @@ ZEST_CASE(ScaleUpRevivesDead) {
         for(int i = 0; i < 50 && !f.slot_dead(0); ++i) {
             co_await kota::sleep(100);
         }
-        CO_ASSERT(f.slot_dead(0));
+        ZASSERT(f.slot_dead(0));
 
         // Scale-up pressure revives the dead slot instead of appending a
         // third worker next to it.
-        CO_ASSERT(f.scale_up());
-        EXPECT(f.stateless_count() == 2u);
+        ZASSERT(f.scale_up());
+        ZEXPECT(f.stateless_count() == 2u);
         for(int i = 0; i < 50 && !f.worker_alive(0); ++i) {
             co_await kota::sleep(100);
         }
-        EXPECT(f.worker_alive(0));
-        EXPECT(f.crash_streak(0) == 0u);
+        ZEXPECT(f.worker_alive(0));
+        ZEXPECT(f.crash_streak(0) == 0u);
 
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(ScaleUpReusesRetired) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(2, 0));
+        ZASSERT(f.start(2, 0));
         f.retire_idle();
         for(int i = 0; i < 50 && !f.slot_retired(1); i += 1) {
             co_await kota::sleep(100);
         }
-        CO_ASSERT(f.slot_retired(1));
+        ZASSERT(f.slot_retired(1));
 
         // The retired slot is refilled instead of a third appended: a
         // retire/scale-up cycle must not grow the slot table.
-        CO_ASSERT(f.scale_up());
-        EXPECT(f.stateless_count() == 2u);
+        ZASSERT(f.scale_up());
+        ZEXPECT(f.stateless_count() == 2u);
         for(int i = 0; i < 50 && !f.worker_alive(1); i += 1) {
             co_await kota::sleep(100);
         }
-        EXPECT(f.worker_alive(1));
+        ZEXPECT(f.worker_alive(1));
 
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(CrashNotification) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(2, 0));
+        ZASSERT(f.start(2, 0));
 
         f.kill_worker(0);
 
@@ -2158,16 +2158,16 @@ ZEST_CASE(CrashNotification) {
                 break;
         }
 
-        CO_ASSERT(!f.crash_reports.empty());
-        EXPECT(!f.crash_reports[0].stateful);
-        EXPECT(f.crash_reports[0].exit_signal == 9);
-        EXPECT(f.crash_reports[0].will_restart);
-        EXPECT(f.crash_reports[0].crash_streak == 1u);
+        ZASSERT(!f.crash_reports.empty());
+        ZEXPECT(!f.crash_reports[0].stateful);
+        ZEXPECT(f.crash_reports[0].exit_signal == 9);
+        ZEXPECT(f.crash_reports[0].will_restart);
+        ZEXPECT(f.crash_reports[0].crash_streak == 1u);
 
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(CrashDuringRequest) {
@@ -2178,7 +2178,7 @@ ZEST_CASE(CrashDuringRequest) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(2, 0));
+        ZASSERT(f.start(2, 0));
 
         // Kill both workers, then send without yielding: the claim lands on
         // a dead-but-not-yet-reaped slot, and the pool must surface the
@@ -2194,13 +2194,13 @@ ZEST_CASE(CrashDuringRequest) {
         params.arguments = make_args(src);
 
         auto result = co_await f.pool.send_stateless(params, worker::Priority::Low);
-        CO_ASSERT(!result.has_value());
-        EXPECT(result.error().code == worker::dispatch_errc::worker_died);
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::worker_died);
 
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(PreemptCancelsRequest) {
@@ -2211,7 +2211,7 @@ ZEST_CASE(PreemptCancelsRequest) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(2, 0));
+        ZASSERT(f.start(2, 0));
 
         worker::TURunParams params;
         params.index = true;
@@ -2235,23 +2235,23 @@ ZEST_CASE(PreemptCancelsRequest) {
             co_await kota::sleep(1);
         f.preempt(1);
         co_await group.join();
-        EXPECT(code == worker::dispatch_errc::cancelled);
+        ZEXPECT(code == worker::dispatch_errc::cancelled);
 
         // Preemption is not a crash: no report, and the worker comes back
         // with an untouched budget.
-        EXPECT(f.crash_reports.empty());
+        ZEXPECT(f.crash_reports.empty());
         for(int i = 0; i < 50; ++i) {
             co_await kota::sleep(100);
             if(f.worker_alive(0))
                 break;
         }
-        EXPECT(f.worker_alive(0));
-        EXPECT(f.crash_streak(0) == 0u);
+        ZEXPECT(f.worker_alive(0));
+        ZEXPECT(f.crash_streak(0) == 0u);
 
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(CancelledCrashRetiresSlot) {
@@ -2262,7 +2262,7 @@ ZEST_CASE(CancelledCrashRetiresSlot) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(1, 0));
+        ZASSERT(f.start(1, 0));
 
         worker::TURunParams params;
         params.index = true;
@@ -2291,34 +2291,34 @@ ZEST_CASE(CancelledCrashRetiresSlot) {
         f.cancel_low(1);
         f.kill_worker(0);
         co_await group.join();
-        EXPECT(code == worker::dispatch_errc::cancelled);
-        EXPECT(f.generation(0) != gen);
+        ZEXPECT(code == worker::dispatch_errc::cancelled);
+        ZEXPECT(f.generation(0) != gen);
 
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(ScaleUpKeepsLimit) {
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
-        CO_ASSERT(f.start(3, 0));
+        ZASSERT(f.start(3, 0));
         // Simulate pressure having reduced the allowance below the ceiling.
         f.set_low_limit(1);
 
-        CO_ASSERT(f.scale_up());
+        ZASSERT(f.scale_up());
 
         // The new worker adds exactly one to the allowance; it must not
         // reset the reduction back to the ceiling (which is now 4).
-        EXPECT(f.max_low_limit() == 4u);
-        EXPECT(f.low_limit() == 2u);
+        ZEXPECT(f.max_low_limit() == 4u);
+        ZEXPECT(f.low_limit() == 2u);
 
         co_await f.stop();
         done = true;
     });
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 };  // ZEST_SUITE(WorkerPoolIntegration)

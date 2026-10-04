@@ -77,7 +77,7 @@ struct Stack {
 
     void register_pch_store(TempDir& tmp) {
         auto store = CacheStore::open(tmp.path("root"), 1);
-        ASSERT(store);
+        ZASSERT(store);
         store->register_namespace({.name = "pch",
                                    .extension = ".pch",
                                    .aux_extension = ".pch.idx",
@@ -98,8 +98,8 @@ ZEST_CASE(SupersedeTouchesEntry) {
 
     stack.ast.supersede(pid);
 
-    ASSERT(!stack.ast.projections.current(pid));
-    ASSERT(stack.ast.projections.epoch(pid) == epoch + 1);
+    ZASSERT(!stack.ast.projections.current(pid));
+    ZASSERT(stack.ast.projections.epoch(pid) == epoch + 1);
 }
 
 ZEST_CASE(InvalidateKeepsProjection) {
@@ -113,10 +113,10 @@ ZEST_CASE(InvalidateKeepsProjection) {
 
     // Only the currency claim is revoked; the products stay for the
     // bounded-staleness consumers (preamble links, hover gap).
-    ASSERT(!stack.ast.projections.current(pid));
+    ZASSERT(!stack.ast.projections.current(pid));
     auto projection = stack.ast.projections.projection(pid);
-    ASSERT(projection != nullptr);
-    ASSERT(projection->pch_key);
+    ZASSERT(projection != nullptr);
+    ZASSERT(projection->pch_key);
 }
 
 ZEST_CASE(DropErasesEntry) {
@@ -127,8 +127,8 @@ ZEST_CASE(DropErasesEntry) {
 
     stack.ast.drop(pid);
 
-    ASSERT(stack.ast.projections.projection(pid) == nullptr);
-    ASSERT(!stack.ast.projections.current(pid));
+    ZASSERT(stack.ast.projections.projection(pid) == nullptr);
+    ZASSERT(!stack.ast.projections.current(pid));
 }
 
 ZEST_CASE(SwitchIdentityResets) {
@@ -151,13 +151,13 @@ ZEST_CASE(SwitchIdentityResets) {
     // earned under the old one is dropped, but the published output stays
     // until the next compile overwrites it (same as the old world's
     // session fields).
-    ASSERT(session->generation == generation + 1);
-    ASSERT(!session->trial_done);
-    ASSERT(!stack.ast.projections.current(pid));
-    ASSERT(!stack.ast.projections.entries[pid].deps.has_value());
+    ZASSERT(session->generation == generation + 1);
+    ZASSERT(!session->trial_done);
+    ZASSERT(!stack.ast.projections.current(pid));
+    ZASSERT(!stack.ast.projections.entries[pid].deps.has_value());
     auto after = stack.ast.projections.projection(pid);
-    ASSERT(!after->pch_key.has_value());
-    ASSERT(after->output);
+    ZASSERT(!after->pch_key.has_value());
+    ZASSERT(after->output);
 }
 
 ZEST_CASE(CrashPublishesNote) {
@@ -178,28 +178,28 @@ ZEST_CASE(CrashPublishesNote) {
         session,
         evidence_kind(EvidenceKind::Compile),
         kota::ipc::Error{worker::dispatch_errc::worker_crashed, "killed by signal 11 (SIGSEGV)"});
-    EXPECT(emits == 1);
+    ZEXPECT(emits == 1);
     auto projection = stack.ast.projections.projection(session->path_id);
-    ASSERT((projection && projection->output.has_value()));
-    EXPECT(projection->output->diagnostics.empty());
+    ZASSERT((projection && projection->output.has_value()));
+    ZEXPECT(projection->output->diagnostics.empty());
 
     std::vector<protocol::Diagnostic> notes;
     append_crash_notes(*session, notes);
-    ASSERT(notes.size() == 1u);
+    ZASSERT(notes.size() == 1u);
     auto& message = std::get<std::string>(notes[0].message);
-    EXPECT(message.contains("while compiling this file (killed by signal 11 (SIGSEGV))"));
-    EXPECT(message.contains("save it"));
+    ZEXPECT(message.contains("while compiling this file (killed by signal 11 (SIGSEGV))"));
+    ZEXPECT(message.contains("save it"));
 
     bool done = false;
     auto body = [&]() -> kota::task<> {
-        CO_ASSERT(!co_await stack.ast.ensure_compiled(session));
+        ZASSERT(!co_await stack.ast.ensure_compiled(session));
         done = true;
     };
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
-    EXPECT(emits == 1);
+    ZEXPECT(done);
+    ZEXPECT(emits == 1);
 }
 
 ZEST_CASE(ShutdownUnblocksWaiters) {
@@ -229,7 +229,7 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         kota::task_group<> group;
         auto waiter = [&]() -> kota::task<> {
@@ -241,8 +241,8 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
         for(int i = 0; i < 100 && !stack.is_compiling(session->path_id); ++i) {
             co_await kota::sleep(10);
         }
-        CO_ASSERT(stack.is_compiling(session->path_id));
-        CO_ASSERT(!waiter_done);
+        ZASSERT(stack.is_compiling(session->path_id));
+        ZASSERT(!waiter_done);
 
         co_await stack.ast.stop();
 
@@ -256,9 +256,9 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
         }
         co_await group.join();
 
-        EXPECT(waiter_done);
-        EXPECT(!waiter_ok);
-        EXPECT(!stack.is_compiling(session->path_id));
+        ZEXPECT(waiter_done);
+        ZEXPECT(!waiter_ok);
+        ZEXPECT(!stack.is_compiling(session->path_id));
 
         co_await stack.graph.shutdown();
         co_await stack.pool.stop();
@@ -267,7 +267,7 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
@@ -302,7 +302,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         kota::task_group<> group;
         auto waiter = [&]() -> kota::task<> {
@@ -314,7 +314,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
         for(int i = 0; i < 100 && !stack.is_compiling(session->path_id); ++i) {
             co_await kota::sleep(10);
         }
-        CO_ASSERT(stack.is_compiling(session->path_id));
+        ZASSERT(stack.is_compiling(session->path_id));
 
         // What the didChange handler does: fold the edit in, then supersede.
         session->text = "int fixed;\n";
@@ -330,14 +330,14 @@ ZEST_CASE(EditInterruptsStaleCompile) {
         }
         co_await group.join();
 
-        CO_ASSERT(waiter_done);
-        EXPECT(!waiter_ok);
+        ZASSERT(waiter_done);
+        ZEXPECT(!waiter_ok);
 
         // The next request (the editor re-queries after an edit) compiles
         // the fresh content.
         bool second_ok = co_await stack.ast.ensure_compiled(session);
-        EXPECT(second_ok);
-        EXPECT(stack.ast.projections.current(session->path_id));
+        ZEXPECT(second_ok);
+        ZEXPECT(stack.ast.projections.current(session->path_id));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -347,7 +347,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
@@ -381,7 +381,7 @@ ZEST_CASE(SupersededCompileCancelled) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         kota::task_group<> group;
         auto first = [&]() -> kota::task<> {
@@ -393,7 +393,7 @@ ZEST_CASE(SupersededCompileCancelled) {
         for(int i = 0; i < 100 && !stack.is_compiling(session->path_id); ++i) {
             co_await kota::sleep(10);
         }
-        CO_ASSERT(stack.is_compiling(session->path_id));
+        ZASSERT(stack.is_compiling(session->path_id));
 
         // The edit lands while the slow compile is in flight.
         session->text = "int fixed;\n";
@@ -414,9 +414,9 @@ ZEST_CASE(SupersededCompileCancelled) {
         }
         co_await group.join();
 
-        EXPECT(first_done);
-        EXPECT(second_ok);
-        EXPECT(stack.ast.projections.current(session->path_id));
+        ZEXPECT(first_done);
+        ZEXPECT(second_ok);
+        ZEXPECT(stack.ast.projections.current(session->path_id));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -426,7 +426,7 @@ ZEST_CASE(SupersededCompileCancelled) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
@@ -453,7 +453,7 @@ ZEST_CASE(BufferImportBuildsPCM) {
     stack.project.dep_graph.build_reverse_map();
 
     auto store = CacheStore::open(tmp.path("root"), 1);
-    ASSERT(store);
+    ZASSERT(store);
     store->register_namespace({.name = "pch",
                                .extension = ".pch",
                                .aux_extension = ".pch.idx",
@@ -472,7 +472,7 @@ ZEST_CASE(BufferImportBuildsPCM) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         ok = co_await stack.ast.ensure_compiled(session);
 
@@ -484,13 +484,13 @@ ZEST_CASE(BufferImportBuildsPCM) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
-    EXPECT(ok);
-    EXPECT(stack.ast.projections.current(session->path_id));
+    ZEXPECT(ok);
+    ZEXPECT(stack.ast.projections.current(session->path_id));
     auto mod_ids = stack.project.dep_graph.lookup_module("m");
-    ASSERT(!mod_ids.empty());
-    EXPECT(stack.project.pcm_cache.contains(mod_ids[0]));
+    ZASSERT(!mod_ids.empty());
+    ZEXPECT(stack.project.pcm_cache.contains(mod_ids[0]));
 }
 
 ZEST_CASE(ImportScanPerUnit) {
@@ -536,19 +536,19 @@ ZEST_CASE(ImportScanPerUnit) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
-        CO_ASSERT(co_await stack.ast.ensure_compiled(plain));
+        ZASSERT(co_await stack.ast.ensure_compiled(plain));
         plain_scans = stack.pcm.import_scans;
-        CO_ASSERT(co_await stack.ast.ensure_compiled(main));
+        ZASSERT(co_await stack.ast.ensure_compiled(main));
         first_scans = stack.pcm.import_scans;
 
         edit(main, "import m;\nint main() { return mv() + 1; }\n");
-        CO_ASSERT(co_await stack.ast.ensure_compiled(main));
+        ZASSERT(co_await stack.ast.ensure_compiled(main));
         body_scans = stack.pcm.import_scans;
 
         edit(main, "import m;\n#define TWO 2\nint main() { return mv() + TWO; }\n");
-        CO_ASSERT(co_await stack.ast.ensure_compiled(main));
+        ZASSERT(co_await stack.ast.ensure_compiled(main));
         import_scans = stack.pcm.import_scans;
 
         co_await stack.ast.stop();
@@ -559,13 +559,13 @@ ZEST_CASE(ImportScanPerUnit) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
-    EXPECT(plain_scans == 0u);
+    ZEXPECT(plain_scans == 0u);
     // The document's scan, and the interface's own PCM round.
-    EXPECT(first_scans == 2u);
-    EXPECT(body_scans == first_scans);
-    EXPECT(import_scans == first_scans + 1);
+    ZEXPECT(first_scans == 2u);
+    ZEXPECT(body_scans == first_scans);
+    ZEXPECT(import_scans == first_scans + 1);
 }
 
 ZEST_CASE(BufferImportRecorded) {
@@ -588,7 +588,7 @@ ZEST_CASE(BufferImportRecorded) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
 
@@ -600,12 +600,12 @@ ZEST_CASE(BufferImportRecorded) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
     // The sentinel edge survives the landing: a first provider's update
     // must reach this document's node.
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    EXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
+    ZEXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -637,7 +637,7 @@ ZEST_CASE(IncludeImportRecorded) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
 
@@ -649,10 +649,10 @@ ZEST_CASE(IncludeImportRecorded) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    EXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
+    ZEXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -683,7 +683,7 @@ ZEST_CASE(HostImportRecorded) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
 
@@ -695,12 +695,12 @@ ZEST_CASE(HostImportRecorded) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
     auto* context = stack.contexts.header_context(session->path_id);
-    ASSERT((context != nullptr && context->synthesized != nullptr));
+    ZASSERT((context != nullptr && context->synthesized != nullptr));
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
-    EXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
+    ZEXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
 
     logging::reset_anomaly_for_testing();
 }
@@ -733,7 +733,7 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         unit_ok = co_await stack.ast.ensure_compiled(unit);
         header_ok = co_await stack.ast.ensure_compiled(header);
@@ -746,12 +746,12 @@ ZEST_CASE(ForcedIncludeSkipsScan) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
-    EXPECT(unit_ok);
-    EXPECT(header_ok);
-    EXPECT(stack.contexts.header_context(header->path_id) != nullptr);
-    EXPECT(stack.pcm.import_scans == 0u);
+    ZEXPECT(unit_ok);
+    ZEXPECT(header_ok);
+    ZEXPECT(stack.contexts.header_context(header->path_id) != nullptr);
+    ZEXPECT(stack.pcm.import_scans == 0u);
 }
 
 };  // ZEST_SUITE(ASTFamilyGuards)
@@ -773,14 +773,14 @@ ZEST_CASE(CrashedCompileBarsBuilds) {
     auto body = [&]() -> kota::task<> {
         // With no worker at all, only the bar can answer without an error.
         auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
-        CO_ASSERT(result);
-        EXPECT(result.value().data == "null");
+        ZASSERT(result);
+        ZEXPECT(result.value().data == "null");
         done = true;
     };
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(CrashedFormatBarsFormat) {
@@ -794,14 +794,14 @@ ZEST_CASE(CrashedFormatBarsFormat) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         auto result = co_await stack.dispatcher.format(Ticket::take(session), std::nullopt);
-        CO_ASSERT(result);
-        EXPECT(result.value().data == "null");
+        ZASSERT(result);
+        ZEXPECT(result.value().data == "null");
         done = true;
     };
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(EpochGuardsPCHWrite) {
@@ -834,11 +834,11 @@ ZEST_CASE(EpochGuardsPCHWrite) {
     stack.loop.schedule(task);
     stack.loop.run();
 
-    EXPECT(!wrote);
+    ZEXPECT(!wrote);
     // The stale continuation left the adopted PCH reference untouched.
     auto projection = stack.ast.projections.projection(pid);
-    ASSERT((projection && projection->pch_key.has_value()));
-    EXPECT(*projection->pch_key == std::string("key"));
+    ZASSERT((projection && projection->pch_key.has_value()));
+    ZEXPECT(*projection->pch_key == std::string("key"));
 }
 
 ZEST_CASE(PCHCrashBarsDocument) {
@@ -864,7 +864,7 @@ ZEST_CASE(PCHCrashBarsDocument) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         bool built =
             co_await ASTFamilyFixture::ensure_pch(stack.ast,
@@ -873,12 +873,12 @@ ZEST_CASE(PCHCrashBarsDocument) {
                                                   stack.ast.projections.epoch(session->path_id),
                                                   directory,
                                                   arguments);
-        EXPECT(!built);
-        EXPECT(ASTFamily::compile_barred(*session));
+        ZEXPECT(!built);
+        ZEXPECT(ASTFamily::compile_barred(*session));
         auto notes = session->quarantine->notes();
-        CO_ASSERT(notes.size() == 1u);
-        EXPECT(notes[0].kind == evidence_kind(EvidenceKind::PCH));
-        EXPECT(notes[0].strikes == 1u);
+        ZASSERT(notes.size() == 1u);
+        ZEXPECT(notes[0].kind == evidence_kind(EvidenceKind::PCH));
+        ZEXPECT(notes[0].strikes == 1u);
 
         co_await stack.pool.stop();
         done = true;
@@ -886,7 +886,7 @@ ZEST_CASE(PCHCrashBarsDocument) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
@@ -911,14 +911,14 @@ ZEST_CASE(PCHCrashStopsBuild) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {});
-        CO_ASSERT(result);
-        EXPECT(result.value().data == "null");
+        ZASSERT(result);
+        ZEXPECT(result.value().data == "null");
         auto notes = session->quarantine->notes();
-        CO_ASSERT(notes.size() == 1u);
-        EXPECT(notes[0].strikes == 1u);
+        ZASSERT(notes.size() == 1u);
+        ZEXPECT(notes[0].strikes == 1u);
 
         co_await stack.pool.stop();
         done = true;
@@ -926,7 +926,7 @@ ZEST_CASE(PCHCrashStopsBuild) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
@@ -958,7 +958,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         kota::cancellation_source source;
         kota::task_group<> group;
@@ -985,7 +985,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
         for(int i = 0; i < 100 && !stack.is_compiling(session->path_id); ++i) {
             co_await kota::sleep(10);
         }
-        CO_ASSERT(stack.is_compiling(session->path_id));
+        ZASSERT(stack.is_compiling(session->path_id));
         source.cancel();
 
         for(int i = 0; i < 600 && !other_answered; ++i) {
@@ -996,10 +996,10 @@ ZEST_CASE(ClientCancelSparesCompile) {
         }
         co_await group.join();
 
-        EXPECT(cancelled_returned);
-        EXPECT(other_answered);
-        EXPECT(stack.ast.projections.current(session->path_id));
-        EXPECT(!stack.is_compiling(session->path_id));
+        ZEXPECT(cancelled_returned);
+        ZEXPECT(other_answered);
+        ZEXPECT(stack.ast.projections.current(session->path_id));
+        ZEXPECT(!stack.is_compiling(session->path_id));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1009,7 +1009,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
@@ -1040,13 +1040,13 @@ ZEST_CASE(StaleReplyLandsContentModified) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         // Warm the AST: the next query's only suspension is its worker send.
         auto warm = co_await stack.dispatcher.query(worker::QueryKind::Hover,
                                                     Ticket::take(session),
                                                     protocol::Position{0, 4});
-        CO_ASSERT(warm);
+        ZASSERT(warm);
 
         auto ticket = Ticket::take(session);
         kota::task_group<> group;
@@ -1059,10 +1059,10 @@ ZEST_CASE(StaleReplyLandsContentModified) {
         // spawn runs the query inline to that suspension, so the pool
         // already reports it in flight: the bump lands provably between
         // dispatch and reply.
-        CO_ASSERT(stack.pool.foreground_busy());
+        ZASSERT(stack.pool.foreground_busy());
         session->generation += 1;
         co_await group.join();
-        EXPECT(stale);
+        ZEXPECT(stale);
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1072,7 +1072,7 @@ ZEST_CASE(StaleReplyLandsContentModified) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
@@ -1098,13 +1098,13 @@ ZEST_CASE(HarmlessKindKeepsBar) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
                                                       Ticket::take(session),
                                                       protocol::Position{0, 4});
-        EXPECT(result);
-        EXPECT(session->quarantine->barred(tokens_kind, Quarantine::Clock::now()));
+        ZEXPECT(result);
+        ZEXPECT(session->quarantine->barred(tokens_kind, Quarantine::Clock::now()));
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1114,7 +1114,7 @@ ZEST_CASE(HarmlessKindKeepsBar) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
@@ -1158,7 +1158,7 @@ ZEST_CASE(PoisonPreambleShared) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         auto build = [&](const std::shared_ptr<Session>& session) {
             return ASTFamilyFixture::ensure_pch(stack.ast,
@@ -1169,17 +1169,17 @@ ZEST_CASE(PoisonPreambleShared) {
                                                 arguments);
         };
         auto pch = evidence_kind(EvidenceKind::PCH);
-        CO_ASSERT(!co_await build(first));
-        CO_ASSERT(first->quarantine->crashed(pch));
-        EXPECT(deaths == 1);
+        ZASSERT(!co_await build(first));
+        ZASSERT(first->quarantine->crashed(pch));
+        ZEXPECT(deaths == 1);
 
         // Refused without touching a worker, each session barred by the
         // same death.
-        CO_ASSERT(!co_await build(second));
-        EXPECT(second->quarantine->crashed(pch));
-        CO_ASSERT(!co_await build(third));
-        EXPECT(third->quarantine->crashed(pch));
-        EXPECT(deaths == 1);
+        ZASSERT(!co_await build(second));
+        ZEXPECT(second->quarantine->crashed(pch));
+        ZASSERT(!co_await build(third));
+        ZEXPECT(third->quarantine->crashed(pch));
+        ZEXPECT(deaths == 1);
 
         co_await stack.pool.stop();
         done = true;
@@ -1187,7 +1187,7 @@ ZEST_CASE(PoisonPreambleShared) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 
     logging::reset_anomaly_for_testing();
 }
@@ -1217,7 +1217,7 @@ ZEST_CASE(EpochGuardsPCHWash) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
         auto gen = session->generation;
         auto epoch = stack.ast.projections.epoch(session->path_id);
@@ -1241,10 +1241,10 @@ ZEST_CASE(EpochGuardsPCHWash) {
         // The build landed (the shared artifact is cached) and the stale
         // request compiles against it, but it adopted nothing and cleared
         // nothing.
-        EXPECT(built);
+        ZEXPECT(built);
         auto projection = stack.ast.projections.projection(session->path_id);
-        EXPECT((!projection || !projection->pch_key.has_value()));
-        EXPECT(session->quarantine->crashed(pch));
+        ZEXPECT((!projection || !projection->pch_key.has_value()));
+        ZEXPECT(session->quarantine->crashed(pch));
 
         // A current request adopts the cached pair and only then clears
         // this session's record.
@@ -1254,10 +1254,10 @@ ZEST_CASE(EpochGuardsPCHWash) {
                                                       stack.ast.projections.epoch(session->path_id),
                                                       directory,
                                                       arguments);
-        EXPECT(built);
+        ZEXPECT(built);
         projection = stack.ast.projections.projection(session->path_id);
-        EXPECT((projection && projection->pch_key.has_value()));
-        EXPECT(!session->quarantine->crashed(pch));
+        ZEXPECT((projection && projection->pch_key.has_value()));
+        ZEXPECT(!session->quarantine->crashed(pch));
 
         co_await stack.graph.shutdown();
         co_await stack.pool.stop();
@@ -1266,7 +1266,7 @@ ZEST_CASE(EpochGuardsPCHWash) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(StaleDepsNoAdopt) {
@@ -1310,11 +1310,11 @@ ZEST_CASE(StaleDepsNoAdopt) {
         opts.self_path = clice_binary();
         opts.stateless_count = 1;
         opts.stateful_count = 0;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
-        CO_ASSERT(co_await build(builder));
+        ZASSERT(co_await build(builder));
         auto adopted = stack.ast.projections.projection(builder->path_id);
-        CO_ASSERT((adopted && adopted->pch_key.has_value()));
+        ZASSERT((adopted && adopted->pch_key.has_value()));
         auto builder_key = *adopted->pch_key;
 
         // The header the pair depends on changes into one that cannot
@@ -1331,13 +1331,13 @@ ZEST_CASE(StaleDepsNoAdopt) {
         };
         co_await kota::when_all(acquire_first(), acquire_second());
 
-        EXPECT(!first_built);
-        EXPECT(!second_built);
+        ZEXPECT(!first_built);
+        ZEXPECT(!second_built);
         // The projection keeps the builder's adoption — the failed rebuild
         // wrote nothing over it, and the stale pair heals on a later
         // successful acquisition.
         auto projection = stack.ast.projections.projection(first->path_id);
-        EXPECT((projection && projection->pch_key == builder_key));
+        ZEXPECT((projection && projection->pch_key == builder_key));
 
         co_await stack.graph.shutdown();
         co_await stack.pool.stop();
@@ -1346,7 +1346,7 @@ ZEST_CASE(StaleDepsNoAdopt) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(EvictedDocumentRecompiles) {
@@ -1368,15 +1368,15 @@ ZEST_CASE(EvictedDocumentRecompiles) {
         opts.stateless_count = 0;
         opts.stateful_count = 1;
         opts.max_documents = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
-        CO_ASSERT(co_await stack.ast.ensure_compiled(a));
-        CO_ASSERT(co_await stack.ast.ensure_compiled(b));
+        ZASSERT(co_await stack.ast.ensure_compiled(a));
+        ZASSERT(co_await stack.ast.ensure_compiled(b));
         auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
                                                       Ticket::take(a),
                                                       protocol::Position{0, 5});
-        CO_ASSERT(result);
-        EXPECT(result.value().data != "null");
+        ZASSERT(result);
+        ZEXPECT(result.value().data != "null");
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1386,7 +1386,7 @@ ZEST_CASE(EvictedDocumentRecompiles) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 ZEST_CASE(AnswerClearsQueryRecord) {
@@ -1410,17 +1410,17 @@ ZEST_CASE(AnswerClearsQueryRecord) {
         opts.self_path = clice_binary();
         opts.stateless_count = 0;
         opts.stateful_count = 1;
-        CO_ASSERT(stack.pool.start(opts));
+        ZASSERT(stack.pool.start(opts));
 
-        CO_ASSERT(co_await stack.ast.ensure_compiled(a));
+        ZASSERT(co_await stack.ast.ensure_compiled(a));
         auto before = published;
         auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
                                                       Ticket::take(a),
                                                       protocol::Position{0, 5});
-        CO_ASSERT(result);
-        EXPECT(result.value().data != "null");
-        EXPECT(!a->quarantine->crashed(hover));
-        EXPECT(published == before + 1);
+        ZASSERT(result);
+        ZEXPECT(result.value().data != "null");
+        ZEXPECT(!a->quarantine->crashed(hover));
+        ZEXPECT(published == before + 1);
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
@@ -1430,7 +1430,7 @@ ZEST_CASE(AnswerClearsQueryRecord) {
     auto task = body();
     stack.loop.schedule(task);
     stack.loop.run();
-    EXPECT(done);
+    ZEXPECT(done);
 }
 
 };  // ZEST_SUITE(DispatcherGuards)

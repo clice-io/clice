@@ -20,17 +20,17 @@ ZEST_SUITE(FormatSupport) {
 
 ZEST_CASE(FormatLLVMStringRef) {
     llvm::StringRef value = "hello";
-    EXPECT(std::format("{}", value) == "hello");
-    EXPECT(std::format("{}", llvm::StringLiteral("hello")) == "hello");
+    ZEXPECT(std::format("{}", value) == "hello");
+    ZEXPECT(std::format("{}", llvm::StringLiteral("hello")) == "hello");
 }
 
 ZEST_CASE(FormatEnumAndStruct) {
     auto enum_text = std::format("{}", ExampleEnum::Alpha);
-    EXPECT(!enum_text.empty());
+    ZEXPECT(!enum_text.empty());
 
     auto struct_text = clice::dump(ExampleStruct{1, 2});
-    EXPECT(struct_text.find("\"left\"") != std::string::npos);
-    EXPECT(struct_text.find("\"right\"") != std::string::npos);
+    ZEXPECT(struct_text.find("\"left\"") != std::string::npos);
+    ZEXPECT(struct_text.find("\"right\"") != std::string::npos);
 }
 
 ZEST_CASE(DumpMap) {
@@ -39,8 +39,8 @@ ZEST_CASE(DumpMap) {
         {3, 4}
     };
     auto text = clice::dump(value);
-    EXPECT(text.find("1") != std::string::npos);
-    EXPECT(text.find("4") != std::string::npos);
+    ZEXPECT(text.find("1") != std::string::npos);
+    ZEXPECT(text.find("4") != std::string::npos);
 }
 
 };  // ZEST_SUITE(FormatSupport)

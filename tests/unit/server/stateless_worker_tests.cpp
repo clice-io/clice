@@ -30,18 +30,18 @@ ZEST_CASE(CompileParamsRoundTrip) {
     params.pcms = {};
 
     auto bytes = bincode::to_bytes(params);
-    ASSERT(bytes);
+    ZASSERT(bytes);
 
     worker::CompileParams result;
     auto status =
         bincode::from_bytes(std::span<const std::byte>(bytes->data(), bytes->size()), result);
-    ASSERT(status);
+    ZASSERT(status);
 
-    EXPECT(result.path == params.path);
-    EXPECT(result.version == params.version);
-    EXPECT(result.text == params.text);
-    EXPECT(result.directory == params.directory);
-    EXPECT(result.arguments.size() == params.arguments.size());
+    ZEXPECT(result.path == params.path);
+    ZEXPECT(result.version == params.version);
+    ZEXPECT(result.text == params.text);
+    ZEXPECT(result.directory == params.directory);
+    ZEXPECT(result.arguments.size() == params.arguments.size());
 }
 
 ZEST_CASE(CompileResultRoundTrip) {
@@ -52,13 +52,13 @@ ZEST_CASE(CompileResultRoundTrip) {
     result.diagnostics = {};  // empty
 
     auto bytes = bincode::to_bytes(result);
-    ASSERT(bytes);
+    ZASSERT(bytes);
 
     worker::CompileResult decoded;
     auto status =
         bincode::from_bytes(std::span<const std::byte>(bytes->data(), bytes->size()), decoded);
-    ASSERT(status);
-    EXPECT(decoded.version == result.version);
+    ZASSERT(status);
+    ZEXPECT(decoded.version == result.version);
 }
 
 };  // ZEST_SUITE(BincodeRoundTrip)
@@ -71,7 +71,7 @@ ZEST_SUITE(StatelessWorker) {
 
 ZEST_CASE(SpawnAndExit) {
     WorkerHandle w;
-    ASSERT(w.spawn());
+    ZASSERT(w.spawn());
 
     w.run([]() -> kota::task<> { co_return; });
 }
@@ -82,7 +82,7 @@ ZEST_CASE(BuildPCHRequest) {
     auto hdr = tmp.path("test_pch.h");
 
     WorkerHandle w;
-    ASSERT(w.spawn());
+    ZASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -98,18 +98,18 @@ ZEST_CASE(BuildPCHRequest) {
         params.index_output_path = tmp.path("test_pch.pch.idx");
 
         auto result = co_await w.peer->send_request(params);
-        EXPECT(result);
+        ZEXPECT(result);
         if(!result.has_value()) {
             w.peer->close_output();
             co_return;
         }
-        EXPECT(result.value().success);
-        EXPECT(!result.value().output_path.empty());
+        ZEXPECT(result.value().success);
+        ZEXPECT(!result.value().output_path.empty());
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(IndexRequest) {
@@ -118,7 +118,7 @@ ZEST_CASE(IndexRequest) {
     auto src = tmp.path("test_index.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn());
+    ZASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -130,12 +130,12 @@ ZEST_CASE(IndexRequest) {
         params.arguments = make_args(src);
 
         auto result = co_await w.peer->send_request(params);
-        EXPECT(result);
+        ZEXPECT(result);
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 };  // ZEST_SUITE(StatelessWorker)
@@ -153,7 +153,7 @@ ZEST_CASE(BuildPCMRequest) {
     auto src = tmp.path("test_module.cppm");
 
     WorkerHandle w;
-    ASSERT(w.spawn());
+    ZASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -171,11 +171,11 @@ ZEST_CASE(BuildPCMRequest) {
         params.output_path = tmp.path("test_module.pcm");
 
         auto result = co_await w.peer->send_request(params);
-        EXPECT(result);
+        ZEXPECT(result);
         if(result.has_value()) {
             auto& build = result.value();
-            EXPECT(build.success);
-            EXPECT(build.build_at > 0);
+            ZEXPECT(build.success);
+            ZEXPECT(build.build_at > 0);
             // The module source itself must be a hashed dependency: the PCM
             // cache key embeds no content, so the deps snapshot is the only
             // thing that can see an offline edit of the interface. Deps name
@@ -188,13 +188,13 @@ ZEST_CASE(BuildPCMRequest) {
                     source_dep = dep.hash != 0;
                 }
             }
-            EXPECT(source_dep);
+            ZEXPECT(source_dep);
         }
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(CompletionRequest) {
@@ -204,7 +204,7 @@ ZEST_CASE(CompletionRequest) {
     auto src = tmp.path("completion_test.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn());
+    ZASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -217,12 +217,12 @@ ZEST_CASE(CompletionRequest) {
         params.offset = 25;  // after "fo" in "int bar = fo" (13 + 12)
 
         auto result = co_await w.peer->send_request(params);
-        EXPECT(result);
+        ZEXPECT(result);
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(SignatureHelpRequest) {
@@ -232,7 +232,7 @@ ZEST_CASE(SignatureHelpRequest) {
     auto src = tmp.path("sighelp_test.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn());
+    ZASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -245,13 +245,13 @@ ZEST_CASE(SignatureHelpRequest) {
         params.offset = 45;  // after "foo(" (26 + 19)
 
         auto result = co_await w.peer->send_request(params);
-        EXPECT(result);
+        ZEXPECT(result);
         // Should return signature help for foo(int a, int b).
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 // #701: ordering two constructor templates of a class template whose pack
@@ -270,7 +270,7 @@ template <class, class...> struct V {
     auto offset = static_cast<uint32_t>(text.find("V();") + 2);
 
     WorkerHandle w;
-    ASSERT(w.spawn());
+    ZASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -282,7 +282,7 @@ template <class, class...> struct V {
         completion.arguments = make_args(src);
         completion.offset = offset;
         auto completed = co_await w.peer->send_request(completion);
-        EXPECT(completed);
+        ZEXPECT(completed);
 
         worker::SignatureHelpParams help;
         help.file = src;
@@ -291,13 +291,13 @@ template <class, class...> struct V {
         help.arguments = make_args(src);
         help.offset = offset;
         auto helped = co_await w.peer->send_request(help);
-        EXPECT(helped);
+        ZEXPECT(helped);
 
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 ZEST_CASE(MultipleStatelessRequests) {
@@ -311,7 +311,7 @@ ZEST_CASE(MultipleStatelessRequests) {
     }
 
     WorkerHandle w;
-    ASSERT(w.spawn());
+    ZASSERT(w.spawn());
 
     bool test_done = false;
 
@@ -325,13 +325,13 @@ ZEST_CASE(MultipleStatelessRequests) {
             params.arguments = make_args(paths[i]);
 
             auto result = co_await w.peer->send_request(params);
-            EXPECT(result);
+            ZEXPECT(result);
         }
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 };  // ZEST_SUITE(StatelessWorkerExtended)

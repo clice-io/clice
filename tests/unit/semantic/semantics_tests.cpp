@@ -93,48 +93,48 @@ export module §(name)⟦demo⟧.core;
 export int value = 1;
 module :private;
 )cpp");
-    ASSERT(compile());
+    ZASSERT(compile());
     auto& semantics = unit->semantics();
 
     auto modules = semantics.module_declarations();
-    ASSERT(modules.size() == 3U);
-    ASSERT(modules[0].kind == ModuleDeclaration::Kind::GlobalFragment);
-    ASSERT(modules[1].kind == ModuleDeclaration::Kind::Declaration);
-    ASSERT(modules[2].kind == ModuleDeclaration::Kind::PrivateFragment);
-    ASSERT(modules[1].name_parts.size() == 2U);
+    ZASSERT(modules.size() == 3U);
+    ZASSERT(modules[0].kind == ModuleDeclaration::Kind::GlobalFragment);
+    ZASSERT(modules[1].kind == ModuleDeclaration::Kind::Declaration);
+    ZASSERT(modules[2].kind == ModuleDeclaration::Kind::PrivateFragment);
+    ZASSERT(modules[1].name_parts.size() == 2U);
 
     // The declaration's written name tokens are owned by its Module node,
     // so the ownership machinery can attribute them.
     auto index = token_index_at(semantics, range("name").begin);
-    ASSERT(index);
+    ZASSERT(index);
     auto owners = semantics.owners(*index);
-    ASSERT(owners.size() == 1U);
+    ZASSERT(owners.size() == 1U);
     auto& node = semantics.node(owners[0]);
-    ASSERT(node.node.kind() == SemanticNode::Kind::Module);
-    ASSERT(node.node.get<ModuleDeclaration>() == &modules[1]);
+    ZASSERT(node.node.kind() == SemanticNode::Kind::Module);
+    ZASSERT(node.node.get<ModuleDeclaration>() == &modules[1]);
 }
 
 ZEST_CASE(CommentNodes) {
     add_main("main.cpp", "// note\nint x = 1; /* tail */\n");
-    ASSERT(compile());
+    ZASSERT(compile());
     auto& semantics = unit->semantics();
 
     auto comments = semantics.comments();
-    ASSERT(comments.size() == 2U);
-    ASSERT(comments[0].kind == LexicalInfo::Comment::Kind::Line);
-    ASSERT(comments[1].kind == LexicalInfo::Comment::Kind::Block);
+    ZASSERT(comments.size() == 2U);
+    ZASSERT(comments[0].kind == LexicalInfo::Comment::Kind::Line);
+    ZASSERT(comments[1].kind == LexicalInfo::Comment::Kind::Block);
 
     // Each comment is also a node; it owns no spelled tokens (the stream
     // drops comments) and carries only its payload.
     std::size_t comment_nodes = 0;
     for(auto& entry: semantics.node_entries()) {
         if(entry.node.kind() == SemanticNode::Kind::Comment) {
-            ASSERT(entry.node.get<LexicalInfo::Comment>() == &comments[comment_nodes]);
-            ASSERT(entry.owned == 0U);
+            ZASSERT(entry.node.get<LexicalInfo::Comment>() == &comments[comment_nodes]);
+            ZASSERT(entry.owned == 0U);
             comment_nodes += 1;
         }
     }
-    ASSERT(comment_nodes == 2U);
+    ZASSERT(comment_nodes == 2U);
 }
 
 ZEST_CASE(DisabledDuplicateDeclaration) {
@@ -146,25 +146,25 @@ export §(live)⟦module⟧ app;
 export module app;
 #endif
 )cpp");
-    ASSERT(compile());
+    ZASSERT(compile());
     auto& semantics = unit->semantics();
 
     auto modules = semantics.module_declarations();
-    ASSERT(modules.size() == 1U);
-    ASSERT(modules[0].kind == ModuleDeclaration::Kind::Declaration);
-    ASSERT(modules[0].keyword == range("live"));
+    ZASSERT(modules.size() == 1U);
+    ZASSERT(modules[0].kind == ModuleDeclaration::Kind::Declaration);
+    ZASSERT(modules[0].keyword == range("live"));
 }
 
 ZEST_CASE(NoModuleNoNodes) {
     // `module` as an ordinary identifier in a non-module unit: the lexical
     // candidates (if any) must not survive the compiler cross-check.
     add_main("main.cpp", "int module = 1;\nvoid f() { module = 2; }\n");
-    ASSERT(compile());
+    ZASSERT(compile());
     auto& semantics = unit->semantics();
 
-    ASSERT(semantics.module_declarations().size() == 0U);
+    ZASSERT(semantics.module_declarations().size() == 0U);
     for(auto& entry: semantics.node_entries()) {
-        ASSERT(entry.node.kind() != SemanticNode::Kind::Module);
+        ZASSERT(entry.node.kind() != SemanticNode::Kind::Module);
     }
 }
 
@@ -175,8 +175,8 @@ ZEST_CASE(NestedMacroScaling) {
     // linear build takes about 4x.
     auto small = nested_macro_build_time(400);
     auto large = nested_macro_build_time(1600);
-    ASSERT((small.has_value() && large.has_value()));
-    ASSERT(*large < *small * 12);
+    ZASSERT((small.has_value() && large.has_value()));
+    ZASSERT(*large < *small * 12);
 }
 
 };  // ZEST_SUITE(SemanticsTable)

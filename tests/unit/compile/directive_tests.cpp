@@ -20,7 +20,7 @@ using u32 = std::uint32_t;
 
 void run(llvm::StringRef code) {
     add_files("main.cpp", code);
-    ASSERT(compile("-std=c++23"));
+    ZASSERT(compile("-std=c++23"));
     auto fid = unit->main_file();
     includes = unit->directives()[fid].includes;
     has_includes = unit->directives()[fid].has_includes;
@@ -34,41 +34,41 @@ void run(llvm::StringRef code) {
 void EXPECT_INCLUDE(u32 index, llvm::StringRef position, llvm::StringRef path) {
     auto& include = includes[index];
     auto [_, offset] = unit->decompose_location(include.location);
-    ASSERT(offset == point(position));
+    ZASSERT(offset == point(position));
 
     auto target = include.skipped ? llvm::StringRef() : unit->file_path(include.fid);
-    ASSERT(target == path);
+    ZASSERT(target == path);
 }
 
 void EXPECT_HAS_INL(u32 index, llvm::StringRef position, llvm::StringRef path) {
     auto& has_include = has_includes[index];
     auto [_, offset] = unit->decompose_location(has_include.location);
-    ASSERT(offset == point(position));
+    ZASSERT(offset == point(position));
 
     auto target = has_include.file ? unit->file_path(*has_include.file) : llvm::StringRef();
-    ASSERT(target == path);
+    ZASSERT(target == path);
 }
 
 void EXPECT_CON(u32 index, Condition::BranchKind kind, llvm::StringRef pos) {
     auto& condition = conditions[index];
     auto [_, offset] = unit->decompose_location(condition.loc);
-    ASSERT(int(condition.kind) == int(kind));
-    ASSERT(offset == point(pos));
+    ZASSERT(int(condition.kind) == int(kind));
+    ZASSERT(offset == point(pos));
 }
 
 void EXPECT_MACRO(u32 index, MacroRef::Kind kind, llvm::StringRef position) {
     auto& macro = macros[index];
     auto [_, offset] = unit->decompose_location(macro.loc);
-    ASSERT(int(macro.kind) == int(kind));
-    ASSERT(offset == point(position));
+    ZASSERT(int(macro.kind) == int(kind));
+    ZASSERT(offset == point(position));
 }
 
 void EXPECT_EMBED(u32 index, llvm::StringRef position, llvm::StringRef filename) {
     auto& embed = embeds[index];
     auto [_, offset] = unit->decompose_location(embed.loc);
-    ASSERT(offset == point(position));
-    ASSERT(embed.file);
-    ASSERT(embed.file_name == filename);
+    ZASSERT(offset == point(position));
+    ZASSERT(embed.file);
+    ZASSERT(embed.file_name == filename);
 }
 
 void EXPECT_HAS_EMBED(u32 index,
@@ -77,9 +77,9 @@ void EXPECT_HAS_EMBED(u32 index,
                       bool exists = true) {
     auto& has_embed = has_embeds[index];
     auto [_, offset] = unit->decompose_location(has_embed.loc);
-    ASSERT(offset == point(position));
-    ASSERT(has_embed.file.has_value() == exists);
-    ASSERT(has_embed.file_name == filename);
+    ZASSERT(offset == point(position));
+    ZASSERT(has_embed.file.has_value() == exists);
+    ZASSERT(has_embed.file_name == filename);
 }
 
 ZEST_CASE(Include) {
@@ -103,7 +103,7 @@ ZEST_CASE(Include) {
 #§(5)include "guard_macro.h"
 )cpp");
 
-    ASSERT(includes.size() == 6U);
+    ZASSERT(includes.size() == 6U);
     EXPECT_INCLUDE(0, "0", TestVFS::path("test.h"));
     EXPECT_INCLUDE(1, "1", TestVFS::path("test.h"));
     EXPECT_INCLUDE(2, "2", TestVFS::path("pragma_once.h"));
@@ -127,7 +127,7 @@ ZEST_CASE(HasInclude) {
 #endif
 )cpp");
 
-    ASSERT(has_includes.size() == 2U);
+    ZASSERT(has_includes.size() == 2U);
     EXPECT_HAS_INL(0, "0", TestVFS::path("test.h"));
     EXPECT_HAS_INL(1, "1", "");
 };
@@ -146,7 +146,7 @@ ZEST_CASE(Condition) {
 #§(7)endif
 )cpp");
 
-    ASSERT(conditions.size() == 8U);
+    ZASSERT(conditions.size() == 8U);
     EXPECT_CON(0, Condition::BranchKind::If, "0");
     EXPECT_CON(1, Condition::BranchKind::Elif, "1");
     EXPECT_CON(2, Condition::BranchKind::Else, "2");
@@ -172,7 +172,7 @@ ZEST_CASE(ElifndefBranches) {
 #§(7)endif
 )cpp");
 
-    ASSERT(conditions.size() == 8U);
+    ZASSERT(conditions.size() == 8U);
     EXPECT_CON(0, Condition::BranchKind::Ifdef, "0");
     EXPECT_CON(1, Condition::BranchKind::Elifndef, "1");
     EXPECT_CON(2, Condition::BranchKind::Else, "2");
@@ -183,8 +183,8 @@ ZEST_CASE(ElifndefBranches) {
     EXPECT_CON(7, Condition::BranchKind::EndIf, "7");
     // The recorded value is the branch truth: an #elifndef of an undefined
     // macro is taken, of a defined one is not.
-    EXPECT(int(conditions[1].value) == int(Condition::True));
-    EXPECT(int(conditions[5].value) == int(Condition::False));
+    ZEXPECT(int(conditions[1].value) == int(Condition::True));
+    ZEXPECT(int(conditions[5].value) == int(Condition::False));
 };
 
 ZEST_CASE(Macro) {
@@ -208,7 +208,7 @@ int y = §(6)expr(§(7)expr(1));
 
 )cpp");
 
-    ASSERT(macros.size() == 9U);
+    ZASSERT(macros.size() == 9U);
     EXPECT_MACRO(0, MacroRef::Kind::Def, "0");
     EXPECT_MACRO(1, MacroRef::Kind::Ref, "1");
     EXPECT_MACRO(2, MacroRef::Kind::Ref, "2");
@@ -229,20 +229,20 @@ ZEST_CASE(DiagnosticPragma) {
 #pragma clang §(3)diagnostic pop
 )cpp");
 
-    ASSERT(diagnostic_pragmas.size() == 4U);
+    ZASSERT(diagnostic_pragmas.size() == 4U);
     for(u32 index = 0; index < 4; index += 1) {
         auto [_, offset] =
             unit->decompose_location(unit->expansion_location(diagnostic_pragmas[index].loc));
-        EXPECT(offset == point(std::to_string(index)));
+        ZEXPECT(offset == point(std::to_string(index)));
     }
-    EXPECT(diagnostic_pragmas[0].kind == DiagnosticPragma::Push);
-    EXPECT(diagnostic_pragmas[1].kind == DiagnosticPragma::Map);
-    EXPECT(diagnostic_pragmas[1].severity == clang::diag::Severity::Ignored);
-    EXPECT(llvm::StringRef(diagnostic_pragmas[1].flag) == "-Wunused-variable");
-    EXPECT(diagnostic_pragmas[2].kind == DiagnosticPragma::Map);
-    EXPECT(diagnostic_pragmas[2].severity == clang::diag::Severity::Warning);
-    EXPECT(llvm::StringRef(diagnostic_pragmas[2].flag) == "-Wshadow");
-    EXPECT(diagnostic_pragmas[3].kind == DiagnosticPragma::Pop);
+    ZEXPECT(diagnostic_pragmas[0].kind == DiagnosticPragma::Push);
+    ZEXPECT(diagnostic_pragmas[1].kind == DiagnosticPragma::Map);
+    ZEXPECT(diagnostic_pragmas[1].severity == clang::diag::Severity::Ignored);
+    ZEXPECT(llvm::StringRef(diagnostic_pragmas[1].flag) == "-Wunused-variable");
+    ZEXPECT(diagnostic_pragmas[2].kind == DiagnosticPragma::Map);
+    ZEXPECT(diagnostic_pragmas[2].severity == clang::diag::Severity::Warning);
+    ZEXPECT(llvm::StringRef(diagnostic_pragmas[2].flag) == "-Wshadow");
+    ZEXPECT(diagnostic_pragmas[3].kind == DiagnosticPragma::Pop);
 };
 
 ZEST_CASE(Embed) {
@@ -278,7 +278,7 @@ const char e4 = {
 
     // e4 will not be processed by clang::PPCallbacks::EmbedDirective(), so there are only 4
     // embeds.
-    ASSERT(embeds.size() == 4U);
+    ZASSERT(embeds.size() == 4U);
     EXPECT_EMBED(0, "0", "bytes10.bin");
     EXPECT_EMBED(1, "1", "bytes10.bin");
     EXPECT_EMBED(2, "2", "bytes5.bin");
@@ -299,7 +299,7 @@ ZEST_CASE(HasEmbed) {
 #endif
 )cpp");
 
-    ASSERT(has_embeds.size() == 2U);
+    ZASSERT(has_embeds.size() == 2U);
     EXPECT_HAS_EMBED(0, "0", "test.bin");
     EXPECT_HAS_EMBED(1, "1", "non-existed.bin", /*exists=*/false);
 };
@@ -330,16 +330,16 @@ const char e[] = {
     bool data_found = false;
     bool probe_found = false;
     for(auto& dep: deps) {
-        ASSERT(path::is_absolute(dep.path));
+        ZASSERT(path::is_absolute(dep.path));
         // Every readable dep ships the consumed-content hash.
-        ASSERT(dep.hash != 0);
+        ZASSERT(dep.hash != 0);
         header_found |= dep.path == TestVFS::path("data.h");
         data_found |= dep.path == TestVFS::path("data.bin");
         probe_found |= dep.path == TestVFS::path("probe.bin");
     }
-    ASSERT(header_found);
-    ASSERT(data_found);
-    ASSERT(probe_found);
+    ZASSERT(header_found);
+    ZASSERT(data_found);
+    ZASSERT(probe_found);
 };
 
 ZEST_CASE(FailedIncludeDeps) {
@@ -356,13 +356,13 @@ ZEST_CASE(FailedIncludeDeps) {
     auto built = clice::compile(params);
 
     auto deps = built.deps();
-    ASSERT(deps.size() == 2U);
-    ASSERT(deps[0].path == TestVFS::path("test.h"));
-    ASSERT(deps[0].hash != 0);
-    ASSERT(deps[1].path == TestVFS::path("missing.h"));
-    ASSERT(deps[1].hash == 0U);
-    ASSERT(deps[1].absent);
-    ASSERT(built.absent() == std::vector<std::string>{TestVFS::path("missing.h")});
+    ZASSERT(deps.size() == 2U);
+    ZASSERT(deps[0].path == TestVFS::path("test.h"));
+    ZASSERT(deps[0].hash != 0);
+    ZASSERT(deps[1].path == TestVFS::path("missing.h"));
+    ZASSERT(deps[1].hash == 0U);
+    ZASSERT(deps[1].absent);
+    ZASSERT(built.absent() == std::vector<std::string>{TestVFS::path("missing.h")});
 };
 
 };  // ZEST_SUITE(Directive)

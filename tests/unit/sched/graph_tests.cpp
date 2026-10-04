@@ -133,7 +133,7 @@ void execute(F&& fn) {
     auto wrapper = [&]() -> kota::task<> {
         co_await fn();
         co_await graph.shutdown();
-        EXPECT(graph.idle());
+        ZEXPECT(graph.idle());
     };
     run(wrapper());
 }
@@ -158,9 +158,9 @@ ZEST_CASE(request_no_deps) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph.request(a(1));
-        EXPECT(outcome == JoinOutcome::Success);
-        EXPECT(ran.size() == 1u);
-        EXPECT(!graph.is_dirty(a(1)));
+        ZEXPECT(outcome == JoinOutcome::Success);
+        ZEXPECT(ran.size() == 1u);
+        ZEXPECT(!graph.is_dirty(a(1)));
     });
 }
 
@@ -174,12 +174,12 @@ ZEST_CASE(request_dep_chain) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph.request(a(1));
-        EXPECT(outcome == JoinOutcome::Success);
-        EXPECT(ran.size() == 3u);
-        EXPECT(ranges::find(ran, a(3)) < ranges::find(ran, a(2)));
-        EXPECT(ranges::find(ran, a(2)) < ranges::find(ran, a(1)));
-        EXPECT(graph.dependencies(a(1)).size() == 1u);
-        EXPECT(graph.dependencies(a(2)).size() == 1u);
+        ZEXPECT(outcome == JoinOutcome::Success);
+        ZEXPECT(ran.size() == 3u);
+        ZEXPECT(ranges::find(ran, a(3)) < ranges::find(ran, a(2)));
+        ZEXPECT(ranges::find(ran, a(2)) < ranges::find(ran, a(1)));
+        ZEXPECT(graph.dependencies(a(1)).size() == 1u);
+        ZEXPECT(graph.dependencies(a(2)).size() == 1u);
     });
 }
 
@@ -194,9 +194,9 @@ ZEST_CASE(diamond_dedup) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph.request(a(1));
-        EXPECT(outcome == JoinOutcome::Success);
-        EXPECT(ranges::count(ran, a(4)) == 1);
-        EXPECT(!graph.is_dirty(a(4)));
+        ZEXPECT(outcome == JoinOutcome::Success);
+        ZEXPECT(ranges::count(ran, a(4)) == 1);
+        ZEXPECT(!graph.is_dirty(a(4)));
     });
 }
 
@@ -207,9 +207,9 @@ ZEST_CASE(second_request_skips) {
 
     execute([&]() -> kota::task<> {
         co_await graph.request(a(1));
-        EXPECT(ran.size() == 1u);
+        ZEXPECT(ran.size() == 1u);
         co_await graph.request(a(1));
-        EXPECT(ran.size() == 1u);
+        ZEXPECT(ran.size() == 1u);
     });
 }
 
@@ -227,11 +227,11 @@ ZEST_CASE(reference_survives_landing) {
     Probe probe;
     execute([&]() -> kota::task<> {
         co_await run_request(a(1), probe);
-        CO_ASSERT(probe.outcome == JoinOutcome::Success);
+        ZASSERT(probe.outcome == JoinOutcome::Success);
 
         auto dirtied = graph.update(sentinel);
-        EXPECT(std::ranges::find(dirtied, a(1)) != dirtied.end());
-        EXPECT(graph.is_dirty(a(1)));
+        ZEXPECT(std::ranges::find(dirtied, a(1)) != dirtied.end());
+        ZEXPECT(graph.is_dirty(a(1)));
     });
 }
 
@@ -246,23 +246,23 @@ ZEST_CASE(artifact_dirty_no_cascade) {
     Probe warm, hit, rebuild;
     execute([&]() -> kota::task<> {
         co_await run_request(a(1), warm);
-        CO_ASSERT(ran.size() == std::size_t(2));
+        ZASSERT(ran.size() == std::size_t(2));
 
         graph.mark_dirty(a(2));
-        CO_ASSERT(graph.is_dirty(a(2)));
-        CO_ASSERT(!graph.is_dirty(a(1)));
+        ZASSERT(graph.is_dirty(a(2)));
+        ZASSERT(!graph.is_dirty(a(1)));
 
         co_await run_request(a(1), hit);
-        CO_ASSERT(ran.size() == std::size_t(2));
+        ZASSERT(ran.size() == std::size_t(2));
 
         co_await run_request(a(2), rebuild);
-        CO_ASSERT(ran.size() == std::size_t(3));
-        EXPECT(ran.back() == a(2));
-        EXPECT(!graph.is_dirty(a(2)));
+        ZASSERT(ran.size() == std::size_t(3));
+        ZEXPECT(ran.back() == a(2));
+        ZEXPECT(!graph.is_dirty(a(2)));
     });
-    EXPECT(warm.outcome == JoinOutcome::Success);
-    EXPECT(hit.outcome == JoinOutcome::Success);
-    EXPECT(rebuild.outcome == JoinOutcome::Success);
+    ZEXPECT(warm.outcome == JoinOutcome::Success);
+    ZEXPECT(hit.outcome == JoinOutcome::Success);
+    ZEXPECT(rebuild.outcome == JoinOutcome::Success);
 }
 
 ZEST_CASE(artifact_dirty_inflight_lands) {
@@ -283,9 +283,9 @@ ZEST_CASE(artifact_dirty_inflight_lands) {
 
         co_await kota::when_all(run_request(a(1), probe), driver());
 
-        EXPECT(probe.outcome == JoinOutcome::Success);
-        EXPECT(mf.gate(a(1)).calls == 1);
-        EXPECT(!graph.is_dirty(a(1)));
+        ZEXPECT(probe.outcome == JoinOutcome::Success);
+        ZEXPECT(mf.gate(a(1)).calls == 1);
+        ZEXPECT(!graph.is_dirty(a(1)));
     });
 }
 
@@ -299,16 +299,16 @@ ZEST_CASE(concurrent_requests_share) {
     execute([&]() -> kota::task<> {
         auto driver = [&]() -> kota::task<> {
             co_await mf.gate(a(1)).started.wait();
-            EXPECT(graph.refcount(a(1)) == 2u);
+            ZEXPECT(graph.refcount(a(1)) == 2u);
             mf.open({a(1)});
             co_return;
         };
 
         co_await kota::when_all(run_request(a(1), p1), run_request(a(1), p2), driver());
 
-        EXPECT(p1.outcome == JoinOutcome::Success);
-        EXPECT(p2.outcome == JoinOutcome::Success);
-        EXPECT(mf.gate(a(1)).calls == 1);
+        ZEXPECT(p1.outcome == JoinOutcome::Success);
+        ZEXPECT(p2.outcome == JoinOutcome::Success);
+        ZEXPECT(mf.gate(a(1)).calls == 1);
     });
 }
 
@@ -322,13 +322,13 @@ ZEST_CASE(cross_family_edge) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph.request(a(1));
-        EXPECT(outcome == JoinOutcome::Success);
-        EXPECT(ran.size() == 2u);
-        EXPECT(graph.dependencies(a(1))[0] == b(7));
+        ZEXPECT(outcome == JoinOutcome::Success);
+        ZEXPECT(ran.size() == 2u);
+        ZEXPECT(graph.dependencies(a(1))[0] == b(7));
 
         auto dirtied = graph.update(b(7));
-        EXPECT(ranges::contains(dirtied, a(1)));
-        EXPECT(graph.is_dirty(a(1)));
+        ZEXPECT(ranges::contains(dirtied, a(1)));
+        ZEXPECT(graph.is_dirty(a(1)));
     });
 }
 
@@ -358,19 +358,19 @@ ZEST_CASE(edge_live_before_landing) {
             mf.gate(b(5)).started.reset();
 
             auto dirtied = graph.update(b(5));
-            EXPECT(ranges::contains(dirtied, a(1)));
+            ZEXPECT(ranges::contains(dirtied, a(1)));
 
             co_await mf.gate(b(5)).started.wait();
-            EXPECT(mf.gate(b(5)).calls == 2);
+            ZEXPECT(mf.gate(b(5)).calls == 2);
             mf.open({b(5)});
             co_return;
         };
 
         co_await kota::when_all(run_request(a(1), probe), driver());
 
-        EXPECT(probe.outcome == JoinOutcome::Success);
-        EXPECT(!graph.is_dirty(a(1)));
-        EXPECT(!graph.is_dirty(b(5)));
+        ZEXPECT(probe.outcome == JoinOutcome::Success);
+        ZEXPECT(!graph.is_dirty(a(1)));
+        ZEXPECT(!graph.is_dirty(b(5)));
     });
 }
 
@@ -384,15 +384,15 @@ ZEST_CASE(success_replaces_edges) {
 
     execute([&]() -> kota::task<> {
         co_await graph.request(a(1));
-        EXPECT(graph.dependencies(a(1))[0] == b(2));
+        ZEXPECT(graph.dependencies(a(1))[0] == b(2));
 
         adj[a(1)] = {b(3)};
         graph.update(a(1));
         co_await graph.request(a(1));
 
-        EXPECT(graph.dependencies(a(1))[0] == b(3));
-        EXPECT(!ranges::contains(graph.update(b(2)), a(1)));
-        EXPECT(ranges::contains(graph.update(b(3)), a(1)));
+        ZEXPECT(graph.dependencies(a(1))[0] == b(3));
+        ZEXPECT(!ranges::contains(graph.update(b(2)), a(1)));
+        ZEXPECT(ranges::contains(graph.update(b(3)), a(1)));
     });
 }
 
@@ -409,7 +409,7 @@ ZEST_CASE(voided_candidates_discarded) {
     Probe probe;
     execute([&]() -> kota::task<> {
         co_await graph.request(a(1));
-        EXPECT(graph.dependencies(a(1))[0] == b(2));
+        ZEXPECT(graph.dependencies(a(1))[0] == b(2));
 
         // Flip the imports and drive a new round parked in its dispatch:
         // it has declared the candidate edge to b(3) but not landed. The
@@ -425,8 +425,8 @@ ZEST_CASE(voided_candidates_discarded) {
 
             // The candidate edge is already cascade-visible, and the
             // durable edge from the last success still cascades too.
-            EXPECT(ranges::contains(graph.update(b(3)), a(1)));
-            EXPECT(ranges::contains(graph.update(b(2)), a(1)));
+            ZEXPECT(ranges::contains(graph.update(b(3)), a(1)));
+            ZEXPECT(ranges::contains(graph.update(b(2)), a(1)));
             co_return;
         };
 
@@ -435,17 +435,17 @@ ZEST_CASE(voided_candidates_discarded) {
 
         // The void discarded the candidates: the durable set still points
         // at b(2), and only it cascades.
-        EXPECT(probe.outcome == JoinOutcome::Stale);
-        EXPECT(!graph.is_compiling(a(1)));
-        EXPECT(graph.dependencies(a(1))[0] == b(2));
-        EXPECT(!ranges::contains(graph.update(b(3)), a(1)));
-        EXPECT(ranges::contains(graph.update(b(2)), a(1)));
+        ZEXPECT(probe.outcome == JoinOutcome::Stale);
+        ZEXPECT(!graph.is_compiling(a(1)));
+        ZEXPECT(graph.dependencies(a(1))[0] == b(2));
+        ZEXPECT(!ranges::contains(graph.update(b(3)), a(1)));
+        ZEXPECT(ranges::contains(graph.update(b(2)), a(1)));
 
         // A fresh terminal join lands the flipped imports.
         mf.open({a(1)});
         auto outcome = co_await graph.request(a(1));
-        EXPECT(outcome == JoinOutcome::Success);
-        EXPECT(graph.dependencies(a(1))[0] == b(3));
+        ZEXPECT(outcome == JoinOutcome::Success);
+        ZEXPECT(graph.dependencies(a(1))[0] == b(3));
     });
 }
 
@@ -455,15 +455,15 @@ ZEST_CASE(declare_no_round) {
     // ever compiles.
     execute([&]() -> kota::task<> {
         graph.declare(a(2), {a(1)});
-        EXPECT(graph.has_node(a(1)));
-        EXPECT(graph.has_node(a(2)));
-        EXPECT(graph.refcount(a(1)) == 0u);
-        EXPECT(graph.refcount(a(2)) == 0u);
-        EXPECT(!graph.is_compiling(a(2)));
+        ZEXPECT(graph.has_node(a(1)));
+        ZEXPECT(graph.has_node(a(2)));
+        ZEXPECT(graph.refcount(a(1)) == 0u);
+        ZEXPECT(graph.refcount(a(2)) == 0u);
+        ZEXPECT(!graph.is_compiling(a(2)));
 
         auto dirtied = graph.update(a(1));
-        EXPECT(ranges::contains(dirtied, a(1)));
-        EXPECT(ranges::contains(dirtied, a(2)));
+        ZEXPECT(ranges::contains(dirtied, a(1)));
+        ZEXPECT(ranges::contains(dirtied, a(2)));
         co_return;
     });
 }
@@ -476,12 +476,12 @@ ZEST_CASE(declare_replaces) {
     execute([&]() -> kota::task<> {
         graph.declare(a(3), {a(1)});
         graph.declare(a(3), {a(2)});
-        EXPECT(!ranges::contains(graph.update(a(1)), a(3)));
-        EXPECT(ranges::contains(graph.update(a(2)), a(3)));
+        ZEXPECT(!ranges::contains(graph.update(a(1)), a(3)));
+        ZEXPECT(ranges::contains(graph.update(a(2)), a(3)));
 
         graph.declare(a(3), {});
-        EXPECT(!ranges::contains(graph.update(a(2)), a(3)));
-        EXPECT(graph.has_node(a(3)));
+        ZEXPECT(!ranges::contains(graph.update(a(2)), a(3)));
+        ZEXPECT(graph.has_node(a(3)));
         co_return;
     });
 }
@@ -496,10 +496,10 @@ ZEST_CASE(round_replaces_declared) {
     execute([&]() -> kota::task<> {
         graph.declare(a(2), {a(1)});
         auto outcome = co_await graph.request(a(2));
-        EXPECT(outcome == JoinOutcome::Success);
+        ZEXPECT(outcome == JoinOutcome::Success);
 
-        EXPECT(!ranges::contains(graph.update(a(1)), a(2)));
-        EXPECT(ranges::contains(graph.update(a(3)), a(2)));
+        ZEXPECT(!ranges::contains(graph.update(a(1)), a(2)));
+        ZEXPECT(ranges::contains(graph.update(a(3)), a(2)));
     });
 }
 
@@ -517,10 +517,10 @@ ZEST_CASE(failed_keeps_declared) {
     execute([&]() -> kota::task<> {
         graph.declare(a(2), {a(1)});
         auto outcome = co_await graph.request(a(2));
-        EXPECT(outcome == JoinOutcome::Failed);
+        ZEXPECT(outcome == JoinOutcome::Failed);
 
-        EXPECT(ranges::contains(graph.update(a(1)), a(2)));
-        EXPECT(!ranges::contains(graph.update(a(3)), a(2)));
+        ZEXPECT(ranges::contains(graph.update(a(1)), a(2)));
+        ZEXPECT(!ranges::contains(graph.update(a(3)), a(2)));
     });
 }
 
@@ -546,9 +546,9 @@ ZEST_CASE(landing_overwrites_declare) {
 
         co_await kota::when_all(run_request(a(2), probe), driver());
 
-        EXPECT(probe.outcome == JoinOutcome::Success);
-        EXPECT(!ranges::contains(graph.update(a(1)), a(2)));
-        EXPECT(ranges::contains(graph.update(a(3)), a(2)));
+        ZEXPECT(probe.outcome == JoinOutcome::Success);
+        ZEXPECT(!ranges::contains(graph.update(a(1)), a(2)));
+        ZEXPECT(ranges::contains(graph.update(a(3)), a(2)));
     });
 }
 
@@ -576,19 +576,19 @@ ZEST_CASE(stale_success_discarded) {
             graph.update(a(1));
 
             // Advisory cancellation: the round is signalled, not killed.
-            EXPECT(graph.is_compiling(a(1)));
+            ZEXPECT(graph.is_compiling(a(1)));
 
             mf.open({a(1)});
             co_await mf.gate(a(1)).started.wait();
-            EXPECT(mf.gate(a(1)).calls == 2);
+            ZEXPECT(mf.gate(a(1)).calls == 2);
             co_return;
         };
 
         co_await kota::when_all(run_request(a(1), probe), driver());
 
-        EXPECT(probe.outcome == JoinOutcome::Success);
-        EXPECT(mf.gate(a(1)).calls == 2);
-        EXPECT(!graph.is_dirty(a(1)));
+        ZEXPECT(probe.outcome == JoinOutcome::Success);
+        ZEXPECT(mf.gate(a(1)).calls == 2);
+        ZEXPECT(!graph.is_dirty(a(1)));
     });
 }
 
@@ -617,8 +617,8 @@ ZEST_CASE(stale_failure_retries) {
         co_await kota::when_all(run_request(a(1), probe), driver());
 
         // The stale Failed never reached the waiter.
-        EXPECT(probe.outcome == JoinOutcome::Success);
-        EXPECT(mf.gate(a(1)).calls == 2);
+        ZEXPECT(probe.outcome == JoinOutcome::Success);
+        ZEXPECT(mf.gate(a(1)).calls == 2);
     });
 }
 
@@ -639,9 +639,9 @@ ZEST_CASE(salvage_before_stale) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph.request(a(1));
-        EXPECT(outcome == JoinOutcome::Success);
-        EXPECT(calls == 2);
-        EXPECT(salvaged == 1);
+        ZEXPECT(outcome == JoinOutcome::Success);
+        ZEXPECT(calls == 2);
+        ZEXPECT(salvaged == 1);
     });
 }
 
@@ -666,9 +666,9 @@ ZEST_CASE(one_attempt_stale) {
         co_await kota::when_all(run_request(a(1), probe, {.flavor = JoinFlavor::OneAttempt}),
                                 driver());
 
-        EXPECT(probe.outcome == JoinOutcome::Stale);
-        EXPECT(mf.gate(a(1)).calls == 1);
-        EXPECT(graph.is_dirty(a(1)));
+        ZEXPECT(probe.outcome == JoinOutcome::Stale);
+        ZEXPECT(mf.gate(a(1)).calls == 1);
+        ZEXPECT(graph.is_dirty(a(1)));
     });
 }
 
@@ -679,11 +679,11 @@ ZEST_CASE(one_attempt_clean) {
 
     execute([&]() -> kota::task<> {
         co_await graph.request(a(1));
-        EXPECT(ran.size() == 1u);
+        ZEXPECT(ran.size() == 1u);
 
         auto outcome = co_await graph.request(a(1), {.flavor = JoinFlavor::OneAttempt});
-        EXPECT(outcome == JoinOutcome::Success);
-        EXPECT(ran.size() == 1u);
+        ZEXPECT(outcome == JoinOutcome::Success);
+        ZEXPECT(ran.size() == 1u);
     });
 }
 
@@ -706,8 +706,8 @@ ZEST_CASE(abandoned_validity) {
         co_await kota::when_all(run_request(a(1), probe, {.validity = [&] { return valid; }}),
                                 driver());
 
-        EXPECT(probe.outcome == JoinOutcome::Abandoned);
-        EXPECT(mf.gate(a(1)).calls == 1);
+        ZEXPECT(probe.outcome == JoinOutcome::Abandoned);
+        ZEXPECT(mf.gate(a(1)).calls == 1);
     });
 }
 
@@ -727,11 +727,11 @@ ZEST_CASE(failed_propagates) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph.request(a(1));
-        EXPECT(outcome == JoinOutcome::Failed);
-        EXPECT(mf.gate(b(2)).calls == 1);
-        EXPECT(mf.gate(a(1)).calls == 0);
-        EXPECT(graph.is_dirty(a(1)));
-        EXPECT(graph.is_dirty(b(2)));
+        ZEXPECT(outcome == JoinOutcome::Failed);
+        ZEXPECT(mf.gate(b(2)).calls == 1);
+        ZEXPECT(mf.gate(a(1)).calls == 0);
+        ZEXPECT(graph.is_dirty(a(1)));
+        ZEXPECT(graph.is_dirty(b(2)));
     });
 }
 
@@ -747,13 +747,13 @@ ZEST_CASE(failure_not_sticky) {
 
     execute([&]() -> kota::task<> {
         auto first = co_await graph.request(a(1));
-        EXPECT(first == JoinOutcome::Failed);
+        ZEXPECT(first == JoinOutcome::Failed);
 
         mf.gate(b(2)).result = RoundOutcome::Success;
         auto second = co_await graph.request(a(1));
-        EXPECT(second == JoinOutcome::Success);
-        EXPECT(mf.gate(b(2)).calls == 2);
-        EXPECT(mf.gate(a(1)).calls == 1);
+        ZEXPECT(second == JoinOutcome::Success);
+        ZEXPECT(mf.gate(b(2)).calls == 2);
+        ZEXPECT(mf.gate(a(1)).calls == 1);
     });
 }
 
@@ -775,11 +775,11 @@ ZEST_CASE(requester_cancel_releases) {
             probe.source.cancel();
             co_await settle([&] { return !graph.is_compiling(a(1)); });
 
-            EXPECT(probe.done);
-            EXPECT(probe.outcome == std::nullopt);
-            EXPECT(graph.is_dirty(a(1)));
-            EXPECT(graph.refcount(a(1)) == 0u);
-            EXPECT(mf.gate(a(1)).calls == 1);
+            ZEXPECT(probe.done);
+            ZEXPECT(probe.outcome == std::nullopt);
+            ZEXPECT(graph.is_dirty(a(1)));
+            ZEXPECT(graph.refcount(a(1)) == 0u);
+            ZEXPECT(mf.gate(a(1)).calls == 1);
             co_return;
         };
 
@@ -802,14 +802,14 @@ ZEST_CASE(shared_dep_survives_cancel) {
     execute([&]() -> kota::task<> {
         auto driver = [&]() -> kota::task<> {
             co_await mf.gate(b(5)).started.wait();
-            EXPECT(graph.refcount(b(5)) == 2u);
+            ZEXPECT(graph.refcount(b(5)) == 2u);
 
             p1.source.cancel();
             co_await settle([&] { return !graph.is_compiling(a(1)); });
 
-            EXPECT(graph.is_compiling(b(5)));
-            EXPECT(mf.gate(b(5)).calls == 1);
-            EXPECT(graph.refcount(b(5)) == 1u);
+            ZEXPECT(graph.is_compiling(b(5)));
+            ZEXPECT(mf.gate(b(5)).calls == 1);
+            ZEXPECT(graph.refcount(b(5)) == 1u);
 
             mf.open({b(5)});
             co_return;
@@ -817,9 +817,9 @@ ZEST_CASE(shared_dep_survives_cancel) {
 
         co_await kota::when_all(run_request(a(1), p1), run_request(a(3), p3), driver());
 
-        EXPECT(p1.outcome == std::nullopt);
-        EXPECT(p3.outcome == JoinOutcome::Success);
-        EXPECT(mf.gate(b(5)).calls == 1);
+        ZEXPECT(p1.outcome == std::nullopt);
+        ZEXPECT(p3.outcome == JoinOutcome::Success);
+        ZEXPECT(mf.gate(b(5)).calls == 1);
     });
 }
 
@@ -838,16 +838,16 @@ ZEST_CASE(transient_drop_handover) {
     execute([&]() -> kota::task<> {
         auto driver = [&]() -> kota::task<> {
             co_await mf.gate(b(2)).started.wait();
-            EXPECT(graph.is_compiling(a(1)));
+            ZEXPECT(graph.is_compiling(a(1)));
 
             graph.update(a(1));
             co_await kota::sleep(1);
 
             // The depender's round was respawned; the dependency kept
             // compiling throughout.
-            EXPECT(graph.is_compiling(b(2)));
-            EXPECT(mf.gate(b(2)).calls == 1);
-            EXPECT(graph.refcount(b(2)) == 1u);
+            ZEXPECT(graph.is_compiling(b(2)));
+            ZEXPECT(mf.gate(b(2)).calls == 1);
+            ZEXPECT(graph.refcount(b(2)) == 1u);
 
             mf.open({b(2)});
             co_return;
@@ -855,10 +855,10 @@ ZEST_CASE(transient_drop_handover) {
 
         co_await kota::when_all(run_request(a(1), probe), driver());
 
-        EXPECT(probe.outcome == JoinOutcome::Success);
-        EXPECT(mf.gate(b(2)).calls == 1);
-        EXPECT(!graph.is_dirty(a(1)));
-        EXPECT(!graph.is_dirty(b(2)));
+        ZEXPECT(probe.outcome == JoinOutcome::Success);
+        ZEXPECT(mf.gate(b(2)).calls == 1);
+        ZEXPECT(!graph.is_dirty(a(1)));
+        ZEXPECT(!graph.is_dirty(b(2)));
     });
 }
 
@@ -899,11 +899,11 @@ ZEST_CASE(foreground_late_join) {
                                 run_request(a(1), foreground, {.foreground = true}),
                                 driver());
 
-        EXPECT(background.outcome == JoinOutcome::Success);
-        EXPECT(foreground.outcome == JoinOutcome::Success);
-        CO_ASSERT(calls == 2);
-        EXPECT(!classes[0]);
-        EXPECT(classes[1]);
+        ZEXPECT(background.outcome == JoinOutcome::Success);
+        ZEXPECT(foreground.outcome == JoinOutcome::Success);
+        ZASSERT(calls == 2);
+        ZEXPECT(!classes[0]);
+        ZEXPECT(classes[1]);
     });
 }
 
@@ -954,11 +954,11 @@ ZEST_CASE(foreground_spreads_edges) {
                                 run_request(a(1), foreground, {.foreground = true}),
                                 driver());
 
-        EXPECT(background.outcome == JoinOutcome::Success);
-        EXPECT(foreground.outcome == JoinOutcome::Success);
-        CO_ASSERT(deep_calls == 2);
-        EXPECT(!deep_classes[0]);
-        EXPECT(deep_classes[1]);
+        ZEXPECT(background.outcome == JoinOutcome::Success);
+        ZEXPECT(foreground.outcome == JoinOutcome::Success);
+        ZASSERT(deep_calls == 2);
+        ZEXPECT(!deep_classes[0]);
+        ZEXPECT(deep_classes[1]);
     });
 }
 
@@ -994,10 +994,10 @@ ZEST_CASE(foreground_skips_clean_deps) {
         graph.update(a(2));
         co_await run_request(a(2), rebuild);
 
-        EXPECT(rebuild.outcome == JoinOutcome::Success);
-        CO_ASSERT(dep_classes.size() == std::size_t(2));
-        EXPECT(!dep_classes[0]);
-        EXPECT(!dep_classes[1]);
+        ZEXPECT(rebuild.outcome == JoinOutcome::Success);
+        ZASSERT(dep_classes.size() == std::size_t(2));
+        ZEXPECT(!dep_classes[0]);
+        ZEXPECT(!dep_classes[1]);
     });
 }
 
@@ -1010,12 +1010,12 @@ ZEST_CASE(foreground_resets_zero) {
 
     execute([&]() -> kota::task<> {
         co_await graph.request(a(1), {.foreground = true});
-        EXPECT(mf.gate(a(1)).classes[0]);
+        ZEXPECT(mf.gate(a(1)).classes[0]);
 
         graph.update(a(1));
         co_await graph.request(a(1));
-        CO_ASSERT(mf.gate(a(1)).calls == 2);
-        EXPECT(!mf.gate(a(1)).classes[1]);
+        ZASSERT(mf.gate(a(1)).calls == 2);
+        ZEXPECT(!mf.gate(a(1)).classes[1]);
     });
 }
 
@@ -1031,7 +1031,7 @@ ZEST_CASE(self_depend_fails) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph.request(a(1));
-        EXPECT(outcome == JoinOutcome::Failed);
+        ZEXPECT(outcome == JoinOutcome::Failed);
     });
 }
 
@@ -1045,7 +1045,7 @@ ZEST_CASE(depend_cycle_fails) {
 
     execute([&]() -> kota::task<> {
         auto outcome = co_await graph.request(a(1));
-        EXPECT(outcome == JoinOutcome::Failed);
+        ZEXPECT(outcome == JoinOutcome::Failed);
     });
 }
 
@@ -1058,13 +1058,13 @@ ZEST_CASE(update_introduces_cycle) {
 
     execute([&]() -> kota::task<> {
         auto first = co_await graph.request(a(1));
-        EXPECT(first == JoinOutcome::Success);
+        ZEXPECT(first == JoinOutcome::Success);
 
         adj[a(2)] = {a(1)};
         graph.update(a(2));
 
         auto second = co_await graph.request(a(1));
-        EXPECT(second == JoinOutcome::Failed);
+        ZEXPECT(second == JoinOutcome::Failed);
     });
 }
 
@@ -1090,9 +1090,9 @@ ZEST_CASE(shutdown_with_inflight) {
 
     run(run_request(a(1), probe), driver());
 
-    EXPECT(probe.done);
-    EXPECT(probe.outcome == JoinOutcome::Shutdown);
-    EXPECT(graph.idle());
+    ZEXPECT(probe.done);
+    ZEXPECT(probe.outcome == JoinOutcome::Shutdown);
+    ZEXPECT(graph.idle());
 }
 
 /// ============================================================================
@@ -1170,7 +1170,7 @@ ZEST_CASE(randomized_stress) {
 
             // Let deferred unwinds land, then check structural sanity.
             co_await kota::yield();
-            EXPECT(graph.consistent());
+            ZEXPECT(graph.consistent());
         }
 
         // Drain: cancel every outstanding request and wait for them all.

@@ -39,10 +39,10 @@ ZEST_CASE(MarkerAndNotify) {
 
     LOG_ANOMALY(PCHBuildFail, "stale build for {}", "main.cpp");
 
-    ASSERT(capture.notified.size() == 1u);
+    ZASSERT(capture.notified.size() == 1u);
     auto& [level, message] = capture.notified.front();
-    EXPECT(level == NotifyLevel::Error);
-    EXPECT(message == "[anomaly:PCHBuildFail] stale build for main.cpp");
+    ZEXPECT(level == NotifyLevel::Error);
+    ZEXPECT(message == "[anomaly:PCHBuildFail] stale build for main.cpp");
 }
 
 ZEST_CASE(TrapInvokedPerReport) {
@@ -54,8 +54,8 @@ ZEST_CASE(TrapInvokedPerReport) {
     LOG_ANOMALY(WorkerCrash, "worker {} died", 1);
     LOG_ANOMALY(WorkerCrash, "worker {} died", 2);
 
-    ASSERT(capture.trapped.size() == 2u);
-    EXPECT(capture.trapped[0] == AnomalyId::WorkerCrash);
+    ZASSERT(capture.trapped.size() == 2u);
+    ZEXPECT(capture.trapped[0] == AnomalyId::WorkerCrash);
 }
 
 ZEST_CASE(RateLimitSuppresses) {
@@ -67,9 +67,9 @@ ZEST_CASE(RateLimitSuppresses) {
 
     /// The client sees the reports plus one final suppression notice; the
     /// trap fires only for real reports.
-    ASSERT(capture.notified.size() == logging::anomaly_report_limit + 1);
-    EXPECT(capture.notified.back().second.find("report limit") != std::string::npos);
-    EXPECT(capture.trapped.size() == logging::anomaly_report_limit);
+    ZASSERT(capture.notified.size() == logging::anomaly_report_limit + 1);
+    ZEXPECT(capture.notified.back().second.find("report limit") != std::string::npos);
+    ZEXPECT(capture.trapped.size() == logging::anomaly_report_limit);
 }
 
 ZEST_CASE(RateLimitPerId) {
@@ -81,7 +81,7 @@ ZEST_CASE(RateLimitPerId) {
     LOG_ANOMALY(PCMBuildFail, "different id still reports");
 
     /// CompileFail reports + its suppression notice + the PCMBuildFail report.
-    EXPECT(capture.notified.size() == logging::anomaly_report_limit + 2);
+    ZEXPECT(capture.notified.size() == logging::anomaly_report_limit + 2);
 }
 
 ZEST_CASE(SuppressedArgsNotEvaluated) {
@@ -99,7 +99,7 @@ ZEST_CASE(SuppressedArgsNotEvaluated) {
         LOG_ANOMALY(PositionMapFail, "value {}", observe());
     }
 
-    EXPECT(evaluations == static_cast<int>(logging::anomaly_report_limit));
+    ZEXPECT(evaluations == static_cast<int>(logging::anomaly_report_limit));
 }
 
 ZEST_CASE(LevelGateSkipsEvaluation) {
@@ -113,9 +113,9 @@ ZEST_CASE(LevelGateSkipsEvaluation) {
     };
     LOG_ANOMALY(PCHBuildFail, "value {}", observe());
 
-    EXPECT(evaluations == 0);
-    EXPECT(capture.notified.size() == 0u);
-    EXPECT(capture.trapped.size() == 0u);
+    ZEXPECT(evaluations == 0);
+    ZEXPECT(capture.notified.size() == 0u);
+    ZEXPECT(capture.trapped.size() == 0u);
 }
 
 ZEST_CASE(GuidanceMarkerAndLevel) {
@@ -123,11 +123,11 @@ ZEST_CASE(GuidanceMarkerAndLevel) {
 
     LOG_GUIDANCE("no compilation database found in {}", "/tmp/ws");
 
-    ASSERT(capture.notified.size() == 1u);
+    ZASSERT(capture.notified.size() == 1u);
     auto& [level, message] = capture.notified.front();
-    EXPECT(level == NotifyLevel::Warning);
-    EXPECT(message == "[guidance] no compilation database found in /tmp/ws");
-    EXPECT(capture.trapped.size() == 0u);
+    ZEXPECT(level == NotifyLevel::Warning);
+    ZEXPECT(message == "[guidance] no compilation database found in /tmp/ws");
+    ZEXPECT(capture.trapped.size() == 0u);
 }
 
 ZEST_CASE(GuidanceLazyAtLevel) {
@@ -141,8 +141,8 @@ ZEST_CASE(GuidanceLazyAtLevel) {
     };
     LOG_GUIDANCE("value {}", observe());
 
-    EXPECT(evaluations == 0);
-    EXPECT(capture.notified.size() == 0u);
+    ZEXPECT(evaluations == 0);
+    ZEXPECT(capture.notified.size() == 0u);
 }
 
 ZEST_CASE(MarkerNamesStable) {
@@ -159,7 +159,7 @@ ZEST_CASE(MarkerNamesStable) {
     LOG_ANOMALY(PositionMapFail, "x");
     LOG_ANOMALY(StaleTrust, "x");
 
-    ASSERT(capture.notified.size() == logging::anomaly_id_count);
+    ZASSERT(capture.notified.size() == logging::anomaly_id_count);
     const char* expected[] = {
         "PCHBuildFail",
         "PCMBuildFail",
@@ -171,7 +171,7 @@ ZEST_CASE(MarkerNamesStable) {
         "StaleTrust",
     };
     for(std::size_t i = 0; i < logging::anomaly_id_count; ++i) {
-        EXPECT(capture.notified[i].second == std::format("[anomaly:{}] x", expected[i]));
+        ZEXPECT(capture.notified[i].second == std::format("[anomaly:{}] x", expected[i]));
     }
 }
 

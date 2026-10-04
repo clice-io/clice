@@ -71,7 +71,7 @@ ZEST_SUITE(StderrSink) {
 ZEST_CASE(FullPipeDropsLines) {
     Pipe pipe;
     logging::StderrSink sink(pipe.fds[1], 4096);
-    EXPECT((::fcntl(pipe.fds[1], F_GETFL) & O_NONBLOCK) != 0);
+    ZEXPECT((::fcntl(pipe.fds[1], F_GETFL) & O_NONBLOCK) != 0);
 
     // Nobody reads: the pipe (64KB) and the buffer budget fill, and every
     // further line must evict an oldest one instead of blocking. A
@@ -81,7 +81,7 @@ ZEST_CASE(FullPipeDropsLines) {
     for(int i = 0; i < 5000 && sink.dropped() == 0; ++i) {
         sink.log(info_msg(line));
     }
-    EXPECT(sink.dropped() > 0);
+    ZEXPECT(sink.dropped() > 0);
 }
 
 ZEST_CASE(BackpressureBuffersLines) {
@@ -93,15 +93,15 @@ ZEST_CASE(BackpressureBuffersLines) {
     for(int i = 0; i < 600; ++i) {
         sink.log(info_msg(std::format("line number {}", i)));
     }
-    EXPECT(sink.dropped() == 0);
+    ZEXPECT(sink.dropped() == 0);
 
     auto out = pipe.drain();
     sink.log(info_msg("the flush trigger"));
     out += pipe.drain();
-    EXPECT(out.find("line number 0") != std::string::npos);
-    EXPECT(out.find("line number 599") != std::string::npos);
-    EXPECT(out.find("the flush trigger") != std::string::npos);
-    EXPECT(sink.dropped() == 0);
+    ZEXPECT(out.find("line number 0") != std::string::npos);
+    ZEXPECT(out.find("line number 599") != std::string::npos);
+    ZEXPECT(out.find("the flush trigger") != std::string::npos);
+    ZEXPECT(sink.dropped() == 0);
 }
 
 ZEST_CASE(DrainRecoversAndReports) {
@@ -112,7 +112,7 @@ ZEST_CASE(DrainRecoversAndReports) {
     for(int i = 0; i < 5000 && sink.dropped() == 0; ++i) {
         sink.log(info_msg(line));
     }
-    ASSERT(sink.dropped() > 0);
+    ZASSERT(sink.dropped() > 0);
 
     // The client starts reading again: one call flushes the buffered
     // survivors, then the gap report, then the fresh line — everything is
@@ -120,10 +120,10 @@ ZEST_CASE(DrainRecoversAndReports) {
     pipe.drain();
     sink.log(info_msg("after the flood"));
     auto out = pipe.drain();
-    EXPECT(out.find('y') != std::string::npos);
-    EXPECT(out.find("client not draining") != std::string::npos);
-    EXPECT(out.find("after the flood") != std::string::npos);
-    EXPECT(out.find("client not draining") < out.find("after the flood"));
+    ZEXPECT(out.find('y') != std::string::npos);
+    ZEXPECT(out.find("client not draining") != std::string::npos);
+    ZEXPECT(out.find("after the flood") != std::string::npos);
+    ZEXPECT(out.find("client not draining") < out.find("after the flood"));
 }
 
 #ifdef F_SETPIPE_SZ
@@ -140,18 +140,18 @@ ZEST_CASE(TinyPipeStillReports) {
     for(int i = 0; i < 5000 && sink.dropped() == 0; ++i) {
         sink.log(info_msg(line));
     }
-    ASSERT(sink.dropped() > 0);
+    ZASSERT(sink.dropped() > 0);
 
     // Drain only one tiny pipe's worth, log once: the report must already
     // be in that first quantum even though most of the backlog is not.
     pipe.drain();
     sink.log(info_msg("nudge"));
     auto out = pipe.drain();
-    EXPECT(out.find("client not draining") != std::string::npos);
+    ZEXPECT(out.find("client not draining") != std::string::npos);
     // Eviction must never cut the tail off a partially written line: a
     // torn line shows as payload immediately followed by the next line's
     // timestamp bracket, with no newline between.
-    EXPECT(out.find("z[") == std::string::npos);
+    ZEXPECT(out.find("z[") == std::string::npos);
 }
 
 ZEST_CASE(NoteSurvivesPressure) {
@@ -165,19 +165,19 @@ ZEST_CASE(NoteSurvivesPressure) {
     for(int i = 0; i < 5000 && sink.dropped() == 0; ++i) {
         sink.log(info_msg(line));
     }
-    ASSERT(sink.dropped() > 0);
+    ZASSERT(sink.dropped() > 0);
     auto seen = sink.dropped();
 
     // Keep the flood going well past several full buffer turnovers.
     for(int i = 0; i < 500; ++i) {
         sink.log(info_msg(line));
     }
-    EXPECT(sink.dropped() > seen);
+    ZEXPECT(sink.dropped() > seen);
 
     pipe.drain();
     sink.log(info_msg("nudge"));
     auto out = pipe.drain();
-    EXPECT(out.find("client not draining") != std::string::npos);
+    ZEXPECT(out.find("client not draining") != std::string::npos);
 }
 #endif
 
@@ -185,10 +185,10 @@ ZEST_CASE(SocketGetsNonblocking) {
     // Supervisors attach stderr to sockets; their drain is just as
     // client-controlled as a pipe's.
     int fds[2] = {-1, -1};
-    ASSERT(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    ZASSERT(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
 
     logging::StderrSink sink(fds[1]);
-    EXPECT((::fcntl(fds[1], F_GETFL) & O_NONBLOCK) != 0);
+    ZEXPECT((::fcntl(fds[1], F_GETFL) & O_NONBLOCK) != 0);
 
     ::close(fds[0]);
     ::close(fds[1]);
@@ -201,13 +201,13 @@ ZEST_CASE(RegularFileStaysBlocking) {
     TempDir tmp;
     tmp.touch("log.txt", "");
     int fd = ::open(tmp.path("log.txt").c_str(), O_WRONLY | O_APPEND);
-    ASSERT(fd >= 0);
+    ZASSERT(fd >= 0);
 
     logging::StderrSink sink(fd);
-    EXPECT((::fcntl(fd, F_GETFL) & O_NONBLOCK) == 0);
+    ZEXPECT((::fcntl(fd, F_GETFL) & O_NONBLOCK) == 0);
 
     sink.log(info_msg("to the file"));
-    EXPECT(sink.dropped() == 0);
+    ZEXPECT(sink.dropped() == 0);
     ::close(fd);
 }
 
@@ -239,24 +239,24 @@ ZEST_CASE(FailedWritesDropLines) {
     TempDir tmp;
     auto log = tmp.path("session.log");
     auto sink = logging::FileSink::open(log);
-    ASSERT(sink);
+    ZASSERT(sink);
     (*sink)->log(info_msg("before the disk filled"));
 
     std::uint64_t size = 0;
-    ASSERT(!static_cast<bool>(llvm::sys::fs::file_size(log, size)));
+    ZASSERT(!static_cast<bool>(llvm::sys::fs::file_size(log, size)));
     {
         FileSizeCap cap(size);
         (*sink)->log(info_msg("lost one"));
         (*sink)->log(info_msg("lost two"));
     }
-    EXPECT((*sink)->dropped() == 2u);
+    ZEXPECT((*sink)->dropped() == 2u);
 
     (*sink)->log(info_msg("after space came back"));
     auto text = read_file(log).value_or("");
-    EXPECT(text.find("lost") == std::string::npos);
+    ZEXPECT(text.find("lost") == std::string::npos);
     auto note = text.find("[logging] dropped 2 line(s): File too large\n");
-    ASSERT(note != std::string::npos);
-    EXPECT(text.find("after space came back") > note);
+    ZASSERT(note != std::string::npos);
+    ZEXPECT(text.find("after space came back") > note);
 }
 
 // Linux writes up to the size limit and fails the rest; macOS refuses a
@@ -266,14 +266,14 @@ ZEST_CASE(TornLineGetsNewline) {
     TempDir tmp;
     auto log = tmp.path("session.log");
     auto sink = logging::FileSink::open(log);
-    ASSERT(sink);
+    ZASSERT(sink);
     {
         FileSizeCap cap(8);
         (*sink)->log(info_msg("a line longer than eight bytes"));
     }
     (*sink)->log(info_msg("next"));
     auto text = read_file(log).value_or("");
-    EXPECT(text.find("\n[logging] dropped 1 line(s)") == 8u);
+    ZEXPECT(text.find("\n[logging] dropped 1 line(s)") == 8u);
 }
 #endif
 

@@ -45,23 +45,23 @@ A<int*>* undeclared_partial_use;
 A<double>* undeclared_primary_use;
 A<char*> instantiated_partial;
 )cpp");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     auto* undeclared = specialization("A", "int *");
     auto* instantiated = specialization("A", "char *");
     auto* primary_use = specialization("A", "double");
-    ASSERT((undeclared && instantiated && primary_use));
-    ASSERT(undeclared->getSpecializationKind() == clang::TSK_Undeclared);
-    ASSERT(instantiated->getSpecializationKind() == clang::TSK_ImplicitInstantiation);
+    ZASSERT((undeclared && instantiated && primary_use));
+    ZASSERT(undeclared->getSpecializationKind() == clang::TSK_Undeclared);
+    ZASSERT(instantiated->getSpecializationKind() == clang::TSK_ImplicitInstantiation);
 
     /// The undeclared specialization anchors to the same pattern real
     /// instantiation selects: the partial specialization.
-    EXPECT(decls::normalize(undeclared) == decls::normalize(instantiated));
-    EXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(decls::normalize(undeclared)));
+    ZEXPECT(decls::normalize(undeclared) == decls::normalize(instantiated));
+    ZEXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(decls::normalize(undeclared)));
 
     /// Arguments matching no partial fall back to the primary pattern.
-    EXPECT(decls::normalize(primary_use) ==
-           class_template("A")->getTemplatedDecl()->getCanonicalDecl());
+    ZEXPECT(decls::normalize(primary_use) ==
+            class_template("A")->getTemplatedDecl()->getCanonicalDecl());
 };
 
 ZEST_CASE(AmbiguousPartialsPrimary) {
@@ -72,16 +72,16 @@ template <typename U> struct B<int, U> { };
 
 B<int, int>* ambiguous_use;
 )cpp");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     auto* ambiguous = specialization("B", "int");
-    ASSERT(ambiguous);
-    ASSERT(ambiguous->getSpecializationKind() == clang::TSK_Undeclared);
+    ZASSERT(ambiguous);
+    ZASSERT(ambiguous->getSpecializationKind() == clang::TSK_Undeclared);
 
     /// Neither partial dominates; degrade to the primary rather than
     /// picking arbitrarily.
-    EXPECT(decls::normalize(ambiguous) ==
-           class_template("B")->getTemplatedDecl()->getCanonicalDecl());
+    ZEXPECT(decls::normalize(ambiguous) ==
+            class_template("B")->getTemplatedDecl()->getCanonicalDecl());
 };
 
 ZEST_CASE(MemberSpecIdentity) {
@@ -96,7 +96,7 @@ template <> struct Outer<char>::Inner {
 Outer<char>::Inner use_special;
 Outer<int>::Inner use_generic;
 )cpp");
-    ASSERT(compile());
+    ZASSERT(compile());
 
     auto member = [&](llvm::StringRef arg) -> clang::CXXRecordDecl* {
         auto* spec = specialization("Outer", arg);
@@ -115,17 +115,17 @@ Outer<int>::Inner use_generic;
 
     auto* specialized = member("char");
     auto* generic = member("int");
-    ASSERT((specialized && generic));
-    ASSERT(specialized->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization);
+    ZASSERT((specialized && generic));
+    ZASSERT(specialized->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization);
 
     /// The explicitly specialized member keeps its own identity instead of
     /// folding into the generic pattern.
-    EXPECT(decls::normalize(specialized) != decls::normalize(generic));
-    EXPECT(decls::normalize(specialized) == specialized->getCanonicalDecl());
+    ZEXPECT(decls::normalize(specialized) != decls::normalize(generic));
+    ZEXPECT(decls::normalize(specialized) == specialized->getCanonicalDecl());
 
     /// The implicit member still anchors to the pattern in the primary.
-    EXPECT(decls::normalize(generic) ==
-           generic->getInstantiatedFromMemberClass()->getCanonicalDecl());
+    ZEXPECT(decls::normalize(generic) ==
+            generic->getInstantiatedFromMemberClass()->getCanonicalDecl());
 };
 
 };  // ZEST_SUITE(decls)

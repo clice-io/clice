@@ -36,14 +36,14 @@ ZEST_CASE(TranslateCMakeShape) {
                            "-o",
                            "kern.cu.o"});
 
-    EXPECT(args[0] == "nvcc"sv);
-    EXPECT(contains(args, "--cuda-gpu-arch=sm_75"));
-    EXPECT(contains(args, "MY_FLAG=1"));
-    EXPECT(contains(args, "-x"));
-    EXPECT(contains(args, "cuda"));
-    EXPECT(!contains(args, "cu"));
+    ZEXPECT(args[0] == "nvcc"sv);
+    ZEXPECT(contains(args, "--cuda-gpu-arch=sm_75"));
+    ZEXPECT(contains(args, "MY_FLAG=1"));
+    ZEXPECT(contains(args, "-x"));
+    ZEXPECT(contains(args, "cuda"));
+    ZEXPECT(!contains(args, "cu"));
     for(llvm::StringRef arg: args) {
-        EXPECT(!arg.starts_with("--generate-code"));
+        ZEXPECT(!arg.starts_with("--generate-code"));
     }
 }
 
@@ -51,7 +51,7 @@ ZEST_CASE(GencodeSelectsBest) {
     // Only arch= clauses count: code= entries are ptxas targets and never
     // set __CUDA_ARCH__ (arch=compute_75,code=sm_90 preprocesses as 750).
     auto mismatch = translate({"nvcc", "-gencode", "arch=compute_75,code=sm_90"});
-    EXPECT(contains(mismatch, "--cuda-gpu-arch=sm_75"));
+    ZEXPECT(contains(mismatch, "--cuda-gpu-arch=sm_75"));
 
     // The newest architecture wins; 'a' outranks plain at the same number;
     // lto_ entries are intermediates, not architectures.
@@ -59,20 +59,20 @@ ZEST_CASE(GencodeSelectsBest) {
                             "-gencode",
                             "arch=compute_75,code=sm_75",
                             "-gencode=arch=compute_90a,code=[compute_90a,sm_90a,lto_120]"});
-    EXPECT(contains(multi, "--cuda-gpu-arch=sm_90a"));
+    ZEXPECT(contains(multi, "--cuda-gpu-arch=sm_90a"));
 
-    EXPECT(contains(translate({"nvcc", "-arch=compute_86"}), "--cuda-gpu-arch=sm_86"));
-    EXPECT(contains(translate({"nvcc", "-arch=sm_100f"}), "--cuda-gpu-arch=sm_100f"));
+    ZEXPECT(contains(translate({"nvcc", "-arch=compute_86"}), "--cuda-gpu-arch=sm_86"));
+    ZEXPECT(contains(translate({"nvcc", "-arch=sm_100f"}), "--cuda-gpu-arch=sm_100f"));
 
     // -arch is a scalar option: the last one wins, unlike -gencode which
     // accumulates.
     auto repeated = translate({"nvcc", "-arch=compute_80", "-arch=compute_75"});
-    EXPECT(contains(repeated, "--cuda-gpu-arch=sm_75"));
+    ZEXPECT(contains(repeated, "--cuda-gpu-arch=sm_75"));
 
     // Bare -code and arch-less commands pin no architecture.
     for(auto& args: {translate({"nvcc", "-code=sm_90"}), translate({"nvcc", "-c", "a.cu"})}) {
         for(llvm::StringRef arg: args) {
-            EXPECT(!arg.starts_with("--cuda-gpu-arch="));
+            ZEXPECT(!arg.starts_with("--cuda-gpu-arch="));
         }
     }
 }
@@ -81,10 +81,10 @@ ZEST_CASE(ArchGencodeUnion) {
     // nvcc accepts -arch next to -gencode and compiles their union, one
     // device pass each — the newest wins whichever side carries it.
     auto arch_newer = translate({"nvcc", "-gencode=arch=compute_75,code=sm_75", "-arch=sm_90"});
-    EXPECT(contains(arch_newer, "--cuda-gpu-arch=sm_90"));
+    ZEXPECT(contains(arch_newer, "--cuda-gpu-arch=sm_90"));
 
     auto gencode_newer = translate({"nvcc", "-arch=sm_75", "-gencode=arch=compute_90,code=sm_90"});
-    EXPECT(contains(gencode_newer, "--cuda-gpu-arch=sm_90"));
+    ZEXPECT(contains(gencode_newer, "--cuda-gpu-arch=sm_90"));
 }
 
 ZEST_CASE(SpecialArchCarried) {
@@ -96,25 +96,25 @@ ZEST_CASE(SpecialArchCarried) {
             std::vector<const char*>{"nvcc", "--gpu-architecture=native"}
     }) {
         auto args = translate(arguments);
-        EXPECT(contains(args, "-arch=native"));
-        EXPECT(!contains(args, "native"));
+        ZEXPECT(contains(args, "-arch=native"));
+        ZEXPECT(!contains(args, "native"));
     }
-    EXPECT(is_nvcc_probe_flag("-arch=native"));
-    EXPECT(contains(translate({"nvcc", "-arch=all"}), "-arch=all"));
+    ZEXPECT(is_nvcc_probe_flag("-arch=native"));
+    ZEXPECT(contains(translate({"nvcc", "-arch=all"}), "-arch=all"));
 
     // -arch stays last-wins across numeric and special values.
     auto numeric_wins = translate({"nvcc", "-arch=native", "-arch=sm_80"});
-    EXPECT(contains(numeric_wins, "--cuda-gpu-arch=sm_80"));
-    EXPECT(!contains(numeric_wins, "-arch=native"));
+    ZEXPECT(contains(numeric_wins, "--cuda-gpu-arch=sm_80"));
+    ZEXPECT(!contains(numeric_wins, "-arch=native"));
     auto special_wins = translate({"nvcc", "-arch=sm_80", "-arch=native"});
-    EXPECT(contains(special_wins, "-arch=native"));
-    EXPECT(!contains(special_wins, "--cuda-gpu-arch=sm_80"));
+    ZEXPECT(contains(special_wins, "-arch=native"));
+    ZEXPECT(!contains(special_wins, "--cuda-gpu-arch=sm_80"));
 
     // As an edit it clears the base architectures like a numeric choice.
     auto edit = translate({"nvcc", "-arch=native"}, "", true);
     auto clear = std::ranges::find(edit, "--no-offload-arch=all");
-    ASSERT((clear != edit.end() && clear + 1 != edit.end()));
-    EXPECT(*(clear + 1) == "-arch=native"sv);
+    ZASSERT((clear != edit.end() && clear + 1 != edit.end()));
+    ZEXPECT(*(clear + 1) == "-arch=native"sv);
 }
 
 ZEST_CASE(CcbinBecomesToken) {
@@ -124,8 +124,8 @@ ZEST_CASE(CcbinBecomesToken) {
             std::vector<const char*>{"nvcc", "--compiler-bindir", "/usr/bin/g++-12"}
     }) {
         auto args = translate(arguments);
-        EXPECT(contains(args, "-ccbin=/usr/bin/g++-12"));
-        EXPECT(!contains(args, "/usr/bin/g++-12"));
+        ZEXPECT(contains(args, "-ccbin=/usr/bin/g++-12"));
+        ZEXPECT(!contains(args, "/usr/bin/g++-12"));
     }
 }
 
@@ -140,30 +140,30 @@ ZEST_CASE(ProbeFlagsCarried) {
     for(llvm::StringRef flag: {llvm::StringRef("--allow-unsupported-compiler"),
                                llvm::StringRef("--target-directory=sbsa-linux"),
                                llvm::StringRef(anchored)}) {
-        EXPECT(contains(args, flag));
-        EXPECT(is_nvcc_probe_flag(flag));
+        ZEXPECT(contains(args, flag));
+        ZEXPECT(is_nvcc_probe_flag(flag));
     }
-    EXPECT(!is_nvcc_probe_flag("-I/base"));
+    ZEXPECT(!is_nvcc_probe_flag("-I/base"));
 
     // A bare name resolves on PATH like nvcc would — never anchored — while
     // dot-relative values are directory-relative.
-    EXPECT(contains(translate({"nvcc", "-ccbin=g++-13"}, "/base"), "-ccbin=g++-13"));
+    ZEXPECT(contains(translate({"nvcc", "-ccbin=g++-13"}, "/base"), "-ccbin=g++-13"));
     auto dot = translate({"nvcc", "-ccbin=."}, "/base");
-    EXPECT(std::ranges::any_of(dot, [](llvm::StringRef arg) {
+    ZEXPECT(std::ranges::any_of(dot, [](llvm::StringRef arg) {
         return arg.starts_with("-ccbin=/base");
     }));
 }
 
 ZEST_CASE(XcompilerUnwrapped) {
     auto args = translate({"nvcc", "-Xcompiler=-fPIC,-pthread", "-Xcompiler", "-Wall"});
-    EXPECT(contains(args, "-fPIC"));
-    EXPECT(contains(args, "-pthread"));
-    EXPECT(contains(args, "-Wall"));
-    EXPECT(!contains(args, "-Xcompiler"));
+    ZEXPECT(contains(args, "-fPIC"));
+    ZEXPECT(contains(args, "-pthread"));
+    ZEXPECT(contains(args, "-Wall"));
+    ZEXPECT(!contains(args, "-Xcompiler"));
 
     // The value follows the same `\,` escape as every other list option.
     auto escaped = translate({"nvcc", R"(-Xcompiler=-Wl\,-z\,defs)"});
-    EXPECT(contains(escaped, "-Wl,-z,defs"));
+    ZEXPECT(contains(escaped, "-Wl,-z,defs"));
 }
 
 ZEST_CASE(MacroToggles) {
@@ -173,53 +173,53 @@ ZEST_CASE(MacroToggles) {
                            "-rdc=true",
                            "-default-stream",
                            "per-thread"});
-    EXPECT(contains(args, "-D__CUDACC_RELAXED_CONSTEXPR__"));
-    EXPECT(contains(args, "-D__CUDACC_EXTENDED_LAMBDA__"));
-    EXPECT(contains(args, "-fgpu-rdc"));
-    EXPECT(contains(args, "-D__CUDACC_RDC__"));
-    EXPECT(contains(args, "-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
+    ZEXPECT(contains(args, "-D__CUDACC_RELAXED_CONSTEXPR__"));
+    ZEXPECT(contains(args, "-D__CUDACC_EXTENDED_LAMBDA__"));
+    ZEXPECT(contains(args, "-fgpu-rdc"));
+    ZEXPECT(contains(args, "-D__CUDACC_RDC__"));
+    ZEXPECT(contains(args, "-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
 
-    EXPECT(!contains(translate({"nvcc", "-rdc=false"}), "-fgpu-rdc"));
+    ZEXPECT(!contains(translate({"nvcc", "-rdc=false"}), "-fgpu-rdc"));
 
     // Separate compilation implies -rdc=true; -ewp has its own macro.
     auto dc = translate({"nvcc", "-dc"});
-    EXPECT(contains(dc, "-fgpu-rdc"));
-    EXPECT(contains(dc, "-D__CUDACC_RDC__"));
-    EXPECT(contains(translate({"nvcc", "--extensible-whole-program"}), "-D__CUDACC_EWP__"));
+    ZEXPECT(contains(dc, "-fgpu-rdc"));
+    ZEXPECT(contains(dc, "-D__CUDACC_RDC__"));
+    ZEXPECT(contains(translate({"nvcc", "--extensible-whole-program"}), "-D__CUDACC_EWP__"));
 
     // Device debug becomes its macro; -G must not survive, clang reads it
     // as the small-data-threshold option.
     auto debug = translate({"nvcc", "-G"});
-    EXPECT(contains(debug, "-D__CUDACC_DEBUG__"));
-    EXPECT(!contains(debug, "-G"));
-    EXPECT(contains(translate({"nvcc", "--device-debug"}), "-D__CUDACC_DEBUG__"));
+    ZEXPECT(contains(debug, "-D__CUDACC_DEBUG__"));
+    ZEXPECT(!contains(debug, "-G"));
+    ZEXPECT(contains(translate({"nvcc", "--device-debug"}), "-D__CUDACC_DEBUG__"));
 
     // Fast math becomes clang's approx-transcendentals flag, which selects
     // the same fast variants in the math wrapper.
     for(const char* spelling: {"--use_fast_math", "-use_fast_math"}) {
         auto fast = translate({"nvcc", spelling});
-        EXPECT(contains(fast, "-fgpu-approx-transcendentals"));
-        EXPECT(!contains(fast, spelling));
+        ZEXPECT(contains(fast, "-fgpu-approx-transcendentals"));
+        ZEXPECT(!contains(fast, spelling));
     }
 
     // Stateful options are last-wins, matching nvcc.
-    EXPECT(!contains(translate({"nvcc", "-rdc=true", "-rdc=false"}), "-fgpu-rdc"));
+    ZEXPECT(!contains(translate({"nvcc", "-rdc=true", "-rdc=false"}), "-fgpu-rdc"));
     auto stream = translate({"nvcc", "-default-stream=per-thread", "-default-stream=legacy"});
-    EXPECT(!contains(stream, "-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
+    ZEXPECT(!contains(stream, "-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
 
     // Synthetic macros render ahead of user flags, so a later -U can undo
     // them the way it does under nvcc.
     auto undef = llvm::join(translate({"nvcc", "-dc", "-U__CUDACC_RDC__"}), " ");
-    EXPECT(llvm::StringRef(undef).find("-D__CUDACC_RDC__") <
-           llvm::StringRef(undef).find("-U __CUDACC_RDC__"));
+    ZEXPECT(llvm::StringRef(undef).find("-D__CUDACC_RDC__") <
+            llvm::StringRef(undef).find("-U __CUDACC_RDC__"));
 
     // The stream macro is nvcc's one exception: it lands after user flags,
     // so their -U cannot undo it.
     auto stream_undef = llvm::join(
         translate({"nvcc", "-default-stream=per-thread", "-UCUDA_API_PER_THREAD_DEFAULT_STREAM"}),
         " ");
-    EXPECT(llvm::StringRef(stream_undef).find("-U CUDA_API_PER_THREAD_DEFAULT_STREAM") <
-           llvm::StringRef(stream_undef).find("-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
+    ZEXPECT(llvm::StringRef(stream_undef).find("-U CUDA_API_PER_THREAD_DEFAULT_STREAM") <
+            llvm::StringRef(stream_undef).find("-DCUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
 }
 
 ZEST_CASE(PairedValueDrops) {
@@ -227,7 +227,7 @@ ZEST_CASE(PairedValueDrops) {
     // nvcc-only flags pass through for the CDB classification to discard.
     auto args = translate({"nvcc", "-Xptxas", "-O3", "-t", "4", "-lineinfo"});
     std::vector<std::string> expected = {"nvcc", "-lineinfo"};
-    EXPECT(args == expected);
+    ZEXPECT(args == expected);
 }
 
 ZEST_CASE(LongFormAliases) {
@@ -240,11 +240,11 @@ ZEST_CASE(LongFormAliases) {
                            "config.h",
                            "--system-include=/opt/sys"});
     auto joined = llvm::join(args, " ");
-    EXPECT(llvm::StringRef(joined).contains("-I /opt/inc"));
-    EXPECT(llvm::StringRef(joined).contains("-D FOO=1"));
-    EXPECT(llvm::StringRef(joined).contains("-U BAR"));
-    EXPECT(llvm::StringRef(joined).contains("-include config.h"));
-    EXPECT(llvm::StringRef(joined).contains("-isystem /opt/sys"));
+    ZEXPECT(llvm::StringRef(joined).contains("-I /opt/inc"));
+    ZEXPECT(llvm::StringRef(joined).contains("-D FOO=1"));
+    ZEXPECT(llvm::StringRef(joined).contains("-U BAR"));
+    ZEXPECT(llvm::StringRef(joined).contains("-include config.h"));
+    ZEXPECT(llvm::StringRef(joined).contains("-isystem /opt/sys"));
 }
 
 ZEST_CASE(ListValuesSplit) {
@@ -263,50 +263,50 @@ ZEST_CASE(ListValuesSplit) {
                                 "-isystem s2",
                                 "-include h1.h",
                                 "-include h2.h"}) {
-        EXPECT(llvm::StringRef(joined).contains(piece));
+        ZEXPECT(llvm::StringRef(joined).contains(piece));
     }
 
     // `\,` reads as a literal comma; other backslashes stay verbatim so
     // native Windows paths survive (deliberately shallower than nvcc's
     // Linux-side escape processing, which consumes every backslash).
-    EXPECT(contains(translate({"nvcc", R"(-DP=a\,b)"}), "P=a,b"));
+    ZEXPECT(contains(translate({"nvcc", R"(-DP=a\,b)"}), "P=a,b"));
     auto windows = translate({"nvcc", R"(-IC:\inc,D:\other)"});
-    EXPECT(contains(windows, R"(C:\inc)"));
-    EXPECT(contains(windows, R"(D:\other)"));
+    ZEXPECT(contains(windows, R"(C:\inc)"));
+    ZEXPECT(contains(windows, R"(D:\other)"));
 }
 
 ZEST_CASE(OptionsFileExpanded) {
     auto file = vfs::temp_file("clice-nvcc", "rsp");
-    ASSERT(file);
-    ASSERT(!vfs::write(*file, "-Igenerated -DAPI=2 -std=c++20\n"));
+    ZASSERT(file);
+    ZASSERT(!vfs::write(*file, "-Igenerated -DAPI=2 -std=c++20\n"));
 
     auto args = translate({"nvcc", "--options-file", file->c_str()});
     auto joined = llvm::join(args, " ");
-    EXPECT(llvm::StringRef(joined).contains("-I generated"));
-    EXPECT(llvm::StringRef(joined).contains("-D API=2"));
-    EXPECT(contains(args, "-std=c++20"));
-    EXPECT(!contains(args, "--options-file"));
-    EXPECT(!llvm::StringRef(joined).contains(*file));
+    ZEXPECT(llvm::StringRef(joined).contains("-I generated"));
+    ZEXPECT(llvm::StringRef(joined).contains("-D API=2"));
+    ZEXPECT(contains(args, "-std=c++20"));
+    ZEXPECT(!contains(args, "--options-file"));
+    ZEXPECT(!llvm::StringRef(joined).contains(*file));
 
     // The value is a comma-separated file list: every element expands.
     auto second = vfs::temp_file("clice-nvcc", "rsp");
-    ASSERT(second);
-    ASSERT(!vfs::write(*second, "-DFROM_SECOND=2\n"));
+    ZASSERT(second);
+    ZASSERT(!vfs::write(*second, "-DFROM_SECOND=2\n"));
 
     auto pair = *file + "," + *second;
     auto both = llvm::join(translate({"nvcc", "-optf", pair.c_str()}), " ");
-    EXPECT(llvm::StringRef(both).contains("-D API=2"));
-    EXPECT(llvm::StringRef(both).contains("-D FROM_SECOND=2"));
-    EXPECT(!llvm::StringRef(both).contains("-optf"));
-    EXPECT(!llvm::StringRef(both).contains(*file));
-    EXPECT(!llvm::StringRef(both).contains(*second));
+    ZEXPECT(llvm::StringRef(both).contains("-D API=2"));
+    ZEXPECT(llvm::StringRef(both).contains("-D FROM_SECOND=2"));
+    ZEXPECT(!llvm::StringRef(both).contains("-optf"));
+    ZEXPECT(!llvm::StringRef(both).contains(*file));
+    ZEXPECT(!llvm::StringRef(both).contains(*second));
 
     // An unreadable file drops with a warning; the rest of the command
     // still translates.
     auto missing = translate({"nvcc", "--options-file=missing.rsp", "-DX"}, "/clice-nonexistent");
-    EXPECT(contains(missing, "X"));
-    EXPECT(!contains(missing, "--options-file=missing.rsp"));
-    EXPECT(!contains(missing, "missing.rsp"));
+    ZEXPECT(contains(missing, "X"));
+    ZEXPECT(!contains(missing, "--options-file=missing.rsp"));
+    ZEXPECT(!contains(missing, "missing.rsp"));
 
     vfs::remove(*file);
     vfs::remove(*second);
@@ -315,16 +315,16 @@ ZEST_CASE(OptionsFileExpanded) {
 ZEST_CASE(OptionsFileMarkSkipped) {
     // A byte order mark does not glue itself to the first option.
     auto file = vfs::temp_file("clice-nvcc", "rsp");
-    ASSERT(file);
-    ASSERT(!vfs::write(*file, "\xEF\xBB\xBF-DMARKED=1\n"));
+    ZASSERT(file);
+    ZASSERT(!vfs::write(*file, "\xEF\xBB\xBF-DMARKED=1\n"));
     auto joined = llvm::join(translate({"nvcc", "--options-file", file->c_str()}), " ");
-    EXPECT(llvm::StringRef(joined).contains("-D MARKED=1"));
+    ZEXPECT(llvm::StringRef(joined).contains("-D MARKED=1"));
     vfs::remove(*file);
 }
 
 ZEST_CASE(StdNormalized) {
-    EXPECT(contains(translate({"nvcc", "-std", "c++17"}), "-std=c++17"));
-    EXPECT(contains(translate({"nvcc", "--std=c++20"}), "-std=c++20"));
+    ZEXPECT(contains(translate({"nvcc", "-std", "c++17"}), "-std=c++17"));
+    ZEXPECT(contains(translate({"nvcc", "--std=c++20"}), "-std=c++20"));
 }
 
 ZEST_CASE(MachineNormalized) {
@@ -335,29 +335,29 @@ ZEST_CASE(MachineNormalized) {
             std::vector<const char*>{"nvcc", "-m", "64"}
     }) {
         auto args = translate(arguments);
-        EXPECT(contains(args, "-m64"));
-        EXPECT(!contains(args, "64"));
+        ZEXPECT(contains(args, "-m64"));
+        ZEXPECT(!contains(args, "64"));
     }
-    EXPECT(contains(translate({"nvcc", "--machine=32"}), "-m32"));
+    ZEXPECT(contains(translate({"nvcc", "--machine=32"}), "-m32"));
 
     // The joined short form is already clang's own spelling.
-    EXPECT(contains(translate({"nvcc", "-m64"}), "-m64"));
+    ZEXPECT(contains(translate({"nvcc", "-m64"}), "-m64"));
 
     // A value nvcc rejects pins no machine model.
     auto invalid = translate({"nvcc", "--machine=16"});
-    EXPECT(!contains(invalid, "-m16"));
-    EXPECT(!contains(invalid, "--machine=16"));
+    ZEXPECT(!contains(invalid, "-m16"));
+    ZEXPECT(!contains(invalid, "--machine=16"));
 }
 
 ZEST_CASE(OptimizeNormalized) {
-    EXPECT(contains(translate({"nvcc", "--optimize=3"}), "-O3"));
-    EXPECT(contains(translate({"nvcc", "-O", "2"}), "-O2"));
-    EXPECT(contains(translate({"nvcc", "-O3"}), "-O3"));
+    ZEXPECT(contains(translate({"nvcc", "--optimize=3"}), "-O3"));
+    ZEXPECT(contains(translate({"nvcc", "-O", "2"}), "-O2"));
+    ZEXPECT(contains(translate({"nvcc", "-O3"}), "-O3"));
 
     // Joined -O3 is nvcc's own option too, last-wins like the long form.
     auto repeated = translate({"nvcc", "-O2", "--optimize=3"});
-    EXPECT(contains(repeated, "-O3"));
-    EXPECT(!contains(repeated, "-O2"));
+    ZEXPECT(contains(repeated, "-O3"));
+    ZEXPECT(!contains(repeated, "-O2"));
 }
 
 ZEST_CASE(HostFlagsFollowXcompiler) {
@@ -367,16 +367,16 @@ ZEST_CASE(HostFlagsFollowXcompiler) {
         auto joined = llvm::join(args, " ");
         return llvm::StringRef(joined).find(a) < llvm::StringRef(joined).find(b);
     };
-    EXPECT(find_order(translate({"nvcc", "--optimize=3", "-Xcompiler=-O0"}), "-O0", "-O3"));
-    EXPECT(find_order(translate({"nvcc", "-O3", "-Xcompiler=-O0"}), "-O0", "-O3"));
-    EXPECT(find_order(translate({"nvcc", "--machine=64", "-Xcompiler=-m32"}), "-m32", "-m64"));
+    ZEXPECT(find_order(translate({"nvcc", "--optimize=3", "-Xcompiler=-O0"}), "-O0", "-O3"));
+    ZEXPECT(find_order(translate({"nvcc", "-O3", "-Xcompiler=-O0"}), "-O0", "-O3"));
+    ZEXPECT(find_order(translate({"nvcc", "--machine=64", "-Xcompiler=-m32"}), "-m32", "-m64"));
 }
 
 ZEST_CASE(DisableWarningsMapped) {
     for(const char* spelling: {"--disable-warnings", "-disable-warnings"}) {
         auto args = translate({"nvcc", spelling});
-        EXPECT(contains(args, "-w"));
-        EXPECT(!contains(args, spelling));
+        ZEXPECT(contains(args, "-w"));
+        ZEXPECT(!contains(args, spelling));
     }
 }
 
@@ -385,14 +385,14 @@ ZEST_CASE(EditEmitsStateOverrides) {
     // disabled stateful options must cancel the base's translated state,
     // while a standalone command emits nothing for the default state.
     auto off = translate({"nvcc", "-rdc=false", "--default-stream=legacy"}, "", true);
-    EXPECT(contains(off, "-fno-gpu-rdc"));
-    EXPECT(contains(off, "-U__CUDACC_RDC__"));
-    EXPECT(contains(off, "-UCUDA_API_PER_THREAD_DEFAULT_STREAM"));
+    ZEXPECT(contains(off, "-fno-gpu-rdc"));
+    ZEXPECT(contains(off, "-U__CUDACC_RDC__"));
+    ZEXPECT(contains(off, "-UCUDA_API_PER_THREAD_DEFAULT_STREAM"));
 
     auto standalone = translate({"nvcc", "-rdc=false", "--default-stream=legacy"});
-    EXPECT(!contains(standalone, "-fno-gpu-rdc"));
-    EXPECT(!contains(standalone, "-U__CUDACC_RDC__"));
-    EXPECT(!contains(standalone, "-UCUDA_API_PER_THREAD_DEFAULT_STREAM"));
+    ZEXPECT(!contains(standalone, "-fno-gpu-rdc"));
+    ZEXPECT(!contains(standalone, "-U__CUDACC_RDC__"));
+    ZEXPECT(!contains(standalone, "-UCUDA_API_PER_THREAD_DEFAULT_STREAM"));
 
     // The cancellations render ahead of the segment's own flags: an
     // explicit -D of the macro inside the edit survives them, like it
@@ -402,29 +402,29 @@ ZEST_CASE(EditEmitsStateOverrides) {
                   "",
                   true),
         " ");
-    EXPECT(llvm::StringRef(explicit_d).find("-UCUDA_API_PER_THREAD_DEFAULT_STREAM") <
-           llvm::StringRef(explicit_d).find("CUDA_API_PER_THREAD_DEFAULT_STREAM=7"));
+    ZEXPECT(llvm::StringRef(explicit_d).find("-UCUDA_API_PER_THREAD_DEFAULT_STREAM") <
+            llvm::StringRef(explicit_d).find("CUDA_API_PER_THREAD_DEFAULT_STREAM=7"));
 
     // Untouched state stays silent even as an edit.
     auto untouched = translate({"nvcc", "-DX"}, "", true);
-    EXPECT(!contains(untouched, "-fno-gpu-rdc"));
-    EXPECT(!contains(untouched, "-U__CUDACC_RDC__"));
-    EXPECT(!contains(untouched, "-UCUDA_API_PER_THREAD_DEFAULT_STREAM"));
-    EXPECT(!contains(untouched, "--no-offload-arch=all"));
+    ZEXPECT(!contains(untouched, "-fno-gpu-rdc"));
+    ZEXPECT(!contains(untouched, "-U__CUDACC_RDC__"));
+    ZEXPECT(!contains(untouched, "-UCUDA_API_PER_THREAD_DEFAULT_STREAM"));
+    ZEXPECT(!contains(untouched, "--no-offload-arch=all"));
 
     // clang accumulates --cuda-gpu-arch while nvcc's -arch is last-wins: an
     // arch edit clears the base architectures right before its own choice.
     auto arch = translate({"nvcc", "-arch=sm_80"}, "", true);
     auto clear = std::ranges::find(arch, "--no-offload-arch=all");
-    ASSERT((clear != arch.end() && clear + 1 != arch.end()));
-    EXPECT(*(clear + 1) == "--cuda-gpu-arch=sm_80"sv);
-    EXPECT(!contains(translate({"nvcc", "-arch=sm_80"}), "--no-offload-arch=all"));
+    ZASSERT((clear != arch.end() && clear + 1 != arch.end()));
+    ZEXPECT(*(clear + 1) == "--cuda-gpu-arch=sm_80"sv);
+    ZEXPECT(!contains(translate({"nvcc", "-arch=sm_80"}), "--no-offload-arch=all"));
 
     // -gencode accumulates in nvcc, so as an edit it adds its architecture
     // without erasing the base's.
     auto gencode = translate({"nvcc", "-gencode=arch=compute_75,code=sm_75"}, "", true);
-    EXPECT(contains(gencode, "--cuda-gpu-arch=sm_75"));
-    EXPECT(!contains(gencode, "--no-offload-arch=all"));
+    ZEXPECT(contains(gencode, "--cuda-gpu-arch=sm_75"));
+    ZEXPECT(!contains(gencode, "--no-offload-arch=all"));
 }
 
 constexpr static llvm::StringRef fake_dryrun = R"(#$ _NVVM_BRANCH_=nvvm
@@ -443,26 +443,26 @@ constexpr static llvm::StringRef fake_dryrun = R"(#$ _NVVM_BRANCH_=nvvm
 
 ZEST_CASE(DryrunParsed) {
     auto info = parse_nvcc_dryrun(fake_dryrun);
-    ASSERT(info);
+    ZASSERT(info);
 
-    EXPECT(info->cuda_path == "/opt/cuda/targets/x86_64-linux");
-    EXPECT(info->host_compiler == "g++");
-    EXPECT(info->cpp_dialect == "c++17");
-    EXPECT(info->default_arch == "sm_52");
-    EXPECT(std::ranges::contains(info->search_path, "/opt/host/bin"));
+    ZEXPECT(info->cuda_path == "/opt/cuda/targets/x86_64-linux");
+    ZEXPECT(info->host_compiler == "g++");
+    ZEXPECT(info->cpp_dialect == "c++17");
+    ZEXPECT(info->default_arch == "sm_52");
+    ZEXPECT(std::ranges::contains(info->search_path, "/opt/host/bin"));
 
     // clang derives the blocklisted three itself; the rest must survive.
     for(auto defines: {&info->host_defines, &info->device_defines}) {
-        EXPECT(std::ranges::contains(*defines, "__CUDACC_VER_MAJOR__=12"));
-        EXPECT(std::ranges::contains(*defines, "__NV_LEGACY_LAUNCH"));
-        EXPECT(!std::ranges::contains(*defines, "__CUDACC__"));
+        ZEXPECT(std::ranges::contains(*defines, "__CUDACC_VER_MAJOR__=12"));
+        ZEXPECT(std::ranges::contains(*defines, "__NV_LEGACY_LAUNCH"));
+        ZEXPECT(!std::ranges::contains(*defines, "__CUDACC__"));
         for(llvm::StringRef define: *defines) {
-            EXPECT(!define.starts_with("__CUDA_ARCH__"));
-            EXPECT(!define.starts_with("__CUDA_ARCH_LIST__"));
+            ZEXPECT(!define.starts_with("__CUDA_ARCH__"));
+            ZEXPECT(!define.starts_with("__CUDA_ARCH_LIST__"));
         }
     }
-    EXPECT(std::ranges::contains(info->device_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
-    EXPECT(!std::ranges::contains(info->host_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
+    ZEXPECT(std::ranges::contains(info->device_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
+    ZEXPECT(!std::ranges::contains(info->host_defines, "CUDA_DOUBLE_MATH_FUNCTIONS"));
 
     // A probe carrying -arch=all runs one cicc per architecture; the newest
     // wins regardless of emission order.
@@ -471,13 +471,13 @@ ZEST_CASE(DryrunParsed) {
 #$ cicc --c++17 -arch compute_75 "/tmp/a.cpp1.ii" -o "/tmp/b.ptx"
 )";
     auto multi_info = parse_nvcc_dryrun(multi);
-    ASSERT(multi_info);
-    EXPECT(multi_info->default_arch == "sm_90");
+    ZASSERT(multi_info);
+    ZEXPECT(multi_info->default_arch == "sm_90");
 }
 
 ZEST_CASE(DryrunRejectsIncomplete) {
-    EXPECT(!parse_nvcc_dryrun("#$ PATH=/usr/bin").has_value());
-    EXPECT(!parse_nvcc_dryrun("#$ TOP=/opt/cuda").has_value());
+    ZEXPECT(!parse_nvcc_dryrun("#$ PATH=/usr/bin").has_value());
+    ZEXPECT(!parse_nvcc_dryrun("#$ TOP=/opt/cuda").has_value());
 }
 
 ZEST_CASE(DryrunHostOnly) {
@@ -489,12 +489,12 @@ ZEST_CASE(DryrunHostOnly) {
 #$ g++ -D__CUDA_ARCH_LIST__=520 -c -x c++ -D__NVCC__ -D__CUDACC_VER_MAJOR__=12 -m64 "/tmp/a.cpp" -o "/tmp/a.o"
 )";
     auto info = parse_nvcc_dryrun(host_only);
-    ASSERT(info);
-    EXPECT(info->host_compiler == "g++");
-    EXPECT(std::ranges::contains(info->host_defines, "__NVCC__"));
-    EXPECT(std::ranges::contains(info->host_defines, "__CUDA_ARCH_LIST__=520"));
-    EXPECT(std::ranges::contains(info->host_defines, "__CUDACC_VER_MAJOR__=12"));
-    EXPECT(info->device_defines.empty());
+    ZASSERT(info);
+    ZEXPECT(info->host_compiler == "g++");
+    ZEXPECT(std::ranges::contains(info->host_defines, "__NVCC__"));
+    ZEXPECT(std::ranges::contains(info->host_defines, "__CUDA_ARCH_LIST__=520"));
+    ZEXPECT(std::ranges::contains(info->host_defines, "__CUDACC_VER_MAJOR__=12"));
+    ZEXPECT(info->device_defines.empty());
 }
 
 ZEST_CASE(DryrunTopFallback) {
@@ -503,15 +503,15 @@ ZEST_CASE(DryrunTopFallback) {
 #$ g++ -D__CUDACC_VER_MAJOR__=12 -E -x c++ "/tmp/a.cu" -o "/tmp/a.ii"
 )";
     auto info = parse_nvcc_dryrun(no_top);
-    ASSERT(info);
-    EXPECT(info->cuda_path == "/opt/cuda");
+    ZASSERT(info);
+    ZEXPECT(info->cuda_path == "/opt/cuda");
 
     // With neither line the toolchain still resolves; CUDA detection is
     // left to clang's own search.
     auto bare = parse_nvcc_dryrun(R"(#$ g++ -E -x c++ "/tmp/a.cu")");
-    ASSERT(bare);
-    EXPECT(bare->cuda_path.empty());
-    EXPECT(bare->host_compiler == "g++");
+    ZASSERT(bare);
+    ZEXPECT(bare->cuda_path.empty());
+    ZEXPECT(bare->host_compiler == "g++");
 }
 
 ZEST_CASE(CcbinAffectsKey) {
@@ -526,8 +526,8 @@ ZEST_CASE(CcbinAffectsKey) {
         auto& entry = db.candidate_entries(file).front();
         return db.toolchain().probe_key_for(entry.config, db.input_kind(entry.config, file));
     };
-    EXPECT(key_of("/tmp/a.cu") != key_of("/tmp/b.cu"));
-    EXPECT(key_of("/tmp/a.cu") == key_of("/tmp/a.cu"));
+    ZEXPECT(key_of("/tmp/a.cu") != key_of("/tmp/b.cu"));
+    ZEXPECT(key_of("/tmp/a.cu") == key_of("/tmp/a.cu"));
 }
 
 ZEST_CASE(DatabaseTranslatesNVCC) {
@@ -554,18 +554,18 @@ ZEST_CASE(DatabaseTranslatesNVCC) {
         return std::ranges::contains(flags, flag);
     };
     // --cuda-gpu-arch renders through its unaliased spelling.
-    EXPECT(has("--offload-arch=sm_75"));
-    EXPECT(has("-ccbin=/usr/bin/g++-12"));
-    EXPECT(has("--allow-unsupported-compiler"));
-    EXPECT(has("-x"));
-    EXPECT(has("cuda"));
-    EXPECT(has("MY_FLAG=1"));
+    ZEXPECT(has("--offload-arch=sm_75"));
+    ZEXPECT(has("-ccbin=/usr/bin/g++-12"));
+    ZEXPECT(has("--allow-unsupported-compiler"));
+    ZEXPECT(has("-x"));
+    ZEXPECT(has("cuda"));
+    ZEXPECT(has("MY_FLAG=1"));
     /// nvcc-only leftovers are unknown-class: full view keeps them for
     /// identity, the compile render must not pass them to clang.
-    EXPECT(!std::ranges::contains(render_entry(db, "/tmp/kern.cu"),
-                                  llvm::StringRef("-forward-unknown-to-host-compiler")));
+    ZEXPECT(!std::ranges::contains(render_entry(db, "/tmp/kern.cu"),
+                                   llvm::StringRef("-forward-unknown-to-host-compiler")));
     for(llvm::StringRef flag: flags) {
-        EXPECT(!flag.starts_with("--generate-code"));
+        ZEXPECT(!flag.starts_with("--generate-code"));
     }
 }
 
@@ -594,12 +594,12 @@ ZEST_CASE(RuleFlagsTranslated) {
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
-    EXPECT(!has("--offload-arch=sm_75"));
-    EXPECT(has("--offload-arch=sm_90a"));
-    EXPECT(has("__CUDACC_EXTENDED_LAMBDA__"));
+    ZEXPECT(!has("--offload-arch=sm_75"));
+    ZEXPECT(has("--offload-arch=sm_90a"));
+    ZEXPECT(has("__CUDACC_EXTENDED_LAMBDA__"));
     for(llvm::StringRef flag: flags) {
-        EXPECT(!flag.starts_with("--generate-code"));
-        EXPECT(!flag.starts_with("--extended-lambda"));
+        ZEXPECT(!flag.starts_with("--generate-code"));
+        ZEXPECT(!flag.starts_with("--extended-lambda"));
     }
 }
 
@@ -639,21 +639,21 @@ ZEST_CASE(AppendOverridesBase) {
 
     // rdc: the appended negation follows the base's enable, so clang's own
     // last-wins turns it off and undefines the macro the base defined.
-    EXPECT(index_of("-fgpu-rdc") < index_of("-fno-gpu-rdc"));
-    EXPECT(index_of("-fno-gpu-rdc") < count);
-    EXPECT(pair_index("-D", "__CUDACC_RDC__") < pair_index("-U", "__CUDACC_RDC__"));
-    EXPECT(pair_index("-U", "__CUDACC_RDC__") < count);
+    ZEXPECT(index_of("-fgpu-rdc") < index_of("-fno-gpu-rdc"));
+    ZEXPECT(index_of("-fno-gpu-rdc") < count);
+    ZEXPECT(pair_index("-D", "__CUDACC_RDC__") < pair_index("-U", "__CUDACC_RDC__"));
+    ZEXPECT(pair_index("-U", "__CUDACC_RDC__") < count);
 
     // stream: undef after the base's define.
-    EXPECT(pair_index("-D", "CUDA_API_PER_THREAD_DEFAULT_STREAM=1") <
-           pair_index("-U", "CUDA_API_PER_THREAD_DEFAULT_STREAM"));
-    EXPECT(pair_index("-U", "CUDA_API_PER_THREAD_DEFAULT_STREAM") < count);
+    ZEXPECT(pair_index("-D", "CUDA_API_PER_THREAD_DEFAULT_STREAM=1") <
+            pair_index("-U", "CUDA_API_PER_THREAD_DEFAULT_STREAM"));
+    ZEXPECT(pair_index("-U", "CUDA_API_PER_THREAD_DEFAULT_STREAM") < count);
 
     // arch: the base's architecture is cleared before the appended one, not
     // accumulated into a second device pass.
-    EXPECT(index_of("--offload-arch=sm_75") < index_of("--no-offload-arch=all"));
-    EXPECT(index_of("--no-offload-arch=all") < index_of("--offload-arch=sm_80"));
-    EXPECT(index_of("--offload-arch=sm_80") < count);
+    ZEXPECT(index_of("--offload-arch=sm_75") < index_of("--no-offload-arch=all"));
+    ZEXPECT(index_of("--no-offload-arch=all") < index_of("--offload-arch=sm_80"));
+    ZEXPECT(index_of("--offload-arch=sm_80") < count);
 }
 
 ZEST_CASE(ExtrasStayClangDialect) {
@@ -672,9 +672,9 @@ ZEST_CASE(ExtrasStayClangDialect) {
     options.extra_append = append;
 
     auto flags = render_entry(db, "/tmp/kern.cu", options);
-    EXPECT(llvm::StringRef(flags[1]) == "-fno-gpu-rdc");
+    ZEXPECT(llvm::StringRef(flags[1]) == "-fno-gpu-rdc");
     /// The input sits at its slot after the extra append.
-    EXPECT(llvm::StringRef(flags[flags.size() - 2]) == "-fgpu-rdc");
+    ZEXPECT(llvm::StringRef(flags[flags.size() - 2]) == "-fgpu-rdc");
 }
 
 ZEST_CASE(GencodeAppendAccumulates) {
@@ -705,16 +705,16 @@ ZEST_CASE(GencodeAppendAccumulates) {
     // nothing.
     std::vector<std::string> older = {"-gencode=arch=compute_75,code=sm_75"};
     auto kept = arch_flags(older);
-    EXPECT(std::ranges::contains(kept, "--offload-arch=sm_90"));
-    EXPECT(!std::ranges::contains(kept, "--offload-arch=sm_75"));
-    EXPECT(!std::ranges::contains(kept, "--no-offload-arch=all"));
+    ZEXPECT(std::ranges::contains(kept, "--offload-arch=sm_90"));
+    ZEXPECT(!std::ranges::contains(kept, "--offload-arch=sm_75"));
+    ZEXPECT(!std::ranges::contains(kept, "--no-offload-arch=all"));
 
     // A newer append takes over — by numeric rank, not string order, which
     // would sort sm_100a below sm_90.
     std::vector<std::string> newer = {"-gencode=arch=compute_100a,code=sm_100a"};
     auto switched = arch_flags(newer);
-    EXPECT(std::ranges::contains(switched, "--offload-arch=sm_100a"));
-    EXPECT(!std::ranges::contains(switched, "--offload-arch=sm_90"));
+    ZEXPECT(std::ranges::contains(switched, "--offload-arch=sm_100a"));
+    ZEXPECT(!std::ranges::contains(switched, "--offload-arch=sm_90"));
 }
 
 ZEST_CASE(CollapseHonorsNegatives) {
@@ -731,9 +731,9 @@ ZEST_CASE(CollapseHonorsNegatives) {
          {K::GpuArch, "sm_86"},
          }
     });
-    ASSERT(dropped);
-    ASSERT(dropped->size() == 1U);
-    EXPECT((*dropped)[0] == 2U);
+    ZASSERT(dropped);
+    ZASSERT(dropped->size() == 1U);
+    ZEXPECT((*dropped)[0] == 2U);
 
     // A single survivor leaves nothing to collapse.
     auto single = collapse_gpu_archs({
@@ -743,8 +743,8 @@ ZEST_CASE(CollapseHonorsNegatives) {
          {K::GpuArch, "sm_75"},
          }
     });
-    ASSERT(single);
-    EXPECT(single->empty());
+    ZASSERT(single);
+    ZEXPECT(single->empty());
 
     // An unrankable negative leaves the whole command to clang.
     auto native = collapse_gpu_archs({
@@ -754,7 +754,7 @@ ZEST_CASE(CollapseHonorsNegatives) {
          {K::GpuArch, "sm_75"},
          }
     });
-    EXPECT(!native.has_value());
+    ZEXPECT(!native.has_value());
 }
 
 ZEST_CASE(WildcardRemoveClearsArch) {
@@ -781,9 +781,9 @@ ZEST_CASE(WildcardRemoveClearsArch) {
         return result;
     };
 
-    EXPECT(std::ranges::contains(arch_flags("/tmp/kern.cu", {}), "--offload-arch=sm_75"));
-    EXPECT(std::ranges::contains(arch_flags("/tmp/other.cu", {}), "--offload-arch=sm_80"));
-    EXPECT(std::ranges::contains(arch_flags("/tmp/native.cu", {}), "-arch=native"));
+    ZEXPECT(std::ranges::contains(arch_flags("/tmp/kern.cu", {}), "--offload-arch=sm_75"));
+    ZEXPECT(std::ranges::contains(arch_flags("/tmp/other.cu", {}), "--offload-arch=sm_80"));
+    ZEXPECT(std::ranges::contains(arch_flags("/tmp/native.cu", {}), "-arch=native"));
 
     // The wildcard must clear whichever form the base carries: numeric archs
     // translate to --offload-arch, non-numeric ones persist as probe tokens.
@@ -791,22 +791,22 @@ ZEST_CASE(WildcardRemoveClearsArch) {
         {CommandEdit::Kind::Remove, {"--generate-code=*"}}
     };
     CommandOptions options{.edits = edits};
-    EXPECT(arch_flags("/tmp/kern.cu", options).empty());
+    ZEXPECT(arch_flags("/tmp/kern.cu", options).empty());
 
     edits = {
         {CommandEdit::Kind::Remove, {"-arch", "*"}}
     };
     options.edits = edits;
-    EXPECT(arch_flags("/tmp/other.cu", options).empty());
-    EXPECT(arch_flags("/tmp/native.cu", options).empty());
+    ZEXPECT(arch_flags("/tmp/other.cu", options).empty());
+    ZEXPECT(arch_flags("/tmp/native.cu", options).empty());
 
     // Removes edit the base before appends land: replacing the architecture
     // through remove-wildcard + append keeps the appended one.
     edits.push_back({CommandEdit::Kind::Append, {"-gencode=arch=compute_90a,code=sm_90a"}});
     options.edits = edits;
     auto replaced = arch_flags("/tmp/other.cu", options);
-    EXPECT(!std::ranges::contains(replaced, "--offload-arch=sm_80"));
-    EXPECT(std::ranges::contains(replaced, "--offload-arch=sm_90a"));
+    ZEXPECT(!std::ranges::contains(replaced, "--offload-arch=sm_80"));
+    ZEXPECT(std::ranges::contains(replaced, "--offload-arch=sm_90a"));
 }
 
 ZEST_CASE(RemoveMatchesUnknownSpelling) {
@@ -833,9 +833,9 @@ ZEST_CASE(RemoveMatchesUnknownSpelling) {
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
-    EXPECT(!has("--allow-unsupported-compiler"));
-    EXPECT(has("-ccbin=/usr/bin/g++-12"));
-    EXPECT(has("--target-directory=sbsa-linux"));
+    ZEXPECT(!has("--allow-unsupported-compiler"));
+    ZEXPECT(has("-ccbin=/usr/bin/g++-12"));
+    ZEXPECT(has("--target-directory=sbsa-linux"));
 }
 
 ZEST_CASE(RemoveListAlternatives) {
@@ -863,8 +863,8 @@ ZEST_CASE(RemoveListAlternatives) {
     auto has = [&](llvm::StringRef flag) {
         return std::ranges::contains(flags, flag);
     };
-    EXPECT(!has("-ccbin=/usr/bin/g++-12"));
-    EXPECT(!has("CUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
+    ZEXPECT(!has("-ccbin=/usr/bin/g++-12"));
+    ZEXPECT(!has("CUDA_API_PER_THREAD_DEFAULT_STREAM=1"));
 }
 
 ZEST_CASE(WildcardRemovesProbeValue) {
@@ -893,11 +893,11 @@ ZEST_CASE(WildcardRemovesProbeValue) {
     // value so the rule clears the concrete host compiler it never spelled.
     std::vector<std::string> ccbin = {"-ccbin=*"};
     std::vector<std::string> target_only = {"--target-directory=sbsa-linux"};
-    EXPECT(probe_flags(ccbin) == target_only);
+    ZEXPECT(probe_flags(ccbin) == target_only);
 
     std::vector<std::string> target = {"--target-directory=*"};
     std::vector<std::string> ccbin_only = {"-ccbin=/usr/bin/g++-12"};
-    EXPECT(probe_flags(target) == ccbin_only);
+    ZEXPECT(probe_flags(target) == ccbin_only);
 }
 
 };  // ZEST_SUITE(NVCCTests)

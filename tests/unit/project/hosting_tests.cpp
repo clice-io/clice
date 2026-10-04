@@ -49,13 +49,13 @@ ZEST_CASE(SourcePriorityBeatsProximity) {
     project.dep_graph.build_reverse_map();
 
     auto ranked = ranked_hosts(project, header);
-    ASSERT(ranked.size() == 2u);
-    EXPECT(ranked[0] == far);
-    EXPECT(ranked[1] == near);
+    ZASSERT(ranked.size() == 2u);
+    ZEXPECT(ranked[0] == far);
+    ZEXPECT(ranked[1] == near);
     auto host = default_host(project, header);
-    ASSERT(host);
-    EXPECT(host->file == far);
-    EXPECT(host->chain.back() == header);
+    ZASSERT(host);
+    ZEXPECT(host->file == far);
+    ZEXPECT(host->chain.back() == header);
 };
 
 ZEST_CASE(ProximityWithinSource) {
@@ -83,10 +83,10 @@ ZEST_CASE(ProximityWithinSource) {
     project.dep_graph.build_reverse_map();
 
     auto ranked = ranked_hosts(project, header);
-    ASSERT(ranked.size() == 3u);
-    EXPECT(ranked[0] == same_stem);
-    EXPECT(ranked[1] == same_dir);
-    EXPECT(ranked[2] == elsewhere);
+    ZASSERT(ranked.size() == 3u);
+    ZEXPECT(ranked[0] == same_stem);
+    ZEXPECT(ranked[1] == same_dir);
+    ZEXPECT(ranked[2] == elsewhere);
 
     /// Equal scores fall back to path order, so the ranking is stable.
     auto first = project.file_table.intern(Spelling::absolute(tmp.path("other/aaa.cpp")));
@@ -95,10 +95,10 @@ ZEST_CASE(ProximityWithinSource) {
     project.dep_graph.set_includes(first, 0, {{header}});
     project.dep_graph.build_reverse_map();
     ranked = ranked_hosts(project, header);
-    ASSERT(ranked.size() == 5u);
-    EXPECT(ranked[2] == first);
-    EXPECT(ranked[3] == second);
-    EXPECT(ranked[4] == elsewhere);
+    ZASSERT(ranked.size() == 5u);
+    ZEXPECT(ranked[2] == first);
+    ZEXPECT(ranked[3] == second);
+    ZEXPECT(ranked[4] == elsewhere);
 };
 
 ZEST_CASE(HostsMatchLanguage) {
@@ -119,15 +119,15 @@ ZEST_CASE(HostsMatchLanguage) {
     project.dep_graph.set_includes(impl, 0, {{hpp}, {plain}});
     project.dep_graph.build_reverse_map();
 
-    EXPECT(ranked_hosts(project, hpp).empty());
-    EXPECT(ranked_hosts(project, plain) == llvm::SmallVector<Fid>{impl});
+    ZEXPECT(ranked_hosts(project, hpp).empty());
+    ZEXPECT(ranked_hosts(project, plain) == llvm::SmallVector<Fid>{impl});
 
     /// A source borrows only its own language: a `.cl` or a `.m` next to
     /// the C unit would compile as C under its command.
     auto kernel_cl = project.file_table.intern(Spelling::absolute(tmp.path("c/kernel.cl")));
     auto objc = project.file_table.intern(Spelling::absolute(tmp.path("c/new.m")));
-    EXPECT(!command_lender(project, kernel_cl).has_value());
-    EXPECT(!command_lender(project, objc).has_value());
+    ZEXPECT(!command_lender(project, kernel_cl).has_value());
+    ZEXPECT(!command_lender(project, objc).has_value());
 
     /// An Objective-C++ unit is C++ with more: it hosts a C++ header.
     tmp.touch("mac/impl.mm", "");
@@ -139,7 +139,7 @@ ZEST_CASE(HostsMatchLanguage) {
     auto impl_mm = project.file_table.intern(Spelling::absolute(tmp.path("mac/impl.mm")));
     project.dep_graph.set_includes(impl_mm, 0, {{hpp}});
     project.dep_graph.build_reverse_map();
-    EXPECT(ranked_hosts(project, hpp) == llvm::SmallVector<Fid>{impl_mm});
+    ZEXPECT(ranked_hosts(project, hpp) == llvm::SmallVector<Fid>{impl_mm});
 
     /// A CUDA unit is C++ with device code: it hosts a C++ header.
     tmp.touch("gpu/kernel.cu", "");
@@ -151,14 +151,14 @@ ZEST_CASE(HostsMatchLanguage) {
     auto kernel = project.file_table.intern(Spelling::absolute(tmp.path("gpu/kernel.cu")));
     project.dep_graph.set_includes(kernel, 0, {{hpp}});
     project.dep_graph.build_reverse_map();
-    EXPECT(ranked_hosts(project, hpp) == (llvm::SmallVector<Fid>{kernel, impl_mm}));
+    ZEXPECT(ranked_hosts(project, hpp) == (llvm::SmallVector<Fid>{kernel, impl_mm}));
 
     /// Only headers get that latitude: a C++ source borrowing the CUDA
     /// command would compile as CUDA.
     auto gpu_header = project.file_table.intern(Spelling::absolute(tmp.path("gpu/new.hpp")));
     auto gpu_source = project.file_table.intern(Spelling::absolute(tmp.path("gpu/new.cpp")));
-    EXPECT(command_lender(project, gpu_header)->unit == kernel);
-    EXPECT(!command_lender(project, gpu_source).has_value());
+    ZEXPECT(command_lender(project, gpu_header)->unit == kernel);
+    ZEXPECT(!command_lender(project, gpu_source).has_value());
 
     /// A host offers only the commands that fit the header: with a C entry
     /// first and a C++ one second, a `.hpp` sees the second alone.
@@ -174,9 +174,9 @@ ZEST_CASE(HostsMatchLanguage) {
     project.dep_graph.set_includes(dual, 0, {{dual_hpp}});
     project.dep_graph.build_reverse_map();
     auto fitting = host_commands(project, dual_hpp, dual);
-    ASSERT(fitting.size() == 1u);
-    EXPECT(fitting.front().config == cxx.config);
-    EXPECT(ranked_hosts(project, dual_hpp) == llvm::SmallVector<Fid>{dual});
+    ZASSERT(fitting.size() == 1u);
+    ZEXPECT(fitting.front().config == cxx.config);
+    ZEXPECT(ranked_hosts(project, dual_hpp) == llvm::SmallVector<Fid>{dual});
 };
 
 ZEST_CASE(LenderSibling) {
@@ -201,9 +201,9 @@ ZEST_CASE(LenderSibling) {
     auto first = project.file_table.intern(Spelling::absolute(tmp.path("src/aaa.cpp")));
     auto other = project.file_table.intern(Spelling::absolute(tmp.path("src/other.cpp")));
     auto plain = project.file_table.intern(Spelling::absolute(tmp.path("src/plain.c")));
-    EXPECT(command_lender(project, header)->unit == same_stem);
-    EXPECT(command_lender(project, other)->unit == first);
-    EXPECT(!command_lender(project, plain).has_value());
+    ZEXPECT(command_lender(project, header)->unit == same_stem);
+    ZEXPECT(command_lender(project, other)->unit == first);
+    ZEXPECT(!command_lender(project, plain).has_value());
 };
 
 ZEST_CASE(LenderSearchDir) {
@@ -227,12 +227,12 @@ ZEST_CASE(LenderSearchDir) {
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.h")));
     auto lender = command_lender(project, header);
-    ASSERT(lender);
-    EXPECT(lender->unit == searching.file);
-    EXPECT(lender->config == searching.config);
+    ZASSERT(lender);
+    ZEXPECT(lender->unit == searching.file);
+    ZEXPECT(lender->config == searching.config);
 
     auto source = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.cpp")));
-    EXPECT(command_lender(project, source)->unit == near.file);
+    ZEXPECT(command_lender(project, source)->unit == near.file);
 };
 
 ZEST_CASE(LenderIgnoresCommandless) {
@@ -246,9 +246,9 @@ ZEST_CASE(LenderIgnoresCommandless) {
     project.config.rules.push_back(ConfigRule{.default_command = std::string("ccache")});
     project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
-    ASSERT(project.build.members().size() == 2u);
+    ZASSERT(project.build.members().size() == 2u);
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/new.h")));
-    EXPECT(!command_lender(project, header).has_value());
+    ZEXPECT(!command_lender(project, header).has_value());
 };
 
 };  // ZEST_SUITE(Hosting)

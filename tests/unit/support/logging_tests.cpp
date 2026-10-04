@@ -10,8 +10,8 @@ ZEST_SUITE(Logging) {
 ZEST_CASE(VersionStamps) {
     // Guards the cmake target-stamping plumbing: an unset CLICE_TARGET_STRING
     // would otherwise only surface in crash logs.
-    EXPECT(!clice::version.empty());
-    EXPECT(!clice::target.empty());
+    ZEXPECT(!clice::version.empty());
+    ZEXPECT(!clice::target.empty());
 }
 
 ZEST_CASE(MainExecutableBase) {
@@ -21,7 +21,7 @@ ZEST_CASE(MainExecutableBase) {
     // legitimately be zero, so only availability is exercised there.
     [[maybe_unused]] auto base = logging::main_executable_base();
 #if !defined(__APPLE__)
-    EXPECT(base != 0u);
+    ZEXPECT(base != 0u);
 #endif
 }
 

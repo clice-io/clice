@@ -51,7 +51,7 @@ std::string applied;
 void run(llvm::StringRef code, llvm::StringRef main = "main.cpp") {
     clear();
     add_main(main, code);
-    ASSERT(compile("-std=c++23"));
+    ZASSERT(compile("-std=c++23"));
 }
 
 /// The titles of the actions offered at the marker, those starting with
@@ -80,15 +80,15 @@ void apply(llvm::StringRef marker, llvm::StringRef title) {
     auto action = llvm::find_if(actions, [&](const feature::CodeAction& action) {
         return action.title == title;
     });
-    ASSERT(action != actions.end());
+    ZASSERT(action != actions.end());
     original = unit->main_content().str();
     auto edits = action->edits;
     if(action->index) {
         auto* request = std::get_if<feature::DefineRequest>(&*action->index);
-        ASSERT(request != nullptr);
+        ZASSERT(request != nullptr);
         auto text =
             feature::assemble_definitions(request->pieces, [](std::uint64_t) { return false; });
-        ASSERT(text);
+        ZASSERT(text);
         edits =
             feature::format_edits(unit->file_path(unit->main_file()),
                                   original,
@@ -107,7 +107,7 @@ void apply(llvm::StringRef marker, llvm::StringRef title) {
 /// The edited main file is `expected` and compiles without errors; with
 /// a marker, the function declared there is defined.
 void EXPECT_COMPILES(llvm::StringRef expected, llvm::StringRef marker = "") {
-    ASSERT(applied == expected);
+    ZASSERT(applied == expected);
     auto offset = marker.empty() ? 0 : point(marker);
     auto main = src_path;
     std::vector<std::pair<std::string, std::string>> others;
@@ -121,19 +121,19 @@ void EXPECT_COMPILES(llvm::StringRef expected, llvm::StringRef marker = "") {
         add_file(file, content);
     }
     add_main(main, applied);
-    ASSERT(compile("-std=c++23"));
+    ZASSERT(compile("-std=c++23"));
     std::vector<std::string> errors;
     for(auto& diagnostic: unit->diagnostics()) {
         if(diagnostic.id.level >= DiagnosticLevel::Error) {
             errors.push_back(diagnostic.message);
         }
     }
-    EXPECT(errors == std::vector<std::string>{});
+    ZEXPECT(errors == std::vector<std::string>{});
     if(!marker.empty()) {
         FunctionAt visitor(*unit, offset);
         visitor.TraverseDecl(unit->tu());
-        ASSERT(visitor.found != nullptr);
-        EXPECT(visitor.found->isDefined());
+        ZASSERT(visitor.found != nullptr);
+        ZEXPECT(visitor.found->isDefined());
     }
 }
 
@@ -539,7 +539,7 @@ struct §(s)S {
     void g();
 };
 )");
-    EXPECT(definitions("h") == std::vector<std::string>{});
+    ZEXPECT(definitions("h") == std::vector<std::string>{});
     apply("s", "Define missing members of 'S'");
     EXPECT_APPENDED("void S::g() {\n}\n");
 }
@@ -671,7 +671,7 @@ auto l = [] {
     inner();
 };
 )");
-    EXPECT(definitions("i") == std::vector<std::string>{});
+    ZEXPECT(definitions("i") == std::vector<std::string>{});
 }
 
 ZEST_CASE(UnclosedClass) {
@@ -679,7 +679,7 @@ ZEST_CASE(UnclosedClass) {
 struct P {
     P §(c)clone();
 )");
-    EXPECT(definitions("c") == std::vector<std::string>{"Define 'clone' inline"});
+    ZEXPECT(definitions("c") == std::vector<std::string>{"Define 'clone' inline"});
 }
 
 ZEST_CASE(TypeCompletedLater) {
@@ -701,12 +701,12 @@ struct Config {
     EXPECT_APPENDED("Config load() {\n}\n", "load");
 
     run(code);
-    EXPECT(definitions("take") == std::vector<std::string>{"Define 'P::take' out of line"});
+    ZEXPECT(definitions("take") == std::vector<std::string>{"Define 'P::take' out of line"});
     apply("take", "Define 'P::take' out of line");
     EXPECT_APPENDED("void P::take(Config c) {\n}\n", "take");
 
     run(code);
-    EXPECT(definitions("make") == std::vector<std::string>{});
+    ZEXPECT(definitions("make") == std::vector<std::string>{});
     apply("p", "Define missing members of 'P'");
     EXPECT_APPENDED("void P::take(Config c) {\n}\n\nvoid P::plain() {\n}\n");
 
@@ -715,14 +715,14 @@ namespace a { struct C; }
 namespace b { void §(f)f(a::C c); }
 namespace a { struct C {}; }
 )");
-    EXPECT(definitions("f") == std::vector<std::string>{});
+    ZEXPECT(definitions("f") == std::vector<std::string>{});
 
     run(R"(
 struct C;
 namespace { C §(f)f(); }
 struct C {};
 )");
-    EXPECT(definitions("f") == std::vector<std::string>{});
+    ZEXPECT(definitions("f") == std::vector<std::string>{});
 
     run(R"(
 struct C;
@@ -731,7 +731,7 @@ extern "C" {
 struct C {};
 }
 )");
-    EXPECT(definitions("h") == std::vector<std::string>{});
+    ZEXPECT(definitions("h") == std::vector<std::string>{});
 
     run(R"(
 struct C;
@@ -752,7 +752,7 @@ struct S {
 }
 struct C {};
 )");
-    EXPECT(definitions("f") == std::vector<std::string>{});
+    ZEXPECT(definitions("f") == std::vector<std::string>{});
 
     run(R"(
 template <class T>
@@ -761,7 +761,7 @@ struct P {
     void §(take)take(Later<int> l);
 };
 )");
-    EXPECT(definitions("take") == std::vector<std::string>{});
+    ZEXPECT(definitions("take") == std::vector<std::string>{});
 
     run(R"(
 template <class T>
@@ -809,8 +809,8 @@ public:
 };
 §(private)auto hidden = C::get();
 )");
-    EXPECT(titles("shadowed", "Replace") == std::vector<std::string>{});
-    EXPECT(titles("private", "Replace") == std::vector<std::string>{});
+    ZEXPECT(titles("shadowed", "Replace") == std::vector<std::string>{});
+    ZEXPECT(titles("private", "Replace") == std::vector<std::string>{});
 
     run(R"(
 int* _Nonnull get();
@@ -968,8 +968,8 @@ struct §(stuck)OnStuck {
     int n;
 };
 )");
-    EXPECT(titles("pinned", "Generate") == std::vector<std::string>{});
-    EXPECT(titles("stuck", "Generate") == std::vector<std::string>{});
+    ZEXPECT(titles("pinned", "Generate") == std::vector<std::string>{});
+    ZEXPECT(titles("stuck", "Generate") == std::vector<std::string>{});
 }
 
 ZEST_CASE(MacroAcrossLines) {
@@ -982,7 +982,7 @@ ZEST_CASE(MacroAcrossLines) {
 int a = 1 -\
 §(neg)NEG;
 )");
-    EXPECT(titles("flag", "Expand") == std::vector<std::string>{});
+    ZEXPECT(titles("flag", "Expand") == std::vector<std::string>{});
     apply("neg", "Expand macro 'NEG'");
     EXPECT_COMPILES(R"(
 #define FLAG 1
@@ -1032,11 +1032,11 @@ struct W {
 };
 )";
     run(code, "widget.h");
-    EXPECT(definitions("w") == std::vector<std::string>{
-                                   "Define 'w' inline",
-                                   "Define 'W::w' out of line",
-                                   "Define 'W::w'",
-                               });
+    ZEXPECT(definitions("w") == std::vector<std::string>{
+                                    "Define 'w' inline",
+                                    "Define 'W::w' out of line",
+                                    "Define 'W::w'",
+                                });
     apply("n", "Define 'W::n' out of line");
     EXPECT_APPENDED("[[nodiscard]] inline int W::n() {\n}\n", "n");
 
@@ -1060,9 +1060,10 @@ struct §(hidden)Hidden {
 }
 )",
         "widget.h");
-    EXPECT(definitions("s") == std::vector<std::string>{"Define 's' out of line"});
-    EXPECT(definitions("a") == std::vector<std::string>{"Define 'a' out of line"});
-    EXPECT(definitions("hidden") == std::vector<std::string>{"Define missing members of 'Hidden'"});
+    ZEXPECT(definitions("s") == std::vector<std::string>{"Define 's' out of line"});
+    ZEXPECT(definitions("a") == std::vector<std::string>{"Define 'a' out of line"});
+    ZEXPECT(definitions("hidden") ==
+            std::vector<std::string>{"Define missing members of 'Hidden'"});
     apply("hidden", "Define missing members of 'Hidden'");
     EXPECT_COMPILES(R"(
 static int s();
@@ -1112,7 +1113,7 @@ void Widget::draw(int scale) {
     for(bool pch: {true, false}) {
         clear();
         add_files("main.cpp", code);
-        ASSERT((pch ? compile_with_pch("-std=c++23") : compile("-std=c++23")));
+        ZASSERT((pch ? compile_with_pch("-std=c++23") : compile("-std=c++23")));
         apply("d", "Define missing members of 'Widget'");
         EXPECT_APPENDED(expected);
     }

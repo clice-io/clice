@@ -32,7 +32,7 @@ std::uint64_t consumed_hash(llvm::StringRef path) {
 /// is deliberately untrusted (see vfs::read_observed), so tests exercising
 /// the stat fast path must age their files first.
 void age_file(llvm::StringRef path) {
-    EXPECT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
+    ZEXPECT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
 }
 
 /// Whether the file table answers the file's current stat without a read.
@@ -55,12 +55,12 @@ ZEST_CASE(FreshWhenUntouched) {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    ASSERT(snap.size() == 1u);
-    ASSERT(!deps_changed(pool, snap));
+    ZASSERT(snap.size() == 1u);
+    ZASSERT(!deps_changed(pool, snap));
 
     // The check's read left the file's pair behind: the next check is a
     // stat.
-    ASSERT(vouched(pool, dep));
+    ZASSERT(vouched(pool, dep));
 }
 
 ZEST_CASE(SnapshotsShareOneVersion) {
@@ -81,12 +81,12 @@ ZEST_CASE(SnapshotsShareOneVersion) {
                                             DepFile{dep, consumed_hash(dep)}
     },
                                         build_at);
-    ASSERT(pool.versions.size() == 1u);
+    ZASSERT(pool.versions.size() == 1u);
 
     // One check's read serves the other snapshot.
-    ASSERT(!deps_changed(pool, first));
-    ASSERT(vouched(pool, dep));
-    ASSERT(!deps_changed(pool, second));
+    ZASSERT(!deps_changed(pool, first));
+    ZASSERT(vouched(pool, dep));
+    ZASSERT(!deps_changed(pool, second));
 }
 
 ZEST_CASE(ImmediateEditDetected) {
@@ -103,7 +103,7 @@ ZEST_CASE(ImmediateEditDetected) {
     },
                                       generous_build_at());
     tmp.touch("dep.h", "int renamed();\n");
-    ASSERT(deps_changed(pool, snap));
+    ZASSERT(deps_changed(pool, snap));
 }
 
 ZEST_CASE(EveryChangeFound) {
@@ -127,8 +127,8 @@ ZEST_CASE(EveryChangeFound) {
                                       generous_build_at());
     tmp.touch("a.h", "int a2();\n");
     tmp.touch("b.h", "int b2();\n");
-    ASSERT(deps_changed(pool, snap));
-    ASSERT(pool.take_changes().size() == 2u);
+    ZASSERT(deps_changed(pool, snap));
+    ZASSERT(pool.take_changes().size() == 2u);
 }
 
 ZEST_CASE(BackdatedEditDetected) {
@@ -148,11 +148,11 @@ ZEST_CASE(BackdatedEditDetected) {
     },
                                       generous_build_at());
     auto recorded_mtime = file_mtime_ns(dep);
-    ASSERT(vouched(pool, dep));
+    ZASSERT(vouched(pool, dep));
 
     tmp.touch("dep.h", "int new_name();\n");  // same length
-    ASSERT(set_file_mtime(dep, recorded_mtime - 5'000'000'000));
-    ASSERT(deps_changed(pool, snap));
+    ZASSERT(set_file_mtime(dep, recorded_mtime - 5'000'000'000));
+    ZASSERT(deps_changed(pool, snap));
 }
 
 ZEST_CASE(TouchRepairsFastPath) {
@@ -172,12 +172,12 @@ ZEST_CASE(TouchRepairsFastPath) {
     // Rewrite identical bytes: the stat moves, the content does not.
     auto before = file_mtime_ns(dep);
     tmp.touch("dep.h", "int f();\n");
-    ASSERT(set_file_mtime(dep, before + 5'000'000'000));
-    ASSERT(!vouched(pool, dep));
-    ASSERT(!deps_changed(pool, snap));
+    ZASSERT(set_file_mtime(dep, before + 5'000'000'000));
+    ZASSERT(!vouched(pool, dep));
+    ZASSERT(!deps_changed(pool, snap));
 
     // The check's read moved the pair to the new stat.
-    ASSERT(vouched(pool, dep));
+    ZASSERT(vouched(pool, dep));
 }
 
 ZEST_CASE(PoisonedCaptureDetected) {
@@ -196,7 +196,7 @@ ZEST_CASE(PoisonedCaptureDetected) {
                                           DepFile{dep, consumed}
     },
                                       /*build_at=*/1);
-    ASSERT(deps_changed(pool, snap));
+    ZASSERT(deps_changed(pool, snap));
 }
 
 ZEST_CASE(StalePairRereads) {
@@ -217,15 +217,15 @@ ZEST_CASE(StalePairRereads) {
     // coarse-timestamp filesystems, and an equal-stat same-size rewrite
     // is the accepted mtime residual — the premise here is a stat that
     // does differ, so force it apart.
-    ASSERT(set_file_mtime(dep, file_mtime_ns(dep) - 5'000'000'000));
+    ZASSERT(set_file_mtime(dep, file_mtime_ns(dep) - 5'000'000'000));
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    ASSERT(!vouched(pool, dep));
-    ASSERT(!deps_changed(pool, snap));
-    ASSERT(vouched(pool, dep));
+    ZASSERT(!vouched(pool, dep));
+    ZASSERT(!deps_changed(pool, snap));
+    ZASSERT(vouched(pool, dep));
 }
 
 ZEST_CASE(MissingTransitions) {
@@ -238,15 +238,15 @@ ZEST_CASE(MissingTransitions) {
                                           DepFile{dep, 0}
     },
                                       generous_build_at());
-    ASSERT(snap[0].missing);
+    ZASSERT(snap[0].missing);
 
     // Still missing: unchanged.
-    ASSERT(!deps_changed(pool, snap));
+    ZASSERT(!deps_changed(pool, snap));
 
     // Appearing is a change, and the file table saw it.
     tmp.touch("ghost.h", "int f();\n");
-    ASSERT(deps_changed(pool, snap));
-    ASSERT(!pool.seen_missing(pool.intern(Spelling::absolute(dep))));
+    ZASSERT(deps_changed(pool, snap));
+    ZASSERT(!pool.seen_missing(pool.intern(Spelling::absolute(dep))));
 }
 
 ZEST_CASE(AbsentPlaceFilled) {
@@ -263,8 +263,8 @@ ZEST_CASE(AbsentPlaceFilled) {
                                           DepFile{.path = place, .absent = true}
     },
                                       generous_build_at());
-    ASSERT(snap[0].missing);
-    ASSERT(deps_changed(pool, snap));
+    ZASSERT(snap[0].missing);
+    ZASSERT(deps_changed(pool, snap));
 }
 
 ZEST_CASE(RemovedAfterBuild) {
@@ -280,7 +280,7 @@ ZEST_CASE(RemovedAfterBuild) {
                                       generous_build_at());
 
     vfs::remove(dep);
-    ASSERT(deps_changed(pool, snap));
+    ZASSERT(deps_changed(pool, snap));
 }
 
 };  // ZEST_SUITE(DepsSnapshot)

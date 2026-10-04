@@ -44,7 +44,7 @@ struct Fixture {
     Fid file(llvm::StringRef relative, llvm::StringRef content) {
         tmp.touch(relative, content);
         auto path = tmp.path(relative);
-        EXPECT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
+        ZEXPECT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
         return table.intern(Spelling::absolute(path));
     }
 
@@ -54,7 +54,7 @@ struct Fixture {
 
     std::uint64_t hash_of(Fid fid) {
         auto obs = disk.current(fid);
-        EXPECT(obs);
+        ZEXPECT(obs);
         return obs ? obs->hash : 0;
     }
 
@@ -71,7 +71,7 @@ ZEST_CASE(WorkspaceAlwaysLooks) {
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     f.rewrite("src/a.h", "int b;\n");
-    ASSERT(f.disk.check(fid, hash) == Verdict::Stale);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Stale);
 }
 
 ZEST_CASE(PackageTrustedUntilDue) {
@@ -79,11 +79,11 @@ ZEST_CASE(PackageTrustedUntilDue) {
     auto fid = f.file("pkg/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     f.rewrite("pkg/a.h", "int b;\n");
-    ASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
 
     f.time += vfs::DiskState::package_policy.min;
-    ASSERT(f.disk.check(fid, hash) == Verdict::Stale);
-    ASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Stale);
+    ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 }
 
 ZEST_CASE(ChecksCounted) {
@@ -92,8 +92,8 @@ ZEST_CASE(ChecksCounted) {
     auto local = f.file("src/b.h", "int b;\n");
     f.disk.check(installed, f.hash_of(installed));
     f.disk.check(local, f.hash_of(local));
-    ASSERT(f.disk.checks.trusted == 1u);
-    ASSERT(f.disk.checks.looked == 1u);
+    ZASSERT(f.disk.checks.trusted == 1u);
+    ZASSERT(f.disk.checks.looked == 1u);
 }
 
 ZEST_CASE(TrustedMissingStays) {
@@ -102,11 +102,11 @@ ZEST_CASE(TrustedMissingStays) {
     Fixture f;
     auto fid = f.table.intern(Spelling::absolute(f.tmp.path("pkg/none.h")));
     f.disk.saw_missing(fid);
-    ASSERT(f.disk.take_changes().empty());
+    ZASSERT(f.disk.take_changes().empty());
     f.file("pkg/none.h", "int a;\n");
-    ASSERT(!f.disk.present(fid));
+    ZASSERT(!f.disk.present(fid));
     f.time += vfs::DiskState::package_policy.min;
-    ASSERT(f.disk.present(fid));
+    ZASSERT(f.disk.present(fid));
 }
 
 ZEST_CASE(TrustOnlyConfirms) {
@@ -116,15 +116,15 @@ ZEST_CASE(TrustOnlyConfirms) {
     auto fid = f.file("pkg/a.h", "int a;\n");
     f.hash_of(fid);
     f.rewrite("pkg/a.h", "int b;\n");
-    ASSERT(f.disk.check(fid, llvm::xxh3_64bits("int b;\n")) == Verdict::Fresh);
-    ASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
+    ZASSERT(f.disk.check(fid, llvm::xxh3_64bits("int b;\n")) == Verdict::Fresh);
+    ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 
     // Nor that a place it found empty, after an upgrade removed the file
     // there, is still filled.
     auto gone = f.file("pkg/gone.h", "int c;\n");
     f.hash_of(gone);
     vfs::remove_all(f.tmp.path("pkg/gone.h"));
-    ASSERT(!f.disk.present(gone));
+    ZASSERT(!f.disk.present(gone));
 }
 
 ZEST_CASE(OneLookPerTurn) {
@@ -135,17 +135,17 @@ ZEST_CASE(OneLookPerTurn) {
     };
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
-    ASSERT(f.disk.check(fid, hash + 1) == Verdict::Stale);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash + 1) == Verdict::Stale);
     f.rewrite("src/a.h", "int b;\n");
-    ASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
-    ASSERT(f.disk.checks.looked == 1u);
-    ASSERT(turns == 1);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.checks.looked == 1u);
+    ZASSERT(turns == 1);
 
     f.disk.end_turn();
-    ASSERT(f.disk.check(fid, hash) == Verdict::Stale);
-    ASSERT(f.disk.checks.looked == 2u);
-    ASSERT(turns == 2);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Stale);
+    ZASSERT(f.disk.checks.looked == 2u);
+    ZASSERT(turns == 2);
 }
 
 ZEST_CASE(TurnEndsBeforeIO) {
@@ -167,7 +167,7 @@ ZEST_CASE(TurnEndsBeforeIO) {
     };
     loop.schedule(body());
     loop.run();
-    ASSERT(verdicts == std::vector{Verdict::Fresh, Verdict::Fresh, Verdict::Stale});
+    ZASSERT(verdicts == std::vector{Verdict::Fresh, Verdict::Fresh, Verdict::Stale});
 }
 
 ZEST_CASE(MissingDropsPair) {
@@ -175,10 +175,10 @@ ZEST_CASE(MissingDropsPair) {
     auto fid = f.file("src/a.h", "int a;\n");
     f.hash_of(fid);
     auto stamp = vfs::status(f.tmp.path("src/a.h"))->stamp;
-    ASSERT(f.disk.cached_hash(fid, stamp));
+    ZASSERT(f.disk.cached_hash(fid, stamp));
     vfs::remove_all(f.tmp.path("src/a.h"));
     f.disk.look(llvm::ArrayRef<Fid>{fid});
-    ASSERT(!f.disk.cached_hash(fid, stamp).has_value());
+    ZASSERT(!f.disk.cached_hash(fid, stamp).has_value());
 }
 
 ZEST_CASE(OtherLookReplacesTurn) {
@@ -188,10 +188,10 @@ ZEST_CASE(OtherLookReplacesTurn) {
     };
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
     f.rewrite("src/a.h", "int b;\n");
     f.disk.look(llvm::ArrayRef<Fid>{fid});
-    ASSERT(f.disk.check(fid, hash) == Verdict::Stale);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Stale);
 }
 
 ZEST_CASE(LookJoinsOpenTurn) {
@@ -202,20 +202,20 @@ ZEST_CASE(LookJoinsOpenTurn) {
     auto a = f.file("src/a.h", "int a;\n");
     auto b = f.file("src/b.h", "int b;\n");
     auto hash = f.hash_of(a);
-    ASSERT(f.disk.check(b, f.hash_of(b)) == Verdict::Fresh);
+    ZASSERT(f.disk.check(b, f.hash_of(b)) == Verdict::Fresh);
     f.rewrite("src/a.h", "int c;\n");
     f.disk.look(llvm::ArrayRef<Fid>{a});
-    ASSERT(f.disk.check(a, hash) == Verdict::Stale);
-    ASSERT(f.disk.checks.looked == 1u);
+    ZASSERT(f.disk.check(a, hash) == Verdict::Stale);
+    ZASSERT(f.disk.checks.looked == 1u);
 }
 
 ZEST_CASE(UnownedCheckLooksAlone) {
     Fixture f;
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
     f.rewrite("src/a.h", "int b;\n");
-    ASSERT(f.disk.check(fid, hash) == Verdict::Stale);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Stale);
 }
 
 ZEST_CASE(DeepestRootDecides) {
@@ -227,7 +227,7 @@ ZEST_CASE(DeepestRootDecides) {
     auto fid = f.file("pkg/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     f.rewrite("pkg/a.h", "int b;\n");
-    ASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
 }
 
 ZEST_CASE(TickLooksWhenDue) {
@@ -235,9 +235,9 @@ ZEST_CASE(TickLooksWhenDue) {
     auto fid = f.file("pkg/a.h", "int a;\n");
     f.hash_of(fid);
     f.rewrite("pkg/a.h", "int b;\n");
-    ASSERT(f.tick().empty());
+    ZASSERT(f.tick().empty());
     f.time += vfs::DiskState::package_policy.min;
-    ASSERT(f.tick() == llvm::SmallVector<Fid>{fid});
+    ZASSERT(f.tick() == llvm::SmallVector<Fid>{fid});
 }
 
 ZEST_CASE(QuietLooksBackOff) {
@@ -246,17 +246,17 @@ ZEST_CASE(QuietLooksBackOff) {
     auto fid = f.file("src/a.h", "int a;\n");
     f.hash_of(fid);
     f.time += 1s;
-    ASSERT(f.tick().empty());
+    ZASSERT(f.tick().empty());
 
     f.rewrite("src/a.h", "int b;\n");
     f.time += 1s;
-    ASSERT(f.tick().empty());
+    ZASSERT(f.tick().empty());
     f.time += 1s;
-    ASSERT(f.tick() == llvm::SmallVector<Fid>{fid});
+    ZASSERT(f.tick() == llvm::SmallVector<Fid>{fid});
 
     f.rewrite("src/a.h", "int c;\n");
     f.time += 1s;
-    ASSERT(f.tick() == llvm::SmallVector<Fid>{fid});
+    ZASSERT(f.tick() == llvm::SmallVector<Fid>{fid});
 }
 
 ZEST_CASE(BackOffStopsAtMax) {
@@ -269,7 +269,7 @@ ZEST_CASE(BackOffStopsAtMax) {
     }
     f.rewrite("src/a.h", "int b;\n");
     f.time += vfs::DiskState::workspace_policy.max;
-    ASSERT(f.tick() == llvm::SmallVector<Fid>{fid});
+    ZASSERT(f.tick() == llvm::SmallVector<Fid>{fid});
 }
 
 ZEST_CASE(LookPostponesTick) {
@@ -278,10 +278,10 @@ ZEST_CASE(LookPostponesTick) {
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     f.time += 900ms;
-    ASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
     f.rewrite("src/a.h", "int b;\n");
     f.time += 200ms;
-    ASSERT(f.tick().empty());
+    ZASSERT(f.tick().empty());
 }
 
 ZEST_CASE(ExpiredLooksAgain) {
@@ -294,8 +294,8 @@ ZEST_CASE(ExpiredLooksAgain) {
     f.rewrite("pkg/sub/b.h", "int d;\n");
 
     f.disk.expire_under(f.identity("pkg/sub"));
-    ASSERT(f.disk.check(b, hash) == Verdict::Stale);
-    ASSERT(f.tick() == llvm::SmallVector<Fid>{b});
+    ZASSERT(f.disk.check(b, hash) == Verdict::Stale);
+    ZASSERT(f.tick() == llvm::SmallVector<Fid>{b});
 }
 
 ZEST_CASE(LookNowAtAny) {
@@ -305,7 +305,7 @@ ZEST_CASE(LookNowAtAny) {
     f.hash_of(a);
     f.rewrite("pkg/a.h", "int c;\n");
     f.disk.look(llvm::ArrayRef<Fid>{a, a});
-    ASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{a});
+    ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{a});
 }
 
 ZEST_CASE(FindMissingReadsNothing) {
@@ -313,9 +313,9 @@ ZEST_CASE(FindMissingReadsNothing) {
     auto here = f.file("src/a.h", "int a;\n");
     auto gone = f.table.intern(Spelling::absolute(f.tmp.path("src/gone.h")));
     f.disk.find_missing(llvm::ArrayRef<Fid>{here, gone});
-    ASSERT(f.disk.seen_missing(gone));
-    ASSERT(!f.disk.seen_missing(here));
-    ASSERT(!f.disk.seen_hash(here).has_value());
+    ZASSERT(f.disk.seen_missing(gone));
+    ZASSERT(!f.disk.seen_missing(here));
+    ZASSERT(!f.disk.seen_hash(here).has_value());
 }
 
 ZEST_CASE(RootAddedLater) {
@@ -325,7 +325,7 @@ ZEST_CASE(RootAddedLater) {
     auto hash = f.hash_of(fid);
     f.disk.add_root(f.identity("lib"), vfs::DiskState::package_policy);
     f.rewrite("lib/a.h", "int b;\n");
-    ASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
 }
 
 ZEST_CASE(BudgetLeavesRest) {
@@ -339,9 +339,9 @@ ZEST_CASE(BudgetLeavesRest) {
     }
     f.time += 1s;
     f.disk.tick(Clock::duration::zero());
-    ASSERT(f.disk.take_changes().size() == 1u);
+    ZASSERT(f.disk.take_changes().size() == 1u);
     f.disk.tick(1h);
-    ASSERT(f.disk.take_changes().size() == 3u);
+    ZASSERT(f.disk.take_changes().size() == 3u);
 }
 
 ZEST_CASE(ConsumedIsFirstLook) {
@@ -351,10 +351,10 @@ ZEST_CASE(ConsumedIsFirstLook) {
     auto fid = f.file("src/a.h", "int b;\n");
     f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"));
     f.hash_of(fid);
-    ASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
+    ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 
     f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"));
-    ASSERT(f.disk.seen_hash(fid) == llvm::xxh3_64bits("int b;\n"));
+    ZASSERT(f.disk.seen_hash(fid) == llvm::xxh3_64bits("int b;\n"));
 }
 
 ZEST_CASE(FlagHearsChange) {
@@ -363,19 +363,19 @@ ZEST_CASE(FlagHearsChange) {
     int heard = 0;
     auto flag = f.disk.watch(f.tmp.path(".git/HEAD"), [&] { heard += 1; });
     f.tick();
-    ASSERT(heard == 0);
+    ZASSERT(heard == 0);
 
     f.rewrite(".git/HEAD", "ref: refs/heads/other\n");
     f.tick();
-    ASSERT(heard == 1);
-    ASSERT(flag->hash == llvm::xxh3_64bits("ref: refs/heads/other\n"));
+    ZASSERT(heard == 1);
+    ZASSERT(flag->hash == llvm::xxh3_64bits("ref: refs/heads/other\n"));
     f.tick();
-    ASSERT(heard == 1);
+    ZASSERT(heard == 1);
 
     flag.reset();
     f.rewrite(".git/HEAD", "ref: refs/heads/main\n");
     f.tick();
-    ASSERT(heard == 1);
+    ZASSERT(heard == 1);
 }
 
 ZEST_CASE(EnvironmentInstallMakesDue) {
@@ -387,11 +387,11 @@ ZEST_CASE(EnvironmentInstallMakesDue) {
     f.disk.add_package(f.identity("env/include"));
     auto hash = f.hash_of(fid);
     f.rewrite("env/include/a.h", "int b;\n");
-    ASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
 
     // pixi rewrites the history with the same line every time.
     f.rewrite("env/conda-meta/history", "==> 1 <==\n");
-    ASSERT(f.tick() == llvm::SmallVector<Fid>{fid});
+    ZASSERT(f.tick() == llvm::SmallVector<Fid>{fid});
 }
 
 ZEST_CASE(ShadowReportsStaleTrust) {
@@ -403,13 +403,13 @@ ZEST_CASE(ShadowReportsStaleTrust) {
     f.disk.shadow = true;
     auto fid = f.file("pkg/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
-    ASSERT(trapped.empty());
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(trapped.empty());
 
     f.rewrite("pkg/a.h", "int b;\n");
-    ASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
-    ASSERT(trapped.size() == 1u);
-    ASSERT(trapped[0] == logging::AnomalyId::StaleTrust);
+    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(trapped.size() == 1u);
+    ZASSERT(trapped[0] == logging::AnomalyId::StaleTrust);
 
     logging::reset_anomaly_for_testing();
 }

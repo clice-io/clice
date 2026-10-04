@@ -25,12 +25,12 @@ namespace {
 /// observations count as reliable, the way real project files predate a
 /// server start.
 void age(llvm::StringRef path) {
-    EXPECT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
+    ZEXPECT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
 }
 
 vfs::Stamp stamp_of(llvm::StringRef path) {
     auto status = vfs::status(path);
-    EXPECT(status);
+    ZEXPECT(status);
     return status ? status->stamp : vfs::Stamp{};
 }
 
@@ -43,20 +43,20 @@ ZEST_CASE(HardlinksReadApart) {
     tmp.touch("a.h", "int shared();\n");
     auto a = tmp.path("a.h");
     auto b = tmp.path("b.h");
-    ASSERT(!bool(llvm::sys::fs::create_hard_link(a, b)));
+    ZASSERT(!bool(llvm::sys::fs::create_hard_link(a, b)));
     age(a);
 
     FileTable pool;
     auto a_id = pool.intern(Spelling::absolute(a));
     auto b_id = pool.intern(Spelling::absolute(b));
-    ASSERT(a_id != b_id);
-    ASSERT(pool.read(a_id));
+    ZASSERT(a_id != b_id);
+    ZASSERT(pool.read(a_id));
 
     auto stamp = stamp_of(b);
-    ASSERT(pool.cached_hash(a_id, stamp));
-    ASSERT(!pool.cached_hash(b_id, stamp).has_value());
-    ASSERT(pool.read(b_id));
-    ASSERT(pool.cached_hash(b_id, stamp));
+    ZASSERT(pool.cached_hash(a_id, stamp));
+    ZASSERT(!pool.cached_hash(b_id, stamp).has_value());
+    ZASSERT(pool.read(b_id));
+    ZASSERT(pool.cached_hash(b_id, stamp));
 }
 
 ZEST_CASE(RenameSaveReads) {
@@ -71,21 +71,21 @@ ZEST_CASE(RenameSaveReads) {
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(f));
     auto first = pool.read(fid);
-    ASSERT(first);
+    ZASSERT(first);
 
     tmp.touch("f.h.tmp", "int v2();\n");
-    ASSERT(!vfs::rename(tmp.path("f.h.tmp"), f));
-    EXPECT(set_file_mtime(f, first->stamp.mtime_ns));
+    ZASSERT(!vfs::rename(tmp.path("f.h.tmp"), f));
+    ZEXPECT(set_file_mtime(f, first->stamp.mtime_ns));
 
     auto stamp = stamp_of(f);
-    ASSERT(stamp.size == first->stamp.size);
-    ASSERT(stamp.mtime_ns == first->stamp.mtime_ns);
-    ASSERT(!pool.cached_hash(fid, stamp).has_value());
+    ZASSERT(stamp.size == first->stamp.size);
+    ZASSERT(stamp.mtime_ns == first->stamp.mtime_ns);
+    ZASSERT(!pool.cached_hash(fid, stamp).has_value());
 
     auto reread = pool.read(fid);
-    ASSERT(reread);
-    ASSERT(reread->hash != first->hash);
-    ASSERT(pool.cached_hash(fid, reread->stamp));
+    ZASSERT(reread);
+    ZASSERT(reread->hash != first->hash);
+    ZASSERT(pool.cached_hash(fid, reread->stamp));
 }
 
 ZEST_CASE(FastPathChecksIdentity) {
@@ -100,15 +100,15 @@ ZEST_CASE(FastPathChecksIdentity) {
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(f));
     auto read = pool.read(fid);
-    ASSERT(read);
+    ZASSERT(read);
     auto vid = pool.intern_version(fid, read->hash);
-    ASSERT(pool.cached_hash(fid, read->stamp));
+    ZASSERT(pool.cached_hash(fid, read->stamp));
 
     tmp.touch("f.h.tmp", "int v2();\n");
-    ASSERT(!vfs::rename(tmp.path("f.h.tmp"), f));
-    EXPECT(set_file_mtime(f, read->stamp.mtime_ns));
+    ZASSERT(!vfs::rename(tmp.path("f.h.tmp"), f));
+    ZEXPECT(set_file_mtime(f, read->stamp.mtime_ns));
 
-    ASSERT(pool.check_version(vid) == vfs::DiskState::Verdict::Stale);
+    ZASSERT(pool.check_version(vid) == vfs::DiskState::Verdict::Stale);
 }
 
 ZEST_CASE(PairNeedsSameFile) {
@@ -123,11 +123,11 @@ ZEST_CASE(PairNeedsSameFile) {
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(f));
     auto read = pool.read(fid);
-    ASSERT(read);
+    ZASSERT(read);
     auto other = read->stamp;
     other.device += 1;
     other.file += 1;
-    ASSERT(!pool.cached_hash(fid, other).has_value());
+    ZASSERT(!pool.cached_hash(fid, other).has_value());
 }
 
 #ifndef _WIN32
@@ -137,26 +137,26 @@ ZEST_CASE(SymlinkShownAsSpelled) {
     // spelling an include lookup reached it by.
     TempDir tmp;
     tmp.touch("real/a.h", "");
-    ASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
     auto real = CanonicalPath(Spelling::absolute(tmp.path("real/a.h")));
     auto link = tmp.path("link/a.h");
 
     FileTable pool;
     auto fid = pool.intern_spelled(Spelling::absolute(link));
-    ASSERT(pool.intern(real) == fid);
-    ASSERT(pool.resolve(fid) == real);
-    ASSERT(pool.display(fid) == llvm::StringRef(real));
+    ZASSERT(pool.intern(real) == fid);
+    ZASSERT(pool.resolve(fid) == real);
+    ZASSERT(pool.display(fid) == llvm::StringRef(real));
 
     pool.spell_root(Spelling::absolute(tmp.path("link")));
-    ASSERT(pool.display(fid) == link);
+    ZASSERT(pool.display(fid) == link);
 
     pool.show_as(fid, real);
-    ASSERT(pool.display(fid) == llvm::StringRef(real));
+    ZASSERT(pool.display(fid) == llvm::StringRef(real));
     pool.unshow(fid);
-    ASSERT(pool.display(fid) == link);
+    ZASSERT(pool.display(fid) == link);
 
     pool.unspell_root(Spelling::absolute(tmp.path("link")));
-    ASSERT(pool.display(fid) == llvm::StringRef(real));
+    ZASSERT(pool.display(fid) == llvm::StringRef(real));
 }
 
 ZEST_CASE(RootClimbPastSymlink) {
@@ -168,18 +168,18 @@ ZEST_CASE(RootClimbPastSymlink) {
     tmp.touch("real/proj/inc/h.h", "");
     tmp.mkdir("real/proj/build");
     tmp.mkdir("other");
-    ASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
-    ASSERT(::symlink(tmp.path("real/proj/build").c_str(), tmp.path("other/build").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("real").c_str(), tmp.path("link").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("real/proj/build").c_str(), tmp.path("other/build").c_str()) == 0);
     auto header = Spelling::absolute(tmp.path("real/proj/inc/h.h"));
 
     FileTable through;
     through.spell_root(Spelling::absolute(tmp.path("link/proj/build/..")));
-    ASSERT(through.display(through.intern(header)) == tmp.path("link/proj/inc/h.h"));
+    ZASSERT(through.display(through.intern(header)) == tmp.path("link/proj/inc/h.h"));
 
     FileTable out;
     out.spell_root(Spelling::absolute(tmp.path("other/build/..")));
     auto fid = out.intern(header);
-    ASSERT(out.display(fid) == out.resolve(fid).str());
+    ZASSERT(out.display(fid) == out.resolve(fid).str());
 }
 #endif
 
@@ -194,11 +194,11 @@ ZEST_CASE(FreshReadNotVouched) {
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(f));
     auto read = pool.read(fid);
-    ASSERT(read);
+    ZASSERT(read);
     auto vid = pool.intern_version(fid, read->hash);
 
-    ASSERT(pool.check_version(vid) == vfs::DiskState::Verdict::Fresh);
-    ASSERT(!pool.cached_hash(fid, read->stamp).has_value());
+    ZASSERT(pool.check_version(vid) == vfs::DiskState::Verdict::Fresh);
+    ZASSERT(!pool.cached_hash(fid, read->stamp).has_value());
 }
 
 ZEST_CASE(ReadDropsBom) {
@@ -207,9 +207,9 @@ ZEST_CASE(ReadDropsBom) {
     TempDir tmp;
     tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
     auto observed = vfs::read_observed(tmp.path("bom.h"));
-    ASSERT(observed);
-    ASSERT(observed->content->getBuffer() == "int x;\n");
-    ASSERT(observed->obs.hash == llvm::xxh3_64bits("int x;\n"));
+    ZASSERT(observed);
+    ZASSERT(observed->content->getBuffer() == "int x;\n");
+    ZASSERT(observed->obs.hash == llvm::xxh3_64bits("int x;\n"));
 }
 
 ZEST_CASE(CompileFSDropsBom) {
@@ -220,14 +220,14 @@ ZEST_CASE(CompileFSDropsBom) {
     auto path = tmp.path("bom.h");
     vfs::View view;
     auto status = view.status(path);
-    ASSERT(bool(status));
-    ASSERT(status->getSize() == 7u);
+    ZASSERT(bool(status));
+    ZASSERT(status->getSize() == 7u);
     auto file = view.openFileForRead(path);
-    ASSERT(bool(file));
+    ZASSERT(bool(file));
     auto buffer = (*file)->getBuffer(path, -1, true, false);
-    ASSERT(bool(buffer));
-    ASSERT((*buffer)->getBuffer() == "int x;\n");
-    ASSERT((*file)->status()->getSize() == 7u);
+    ZASSERT(bool(buffer));
+    ZASSERT((*buffer)->getBuffer() == "int x;\n");
+    ZASSERT((*file)->status()->getSize() == 7u);
 }
 
 ZEST_CASE(BinaryReadKeepsBom) {
@@ -239,13 +239,13 @@ ZEST_CASE(BinaryReadKeepsBom) {
     auto path = tmp.path("data.bin");
     vfs::View view;
     auto file = view.openFileForReadBinary(path);
-    ASSERT(bool(file));
-    ASSERT((*file)->status()->getSize() == 5u);
+    ZASSERT(bool(file));
+    ZASSERT((*file)->status()->getSize() == 5u);
     auto buffer = (*file)->getBuffer(path, -1, true, false);
-    ASSERT(bool(buffer));
-    ASSERT((*buffer)->getBuffer() ==
-           "\xEF\xBB\xBF"
-           "AB");
+    ZASSERT(bool(buffer));
+    ZASSERT((*buffer)->getBuffer() ==
+            "\xEF\xBB\xBF"
+            "AB");
 }
 
 ZEST_CASE(ReadModesServeBom) {
@@ -254,13 +254,13 @@ ZEST_CASE(ReadModesServeBom) {
               "\xEF\xBB\xBF"
               "AB");
     auto path = tmp.path("bom.txt");
-    ASSERT((*vfs::read(path))->getBuffer() == "AB");
-    ASSERT((*vfs::read(path, vfs::Read::Bytes))->getBuffer() ==
-           "\xEF\xBB\xBF"
-           "AB");
-    ASSERT((*vfs::read(path, vfs::Read::Mapped))->getBuffer() ==
-           "\xEF\xBB\xBF"
-           "AB");
+    ZASSERT((*vfs::read(path))->getBuffer() == "AB");
+    ZASSERT((*vfs::read(path, vfs::Read::Bytes))->getBuffer() ==
+            "\xEF\xBB\xBF"
+            "AB");
+    ZASSERT((*vfs::read(path, vfs::Read::Mapped))->getBuffer() ==
+            "\xEF\xBB\xBF"
+            "AB");
 }
 
 ZEST_CASE(ListingKnowsDirectories) {
@@ -269,13 +269,13 @@ ZEST_CASE(ListingKnowsDirectories) {
     tmp.touch("inc/a.h", "");
     tmp.touch("inc/sub/b.h", "");
 #ifndef _WIN32
-    ASSERT(::symlink(tmp.path("inc/sub").c_str(), tmp.path("inc/link").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("inc/sub").c_str(), tmp.path("inc/link").c_str()) == 0);
 #endif
     auto listing = vfs::list(tmp.path("inc"));
-    ASSERT(!listing->entries.lookup("a.h"));
-    ASSERT(listing->entries.lookup("sub"));
+    ZASSERT(!listing->entries.lookup("a.h"));
+    ZASSERT(listing->entries.lookup("sub"));
 #ifndef _WIN32
-    ASSERT(listing->entries.lookup("link"));
+    ZASSERT(listing->entries.lookup("link"));
 #endif
 }
 
@@ -292,20 +292,20 @@ ZEST_CASE(ListingSeesNewFile) {
     vfs::DirCache cache;
     vfs::Scope first_op(cache);
     auto& entries = first_op.list(dir);
-    ASSERT(entries.contains("a.h"));
-    ASSERT(!entries.contains("b.h"));
+    ZASSERT(entries.contains("a.h"));
+    ZASSERT(!entries.contains("b.h"));
 
     tmp.touch("inc/b.h", "");
     // A second age() rewinds relative to now and can land on the first
     // listing's exact stamp within one coarse mtime tick, revalidating the
     // cached listing; a fixed offset keeps the stamps distinct while
     // staying outside the guard window.
-    ASSERT(set_file_mtime(dir, aged + 1'000'000'000));
+    ZASSERT(set_file_mtime(dir, aged + 1'000'000'000));
 
     vfs::Scope second_op(cache);
-    ASSERT(second_op.list(dir).contains("b.h"));
+    ZASSERT(second_op.list(dir).contains("b.h"));
     // The first operation keeps the listing it validated.
-    ASSERT(!entries.contains("b.h"));
+    ZASSERT(!entries.contains("b.h"));
 }
 
 ZEST_CASE(WarmListingReused) {
@@ -319,14 +319,14 @@ ZEST_CASE(WarmListingReused) {
         vfs::Scope op(cache);
         op.list(dir);
     }
-    ASSERT(cache.listings.contains(dir));
-    ASSERT(cache.listings.find(dir)->second->mtime_ns != 0);
+    ZASSERT(cache.listings.contains(dir));
+    ZASSERT(cache.listings.find(dir)->second->mtime_ns != 0);
 
     // The next operation validates by one stat and reuses the listing.
     vfs::Scope op(cache);
-    ASSERT(op.list(dir).contains("a.h"));
-    ASSERT(op.stats.listed == 0u);
-    ASSERT(op.stats.reused == 1u);
+    ZASSERT(op.list(dir).contains("a.h"));
+    ZASSERT(op.stats.listed == 0u);
+    ZASSERT(op.stats.reused == 1u);
 }
 
 ZEST_CASE(LookupSpellingNotShown) {
@@ -339,8 +339,8 @@ ZEST_CASE(LookupSpellingNotShown) {
 
     FileTable pool;
     auto fid = pool.intern_spelled(spelled);
-    ASSERT(pool.spelling(fid).str() == spelled.str());
-    ASSERT(pool.display(fid) == pool.resolve(fid).str());
+    ZASSERT(pool.spelling(fid).str() == spelled.str());
+    ZASSERT(pool.display(fid) == pool.resolve(fid).str());
 }
 
 ZEST_CASE(RootDotDotFolded) {
@@ -352,7 +352,7 @@ ZEST_CASE(RootDotDotFolded) {
     FileTable pool;
     pool.spell_root(Spelling::absolute(tmp.path("proj/build/..")));
     auto fid = pool.intern(Spelling::absolute(tmp.path("proj/inc/h.h")));
-    ASSERT(pool.display(fid) == pool.resolve(fid).str());
+    ZASSERT(pool.display(fid) == pool.resolve(fid).str());
 }
 
 ZEST_CASE(CanonicalSpelling) {
@@ -362,30 +362,30 @@ ZEST_CASE(CanonicalSpelling) {
         path::make_canonical(llvm::MutableArrayRef(s.data(), s.size()));
         return s;
     };
-    EXPECT(canon(R"(D:\ws\x.h)") == "d:/ws/x.h");
-    EXPECT(canon("d:/ws/x.h") == "d:/ws/x.h");
-    EXPECT(canon("/usr/X.h") == "/usr/X.h");
+    ZEXPECT(canon(R"(D:\ws\x.h)") == "d:/ws/x.h");
+    ZEXPECT(canon("d:/ws/x.h") == "d:/ws/x.h");
+    ZEXPECT(canon("/usr/X.h") == "/usr/X.h");
 
-    EXPECT(path::needs_canonical(R"(a\b)"));
-    EXPECT(path::needs_canonical("C:/x.h"));
-    EXPECT(!path::needs_canonical("c:/x.h"));
-    EXPECT(!path::needs_canonical("/usr/x.h"));
+    ZEXPECT(path::needs_canonical(R"(a\b)"));
+    ZEXPECT(path::needs_canonical("C:/x.h"));
+    ZEXPECT(!path::needs_canonical("c:/x.h"));
+    ZEXPECT(!path::needs_canonical("/usr/x.h"));
 }
 
 ZEST_CASE(PortableNames) {
     // Under the workspace a path is named relative to it, anywhere else it
     // keeps its own name; a name reads back in whichever checkout holds it.
     llvm::SmallString<64> storage;
-    EXPECT(path::portable("/w/src/a.cpp", "/w", storage) == "${workspace}/src/a.cpp");
-    EXPECT(path::portable("/w", "/w", storage) == "${workspace}");
-    EXPECT(path::portable("/a.cpp", "/", storage) == "${workspace}/a.cpp");
-    EXPECT(path::portable("/wx/a.cpp", "/w", storage) == "/wx/a.cpp");
-    EXPECT(path::portable("/w/a.cpp", "", storage) == "/w/a.cpp");
+    ZEXPECT(path::portable("/w/src/a.cpp", "/w", storage) == "${workspace}/src/a.cpp");
+    ZEXPECT(path::portable("/w", "/w", storage) == "${workspace}");
+    ZEXPECT(path::portable("/a.cpp", "/", storage) == "${workspace}/a.cpp");
+    ZEXPECT(path::portable("/wx/a.cpp", "/w", storage) == "/wx/a.cpp");
+    ZEXPECT(path::portable("/w/a.cpp", "", storage) == "/w/a.cpp");
 
-    EXPECT(path::local("${workspace}/src/a.cpp", "/moved", storage) == "/moved/src/a.cpp");
-    EXPECT(path::local("${workspace}", "/moved", storage) == "/moved");
-    EXPECT(path::local("${workspace}/a.cpp", "/", storage) == "/a.cpp");
-    EXPECT(path::local("/wx/a.cpp", "/moved", storage) == "/wx/a.cpp");
+    ZEXPECT(path::local("${workspace}/src/a.cpp", "/moved", storage) == "/moved/src/a.cpp");
+    ZEXPECT(path::local("${workspace}", "/moved", storage) == "/moved");
+    ZEXPECT(path::local("${workspace}/a.cpp", "/", storage) == "/a.cpp");
+    ZEXPECT(path::local("/wx/a.cpp", "/moved", storage) == "/wx/a.cpp");
 }
 
 #ifdef _WIN32
@@ -395,11 +395,11 @@ ZEST_CASE(WindowsSpellingsCollapse) {
     // and resolves to the client-facing form, or every CDB lookup misses
     // and compiles fall back to guessed commands.
     FileTable pool;
-    EXPECT(pool.intern(Spelling::absolute("c:/a/b.h")) ==
-           pool.intern(Spelling::absolute(R"(C:\a\b.h)")));
-    EXPECT(pool.resolve(pool.intern(Spelling::absolute("C:/a/b.h"))).str() == "c:/a/b.h");
-    EXPECT(pool.find(Spelling::absolute(R"(c:\a\b.h)")) ==
-           pool.find(Spelling::absolute("C:/a/b.h")));
+    ZEXPECT(pool.intern(Spelling::absolute("c:/a/b.h")) ==
+            pool.intern(Spelling::absolute(R"(C:\a\b.h)")));
+    ZEXPECT(pool.resolve(pool.intern(Spelling::absolute("C:/a/b.h"))).str() == "c:/a/b.h");
+    ZEXPECT(pool.find(Spelling::absolute(R"(c:\a\b.h)")) ==
+            pool.find(Spelling::absolute("C:/a/b.h")));
 }
 
 ZEST_CASE(DriveRootSpelled) {
@@ -412,11 +412,11 @@ ZEST_CASE(DriveRootSpelled) {
     while(letter > 'D' && (taken & (1u << (letter - 'A')))) {
         letter -= 1;
     }
-    ASSERT(letter > 'D');
+    ZASSERT(letter > 'D');
     std::wstring device{static_cast<wchar_t>(letter), L':'};
     std::wstring target;
-    ASSERT(llvm::ConvertUTF8toWide(tmp.root.str(), target));
-    ASSERT(::DefineDosDeviceW(0, device.c_str(), target.c_str()));
+    ZASSERT(llvm::ConvertUTF8toWide(tmp.root.str(), target));
+    ZASSERT(::DefineDosDeviceW(0, device.c_str(), target.c_str()));
     auto undefine = llvm::make_scope_exit(
         [&] { ::DefineDosDeviceW(DDD_REMOVE_DEFINITION, device.c_str(), nullptr); });
     std::string drive{static_cast<char>(llvm::toLower(letter)), ':', '/'};
@@ -424,7 +424,7 @@ ZEST_CASE(DriveRootSpelled) {
     FileTable pool;
     pool.spell_root(Spelling::absolute(drive));
     auto fid = pool.intern(Spelling::absolute(tmp.path("inc/h.h")));
-    ASSERT(pool.display(fid) == drive + "inc/h.h");
+    ZASSERT(pool.display(fid) == drive + "inc/h.h");
 }
 
 ZEST_CASE(WindowsCaseVariantsMerge) {
@@ -435,8 +435,8 @@ ZEST_CASE(WindowsCaseVariantsMerge) {
     tmp.touch("Real/File.h", "");
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(tmp.path("real/file.H")));
-    EXPECT(pool.intern(Spelling::absolute(tmp.path("Real/File.h"))) == fid);
-    EXPECT(llvm::StringRef(pool.resolve(fid)).ends_with("/Real/File.h"));
+    ZEXPECT(pool.intern(Spelling::absolute(tmp.path("Real/File.h"))) == fid);
+    ZEXPECT(llvm::StringRef(pool.resolve(fid)).ends_with("/Real/File.h"));
 }
 
 ZEST_CASE(LongPathCaseMerges) {
@@ -448,23 +448,23 @@ ZEST_CASE(LongPathCaseMerges) {
         deep += std::string(50, static_cast<char>('a' + i)) + "/";
     }
     tmp.touch(deep + "Real/File.h", "");
-    ASSERT(tmp.path(deep + "Real/File.h").size() > MAX_PATH);
+    ZASSERT(tmp.path(deep + "Real/File.h").size() > MAX_PATH);
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(tmp.path(deep + "real/file.H")));
-    EXPECT(pool.intern(Spelling::absolute(tmp.path(deep + "Real/File.h"))) == fid);
-    EXPECT(llvm::StringRef(pool.resolve(fid)).ends_with("/Real/File.h"));
+    ZEXPECT(pool.intern(Spelling::absolute(tmp.path(deep + "Real/File.h"))) == fid);
+    ZEXPECT(llvm::StringRef(pool.resolve(fid)).ends_with("/Real/File.h"));
 }
 #else
 ZEST_CASE(PosixBytesPreserved) {
     // '\' and "C:" are ordinary filename characters on POSIX; identity is
     // the raw bytes and the Windows rewrite must not touch them.
     FileTable pool;
-    EXPECT(pool.intern(Spelling::absolute(R"(/w/a\b)")) !=
-           pool.intern(Spelling::absolute("/w/a/b")));
-    EXPECT(pool.intern(Spelling::absolute("/w/C:/x.h")) !=
-           pool.intern(Spelling::absolute("/w/c:/x.h")));
-    EXPECT(pool.intern(Spelling::absolute("/c/x.h")) != pool.intern(Spelling::absolute("/C/x.h")));
-    EXPECT(pool.resolve(pool.intern(Spelling::absolute(R"(/w/a\b)"))).str() == R"(/w/a\b)");
+    ZEXPECT(pool.intern(Spelling::absolute(R"(/w/a\b)")) !=
+            pool.intern(Spelling::absolute("/w/a/b")));
+    ZEXPECT(pool.intern(Spelling::absolute("/w/C:/x.h")) !=
+            pool.intern(Spelling::absolute("/w/c:/x.h")));
+    ZEXPECT(pool.intern(Spelling::absolute("/c/x.h")) != pool.intern(Spelling::absolute("/C/x.h")));
+    ZEXPECT(pool.resolve(pool.intern(Spelling::absolute(R"(/w/a\b)"))).str() == R"(/w/a\b)");
 }
 #endif
 

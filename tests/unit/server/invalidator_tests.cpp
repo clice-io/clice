@@ -70,7 +70,7 @@ ZEST_CASE(EmptyBatchNoEffects) {
 
     auto dirty = invalidator.apply({});
 
-    ASSERT(dirty.empty());
+    ZASSERT(dirty.empty());
 }
 
 ZEST_CASE(NewProviderDirtiesImporters) {
@@ -111,14 +111,14 @@ ZEST_CASE(NewProviderDirtiesImporters) {
     FileEvent events[] = {FileEvent::disk_changed(iface)};
     auto dirty = invalidator.apply(events);
 
-    EXPECT(llvm::is_contained(dirty.reindex_content_changed, closed));
-    EXPECT(llvm::is_contained(dirty.mark_ast_dirty, open));
-    EXPECT(dirty.drop_index.empty());
+    ZEXPECT(llvm::is_contained(dirty.reindex_content_changed, closed));
+    ZEXPECT(llvm::is_contained(dirty.mark_ast_dirty, open));
+    ZEXPECT(dirty.drop_index.empty());
 
     // The same save again: the name already has its provider.
     auto again = invalidator.apply(events);
-    EXPECT(!llvm::is_contained(again.reindex_content_changed, closed));
-    EXPECT(!llvm::is_contained(again.mark_ast_dirty, open));
+    ZEXPECT(!llvm::is_contained(again.reindex_content_changed, closed));
+    ZEXPECT(!llvm::is_contained(again.mark_ast_dirty, open));
 }
 
 ZEST_CASE(ReloadProviderCascades) {
@@ -154,9 +154,9 @@ ZEST_CASE(ReloadProviderCascades) {
     FileEvent events[] = {FileEvent::cdb_changed(std::move(delta))};
     auto dirty = invalidator.apply(events);
 
-    EXPECT(!llvm::is_contained(dirty.reindex_content_changed, retired));
-    EXPECT(llvm::is_contained(dirty.drop_index, retired));
-    EXPECT(llvm::is_contained(dirty.clear_reindex, retired));
+    ZEXPECT(!llvm::is_contained(dirty.reindex_content_changed, retired));
+    ZEXPECT(llvm::is_contained(dirty.drop_index, retired));
+    ZEXPECT(llvm::is_contained(dirty.clear_reindex, retired));
 }
 
 ZEST_CASE(DiskRemovedDropsProvider) {
@@ -178,7 +178,7 @@ ZEST_CASE(DiskRemovedDropsProvider) {
     FileEvent events[] = {FileEvent::disk_removed(iface)};
     invalidator.apply(events);
 
-    EXPECT(project.dep_graph.lookup_module("m").empty());
+    ZEXPECT(project.dep_graph.lookup_module("m").empty());
 }
 
 ZEST_CASE(DiskChangeSparesSession) {
@@ -203,13 +203,13 @@ ZEST_CASE(DiskChangeSparesSession) {
     // The open file's own compile reads its buffer, never its disk: it is
     // not stale — only its self-containment verdict needs re-evaluation —
     // while its disk rows are.
-    ASSERT(dirty.reset_trial == llvm::SmallVector<Fid>{saved});
-    ASSERT(dirty.reset_header_mode == llvm::SmallVector<Fid>{saved});
-    ASSERT(dirty.mark_ast_dirty.empty());
-    ASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
-    ASSERT(dirty.drop_context.empty());
-    ASSERT(dirty.recheck_contexts);
-    ASSERT(dirty.reschedule_indexing);
+    ZASSERT(dirty.reset_trial == llvm::SmallVector<Fid>{saved});
+    ZASSERT(dirty.reset_header_mode == llvm::SmallVector<Fid>{saved});
+    ZASSERT(dirty.mark_ast_dirty.empty());
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
+    ZASSERT(dirty.drop_context.empty());
+    ZASSERT(dirty.recheck_contexts);
+    ZASSERT(dirty.reschedule_indexing);
 }
 
 ZEST_CASE(CascadeSplitsOpenClosed) {
@@ -238,11 +238,11 @@ ZEST_CASE(CascadeSplitsOpenClosed) {
 
     // Cascade-dirtied module units split by session state: open buffers
     // recompile, closed files go back to the background indexer.
-    EXPECT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_user});
+    ZEXPECT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_user});
     llvm::SmallVector<Fid> reindexed{mod, closed_user};
     llvm::sort(reindexed);
-    EXPECT(dirty.reindex_deps_only == reindexed);
-    EXPECT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{mod});
+    ZEXPECT(dirty.reindex_deps_only == reindexed);
+    ZEXPECT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{mod});
 }
 
 ZEST_CASE(ChainHitAndMiss) {
@@ -273,14 +273,14 @@ ZEST_CASE(ChainHitAndMiss) {
     // the background — its shard rows were built under the old chain.
     llvm::SmallVector<Fid> dropped{hit, closed};
     llvm::sort(dropped);
-    ASSERT(dirty.drop_context == dropped);
-    ASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{hit});
+    ZASSERT(dirty.drop_context == dropped);
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{hit});
     llvm::SmallVector<Fid> reset{saved, hit, closed};
     llvm::sort(reset);
-    ASSERT(dirty.reset_header_mode == reset);
+    ZASSERT(dirty.reset_header_mode == reset);
     // The closed header's own content did not change — only its chain did.
-    ASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
-    ASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
 }
 
 ZEST_CASE(SaveMarksDependents) {
@@ -305,9 +305,9 @@ ZEST_CASE(SaveMarksDependents) {
     // Open dependents recompile, closed ones reindex; the old/new dependent
     // snapshots overlap fully here, so this also proves the dedup. A
     // dependent's own content did not change: deps-only.
-    ASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
-    ASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
-    ASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
 }
 
 ZEST_CASE(TransitiveDependentsEnqueue) {
@@ -329,9 +329,9 @@ ZEST_CASE(TransitiveDependentsEnqueue) {
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // Only root TUs own index shards; the intermediate header is not one.
-    ASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{root});
-    ASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
-    ASSERT(dirty.mark_ast_dirty.empty());
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{root});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
+    ZASSERT(dirty.mark_ast_dirty.empty());
 }
 
 ZEST_CASE(ForcedHeaderReachesUnits) {
@@ -357,8 +357,8 @@ ZEST_CASE(ForcedHeaderReachesUnits) {
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
-    ASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open});
-    ASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open});
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
 }
 
 ZEST_CASE(BatchSeesEarlierEdges) {
@@ -392,9 +392,9 @@ ZEST_CASE(BatchSeesEarlierEdges) {
     auto dirty =
         invalidator.apply({FileEvent::disk_changed(added), FileEvent::disk_changed(header)});
 
-    ASSERT(llvm::is_contained(dirty.reindex_deps_only, known));
-    ASSERT(llvm::is_contained(dirty.reindex_deps_only, added));
-    ASSERT(llvm::is_contained(project.dep_graph.get_includers(header), added));
+    ZASSERT(llvm::is_contained(dirty.reindex_deps_only, known));
+    ZASSERT(llvm::is_contained(dirty.reindex_deps_only, added));
+    ZASSERT(llvm::is_contained(project.dep_graph.get_includers(header), added));
 }
 
 ZEST_CASE(RemovalThenChangeKeepsClear) {
@@ -420,9 +420,9 @@ ZEST_CASE(RemovalThenChangeKeepsClear) {
     auto dirty =
         invalidator.apply({FileEvent::disk_removed(removed), FileEvent::disk_changed(header)});
 
-    ASSERT(llvm::is_contained(dirty.clear_reindex, removed));
-    ASSERT(!llvm::is_contained(dirty.reindex_deps_only, removed));
-    ASSERT(llvm::is_contained(dirty.reindex_deps_only, kept));
+    ZASSERT(llvm::is_contained(dirty.clear_reindex, removed));
+    ZASSERT(!llvm::is_contained(dirty.reindex_deps_only, removed));
+    ZASSERT(llvm::is_contained(dirty.reindex_deps_only, kept));
 }
 
 ZEST_CASE(RescanKeepsGuardedProvider) {
@@ -445,7 +445,7 @@ ZEST_CASE(RescanKeepsGuardedProvider) {
     scan_all(project.cdb, project.dep_graph);
     project.dep_graph.build_reverse_map();
     auto iface = project.file_table.intern(Spelling::absolute(tmp.path("m.cpp")));
-    ASSERT(project.dep_graph.module_of(iface) == "m");
+    ZASSERT(project.dep_graph.module_of(iface) == "m");
     tmp.touch("m.cpp", "#if 1\nexport module m;\n#endif\nexport int v;\n");
 
     project.project_index.shards[iface] = shard_of(*read_file(tmp.path("m.cpp")));
@@ -458,8 +458,8 @@ ZEST_CASE(RescanKeepsGuardedProvider) {
 
     invalidator.apply(FileEvent::disk_changed(iface));
 
-    EXPECT(project.dep_graph.module_of(iface) == "m");
-    EXPECT(llvm::is_contained(project.dep_graph.lookup_module("m"), iface));
+    ZEXPECT(project.dep_graph.module_of(iface) == "m");
+    ZEXPECT(llvm::is_contained(project.dep_graph.lookup_module("m"), iface));
 }
 
 ZEST_CASE(CrashMarksLostDirty) {
@@ -481,10 +481,10 @@ ZEST_CASE(CrashMarksLostDirty) {
 
     llvm::SmallVector<Fid> expected{first, second};
     llvm::sort(expected);
-    ASSERT(dirty.mark_lost == expected);
+    ZASSERT(dirty.mark_lost == expected);
     // A crash loses build products, not compile inputs: no trial reset.
-    ASSERT(dirty.mark_ast_dirty.empty());
-    ASSERT(dirty.reset_trial.empty());
+    ZASSERT(dirty.mark_ast_dirty.empty());
+    ZASSERT(dirty.reset_trial.empty());
 }
 
 ZEST_CASE(EvictionMarksLost) {
@@ -502,9 +502,9 @@ ZEST_CASE(EvictionMarksLost) {
     auto dirty = invalidator.apply(FileEvent::document_evicted(file));
 
     // Same loss as a crash, scoped to one document.
-    ASSERT(dirty.mark_lost == llvm::SmallVector<Fid>{file});
-    ASSERT(dirty.mark_ast_dirty.empty());
-    ASSERT(dirty.reset_trial.empty());
+    ZASSERT(dirty.mark_lost == llvm::SmallVector<Fid>{file});
+    ZASSERT(dirty.mark_ast_dirty.empty());
+    ZASSERT(dirty.reset_trial.empty());
 }
 
 ZEST_CASE(BatchChangesDeduplicate) {
@@ -522,7 +522,7 @@ ZEST_CASE(BatchChangesDeduplicate) {
     FileEvent events[] = {FileEvent::disk_changed(saved), FileEvent::disk_changed(saved)};
     auto dirty = invalidator.apply(events);
 
-    ASSERT(dirty.reset_trial == llvm::SmallVector<Fid>{saved});
+    ZASSERT(dirty.reset_trial == llvm::SmallVector<Fid>{saved});
 }
 
 ZEST_CASE(DiskChangeClosedCascades) {
@@ -547,12 +547,12 @@ ZEST_CASE(DiskChangeClosedCascades) {
     // A closed file's disk change cascades exactly like a save, plus the
     // file's own stale shard is refreshed. The changed file's own rows are
     // untrustworthy; its dependent only rebuilds semantics.
-    ASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
-    ASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
-    ASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
-    ASSERT(dirty.reset_trial == llvm::SmallVector<Fid>{header});
-    ASSERT(dirty.recheck_contexts);
-    ASSERT(dirty.reschedule_indexing);
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
+    ZASSERT(dirty.reset_trial == llvm::SmallVector<Fid>{header});
+    ZASSERT(dirty.recheck_contexts);
+    ZASSERT(dirty.reschedule_indexing);
 }
 
 ZEST_CASE(DiskChangeOpenCascades) {
@@ -578,9 +578,9 @@ ZEST_CASE(DiskChangeOpenCascades) {
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
-    ASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
-    ASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
-    ASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
 }
 
 ZEST_CASE(CompiledIncluderCascades) {
@@ -606,7 +606,7 @@ ZEST_CASE(CompiledIncluderCascades) {
 
     llvm::SmallVector<Fid> reindexed{scanned, compiled};
     llvm::sort(reindexed);
-    ASSERT(dirty.reindex_deps_only == reindexed);
+    ZASSERT(dirty.reindex_deps_only == reindexed);
 }
 
 ZEST_CASE(ModuleReadHeaderCascades) {
@@ -633,7 +633,7 @@ ZEST_CASE(ModuleReadHeaderCascades) {
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
-    ASSERT(llvm::is_contained(dirty.reindex_deps_only, user));
+    ZASSERT(llvm::is_contained(dirty.reindex_deps_only, user));
 }
 
 ZEST_CASE(AppearedHeaderCascades) {
@@ -659,8 +659,8 @@ ZEST_CASE(AppearedHeaderCascades) {
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
-    ASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
-    ASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open});
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open});
 }
 
 ZEST_CASE(DiskRemovedScrubsSourceRole) {
@@ -684,17 +684,17 @@ ZEST_CASE(DiskRemovedScrubsSourceRole) {
 
     // The removed file stops being an includer (and thus a host-source
     // candidate); surviving includers are untouched, shards are kept.
-    ASSERT(project.dep_graph.get_includers(header) == llvm::ArrayRef<Fid>{other_tu});
-    ASSERT(project.dep_graph.get_all_includes(removed_tu).empty());
-    ASSERT(dirty.recheck_contexts);
-    ASSERT(dirty.reindex_content_changed.empty());
-    ASSERT(dirty.reindex_deps_only.empty());
-    ASSERT(dirty.mark_ast_dirty.empty());
-    ASSERT(project.context_epoch == epoch + 1);
+    ZASSERT(project.dep_graph.get_includers(header) == llvm::ArrayRef<Fid>{other_tu});
+    ZASSERT(project.dep_graph.get_all_includes(removed_tu).empty());
+    ZASSERT(dirty.recheck_contexts);
+    ZASSERT(dirty.reindex_content_changed.empty());
+    ZASSERT(dirty.reindex_deps_only.empty());
+    ZASSERT(dirty.mark_ast_dirty.empty());
+    ZASSERT(project.context_epoch == epoch + 1);
     // The removal clears any pending-reindex state recorded earlier (e.g. a
     // DiskChanged observed just before deletion): the shard keeps serving
     // and nothing is left to reindex.
-    ASSERT(dirty.clear_reindex == llvm::SmallVector<Fid>{removed_tu});
+    ZASSERT(dirty.clear_reindex == llvm::SmallVector<Fid>{removed_tu});
 }
 
 ZEST_CASE(RemoveRecreateBatchOrder) {
@@ -714,9 +714,9 @@ ZEST_CASE(RemoveRecreateBatchOrder) {
     {
         FileEvent events[] = {FileEvent::disk_changed(file), FileEvent::disk_removed(file)};
         auto dirty = invalidator.apply(events);
-        ASSERT(llvm::find(dirty.reindex_content_changed, file) ==
-               dirty.reindex_content_changed.end());
-        ASSERT(dirty.clear_reindex == llvm::SmallVector<Fid>{file});
+        ZASSERT(llvm::find(dirty.reindex_content_changed, file) ==
+                dirty.reindex_content_changed.end());
+        ZASSERT(dirty.clear_reindex == llvm::SmallVector<Fid>{file});
     }
 
     // Delete then recreate (an editor's atomic save): the later change must
@@ -726,9 +726,9 @@ ZEST_CASE(RemoveRecreateBatchOrder) {
         project.dep_graph.build_reverse_map();
         FileEvent events[] = {FileEvent::disk_removed(file), FileEvent::disk_changed(file)};
         auto dirty = invalidator.apply(events);
-        ASSERT(dirty.clear_reindex.empty());
-        ASSERT(llvm::find(dirty.reindex_content_changed, file) !=
-               dirty.reindex_content_changed.end());
+        ZASSERT(dirty.clear_reindex.empty());
+        ZASSERT(llvm::find(dirty.reindex_content_changed, file) !=
+                dirty.reindex_content_changed.end());
     }
 }
 
@@ -759,9 +759,9 @@ ZEST_CASE(EntryChangeThenRemoval) {
     // The removal is the later fact: the file keeps its last-known index
     // serving, so the entry change's drop and enqueue must not survive — a
     // surviving drop would mask the shard and let the next save retire it.
-    ASSERT(dirty.drop_index.empty());
-    ASSERT(dirty.reindex_content_changed.empty());
-    ASSERT(dirty.clear_reindex == llvm::SmallVector<Fid>{file});
+    ZASSERT(dirty.drop_index.empty());
+    ZASSERT(dirty.reindex_content_changed.empty());
+    ZASSERT(dirty.clear_reindex == llvm::SmallVector<Fid>{file});
 }
 
 ZEST_CASE(CDBAddedScansAndEnqueues) {
@@ -791,11 +791,11 @@ ZEST_CASE(CDBAddedScansAndEnqueues) {
 
     // The rescan resolved the new entry's includes; the new file reindexes.
     // A command change rewrites rows as thoroughly as an edit.
-    ASSERT(project.dep_graph.get_includers(header_id) == llvm::ArrayRef<Fid>{main_id});
-    ASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{main_id});
-    ASSERT(dirty.drop_index == llvm::SmallVector<Fid>{main_id});
-    ASSERT(dirty.reindex_deps_only.empty());
-    ASSERT(dirty.recheck_contexts);
+    ZASSERT(project.dep_graph.get_includers(header_id) == llvm::ArrayRef<Fid>{main_id});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(dirty.drop_index == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(dirty.reindex_deps_only.empty());
+    ZASSERT(dirty.recheck_contexts);
 }
 
 ZEST_CASE(CDBChangedSplitsOpenClosed) {
@@ -829,14 +829,14 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
 
     // Flag changes recompile open files and reindex closed ones; the
     // pull-side cache keys (canonical flags) miss on their own.
-    ASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_id});
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_id});
     llvm::SmallVector<Fid> reindexed{open_id, closed_id};
     llvm::sort(reindexed);
     auto content_changed = dirty.reindex_content_changed;
     llvm::sort(content_changed);
-    ASSERT(content_changed == reindexed);
-    ASSERT(dirty.reindex_deps_only.empty());
-    ASSERT(dirty.recheck_contexts);
+    ZASSERT(content_changed == reindexed);
+    ZASSERT(dirty.reindex_deps_only.empty());
+    ZASSERT(dirty.recheck_contexts);
 
     // Both indexes were built under the old command and look fresh to
     // content-only validation: drop them so the queued reindexes are not
@@ -844,9 +844,9 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     // with the indexer, which masks and retires them off the manifests.
     auto dropped = dirty.drop_index;
     llvm::sort(dropped);
-    ASSERT(dropped == reindexed);
-    ASSERT(project.project_index.shards.count(closed_id) == 1u);
-    ASSERT(project.project_index.shards.count(open_id) == 1u);
+    ZASSERT(dropped == reindexed);
+    ZASSERT(project.project_index.shards.count(closed_id) == 1u);
+    ZASSERT(project.project_index.shards.count(open_id) == 1u);
 }
 
 ZEST_CASE(CDBAddedOpenMarksDirty) {
@@ -868,10 +868,10 @@ ZEST_CASE(CDBAddedOpenMarksDirty) {
     // The open file gained its first real entry: drop the guessed command
     // it was compiled with, and queue the reindex that builds its shard
     // under the real command once open-file indexing is on.
-    ASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{file});
-    ASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{file});
-    ASSERT(dirty.drop_index == llvm::SmallVector<Fid>{file});
-    ASSERT(dirty.reindex_deps_only.empty());
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{file});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{file});
+    ZASSERT(dirty.drop_index == llvm::SmallVector<Fid>{file});
+    ZASSERT(dirty.reindex_deps_only.empty());
 }
 
 ZEST_CASE(CDBChangedDropsHostedContext) {
@@ -903,15 +903,15 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
     // with the host's. Unrelated contexts are untouched.
     llvm::SmallVector<Fid> dropped{open_header, closed_header};
     llvm::sort(dropped);
-    ASSERT(dirty.drop_context == dropped);
+    ZASSERT(dirty.drop_context == dropped);
     llvm::SmallVector<Fid> evicted{host, open_header, closed_header};
     llvm::sort(evicted);
     auto drop = dirty.drop_index;
     llvm::sort(drop);
-    ASSERT(drop == evicted);
-    ASSERT(llvm::is_contained(dirty.mark_ast_dirty, open_header));
-    ASSERT(llvm::is_contained(dirty.reindex_content_changed, closed_header));
-    ASSERT(project.project_index.shards.count(closed_header) == 1u);
+    ZASSERT(drop == evicted);
+    ZASSERT(llvm::is_contained(dirty.mark_ast_dirty, open_header));
+    ZASSERT(llvm::is_contained(dirty.reindex_content_changed, closed_header));
+    ZASSERT(project.project_index.shards.count(closed_header) == 1u);
 }
 
 ZEST_CASE(CDBDropsBorrowedIndex) {
@@ -934,10 +934,10 @@ ZEST_CASE(CDBDropsBorrowedIndex) {
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
-    ASSERT(dirty.drop_context.empty());
-    ASSERT(llvm::is_contained(dirty.drop_index, header));
-    ASSERT(llvm::is_contained(dirty.reindex_content_changed, header));
-    ASSERT(!llvm::is_contained(dirty.mark_ast_dirty, header));
+    ZASSERT(dirty.drop_context.empty());
+    ZASSERT(llvm::is_contained(dirty.drop_index, header));
+    ZASSERT(llvm::is_contained(dirty.reindex_content_changed, header));
+    ZASSERT(!llvm::is_contained(dirty.mark_ast_dirty, header));
 }
 
 ZEST_CASE(CDBBorrowersByServing) {
@@ -964,12 +964,12 @@ ZEST_CASE(CDBBorrowersByServing) {
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
-    ASSERT(llvm::is_contained(dirty.drop_index, served));
-    ASSERT(llvm::is_contained(dirty.drop_index, compiled));
-    ASSERT(llvm::is_contained(dirty.reindex_content_changed, served));
-    ASSERT(!llvm::is_contained(dirty.reindex_content_changed, compiled));
-    ASSERT(!llvm::is_contained(dirty.mark_ast_dirty, served));
-    ASSERT(!llvm::is_contained(dirty.mark_ast_dirty, compiled));
+    ZASSERT(llvm::is_contained(dirty.drop_index, served));
+    ZASSERT(llvm::is_contained(dirty.drop_index, compiled));
+    ZASSERT(llvm::is_contained(dirty.reindex_content_changed, served));
+    ZASSERT(!llvm::is_contained(dirty.reindex_content_changed, compiled));
+    ZASSERT(!llvm::is_contained(dirty.mark_ast_dirty, served));
+    ZASSERT(!llvm::is_contained(dirty.mark_ast_dirty, compiled));
 }
 
 ZEST_CASE(CDBChangedCascadesModule) {
@@ -1003,12 +1003,12 @@ ZEST_CASE(CDBChangedCascadesModule) {
     // unit itself lands in both lists (its own entry changed AND the
     // cascade dirtied its PCM); the indexer's absorbing upgrade
     // resolves the overlap to ContentChanged.
-    EXPECT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_user});
-    EXPECT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{mod});
-    EXPECT(dirty.drop_index == llvm::SmallVector<Fid>{mod});
+    ZEXPECT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_user});
+    ZEXPECT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{mod});
+    ZEXPECT(dirty.drop_index == llvm::SmallVector<Fid>{mod});
     llvm::SmallVector<Fid> deps{mod, closed_user};
     llvm::sort(deps);
-    EXPECT(dirty.reindex_deps_only == deps);
+    ZEXPECT(dirty.reindex_deps_only == deps);
 }
 
 ZEST_CASE(DiskRemovedReindexesIncluders) {
@@ -1032,10 +1032,10 @@ ZEST_CASE(DiskRemovedReindexesIncluders) {
 
     // Dependents now compile against a missing include: open ones
     // recompile, closed ones reindex.
-    ASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
-    ASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
-    ASSERT(dirty.reindex_content_changed.empty());
-    ASSERT(dirty.recheck_contexts);
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
+    ZASSERT(dirty.reindex_content_changed.empty());
+    ZASSERT(dirty.recheck_contexts);
 }
 
 ZEST_CASE(CDBRemovedDropsSourceRole) {
@@ -1071,11 +1071,11 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
     // The rebuild resolves includes from the surviving entries only. The
     // removed entry's rows leave the index: its database still loads and
     // simply stopped compiling the file.
-    ASSERT(project.dep_graph.get_all_includes(gone_id).empty());
-    ASSERT(project.dep_graph.get_includers(header_id) == llvm::ArrayRef<Fid>{kept_id});
-    ASSERT(dirty.drop_index == llvm::SmallVector<Fid>{gone_id});
-    ASSERT(dirty.reindex_content_changed.empty());
-    ASSERT(dirty.recheck_contexts);
+    ZASSERT(project.dep_graph.get_all_includes(gone_id).empty());
+    ZASSERT(project.dep_graph.get_includers(header_id) == llvm::ArrayRef<Fid>{kept_id});
+    ZASSERT(dirty.drop_index == llvm::SmallVector<Fid>{gone_id});
+    ZASSERT(dirty.reindex_content_changed.empty());
+    ZASSERT(dirty.recheck_contexts);
 }
 
 ZEST_CASE(CDBRemovedStillClaimed) {
@@ -1108,9 +1108,9 @@ ZEST_CASE(CDBRemovedStillClaimed) {
     delta.removed = {gone_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
-    ASSERT(dirty.drop_index == llvm::SmallVector<Fid>{gone_id});
-    ASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{gone_id});
-    ASSERT(dirty.clear_reindex.empty());
+    ZASSERT(dirty.drop_index == llvm::SmallVector<Fid>{gone_id});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{gone_id});
+    ZASSERT(dirty.clear_reindex.empty());
 }
 
 ZEST_CASE(CDBEmptyDeltaNoEffects) {
@@ -1125,7 +1125,7 @@ ZEST_CASE(CDBEmptyDeltaNoEffects) {
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::cdb_changed({}));
 
-    ASSERT(dirty.empty());
+    ZASSERT(dirty.empty());
 }
 
 ZEST_CASE(BatchDiskEventsDeduplicate) {
@@ -1147,8 +1147,8 @@ ZEST_CASE(BatchDiskEventsDeduplicate) {
 
     llvm::SmallVector<Fid> expected{first, second};
     llvm::sort(expected);
-    ASSERT(dirty.reindex_content_changed == expected);
-    ASSERT(dirty.reindex_deps_only.empty());
+    ZASSERT(dirty.reindex_content_changed == expected);
+    ZASSERT(dirty.reindex_deps_only.empty());
 }
 
 };  // ZEST_SUITE(Invalidator)
@@ -1179,8 +1179,8 @@ ZEST_CASE(SurvivingEdgeKeepsChoice) {
     resolver.selections[header] = Selection{host, std::nullopt, ""};
 
     ASTHarness harness(project, resolver, store);
-    ASSERT(!ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
-    ASSERT(resolver.selections.contains(header));
+    ZASSERT(!ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
+    ZASSERT(resolver.selections.contains(header));
 }
 
 ZEST_CASE(RemovedEdgeDropsChoice) {
@@ -1212,12 +1212,12 @@ ZEST_CASE(RemovedEdgeDropsChoice) {
 
     ASTHarness harness(project, resolver, store);
     harness.ast.projections.entries[header].current = true;
-    ASSERT(ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
-    ASSERT(!resolver.header_contexts.contains(header));
-    ASSERT(!harness.ast.projections.current(header));
-    ASSERT(!session->trial_done);
-    ASSERT(session->generation == generation + 1);
-    ASSERT(!resolver.selections.contains(header));
+    ZASSERT(ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
+    ZASSERT(!resolver.header_contexts.contains(header));
+    ZASSERT(!harness.ast.projections.current(header));
+    ZASSERT(!session->trial_done);
+    ZASSERT(session->generation == generation + 1);
+    ZASSERT(!resolver.selections.contains(header));
 }
 
 ZEST_CASE(VanishedOccurrenceDropsChoice) {
@@ -1246,8 +1246,8 @@ ZEST_CASE(VanishedOccurrenceDropsChoice) {
     resolver.selections[header] = Selection{host, 1, ""};
 
     ASTHarness harness(project, resolver, store);
-    ASSERT(ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
-    ASSERT(!resolver.selections.contains(header));
+    ZASSERT(ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
+    ZASSERT(!resolver.selections.contains(header));
 }
 
 };  // ZEST_SUITE(DropOrphanedChoices)

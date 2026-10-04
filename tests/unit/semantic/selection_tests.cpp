@@ -223,11 +223,11 @@ template <typename Callback>
 void select_right(llvm::StringRef code, Callback&& callback) {
     clear();
     add_main("main.cpp", code);
-    ASSERT(compile());
-    /// ASSERT(unit->diagnostics().empty());
+    ZASSERT(compile());
+    /// ZASSERT(unit->diagnostics().empty());
 
     auto points = nameless_points();
-    ASSERT(!points.empty());
+    ZASSERT(!points.empty());
 
     LocalSourceRange selected_range;
     selected_range.begin = points[0];
@@ -241,15 +241,15 @@ void EXPECT_SELECT(llvm::StringRef code, const char* kind) {
     select_right(code, [&](SelectionTree& tree) {
         auto node = tree.common_ancestor();
         if(!kind) {
-            ASSERT(!node);
+            ZASSERT(!node);
             return;
         }
 
-        ASSERT(node);
+        ZASSERT(node);
         auto range2 = toHalfOpenFileRange(unit->context().getSourceManager(),
                                           unit->lang_options(),
                                           node->source_range());
-        ASSERT(range2);
+        ZASSERT(range2);
 
         LocalSourceRange local_range = {
             unit->file_offset(range2->getBegin()),
@@ -259,8 +259,8 @@ void EXPECT_SELECT(llvm::StringRef code, const char* kind) {
         /// llvm::outs() << tree << "\n";
         /// tree.print(llvm::outs(), *node, 2);
 
-        ASSERT(node->kind() == llvm::StringRef(kind));
-        ASSERT(local_range == range());
+        ZASSERT(node->kind() == llvm::StringRef(kind));
+        ZASSERT(local_range == range());
     });
 }
 
@@ -573,17 +573,17 @@ ZEST_CASE(Attributes) {
 ZEST_CASE(PartialCoverage) {
     select_right(R"(void foo(int); void bar() { foo§()(1§()); })", [&](SelectionTree& tree) {
         auto* node = tree.common_ancestor();
-        ASSERT(node != nullptr);
-        ASSERT(node->kind() == std::string("CallExpr"));
+        ZASSERT(node != nullptr);
+        ZASSERT(node->kind() == std::string("CallExpr"));
         // The call owns `(` and `)`, and only `(` is selected.
-        ASSERT(node->selected == SelectionTree::Partial);
+        ZASSERT(node->selected == SelectionTree::Partial);
     });
 
     select_right(R"(void foo(int); void bar() { foo§()(1)§(); })", [&](SelectionTree& tree) {
         auto* node = tree.common_ancestor();
-        ASSERT(node != nullptr);
-        ASSERT(node->kind() == std::string("CallExpr"));
-        ASSERT(node->selected == SelectionTree::Complete);
+        ZASSERT(node != nullptr);
+        ZASSERT(node->kind() == std::string("CallExpr"));
+        ZASSERT(node->selected == SelectionTree::Complete);
     });
 }
 
@@ -648,9 +648,9 @@ ZEST_CASE(InjectedClassName) {
     llvm::StringRef code = "struct §X { int x; };";
     select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
-        ASSERT(ancestor->kind() == llvm::StringRef("CXXRecordDecl"));
+        ZASSERT(ancestor->kind() == llvm::StringRef("CXXRecordDecl"));
         auto* D = dyn_cast<clang::CXXRecordDecl>(ancestor->get<clang::Decl>());
-        ASSERT(!D->isInjectedClassName());
+        ZASSERT(!D->isInjectedClassName());
     });
 }
 
@@ -686,15 +686,15 @@ void test() {
 }
 )";
     add_files("main.cpp", code);
-    ASSERT(compile());
+    ZASSERT(compile());
 
     auto points = nameless_points("main.cpp");
-    ASSERT(!points.empty());
+    ZASSERT(!points.empty());
     auto point = points[0];
     auto tree = SelectionTree::create_right(*unit, {point, point});
-    ASSERT(unit->diagnostics().empty());
+    ZASSERT(unit->diagnostics().empty());
 
-    ASSERT(tree.common_ancestor() == nullptr);
+    ZASSERT(tree.common_ancestor() == nullptr);
 }
 
 ZEST_CASE(Implicit) {
@@ -706,15 +706,15 @@ ZEST_CASE(Implicit) {
 
     select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
-        ASSERT(ancestor->kind() == llvm::StringRef("StringLiteral"));
-        ASSERT(ancestor->parent->kind() == llvm::StringRef("ImplicitCastExpr"));
-        ASSERT(ancestor->parent->parent->kind() == llvm::StringRef("CXXConstructExpr"));
+        ZASSERT(ancestor->kind() == llvm::StringRef("StringLiteral"));
+        ZASSERT(ancestor->parent->kind() == llvm::StringRef("ImplicitCastExpr"));
+        ZASSERT(ancestor->parent->parent->kind() == llvm::StringRef("CXXConstructExpr"));
 
         auto implicit = ancestor->parent->parent->parent;
-        ASSERT(implicit->kind() == llvm::StringRef("ImplicitCastExpr"));
-        ASSERT(implicit->parent->kind() == llvm::StringRef("CallExpr"));
-        ASSERT(ancestor == &implicit->ignore_implicit());
-        ASSERT(&ancestor->outer_implicit() == implicit);
+        ZASSERT(implicit->kind() == llvm::StringRef("ImplicitCastExpr"));
+        ZASSERT(implicit->parent->kind() == llvm::StringRef("CallExpr"));
+        ZASSERT(ancestor == &implicit->ignore_implicit());
+        ZASSERT(&ancestor->outer_implicit() == implicit);
     });
 }
 
@@ -729,7 +729,7 @@ void a::foo() { }
 
     select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
-        ASSERT(!ancestor->decl_context().isTranslationUnit());
+        ZASSERT(!ancestor->decl_context().isTranslationUnit());
     });
 
     code = R"cpp(
@@ -742,7 +742,7 @@ void a::f§oo() { }
 
     select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
-        ASSERT(ancestor->decl_context().isTranslationUnit());
+        ZASSERT(ancestor->decl_context().isTranslationUnit());
     });
 }
 
@@ -756,7 +756,7 @@ auto lambda = [] {
 
     select_right(code, [&](SelectionTree& tree) {
         auto ancestor = tree.common_ancestor();
-        ASSERT(ancestor->decl_context().isFunctionOrMethod());
+        ZASSERT(ancestor->decl_context().isFunctionOrMethod());
     });
 }
 
@@ -777,16 +777,16 @@ auto Func(Fo§o auto V) -> Fo§o decltype(auto) {
   )cpp";
 
     add_main("main.cpp", code);
-    ASSERT(compile());
+    ZASSERT(compile());
 
     for(auto point: nameless_points()) {
         auto tree = SelectionTree::create_right(*unit, {point, point});
         auto* ancestor = tree.common_ancestor();
-        ASSERT(ancestor);
+        ZASSERT(ancestor);
         auto* C = ancestor->get<clang::ConceptReference>();
-        ASSERT(C);
-        ASSERT(C->getFoundDecl());
-        ASSERT(C->getFoundDecl()->getKind() == clang::Decl::UsingShadow);
+        ZASSERT(C);
+        ZASSERT(C->getFoundDecl());
+        ZASSERT(C->getFoundDecl()->getKind() == clang::Decl::UsingShadow);
     }
 }
 

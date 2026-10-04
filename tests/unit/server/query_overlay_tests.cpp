@@ -62,11 +62,11 @@ std::string main_path;
 /// it. The session's own index is the main-file-only envelope, mirroring
 /// the production per-edit index.
 void open_with_overlay(std::source_location location = std::source_location::current()) {
-    ASSERT(compile());
+    ZASSERT(compile());
 
     full_index = index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
-    ASSERT(full_index.loaded());
+    ZASSERT(full_index.loaded());
 
     auto blob_path = dir.path("overlay.pch.idx");
     dir.touch("overlay.pch.idx", index::build_preamble_index(*unit, {}, {}, {}, {}));
@@ -81,7 +81,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     session = session_store.open(path_id);
 
     auto it = sources.all_files.find(llvm::sys::path::filename(main_path));
-    ASSERT(it != sources.all_files.end());
+    ZASSERT(it != sources.all_files.end());
     session->text = it->second.content;
     session->sync_text();
 
@@ -106,7 +106,7 @@ index::SymbolHash hash_of(llvm::StringRef name,
             }
             return true;
         });
-    EXPECT(count == 1);
+    ZEXPECT(count == 1);
     return hash;
 }
 
@@ -125,7 +125,7 @@ void merge_disk_index() {
     for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
         file_ids_map.push_back(project.file_table.intern(Spelling::absolute(full_index.path(i))));
     }
-    ASSERT(project.project_index.merge(full_index, file_ids_map));
+    ZASSERT(project.project_index.merge(full_index, file_ids_map));
 
     for(std::uint32_t section = 0; section < full_index.section_count(); section += 1) {
         auto local_id = full_index.section_path(section);
@@ -157,7 +157,7 @@ index::TUIndex empty_session_index() {
 
 void install_empty_index(std::source_location location = std::source_location::current()) {
     auto index = std::make_shared<index::TUIndex>(empty_session_index());
-    ASSERT(index->loaded());
+    ZASSERT(index->loaded());
     auto& entry = projections.entries[session->path_id];
     auto next = ASTProjection(*entry.projection);
     next.index = std::move(index);
@@ -170,7 +170,7 @@ index::IndexQuery::Cursor
     cursor_of(llvm::StringRef name,
               std::source_location location = std::source_location::current()) {
     auto cursor = index_query.symbol_at(session->path_id, point(name));
-    EXPECT(cursor);
+    ZEXPECT(cursor);
     return cursor.value_or(index::IndexQuery::Cursor{});
 }
 
@@ -198,8 +198,8 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
     // No disk index at all — the in-memory-file case: the overlay is the
     // only source that knows where foo is defined.
     auto locations = relations("ref", RelationKind::Definition);
-    ASSERT(locations.size() == 1);
-    EXPECT(locations[0].path.ends_with("foo.h"));
+    ZASSERT(locations.size() == 1);
+    ZEXPECT(locations[0].path.ends_with("foo.h"));
 }
 
 ZEST_CASE(ReferencesUnionWithDedup) {
@@ -217,7 +217,7 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
     merge_disk_index();
 
     auto locations = relations("ref", RelationKind::Reference);
-    ASSERT(locations.size() == 2);
+    ZASSERT(locations.size() == 2);
 
     std::size_t header_rows = 0;
     std::size_t main_rows = 0;
@@ -227,8 +227,8 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
         if(location.path.ends_with("main.cpp"))
             main_rows += 1;
     }
-    EXPECT(header_rows == 1);
-    EXPECT(main_rows == 1);
+    ZEXPECT(header_rows == 1);
+    ZEXPECT(main_rows == 1);
 }
 
 ZEST_CASE(PreambleMacroCursor) {
@@ -244,14 +244,14 @@ int main() { return 0; }
 
     auto cursor = cursor_of("macro");
     auto info = index_query.symbol_info(cursor.symbols.front());
-    ASSERT(info);
-    EXPECT(info->name == "FOO");
+    ZASSERT(info);
+    ZEXPECT(info->name == "FOO");
 
     // The definition text comes from the same preamble rows, sliced from
     // the buffer: the hover card for a `#define` above the PCH bound.
     auto definition = index_query.definition_text(cursor.symbols.front(), cursor.site.file);
-    ASSERT(definition);
-    EXPECT(llvm::StringRef(definition->text).contains("FOO"));
+    ZASSERT(definition);
+    ZEXPECT(llvm::StringRef(definition->text).contains("FOO"));
 }
 
 ZEST_CASE(OverlaySymbolInfo) {
@@ -271,12 +271,12 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     auto bar_hash = hash_of("bar");
 
     auto info = index_query.symbol_info(bar_hash);
-    ASSERT(info);
-    EXPECT(info->name == "bar");
+    ZASSERT(info);
+    ZEXPECT(info->name == "bar");
 
     auto def = index_query.first_site(bar_hash, Fid{}, RelationKind::Definition);
-    ASSERT(def);
-    EXPECT(def->path.ends_with("foo.h"));
+    ZASSERT(def);
+    ZEXPECT(def->path.ends_with("foo.h"));
 }
 
 ZEST_CASE(OpenHeaderExcluded) {
@@ -296,8 +296,8 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
     session_store.open(project.file_table.intern(Spelling::absolute(header_path("foo.h"))));
 
     auto locations = relations("ref", RelationKind::Reference);
-    ASSERT(locations.size() == 1);
-    EXPECT(locations[0].path.ends_with("main.cpp"));
+    ZASSERT(locations.size() == 1);
+    ZEXPECT(locations[0].path.ends_with("main.cpp"));
 }
 
 ZEST_CASE(IncomingCallsDedup) {
@@ -315,9 +315,9 @@ int main() { §(mcall)⟦§(mcall)callee⟧(); return 0; }
     merge_disk_index();
 
     auto callers = index_query.call_graph(hash_of("callee"), Fid{}, {.callees = false}).callers;
-    ASSERT(callers.size() == 2);
+    ZASSERT(callers.size() == 2);
     for(auto& edge: callers) {
-        EXPECT(edge.sites.size() == 1);
+        ZEXPECT(edge.sites.size() == 1);
     }
 }
 
@@ -337,14 +337,14 @@ Derived instance;
 
     auto derived = hash_of("Derived");
     auto supertypes = index_query.type_hierarchy(derived, Fid{}, {.subtypes = false}).supertypes;
-    ASSERT(supertypes.size() == 1);
-    EXPECT(supertypes[0].symbol.name == "Base");
+    ZASSERT(supertypes.size() == 1);
+    ZEXPECT(supertypes[0].symbol.name == "Base");
 
     // Once derived.h is open, its session owns the type relations spelled
     // there; the overlay's disk-snapshot rows must stop contributing.
     session_store.open(project.file_table.intern(Spelling::absolute(header_path("derived.h"))));
     supertypes = index_query.type_hierarchy(derived, Fid{}, {.subtypes = false}).supertypes;
-    EXPECT(supertypes.size() == 0);
+    ZEXPECT(supertypes.size() == 0);
 }
 
 ZEST_CASE(StaleHeaderSuppressed) {
@@ -357,14 +357,14 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 )");
     open_with_overlay();
 
-    ASSERT(index_query.first_site(hash_of("foo"), Fid{}, RelationKind::Definition));
+    ZASSERT(index_query.first_site(hash_of("foo"), Fid{}, RelationKind::Definition));
 
     // The disk was seen holding other text for the header: its overlay
     // rows describe text that no longer exists (freshness contract,
     // clause 2), exactly like a shard contribution.
     project.file_table.observe(project.file_table.intern(Spelling::absolute(header_path("foo.h"))),
                                DiskObservation{.hash = 1});
-    EXPECT(!index_query.first_site(hash_of("foo"), Fid{}, RelationKind::Definition).has_value());
+    ZEXPECT(!index_query.first_site(hash_of("foo"), Fid{}, RelationKind::Definition).has_value());
 }
 
 ZEST_CASE(MacroDefinitionText) {
@@ -374,17 +374,17 @@ ZEST_CASE(MacroDefinitionText) {
 #define §(macro)⟦FOO⟧ 1
 int main() { return 0; }
 )");
-    ASSERT(compile());
+    ZASSERT(compile());
     full_index = index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
-    ASSERT(full_index.loaded());
+    ZASSERT(full_index.loaded());
     merge_disk_index();
 
     // Macro Definition relations carry the full #define extent, so the
     // disk text path works for macros.
     auto text = disk_query.definition_text(hash_of("FOO"), Fid{});
-    ASSERT(text);
-    EXPECT(llvm::StringRef(text->text).contains("FOO"));
+    ZASSERT(text);
+    ZEXPECT(llvm::StringRef(text->text).contains("FOO"));
 }
 
 ZEST_CASE(AsciiPreviewDegrades) {
@@ -396,19 +396,19 @@ ZEST_CASE(AsciiPreviewDegrades) {
 int use = FOO;
 int main() { return 0; }
 )");
-    ASSERT(compile());
+    ZASSERT(compile());
     full_index = index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
-    ASSERT(full_index.loaded());
+    ZASSERT(full_index.loaded());
     merge_disk_index();
 
     auto foo = hash_of("FOO");
-    EXPECT(!disk_query.definition_text(foo, Fid{}).has_value());
+    ZEXPECT(!disk_query.definition_text(foo, Fid{}).has_value());
 
     auto references = disk_query.sites(foo, Fid{}, RelationKind::Reference);
-    ASSERT(!references.empty());
+    ZASSERT(!references.empty());
     for(auto& reference: references) {
-        EXPECT(disk_query.context_line(reference).empty());
+        ZEXPECT(disk_query.context_line(reference).empty());
     }
 }
 
@@ -445,24 +445,24 @@ ZEST_CASE(AsciiPreviewFromDisk) {
     index::write_shard(rows, {}, text, os);
     project.project_index.shards[path_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
-    ASSERT(project.project_index.shards[path_id].content().empty());
+    ZASSERT(project.project_index.shards[path_id].content().empty());
     auto& row = project.project_index.touch(sym);
     row.name = "value";
     row.reference_files.add(path_id.raw);
 
     auto definition = disk_query.definition_text(sym, Fid{});
-    ASSERT(definition);
-    EXPECT(definition->text == "int value = 1;");
+    ZASSERT(definition);
+    ZEXPECT(definition->text == "int value = 1;");
 
     auto references = disk_query.sites(sym, Fid{}, RelationKind::Reference);
-    ASSERT(!references.empty());
-    EXPECT(disk_query.context_line(references.front()) == "int other = value;");
+    ZASSERT(!references.empty());
+    ZEXPECT(disk_query.context_line(references.front()) == "int other = value;");
 
     dir.touch("preview.cpp", "int moved = 0;\n");
-    EXPECT(!disk_query.definition_text(sym, Fid{}).has_value());
+    ZEXPECT(!disk_query.definition_text(sym, Fid{}).has_value());
     references = disk_query.sites(sym, Fid{}, RelationKind::Reference);
-    ASSERT(!references.empty());
-    EXPECT(disk_query.context_line(references.front()).empty());
+    ZASSERT(!references.empty());
+    ZEXPECT(disk_query.context_line(references.front()).empty());
 }
 
 ZEST_CASE(SharedPreambleScoped) {
@@ -489,8 +489,8 @@ int main() { return 0; }
     other_entry.current = true;
 
     auto locations = relations("macro", RelationKind::Reference);
-    ASSERT(locations.size() == 1);
-    EXPECT(locations[0].path.ends_with("main.cpp"));
+    ZASSERT(locations.size() == 1);
+    ZEXPECT(locations[0].path.ends_with("main.cpp"));
 }
 
 ZEST_CASE(DirtyPreambleServed) {
@@ -506,7 +506,7 @@ int main() { return 0; }
     projections.entries[session->path_id].current = false;
     session->text += "int more;\n";
     session->sync_text();
-    EXPECT(index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition));
+    ZEXPECT(index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition));
 }
 
 ZEST_CASE(PreambleDriftSkipped) {
@@ -521,7 +521,7 @@ int main() { return 0; }
     // stored preamble text, its rows must not be served.
     session->text = "// drift\n" + session->text;
     session->sync_text();
-    EXPECT(!index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition).has_value());
+    ZEXPECT(!index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition).has_value());
 }
 
 ZEST_CASE(OverlayOutranksDisk) {
@@ -553,8 +553,8 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     project.project_index.touch(foo).reference_files.add(header_id.raw);
 
     auto def = index_query.first_site(foo, Fid{}, RelationKind::Definition);
-    ASSERT(def);
-    EXPECT(line_of(*def) == 1u);
+    ZASSERT(def);
+    ZEXPECT(line_of(*def) == 1u);
 }
 
 ZEST_CASE(SynthesizedContextSkipped) {
@@ -571,15 +571,15 @@ int main() {{ gen(); return 0; }}
     params.add_synthesized({
         {synthesized, "inline void gen() {}\n"}
     });
-    ASSERT(try_compile());
+    ZASSERT(try_compile());
 
     auto index = index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit)));
-    ASSERT(index.loaded());
+    ZASSERT(index.loaded());
     for(std::uint32_t i = 0; i < index.path_count(); i += 1) {
-        EXPECT(index.path(i) != synthesized);
+        ZEXPECT(index.path(i) != synthesized);
     }
-    EXPECT(
+    ZEXPECT(
         !llvm::any_of(unit->deps(), [&](const DepFile& dep) { return dep.path == synthesized; }));
 }
 
@@ -588,10 +588,10 @@ ZEST_CASE(UnreadableBlobCleared) {
 
     PCHState st;
     st.index_path = dir.path("junk.pch.idx");
-    EXPECT(st.load_state() == nullptr);
+    ZEXPECT(st.load_state() == nullptr);
     // The cleared path makes the pair look incomplete, so the next
     // ensure_pch round rebuilds it instead of retrying the mmap forever.
-    EXPECT(st.index_path.empty());
+    ZEXPECT(st.index_path.empty());
 }
 
 };  // ZEST_SUITE(QueryOverlay)

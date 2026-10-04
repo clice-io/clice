@@ -12,7 +12,7 @@ feature::InactiveScan scan;
 
 void run(llvm::StringRef source) {
     add_main("main.cpp", source);
-    ASSERT(compile("-std=c++17"));
+    ZASSERT(compile("-std=c++17"));
     scan = feature::inactive_regions(*unit);
 }
 
@@ -25,11 +25,11 @@ int dead();
 int b();
 )cpp");
 
-    ASSERT(scan.regions.size() == 2u);
+    ZASSERT(scan.regions.size() == 2u);
     auto content = unit->main_content();
     auto begin = scan.regions[0];
     auto end = scan.regions[1];
-    EXPECT(content.substr(begin, end - begin) == "int dead();\n");
+    ZEXPECT(content.substr(begin, end - begin) == "int dead();\n");
 }
 
 ZEST_CASE(ElseBranch) {
@@ -42,9 +42,9 @@ int dead();
 #endif
 )cpp");
 
-    ASSERT(scan.regions.size() == 2u);
+    ZASSERT(scan.regions.size() == 2u);
     auto content = unit->main_content();
-    EXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) == "int dead();\n");
+    ZEXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) == "int dead();\n");
 }
 
 ZEST_CASE(IncludeGuardStaysActive) {
@@ -54,7 +54,7 @@ int active();
 #endif
 )cpp");
 
-    EXPECT(scan.regions.size() == 0u);
+    ZEXPECT(scan.regions.size() == 0u);
 }
 
 ZEST_CASE(IfndefDefinedMacro) {
@@ -65,9 +65,9 @@ int dead();
 #endif
 )cpp");
 
-    ASSERT(scan.regions.size() == 2u);
+    ZASSERT(scan.regions.size() == 2u);
     auto content = unit->main_content();
-    EXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) == "int dead();\n");
+    ZEXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) == "int dead();\n");
 }
 
 ZEST_CASE(IfdefUndefinedMacro) {
@@ -78,9 +78,9 @@ int dead();
 int b();
 )cpp");
 
-    ASSERT(scan.regions.size() == 2u);
+    ZASSERT(scan.regions.size() == 2u);
     auto content = unit->main_content();
-    EXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) == "int dead();\n");
+    ZEXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) == "int dead();\n");
 }
 
 ZEST_CASE(NestedRegionsMerge) {
@@ -95,10 +95,10 @@ int tail();
 int b();
 )cpp");
 
-    ASSERT(scan.regions.size() == 2u);
+    ZASSERT(scan.regions.size() == 2u);
     auto content = unit->main_content();
-    EXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) ==
-           "int dead();\n#ifdef INNER\nint deeper();\n#endif\nint tail();\n");
+    ZEXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) ==
+            "int dead();\n#ifdef INNER\nint deeper();\n#endif\nint tail();\n");
 }
 
 };  // ZEST_SUITE(inactive_regions)

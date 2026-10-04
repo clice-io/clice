@@ -24,7 +24,7 @@ ZEST_CASE(HandlerCancelChainsThrough) {
     auto src = tmp.path("probe.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool handler_resumed = false;
     bool handler_cancelled = false;
@@ -73,16 +73,16 @@ ZEST_CASE(HandlerCancelChainsThrough) {
         qp.kind = worker::QueryKind::DocumentSymbol;
         qp.path = src;
         auto symbols = co_await w.peer->send_request(qp, {.timeout = std::chrono::seconds(30)});
-        CO_ASSERT(symbols);
-        EXPECT(symbols.value().data == "null");
+        ZASSERT(symbols);
+        ZEXPECT(symbols.value().data == "null");
 
         test_done = true;
         w.peer->close_output();
     });
 
-    ASSERT(test_done);
-    EXPECT(!handler_resumed);
-    EXPECT(handler_cancelled);
+    ZASSERT(test_done);
+    ZEXPECT(!handler_resumed);
+    ZEXPECT(handler_cancelled);
 }
 
 // The scheduler's cooperative cancel of a stateless build is a wire cancel
@@ -100,7 +100,7 @@ ZEST_CASE(WireCancelStopsBuild) {
     auto src = tmp.path("probe.cpp");
 
     WorkerHandle w;
-    ASSERT(w.spawn());
+    ZASSERT(w.spawn());
 
     bool test_done = false;
     w.run([&]() -> kota::task<> {
@@ -115,10 +115,10 @@ ZEST_CASE(WireCancelStopsBuild) {
         auto build = [&]() -> kota::task<> {
             auto result = co_await w.peer->send_request(bp, {.token = source.token()});
             auto waited = std::chrono::steady_clock::now() - cancelled_at;
-            CO_ASSERT(!result);
-            EXPECT(result.error().code == worker::dispatch_errc::cancelled);
+            ZASSERT(!result);
+            ZEXPECT(result.error().code == worker::dispatch_errc::cancelled);
             // An uninterrupted worker would index all 200k decls first.
-            EXPECT(waited < std::chrono::seconds(5));
+            ZEXPECT(waited < std::chrono::seconds(5));
         };
 
         kota::task_group<> group;
@@ -133,7 +133,7 @@ ZEST_CASE(WireCancelStopsBuild) {
         w.peer->close_output();
     });
 
-    ASSERT(test_done);
+    ZASSERT(test_done);
 }
 
 };  // ZEST_SUITE(CancelChain)

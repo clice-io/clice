@@ -19,9 +19,9 @@ namespace {
 /// tick of the previous stat leaves it.
 void set_mtime(llvm::StringRef path, llvm::sys::TimePoint<> time) {
     int fd = 0;
-    ASSERT(!static_cast<bool>(
+    ZASSERT(!static_cast<bool>(
         llvm::sys::fs::openFileForWrite(path, fd, llvm::sys::fs::CD_OpenExisting)));
-    ASSERT(!static_cast<bool>(llvm::sys::fs::setLastAccessAndModificationTime(fd, time, time)));
+    ZASSERT(!static_cast<bool>(llvm::sys::fs::setLastAccessAndModificationTime(fd, time, time)));
     llvm::sys::Process::SafelyCloseFileDescriptor(fd);
 }
 
@@ -57,17 +57,17 @@ ZEST_CASE(CDBTickDebounces) {
                   {tmp.root, tmp.path("main.cpp"), {}},
                   {tmp.root, tmp.path("lib.cpp"),  {}}
     }));
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
 
     auto events = tick(tracker, files);
-    ASSERT(events.size() == 1u);
-    ASSERT(events[0].kind == FileEvent::Kind::CDBChanged);
+    ZASSERT(events.size() == 1u);
+    ZASSERT(events[0].kind == FileEvent::Kind::CDBChanged);
     auto lib_id = project.file_table.intern(Spelling::absolute(tmp.path("lib.cpp")));
-    ASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{lib_id});
-    ASSERT(events[0].cdb.removed.empty());
+    ZASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{lib_id});
+    ZASSERT(events[0].cdb.removed.empty());
 
     // Settled: further ticks are quiet.
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
 }
 
 ZEST_CASE(CDBTickForceImmediate) {
@@ -90,9 +90,9 @@ ZEST_CASE(CDBTickForceImmediate) {
                   {tmp.root, tmp.path("main.cpp"), {"-DFOO"}}
     }));
     auto events = tick(tracker, files, /*force=*/true);
-    ASSERT(events.size() == 1u);
+    ZASSERT(events.size() == 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
-    ASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
 }
 
 ZEST_CASE(CDBTickDiscoversLate) {
@@ -105,16 +105,16 @@ ZEST_CASE(CDBTickDiscoversLate) {
     SessionStore store;
     // No compile_commands.json at construction time.
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT(tick(tracker, files, /*force=*/true).empty());
+    ZASSERT(tick(tracker, files, /*force=*/true).empty());
 
     tmp.touch("compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
     auto events = tick(tracker, files, /*force=*/true);
-    ASSERT(events.size() == 1u);
+    ZASSERT(events.size() == 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
-    ASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{main_id});
 }
 
 ZEST_CASE(CDBTickWatchesSubdirectory) {
@@ -127,17 +127,17 @@ ZEST_CASE(CDBTickWatchesSubdirectory) {
     Project project{files};
     SessionStore store;
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
 
     tmp.touch("build/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
-    ASSERT(events.size() == 1u);
+    ZASSERT(events.size() == 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
-    ASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{main_id});
 }
 
 ZEST_CASE(CDBTickNewSubdirectory) {
@@ -145,19 +145,19 @@ ZEST_CASE(CDBTickNewSubdirectory) {
     /// directory moves.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
-    ASSERT(set_file_mtime(tmp.root, file_mtime_ns(tmp.root) - 10'000'000'000));
+    ZASSERT(set_file_mtime(tmp.root, file_mtime_ns(tmp.root) - 10'000'000'000));
     FileTable files;
     Project project{files};
     SessionStore store;
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
 
     tmp.touch("out/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    ASSERT(tick(tracker, files).empty());
-    ASSERT(tick(tracker, files).size() == 1u);
+    ZASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).size() == 1u);
 }
 
 #ifndef _WIN32
@@ -167,20 +167,20 @@ ZEST_CASE(CDBTickDanglingSymlink) {
     TempDir tmp;
     TempDir elsewhere;
     tmp.touch("main.cpp", R"(int main() {})");
-    ASSERT(::symlink(elsewhere.path("target").c_str(), tmp.path("build").c_str()) == 0);
-    ASSERT(set_file_mtime(tmp.root, file_mtime_ns(tmp.root) - 10'000'000'000));
+    ZASSERT(::symlink(elsewhere.path("target").c_str(), tmp.path("build").c_str()) == 0);
+    ZASSERT(set_file_mtime(tmp.root, file_mtime_ns(tmp.root) - 10'000'000'000));
     FileTable files;
     Project project{files};
     SessionStore store;
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
 
     elsewhere.touch("target/compile_commands.json",
                     build_cdb_json({
                         {tmp.root, tmp.path("main.cpp"), {}}
     }));
-    ASSERT(tick(tracker, files).empty());
-    ASSERT(tick(tracker, files).size() == 1u);
+    ZASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).size() == 1u);
 }
 #endif
 
@@ -195,16 +195,16 @@ ZEST_CASE(CDBTickAboveOpenFile) {
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("a/b/main.cpp")));
     store.open(main_id);
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
 
     tmp.touch("a/b/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/b/main.cpp"), {}}
     }));
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
-    ASSERT(events.size() == 1u);
-    ASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(events.size() == 1u);
+    ZASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{main_id});
 }
 
 ZEST_CASE(CDBTickDeleteRecreate) {
@@ -224,7 +224,7 @@ ZEST_CASE(CDBTickDeleteRecreate) {
 
     // Deletion (mid-regeneration): keep serving the loaded entries.
     vfs::remove_all(tmp.path("compile_commands.json"));
-    ASSERT(tick(tracker, files, /*force=*/true).empty());
+    ZASSERT(tick(tracker, files, /*force=*/true).empty());
 
     // The rewrite lands as a normal change once the file is back.
     tmp.touch("compile_commands.json",
@@ -232,9 +232,9 @@ ZEST_CASE(CDBTickDeleteRecreate) {
                   {tmp.root, tmp.path("main.cpp"), {"-DFOO"}}
     }));
     auto events = tick(tracker, files, /*force=*/true);
-    ASSERT(events.size() == 1u);
+    ZASSERT(events.size() == 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
-    ASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
 }
 
 ZEST_CASE(CDBTickRetriesFailedLoad) {
@@ -246,25 +246,25 @@ ZEST_CASE(CDBTickRetriesFailedLoad) {
     Project project{files};
     SessionStore store;
     auto id = project.cdb.add_source(Spelling::absolute(tmp.path("compile_commands.json")));
-    ASSERT(!project.cdb.load_source(id).has_value());
+    ZASSERT(!project.cdb.load_source(id).has_value());
     llvm::sys::fs::file_status before;
-    ASSERT(!static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
+    ZASSERT(!static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     tmp.touch("compile_commands.json", "[]");
     int fd = 0;
-    ASSERT(!static_cast<bool>(llvm::sys::fs::openFileForWrite(tmp.path("compile_commands.json"),
-                                                              fd,
-                                                              llvm::sys::fs::CD_OpenExisting)));
-    ASSERT(!static_cast<bool>(
+    ZASSERT(!static_cast<bool>(llvm::sys::fs::openFileForWrite(tmp.path("compile_commands.json"),
+                                                               fd,
+                                                               llvm::sys::fs::CD_OpenExisting)));
+    ZASSERT(!static_cast<bool>(
         llvm::sys::fs::setLastAccessAndModificationTime(fd,
                                                         before.getLastAccessedTime(),
                                                         before.getLastModificationTime())));
     llvm::sys::Process::SafelyCloseFileDescriptor(fd);
 
-    ASSERT(tick(tracker, files).empty());
-    ASSERT(tick(tracker, files).empty());
-    EXPECT(project.cdb.loaded(id));
+    ZASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
+    ZEXPECT(project.cdb.loaded(id));
 }
 
 ZEST_CASE(CDBTickRelocates) {
@@ -291,9 +291,9 @@ ZEST_CASE(CDBTickRelocates) {
     auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
 
     vfs::remove_all(tmp.path("compile_commands.json"));
-    ASSERT(tick(tracker, files, /*force=*/true).empty());
-    EXPECT(!project.cdb.present(root));
-    EXPECT(!project.cdb.candidate_entries(only_id).empty());
+    ZASSERT(tick(tracker, files, /*force=*/true).empty());
+    ZEXPECT(!project.cdb.present(root));
+    ZEXPECT(!project.cdb.candidate_entries(only_id).empty());
 
     tmp.touch("build/compile_commands.json",
               build_cdb_json({
@@ -302,17 +302,17 @@ ZEST_CASE(CDBTickRelocates) {
     auto events = tick(tracker, files, /*force=*/true);
     auto build =
         *project.cdb.find_source(Spelling::absolute(tmp.path("build/compile_commands.json")));
-    ASSERT(events.size() == 1u);
-    ASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
-    EXPECT(project.build.entries(main_id).front().source == build);
-    EXPECT(project.build.entries(only_id).front().source == root);
+    ZASSERT(events.size() == 1u);
+    ZASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
+    ZEXPECT(project.build.entries(main_id).front().source == build);
+    ZEXPECT(project.build.entries(only_id).front().source == root);
 
     tmp.touch("compile_commands.json", original);
     events = tick(tracker, files, /*force=*/true);
-    ASSERT(events.size() == 1u);
-    ASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
-    EXPECT(project.build.entries(main_id).front().source == root);
-    EXPECT(project.build.entries(main_id).size() == 2u);
+    ZASSERT(events.size() == 1u);
+    ZASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
+    ZEXPECT(project.build.entries(main_id).front().source == root);
+    ZEXPECT(project.build.entries(main_id).size() == 2u);
 }
 
 ZEST_CASE(CDBDeletedBeforeWatch) {
@@ -329,12 +329,12 @@ ZEST_CASE(CDBDeletedBeforeWatch) {
                   {tmp.root, tmp.path("main.cpp"), {}}
     }));
     auto id = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
-    ASSERT(project.cdb.present(id));
+    ZASSERT(project.cdb.present(id));
     vfs::remove_all(tmp.path("compile_commands.json"));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    EXPECT(tick(tracker, files).empty());
-    EXPECT(tick(tracker, files).empty());
-    EXPECT(!project.cdb.present(id));
+    ZEXPECT(tick(tracker, files).empty());
+    ZEXPECT(tick(tracker, files).empty());
+    ZEXPECT(!project.cdb.present(id));
 }
 
 ZEST_CASE(ResponseRewriteBeforeWatch) {
@@ -354,12 +354,12 @@ ZEST_CASE(ResponseRewriteBeforeWatch) {
     }));
     tmp.touch("flags.rsp", "-DTWO\n");
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    EXPECT(tick(tracker, files).empty());
+    ZEXPECT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
-    ASSERT(events.size() == 1u);
+    ZASSERT(events.size() == 1u);
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
-    EXPECT(events[0].cdb.changed == llvm::SmallVector<Fid>{main});
-    EXPECT(tick(tracker, files).empty());
+    ZEXPECT(events[0].cdb.changed == llvm::SmallVector<Fid>{main});
+    ZEXPECT(tick(tracker, files).empty());
 }
 
 ZEST_CASE(ResponseAddedByReload) {
@@ -380,14 +380,14 @@ ZEST_CASE(ResponseAddedByReload) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
     }));
-    ASSERT(tick(tracker, files, /*force=*/true).size() == 1u);
+    ZASSERT(tick(tracker, files, /*force=*/true).size() == 1u);
 
     tmp.touch("flags.rsp", "-DTWO\n");
-    EXPECT(tick(tracker, files).empty());
+    ZEXPECT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
-    ASSERT(events.size() == 1u);
+    ZASSERT(events.size() == 1u);
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
-    EXPECT(events[0].cdb.changed == llvm::SmallVector<Fid>{main});
+    ZEXPECT(events[0].cdb.changed == llvm::SmallVector<Fid>{main});
 }
 
 ZEST_CASE(CDBTickRenameOver) {
@@ -405,28 +405,28 @@ ZEST_CASE(CDBTickRenameOver) {
     }));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     llvm::sys::fs::file_status before;
-    ASSERT(!static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
+    ZASSERT(!static_cast<bool>(llvm::sys::fs::status(tmp.path("compile_commands.json"), before)));
 
     tmp.touch("replacement.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
     }));
     int fd = 0;
-    ASSERT(!static_cast<bool>(llvm::sys::fs::openFileForWrite(tmp.path("replacement.json"),
-                                                              fd,
-                                                              llvm::sys::fs::CD_OpenExisting)));
-    ASSERT(!static_cast<bool>(
+    ZASSERT(!static_cast<bool>(llvm::sys::fs::openFileForWrite(tmp.path("replacement.json"),
+                                                               fd,
+                                                               llvm::sys::fs::CD_OpenExisting)));
+    ZASSERT(!static_cast<bool>(
         llvm::sys::fs::setLastAccessAndModificationTime(fd,
                                                         before.getLastAccessedTime(),
                                                         before.getLastModificationTime())));
     llvm::sys::Process::SafelyCloseFileDescriptor(fd);
-    ASSERT(!vfs::rename(tmp.path("replacement.json"), tmp.path("compile_commands.json")));
+    ZASSERT(!vfs::rename(tmp.path("replacement.json"), tmp.path("compile_commands.json")));
 
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
-    ASSERT(events.size() == 1u);
+    ZASSERT(events.size() == 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
-    ASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
 }
 
 ZEST_CASE(CDBDiscoverRetriesRegistered) {
@@ -443,17 +443,17 @@ ZEST_CASE(CDBDiscoverRetriesRegistered) {
     auto id = project.cdb.add_source(Spelling::absolute(tmp.path("a/compile_commands.json")));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     auto main = project.file_table.intern(Spelling::absolute(tmp.path("a/main.cpp")));
-    EXPECT(tracker.discover_around(main).empty());
+    ZEXPECT(tracker.discover_around(main).empty());
 
     tmp.touch("a/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("a/main.cpp"), {}}
     }));
     auto events = tracker.discover_around(main);
-    ASSERT(events.size() == 1u);
-    EXPECT(events[0].cdb.added == llvm::SmallVector<Fid>{main});
-    EXPECT(project.cdb.loaded(id));
-    EXPECT(tracker.discover_around(main).empty());
+    ZASSERT(events.size() == 1u);
+    ZEXPECT(events[0].cdb.added == llvm::SmallVector<Fid>{main});
+    ZEXPECT(project.cdb.loaded(id));
+    ZEXPECT(tracker.discover_around(main).empty());
 }
 
 #ifndef _WIN32
@@ -471,21 +471,21 @@ ZEST_CASE(CDBTickFollowsRetarget) {
                   {tmp.root, tmp.path("main.cpp"), {"-DRELEASE"}}
     }));
     auto database = tmp.path("compile_commands.json");
-    ASSERT(::symlink(tmp.path("debug.json").c_str(), database.c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("debug.json").c_str(), database.c_str()) == 0);
     FileTable files;
     Project project{files};
     SessionStore store;
     auto id = project.cdb.add_source(Spelling::absolute(database));
-    ASSERT(project.cdb.load_source(id));
+    ZASSERT(project.cdb.load_source(id));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     vfs::remove(database);
-    ASSERT(::symlink(tmp.path("release.json").c_str(), database.c_str()) == 0);
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(::symlink(tmp.path("release.json").c_str(), database.c_str()) == 0);
+    ZASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
-    ASSERT(events.size() == 1u);
+    ZASSERT(events.size() == 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
-    ASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
 }
 #endif
 
@@ -511,13 +511,13 @@ ZEST_CASE(CDBTickDiscoversAround) {
     auto other_id = project.file_table.intern(Spelling::absolute(tmp.path("a/other.cpp")));
 
     auto events = tracker.discover_around(main_id);
-    ASSERT(events.size() == 1u);
-    ASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{main_id});
-    EXPECT(tracker.discover_around(main_id).empty());
-    EXPECT(tracker.discover_around(other_id).empty());
+    ZASSERT(events.size() == 1u);
+    ZASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{main_id});
+    ZEXPECT(tracker.discover_around(main_id).empty());
+    ZEXPECT(tracker.discover_around(other_id).empty());
     auto outside = project.file_table.intern(
         Spelling::absolute(path::join(path::parent_path(tmp.root), "x.cpp")));
-    EXPECT(tracker.discover_around(outside).empty());
+    ZEXPECT(tracker.discover_around(outside).empty());
 
     store.open(other_id);
     tmp.touch("a/compile_commands.json",
@@ -525,8 +525,8 @@ ZEST_CASE(CDBTickDiscoversAround) {
                   {tmp.root, tmp.path("a/other.cpp"), {}}
     }));
     events = tick(tracker, files, /*force=*/true);
-    ASSERT(events.size() == 1u);
-    ASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{other_id});
+    ZASSERT(events.size() == 1u);
+    ZASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{other_id});
 }
 
 ZEST_CASE(CDBTickPhantomReplacement) {
@@ -550,23 +550,23 @@ ZEST_CASE(CDBTickPhantomReplacement) {
     auto root = *project.cdb.find_source(Spelling::absolute(tmp.path("compile_commands.json")));
 
     vfs::remove_all(tmp.path("compile_commands.json"));
-    ASSERT(tick(tracker, files, /*force=*/true).empty());
+    ZASSERT(tick(tracker, files, /*force=*/true).empty());
     tmp.touch("build/compile_commands.json", "not a database");
-    ASSERT(tick(tracker, files, /*force=*/true).empty());
+    ZASSERT(tick(tracker, files, /*force=*/true).empty());
 
     tmp.touch("compile_commands.json", original);
-    ASSERT(tick(tracker, files, /*force=*/true).empty());
-    EXPECT(project.cdb.present(root));
+    ZASSERT(tick(tracker, files, /*force=*/true).empty());
+    ZEXPECT(project.cdb.present(root));
 
     tmp.touch("build/compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("other.cpp"), {}}
     }));
     auto events = tick(tracker, files, /*force=*/true);
-    ASSERT(events.size() == 1u);
-    ASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{other_id});
-    EXPECT(project.build.entries(main_id).size() == 1u);
-    EXPECT(!project.cdb.candidate_entries(other_id).empty());
+    ZASSERT(events.size() == 1u);
+    ZASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{other_id});
+    ZEXPECT(project.build.entries(main_id).size() == 1u);
+    ZEXPECT(!project.cdb.candidate_entries(other_id).empty());
 }
 
 ZEST_CASE(CDBTickCoalescesSources) {
@@ -590,12 +590,12 @@ ZEST_CASE(CDBTickCoalescesSources) {
               build_cdb_json({
                   {tmp.root, tmp.path("b/other.cpp"), {}}
     }));
-    EXPECT(tick(tracker, files).empty());
+    ZEXPECT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
-    ASSERT(events.size() == 1u);
-    EXPECT(events[0].cdb.added.size() == 2u);
-    EXPECT(project.cdb.loaded(a));
-    EXPECT(project.cdb.loaded(b));
+    ZASSERT(events.size() == 1u);
+    ZEXPECT(events[0].cdb.added.size() == 2u);
+    ZEXPECT(project.cdb.loaded(a));
+    ZEXPECT(project.cdb.loaded(b));
 }
 
 ZEST_CASE(CDBRewriteBeforeWatch) {
@@ -617,12 +617,12 @@ ZEST_CASE(CDBRewriteBeforeWatch) {
     }));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
-    ASSERT(events.size() == 1u);
+    ZASSERT(events.size() == 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
-    ASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(tick(tracker, files).empty());
 }
 
 ZEST_CASE(CDBSameStampRewrite) {
@@ -643,9 +643,9 @@ ZEST_CASE(CDBSameStampRewrite) {
     auto database = tmp.path("compile_commands.json");
     auto stamp = std::chrono::system_clock::now() + std::chrono::hours(1);
     set_mtime(database, stamp);
-    ASSERT(project.cdb.reload_and_diff(SourceID(0)));
+    ZASSERT(project.cdb.reload_and_diff(SourceID(0)));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
 
     tmp.touch("compile_commands.json",
               build_cdb_json({
@@ -653,12 +653,12 @@ ZEST_CASE(CDBSameStampRewrite) {
     }));
     set_mtime(database, stamp);
 
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
-    ASSERT(events.size() == 1u);
+    ZASSERT(events.size() == 1u);
     auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
-    ASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(events[0].cdb.changed == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(tick(tracker, files).empty());
 }
 
 ZEST_CASE(CDBForgedStampSeen) {
@@ -677,10 +677,10 @@ ZEST_CASE(CDBForgedStampSeen) {
     auto database = tmp.path("compile_commands.json");
     auto stamp = std::chrono::system_clock::now() - std::chrono::hours(1);
     set_mtime(database, stamp);
-    ASSERT(project.cdb.reload_and_diff(SourceID(0)));
+    ZASSERT(project.cdb.reload_and_diff(SourceID(0)));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT(tick(tracker, files).empty());
-    ASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).empty());
 
     // Past the coarse clock inode times are taken from.
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -689,8 +689,8 @@ ZEST_CASE(CDBForgedStampSeen) {
                   {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
     }));
     set_mtime(database, stamp);
-    ASSERT(tick(tracker, files).empty());
-    ASSERT(tick(tracker, files).size() == 1u);
+    ZASSERT(tick(tracker, files).empty());
+    ZASSERT(tick(tracker, files).size() == 1u);
 }
 
 /// One workspace tick of the test hook: a look at every file, the
@@ -717,7 +717,7 @@ ZEST_CASE(WorkspaceTickStateMachine) {
 
     // A first look is no change.
     project.file_table.current(header);
-    ASSERT(workspace_tick(tracker, files).empty());
+    ZASSERT(workspace_tick(tracker, files).empty());
 
     // Content change is confirmed by hash and reported once. The new
     // content has a different LENGTH on purpose: back-to-back writes can
@@ -725,27 +725,27 @@ ZEST_CASE(WorkspaceTickStateMachine) {
     // size change keeps the stamp fast path deterministic.
     tmp.touch("header.h", R"(int x = 2222;)");
     auto changed = workspace_tick(tracker, files);
-    ASSERT(changed.size() == 1u);
-    ASSERT(changed[0].kind == FileEvent::Kind::DiskChanged);
-    ASSERT(changed[0].path_id == header);
+    ZASSERT(changed.size() == 1u);
+    ZASSERT(changed[0].kind == FileEvent::Kind::DiskChanged);
+    ZASSERT(changed[0].path_id == header);
 
     // Touch: mtime may bump, identical bytes — silent either way.
     tmp.touch("header.h", R"(int x = 2222;)");
-    ASSERT(workspace_tick(tracker, files).empty());
+    ZASSERT(workspace_tick(tracker, files).empty());
 
     // Removal reported once, then quiet while missing.
     vfs::remove_all(tmp.path("header.h"));
     auto removed = workspace_tick(tracker, files);
-    ASSERT(removed.size() == 1u);
-    ASSERT(removed[0].kind == FileEvent::Kind::DiskRemoved);
-    ASSERT(removed[0].path_id == header);
-    ASSERT(workspace_tick(tracker, files).empty());
+    ZASSERT(removed.size() == 1u);
+    ZASSERT(removed[0].kind == FileEvent::Kind::DiskRemoved);
+    ZASSERT(removed[0].path_id == header);
+    ZASSERT(workspace_tick(tracker, files).empty());
 
     // Reappearance counts as a disk change.
     tmp.touch("header.h", R"(int x = 3;)");
     auto reborn = workspace_tick(tracker, files);
-    ASSERT(reborn.size() == 1u);
-    ASSERT(reborn[0].kind == FileEvent::Kind::DiskChanged);
+    ZASSERT(reborn.size() == 1u);
+    ZASSERT(reborn[0].kind == FileEvent::Kind::DiskChanged);
 }
 
 ZEST_CASE(WorkspaceTickKeepsListedMember) {
@@ -769,13 +769,13 @@ ZEST_CASE(WorkspaceTickKeepsListedMember) {
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     auto both = project.file_table.intern(Spelling::absolute(tmp.path("src/both.cpp")));
     project.file_table.current(both);
-    ASSERT(workspace_tick(tracker, files).empty());
+    ZASSERT(workspace_tick(tracker, files).empty());
 
     vfs::remove_all(tmp.path("src/both.cpp"));
     auto removed = workspace_tick(tracker, files);
-    ASSERT(removed.size() == 1u);
-    ASSERT(removed[0].kind == FileEvent::Kind::DiskRemoved);
-    ASSERT(removed[0].path_id == both);
+    ZASSERT(removed.size() == 1u);
+    ZASSERT(removed[0].kind == FileEvent::Kind::DiskRemoved);
+    ZASSERT(removed[0].path_id == both);
 }
 
 ZEST_CASE(WorkspaceTickSeesOpen) {
@@ -792,20 +792,20 @@ ZEST_CASE(WorkspaceTickSeesOpen) {
     store.open(header);
     project.file_table.current(header);
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
-    ASSERT(workspace_tick(tracker, files).empty());
+    ZASSERT(workspace_tick(tracker, files).empty());
 
     tmp.touch("header.h", R"(int x = 2222;)");
     auto changed = workspace_tick(tracker, files);
-    ASSERT(changed.size() == 1u);
-    ASSERT(changed[0].kind == FileEvent::Kind::DiskChanged);
-    ASSERT(changed[0].path_id == header);
-    ASSERT(workspace_tick(tracker, files).empty());
+    ZASSERT(changed.size() == 1u);
+    ZASSERT(changed[0].kind == FileEvent::Kind::DiskChanged);
+    ZASSERT(changed[0].path_id == header);
+    ZASSERT(workspace_tick(tracker, files).empty());
 
     vfs::remove_all(tmp.path("header.h"));
     auto removed = workspace_tick(tracker, files);
-    ASSERT(removed.size() == 1u);
-    ASSERT(removed[0].kind == FileEvent::Kind::DiskRemoved);
-    ASSERT(removed[0].path_id == header);
+    ZASSERT(removed.size() == 1u);
+    ZASSERT(removed[0].kind == FileEvent::Kind::DiskRemoved);
+    ZASSERT(removed[0].path_id == header);
 }
 
 ZEST_CASE(WorkspaceTickAfterScan) {
@@ -823,10 +823,10 @@ ZEST_CASE(WorkspaceTickAfterScan) {
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     auto first = workspace_tick(tracker, files);
-    ASSERT(first.size() == 1u);
-    ASSERT(first[0].kind == FileEvent::Kind::DiskChanged);
-    ASSERT(first[0].path_id == header);
-    ASSERT(workspace_tick(tracker, files).empty());
+    ZASSERT(first.size() == 1u);
+    ZASSERT(first[0].kind == FileEvent::Kind::DiskChanged);
+    ZASSERT(first[0].path_id == header);
+    ZASSERT(workspace_tick(tracker, files).empty());
 }
 
 ZEST_CASE(AnyLookReportsChange) {
@@ -853,9 +853,9 @@ ZEST_CASE(AnyLookReportsChange) {
     project.rescan_disk_file(header);
 
     auto first = workspace_tick(tracker, files);
-    ASSERT(first.size() == 1u);
-    ASSERT(first[0].kind == FileEvent::Kind::DiskChanged);
-    ASSERT(workspace_tick(tracker, files).empty());
+    ZASSERT(first.size() == 1u);
+    ZASSERT(first[0].kind == FileEvent::Kind::DiskChanged);
+    ZASSERT(workspace_tick(tracker, files).empty());
 }
 
 ZEST_CASE(CheckoutMakesWorkspaceDue) {
@@ -879,11 +879,11 @@ ZEST_CASE(CheckoutMakesWorkspaceDue) {
 
     tmp.touch("header.h", R"(int x = 2222;)");
     files.disk.tick(std::chrono::hours(1));
-    ASSERT(files.disk.take_changes().empty());
+    ZASSERT(files.disk.take_changes().empty());
 
     tmp.touch(".git/index", "v2");
     files.disk.tick(std::chrono::hours(1));
-    ASSERT(files.disk.take_changes() == llvm::SmallVector<Fid>{header});
+    ZASSERT(files.disk.take_changes() == llvm::SmallVector<Fid>{header});
 }
 
 ZEST_CASE(LinkedWorktreeWatched) {
@@ -908,7 +908,7 @@ ZEST_CASE(LinkedWorktreeWatched) {
     tmp.touch("wt/header.h", R"(int x = 2222;)");
     tmp.touch("repo/.git/worktrees/wt/HEAD", "ref: refs/heads/other\n");
     files.disk.tick(std::chrono::hours(1));
-    ASSERT(files.disk.take_changes() == llvm::SmallVector<Fid>{header});
+    ZASSERT(files.disk.take_changes() == llvm::SmallVector<Fid>{header});
 }
 
 };  // ZEST_SUITE(FileTracker)
