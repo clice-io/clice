@@ -28,7 +28,7 @@ The answer is one JSON object, `{"result": ..., "stale": [...]}`, like a query's
 - `conflicts` stop the rename: the new name is declared in the same scope already, is a macro, names a parameter or label of the same function, a member of a base or derived class, the class the renamed member belongs to or a member of the renamed class; the rename would edit a file outside the workspace; two namespaces would merge.
 - `stale` lists the files the rename edits, or that spell the old or the new name, whose indexed rows are not current — changed since they were indexed, or never indexed while some unit of the build still is not. They stop the rename as well; `--fresh` reindexes them first.
 
-The exit code is 0 when the rename was written, or planned under `--dry-run`, and 1 when a conflict or a stale file stopped it or the symbol cannot be renamed — with `{"error": "..."}` saying why in the last case.
+The exit code is 0 when the rename was written, or planned under `--dry-run`, and 1 when a conflict or a stale file stopped it or the symbol cannot be renamed — with `{"error": "..."}` saying why in the last case. Arguments that do not parse exit with 2.
 
 ## Writing
 

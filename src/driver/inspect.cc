@@ -81,9 +81,11 @@ struct InspectOptions {
 
 /// JSON layout of the inspect output. Field names stay snake_case (the
 /// project's native spelling) and enums serialize as their C++ value
-/// names; the TS side owns any mapping to LSP vocabulary.
+/// names; the TS side owns any mapping to LSP vocabulary. Text that is not
+/// UTF-8 is written as U+FFFD, as the server writes it to the client.
 struct InspectJsonConfig {
     constexpr static auto enum_repr = kota::codec::enum_repr::String;
+    constexpr static auto invalid_utf8 = kota::codec::invalid_utf8::Replace;
 };
 
 struct FileEntry {

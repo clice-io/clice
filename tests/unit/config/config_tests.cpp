@@ -973,7 +973,7 @@ ZEST_CASE(JsonSchema) {
     EXPECT(*modes == kota::codec::dyn::Value(kota::codec::dyn::Array{"off", "on", "auto"}));
 
     // Root and every section body reject unknown properties, so editors
-    // flag typos the way the strict decode pass does.
+    // flag typos the way loading reports unknown keys.
     auto denies_unknown = [](const kota::codec::dyn::Value& body) {
         const auto* additional = body.get_object()->find("additionalProperties");
         return additional != nullptr && additional->get_bool() == false;

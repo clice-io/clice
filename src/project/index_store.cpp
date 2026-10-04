@@ -13,6 +13,7 @@
 #include "index/tu_index.h"
 #include "project/command_resolver.h"
 #include "project/hosting.h"
+#include "support/json.h"
 #include "support/logging.h"
 #include "support/timer.h"
 #include "vfs/file_system.h"
@@ -32,13 +33,6 @@
 namespace clice {
 
 namespace {
-
-/// A path that is not UTF-8 is persisted with U+FFFD for its bad bytes, as
-/// JSON holds only UTF-8: it then names no file, and only what it describes
-/// is rebuilt, where a blob that cannot be written would lose everything.
-struct PathJsonConfig {
-    constexpr static auto invalid_utf8 = kota::codec::invalid_utf8::Replace;
-};
 
 /// Entry hash of a file's default selection — the candidate-order winner,
 /// or the default command claiming a file without entries; empty when the

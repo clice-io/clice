@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -7,6 +8,7 @@
 #include "test/tester.h"
 #include "index/serialization.h"
 #include "index/shard.h"
+#include "index/site.h"
 #include "index/tu_index.h"
 
 #include "kota/ipc/lsp/text.h"
@@ -176,6 +178,29 @@ ZEST_CASE(AsciiContentOmitted) {
     auto expected = kota::ipc::lsp::line_starts(content);
     auto starts = shard.line_starts();
     ASSERT(std::vector<std::uint32_t>(starts.begin(), starts.end()) == expected);
+}
+
+ZEST_CASE(CRLFLinesMarked) {
+    // ASCII content is not stored: the shard marks the lines ending in
+    // "\r\n" so its coordinates place their ends without the text.
+    std::string content = "int x;\r\nint y;\nint z;\r\n";
+    auto rows = simple_rows({
+        {{4, 5}, 111}
+    });
+    auto shard = make_shard(write_fresh(rows, content));
+    ASSERT(shard.content().empty());
+    auto more = simple_rows({
+        {{12, 13}, 222}
+    });
+    auto merged = append_variant(shard, more, content);
+    ASSERT(std::ranges::equal(merged.crlf_lines(), shard.crlf_lines()));
+
+    auto starts = shard.line_starts();
+    index::Coordinates marked(shard.content_size(), starts, shard.crlf_lines());
+    index::Coordinates scanned(content, starts);
+    for(std::uint32_t row = 0; row < starts.size(); row += 1) {
+        EXPECT(marked.line_bounds(row) == scanned.line_bounds(row));
+    }
 }
 
 ZEST_CASE(NonAsciiContentStored) {
