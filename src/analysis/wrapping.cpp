@@ -96,7 +96,7 @@ std::expected<StdModules, std::string> read_std_modules(llvm::StringRef director
             }
         }
     }
-    if(result.headers.empty() || result.compat.empty()) {
+    if(result.headers.empty() || result.compat.empty() || !vfs::is_file(result.sources.back())) {
         return std::unexpected(
             std::format("{} holds no libc++ std and std.compat modules", directory.str()));
     }

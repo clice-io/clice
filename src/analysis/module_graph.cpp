@@ -171,7 +171,7 @@ void for_each_expanded(llvm::StringRef directive, llvm::function_ref<void(llvm::
         text.consume_front(")");
         for_each_identifier(list, [&](llvm::StringRef name) { parameters.push_back(name); });
     }
-    for_each_identifier(text, [&](llvm::StringRef word) {
+    for_each_identifier(code_of(text), [&](llvm::StringRef word) {
         if(!llvm::is_contained(parameters, word)) {
             visit(word);
         }
@@ -380,19 +380,21 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             // A forced include (-include) has no directive in the includer;
             // its presumed line points at some other text there.
             auto directive = line_text(includer, include_lines.lookup({includer, id})).ltrim();
-            if(!directive.starts_with("#") || !directive.contains("include") ||
-               !directive.contains(
-                   llvm::sys::path::filename(file.path, llvm::sys::path::Style::posix))) {
-                file.spellings.emplace_back();
-                continue;
-            }
             auto open = directive.find_first_of("<\"");
             auto close = open == llvm::StringRef::npos
                              ? open
                              : directive.find(directive[open] == '<' ? '>' : '"', open + 1);
-            file.spellings.push_back(close == llvm::StringRef::npos
-                                         ? std::string()
-                                         : directive.slice(open, close + 1).str());
+            auto spelled = close == llvm::StringRef::npos ? llvm::StringRef()
+                                                          : directive.slice(open, close + 1);
+            auto names_file =
+                !spelled.empty() &&
+                llvm::sys::path::filename(spelled.drop_front().drop_back(),
+                                          llvm::sys::path::Style::posix) ==
+                    llvm::sys::path::filename(file.path, llvm::sys::path::Style::posix);
+            file.spellings.push_back(directive.starts_with("#") && directive.contains("include") &&
+                                             names_file
+                                         ? spelled.str()
+                                         : std::string());
         }
     }
 
