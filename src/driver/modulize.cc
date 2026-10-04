@@ -75,17 +75,23 @@ auto make_modulize_command() {
 }
 
 /// Write the files whose content changed, so a regeneration rebuilds only
-/// what it touched, and remove the generated files a previous run left: a
-/// stale empty header in a mirror would hide the real one. What a run
-/// generates is the mirrors and, beside them, the units, macro headers and
-/// prelude; nothing else under `out` is touched.
+/// what it touched, and remove the files the previous run wrote that this
+/// one no longer produces: a stale empty header in a mirror would hide the
+/// real one. The manifest `.modulize` lists what a run wrote; nothing else
+/// under `out` is touched.
 std::expected<void, std::string> write_files(llvm::StringRef out,
                                              llvm::ArrayRef<analysis::Wrapping::File> files) {
+    auto at = [&](llvm::StringRef relative) {
+        llvm::SmallString<256> path(out);
+        llvm::sys::path::append(path, llvm::sys::path::Style::posix, relative);
+        return path;
+    };
     llvm::StringSet<> written;
+    std::string manifest;
     for(auto& file: files) {
         written.insert(file.path);
-        llvm::SmallString<256> path(out);
-        llvm::sys::path::append(path, llvm::sys::path::Style::posix, file.path);
+        manifest += file.path + "\n";
+        auto path = at(file.path);
         if(auto existing = vfs::read(path);
            existing && (*existing)->getBuffer() == llvm::StringRef(file.content)) {
             continue;
@@ -100,26 +106,24 @@ std::expected<void, std::string> write_files(llvm::StringRef out,
                 std::format("cannot write {}: {}", path.str().str(), error.message()));
         }
     }
-    auto generated = [](llvm::StringRef relative) {
-        return relative.starts_with("mirror/") ||
-               (!relative.contains('/') &&
-                (relative.ends_with(".cppm") || relative.ends_with(".macros.h") ||
-                 relative == "prelude.h"));
-    };
-    std::vector<std::string> stale;
-    vfs::walk(out, [&](const vfs::Entry& entry) {
-        auto relative = llvm::sys::path::convert_to_slash(
-            llvm::StringRef(entry.path).drop_front(out.size()).ltrim("/\\"));
-        if(entry.type == llvm::sys::fs::file_type::regular_file && generated(relative) &&
-           !written.contains(relative)) {
-            stale.push_back(entry.path);
+    if(auto previous = vfs::read(at(".modulize"))) {
+        llvm::SmallVector<llvm::StringRef> lines;
+        (*previous)->getBuffer().split(lines, '\n', -1, false);
+        for(auto relative: lines) {
+            if(written.contains(relative)) {
+                continue;
+            }
+            if(auto error = vfs::remove(at(relative))) {
+                return std::unexpected(std::format("cannot remove {}/{}: {}",
+                                                   out.str(),
+                                                   relative.str(),
+                                                   error.message()));
+            }
         }
-        return true;
-    });
-    for(auto& path: stale) {
-        if(auto error = vfs::remove(path)) {
-            return std::unexpected(std::format("cannot remove {}: {}", path, error.message()));
-        }
+    }
+    if(auto error = vfs::write(at(".modulize"), manifest)) {
+        return std::unexpected(
+            std::format("cannot write {}/.modulize: {}", out.str(), error.message()));
     }
     return {};
 }

@@ -40,6 +40,17 @@ std::expected<llvm::SmallVector<std::string>, std::string> read_lines(llvm::Stri
     return result;
 }
 
+/// A C++ module name: identifiers joined by dots, which also keeps the files
+/// named after it inside the output directory.
+bool is_module_name(llvm::StringRef name) {
+    llvm::SmallVector<llvm::StringRef> parts;
+    name.split(parts, '.');
+    return llvm::all_of(parts, [](llvm::StringRef part) {
+        return !part.empty() && (llvm::isAlpha(part.front()) || part.front() == '_') &&
+               llvm::all_of(part, [](char c) { return llvm::isAlnum(c) || c == '_'; });
+    });
+}
+
 }  // namespace
 
 std::expected<StdModules, std::string> read_std_modules(llvm::StringRef directory) {
@@ -112,7 +123,12 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
     llvm::StringMap<const Interface*> generated;
     for(std::uint32_t module = 0; module < partition.modules.size(); module += 1) {
         auto& interface = interfaces[module];
-        switch(partition.kinds[module]) {
+        auto kind = partition.kinds[module];
+        if((kind == ModuleKind::Wrapped || kind == ModuleKind::Textual) &&
+           !is_module_name(interface.module)) {
+            return std::unexpected(std::format("module {}: not a module name", interface.module));
+        }
+        switch(kind) {
             case ModuleKind::Program: break;
             case ModuleKind::Wrapped: generated[interface.module] = &interface; break;
             case ModuleKind::Textual: given.push_back(&interface); break;
@@ -241,37 +257,43 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
                 unit += macro.directive + "\n";
             }
         }
-        // What the imported modules cannot export, which their emptied
-        // headers no longer bring in.
-        for(auto& imported: module.imports) {
-            for(auto& header: generated[imported]->textual) {
-                unit += std::format("#include {}\n", operand(header));
-            }
-        }
-        unit += "\n";
         llvm::StringSet<> roots;
-        for(auto& entry: interface.entries) {
-            auto file = absolute(entry.file);
-            unit += std::format("#include \"{}\"\n", file);
-            if(entry.name.empty()) {
-                continue;
-            }
-            // A name relative to the includer's own directory finds the header
-            // before any directory on the include path.
-            llvm::SmallString<128> spelled(entry.name);
-            llvm::sys::path::remove_dots(spelled, true, llvm::sys::path::Style::posix);
-            if(spelled.starts_with("../") || llvm::sys::path::is_absolute(spelled)) {
-                result.plan.warnings.push_back(
-                    std::format("{}: {} is included as \"{}\", which no mirror can empty",
-                                name,
-                                entry.file,
-                                entry.name));
-                continue;
-            }
-            result.files.push_back({std::format("mirror/{}/{}", name, spelled.str()), ""});
+        auto root_of = [&](const InterfaceHeader& header, llvm::StringRef spelled) {
+            auto file = absolute(header.file);
             if(llvm::StringRef(file).ends_with(("/" + spelled).str())) {
                 roots.insert(llvm::StringRef(file).drop_back(spelled.size() + 1));
             }
+        };
+        // What the imported modules cannot export that its headers name,
+        // which the emptied headers no longer bring in.
+        for(auto& header: interface.textual_uses) {
+            unit += std::format("#include {}\n", operand(header));
+            root_of(header, header.name);
+        }
+        unit += "\n";
+        for(auto& entry: interface.entries) {
+            unit += std::format("#include \"{}\"\n", absolute(entry.file));
+            // A name relative to the includer's own directory finds the header
+            // before any directory on the include path; a macro-expanded
+            // directive leaves none.
+            llvm::SmallString<128> spelled(entry.name);
+            llvm::sys::path::remove_dots(spelled, true, llvm::sys::path::Style::posix);
+            if(spelled.empty() || spelled.starts_with("../") ||
+               llvm::sys::path::is_absolute(spelled)) {
+                result.plan.warnings.push_back(
+                    std::format("{}: {} is included by no name a mirror can empty",
+                                name,
+                                entry.file));
+                continue;
+            }
+            result.files.push_back({std::format("mirror/{}/{}", name, spelled.str()), ""});
+            root_of(entry, spelled);
+        }
+        for(auto& file: interface.varying) {
+            result.plan.warnings.push_back(std::format(
+                "{}: {} declares different entities in different units; the module keeps one",
+                name,
+                file));
         }
         for(auto& entry: roots) {
             module.include_roots.push_back(entry.first().str());

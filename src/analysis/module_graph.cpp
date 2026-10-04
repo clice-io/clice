@@ -375,9 +375,10 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 continue;
             }
             text += part;
-            auto opened = llvm::StringRef(text).rfind("/*");
+            auto code = code_of(text);
+            auto opened = llvm::StringRef(code).rfind("/*");
             if(opened == llvm::StringRef::npos ||
-               llvm::StringRef(text).drop_front(opened).contains("*/")) {
+               llvm::StringRef(code).drop_front(opened).contains("*/")) {
                 break;
             }
             text += ' ';
@@ -3156,6 +3157,31 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             interface.textual.push_back(header_of(module, file, reason));
         }
         std::ranges::sort(interface.textual, {}, &InterfaceHeader::file);
+        if(partition.kinds[module] == ModuleKind::Wrapped) {
+            // The internal-linkage entities of another wrapped module its
+            // headers name: their headers no emptied entry brings in.
+            std::set<std::uint32_t> used;
+            for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+                if(module_of(file) != module || facts.files[file].source) {
+                    continue;
+                }
+                if(facts.files[file].declarations_differ) {
+                    interface.varying.push_back(facts.files[file].path);
+                }
+                for(auto& use: facts.uses[file]) {
+                    auto owner = facts.entities[use.entity].owner;
+                    auto other = module_of(owner);
+                    if(other != module && partition.kinds[other] == ModuleKind::Wrapped &&
+                       textual[other].contains(owner)) {
+                        used.insert(owner);
+                    }
+                }
+            }
+            for(auto header: used) {
+                interface.textual_uses.push_back(header_of(module_of(header), header, {}));
+            }
+            std::ranges::sort(interface.varying);
+        }
         for(auto& [key, used]: exports[module]) {
             interface.exports.push_back(
                 {.name = key.first, .file = facts.files[key.second].path, .used = used});

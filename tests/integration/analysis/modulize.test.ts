@@ -142,7 +142,9 @@ function writeProject(session: SessionFactory): Workspace {
         lines(
             "#pragma once",
             "#include <alpha/alpha.h>",
+            "#include <alpha/local.h>",
             "#include <fassert.h>",
+            "inline int beta_local() { return alpha_local(); }",
             "namespace beta {",
             "inline alpha::Thing wrap(int v) { return alpha::Thing{ALPHA_TWICE(v)}; }",
             "}",
@@ -305,8 +307,7 @@ test("C library kept headers", ({ session }) => {
 
 test("modulize writes the wrapping", async ({ session }) => {
     const ws = writeProject(session);
-    ws.write("wrap/mirror/stale/gone.h", "");
-    ws.write("wrap/notes.txt", "kept");
+    ws.write("wrap/custom.cppm", "export module custom;\n");
     const run = modulize(ws);
     expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
     const plan = JSON.parse(run.stdout) as Plan;
@@ -336,7 +337,9 @@ test("modulize writes the wrapping", async ({ session }) => {
     const beta = ws.read("wrap/beta.cppm");
     expect(beta).toContain("import alpha;");
     expect(beta).toContain('#include "alpha.macros.h"');
+    // What beta's headers name of alpha's textual headers, not every one.
     expect(beta).toContain("#include <alpha/local.h>");
+    expect(beta).not.toContain("anchor.h");
     expect(ws.read("wrap/alpha.macros.h")).toContain("#define ALPHA_TWICE(x) ((x) * 2)");
     expect(ws.read("wrap/prelude.h")).toBe(
         lines(
@@ -363,14 +366,30 @@ test("modulize writes the wrapping", async ({ session }) => {
     expect(ws.exists("wrap/mirror/alpha/alpha/limits.h")).toBe(true);
     expect(ws.exists("wrap/mirror/alpha/alpha/local.h")).toBe(false);
     expect(ws.exists("wrap/mirror/alpha/alpha/anchor.h")).toBe(false);
-    expect(ws.exists("wrap/mirror/stale/gone.h")).toBe(false);
-    expect(ws.read("wrap/notes.txt")).toBe("kept");
+    expect(ws.read("wrap/custom.cppm")).toBe("export module custom;\n");
 
     // Unchanged files keep their timestamps.
     const before = statSync(ws.path("wrap/alpha.cppm")).mtimeMs;
     await sleep(MTIME_GRANULARITY);
     expect(modulize(ws).status).toBe(0);
     expect(statSync(ws.path("wrap/alpha.cppm")).mtimeMs).toBe(before);
+
+    // Without beta, what the last run wrote for it goes; the rest stays.
+    ws.write(
+        "alpha.json",
+        JSON.stringify({
+            modules: [
+                { name: "std", files: ["third/std/**"], external: true },
+                { name: "libc", files: ["third/libc/**"], textual: true, provides: "std.compat" },
+                { name: "alpha", files: ["third/alpha/**"] },
+            ],
+        }),
+    );
+    expect(modulize(ws, ws.path("alpha.json")).status).toBe(0);
+    expect(ws.exists("wrap/beta.cppm")).toBe(false);
+    expect(ws.exists("wrap/mirror/beta/beta/beta.h")).toBe(false);
+    expect(ws.exists("wrap/alpha.cppm")).toBe(true);
+    expect(ws.exists("wrap/custom.cppm")).toBe(true);
 });
 
 test("modulize partition errors", ({ session }) => {
@@ -397,6 +416,14 @@ test("modulize partition errors", ({ session }) => {
         { name: "alpha", files: ["third/alpha/**"] },
     ]);
     expect(failure(modulize(ws, cycle))).toBe("modules import each other: alpha -> beta -> alpha");
+
+    const named = partition("named.json", [{ name: "../escape", files: ["third/alpha/**"] }]);
+    expect(failure(modulize(ws, named))).toContain("not a module name");
+
+    const flags = partition("flags.json", [
+        { name: "std", files: ["third/std/**"], textual: true, external: true },
+    ]);
+    expect(failure(modulize(ws, flags))).toContain("both textual and external");
 
     const both = partition("both.json", [
         { name: "libc", files: ["third/libc/cio.h"], textual: true },

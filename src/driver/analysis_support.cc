@@ -76,10 +76,16 @@ std::expected<analysis::PartitionSpec, std::string>
             .name = std::move(module.name),
             .files = std::move(module.files),
         };
-        if(module.textual.value_or(false)) {
+        auto textual = module.textual.value_or(false);
+        auto external = module.external.value_or(false);
+        if(textual && external) {
+            return std::unexpected(
+                std::format("module {} is both textual and external", claimed.name));
+        }
+        if(textual) {
             claimed.kind = analysis::ModuleKind::Textual;
         }
-        if(module.external.value_or(false)) {
+        if(external) {
             claimed.kind = analysis::ModuleKind::External;
         }
         if(module.provides) {
@@ -137,8 +143,8 @@ std::expected<LoadedFacts, Failure> load_facts(llvm::StringRef workspace,
         if(!globs.empty()) {
             return llvm::any_of(globs, [&](auto& glob) { return glob.match(path); });
         }
-        return !llvm::sys::path::is_absolute(path, llvm::sys::path::Style::posix) &&
-               !path.starts_with(".") && !path.contains("/.");
+        return !llvm::sys::path::is_absolute(path) && !path.starts_with(".") &&
+               !path.contains("/.");
     });
     return LoadedFacts{.root = llvm::StringRef(root).str(), .facts = std::move(facts)};
 }
