@@ -325,10 +325,9 @@ private:
     /// The pool's callbacks, routed to the projects owning the documents.
     void wire();
 
-    /// Cancellation scope of the serving phase. run_serve_mode bounds its
-    /// transport tasks with with_token(..., shutdown_token());
-    /// schedule_shutdown() cancels the source, unwinding them so the root
-    /// task proceeds to shutdown_and_cleanup().
+    /// Cancellation scope of the serving phase. run_serve_mode serves until
+    /// it fires; schedule_shutdown() cancels the source, unwinding the
+    /// transport tasks so the root task proceeds to shutdown_and_cleanup().
     kota::cancellation_source shutdown_source;
 
     /// Shutdowns of removed projects and deferred drains of the file

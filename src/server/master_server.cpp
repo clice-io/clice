@@ -836,6 +836,21 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     lifecycle = ServerLifecycle::Exited;
 }
 
+/// Runs `serving` until the shutdown token fires or it ends on its own. A
+/// cancelled request still waits for its worker's answer, so the pool stops
+/// — killing a worker that would never answer — before `serving` is joined.
+static kota::task<> serve_until_shutdown(MasterServer& server, kota::task<> serving) {
+    auto watch = [](MasterServer& server, kota::task<> serving) -> kota::task<> {
+        co_await kota::with_token(std::move(serving), server.shutdown_token());
+        server.schedule_shutdown();
+    };
+    kota::task_group<> group;
+    group.spawn(watch(server, std::move(serving)));
+    co_await server.shutdown_token().wait().catch_cancel();
+    co_await server.pool.stop();
+    co_await group.join();
+}
+
 struct Connection {
     std::unique_ptr<kota::ipc::JSONPeer> peer;
     std::unique_ptr<LSPClient> lsp_client;
@@ -944,7 +959,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
                 if(!root.empty()) {
                     server.initialize(Spelling(root, Spelling::cwd()));
                 }
-                co_await kota::with_token(peer.run(), server.shutdown_token());
+                co_await serve_until_shutdown(server, peer.run());
                 co_await server.shutdown_and_cleanup();
             }(server, lsp_peer, ws));
         loop.run();
@@ -969,8 +984,8 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             if(!root.empty()) {
                 server.initialize(Spelling(root, Spelling::cwd()));
             }
-            co_await kota::with_token(accept_connections(server, std::move(acceptor), connections),
-                                      server.shutdown_token());
+            co_await serve_until_shutdown(server,
+                                          accept_connections(server, std::move(acceptor), connections));
             co_await server.shutdown_and_cleanup();
         }(server, std::move(*acceptor), connections, ws));
         loop.run();
