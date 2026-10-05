@@ -3,8 +3,8 @@ name: nightly
 # Nightly pre-release channel (odd-minor versions): if main gained tested
 # builds since the last nightly, tag the newest packaged commit as
 # vX.<odd>.YYYYMMDDHH on the odd minor above the newest release, promote its
-# CI packages, and publish it as a GitHub pre-release plus a Marketplace
-# pre-release.
+# CI packages, and publish it as a GitHub pre-release plus a Marketplace and
+# Open VSX pre-release.
 # Old nightlies are pruned after 30 days; stable (even-minor) releases are
 # never touched.
 on:
@@ -197,7 +197,7 @@ jobs:
             echo
             echo "Symbol packages hold the unstripped server for crash log"
             echo "symbolization via \`scripts/symbolize.py\`. VS Code users on the"
-            echo "Marketplace pre-release channel update automatically."
+            echo "Marketplace or Open VSX pre-release channel update automatically."
           } > /tmp/notes.md
           gh release create "$TAG" --prerelease --title "$TAG" \
             --notes-file /tmp/notes.md

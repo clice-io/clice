@@ -2,6 +2,7 @@
   "name": "clice",
   "displayName": "clice vscode",
   "description": "VSCode extension for clice",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/clice-io/clice"
@@ -272,6 +273,7 @@
     "vscode:prepublish": "webpack --mode production --devtool hidden-source-map",
     "package": "vsce package --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
     "publish": "vsce publish --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
+    "publish:ovsx": "ovsx publish --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
     "compile-tests": "tsc -p . --outDir out",
     "typecheck": "tsc -p . --noEmit",
     "lint": "eslint .",
@@ -290,6 +292,7 @@
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.7.1",
     "eslint": "^10.8.0",
+    "ovsx": "^1.2.0",
     "ts-loader": "^9.5.4",
     "typescript-eslint": "^8.65.0",
     "typescript": "~5.5.4",

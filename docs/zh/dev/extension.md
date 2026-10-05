@@ -17,10 +17,11 @@ pixi run install-vscode
 pixi run build-vscode
 ```
 
-发布到 VS Code Marketplace（需要 `VSCE_PAT` 环境变量）：
+发布到 VS Code Marketplace（需要 `VSCE_PAT` 环境变量）和 Open VSX（需要 `OVSX_PAT` 环境变量）：
 
 ```shell
 pixi run publish-vscode
+pixi run publish-ovsx
 ```
 
 > [!IMPORTANT]

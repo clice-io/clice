@@ -17,10 +17,11 @@ pixi run install-vscode
 pixi run build-vscode
 ```
 
-Publish to the VSCode Marketplace (`VSCE_PAT` env var required):
+Publish to the VSCode Marketplace (`VSCE_PAT` env var required) and to Open VSX (`OVSX_PAT` env var required):
 
 ```shell
 pixi run publish-vscode
+pixi run publish-ovsx
 ```
 
 > [!IMPORTANT]
