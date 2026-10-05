@@ -38,19 +38,11 @@ namespace {
 
 /// What a compile reports in place of an index too large for its reply.
 protocol::Diagnostic index_too_large(std::size_t bytes) {
-    protocol::Diagnostic diagnostic;
-    diagnostic.range = protocol::Range{
-        .start = protocol::Position{.line = 0, .character = 0},
-        .end = protocol::Position{.line = 0, .character = 0},
-    };
-    diagnostic.severity = protocol::DiagnosticSeverity::Warning;
-    diagnostic.source = "clice";
-    diagnostic.message = std::format(
-        "this file's index ({} MiB) is too large to send between clice processes; "
-        "features that read the file's own index, such as references within it, are "
-        "unavailable",
-        bytes / (1024 * 1024));
-    return diagnostic;
+    return feature::file_warning(
+        std::format("this file's index ({} MiB) is too large to send between clice processes; "
+                    "features that read the file's own index, such as references within it, are "
+                    "unavailable",
+                    bytes / (1024 * 1024)));
 }
 
 }  // namespace

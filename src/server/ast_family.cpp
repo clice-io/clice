@@ -89,21 +89,13 @@ void append_crash_notes(const Session& session, std::vector<protocol::Diagnostic
                 : "until this file or a header it includes changes, or until you save it";
         auto repeats =
             note.strikes > 1 ? std::format(" {} times in a row", note.strikes) : std::string();
-        protocol::Diagnostic diagnostic;
-        diagnostic.range = protocol::Range{
-            .start = protocol::Position{.line = 0, .character = 0},
-            .end = protocol::Position{.line = 0, .character = 0},
-        };
-        diagnostic.severity = protocol::DiagnosticSeverity::Warning;
-        diagnostic.source = "clice";
-        diagnostic.message =
+        diagnostics.push_back(feature::file_warning(
             std::format("clice's worker crashed{} while {} this file ({}). {} paused here {}.",
                         repeats,
                         subject.work,
                         note.cause,
                         subject.paused,
-                        retry);
-        diagnostics.push_back(std::move(diagnostic));
+                        retry)));
     }
 }
 

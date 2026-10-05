@@ -30,6 +30,7 @@
 #include "kota/meta/enum.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -113,6 +114,11 @@ static void publish(kota::ipc::JSONPeer& peer, const protocol::PublishDiagnostic
     }
 }
 
+/// The answer to a diagnostics pull.
+static kota::codec::RawValue full_report(std::vector<protocol::Diagnostic> items) {
+    return to_raw(protocol::RelatedFullDocumentDiagnosticReport{.items = std::move(items)});
+}
+
 /// Fold versioned document changes into the plain `changes` map for a
 /// client without documentChanges support.
 static void unversion(protocol::WorkspaceEdit& edit) {
@@ -176,20 +182,7 @@ kota::ipc::Error LSPClient::unserved(llvm::StringRef spelling) {
     return find_alias(spelling) ? content_modified() : document_not_open();
 }
 
-/// A warning from clice itself, on the file's first character.
-static protocol::Diagnostic file_warning(std::string message) {
-    protocol::Diagnostic diagnostic;
-    diagnostic.range = protocol::Range{
-        .start = protocol::Position{.line = 0, .character = 0},
-        .end = protocol::Position{.line = 0, .character = 0},
-    };
-    diagnostic.severity = protocol::DiagnosticSeverity::Warning;
-    diagnostic.source = "clice";
-    diagnostic.message = std::move(message);
-    return diagnostic;
-}
-
-std::string LSPClient::divergence(const AliasDocument& alias) {
+std::string LSPClient::divergence_message(const AliasDocument& alias) {
     return std::format(
         "This file is also open as {}, which clice analyzes; edits here are not "
         "analyzed until the texts agree. Close one of the two.",
@@ -206,46 +199,33 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
     if(!client_ready) {
         return;
     }
-    // A pull of the second name answers the first name's diagnostics while
-    // the texts agree and the divergence warning while they differ (see
-    // the pull handler): the answer the client holds changes when they
-    // part or meet again.
+    bool diverged = !owner || owner->text != alias.buffer.text;
+    bool flipped = std::exchange(alias.warned, diverged) != diverged;
+    if(diverged && flipped) {
+        peer.send_notification(protocol::ShowMessageParams{
+            .type = protocol::MessageType::Warning,
+            .message = divergence_message(alias),
+        });
+    }
+    if(pull_diagnostics) {
+        if(flipped) {
+            refresh_diagnostics();
+        }
+        return;
+    }
     protocol::PublishDiagnosticsParams params;
     params.uri = feature::to_uri(alias.spelling);
     params.version = alias.buffer.version;
-    if(owner && owner->text == alias.buffer.text) {
-        if(pull_diagnostics) {
-            if(std::exchange(alias.warned, false)) {
-                refresh_diagnostics();
-            }
-            return;
-        }
+    if(diverged) {
+        params.diagnostics.push_back(feature::file_warning(divergence_message(alias)));
+    } else if(auto projection =
+                  project.ast.projections.projection_at(owner->path_id, owner->version)) {
+        params.diagnostics = format_diagnostics(*projection->output);
+        append_crash_notes(*owner, params.diagnostics);
+    } else if(!flipped) {
         // Shared once the owner's compile caught up with the text; until
         // then only a divergence warning is taken down.
-        auto projection = project.ast.projections.projection(owner->path_id);
-        if(projection && projection->output && projection->output->version == owner->version) {
-            params.diagnostics = format_diagnostics(*projection->output);
-            append_crash_notes(*owner, params.diagnostics);
-        } else if(!alias.warned) {
-            return;
-        }
-        alias.warned = false;
-    } else {
-        auto message = divergence(alias);
-        bool parted = !std::exchange(alias.warned, true);
-        if(parted) {
-            peer.send_notification(protocol::ShowMessageParams{
-                .type = protocol::MessageType::Warning,
-                .message = message,
-            });
-        }
-        if(pull_diagnostics) {
-            if(parted) {
-                refresh_diagnostics();
-            }
-            return;
-        }
-        params.diagnostics.push_back(file_warning(std::move(message)));
+        return;
     }
     publish(peer, params);
 }
@@ -459,9 +439,8 @@ void LSPClient::register_lifecycle() {
         for(auto& project: srv.projects) {
             project->sessions.for_each([&](Fid path_id, const Session& session) {
                 auto& projections = project->ast.projections;
-                auto projection = projections.projection(path_id);
-                if(projection && projection->output.has_value() && projections.current(path_id) &&
-                   projection->output->version == session.version) {
+                if(projections.current(path_id) &&
+                   projections.projection_at(path_id, session.version)) {
                     this->push_output(*project, session);
                 }
                 return true;
@@ -655,8 +634,8 @@ void LSPClient::register_document_sync() {
         // LSP versions are scoped to an open document: a reopen restarts
         // them, so a stale entry would misread the fresh document's first
         // compile as an unchanged-text recompile.
-        published_versions.erase(path_id);
-        pulled_versions.erase(path_id);
+        output_versions.erase(path_id);
+        pulled.erase(path_id);
         // The diagnostics clear goes out under the spelling being closed.
         srv.close_session(path_id);
         srv.files.unshow(path_id);
@@ -666,6 +645,10 @@ void LSPClient::register_document_sync() {
             clear_alias(next.spelling);
             srv.files.show_as(path_id, next.spelling);
             srv.open_session(path_id, std::move(next.buffer.text), next.buffer.version);
+            // A pulling client still holds its divergence warning.
+            if(pull_diagnostics && next.warned) {
+                refresh_diagnostics();
+            }
         }
     });
 
@@ -761,31 +744,37 @@ void LSPClient::register_language_features() {
             });
     });
 
-    // Every pull is answered a report, never an error: on one, clients
-    // clear what they hold or stop pulling the document.
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::DocumentDiagnosticParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
-        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
-        if(!session) {
-            protocol::RelatedFullDocumentDiagnosticReport report;
-            if(auto* alias = find_alias(path)) {
-                report.items.push_back(file_warning(divergence(*alias)));
+    // A pull is always answered with a report, never an error: on an
+    // error, clients clear what they hold or stop pulling the document.
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DocumentDiagnosticParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            std::vector<protocol::Diagnostic> items;
+            if(session) {
+                items = co_await project->features.diagnostics(session);
             }
-            return kota::co_invoke(
-                [report = std::move(report)]() -> RawResult { co_return to_raw(report); });
-        }
-        return kota::co_invoke(
-            [this, session, project, items = project->features.diagnostics(session)]() mutable
-                -> RawResult {
-                auto diagnostics = co_await std::move(items);
-                if(!session->closed) {
-                    pulled_versions[session->path_id] = session->version;
+            // A second name answers the warning once its text parted from the
+            // first name's, before the pull or while it waited.
+            if(auto* alias = find_alias(path);
+               alias && (!session || alias->buffer.text != session->text)) {
+                co_return full_report({feature::file_warning(divergence_message(*alias))});
+            }
+            auto report = full_report(std::move(items));
+            if(session) {
+                // Recorded against the live session: one that replaced this
+                // pull's meanwhile (the document moved to another project)
+                // compiles the same text, and its landing must correct the
+                // empty answer the closed one gave.
+                if(auto live = server.find_session(path_id)) {
+                    pulled[path_id] = {
+                        .version = live->version,
+                        .report = llvm::xxh3_64bits(report.data),
+                    };
                 }
-                co_return to_raw(
-                    protocol::RelatedFullDocumentDiagnosticReport{.items = std::move(diagnostics)});
-            });
-    });
+            }
+            co_return report;
+        });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
@@ -1249,11 +1238,10 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
     auto& output = *projection->output;
 
     if(pull_diagnostics) {
-        // After an edit the client pulls on its own, and its pull awaits
-        // this compile; an answer already given for this very buffer is
-        // what went stale.
-        if(auto it = pulled_versions.find(session.path_id);
-           it != pulled_versions.end() && it->second == session.version) {
+        if(auto it = pulled.find(session.path_id);
+           it != pulled.end() && it->second.version == session.version &&
+           it->second.report !=
+               llvm::xxh3_64bits(full_report(project.features.settled_diagnostics(session)).data)) {
             refresh_diagnostics();
         }
     } else {
@@ -1275,7 +1263,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
     // need neither: the client re-pulls on didChange and that pull awaits
     // the fresh AST.
     if(output.version.has_value()) {
-        auto [it, inserted] = published_versions.try_emplace(session.path_id, *output.version);
+        auto [it, inserted] = output_versions.try_emplace(session.path_id, *output.version);
         bool same_text = !inserted && it->second == *output.version;
         it->second = *output.version;
         if(session.index_served || same_text) {

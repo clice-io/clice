@@ -88,13 +88,19 @@ public:
     kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
         document_links(Ticket ticket, kota::cancellation_token token = {});
 
-    /// The diagnostics of the document's buffer as it is now, crash notes
-    /// included: awaits the compile the buffer is owed, and an edit landing
-    /// meanwhile is followed rather than answered ContentModified — a pull
-    /// names no version, and clients clear what they hold on that error.
-    /// The client cancels a pull it no longer wants. Empty once the session
-    /// closes, and for a session the policy keeps un-compiled.
+    /// The diagnostics of the document's buffer as it is now: awaits the
+    /// compile the buffer is owed, and an edit landing meanwhile is
+    /// followed rather than answered ContentModified — a pull names no
+    /// version, and clients clear what they hold on that error. Following
+    /// has no bound of its own: a client that no longer wants the answer
+    /// cancels the pull. A session the policy keeps un-compiled waits for
+    /// nothing.
     kota::task<std::vector<protocol::Diagnostic>> diagnostics(std::shared_ptr<Session> session);
+
+    /// What diagnostics answers once the compile settled, without waiting
+    /// for one: the output's diagnostics while it describes the buffer,
+    /// then the crash notes; nothing once the session closed.
+    std::vector<protocol::Diagnostic> settled_diagnostics(const Session& session) const;
 
     /// Go-to-definition, assembled across all providers: preamble directive
     /// targets, the index, and the directives the worker's AST sees, with

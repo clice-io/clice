@@ -62,6 +62,14 @@ export { withTimeout } from "../promise.ts";
 export const MTIME_GRANULARITY = 1_100; // Filesystem mtime precision + margin
 export const SETTLE_TIME = 500; // Server stabilization after an operation
 export const IDLE_TIMEOUT = 5_000; // Idle soak time in lifecycle tests
+export const EDIT_SUPERSEDE_DELAY = 300; // An edit lands while SLOW_SOURCE still parses
+
+/// Two hundred thousand trivial declarations: slow to parse on any
+/// hardware, so an edit or a cancel lands while a request still waits on
+/// the compile, and cheap to abandon (the worker polls the stop flag per
+/// declaration).
+export const SLOW_SOURCE =
+    Array.from({ length: 200_000 }, (_, i) => `int v${i};`).join("\n") + "\n";
 
 export function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -1090,7 +1098,8 @@ export class CliceClient {
     async inactiveLines(uri: string): Promise<number[]> {
         const result = await this.semanticTokensFull(uri);
         const provider = this.initResult?.capabilities.semanticTokensProvider as
-            proto.SemanticTokensOptions | undefined;
+            | proto.SemanticTokensOptions
+            | undefined;
         const bit = provider?.legend.tokenModifiers.indexOf("inactive") ?? -1;
         if (bit < 0) {
             throw new Error("server legend misses the inactive modifier");

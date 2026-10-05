@@ -267,4 +267,16 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
     return result;
 }
 
+protocol::Diagnostic file_warning(std::string message) {
+    protocol::Diagnostic diagnostic;
+    diagnostic.range = protocol::Range{
+        .start = protocol::Position{.line = 0, .character = 0},
+        .end = protocol::Position{.line = 0, .character = 0},
+    };
+    diagnostic.severity = protocol::DiagnosticSeverity::Warning;
+    diagnostic.source = "clice";
+    diagnostic.message = std::move(message);
+    return diagnostic;
+}
+
 }  // namespace clice::feature

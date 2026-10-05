@@ -220,6 +220,15 @@ suite("clice E2E", function () {
         position = document.positionAt(offset);
 
         await diagnostics;
+        // clice offers pulls only to a client declaring them; the extension
+        // declines (see declinePullDiagnostics in extension.ts).
+        const extension = vscode.extensions.getExtension("clice-io.clice");
+        const client = (extension?.exports as { client: ClientHandle }).client;
+        assert.strictEqual(
+            client.current.initializeResult?.capabilities.diagnosticProvider,
+            undefined,
+            "diagnostics must stay pushed",
+        );
     });
 
     test("workspace symbol indexed", async function () {

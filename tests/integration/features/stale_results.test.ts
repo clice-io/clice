@@ -25,13 +25,9 @@
 /// reply's ranges, so that one still answers ContentModified.
 
 import * as proto from "vscode-languageserver-protocol";
-import { sleep } from "@clice/tools/client";
+import { EDIT_SUPERSEDE_DELAY, SLOW_SOURCE as SLOW, sleep } from "@clice/tools/client";
 import { test, expect } from "../fixtures.ts";
 
-// Two hundred thousand trivial declarations: slow to parse on any hardware,
-// so an edit reliably lands while the request still waits on the compile.
-const SLOW = Array.from({ length: 200_000 }, (_, i) => `int v${i};`).join("\n") + "\n";
-const EDIT_SUPERSEDE_DELAY = 300;
 // Completion skips most of the work a full build does and can finish the
 // body within EDIT_SUPERSEDE_DELAY on a fast machine.
 const COMPLETION_EDIT_DELAY = 30;

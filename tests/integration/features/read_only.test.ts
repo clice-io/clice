@@ -244,6 +244,20 @@ test("readonly on builds no pch", async ({ session }) => {
     expect(client.diagnostics.has(uri)).toBe(false);
 });
 
+test("readonly on pull builds nothing", async ({ session }) => {
+    const ws = writeProject(session);
+    const client = session.spawn(ws);
+    await client.initialize(ws, {
+        initializationOptions: { project: { readonly: "on" } },
+        capabilities: { textDocument: { diagnostic: {} } },
+    });
+
+    const [uri] = client.open("main.cpp");
+    expect(await client.waitForIndex(uri, "twice")).toBe(true);
+    expect(await client.pullDiagnostics(uri)).toEqual([]);
+    expect(ws.pchFiles()).toEqual([]);
+});
+
 test("escalation upgrades inlay hints", async ({ session }) => {
     const ws = writeProject(session);
     const client = session.spawn(ws);

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "compile/diagnostic.h"
+#include "feature/feature.h"
 
 namespace clice {
 
@@ -30,23 +31,16 @@ static protocol::Diagnostic make_inferred_command_diagnostic(CommandSource sourc
         .name = "inferred-compile-command",
     };
 
-    protocol::Diagnostic diagnostic;
-    diagnostic.range = protocol::Range{
-        .start = protocol::Position{.line = 0, .character = 0},
-        .end = protocol::Position{.line = 0, .character = 0},
-    };
-    diagnostic.severity = protocol::DiagnosticSeverity::Warning;
-    diagnostic.code = id.name.str();
-    if(auto uri = id.diagnostic_document_uri()) {
-        diagnostic.code_description = protocol::CodeDescription{.href = std::move(*uri)};
-    }
-    diagnostic.source = diagnostic_source_name(id.source).str();
-    diagnostic.message = std::format(
+    auto diagnostic = feature::file_warning(std::format(
         "No compilation database entry for this file (compile command was {}), so some includes "
         "may not be found. Configure compile_commands.json for accurate diagnostics.",
         source == CommandSource::Fallback   ? "synthesized from defaults"
         : source == CommandSource::Inferred ? "borrowed from a nearby translation unit"
-                                            : "inferred from an including file");
+                                            : "inferred from an including file"));
+    diagnostic.code = id.name.str();
+    if(auto uri = id.diagnostic_document_uri()) {
+        diagnostic.code_description = protocol::CodeDescription{.href = std::move(*uri)};
+    }
     return diagnostic;
 }
 

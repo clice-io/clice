@@ -1,15 +1,17 @@
 /// Client $/cancelRequest reaches the worker (end-to-end cancellation).
 
 import * as proto from "vscode-languageserver-protocol";
-import { sleep, withTimeout, type CliceClient } from "@clice/tools/client";
+import {
+    EDIT_SUPERSEDE_DELAY,
+    SLOW_SOURCE as SLOW,
+    sleep,
+    withTimeout,
+    type CliceClient,
+} from "@clice/tools/client";
 import { test, expect } from "../fixtures.ts";
 
-// Two hundred thousand trivial declarations: slow to parse on any hardware,
-// cheap to abandon (the worker polls the stop flag per declaration).
-const SLOW = Array.from({ length: 200_000 }, (_, i) => `int v${i};`).join("\n") + "\n";
 const LAST_LINE = 199_999;
 const CANCELLATION_DELAY = 100;
-const EDIT_SUPERSEDE_DELAY = 300;
 
 const FMT: proto.FormattingOptions = { tabSize: 4, insertSpaces: true };
 

@@ -392,16 +392,21 @@ kota::task<std::vector<protocol::Diagnostic>>
             break;
         }
     }
+    co_return settled_diagnostics(*session);
+}
+
+std::vector<protocol::Diagnostic> Features::settled_diagnostics(const Session& session) const {
     std::vector<protocol::Diagnostic> diagnostics;
+    if(session.closed) {
+        return diagnostics;
+    }
     // A compile that failed or is barred left an output of an older
     // buffer, whose ranges a versionless report would place on this one.
-    auto projection = ast.projections.projection(session->path_id);
-    if(!session->closed && projection && projection->output &&
-       projection->output->version == session->version) {
+    if(auto projection = ast.projections.projection_at(session.path_id, session.version)) {
         diagnostics = format_diagnostics(*projection->output);
     }
-    append_crash_notes(*session, diagnostics);
-    co_return diagnostics;
+    append_crash_notes(session, diagnostics);
+    return diagnostics;
 }
 
 Features::RawResult Features::definition(Ticket ticket,

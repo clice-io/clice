@@ -102,6 +102,21 @@ test("compile crash waits for save", async ({ session }) => {
     expect(workspace.workerCrashes(compile)).toBe(2);
 });
 
+test("pull shows the crash note", async ({ session }) => {
+    const workspace = session.tmpdir();
+    workspace.write("poison.cpp", poison(0));
+    workspace.writeCDB(["poison.cpp"]);
+    const client = session.spawn(workspace, crashing());
+    await client.initialize(workspace, { capabilities: { textDocument: { diagnostic: {} } } });
+
+    const [uri] = client.open("poison.cpp");
+    const pulled = (await client.pullDiagnostics(uri)).map(text);
+    expect(pulled).toEqual([expect.stringContaining("while compiling this file")]);
+    await settleCrashes(workspace, `compile ${workspace.displayPath("poison.cpp")}`, 1);
+    expect(workspace.log("master.log")).toContain("[anomaly:WorkerCrash]");
+    expect(client.publishCount(uri)).toBe(0);
+});
+
 test("edit retries after a pause", async ({ session }) => {
     const workspace = session.tmpdir();
     workspace.write("poison.cpp", poison(0));

@@ -61,8 +61,8 @@ struct ASTProjection {
     /// only gets disk-derived data from background indexing.
     std::shared_ptr<index::TUIndex> index;
 
-    /// Publishable products of the latest compilation, kept for the
-    /// transport push path (see CompileOutput).
+    /// Publishable products of the latest compilation, read by the
+    /// transports (see CompileOutput).
     std::optional<CompileOutput> output;
 
     /// The main file's rows within `index` (an empty shard when the
@@ -112,6 +112,15 @@ struct ASTProjectionTable {
     std::shared_ptr<const ASTProjection> projection(Fid path_id) const {
         const auto* entry = find(path_id);
         return entry ? entry->projection : nullptr;
+    }
+
+    /// The document's projection while its output describes buffer
+    /// `version`, or null.
+    std::shared_ptr<const ASTProjection> projection_at(Fid path_id, int version) const {
+        auto projection = this->projection(path_id);
+        return projection && projection->output && projection->output->version == version
+                   ? projection
+                   : nullptr;
     }
 
     /// The last compile landed and no invalidation arrived since

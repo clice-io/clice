@@ -437,6 +437,10 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
 auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::Diagnostic>;
 
+/// A warning from clice itself about the file as a whole, on its first
+/// character.
+protocol::Diagnostic file_warning(std::string message);
+
 auto code_complete(CompilationParams& params,
                    const CodeCompletionOptions& options = {},
                    const CompletionClient& client = {},

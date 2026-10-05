@@ -27,7 +27,7 @@ let client: ClientHandle | undefined;
 /// diagnostics would blink while typing. clice pushes to a client that
 /// does not declare pull support. Registered after the built-in features,
 /// so it runs after the one declaring it.
-const pushedDiagnostics: StaticFeature = {
+const declinePullDiagnostics: StaticFeature = {
     fillClientCapabilities(capabilities) {
         delete capabilities.textDocument?.diagnostic;
         delete capabilities.workspace?.diagnostics;
@@ -331,7 +331,7 @@ export async function activate(context: ExtensionContext) {
     const serverOptions = makeServerOptions(context, channel);
     client = new ClientHandle(() => {
         const created = new LanguageClient("clice", "clice", serverOptions, clientOptions);
-        created.registerFeature(pushedDiagnostics);
+        created.registerFeature(declinePullDiagnostics);
         return created;
     });
 
