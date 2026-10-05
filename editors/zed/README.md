@@ -21,7 +21,7 @@ The extension starts the first of:
 2. `clice` on your `PATH`.
 3. The newest clice release from GitHub, downloaded into the extension's work directory and replaced when a newer release appears. When the release lookup or the download fails, the last downloaded version keeps serving.
 
-`lsp.clice.settings.release_channel` selects the releases to download: `"pre-release"` (the default, nightly builds) or `"stable"`.
+`lsp.clice.settings.release_channel` selects the releases to download: `"stable"` (the default; until a stable release ships your platform, the newest pre-release) or `"pre-release"` (nightly builds).
 
 ## Using clice instead of clangd
 

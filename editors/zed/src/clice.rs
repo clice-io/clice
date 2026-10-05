@@ -14,9 +14,11 @@ const SERVER_NAME: &str = "clice";
 
 const REPOSITORY: &str = "clice-io/clice";
 
-/// clice publishes pre-releases only, so that is the default channel.
-const PRE_RELEASE_CHANNEL: &str = "pre-release";
+/// The default channel. It falls back to the newest pre-release while no
+/// stable release ships this platform's archive, so it works before the first
+/// stable release and follows stable releases once they exist.
 const STABLE_CHANNEL: &str = "stable";
+const PRE_RELEASE_CHANNEL: &str = "pre-release";
 
 /// Archives are unpacked here and renamed to `clice-<version>` once complete,
 /// so a version directory never holds a partial installation.
@@ -70,33 +72,72 @@ fn is_file(path: &str) -> bool {
     std::fs::metadata(path).is_ok_and(|stat| stat.is_file())
 }
 
-impl CliceExtension {
-    /// Whether `lsp.clice.settings.release_channel` selects pre-releases.
-    ///
-    /// This lives in `settings` rather than `initialization_options` because the
-    /// extension never forwards `settings` to the server, so it can hold
-    /// extension-private values.
-    ///
-    /// An absent setting means [`PRE_RELEASE_CHANNEL`]. Any other value is
-    /// rejected: falling back to a channel would let a typo silently pick a
-    /// different one than the user asked for.
-    fn wants_pre_release(worktree: &Worktree) -> Result<bool> {
-        let channel = LspSettings::for_worktree(SERVER_NAME, worktree)
-            .ok()
-            .and_then(|settings| settings.settings)
-            .and_then(|settings| settings.get("release_channel").cloned());
+/// Whether the `lsp.clice.settings.release_channel` value selects
+/// pre-releases.
+///
+/// This lives in `settings` rather than `initialization_options` because the
+/// extension never forwards `settings` to the server, so it can hold
+/// extension-private values.
+///
+/// An absent setting means [`STABLE_CHANNEL`]. Any other value is rejected:
+/// falling back to a channel would let a typo silently pick a different one
+/// than the user asked for.
+fn selects_pre_release(channel: Option<&serde_json::Value>) -> Result<bool> {
+    let Some(channel) = channel else {
+        return Ok(false);
+    };
+    match channel.as_str() {
+        Some(PRE_RELEASE_CHANNEL) => Ok(true),
+        Some(STABLE_CHANNEL) => Ok(false),
+        _ => Err(format!(
+            "unknown lsp.clice.settings.release_channel {channel}; \
+             expected {STABLE_CHANNEL:?} or {PRE_RELEASE_CHANNEL:?}"
+        )),
+    }
+}
 
-        let Some(channel) = channel else {
-            return Ok(true);
-        };
-        match channel.as_str() {
-            Some(PRE_RELEASE_CHANNEL) => Ok(true),
-            Some(STABLE_CHANNEL) => Ok(false),
-            _ => Err(format!(
-                "unknown lsp.clice.settings.release_channel {channel}; \
-                 expected {PRE_RELEASE_CHANNEL:?} or {STABLE_CHANNEL:?}"
-            )),
-        }
+/// The version and download URL of the newest release in the channel that
+/// ships `asset_suffix`, from GitHub's release list (newest first).
+fn select_release(
+    releases: &serde_json::Value,
+    pre_release: bool,
+    asset_suffix: &str,
+) -> Option<(String, String)> {
+    let newest = |prerelease: bool| {
+        releases
+            .as_array()?
+            .iter()
+            .filter(|release| release["prerelease"].as_bool() == Some(prerelease))
+            .find_map(|release| {
+                // Tags are `v<version>`; asset names carry the bare version.
+                let version = release["tag_name"].as_str()?.trim_start_matches('v');
+                let name = format!("clice-{version}.{asset_suffix}");
+                let asset = release["assets"]
+                    .as_array()?
+                    .iter()
+                    .find(|asset| asset["name"] == name.as_str())?;
+                let url = asset["browser_download_url"].as_str()?;
+                Some((version.to_owned(), url.to_owned()))
+            })
+    };
+
+    if pre_release {
+        newest(true)
+    } else {
+        newest(false).or_else(|| newest(true))
+    }
+}
+
+impl CliceExtension {
+    fn wants_pre_release(worktree: &Worktree) -> Result<bool> {
+        let settings = LspSettings::for_worktree(SERVER_NAME, worktree)
+            .ok()
+            .and_then(|settings| settings.settings);
+        selects_pre_release(
+            settings
+                .as_ref()
+                .and_then(|settings| settings.get("release_channel")),
+        )
     }
 
     /// Resolves the server binary, preferring anything the user already has:
@@ -177,12 +218,10 @@ impl CliceExtension {
         Ok(binary_path)
     }
 
-    /// The version and download URL of the newest release in the channel that
-    /// ships this platform's archive.
-    ///
-    /// `zed::latest_github_release` only offers the newest release, whose
-    /// archives are uploaded platform by platform after it is published, and
-    /// scans only the first page of releases, which a month of nightlies fills.
+    /// `zed::latest_github_release` only offers the newest release of a channel,
+    /// whose archives are uploaded platform by platform after it is published,
+    /// and scans only the first page of releases, which a month of nightlies
+    /// fills.
     fn latest_release(pre_release: bool, package: &Package) -> Result<(String, String)> {
         let response = HttpRequest::builder()
             .method(HttpMethod::Get)
@@ -195,33 +234,8 @@ impl CliceExtension {
         let releases: serde_json::Value =
             serde_json::from_slice(&response.body).map_err(|error| error.to_string())?;
 
-        releases
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|release| release["prerelease"].as_bool() == Some(pre_release))
-            .find_map(|release| {
-                // Tags are `v<version>`; asset names carry the bare version.
-                let version = release["tag_name"].as_str()?.trim_start_matches('v');
-                let name = format!("clice-{version}.{}", package.asset_suffix);
-                let asset = release["assets"]
-                    .as_array()?
-                    .iter()
-                    .find(|asset| asset["name"] == name.as_str())?;
-                let url = asset["browser_download_url"].as_str()?;
-                Some((version.to_owned(), url.to_owned()))
-            })
-            .ok_or_else(|| {
-                let channel = if pre_release {
-                    PRE_RELEASE_CHANNEL
-                } else {
-                    STABLE_CHANNEL
-                };
-                format!(
-                    "no clice {channel} release ships a {} archive",
-                    package.asset_suffix
-                )
-            })
+        select_release(&releases, pre_release, package.asset_suffix)
+            .ok_or_else(|| format!("no clice release ships a {} archive", package.asset_suffix))
     }
 
     /// The newest installation an earlier session left behind.
@@ -271,3 +285,89 @@ impl zed::Extension for CliceExtension {
 }
 
 zed::register_extension!(CliceExtension);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    const LINUX: &str = "x86_64-unknown-linux-gnu.tar.gz";
+
+    fn release(tag: &str, prerelease: bool, suffixes: &[&str]) -> serde_json::Value {
+        let version = tag.trim_start_matches('v');
+        let assets: Vec<_> = suffixes
+            .iter()
+            .map(|suffix| {
+                let name = format!("clice-{version}.{suffix}");
+                json!({ "name": name, "browser_download_url": format!("https://dl/{name}") })
+            })
+            .collect();
+        json!({ "tag_name": tag, "prerelease": prerelease, "assets": assets })
+    }
+
+    fn picked(version: &str, suffix: &str) -> Option<(String, String)> {
+        Some((
+            version.to_owned(),
+            format!("https://dl/clice-{version}.{suffix}"),
+        ))
+    }
+
+    #[test]
+    fn skips_release_still_uploading() {
+        let releases = json!([
+            release("v0.3.2026110108", true, &["x86_64-apple-darwin.tar.gz"]),
+            release("v0.3.2026103108", true, &[LINUX]),
+        ]);
+        assert_eq!(
+            select_release(&releases, true, LINUX),
+            picked("0.3.2026103108", LINUX)
+        );
+    }
+
+    #[test]
+    fn stable_prefers_stable_release() {
+        let releases = json!([
+            release("v0.3.2026110108", true, &[LINUX]),
+            release("v0.2.0", false, &[LINUX]),
+        ]);
+        assert_eq!(
+            select_release(&releases, false, LINUX),
+            picked("0.2.0", LINUX)
+        );
+        assert_eq!(
+            select_release(&releases, true, LINUX),
+            picked("0.3.2026110108", LINUX)
+        );
+    }
+
+    #[test]
+    fn stable_falls_back_to_pre_release() {
+        let releases = json!([
+            release("v0.1.2026100509", true, &[LINUX]),
+            release("v0.0.9", false, &["x86_64-w64-mingw32.zip"]),
+        ]);
+        assert_eq!(
+            select_release(&releases, false, LINUX),
+            picked("0.1.2026100509", LINUX)
+        );
+    }
+
+    #[test]
+    fn no_release_ships_platform() {
+        let releases = json!([release("v0.2.0", false, &[LINUX])]);
+        assert_eq!(
+            select_release(&releases, false, "x86_64-w64-mingw32.zip"),
+            None
+        );
+        assert_eq!(select_release(&json!({}), false, LINUX), None);
+    }
+
+    #[test]
+    fn parses_release_channel() {
+        assert_eq!(selects_pre_release(None), Ok(false));
+        assert_eq!(selects_pre_release(Some(&json!("stable"))), Ok(false));
+        assert_eq!(selects_pre_release(Some(&json!("pre-release"))), Ok(true));
+        assert!(selects_pre_release(Some(&json!("nightly"))).is_err());
+        assert!(selects_pre_release(Some(&json!(1))).is_err());
+    }
+}
