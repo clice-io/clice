@@ -729,11 +729,12 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(cli).toContain('R"(int main() {})"');
     // core::Text and cfg's macros reach it through tool's header, but no
     // import re-exports a name and none carries a macro; defs.h, which only
-    // config.h beside it names, by its path from the root.
+    // config.h beside it names, by its path under the include root text.h
+    // names cfg/config.h from.
     const runSource = ws.read("app/run.cpp");
     expect(runSource.startsWith('#include "wrap/prelude.h"\n')).toBe(true);
     expect(runSource).toContain('#include "cfg/config.h"\n');
-    expect(runSource).toContain('#include "app/cfg/defs.h"\n');
+    expect(runSource).toContain('#include "cfg/defs.h"\n');
     expect(runSource).toContain("import app.core;\nimport app.tool;\n");
     expect(runSource).toContain(
         "int main() { return tool::run(core::Text{}, nullptr) + CFG_SIZE + CFG_DEFS; }",

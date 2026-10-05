@@ -463,6 +463,11 @@ struct Rewriter {
     /// directive stays as written.
     llvm::StringMap<std::uint32_t> spelled;
 
+    /// Directory -> how includes name files under it as an include root:
+    /// `<` when an angle spelling does, else `"`, which may come from
+    /// -iquote.
+    llvm::StringMap<char> roots;
+
     bool rewritten(std::uint32_t file) const {
         return !partition.primaries[partition.module_of[file]].empty() &&
                units[file].kind != Unit::Kind::Fragment;
@@ -489,8 +494,9 @@ struct Rewriter {
     /// How `user` names the file: the most common spelling of its includers
     /// that resolves from there. `"a.h"` from beside the file resolves only
     /// beside it; a spelling used from another directory goes through the
-    /// include path. With none, its workspace-relative path, the root being
-    /// on the include path as for the prelude.
+    /// include path. With none, its path under the deepest include root,
+    /// else its workspace-relative path, the root being on the include path
+    /// as for the prelude.
     std::string spelling(std::uint32_t file, std::uint32_t user) const {
         auto& info = facts.files[file];
         auto directory = llvm::sys::path::parent_path(info.path, posix);
@@ -511,7 +517,22 @@ struct Rewriter {
             }
         }
         auto best = std::ranges::max_element(counts, {}, [](auto& entry) { return entry.second; });
-        return best == counts.end() ? std::format(R"("{}")", info.path) : best->first.str();
+        if(best != counts.end()) {
+            return best->first.str();
+        }
+        const llvm::StringMapEntry<char>* deepest = nullptr;
+        for(auto& root: roots) {
+            if(path::under(info.path, root.first()) &&
+               (!deepest || root.first().size() > deepest->first().size())) {
+                deepest = &root;
+            }
+        }
+        if(!deepest) {
+            return std::format(R"("{}")", info.path);
+        }
+        auto relative = llvm::StringRef(info.path).drop_front(deepest->first().size() + 1);
+        return deepest->second == '<' ? std::format("<{}>", relative.str())
+                                      : std::format(R"("{}")", relative.str());
     }
 
     /// The file the include directive on `line` names. A forced include's
@@ -643,6 +664,29 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             if(!inserted && it->second != file) {
                 rewriter.spelled.erase(it);
                 ambiguous.insert(spelled);
+            }
+        }
+    }
+    for(auto& info: facts.files) {
+        for(std::size_t i = 0; i < info.includers.size(); i += 1) {
+            llvm::StringRef spelled = info.spellings[i];
+            llvm::StringRef path = info.path;
+            if(spelled.size() < 3) {
+                continue;
+            }
+            auto relative = spelled.drop_front().drop_back();
+            if(!path.ends_with(("/" + relative).str())) {
+                continue;
+            }
+            auto root = path.drop_back(relative.size() + 1);
+            if(root.empty() ||
+               (spelled.front() == '"' &&
+                root == llvm::sys::path::parent_path(facts.files[info.includers[i]].path, posix))) {
+                continue;
+            }
+            auto& delimiter = rewriter.roots[root];
+            if(delimiter != '<') {
+                delimiter = spelled.front();
             }
         }
     }
