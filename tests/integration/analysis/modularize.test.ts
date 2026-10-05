@@ -1,4 +1,4 @@
-/// `clice analyze modules --view interface` and `clice modulize`: a
+/// `clice analyze modules --view interface` and `clice modularize`: a
 /// partition's libraries as module interface units over their headers, the
 /// standard library as libc++'s std.compat, and the C library kept headers.
 /// The libraries, the standard library and its module sources are stand-ins
@@ -241,9 +241,9 @@ async function interfaces(ws: Workspace): Promise<Map<string, Interface>> {
     return new Map(list.map((entry) => [entry.module, entry]));
 }
 
-function modulize(ws: Workspace, partition = ws.path("partition.json")) {
+function modularize(ws: Workspace, partition = ws.path("partition.json")) {
     return runClice(
-        "modulize",
+        "modularize",
         "--workspace",
         ws.root,
         "--scope",
@@ -303,10 +303,10 @@ test("C library kept headers", async ({ session }) => {
     expect(all.get("std")!.textual).toEqual([]);
 });
 
-test("modulize writes the wrapping", async ({ session }) => {
+test("modularize writes the wrapping", async ({ session }) => {
     const ws = await writeProject(session);
     ws.write("wrap/custom.cppm", "export module custom;\n");
-    const run = await modulize(ws);
+    const run = await modularize(ws);
     expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
     const plan = JSON.parse(run.stdout) as Plan;
 
@@ -369,7 +369,7 @@ test("modulize writes the wrapping", async ({ session }) => {
     // Unchanged files keep their timestamps.
     const before = statSync(ws.path("wrap/alpha.cppm")).mtimeMs;
     await sleep(MTIME_GRANULARITY);
-    expect((await modulize(ws)).status).toBe(0);
+    expect((await modularize(ws)).status).toBe(0);
     expect(statSync(ws.path("wrap/alpha.cppm")).mtimeMs).toBe(before);
 
     // Without beta, what the last run wrote for it goes; the rest stays.
@@ -383,14 +383,14 @@ test("modulize writes the wrapping", async ({ session }) => {
             ],
         }),
     );
-    expect((await modulize(ws, ws.path("alpha.json"))).status).toBe(0);
+    expect((await modularize(ws, ws.path("alpha.json"))).status).toBe(0);
     expect(ws.exists("wrap/beta.cppm")).toBe(false);
     expect(ws.exists("wrap/mirror/beta/beta/beta.h")).toBe(false);
     expect(ws.exists("wrap/alpha.cppm")).toBe(true);
     expect(ws.exists("wrap/custom.cppm")).toBe(true);
 });
 
-test("modulize partition errors", async ({ session }) => {
+test("modularize partition errors", async ({ session }) => {
     const ws = await writeProject(session);
     const failure = (run: ProcessResult) => {
         expect(run.status, run.stdout).toBe(1);
@@ -404,7 +404,7 @@ test("modulize partition errors", async ({ session }) => {
     const external = partition("external.json", [
         { name: "alpha", files: ["third/alpha/**"], external: true },
     ]);
-    expect(failure(await modulize(ws, external))).toContain(
+    expect(failure(await modularize(ws, external))).toContain(
         "only std stands for an existing module",
     );
 
@@ -415,26 +415,26 @@ test("modulize partition errors", async ({ session }) => {
         { name: "libc", files: ["third/libc/**"], textual: true, provides: "std.compat" },
         { name: "alpha", files: ["third/alpha/**"] },
     ]);
-    expect(failure(await modulize(ws, cycle))).toBe(
+    expect(failure(await modularize(ws, cycle))).toBe(
         "modules import each other: alpha -> beta -> alpha",
     );
 
     const named = partition("named.json", [{ name: "../escape", files: ["third/alpha/**"] }]);
-    expect(failure(await modulize(ws, named))).toContain("not a module name");
+    expect(failure(await modularize(ws, named))).toContain("not a module name");
 
     const flags = partition("flags.json", [
         { name: "std", files: ["third/std/**"], textual: true, external: true },
     ]);
-    expect(failure(await modulize(ws, flags))).toContain("both textual and external");
+    expect(failure(await modularize(ws, flags))).toContain("both textual and external");
 
     const both = partition("both.json", [
         { name: "libc", files: ["third/libc/cio.h"], textual: true },
         { name: "libc", files: ["third/libc/**"], external: true },
     ]);
-    expect(failure(await modulize(ws, both))).toContain("both textual and external");
+    expect(failure(await modularize(ws, both))).toContain("both textual and external");
 
     const noStd = await runClice(
-        "modulize",
+        "modularize",
         "--workspace",
         ws.root,
         "--scope",
@@ -447,7 +447,7 @@ test("modulize partition errors", async ({ session }) => {
     expect(failure(noStd)).toContain("only std.compat, given --std");
 
     const badStd = await runClice(
-        "modulize",
+        "modularize",
         "--workspace",
         ws.root,
         "--partition",
@@ -459,6 +459,6 @@ test("modulize partition errors", async ({ session }) => {
     );
     expect(failure(badStd)).toContain("cannot read");
 
-    const missing = await runClice("modulize", "--workspace", ws.root, "--out", ws.path("wrap"));
+    const missing = await runClice("modularize", "--workspace", ws.root, "--out", ws.path("wrap"));
     expect(failure(missing)).toContain("--partition and --out");
 });

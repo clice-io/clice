@@ -30,7 +30,7 @@ cli:
     - query
     - refactor
     - analyze
-    - modulize
+    - modularize
     - lint
     - format
 

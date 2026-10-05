@@ -20,7 +20,7 @@ using kota::deco::decl::KVStyle;
 
 namespace {
 
-struct ModulizeOptions {
+struct ModularizeOptions {
     kota::deco::decl::HelpOption help;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
@@ -68,7 +68,7 @@ struct ModulizeOptions {
 /// Write the files whose content changed, so a regeneration rebuilds only
 /// what it touched, and remove the files the previous run wrote that this
 /// one no longer produces: a stale empty header in a mirror would hide the
-/// real one. The manifest `.modulize` lists what a run wrote; nothing else
+/// real one. The manifest `.modularize` lists what a run wrote; nothing else
 /// under `out` is touched.
 std::expected<void, std::string> write_files(llvm::StringRef out,
                                              llvm::ArrayRef<analysis::Wrapping::File> files) {
@@ -97,7 +97,7 @@ std::expected<void, std::string> write_files(llvm::StringRef out,
                 std::format("cannot write {}: {}", path.str().str(), error.message()));
         }
     }
-    if(auto previous = vfs::read(at(".modulize"))) {
+    if(auto previous = vfs::read(at(".modularize"))) {
         llvm::SmallVector<llvm::StringRef> lines;
         (*previous)->getBuffer().split(lines, '\n', -1, false);
         for(auto relative: lines) {
@@ -113,21 +113,21 @@ std::expected<void, std::string> write_files(llvm::StringRef out,
             }
         }
     }
-    if(auto error = vfs::write(at(".modulize"), manifest)) {
+    if(auto error = vfs::write(at(".modularize"), manifest)) {
         return std::unexpected(
-            std::format("cannot write {}/.modulize: {}", out.str(), error.message()));
+            std::format("cannot write {}/.modularize: {}", out.str(), error.message()));
     }
     return {};
 }
 
-int run_modulize(const ModulizeOptions& opts) {
+int run_modularize(const ModularizeOptions& opts) {
     auto fail = [](std::string error) {
         print_json(Failure{.error = std::move(error)});
         return 1;
     };
 
     if(!opts.partition || !opts.out) {
-        return fail("modulize needs --partition and --out");
+        return fail("modularize needs --partition and --out");
     }
     auto libcxx = read_std(opts.std.value_or(""));
     if(!libcxx) {
@@ -171,16 +171,16 @@ int run_modulize(const ModulizeOptions& opts) {
 
 }  // namespace
 
-void add_modulize(kota::deco::cli::SubCommander& root) {
-    auto command = kota::deco::cli::command<ModulizeOptions>("clice modulize [OPTIONS]");
+void add_modularize(kota::deco::cli::SubCommander& root) {
+    auto command = kota::deco::cli::command<ModularizeOptions>("clice modularize [OPTIONS]");
     command
-        .match_all([](ModulizeOptions opts) {
+        .match_all([](ModularizeOptions opts) {
             opts.log.apply();
-            logging::stderr_logger("modulize", logging::options);
-            return run_modulize(opts);
+            logging::stderr_logger("modularize", logging::options);
+            return run_modularize(opts);
         })
         .on_error([](auto err) { print_json(Failure{.error = err.message}); });
-    root.add({.name = "modulize",
+    root.add({.name = "modularize",
               .description = "Wrap a partition's libraries as modules over their headers"},
              std::move(command));
 }

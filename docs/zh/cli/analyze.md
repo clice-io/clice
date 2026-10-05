@@ -14,7 +14,7 @@
 
 - `--scope <glob,...>` 仅分析与 glob 模式匹配的文件，匹配时使用相对于工作区的路径；默认分析工作区下所有已建立索引且不位于名称以点开头的目录中的文件。
 - `--depth <n>` 使用文件所在目录路径的前 `n` 段命名其默认模块，而不是使用完整目录路径。
-- `--partition <file>` 按 glob 模式分配模块，以首次匹配为准：`{"modules": [{"name": "core", "files": ["src/support/**", "src/vfs/**"]}]}`。未匹配任何 glob 模式的文件仍归入其所在目录对应的模块。对于 `interface` 视图和 [modulize](./modulize.md)，`"textual": true` 让模块保持为头文件，`"external": true` 标记由已有模块代替的模块（即标准库），`"provides": "std.compat"` 指定导出该模块中名称的模块，这些名称从 `--std <dir>` 指定的 libc++ 模块源码中读取。
+- `--partition <file>` 按 glob 模式分配模块，以首次匹配为准：`{"modules": [{"name": "core", "files": ["src/support/**", "src/vfs/**"]}]}`。未匹配任何 glob 模式的文件仍归入其所在目录对应的模块。对于 `interface` 视图和 [modularize](./modularize.md)，`"textual": true` 让模块保持为头文件，`"external": true` 标记由已有模块代替的模块（即标准库），`"provides": "std.compat"` 指定导出该模块中名称的模块，这些名称从 `--std <dir>` 指定的 libc++ 模块源码中读取。
 - `--move <path>=<module>,...` 和 `--merge <module>+<module>[+...],...` 评估假设的变更，但不实际执行变更。
 - `--move-entity <name>=<header>,...` 评估将声明连同其成员及其定义所引用的实体移至另一个头文件（已有或新建）的效果；可使用 `edge` 视图中的 `#<id>` 从多个重载中选定一个。
 - `--annotation <file>,...` 和 `--churn-since <date>` 对结果加权；参见[注解](#annotations)。
