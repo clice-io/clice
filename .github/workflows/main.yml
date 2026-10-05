@@ -51,6 +51,7 @@ jobs:
             build:
               - 'BUILD.bazel'
               - 'MODULE.bazel'
+              - 'REPO.bazel'
               - '.bazelrc'
               - '.bazelversion'
               - 'bazel/**'

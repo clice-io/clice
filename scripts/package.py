@@ -96,20 +96,21 @@ def main(argv: list[str]) -> int:
 
     shutil.rmtree(symbols, ignore_errors=True)
     stripped.parent.mkdir(parents=True)
+    # Copies, not copy2: Bazel's outputs are read-only, the release is not.
+    shutil.copyfile(binary, stripped)
+    stripped.chmod(0o755)
     if macos:
         # The DWARF stays in the object files; dsymutil collects it from
         # them, by the paths the link recorded (relative to the execution
         # root, bazel-out of the workspace).
         dsym = symbols / "clice.dSYM"
         subprocess.run(["dsymutil", binary, "-o", dsym], cwd=ROOT, check=True)
-        shutil.copy2(binary, stripped)
         run("strip", "-x", stripped)
         dwarf = dsym / "Contents" / "Resources" / "DWARF" / "clice"
     else:
         # DWARF on Windows as well: MinGW binaries carry it like ELF ones.
         dwarf = symbols / "clice.debug"
         run("llvm-objcopy", "--only-keep-debug", binary, dwarf)
-        shutil.copy2(binary, stripped)
         run("llvm-strip", "--strip-debug", "--strip-unneeded", stripped)
         run("llvm-objcopy", f"--add-gnu-debuglink={dwarf}", stripped)
 
@@ -117,9 +118,13 @@ def main(argv: list[str]) -> int:
     shutil.rmtree(pack, ignore_errors=True)
     (pack / "clice" / "bin").mkdir(parents=True)
     shutil.copy2(stripped, pack / "clice" / "bin")
-    shutil.copytree(build / "lib" / "clang", pack / "clice" / "lib" / "clang")
-    shutil.copy2(ROOT / "docs" / "clice.toml", pack / "clice")
-    shutil.copy2(ROOT / "LICENSE", pack / "clice")
+    shutil.copytree(
+        build / "lib" / "clang",
+        pack / "clice" / "lib" / "clang",
+        copy_function=shutil.copyfile,
+    )
+    shutil.copyfile(ROOT / "docs" / "clice.toml", pack / "clice" / "clice.toml")
+    shutil.copyfile(ROOT / "LICENSE", pack / "clice" / "LICENSE")
     archive(build / ("clice.zip" if windows else "clice.tar.gz"), pack)
 
     gsym_dir = symbols / "pack"

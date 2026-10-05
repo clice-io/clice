@@ -68,6 +68,7 @@ jobs:
           path: |
             ${{ runner.temp }}/bazel-disk
             ${{ runner.temp }}/bazel-repo
+            ${{ runner.temp }}/thinlto
           key: bazel-${{ matrix.target }}-${{ matrix.build_type }}-${{ github.sha }}
           restore-keys: |
             bazel-${{ matrix.target }}-${{ matrix.build_type }}-
@@ -77,6 +78,10 @@ jobs:
       # past MAX_PATH. On main every cached output is fetched, which marks
       # it used for the prune below; elsewhere only what is asked for, but
       # on macOS also the object files dsymutil reads the debug info from.
+      # Every commit relinks clice (its version changes), and the release
+      # link redoes the ThinLTO code generation of LLVM's bitcode: lld's
+      # cache of it, outside Bazel, brings the link from minutes to seconds
+      # with the same output.
       - name: Bazel settings
         run: |
           temp=$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")
@@ -88,6 +93,15 @@ jobs:
             fi
             if [ "$GITHUB_REF" = refs/heads/main ] || [ "$RUNNER_OS" = macOS ]; then
               echo "common --remote_download_all"
+            fi
+            if [ -n "${{ matrix.asset_name }}" ]; then
+              mkdir -p "$temp/thinlto"
+              if [ "$RUNNER_OS" = macOS ]; then
+                echo "common --linkopt=-Wl,-cache_path_lto,$temp/thinlto"
+              else
+                echo "common --linkopt=-Wl,--thinlto-cache-dir=$temp/thinlto"
+              fi
+              echo "common --sandbox_writable_path=$temp/thinlto"
             fi
           } > user.bazelrc
           touch "$RUNNER_TEMP/bazel-start"
@@ -101,7 +115,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           find "$RUNNER_TEMP/bazel-disk" -type f ! -newer "$RUNNER_TEMP/bazel-start" -delete
-          du -sh "$RUNNER_TEMP/bazel-disk" "$RUNNER_TEMP/bazel-repo"
+          du -sh "$RUNNER_TEMP"/bazel-disk "$RUNNER_TEMP"/bazel-repo "$RUNNER_TEMP"/thinlto 2>/dev/null || true
 
       - name: Save Bazel caches
         if: github.ref == 'refs/heads/main'
@@ -110,6 +124,7 @@ jobs:
           path: |
             ${{ runner.temp }}/bazel-disk
             ${{ runner.temp }}/bazel-repo
+            ${{ runner.temp }}/thinlto
           key: bazel-${{ matrix.target }}-${{ matrix.build_type }}-${{ github.sha }}
 
       # Process start-up is the fixed cost every test-suite process pays
