@@ -310,8 +310,14 @@ function writeProgram(ws: Workspace): void {
             "}",
             "inline int detail() { return hidden(); }",
             "}",
+            '#include "cfg/late.h"',
+            "#ifdef CFG_FAST",
+            '#include "cfg/extra.h"',
+            "#endif",
         ),
     );
+    ws.write("app/cfg/late.h", lines("#pragma once", "#define CFG_LATE 3"));
+    ws.write("app/cfg/extra.h", lines("#pragma once", "#define CFG_EXTRA 4"));
     ws.write("app/core/all.h", lines("#pragma once", '#include "core/detail.h"'));
     ws.write(
         "app/core/text.cpp",
@@ -566,6 +572,28 @@ test("modularize rewrites program modules", async ({ session }) => {
         "app/core/text.h becomes app/core/text.cppm, the primary interface of its module",
     );
     expect(ws.exists("app/core/text.h")).toBe(true);
+    const rejected = async (modules: unknown[]) => {
+        ws.write("rejected.json", JSON.stringify({ modules }));
+        const result = await modularize(ws, ws.path("rejected.json"));
+        expect(result.status, result.stdout).toBe(1);
+        return (JSON.parse(result.stdout) as { error: string }).error;
+    };
+    expect(
+        await rejected([
+            { name: "app.core", files: ["app/core/text.h"], rewrite: true },
+            { name: "app.more", files: ["app/core/**"], rewrite: true },
+        ]),
+    ).toBe(
+        "modules app.core and app.more both put their primary interface at app/core/module.cppm",
+    );
+    expect(
+        await rejected([
+            { name: "app.core", files: ["app/core/**"], rewrite: true, primary: "../m.cppm" },
+        ]),
+    ).toBe("module app.core: primary ../m.cppm lies outside the workspace");
+    expect(await rejected([{ name: "app-core", files: ["app/core/**"], rewrite: true }])).toBe(
+        "module app-core: not a module name to rewrite",
+    );
 
     const run = await modularize(ws, ws.path("program.json"));
     expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
@@ -601,7 +629,11 @@ test("modularize rewrites program modules", async ({ session }) => {
         "app/core/text.h",
         "app/tool/tool.h",
     ]);
-    expect(plan.warnings).toEqual([]);
+    // A header that stays a header moves out of the purview, unless a condition
+    // holds it there.
+    expect(plan.warnings).toEqual([
+        "app/core/detail.h:10 includes app/cfg/extra.h under a condition in the module purview",
+    ]);
     expect(ws.exists("app/core/text.h")).toBe(false);
 
     expect(ws.read("app/core/core.cppm")).toBe(
@@ -662,6 +694,9 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(detail).toContain("\nmodule app.core:detail;\n");
     expect(detail).not.toContain("namespace {");
     expect(detail).toContain("inline int hidden() { return 1; }");
+    expect(detail.indexOf('#include "cfg/late.h"')).toBeLessThan(
+        detail.indexOf("module app.core:detail;"),
+    );
     // The interface partition comes through the primary interface, the
     // implementation partition by import; the macro through its header.
     const text = ws.read("app/core/text.cpp");

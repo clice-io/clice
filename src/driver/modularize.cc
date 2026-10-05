@@ -195,6 +195,11 @@ int run_modularize(const ModularizeOptions& opts) {
         }
         for(auto& file: rewriting->files) {
             auto path = join(loaded->root, file.path);
+            if(auto error = vfs::create_directories(llvm::sys::path::parent_path(path))) {
+                return fail(std::format("cannot create the directory of {}: {}",
+                                        path.str().str(),
+                                        error.message()));
+            }
             if(auto error = vfs::write(path, file.content)) {
                 return fail(std::format("cannot write {}: {}", path.str().str(), error.message()));
             }

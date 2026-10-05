@@ -40,17 +40,6 @@ std::expected<llvm::SmallVector<std::string>, std::string> read_lines(llvm::Stri
     return result;
 }
 
-/// A C++ module name: identifiers joined by dots, which also keeps the files
-/// named after it inside the output directory.
-bool is_module_name(llvm::StringRef name) {
-    llvm::SmallVector<llvm::StringRef> parts;
-    name.split(parts, '.');
-    return llvm::all_of(parts, [](llvm::StringRef part) {
-        return !part.empty() && (llvm::isAlpha(part.front()) || part.front() == '_') &&
-               llvm::all_of(part, [](char c) { return llvm::isAlnum(c) || c == '_'; });
-    });
-}
-
 }  // namespace
 
 std::expected<StdModules, std::string> read_std_modules(llvm::StringRef directory) {

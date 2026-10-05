@@ -35,7 +35,7 @@ The partition file groups files into modules by globs over workspace-relative pa
 - `"external": true` marks a module an existing interface stands for. Only `std` is supported: with `--std` naming libc++'s module sources (`share/libc++/v1`), it is imported as `std.compat`, and the standard headers `std.cppm` includes are emptied.
 - `"textual": true` keeps a module headers, as the C library and the compiler's own headers stay beside `import std`. What the program reaches of them only through emptied headers is included or replayed in the prelude.
 - `"provides": "std.compat"` names the module exporting a textual module's names, so only what it leaves out needs a real header.
-- `"rewrite": true` marks a module of the program to rewrite into a named module, see [rewriting the program](#rewriting-the-program). `"primary"` places its primary interface unit; by default it is `module.cppm` in the deepest directory holding the module's headers.
+- `"rewrite": true` marks a module of the program to rewrite into a named module, see [rewriting the program](#rewriting-the-program). `"primary"` places its primary interface unit; by default it is `module.cppm` in the deepest directory holding the module's headers, or its files when it has none.
 
 One module per library and one module for all of them are both a partition away; the scope has to take in every file the partition names.
 

@@ -35,7 +35,7 @@
 - `"external": true` 标记由已有接口代替的模块。仅支持 `std`：当 `--std` 指向 libc++ 的模块源文件目录（`share/libc++/v1`）时，会将其作为 `std.compat` 导入，并将 `std.cppm` 包含的标准头文件置空。
 - `"textual": true` 让模块保持为头文件，就像 C 库和编译器自带的头文件在 `import std` 之外仍以头文件形式保留一样。程序只能经由已置空的头文件间接用到的那部分内容，会在前导头文件中直接包含，或重新定义相应的宏。
 - `"provides": "std.compat"` 为以头文件形式保留的模块指定一个导出其名称的模块，因此只有后者未导出的内容才需要实际的头文件。
-- `"rewrite": true` 标记要改写成具名模块的程序模块，见[改写程序](#rewriting-the-program)。`"primary"` 指定其主接口单元（primary interface unit）的位置；默认是包含该模块全部头文件的最深目录下的 `module.cppm`。
+- `"rewrite": true` 标记要改写成具名模块的程序模块，见[改写程序](#rewriting-the-program)。`"primary"` 指定其主接口单元（primary interface unit）的位置；默认是包含该模块全部头文件的最深目录下的 `module.cppm`；没有头文件时，取包含其全部文件的最深目录。
 
 只需调整划分文件，既可以让每个库各自对应一个模块，也可以让所有库共用一个模块；分析范围必须涵盖划分文件指定的每个文件。
 

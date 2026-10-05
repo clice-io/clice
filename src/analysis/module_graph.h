@@ -361,6 +361,10 @@ struct PartitionSpec {
 
 std::expected<Partition, std::string> partition(const Facts& facts, const PartitionSpec& spec);
 
+/// A C++ module name: identifiers joined by dots, which also keeps the files
+/// named after it inside the output directory.
+bool is_module_name(llvm::StringRef name);
+
 /// Move the entities a `<name or #id>=<path>` spec selects, with their
 /// members, to another header, existing or hypothetical: what the move
 /// of a declaration would do to the graph, without making it.

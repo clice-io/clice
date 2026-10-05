@@ -1489,6 +1489,15 @@ std::expected<void, std::string> move_entities(Facts& facts, llvm::StringRef spe
     return {};
 }
 
+bool is_module_name(llvm::StringRef name) {
+    llvm::SmallVector<llvm::StringRef> parts;
+    name.split(parts, '.');
+    return llvm::all_of(parts, [](llvm::StringRef part) {
+        return !part.empty() && (llvm::isAlpha(part.front()) || part.front() == '_') &&
+               llvm::all_of(part, [](char c) { return llvm::isAlnum(c) || c == '_'; });
+    });
+}
+
 std::expected<Partition, std::string> partition(const Facts& facts, const PartitionSpec& spec) {
     Partition result;
     llvm::StringMap<std::uint32_t> ids;
@@ -1666,6 +1675,35 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
         llvm::SmallString<256> path(common.value_or(""));
         llvm::sys::path::append(path, llvm::sys::path::Style::posix, "module.cppm");
         primary = path.str().str();
+    }
+
+    // A rewritten module writes its files in place and declares its name.
+    llvm::StringMap<std::uint32_t> placed;
+    for(std::uint32_t module = 0; module < count; module += 1) {
+        auto& primary = result.primaries[module];
+        if(primary.empty()) {
+            continue;
+        }
+        if(!is_module_name(result.modules[module])) {
+            return std::unexpected(
+                std::format("module {}: not a module name to rewrite", result.modules[module]));
+        }
+        if(auto [it, inserted] = placed.try_emplace(primary, module); !inserted) {
+            return std::unexpected(
+                std::format("modules {} and {} both put their primary interface at {}",
+                            result.modules[it->second],
+                            result.modules[module],
+                            primary));
+        }
+    }
+    for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+        auto module = result.module_of[file];
+        if(!result.primaries[module].empty() &&
+           llvm::sys::path::is_absolute(facts.files[file].path, llvm::sys::path::Style::posix)) {
+            return std::unexpected(std::format("module {} would rewrite {}, outside the workspace",
+                                               result.modules[module],
+                                               facts.files[file].path));
+        }
     }
     return result;
 }

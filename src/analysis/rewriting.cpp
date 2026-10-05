@@ -59,6 +59,10 @@ struct Text {
     /// Per directive: its last line.
     std::vector<std::uint32_t> ends;
 
+    /// Per line: the preprocessor conditions open around it, an include
+    /// guard's apart.
+    std::vector<std::uint32_t> depths;
+
     /// The tokens outside directives and the line of each.
     std::vector<Token> tokens;
     std::vector<std::uint32_t> token_lines;
@@ -120,6 +124,18 @@ struct Text {
             }
         }
         find_guard();
+        std::uint32_t depth = 0;
+        for(std::uint32_t line = 0; line < count; line += 1) {
+            auto keyword = keywords[line];
+            if(kinds[line] == Line::Directive && keyword == "endif" && depth != 0) {
+                depth -= 1;
+            }
+            depths.push_back(depth);
+            if(kinds[line] == Line::Directive &&
+               (keyword == "if" || keyword == "ifdef" || keyword == "ifndef")) {
+                depth += 1;
+            }
+        }
     }
 
     std::uint32_t line_of(std::uint32_t offset) const {
@@ -689,8 +705,14 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 auto owner = facts.entities[redeclaration.entity].owner;
                 if(redeclaration.file == file && !redeclaration.definition &&
                    !redeclaration.friend_declaration &&
-                   partition.module_of[owner] != partition.module_of[file]) {
-                    drop(redeclaration.line);
+                   partition.module_of[owner] != partition.module_of[file] &&
+                   !drop(redeclaration.line)) {
+                    plan.warnings.push_back(
+                        std::format("{}:{} declares {} of module {}, which only that module may",
+                                    info.path,
+                                    redeclaration.line,
+                                    facts.entities[redeclaration.entity].name,
+                                    partition.modules[partition.module_of[owner]]));
                 }
             }
             for(auto& foreign: facts.foreign_declarations) {
@@ -732,9 +754,24 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                     case Action::Partition: draft.partitions.insert(target); continue;
                     case Action::Drop: continue;
                     case Action::Keep:
-                        if(target != none && rewriter.textual(target)) {
-                            draft.textual.insert(target);
-                            draft.textual_lines.insert(line);
+                        if(target == none || !rewriter.textual(target)) {
+                            break;
+                        }
+                        draft.textual.insert(target);
+                        draft.textual_lines.insert(line);
+                        // In the purview its declarations would be attached to
+                        // the module.
+                        if(module_unit && line >= end) {
+                            if(text.depths[line] != 0) {
+                                plan.warnings.push_back(std::format(
+                                    "{}:{} includes {} under a condition in the module purview",
+                                    info.path,
+                                    line + 1,
+                                    facts.files[target].path));
+                                break;
+                            }
+                            draft.fragment.push_back(text.lines[line].str());
+                            continue;
                         }
                         break;
                 }
@@ -805,6 +842,16 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         }
     }
 
+    // The macro header of `defining` named the way `user` names the header,
+    // `"support/logging.h"` giving `"support/logging.macros.h"`.
+    auto macro_include = [&](std::uint32_t defining, std::uint32_t user) {
+        auto spelling = rewriter.spelling(defining, user);
+        llvm::StringRef spelled = spelling;
+        auto named = with_extension(spelled.drop_front().drop_back(), "macros.h");
+        auto [open, close] = spelled.starts_with("<") ? std::pair{'<', '>'} : std::pair{'"', '"'};
+        return std::format("#include {}{}{}", open, named, close);
+    };
+
     std::map<std::uint32_t, Rewriting::Module> modules;
     std::set<std::uint32_t> macro_headers;
     for(auto& [file, draft]: drafts) {
@@ -824,14 +871,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         std::set<std::string> macro_includes;
         for(auto defining: draft.macro_headers) {
             macro_headers.insert(defining);
-            // Named the way the header is, `"support/logging.h"` giving
-            // `"support/logging.macros.h"`.
-            auto spelling = rewriter.spelling(defining, file);
-            llvm::StringRef spelled = spelling;
-            auto named = with_extension(spelled.drop_front().drop_back(), "macros.h");
-            auto [open, close] =
-                spelled.starts_with("<") ? std::pair{'<', '>'} : std::pair{'"', '"'};
-            macro_includes.insert(std::format("#include {}{}{}", open, named, close));
+            macro_includes.insert(macro_include(defining, file));
         }
         llvm::append_range(lines, macro_includes);
 
@@ -925,12 +965,16 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     }
 
     // A macro header replays the header's directives, the includes of the
-    // headers that stay headers among them: its conditions may test their
-    // macros.
+    // headers that stay headers among them, after the macro headers of the
+    // rewritten headers whose macros it uses: its conditions may test them.
     for(auto defining: macro_headers) {
         Text text(buffers[defining]->getBuffer());
-        auto& textual_lines = drafts.at(defining).textual_lines;
+        auto& draft = drafts.at(defining);
+        auto& textual_lines = draft.textual_lines;
         std::vector<std::string> lines{"#pragma once", ""};
+        for(auto used: draft.macro_headers) {
+            lines.push_back(macro_include(used, defining));
+        }
         for(std::uint32_t line = 0; line < text.lines.size(); line += 1) {
             auto keyword = text.keywords[line];
             if(text.kinds[line] != Text::Line::Directive || keyword == "pragma" ||

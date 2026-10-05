@@ -94,6 +94,17 @@ std::expected<analysis::PartitionSpec, std::string>
             }
             claimed.rewrite = true;
             claimed.primary = module.primary.value_or("");
+            llvm::StringRef primary = claimed.primary;
+            if(llvm::sys::path::is_absolute(primary) ||
+               llvm::sys::path::is_absolute(primary, llvm::sys::path::Style::posix) ||
+               llvm::is_contained(
+                   llvm::make_range(llvm::sys::path::begin(primary), llvm::sys::path::end(primary)),
+                   "..")) {
+                return std::unexpected(
+                    std::format("module {}: primary {} lies outside the workspace",
+                                claimed.name,
+                                primary.str()));
+            }
         } else if(module.primary) {
             return std::unexpected(
                 std::format("module {} has a primary interface but is not rewritten",
