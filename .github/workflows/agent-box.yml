@@ -20,12 +20,6 @@ on:
         options: [linux, linux-arm, macos, macos-intel, windows, windows-arm]
 permissions:
   contents: read
-# As in native-test.yml, so a box builds where and how CI does.
-env:
-  CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
-  CCACHE_BASEDIR: ${{ github.workspace }}
-  CCACHE_COMPILERCHECK: content
-  CCACHE_MAXSIZE: 2G
 jobs:
   box:
     if: github.event_name == 'workflow_dispatch' && github.actor == '16bit-ykiko' && github.triggering_actor == '16bit-ykiko'
@@ -40,67 +34,38 @@ jobs:
         with:
           environments: default test-run
           activate-environment: default
-      # Restore only; main's CI saves. A box has no build type, RelWithDebInfo is what CI ships.
-      - name: Restore compiler cache
+      # Restore only; main's CI saves. A box has no build type: RelWithDebInfo,
+      # what CI ships. The paths are native-test.yml's, which the entry's
+      # version is made of; lld's ThinLTO cache keeps links of libclang's
+      # bitcode to seconds.
+      - name: Restore Bazel caches
         uses: actions/cache/restore@v6
         with:
-          path: .cache/ccache
-          key: ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-RelWithDebInfo-native-ccache-
+          path: |
+            ${{ runner.temp }}/bazel-disk
+            ${{ runner.temp }}/bazel-repo
+            ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }}
+          key: bazel-${{ fromJSON('{"linux":"x86_64-unknown-linux-gnu","linux-arm":"aarch64-unknown-linux-gnu","macos":"aarch64-apple-darwin","macos-intel":"x86_64-apple-darwin","windows":"x86_64-w64-mingw32","windows-arm":"aarch64-w64-mingw32"}')[inputs.os] }}-RelWithDebInfo-
           restore-keys: |
-            ${{ runner.os }}-${{ hashFiles('pixi.lock') }}-RelWithDebInfo-native-ccache-
-      # The prebuilt LLVM is LTO bitcode, so every link of clice redoes LLVM's codegen: 3-9 minutes
-      # on these runners. Turned into native objects once, in the background, links take seconds.
-      # CI keeps linking the bitcode.
-      - name: Native LLVM libraries
+            bazel-${{ fromJSON('{"linux":"x86_64-unknown-linux-gnu","linux-arm":"aarch64-unknown-linux-gnu","macos":"aarch64-apple-darwin","macos-intel":"x86_64-apple-darwin","windows":"x86_64-w64-mingw32","windows-arm":"aarch64-w64-mingw32"}')[inputs.os] }}-RelWithDebInfo-
+      # As native-test.yml's, so a box builds where and how CI does.
+      - name: Bazel settings
         shell: bash
         run: |
-          pixi run cmake-config RelWithDebInfo > ~/llvm-native.log 2>&1
+          temp=$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")
+          {
+            echo "common --disk_cache=$temp/bazel-disk"
+            echo "common --repository_cache=$temp/bazel-repo"
+            if [ "$RUNNER_OS" = Windows ]; then
+              echo "startup --output_user_root=C:/b"
+            fi
+          } > user.bazelrc
           mkdir -p ~/.box
           cat > ~/.box/notes <<'NOTES'
-          LLVM's libraries are turning from LTO bitcode into native objects in the background (3-9 min;
-          links then take seconds). Wait before building:
-            box run <id> 'while [ ! -e ~/llvm-native.done ]; do [ -e ~/llvm-native.failed ] && exit 1; sleep 10; done'
-          Build as CI does, so its compiler cache hits: pixi run build RelWithDebInfo
+          Build as CI does, so its Bazel cache hits: pixi run build RelWithDebInfo
+          (user.bazelrc in ~/src points Bazel at the cache CI's main run saved);
+          the programs land in build/RelWithDebInfo/bin/bin.
           NOTES
-          cat > ~/llvm-native.sh <<'SCRIPT'
-          set -euo pipefail
-          trap 'touch ~/llvm-native.failed' ERR
-          # Where cmake/llvm.cmake put the package: the CPM cache is under %LOCALAPPDATA% on Windows.
-          L=$(sed -n 's/^LLVM_INSTALL_PATH:PATH=//p' build/RelWithDebInfo/CMakeCache.txt)/lib
-          # xclang's: the LLVM that wrote the bitcode, and an ar with N everywhere (macOS's has none).
-          CLANG=$(command -v clang)
-          AR=$(command -v llvm-ar)
-          work=$(mktemp -d)
-          cd "$work"
-          mkdir out
-          # Archives can hold several members of one name (clangDriver has two AMDGPU.cpp.o).
-          for a in "$L"/*.a; do
-            n=$(basename "$a" .a)
-            mkdir -p "x/$n"
-            (cd "x/$n" && "$AR" x "$a" && "$AR" t "$a" | tr -d '\r' | sort | uniq -c | while read -r c m; do
-              [ "$c" -gt 1 ] || continue
-              for k in $(seq "$c"); do "$AR" xN "$k" "$a" "$m" && mv "$m" "${k}_$m"; done
-            done)
-          done
-          # Bitcode starts with BC, or with the wrapper Darwin targets put it in. The sections are
-          # those lld's LTO would give, for --gc-sections to drop what LTO drops.
-          convert() {
-            case $(od -An -tx1 -N4 "$1" | tr -d ' \r\n') in
-              4243c0de | dec0170b) "$CLANG" -c -O2 -ffunction-sections -fdata-sections -x ir "$1" -o "$1.native" ;;
-              *) cp "$1" "$1.native" ;;
-            esac
-          }
-          export -f convert
-          export CLANG
-          find x -type f ! -name '*.native' -print0 |
-            xargs -0 -P "$(nproc 2>/dev/null || sysctl -n hw.ncpu)" -I{} bash -c 'convert "$1"' _ {}
-          for d in x/*; do (cd "$d" && "$AR" rcs "../../out/${d#x/}.a" *.native); done
-          cp out/*.a "$L/"
-          rm -rf "$work"
-          echo "native in $SECONDS s"
-          touch ~/llvm-native.done
-          SCRIPT
-          nohup bash ~/llvm-native.sh >> ~/llvm-native.log 2>&1 < /dev/null &
       - uses: 16bit-ykiko/agent-box@a0fc879b1b1aa0ba8922018c82479a5ca7953c12
         with:
           pubkey: ${{ inputs.pubkey }}
