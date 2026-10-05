@@ -2,17 +2,17 @@
 
 clice 只有一个二进制。编辑器启动 `clice serve` 并通过 LSP 与它通信；其余子命令在终端里驱动同一个引擎，共用它的编译数据库处理、缓存和索引。
 
-| 命令         | 作用                                             | 页面                           |
-| ------------ | ------------------------------------------------ | ------------------------------ |
-| `serve`      | 启动语言服务器。编辑器会替你启动，见编辑器设置。 | [editors](../guide/editors.md) |
-| `lint`       | 用 worker 池对每个翻译单元运行 clang-tidy。      | [lint](./lint.md)              |
-| `index`      | 提前为工作区建立索引，让服务器热启动。           | [index](./index.md)            |
-| `format`     | 用 clang-format 格式化工作区中的文件。           | [format](./format.md)          |
-| `inspect`    | 对源文件运行某一项功能，把原始结果打印成 JSON。  |                                |
-| `query`      | 向持久化索引查询符号、引用、调用图和文件。       | [query](./query.md)            |
-| `refactor`   | 依据持久化索引在整个工作区重命名一个符号。       | [refactor](./refactor.md)      |
-| `analyze`    | 报告重构所需的事实，例如模块依赖和循环依赖。     | [analyze](./analyze.md)        |
-| `modularize` | 在头文件之上把第三方库封装成 C++20 模块。        | [modularize](./modularize.md)  |
+| 命令         | 作用                                                | 页面                           |
+| ------------ | --------------------------------------------------- | ------------------------------ |
+| `serve`      | 启动语言服务器。编辑器会替你启动，见编辑器设置。    | [editors](../guide/editors.md) |
+| `lint`       | 用 worker 池对每个翻译单元运行 clang-tidy。         | [lint](./lint.md)              |
+| `index`      | 提前为工作区建立索引，让服务器热启动。              | [index](./index.md)            |
+| `format`     | 用 clang-format 格式化工作区中的文件。              | [format](./format.md)          |
+| `inspect`    | 对源文件运行某一项功能，把原始结果打印成 JSON。     |                                |
+| `query`      | 向持久化索引查询符号、引用、调用图和文件。          | [query](./query.md)            |
+| `refactor`   | 依据持久化索引在整个工作区重命名一个符号。          | [refactor](./refactor.md)      |
+| `analyze`    | 报告重构所需的事实，例如模块依赖和循环依赖。        | [analyze](./analyze.md)        |
+| `modularize` | 把第三方库封装成 C++20 模块，把程序改写成模块单元。 | [modularize](./modularize.md)  |
 
 `inspect` 现在已可使用但还没有页面，选项通过 `clice inspect --help` 查看。
 
