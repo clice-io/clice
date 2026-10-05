@@ -87,9 +87,7 @@ download that release's `*.symbols.tar.xz` (`.zip` for Windows; GSYM) and run:
 python scripts/symbolize.py crash.log --symbols clice.gsym
 ```
 
-A package holding the unstripped `clice` instead (nightlies built between
-the Bazel migration and xclang 23.1.2.6) is passed the same way. For
-core-dump-level debugging, fetch the full DWARF from the `debug-info-*`
+For core-dump-level debugging, fetch the full DWARF from the `debug-info-*`
 artifact of the main CI run that built the release (90-day retention; find
 it via the commit hash in the release notes). If the log predates the
 version line or the release was pruned, symbolization is not possible — ask

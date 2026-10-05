@@ -89,10 +89,10 @@ test.skipIf(release === undefined)(
             gsym,
         ]);
         expect(result.status, `symbolize.py failed: ${result.stderr.slice(0, 2000)}`).toBe(0);
-        const frames = result.stdout.slice(0, 6000);
+        const trace = result.stdout.slice(result.stdout.indexOf("CRASH STACK TRACE"));
         // The crash handler is clice's code, the pragma's handler libclang's.
-        expect(frames, `clice's frames:\n${frames}`).toContain("logging.cpp");
-        expect(frames, `libclang's frames:\n${frames}`).toContain("Pragma.cpp");
+        expect(trace, `clice's frames:\n${trace.slice(0, 6000)}`).toContain("logging.cpp");
+        expect(trace, `libclang's frames:\n${trace.slice(0, 6000)}`).toContain("Pragma.cpp");
     },
     120_000,
 );

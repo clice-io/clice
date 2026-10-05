@@ -68,7 +68,7 @@ Bazel also needs a Bash on Windows, which [Git for Windows](https://gitforwindow
 
 ## About LLVM
 
-clice calls Clang APIs to parse C++ code, so it must link against LLVM/Clang. Because clice uses Clang's private headers (usually absent from distro packages), the system LLVM package cannot be used directly.
+clice calls Clang APIs to parse C++ code, so it must link against LLVM/Clang, of the exact version it is written for: the system LLVM package cannot be used directly.
 
 Every [xclang](https://github.com/clice-io/xclang/releases) release publishes prebuilt LLVM/Clang libraries (the `libclang-*` archives) for all six targets, built by that release's toolchain, and its Bazel module makes them repositories Bazel downloads with the toolchain.
 

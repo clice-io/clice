@@ -86,9 +86,8 @@ LLVM_LIBRARIES = [
     "clangToolingSyntax",
 ]
 
-# libclang's ThinLTO bitcode (its ASan build in ASan builds): every link of
-# it redoes LLVM's code generation, which lld's cache (.bazelrc) keeps from
-# one link to the next.
+# libclang's ThinLTO bitcode: every link of it redoes LLVM's code
+# generation, which lld's cache (.bazelrc) keeps from one link to the next.
 cc_library(
     name = "llvm",
     deps = ["@libclang//:" + lib for lib in LLVM_LIBRARIES],

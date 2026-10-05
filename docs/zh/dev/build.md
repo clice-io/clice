@@ -68,7 +68,7 @@ startup --output_user_root=C:/b
 
 ## 关于 LLVM
 
-clice 调用 Clang API 解析 C++ 代码，因此必须链接 LLVM/Clang。由于 clice 使用 Clang 的私有头文件（发行版软件包通常不包含这些文件），因此无法直接使用系统提供的 LLVM 软件包。
+clice 调用 Clang API 解析 C++ 代码，因此必须链接 LLVM/Clang，而且必须是 clice 所针对的那个版本，因此无法直接使用系统提供的 LLVM 软件包。
 
 每个 [xclang](https://github.com/clice-io/xclang/releases) 版本都会为全部六个目标发布预编译的 LLVM/Clang 库（`libclang-*` 压缩包），由该版本自己的工具链构建；xclang 的 Bazel 模块把这些库声明为仓库（repository），Bazel 会连同工具链一起下载它们。
 
