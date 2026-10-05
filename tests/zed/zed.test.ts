@@ -65,9 +65,12 @@ function install(): void {
     );
     fs.copyFileSync(extensionWasm, path.join(installed, "extension.wasm"));
     // Only clice serves C and C++, so every server start in the log is clice's.
+    // A first start would also install the html extension, whose reload
+    // races clice's registration.
     const settings = {
         session: { trust_all_worktrees: true },
         auto_update: false,
+        auto_install_extensions: { html: false },
         telemetry: { diagnostics: false, metrics: false },
         languages: {
             "C++": { language_servers: ["clice"] },
