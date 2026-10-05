@@ -12,7 +12,8 @@ clice 只有一个二进制。编辑器启动 `clice serve` 并通过 LSP 与它
 | `query`    | 向持久化索引查询符号、引用、调用图和文件。       | [query](./query.md)            |
 | `refactor` | 依据持久化索引在整个工作区重命名一个符号。       | [refactor](./refactor.md)      |
 | `analyze`  | 报告重构所需的事实，例如模块依赖和循环依赖。     | [analyze](./analyze.md)        |
+| `modulize` | 在头文件之上把第三方库封装成 C++20 模块。        | [modulize](./modulize.md)      |
 
 `inspect` 现在已可使用但还没有页面，选项通过 `clice inspect --help` 查看。
 
-`serve`、`index`、`lint`、`format`、`inspect`、`query`、`refactor` 和 `analyze` 都接受 `--configuration <tag>`，为本次运行固定构建配置，其优先级高于编辑器持久化的选择；参见[切换配置](../guide/configuration.md#switching-configurations)。
+`serve`、`index`、`lint`、`format`、`inspect`、`query`、`refactor`、`analyze` 和 `modulize` 都接受 `--configuration <tag>`，为本次运行固定构建配置，其优先级高于编辑器持久化的选择；参见[切换配置](../guide/configuration.md#switching-configurations)。

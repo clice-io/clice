@@ -47,6 +47,7 @@ int main(int argc, const char** argv) {
     driver::add_format(clice);
     driver::add_inspect(clice);
     driver::add_analyze(clice);
+    driver::add_modulize(clice);
 
     clice.enable_help().when_err(driver::subcommand_error_handler(clice));
 

@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "pairs": [
+    { "kind": "heading", "en": "f381a139747db1db", "zh": "5ae5ac92dc419f33" },
+    { "kind": "heading", "en": "7337f3d0aa29e9a8", "zh": "a166cd4942b3a912" },
+    { "kind": "paragraph", "en": "7dd19b258ac09537", "zh": "abdc7e8025b7c071" },
+    { "kind": "paragraph", "en": "825073cbbbe91cd7", "zh": "906deeb307862faa" },
+    { "kind": "paragraph", "en": "24370dde0b9990cb", "zh": "6319c5687d5cc404" },
+    { "kind": "heading", "en": "52dae5687848d910", "zh": "3df451806dc9bd8e" },
+    { "kind": "paragraph", "en": "5b8b69747baf0e42", "zh": "4fd7088cdecb46bc" },
+    { "kind": "listItem", "en": "f28c44cef343ee0d", "zh": "717f1a3827d1914c" },
+    { "kind": "listItem", "en": "57fe5824c5b6e166", "zh": "d333cb8cb14f9033" },
+    { "kind": "listItem", "en": "53bc89bf9237513c", "zh": "51df4fa3927453fb" },
+    { "kind": "listItem", "en": "9fdada8ef3967c31", "zh": "6e32d8f42a4b5919" },
+    { "kind": "paragraph", "en": "87bf4e3b3a94f588", "zh": "5d40368273648b9d" },
+    { "kind": "heading", "en": "e34e364b9c6b7d84", "zh": "fd685e8f1a75ea53" },
+    { "kind": "paragraph", "en": "16dd429726f39ab4", "zh": "eceb0ffc1699cfb8" },
+    { "kind": "listItem", "en": "52843c28090cb3ed", "zh": "e8830db2f018c3a9" },
+    { "kind": "listItem", "en": "aff589c7f7b92c5a", "zh": "1a82328174db5b1c" },
+    { "kind": "listItem", "en": "6cd0f6ee3712e0e5", "zh": "de3da8500b2dfd24" },
+    { "kind": "paragraph", "en": "5cbcb947e6541569", "zh": "d02f16646d586930" },
+    { "kind": "paragraph", "en": "3583d388d4a6b06e", "zh": "a2c34e90d42ba91f" },
+    { "kind": "paragraph", "en": "01bdb7a8f80eca50", "zh": "ddd4b3c2a47cb054" },
+    { "kind": "heading", "en": "705373c7c0a42881", "zh": "2b7b84c0c28abaf9" },
+    { "kind": "listItem", "en": "8e608ecd50833067", "zh": "78e33376cc1e1f79" },
+    { "kind": "listItem", "en": "d70b334e956cbffe", "zh": "d073e4c61b2e194b" },
+    { "kind": "listItem", "en": "edf20bc3f60d7871", "zh": "5b79c33b2ef896c5" },
+    { "kind": "listItem", "en": "a571f332e675a5cf", "zh": "d71042c8bf1829bd" },
+    { "kind": "listItem", "en": "9f822764dc3bd256", "zh": "1d17f83418bcfeb8" },
+    { "kind": "listItem", "en": "564eb0b798422f69", "zh": "33f30dc495728f6e" }
+  ]
+}
