@@ -17,11 +17,10 @@ pixi run install-vscode
 pixi run build-vscode
 ```
 
-Publish to the VSCode Marketplace (`VSCE_PAT` env var required) and to Open VSX (`OVSX_PAT` env var required):
+Publish to the VSCode Marketplace (`VSCE_PAT` env var required):
 
 ```shell
 pixi run publish-vscode
-pixi run publish-ovsx
 ```
 
 > [!IMPORTANT]
@@ -40,7 +39,7 @@ npm run package # same as pixi run build-vscode
 npm run publish # same as pixi run publish-vscode
 ```
 
-If you skip pixi, install node.js >= 20 yourself (npm is bundled). The extension is part of the repo's npm workspace, so install at the repo root, then package from `editors/vscode`:
+If you skip pixi, install node.js >= 22 yourself (npm is bundled). The extension is part of the repo's npm workspace, so install at the repo root, then package from `editors/vscode`:
 
 ```bash
 npm install          # at the repo root

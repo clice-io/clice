@@ -263,7 +263,7 @@ depends-on = [
 platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
 [feature.node.dependencies]
-nodejs = ">=20"
+nodejs = ">=22"
 
 # The instant-build packaging strips test binaries before bundling them
 # into the vsix (an unstripped ELF carries ~700MB of DWARF).
