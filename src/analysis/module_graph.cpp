@@ -12,6 +12,7 @@
 #include "command/command.h"
 #include "index/serialization.h"
 #include "project/project.h"
+#include "syntax/lexer.h"
 #include "vfs/file_system.h"
 #include "vfs/path.h"
 
@@ -23,6 +24,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Path.h"
+#include "clang/Basic/IdentifierTable.h"
 
 namespace clice::analysis {
 
@@ -1489,12 +1491,19 @@ std::expected<void, std::string> move_entities(Facts& facts, llvm::StringRef spe
     return {};
 }
 
+bool is_keyword(llvm::StringRef word) {
+    const static auto options = raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx23);
+    static clang::IdentifierTable table(options);
+    return table.get(word).getTokenID() != clang::tok::identifier;
+}
+
 bool is_module_name(llvm::StringRef name) {
     llvm::SmallVector<llvm::StringRef> parts;
     name.split(parts, '.');
     return llvm::all_of(parts, [](llvm::StringRef part) {
         return !part.empty() && (llvm::isAlpha(part.front()) || part.front() == '_') &&
-               llvm::all_of(part, [](char c) { return llvm::isAlnum(c) || c == '_'; });
+               llvm::all_of(part, [](char c) { return llvm::isAlnum(c) || c == '_'; }) &&
+               !is_keyword(part) && part != "module" && part != "import";
     });
 }
 
@@ -3184,9 +3193,11 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     // other file's uses show (StmtVisitor.h's STMT in StmtNodes.inc); one a
     // textual header expands is used wherever that header compiles, in
     // importers.
+    auto pasted = pasted_fragments(facts);
     for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
         auto& info = facts.entities[entity];
-        if(info.kind != SymbolKind::Macro) {
+        if(info.kind != SymbolKind::Macro ||
+           (reverse.users[entity].empty() && pasted[info.owner].empty())) {
             continue;
         }
         auto module = module_of(info.owner);

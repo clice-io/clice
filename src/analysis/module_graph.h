@@ -361,8 +361,12 @@ struct PartitionSpec {
 
 std::expected<Partition, std::string> partition(const Facts& facts, const PartitionSpec& spec);
 
-/// A C++ module name: identifiers joined by dots, which also keeps the files
-/// named after it inside the output directory.
+/// Whether `word` is a C++23 keyword rather than an identifier.
+bool is_keyword(llvm::StringRef word);
+
+/// A C++ module name: identifiers joined by dots, none a keyword, `module` or
+/// `import`, which also keeps the files named after it inside the output
+/// directory.
 bool is_module_name(llvm::StringRef name);
 
 /// Move the entities a `<name or #id>=<path>` spec selects, with their

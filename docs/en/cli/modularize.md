@@ -117,5 +117,6 @@ The build compiles `stdSources` and each module in order, each with its library'
 - Only the files the index holds are rewritten: a source no compilation of the indexed configuration enters, as another platform's, keeps its includes.
 - Clang does not take the global module fragment of an implementation partition as reachable from a unit importing it through another partition, though the standard has that unit import it too. A rewritten file therefore includes the headers that stay headers which such partitions include, and parses them again.
 - An include of a rewritten header under a preprocessor condition becomes an unconditional import.
-- A header that stays a header cannot include a rewritten one; modularize warns about it.
+- modularize stops with an error, before writing anything, when a header that stays a header includes a rewritten one, when headers of one module include each other, when an interface partition would export a `static` entity, or when a file it writes would overwrite another.
+- A rewritten source defining what a header that stays a header declares attaches the definition to its module, away from the declaration; modularize warns about it.
 - A forward declaration of an entity outside the scope moves to the global module fragment under the namespaces of its qualified name; an inline namespace among them, such as one a macro opens, is not reproduced.

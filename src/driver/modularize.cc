@@ -176,10 +176,7 @@ int run_modularize(const ModularizeOptions& opts) {
 
     Spelling out_spelling(*opts.out, Spelling::cwd());
     auto out = out_spelling.str();
-    if(auto written = write_files(out, wrapping->files); !written) {
-        return fail(written.error());
-    }
-    Plan plan{.wrapping = std::move(wrapping->plan)};
+    std::optional<analysis::Rewriting> rewriting;
     if(llvm::any_of(partition->primaries, [](auto& primary) { return !primary.empty(); })) {
         // The prelude by its path from the workspace root, which the
         // rewritten files' include path holds.
@@ -187,12 +184,20 @@ int run_modularize(const ModularizeOptions& opts) {
         llvm::StringRef prelude_dir = canonical_out;
         auto inside = prelude_dir.consume_front(loaded->root) && prelude_dir.consume_front("/");
         llvm::SmallString<256> prelude(inside ? prelude_dir : llvm::StringRef(out));
-        llvm::sys::path::append(prelude, llvm::sys::path::Style::posix, plan.wrapping.prelude);
-        auto rewriting =
+        llvm::sys::path::append(prelude, llvm::sys::path::Style::posix, wrapping->plan.prelude);
+        auto rewritten =
             analysis::rewrite(loaded->facts, *partition, *interfaces, prelude, loaded->root);
-        if(!rewriting) {
-            return fail(rewriting.error());
+        if(!rewritten) {
+            return fail(rewritten.error());
         }
+        rewriting = std::move(*rewritten);
+    }
+
+    if(auto written = write_files(out, wrapping->files); !written) {
+        return fail(written.error());
+    }
+    Plan plan{.wrapping = std::move(wrapping->plan)};
+    if(rewriting) {
         for(auto& file: rewriting->files) {
             auto path = join(loaded->root, file.path);
             if(auto error = vfs::create_directories(llvm::sys::path::parent_path(path))) {

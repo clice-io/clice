@@ -19,7 +19,6 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "clang/Basic/IdentifierTable.h"
 
 namespace clice::analysis {
 
@@ -358,27 +357,30 @@ struct Text {
         return found;
     }
 
-    /// The offset of `int` in a definition of `main` at global scope, the
-    /// last one: `int main(` in a string literal is no token.
+    /// The offset of the return type of a definition of `main` at global
+    /// scope, the last one: `int main(` in a string literal is no token.
     std::optional<std::uint32_t> main_definition() const {
+        auto returned = [&](std::size_t i) {
+            auto word = tokens[i].text(content);
+            return word == "int" || word == "signed" || word == "auto";
+        };
         std::optional<std::uint32_t> found;
         int depth = 0;
         for(std::size_t i = 0; i < tokens.size(); i += 1) {
             depth += tokens[i].kind == clang::tok::l_brace;
             depth -= tokens[i].kind == clang::tok::r_brace;
-            if(depth == 0 && i + 2 < tokens.size() && tokens[i].text(content) == "int" &&
-               tokens[i + 1].text(content) == "main" && tokens[i + 2].kind == clang::tok::l_paren) {
-                found = tokens[i].range.begin;
+            if(depth == 0 && i != 0 && i + 1 < tokens.size() && tokens[i].text(content) == "main" &&
+               tokens[i + 1].kind == clang::tok::l_paren && returned(i - 1)) {
+                auto first = i - 1;
+                while(first != 0 && returned(first - 1)) {
+                    first -= 1;
+                }
+                found = tokens[first].range.begin;
             }
         }
         return found;
     }
 };
-
-bool is_keyword(llvm::StringRef word) {
-    static clang::IdentifierTable table(cxx());
-    return table.get(word).getTokenID() != clang::tok::identifier;
-}
 
 /// A partition name for the file at `path`: its path under `base` when it is
 /// there, else its whole path, without the extension, each segment made an
@@ -639,6 +641,22 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         partition.module_of[file] = *modules.begin();
         plan.moved.push_back(std::format("{}={}", path, partition.modules[*modules.begin()]));
     }
+    // What a header of the program that stays a header declares belongs to
+    // the global module, where no module unit can define it.
+    for(auto& redeclaration: facts.redeclarations) {
+        auto& entity = facts.entities[redeclaration.entity];
+        auto owner = partition.module_of[entity.owner];
+        auto& file = facts.files[redeclaration.file];
+        if(redeclaration.definition && file.source && !facts.files[entity.owner].source &&
+           !partition.primaries[partition.module_of[redeclaration.file]].empty() &&
+           partition.kinds[owner] == ModuleKind::Program && partition.primaries[owner].empty()) {
+            plan.warnings.push_back(std::format("{}:{} defines {}, which {} declares",
+                                                file.path,
+                                                redeclaration.line,
+                                                entity.name,
+                                                facts.files[entity.owner].path));
+        }
+    }
 
     Annotations annotations;
     auto units = Report{.facts = facts, .partition = partition, .annotations = annotations}.units();
@@ -678,16 +696,28 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             if(!path.ends_with(("/" + relative).str())) {
                 continue;
             }
-            auto root = path.drop_back(relative.size() + 1);
-            if(root.empty() ||
+            auto base = path.drop_back(relative.size() + 1);
+            if(base.empty() ||
                (spelled.front() == '"' &&
-                root == llvm::sys::path::parent_path(facts.files[info.includers[i]].path, posix))) {
+                base == llvm::sys::path::parent_path(facts.files[info.includers[i]].path, posix))) {
                 continue;
             }
-            auto& delimiter = rewriter.roots[root];
+            auto& delimiter = rewriter.roots[base];
             if(delimiter != '<') {
                 delimiter = spelled.front();
             }
+        }
+    }
+
+    // An interface partition exports its whole body.
+    for(auto& entity: facts.entities) {
+        if(entity.linkage == InternalLinkage::Static && rewriter.rewritten(entity.owner) &&
+           units[entity.owner].kind == Unit::Kind::Interface) {
+            return std::unexpected(
+                std::format("{}:{} declares {} static, which an interface partition cannot export",
+                            facts.files[entity.owner].path,
+                            entity.line,
+                            entity.name));
         }
     }
 
@@ -704,12 +734,11 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         if(!includes_rewritten || units[file].kind == Unit::Kind::Fragment) {
             continue;
         }
-        if(info.source) {
-            files.push_back(file);
-        } else {
-            plan.warnings.push_back(
+        if(!info.source) {
+            return std::unexpected(
                 std::format("{} stays a header but includes rewritten headers", info.path));
         }
+        files.push_back(file);
     }
 
     llvm::DenseMap<std::uint32_t, std::unique_ptr<llvm::MemoryBuffer>> buffers;
@@ -790,13 +819,18 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             }
             if(text.kinds[line] == Text::Line::Directive && takes_header_name(keyword) &&
                keyword != "embed") {
+                auto last = text.ends[line];
                 auto target = rewriter.resolve(file, line, text.operands[line]);
                 switch(rewriter.classify(file, target)) {
                     case Action::Import:
                         draft.modules.insert(partition.modules[partition.module_of[target]]);
+                        line = last;
                         continue;
-                    case Action::Partition: draft.partitions.insert(target); continue;
-                    case Action::Drop: continue;
+                    case Action::Partition:
+                        draft.partitions.insert(target);
+                        line = last;
+                        continue;
+                    case Action::Drop: line = last; continue;
                     case Action::Keep:
                         if(target == none || !rewriter.textual(target)) {
                             break;
@@ -814,7 +848,10 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                                     facts.files[target].path));
                                 break;
                             }
-                            draft.fragment.push_back(text.lines[line].str());
+                            for(auto part = line; part <= last; part += 1) {
+                                draft.fragment.push_back(text.lines[part].str());
+                            }
+                            line = last;
                             continue;
                         }
                         break;
@@ -851,6 +888,38 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         draft.partitions.erase(file);
     }
 
+    // Partitions importing each other have no order to compile in.
+    llvm::DenseSet<std::uint32_t> ordered;
+    std::vector<std::uint32_t> chain;
+    auto order = [&](auto& self, std::uint32_t file) -> std::optional<std::string> {
+        if(ordered.contains(file)) {
+            return std::nullopt;
+        }
+        if(auto cycle = llvm::find(chain, file); cycle != chain.end()) {
+            std::vector<std::string> paths;
+            for(auto member: llvm::make_range(cycle, chain.end())) {
+                paths.push_back(facts.files[member].path);
+            }
+            std::ranges::rotate(paths, std::ranges::min_element(paths));
+            paths.push_back(paths.front());
+            return std::format("headers include each other: {}", llvm::join(paths, " -> "));
+        }
+        chain.push_back(file);
+        for(auto imported: drafts.at(file).partitions) {
+            if(auto cycle = self(self, imported)) {
+                return cycle;
+            }
+        }
+        chain.pop_back();
+        ordered.insert(file);
+        return std::nullopt;
+    };
+    for(auto& entry: drafts) {
+        if(auto cycle = order(order, entry.first)) {
+            return std::unexpected(*cycle);
+        }
+    }
+
     // Clang takes no declaration in the global module fragment of an
     // implementation partition as reachable from a unit importing it through
     // another partition, though the standard has that unit import it too:
@@ -885,6 +954,18 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             primaries.insert(primary);
         }
     }
+    // A file written anew takes a path no other one and no existing file has.
+    llvm::StringMap<std::string> written;
+    auto claim = [&](llvm::StringRef path, llvm::StringRef from) -> std::optional<std::string> {
+        auto [it, inserted] = written.try_emplace(path, from.str());
+        if(!inserted) {
+            return std::format("{} and {} both become {}", it->second, from.str(), path.str());
+        }
+        if(vfs::exists(path::join(root, path))) {
+            return std::format("{} would overwrite {}", from.str(), path.str());
+        }
+        return std::nullopt;
+    };
 
     // The macro header of `defining` named the way `user` names the header,
     // `"support/logging.h"` giving `"support/logging.macros.h"`.
@@ -960,6 +1041,11 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             return std::unexpected(
                 std::format("{} becomes {}, the primary interface of its module", info.path, path));
         }
+        if(path != info.path) {
+            if(auto taken = claim(path, info.path)) {
+                return std::unexpected(*taken);
+            }
+        }
         result.files.push_back({.path = path, .content = assemble(lines)});
         if(!module_unit) {
             plan.importers.push_back(path);
@@ -1003,6 +1089,9 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 }
             }
         }
+        if(auto taken = claim(entry.primary, std::format("module {}", entry.name))) {
+            return std::unexpected(*taken);
+        }
         result.files.push_back({.path = entry.primary, .content = assemble(lines)});
         std::ranges::sort(entry.imports);
         plan.modules.push_back(std::move(entry));
@@ -1030,6 +1119,9 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             }
         }
         auto path = with_extension(facts.files[defining].path, "macros.h");
+        if(auto taken = claim(path, facts.files[defining].path)) {
+            return std::unexpected(*taken);
+        }
         result.files.push_back({.path = path, .content = assemble(lines)});
         plan.macros.push_back(std::move(path));
     }
