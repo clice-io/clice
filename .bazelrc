@@ -1,0 +1,36 @@
+common --enable_platform_specific_config
+# xclang, kotatsu and the third-party libraries come from the clice Bazel
+# registry, the rest from the Bazel Central Registry.
+common --registry=https://bazel.clice.io/
+common --registry=https://bcr.bazel.build/
+# The C++ toolchain is xclang's (MODULE.bazel), on every platform; rules_cc's
+# detection of another is off.
+common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+common --cxxopt=-std=c++23 --host_cxxopt=-std=c++23
+common:macos --macos_minimum_os=15.0
+
+# clice builds without exceptions or RTTI, and its libraries are configured
+# to match; spdlog formats with std::format.
+common --@kotatsu//bazel:exceptions=false --@kotatsu//bazel:rtti=false
+common --@simdjson//:exceptions=false
+common --@spdlog//:std_format=true --@spdlog//:exceptions=false
+# The allocator of the Windows executable (src/mimalloc.cc) leaves its memory
+# to the process exit.
+common --@mimalloc//:skip_collect_on_exit=true
+
+# The build types. RelWithDebInfo is the default; `--config=Debug` is an ASan
+# build where xclang has the ASan libclang (Linux x64, macOS arm64), a plain
+# debug build on Windows. `--config=release` links clice with libclang's
+# ThinLTO bitcode, as releases ship it; other builds link it compiled to
+# native code (bazel/llvm.bzl).
+common -c opt --copt=-g
+common:RelWithDebInfo -c opt
+common:Debug -c dbg --features=asan
+common:windows --features=-asan
+common:release --define=llvm=bitcode
+
+# version.cpp, stamped with the version git describes.
+common --workspace_status_command="node bazel/workspace_status.mjs"
+
+# A local file of one's own (a disk cache, say), never committed.
+try-import %workspace%/user.bazelrc

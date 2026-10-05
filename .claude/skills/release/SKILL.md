@@ -11,17 +11,17 @@ One version number everywhere: git tag `vX.Y.Z` == extension version == release
 page. Odd minor = pre-release channel, even minor = stable (the VS Code
 Marketplace convention). Nightlies compute `X.<odd>.YYYYMMDDHH` (UTC hour) on the
 odd minor above the newest release — `0.1.*` today, `0.3.*` after stable
-`v0.2.0` — so nobody edits version numbers by hand. The versions in `CMakeLists.txt`, `pixi.toml`,
-and `editors/vscode/package.json` are permanent placeholders (`0.1.0`); the
-real version is injected from the tag at build time (binary via git describe,
-vsix via CI). A local `vsce publish` with the placeholder is rejected by the
+`v0.2.0` — so nobody edits version numbers by hand. The versions in
+`bazel/workspace_status.mjs`, `pixi.toml`, and `editors/vscode/package.json`
+are permanent placeholders (`0.1.0`); the real version is injected from the
+tag at build time (binary via git describe, vsix via CI). A local `vsce publish` with the placeholder is rejected by the
 Marketplace — that is intentional accident protection.
 
 ## Tier 1 — Instant builds (every green CI run)
 
 Nothing to operate. Every `main` push and PR run repackages the test-suite
-binaries (no LTO, no strip) into `vsix-build-<target>` workflow artifacts, and
-the raw binaries are in `native-build-*` / `cross-build-*` artifacts. To hand a
+binaries (no strip) into `vsix-build-<target>` workflow artifacts, and
+the raw binaries are in `build-<triple>-<type>` artifacts. To hand a
 fix to a user: point them at the run's artifact (GitHub login required), or
 have them set `clice.executable` to the extracted binary.
 
@@ -70,7 +70,7 @@ logs to releases by the commit hash; the release notes state the hash.
 ## Plumbing changes
 
 There is no separate dry run: packaging runs on every CI build (the
-`Package release artifacts` steps in native-test/cross-pair) and the vsix
+`Package release artifacts` step of native-test, `scripts/package.py`) and the vsix
 path runs as `instant-vscode`, so release plumbing is exercised by every
 code-touching PR. Only the promote/upload glue (`publish-clice.yml`,
 nightly orchestration) is release-time-only.

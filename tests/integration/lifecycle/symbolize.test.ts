@@ -46,7 +46,7 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
         }
 
         const tmp = session.tmpdir();
-        // Replay the clice-strip / clice-pack-symbol steps from cmake/release.cmake.
+        // Replay the strip and GSYM steps of scripts/package.py.
         const stripped = tmp.path("clice");
         const debugFile = tmp.path("clice.debug");
         const gsymFile = tmp.path("clice.gsym");

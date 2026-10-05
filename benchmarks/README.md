@@ -18,8 +18,8 @@ your question:
    point it at clangd with `--server clangd` to A/B the same scenario.
 
 3. **Component benchmarks** — _which design alternative is faster?_
-   Standalone binaries in this directory, built with
-   `-DCLICE_ENABLE_BENCHMARK=ON`, each answering one decision:
+   Standalone binaries in this directory, Bazel targets of their own
+   (`//:benchmarks`), each answering one decision:
    - `scan_benchmark` — dependency-graph scan over a real CDB.
    - `pipeline_benchmark` — per-TU stage profile (preprocess with/without
      TokenBuffer, parse, index build/serialize, preamble PCH build incl.
@@ -31,10 +31,11 @@ your question:
 ## Building
 
 ```bash
-cmake -B build/RelWithDebInfo -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake -DCLICE_ENABLE_BENCHMARK=ON
-ninja -C build/RelWithDebInfo scan_benchmark pipeline_benchmark pch_chain_benchmark
+pixi run build RelWithDebInfo -- //:benchmarks
 ```
+
+`//:benchmarks` is all four with the resource directory; name single ones
+(`//:scan_benchmark //:resource_dir`) to build less.
 
 Always benchmark `RelWithDebInfo`; Debug numbers are meaningless.
 
@@ -50,8 +51,8 @@ compile_commands.json):
 python benchmarks/fetch_workload.py llvm
 ```
 
-clice's own CDB (`build/RelWithDebInfo/compile_commands.json`) doubles as
-an always-available medium workload.
+clice's own CDB (`pixi run compile-commands` writes `compile_commands.json`)
+doubles as an always-available medium workload.
 
 ## Typical sessions
 

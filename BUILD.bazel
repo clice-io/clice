@@ -1,0 +1,318 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//bazel:llvm.bzl", "native_libraries")
+
+# What clice's own sources compile with; the libraries keep their own flags.
+COPTS = [
+    "-Isrc",
+    "-fno-rtti",
+    "-fno-exceptions",
+    "-Werror=return-type",
+    "-Wno-deprecated-declarations",
+    "-Wno-undefined-inline",
+]
+
+# Link optimizations in optimized builds: what the test suites run is what
+# releases ship. icf=safe (not =all) so address-taken functions keep C++
+# pointer identity. On macOS, --keep-icf-stabs: without it dsymutil cannot
+# see ICF-folded symbols, so they would be missing from the dSYM (and thus
+# from GSYM). macOS programs keep their debug info in the object files, and
+# the paths to them relative to the execution root, where they stay; the
+# sandbox an action links in is gone after it.
+LINKOPTS = select({
+    "@platforms//os:macos": ["-Wl,-oso_prefix,."],
+    "//conditions:default": [],
+}) + select({
+    ":opt_macos": [
+        "-Wl,--icf=safe",
+        "-Wl,--keep-icf-stabs",
+    ],
+    ":opt": [
+        "-Wl,--icf=safe",
+        "-Wl,-O2",
+    ],
+    "//conditions:default": [],
+})
+
+config_setting(
+    name = "opt",
+    values = {"compilation_mode": "opt"},
+)
+
+config_setting(
+    name = "opt_macos",
+    constraint_values = ["@platforms//os:macos"],
+    values = {"compilation_mode": "opt"},
+)
+
+# ASan builds (.bazelrc's Debug) link libclang's ASan build, which xclang has
+# for Linux x64 and macOS arm64.
+config_setting(
+    name = "asan_linux",
+    constraint_values = ["@platforms//os:linux"],
+    values = {"features": "asan"},
+)
+
+config_setting(
+    name = "asan_macos",
+    constraint_values = ["@platforms//os:macos"],
+    values = {"features": "asan"},
+)
+
+config_setting(
+    name = "bitcode",
+    define_values = {"llvm": "bitcode"},
+)
+
+# The LLVM and clang libraries clice links; each brings what it depends on.
+LLVM_LIBRARIES = [
+    "LLVMFrontendOpenMP",
+    "LLVMOption",
+    "LLVMSupport",
+    "LLVMTargetParser",
+    "clangAST",
+    "clangASTMatchers",
+    "clangBasic",
+    "clangDriver",
+    "clangFormat",
+    "clangFrontend",
+    "clangLex",
+    "clangOptions",
+    "clangSema",
+    "clangSerialization",
+    "clangTidy",
+    "clangTidyAbseilModule",
+    "clangTidyAlteraModule",
+    "clangTidyAndroidModule",
+    "clangTidyBoostModule",
+    "clangTidyBugproneModule",
+    "clangTidyCERTModule",
+    "clangTidyConcurrencyModule",
+    "clangTidyCppCoreGuidelinesModule",
+    "clangTidyDarwinModule",
+    "clangTidyFuchsiaModule",
+    "clangTidyGoogleModule",
+    "clangTidyLLVMLibcModule",
+    "clangTidyLLVMModule",
+    "clangTidyLinuxKernelModule",
+    "clangTidyMiscModule",
+    "clangTidyModernizeModule",
+    "clangTidyObjCModule",
+    "clangTidyOpenMPModule",
+    "clangTidyPerformanceModule",
+    "clangTidyPortabilityModule",
+    "clangTidyReadabilityModule",
+    "clangTidyUtils",
+    "clangTidyZirconModule",
+    "clangTooling",
+    "clangToolingCore",
+    "clangToolingInclusions",
+    "clangToolingInclusionsStdlib",
+    "clangToolingSyntax",
+]
+
+alias(
+    name = "libclang",
+    actual = select({
+        ":asan_linux": "@libclang_asan//:headers",
+        ":asan_macos": "@libclang_asan//:headers",
+        "//conditions:default": "@libclang//:headers",
+    }),
+)
+
+cc_library(
+    name = "llvm_bitcode",
+    deps = select({
+        ":asan_linux": ["@libclang_asan//:" + lib for lib in LLVM_LIBRARIES],
+        ":asan_macos": ["@libclang_asan//:" + lib for lib in LLVM_LIBRARIES],
+        "//conditions:default": ["@libclang//:" + lib for lib in LLVM_LIBRARIES],
+    }),
+)
+
+native_libraries(
+    name = "llvm_native",
+    deps = [":llvm_bitcode"],
+)
+
+# What a program links of LLVM: the bitcode in release builds, native code
+# otherwise. Programs that never ship link native code always.
+alias(
+    name = "llvm",
+    actual = select({
+        ":bitcode": ":llvm_bitcode",
+        "//conditions:default": ":llvm_native",
+    }),
+)
+
+alias(
+    name = "resource_dir",
+    actual = select({
+        ":asan_linux": "@libclang_asan//:resource_dir",
+        ":asan_macos": "@libclang_asan//:resource_dir",
+        "//conditions:default": "@libclang//:resource_dir",
+    }),
+)
+
+cc_library(
+    name = "version",
+    srcs = ["//bazel:version_cpp"],
+    hdrs = ["src/version.h"],
+    copts = COPTS,
+)
+
+# Layered libraries: core <- config <- {project, worker} <- sched <- server,
+# and project <- analysis. Each layer may include downward only; the
+# dependency graph plus the layering check in CI (`pixi run check-layers`)
+# enforce the boundary — sched and below never see an LSP or server header,
+# and a project never sees scheduling. They compile against libclang's
+# headers; the programs choose which build of it they link.
+CORE = [
+    "support",
+    "vfs",
+    "syntax",
+    "command",
+    "compile",
+    "semantic",
+    "index",
+    "feature",
+]
+
+cc_library(
+    name = "core",
+    srcs = glob(["src/%s/**/*.cpp" % layer for layer in CORE]),
+    hdrs = glob(["src/%s/**/*.h" % layer for layer in CORE] + ["src/compile/*.inc"]),
+    copts = COPTS,
+    defines = [
+        "CLANG_BUILD_STATIC=1",
+        "CLICE_ENABLE_TEST=1",
+    ],
+    linkopts = select({
+        "@platforms//os:windows": [
+            "-lversion",
+            "-lntdll",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":libclang",
+        ":version",
+        "//bazel:clang_tidy_config",
+        "@croaring",
+        "@kotatsu//:codec_flatbuffers",
+        "@kotatsu//:codec_json",
+        "@kotatsu//:codec_toml",
+        "@kotatsu//:ipc_json",
+        "@kotatsu//:ipc_lsp",
+        "@kotatsu//:option",
+        "@kotatsu//:support",
+        "@lmdb",
+        "@simdjson",
+        "@spdlog",
+    ],
+)
+
+[cc_library(
+    name = layer,
+    srcs = glob(["src/%s/**/*.cpp" % layer]),
+    hdrs = glob(["src/%s/**/*.h" % layer]),
+    copts = COPTS,
+    deps = deps,
+) for layer, deps in [
+    ("config", [":core"]),
+    ("project", [":config"]),
+    ("worker", [":config"]),
+    ("sched", [
+        ":project",
+        ":worker",
+    ]),
+    ("server", [
+        ":sched",
+        "@kotatsu//:deco",
+    ]),
+    ("analysis", [":project"]),
+]]
+
+cc_binary(
+    name = "clice",
+    srcs = ["src/clice.cc"] + glob(["src/driver/*"]) + select({
+        "@platforms//os:windows": ["src/mimalloc.cc"],
+        "//conditions:default": [],
+    }),
+    copts = COPTS,
+    # lld's --gc-sections, which xclang leaves off for Windows, where it
+    # drops the static initializers of COMDAT sections: clice has none to
+    # lose, unlike unit_tests, whose test registrations are such.
+    features = ["gc_sections"],
+    linkopts = LINKOPTS,
+    deps = [
+        ":analysis",
+        ":llvm",
+        ":server",
+        "@kotatsu//:deco",
+    ] + select({
+        "@platforms//os:windows": ["@mimalloc"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_binary(
+    name = "unit_tests",
+    srcs = [
+        # The log level option, as the programs take it.
+        "src/driver/driver.h",
+        "tests/unit/test/tester.cpp",
+        "tests/unit/unit_tests.cc",
+    ] + glob([
+        "tests/unit/*/*_tests.cpp",
+        "tests/unit/**/*.h",
+    ]),
+    copts = COPTS + ["-Itests/unit"],
+    linkopts = LINKOPTS,
+    local_defines = ['CLICE_TESTS_DATA_DIR=\\"tests/data\\"'],
+    deps = [
+        ":llvm_native",
+        ":server",
+        "@kotatsu//:deco",
+        "@kotatsu//:zest_async",
+    ],
+)
+
+# The programs and the resource directory clice finds next to its own
+# directory, as scripts/build.py lays them out in build/<type>/{bin,lib}.
+filegroup(
+    name = "dist",
+    srcs = [
+        ":clice",
+        ":resource_dir",
+        ":unit_tests",
+    ],
+)
+
+BENCHMARKS = [
+    "index_stats_benchmark",
+    "pch_chain_benchmark",
+    "pipeline_benchmark",
+    "scan_benchmark",
+]
+
+[cc_binary(
+    name = benchmark,
+    srcs = [
+        "benchmarks/%s.cpp" % benchmark,
+        "benchmarks/stats.h",
+    ],
+    copts = COPTS,
+    linkopts = LINKOPTS,
+    tags = ["manual"],
+    deps = [
+        ":llvm_native",
+        ":server",
+        "@kotatsu//:deco",
+    ],
+) for benchmark in BENCHMARKS]
+
+filegroup(
+    name = "benchmarks",
+    srcs = BENCHMARKS + [":resource_dir"],
+    tags = ["manual"],
+)

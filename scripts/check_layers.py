@@ -2,8 +2,9 @@
 """Enforce the src/ include layering: core <- config <- {project, worker} <- sched <- server,
 and project <- analysis.
 
-Each layer may include downward only. The CMake link DAG catches symbol-level
-violations; this check catches header-only ones, which link happily.
+Each layer may include downward only. Bazel enforces it too, as it checks that every
+header a source includes belongs to the target or its dependencies; this check needs no
+build.
 """
 
 import re

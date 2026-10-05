@@ -17,7 +17,7 @@
 ///   pipeline_benchmark [OPTIONS] <compile_commands.json>
 ///
 /// Example:
-///   ./build/RelWithDebInfo/bin/pipeline_benchmark build/RelWithDebInfo/compile_commands.json
+///   ./build/RelWithDebInfo/bin/pipeline_benchmark compile_commands.json
 ///   ./build/RelWithDebInfo/bin/pipeline_benchmark --filter compiler.cpp --runs 5 \
 ///       --time-trace /tmp/traces <cdb>
 

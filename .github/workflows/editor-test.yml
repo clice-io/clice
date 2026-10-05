@@ -10,7 +10,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
           - os: macos-15
+            target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -25,7 +27,7 @@ jobs:
       - name: Download binaries
         uses: actions/download-artifact@v8
         with:
-          name: native-build-${{ matrix.os }}-RelWithDebInfo
+          name: build-${{ matrix.target }}-RelWithDebInfo
           path: build/RelWithDebInfo/
 
       - name: Make binaries executable

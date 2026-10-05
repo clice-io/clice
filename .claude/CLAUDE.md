@@ -51,7 +51,7 @@ Beyond `src/`: `tools/` is the TypeScript harness (`@clice/tools`: LSP client, s
 
 ## Build & Test
 
-- **pixi** for environments, **CMake + Ninja** for building. Build types `Debug` and `RelWithDebInfo` (default); output in `build/[type]/`.
+- **pixi** for environments, **Bazel** for building (npm's bazelisk: `npx bazel`; `BUILD.bazel`, `MODULE.bazel`, `.bazelrc`). Build types `Debug` and `RelWithDebInfo` (default); `pixi run build [type]` lays the output out in `build/[type]/`.
 - Four test suites, all must pass before any push:
   - **Unit** (`tests/unit/`): C++, project's own framework. Test names at most 4 words.
   - **Integration** (`tests/integration/`): TypeScript vitest against a real clice server over LSP.

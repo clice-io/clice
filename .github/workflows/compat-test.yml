@@ -26,12 +26,15 @@ jobs:
           # The `cuda` environment holds nvcc for the Linux scenarios and
           # has no packages elsewhere.
           - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
             asset: x86_64-unknown-linux-gnu.tar.gz
             environments: node cuda
           - os: windows-2025
+            target: x86_64-w64-mingw32
             asset: x86_64-w64-mingw32.zip
             environments: node
           - os: macos-15
+            target: aarch64-apple-darwin
             asset: aarch64-apple-darwin.tar.gz
             environments: node
     runs-on: ${{ matrix.os }}
@@ -80,7 +83,7 @@ jobs:
         if: steps.release.outputs.tag == ''
         uses: actions/download-artifact@v8
         with:
-          name: native-build-${{ matrix.os }}-RelWithDebInfo
+          name: build-${{ matrix.target }}-RelWithDebInfo
           path: build/RelWithDebInfo/
 
       - name: Download the release

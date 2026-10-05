@@ -19,7 +19,6 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64", "win-
 
 [environments]
 default = ["build", "test"]
-package = ["build", "test", "package"]
 node = ["node"]
 format = ["format"]
 test-run = ["test", "cuda"]
@@ -32,36 +31,18 @@ editor = ["editor", "node"]
 # ============================================================================== #
 #                                  DEPENDENCIES                                  #
 # ============================================================================== #
-[feature.build]
-platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
-
 [feature.build.dependencies]
 python = ">=3.13"
-cmake = ">=3.30"
-ninja = "*"
-# The toolchain: clang, lld and the LLVM tools, with libc++, compiler-rt
-# and the sysroots of all six targets (glibc 2.17, mingw-w64, macOS runtimes
-# on Xcode's SDK), so a cross build needs nothing else. Its version is the
-# one of the libclang cmake/llvm.cmake downloads.
-xclang = "==23.1.2.4"
-# cmake/archive.cmake pipes tar through xz for the symbol archives.
+# Bazel is npm's bazelisk (package.json), which runs the release of
+# .bazelversion; bazel/workspace_status.mjs runs on it too.
+nodejs = ">=24"
+# The LLVM tools packaging and its checks run (llvm-objcopy, llvm-gsymutil,
+# dsymutil, ...), of the xclang release MODULE.bazel builds with.
+xclang = "==23.1.2.5"
+# scripts/package.py pipes tar through xz for the symbol archives.
 xz = ">=5.8.1,<6"
 
-[feature.build.target.win-64.dependencies]
-# Pinned on every platform: ccache 4.14 disables its direct mode for any
-# translation unit whose headers contain the text "#embed", and the comment
-# "// C23 & C++26 #embed" in clang/Basic/TokenKinds.def matches, so every
-# clang-dependent object would fall back to the slower preprocessor mode.
-ccache = "4.13.*"
-
-[feature.build.target.linux-64.dependencies]
-ccache = "4.13.*"
-
-[feature.build.target.osx-arm64.dependencies]
-ccache = "4.13.*"
-
-# nodejs bundles npm on every platform including win-arm64, where
-# cross-test runs this env. Floor 24: the tools
+# nodejs bundles npm on every platform including win-arm64. Floor 24: the tools
 # run as bare .ts (type stripping, default since node 23.6) and the
 # cache tests use JSON.rawJSON (21+). python remains only for
 # scripts/symbolize.py; the scripts/ tools are not part of the TS
@@ -72,11 +53,15 @@ nodejs = ">=24"
 # `clice format` runs the clang-format found in PATH; the integration
 # tests drive it on real files.
 clang-format = "==23.1.1"
+# The fixtures with a CMakeLists.txt get their compile_commands.json from a
+# CMake configuration (tools/compile_commands.ts).
+cmake = ">=3.30"
+ninja = "*"
 
 [feature.test.target.linux-64.dependencies]
 # The symbolization round-trip test replays the release strip/GSYM flow
 # (linux-only, like the crash tests it builds on) with xclang's LLVM tools.
-xclang = "==23.1.2.4"
+xclang = "==23.1.2.5"
 
 # The NVCC toolchain tests drive a real nvcc; cudart is the runtime the
 # probe compiles against and curand is included unconditionally by clang's
@@ -91,16 +76,17 @@ libcurand-dev = "*"
 # The linux-aarch64 cross-test job runs the integration suite on a native
 # arm64 runner, so the symbolization test needs the same tools there.
 [feature.test.target.linux-aarch64.dependencies]
-xclang = "==23.1.2.4"
+xclang = "==23.1.2.5"
 
 # On macOS, the system Apple clang emits vendor-specific flags that upstream
-# LLVM cannot parse.  Providing upstream clang + lld in PATH prevents
-# fallback to /usr/bin/clang++ and satisfies toolchain.cmake's -fuse-ld=lld.
+# LLVM cannot parse. Providing upstream clang in PATH prevents fallback to
+# /usr/bin/clang++, for the tests and for the CMake configurations of the
+# fixtures (tools/compile_commands.ts).
 [feature.test.target.osx-64.dependencies]
-xclang = "==23.1.2.4"
+xclang = "==23.1.2.5"
 
 [feature.test.target.osx-arm64.dependencies]
-xclang = "==23.1.2.4"
+xclang = "==23.1.2.5"
 
 # Debug builds are ASAN-instrumented; macOS links the ASAN runtime as a
 # dylib resolved against the build env, which artifact-based test jobs
@@ -112,34 +98,30 @@ scripts = ["scripts/activate_asan_macos.sh"]
 [feature.test.target.osx-arm64.activation]
 scripts = ["scripts/activate_asan_macos.sh"]
 
-# Packaging reuses the standard build: the shipped binary is the tested one.
-[feature.package.tasks.package]
+# Packages the build of build/{{ type }}, which has to be there: the shipped
+# binary is the tested one.
+[feature.build.tasks.package]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = "cmake --build build/{{ type }} --target clice-pack clice-pack-symbol"
-depends-on = [{ task = "build", args = ["{{ type }}"] }]
+cmd = "python scripts/package.py {{ type }}"
 
 # ============================================================================== #
-#                                   CMAKE                                        #
+#                                   BAZEL                                        #
 # ============================================================================== #
-[feature.build.tasks.cmake-config]
-args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = """
-cmake -B build/{{ type }} -G Ninja \
-    -DCMAKE_BUILD_TYPE={{ type }} \
-    -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
-    -DCLICE_ENABLE_TEST=ON
-"""
-
-[feature.build.tasks.cmake-build]
-args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = "cmake --build build/{{ type }}"
-
+# Bazel builds into its output tree; scripts/build.py lays the programs out in
+# build/{{ type }}/{bin,lib}, where everything else runs them. Arguments after
+# `--` go to it: targets other than //:dist, and Bazel options, such as
+# --config=release for what releases ship.
 [feature.build.tasks.build]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-depends-on = [
-    { task = "cmake-config", args = ["{{ type }}"] },
-    { task = "cmake-build", args = ["{{ type }}"] },
-]
+cmd = "python scripts/build.py {{ type }}"
+depends-on = ["install-tests"]
+
+# compile_commands.json of clice's own sources, for clice on its own
+# repository (scripts/compile_commands.py).
+[feature.build.tasks.compile-commands]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+cmd = "python scripts/compile_commands.py {{ type }}"
+depends-on = ["install-tests"]
 
 [feature.build.tasks.check-layers]
 cmd = "python3 scripts/check_layers.py"
@@ -254,12 +236,12 @@ depends-on = [
 platforms = ["linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
 # Same mitigation as feature.test: editor-prepare configures fixtures with
-# toolchain.cmake's -fuse-ld=lld, which Apple system clang rejects.
+# CMake and xclang's clang (tools/compile_commands.ts).
 [feature.editor.target.osx-arm64.dependencies]
-xclang = "==23.1.2.4"
+xclang = "==23.1.2.5"
 
 [feature.editor.target.osx-64.dependencies]
-xclang = "==23.1.2.4"
+xclang = "==23.1.2.5"
 
 # Fixture list kept in sync with editors/vscode/.vscode-test.mjs.
 [feature.editor.tasks.editor-prepare]
