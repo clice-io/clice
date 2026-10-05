@@ -239,8 +239,9 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
   test in-process (`lldb --batch -o run -k "bt 40" -- ...`).
 - The Tester's driver is the `clang++` on PATH: the native-test legs with
   `activate: test-run` (arm64 Linux, x64 macOS, arm64 Windows) run with only
-  the `test-run` env active, so they compile against the runner's system
-  libstdc++, not conda's. A wrapper script named `clang++` that execs the
+  the `test-run` env active, so on arm64 Linux they compile against the
+  runner's system libstdc++, not conda's, and on arm64 Windows with the
+  runner's clang, which targets MSVC. A wrapper script named `clang++` that execs the
   pixi clang with another `--gcc-install-dir` reproduces such a leg locally.
 
 ## C++ unit tests (zest)

@@ -15,6 +15,8 @@ jobs:
           # the suites without the build environment on PATH, as a machine
           # with clice and a compiler of its own: the clang++ their tests
           # find is another (on Windows arm64 the runner's, targeting MSVC).
+          # pixi runs a task in the active environment unless told another:
+          # the build steps name theirs.
           - os: ubuntu-24.04
             build_type: RelWithDebInfo
             target: x86_64-unknown-linux-gnu
@@ -113,7 +115,7 @@ jobs:
           touch "$RUNNER_TEMP/bazel-start"
 
       - name: Build
-        run: pixi run build ${{ matrix.build_type }} -- ${{ matrix.asset_name && '--config=release' || '' }}
+        run: pixi run -e default build ${{ matrix.build_type }} -- ${{ matrix.asset_name && '--config=release' || '' }}
 
       # Bazel refreshes an entry's mtime when it reads it, so what this run
       # did not touch is what the current tree no longer needs.
@@ -185,11 +187,11 @@ jobs:
       # build.
       - name: Package release artifacts
         if: ${{ matrix.asset_name }}
-        run: pixi run package ${{ matrix.build_type }}
+        run: pixi run -e default package ${{ matrix.build_type }}
 
       - name: Check artifact dependencies
         if: ${{ matrix.asset_name }}
-        run: pixi run -- python scripts/check_artifact_deps.py build/${{ matrix.build_type }}/pack/clice/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: pixi run -e default -- python scripts/check_artifact_deps.py build/${{ matrix.build_type }}/pack/clice/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }}
 
       - name: Upload package artifacts
         if: ${{ matrix.asset_name }}
