@@ -118,3 +118,4 @@ The build compiles `stdSources` and each module in order, each with its library'
 - Clang does not take the global module fragment of an implementation partition as reachable from a unit importing it through another partition, though the standard has that unit import it too. A rewritten file therefore includes the headers that stay headers which such partitions include, and parses them again.
 - An include of a rewritten header under a preprocessor condition becomes an unconditional import.
 - A header that stays a header cannot include a rewritten one; modularize warns about it.
+- A forward declaration of an entity outside the scope moves to the global module fragment under the namespaces of its qualified name; an inline namespace among them, such as one a macro opens, is not reproduced.

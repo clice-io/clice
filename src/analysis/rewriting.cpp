@@ -50,11 +50,10 @@ struct Text {
     std::vector<std::uint32_t> starts;
     std::vector<Line> kinds;
 
-    /// Per line: the keyword of the directive it starts, its first token
-    /// after the keyword, and an include's operand as written, `<...>` or
-    /// `"..."`.
+    /// Per line: the keyword of the directive it starts, its tokens after
+    /// the keyword, and an include's operand as written, `<...>` or `"..."`.
     std::vector<llvm::StringRef> keywords;
-    std::vector<llvm::StringRef> arguments;
+    std::vector<llvm::SmallVector<llvm::StringRef, 2>> arguments;
     std::vector<llvm::StringRef> operands;
 
     /// Per directive: its last line.
@@ -111,8 +110,8 @@ struct Text {
                     keywords[line] = part.text(content);
                 } else if(part.is_header_name() && operands[line].empty()) {
                     operands[line] = part.text(content);
-                } else if(arguments[line].empty()) {
-                    arguments[line] = part.text(content);
+                } else {
+                    arguments[line].push_back(part.text(content));
                 }
             }
             ends[line] = last;
@@ -128,12 +127,17 @@ struct Text {
                                           starts.begin() - 1);
     }
 
-    /// `#ifndef X` and `#define X` first, the `#endif` closing the first
-    /// last.
+    bool pragma_once(std::uint32_t line) const {
+        return kinds[line] == Line::Directive && keywords[line] == "pragma" &&
+               !arguments[line].empty() && arguments[line].front() == "once";
+    }
+
+    /// `#ifndef X` (or `#if !defined(X)`) and a bare `#define X` first, the
+    /// `#endif` closing the first last, no `#else` between.
     void find_guard() {
         llvm::SmallVector<std::uint32_t> filled;
         for(std::uint32_t line = 0; line < lines.size(); line += 1) {
-            if(kinds[line] != Line::Blank) {
+            if(kinds[line] != Line::Blank && !pragma_once(line)) {
                 filled.push_back(line);
             }
         }
@@ -142,9 +146,20 @@ struct Text {
         }
         auto opening = filled[0];
         auto definition = filled[1];
-        if(kinds[opening] != Line::Directive || keywords[opening] != "ifndef" ||
-           kinds[definition] != Line::Directive || keywords[definition] != "define" ||
-           arguments[definition] != arguments[opening]) {
+        if(kinds[opening] != Line::Directive || kinds[definition] != Line::Directive ||
+           keywords[definition] != "define" || arguments[definition].size() != 1) {
+            return;
+        }
+        auto& tested = arguments[opening];
+        auto name = arguments[definition].front();
+        auto negated = [&](llvm::ArrayRef<llvm::StringRef> rest) {
+            return rest.size() >= 3 && rest[0] == "!" && rest[1] == "defined" &&
+                   (rest.size() == 3
+                        ? rest[2] == name
+                        : rest.size() == 5 && rest[2] == "(" && rest[3] == name && rest[4] == ")");
+        };
+        if(!(keywords[opening] == "ifndef" && tested.size() == 1 && tested.front() == name) &&
+           !(keywords[opening] == "if" && negated(tested))) {
             return;
         }
         int depth = 0;
@@ -153,6 +168,9 @@ struct Text {
                 continue;
             }
             auto keyword = keywords[line];
+            if(depth == 1 && keyword.starts_with("el")) {
+                return;
+            }
             depth += keyword == "if" || keyword == "ifdef" || keyword == "ifndef";
             depth -= keyword == "endif";
             if(depth == 0) {
@@ -199,9 +217,29 @@ struct Text {
         return llvm::ArrayRef(tokens).slice(begin, end - begin);
     }
 
-    /// The tokens past a leading template head `template <...>`: all of
-    /// them when there is none, none when the head does not close.
-    llvm::ArrayRef<Token> past_template_head(llvm::ArrayRef<Token> rest) const {
+    /// The tokens on lines `first` through `last`.
+    llvm::ArrayRef<Token> tokens_on(std::uint32_t first, std::uint32_t last) const {
+        auto begin = std::ranges::lower_bound(token_lines, first) - token_lines.begin();
+        auto end = std::ranges::upper_bound(token_lines, last) - token_lines.begin();
+        return llvm::ArrayRef(tokens).slice(begin, end - begin);
+    }
+
+    /// The tokens on lines `first` through `last`, spaced: the code without
+    /// its comments.
+    std::string code(std::uint32_t first, std::uint32_t last) const {
+        std::string text;
+        for(auto& token: tokens_on(first, last)) {
+            if(!text.empty()) {
+                text += ' ';
+            }
+            text += token.text(content);
+        }
+        return text;
+    }
+
+    /// The tokens past a leading template head `template <...>`, all of
+    /// them when there is none; nothing when the head does not close.
+    std::optional<llvm::ArrayRef<Token>> past_template_head(llvm::ArrayRef<Token> rest) const {
         if(rest.empty() || rest.front().text(content) != "template") {
             return rest;
         }
@@ -214,17 +252,21 @@ struct Text {
                 return rest.drop_front(i + 1);
             }
         }
-        return {};
+        return std::nullopt;
     }
 
     /// The lines of the forward declaration of a type on `line`, when they
     /// hold it and nothing else: `class C;`, `enum class E : int;`, and
     /// `template <typename T> struct S;` on one line or with the template
-    /// head on the line before.
+    /// head (and a requires-clause) on the lines before.
     std::optional<std::pair<std::uint32_t, std::uint32_t>>
         forward_declaration(std::uint32_t line) const {
         auto all = tokens_on(line);
-        auto rest = past_template_head(all);
+        auto past = past_template_head(all);
+        if(!past) {
+            return std::nullopt;
+        }
+        auto rest = *past;
         auto text = [&](std::size_t i) {
             return i < rest.size() ? rest[i].text(content) : llvm::StringRef();
         };
@@ -252,16 +294,23 @@ struct Text {
             return std::nullopt;
         }
         auto first = line;
-        if(rest.size() == all.size() && line != 0) {
-            auto previous = line - 1;
-            while(previous != 0 && kinds[previous] == Line::Blank) {
-                previous -= 1;
+        // The lines above that end no statement or block lead up to it.
+        for(auto previous = line; rest.size() == all.size() && previous != 0;) {
+            previous -= 1;
+            if(kinds[previous] == Line::Blank) {
+                continue;
             }
-            auto head = tokens_on(previous);
-            if(kinds[previous] == Line::Code && !head.empty() &&
-               head.front().text(content) == "template" && past_template_head(head).empty() &&
-               head.back().kind != clang::tok::semi) {
-                first = previous;
+            auto above = tokens_on(previous);
+            if(kinds[previous] != Line::Code || above.back().kind == clang::tok::semi ||
+               above.back().kind == clang::tok::l_brace ||
+               above.back().kind == clang::tok::r_brace) {
+                break;
+            }
+            if(above.front().text(content) == "template") {
+                if(past_template_head(tokens_on(previous, line - 1))) {
+                    first = previous;
+                }
+                break;
             }
         }
         return std::pair{first, line};
@@ -421,26 +470,32 @@ struct Rewriter {
         return partition_name(facts.files[file].path, llvm::sys::path::parent_path(primary, posix));
     }
 
-    /// How includers name the file, the spelling most of those in other
-    /// directories use: `"a.h"` from beside it resolves there alone.
-    std::string spelling(std::uint32_t file) const {
+    /// How `user` names the file: the most common spelling of its includers
+    /// that resolves from there. `"a.h"` from beside the file resolves only
+    /// beside it; a spelling used from another directory goes through the
+    /// include path. With none, its workspace-relative path, the root being
+    /// on the include path as for the prelude.
+    std::string spelling(std::uint32_t file, std::uint32_t user) const {
         auto& info = facts.files[file];
         auto directory = llvm::sys::path::parent_path(info.path, posix);
-        std::map<llvm::StringRef, std::uint32_t> all, elsewhere;
+        auto beside = [&](llvm::StringRef from, llvm::StringRef spelled) {
+            llvm::SmallString<256> path(llvm::sys::path::parent_path(from, posix));
+            llvm::sys::path::append(path, posix, spelled.drop_front().drop_back());
+            llvm::sys::path::remove_dots(path, true, posix);
+            return path.str() == info.path;
+        };
+        std::map<llvm::StringRef, std::uint32_t> counts;
         for(std::size_t i = 0; i < info.includers.size(); i += 1) {
             llvm::StringRef spelled = info.spellings[i];
-            if(spelled.empty()) {
-                continue;
-            }
-            all[spelled] += 1;
-            if(llvm::sys::path::parent_path(facts.files[info.includers[i]].path, posix) !=
-               directory) {
-                elsewhere[spelled] += 1;
+            auto& includer = facts.files[info.includers[i]].path;
+            if(!spelled.empty() &&
+               (spelled.starts_with("<") || beside(facts.files[user].path, spelled) ||
+                llvm::sys::path::parent_path(includer, posix) != directory)) {
+                counts[spelled] += 1;
             }
         }
-        auto& counts = elsewhere.empty() ? all : elsewhere;
         auto best = std::ranges::max_element(counts, {}, [](auto& entry) { return entry.second; });
-        return best == counts.end() ? std::string() : best->first.str();
+        return best == counts.end() ? std::format(R"("{}")", info.path) : best->first.str();
     }
 
     /// The file the include directive on `line` names. A forced include's
@@ -452,7 +507,7 @@ struct Rewriter {
                                      line + 1,
                                      {},
                                      &std::pair<std::uint32_t, std::uint32_t>::first);
-        if(end - begin > 1) {
+        if(end - begin > 1 && operand.size() > 2) {
             auto name = llvm::sys::path::filename(operand.drop_front().drop_back(), posix);
             for(auto it = begin; it != end; ++it) {
                 if(llvm::sys::path::filename(facts.files[it->second].path, posix) == name) {
@@ -625,12 +680,10 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 if(!span) {
                     return std::nullopt;
                 }
-                std::string declaration;
                 for(auto member = span->first; member <= span->second; member += 1) {
                     dropped.insert(member);
-                    declaration += text.lines[member].trim().str() + " ";
                 }
-                return llvm::StringRef(declaration).rtrim().str();
+                return text.code(span->first, span->second);
             };
             for(auto& redeclaration: facts.redeclarations) {
                 auto owner = facts.entities[redeclaration.entity].owner;
@@ -666,8 +719,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         for(std::uint32_t line = 0; line < text.lines.size(); line += 1) {
             auto& out = line < end ? draft.fragment : draft.body;
             auto keyword = text.keywords[line];
-            if(text.kinds[line] == Text::Line::Directive && keyword == "pragma" &&
-               text.arguments[line] == "once") {
+            if(text.pragma_once(line)) {
                 continue;
             }
             if(text.kinds[line] == Text::Line::Directive && takes_header_name(keyword) &&
@@ -746,9 +798,6 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         }
     }
 
-    auto macro_header = [&](std::uint32_t file) {
-        return with_extension(facts.files[file].path, "macros.h");
-    };
     llvm::StringSet<> primaries;
     for(auto& primary: partition.primaries) {
         if(!primary.empty()) {
@@ -770,23 +819,16 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         lines.push_back(std::format(R"(#include "{}")", prelude.str()));
         llvm::append_range(lines, draft.fragment);
         for(auto needed: draft.needed) {
-            auto spelled = rewriter.spelling(needed);
-            if(spelled.empty()) {
-                plan.warnings.push_back(std::format("no include names {}, which other files need",
-                                                    facts.files[needed].path));
-                continue;
-            }
-            lines.push_back(std::format("#include {}", spelled));
+            lines.push_back(std::format("#include {}", rewriter.spelling(needed, file)));
         }
         std::set<std::string> macro_includes;
         for(auto defining: draft.macro_headers) {
             macro_headers.insert(defining);
             // Named the way the header is, `"support/logging.h"` giving
             // `"support/logging.macros.h"`.
-            llvm::StringRef spelled = rewriter.spelling(defining);
-            auto named = spelled.empty()
-                             ? macro_header(defining)
-                             : with_extension(spelled.drop_front().drop_back(), "macros.h");
+            auto spelling = rewriter.spelling(defining, file);
+            llvm::StringRef spelled = spelling;
+            auto named = with_extension(spelled.drop_front().drop_back(), "macros.h");
             auto [open, close] =
                 spelled.starts_with("<") ? std::pair{'<', '>'} : std::pair{'"', '"'};
             macro_includes.insert(std::format("#include {}{}{}", open, named, close));
@@ -899,7 +941,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 lines.push_back(text.lines[part].str());
             }
         }
-        auto path = macro_header(defining);
+        auto path = with_extension(facts.files[defining].path, "macros.h");
         result.files.push_back({.path = path, .content = assemble(lines)});
         plan.macros.push_back(std::move(path));
     }

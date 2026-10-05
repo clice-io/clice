@@ -277,18 +277,22 @@ function writeProgram(ws: Workspace): void {
             "};",
             "template <typename T>",
             "struct Box { T value; };",
+            "template <typename T, typename U>",
+            "struct Pair { T first; U second; };",
             "int hook();",
             "}",
         ),
     );
     ws.write(
         "app/cfg/config.h",
-        lines("#pragma once", "#define CFG_FAST 1", "#define CFG_SIZE 64"),
+        lines("#pragma once", '#include "defs.h"', "#define CFG_FAST 1", "#define CFG_SIZE 64"),
     );
+    ws.write("app/cfg/defs.h", lines("#pragma once", "#define CFG_DEFS 2"));
     ws.write(
         "app/core/sink.h",
         lines(
-            "#ifndef SINK_H",
+            "#pragma once",
+            "#if !defined(SINK_H)",
             "#define SINK_H",
             "namespace core {",
             "struct Sink { int lines; };",
@@ -327,6 +331,9 @@ function writeProgram(ws: Workspace): void {
             "struct Sink;",
             "template <typename T>",
             "struct Box;",
+            "template <typename T,",
+            "          typename U>",
+            "struct Pair;",
             "}",
             "namespace tool {",
             "int run(const core::Text& text, core::Sink* sink, core::Box<int>* box = nullptr);",
@@ -361,7 +368,7 @@ function writeProgram(ws: Workspace): void {
         "app/run.cpp",
         lines(
             '#include "tool/tool.h"',
-            "int main() { return tool::run(core::Text{}, nullptr) + CFG_SIZE; }",
+            "int main() { return tool::run(core::Text{}, nullptr) + CFG_SIZE + CFG_DEFS; }",
         ),
     );
 }
@@ -627,6 +634,8 @@ test("modularize rewrites program modules", async ({ session }) => {
             "};",
             "template <typename T>",
             "struct Box { T value; };",
+            "template <typename T, typename U>",
+            "struct Pair { T first; U second; };",
             "int hook();",
             "}",
             "}",
@@ -683,17 +692,16 @@ test("modularize rewrites program modules", async ({ session }) => {
     const cli = ws.read("app/tool/cli.cpp");
     expect(cli).toContain('extern "C++" int main() {');
     expect(cli).toContain('R"(int main() {})"');
-    // core::Text and cfg's CFG_SIZE reach it through tool's header, but no
-    // import re-exports a name and none carries a macro.
-    expect(ws.read("app/run.cpp")).toBe(
-        lines(
-            '#include "wrap/prelude.h"',
-            '#include "cfg/config.h"',
-            "import app.core;",
-            "import app.tool;",
-            "",
-            "int main() { return tool::run(core::Text{}, nullptr) + CFG_SIZE; }",
-        ),
+    // core::Text and cfg's macros reach it through tool's header, but no
+    // import re-exports a name and none carries a macro; defs.h, which only
+    // config.h beside it names, by its path from the root.
+    const runSource = ws.read("app/run.cpp");
+    expect(runSource.startsWith('#include "wrap/prelude.h"\n')).toBe(true);
+    expect(runSource).toContain('#include "cfg/config.h"\n');
+    expect(runSource).toContain('#include "app/cfg/defs.h"\n');
+    expect(runSource).toContain("import app.core;\nimport app.tool;\n");
+    expect(runSource).toContain(
+        "int main() { return tool::run(core::Text{}, nullptr) + CFG_SIZE + CFG_DEFS; }",
     );
 });
 
