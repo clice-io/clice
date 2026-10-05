@@ -22,9 +22,11 @@ from build import ROOT, bazel
 TARGETS = "//:dist + //:benchmarks"
 
 
-def link_external(execroot: Path) -> None:
+def link_external(output_base: Path) -> None:
     link = ROOT / "external"
-    target = execroot / "external"
+    # Every repository Bazel fetched; the execution root links only those of
+    # the last build.
+    target = output_base / "external"
     if link.is_symlink() or link.is_junction():
         link.unlink()
     try:
@@ -51,7 +53,7 @@ def main(argv: list[str]) -> int:
             capture=True,
         )
     )
-    execroot = Path(bazel("info", *options, "execution_root", capture=True).strip())
+    output_base = Path(bazel("info", *options, "output_base", capture=True).strip())
 
     entries = []
     for action in query.get("actions", []):
@@ -66,7 +68,7 @@ def main(argv: list[str]) -> int:
         )
     entries.sort(key=lambda entry: entry["file"])
 
-    link_external(execroot)
+    link_external(output_base)
     (ROOT / "compile_commands.json").write_text(
         json.dumps(entries, indent=2) + "\n", encoding="utf-8"
     )
