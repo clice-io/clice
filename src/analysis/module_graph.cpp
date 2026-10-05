@@ -1689,10 +1689,11 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
                 std::format("module {}: not a module name to rewrite", result.modules[module]));
         }
         if(auto [it, inserted] = placed.try_emplace(primary, module); !inserted) {
+            auto [first, second] = std::minmax(result.modules[it->second], result.modules[module]);
             return std::unexpected(
                 std::format("modules {} and {} both put their primary interface at {}",
-                            result.modules[it->second],
-                            result.modules[module],
+                            first,
+                            second,
                             primary));
         }
     }
