@@ -14,6 +14,7 @@
 #include "semantic/symbol.h"
 #include "server/ast_family.h"
 #include "server/editor_context.h"
+#include "server/format.h"
 #include "server/lsp_projection.h"
 #include "server/query_commands.h"
 #include "syntax/completion.h"
@@ -380,6 +381,27 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
     std::vector<protocol::DocumentLink> links;
     convert(result, links);
     co_return links;
+}
+
+kota::task<std::vector<protocol::Diagnostic>>
+    Features::diagnostics(std::shared_ptr<Session> session) {
+    while(session->serving == ServingMode::Escalated && !session->closed) {
+        auto ticket = Ticket::take(session);
+        co_await ast.ensure_compiled(session);
+        if(ticket.fresh()) {
+            break;
+        }
+    }
+    std::vector<protocol::Diagnostic> diagnostics;
+    // A compile that failed or is barred left an output of an older
+    // buffer, whose ranges a versionless report would place on this one.
+    auto projection = ast.projections.projection(session->path_id);
+    if(!session->closed && projection && projection->output &&
+       projection->output->version == session->version) {
+        diagnostics = format_diagnostics(*projection->output);
+    }
+    append_crash_notes(*session, diagnostics);
+    co_return diagnostics;
 }
 
 Features::RawResult Features::definition(Ticket ticket,

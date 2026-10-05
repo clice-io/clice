@@ -9,7 +9,7 @@
 - [x] 被包含头文件中的错误定位到引入该头文件的 `#include` 处，模板实例化中的错误定位到请求该实例化的代码处
 - [x] Preamble 中的预处理指令所产生的警告（`#warning`、`#pragma message`、宏重定义）
 - [x] 跨文件诊断的文件 URI 转换
-- [x] 拉取式诊断模型（`textDocument/diagnostic`）
+- [x] 拉取式诊断模型（`textDocument/diagnostic`），用于声明支持它的客户端；其他客户端的诊断仍由服务端推送
 - [ ] 报告所有因缺少 `#include` 而产生的错误，而不只是第一个——解析器遇到首个致命错误后便会停止
 
   ```cpp

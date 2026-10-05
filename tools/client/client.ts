@@ -835,6 +835,23 @@ export class CliceClient {
         await withTimeout(arrived, timeout, `diagnostics ${uri}`);
     }
 
+    /// Pull the document's diagnostics (textDocument/diagnostic); clice
+    /// answers every pull with a full report.
+    async pullDiagnostics(
+        uri: string,
+        token?: proto.CancellationToken,
+    ): Promise<proto.Diagnostic[]> {
+        const report = await this.sendRequest(
+            proto.DocumentDiagnosticRequest.type,
+            { textDocument: { uri } },
+            token,
+        );
+        if (report.kind !== proto.DocumentDiagnosticReportKind.Full) {
+            throw new Error(`Expected a full report, got: ${JSON.stringify(report)}`);
+        }
+        return report.items;
+    }
+
     /// How many diagnostics publishes the document has received.
     publishCount(uri: string): number {
         return this.publishes.get(this.normalizeUri(uri)) ?? 0;
@@ -1073,8 +1090,7 @@ export class CliceClient {
     async inactiveLines(uri: string): Promise<number[]> {
         const result = await this.semanticTokensFull(uri);
         const provider = this.initResult?.capabilities.semanticTokensProvider as
-            | proto.SemanticTokensOptions
-            | undefined;
+            proto.SemanticTokensOptions | undefined;
         const bit = provider?.legend.tokenModifiers.indexOf("inactive") ?? -1;
         if (bit < 0) {
             throw new Error("server legend misses the inactive modifier");

@@ -45,8 +45,9 @@ namespace protocol = kota::ipc::protocol;
 ///
 /// Every entry takes its Ticket before its first suspension, drains the
 /// transport pipe, and answers ContentModified once the ticket goes
-/// stale: the client keeps what it has and re-pulls. The one exception is
-/// completion, which deliberately serves the drained buffer (see there).
+/// stale: the client keeps what it has and re-pulls. The exceptions are
+/// completion, which deliberately serves the drained buffer, and
+/// diagnostics, which follow the buffer (see there).
 ///
 /// Discipline: any feature whose answer is assembled from more than one
 /// source belongs here. Transports (LSP handlers) only translate
@@ -87,11 +88,13 @@ public:
     kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
         document_links(Ticket ticket, kota::cancellation_token token = {});
 
-    /// Pull diagnostics for the currently synced document. The request joins
-    /// the document's AST compile, then projects the same materialized
-    /// CompileOutput used by publishDiagnostics. A superseded buffer answers
-    /// ContentModified instead of leaking diagnostics for stale text.
-    RawResult diagnostics(std::shared_ptr<Session> session);
+    /// The diagnostics of the document's buffer as it is now, crash notes
+    /// included: awaits the compile the buffer is owed, and an edit landing
+    /// meanwhile is followed rather than answered ContentModified — a pull
+    /// names no version, and clients clear what they hold on that error.
+    /// The client cancels a pull it no longer wants. Empty once the session
+    /// closes, and for a session the policy keeps un-compiled.
+    kota::task<std::vector<protocol::Diagnostic>> diagnostics(std::shared_ptr<Session> session);
 
     /// Go-to-definition, assembled across all providers: preamble directive
     /// targets, the index, and the directives the worker's AST sees, with

@@ -50,13 +50,18 @@ private:
     void register_language_features();
     void register_extensions();
 
+    /// Ask the client to pull every document's diagnostics again;
+    /// capability-gated.
+    void refresh_diagnostics();
+
     /// Push every served project's clice.toml load problems as
     /// diagnostics on the config file URI, and clear the ones of a
     /// configuration no project loads any more.
     void publish_config_diagnostics();
 
-    /// Push a session's materialized compile output (diagnostics, plus
-    /// the refresh requests a landing warrants) to the client. Invoked by
+    /// Push a session's materialized compile output (diagnostics — to a
+    /// client pulling them, a refresh when an answer it holds went stale —
+    /// plus the refresh requests a landing warrants) to the client. Invoked by
     /// the compiler's on_output signal, and by the initialized handler to
     /// replay outputs that materialized before the client was ready.
     /// No-op until client_ready.
@@ -100,6 +105,21 @@ private:
 
     bool line_folding_only = false;
 
+    /// The client pulls diagnostics (the textDocument.diagnostic
+    /// capability): an open document's are answered to its pulls and never
+    /// pushed — clients keep pushed and pulled diagnostics apart and would
+    /// show both. Pull wins whenever the client offers it: a compile runs
+    /// only when a request needs the AST, so a pull is itself the request
+    /// that brings the diagnostics up to date, while a client that syncs
+    /// edits and waits for a push gets none until something else asks.
+    /// Configuration files are still pushed; no client pulls them.
+    bool pull_diagnostics = false;
+
+    /// Whether the client accepts workspace/diagnostic/refresh, the
+    /// re-pull signal for an answer the client holds going stale with no
+    /// edit of its own (see push_output).
+    bool diagnostic_refresh = false;
+
     /// What the client takes from a completion item.
     feature::CompletionClient completion_client;
 
@@ -109,11 +129,17 @@ private:
     /// a client refuses to apply them to a buffer that moved on.
     bool versioned_edits = false;
 
-    /// Document version last pushed per path (see push_output): a compile
-    /// landing for an already-published version means the text did not
-    /// change, so the client's pulled results went stale without any
-    /// didChange to make it re-pull — the push path sends refreshes.
+    /// Document version of each path's last compile output (see
+    /// push_output): an output landing for the same version means the text
+    /// did not change, so the client's pulled results went stale without
+    /// any didChange to make it re-pull — the push path sends refreshes.
     llvm::DenseMap<Fid, int> published_versions;
+
+    /// Document version the last diagnostics pull answered per path: an
+    /// output landing for that very version changed an answer the client
+    /// holds, and nothing makes it pull again — the push path sends a
+    /// refresh instead.
+    llvm::DenseMap<Fid, int> pulled_versions;
 
     /// A document naming a file already open under another name: the first
     /// name owns the file's buffer, this one keeps its own text and takes
@@ -133,11 +159,18 @@ private:
     /// The alias document of `path_id` spelled `spelling`, or nullptr.
     AliasDocument* find_alias(Fid path_id, llvm::StringRef spelling);
 
+    /// The alias document spelled `spelling`, or nullptr.
+    AliasDocument* find_alias(llvm::StringRef spelling);
+
     /// Take `alias`, one of `path_id`'s, out of the waiting list.
     AliasDocument take_alias(Fid path_id, AliasDocument* alias);
 
     /// Why a request on a document has no session to answer it.
     kota::ipc::Error unserved(llvm::StringRef spelling);
+
+    /// What a second name tells the user while its text differs from the
+    /// first name's.
+    std::string divergence(const AliasDocument& alias);
 
     /// Publish a second name's diagnostics: the first name's while their
     /// texts agree, else one telling the user to close either.

@@ -9,7 +9,7 @@
 - [x] Errors from included headers placed on the `#include` that brought them in, and errors from template instantiations on the code that requested the instantiation
 - [x] Warnings raised by directives in the preamble (`#warning`, `#pragma message`, macro redefinitions)
 - [x] File URI conversion for cross-file diagnostics
-- [x] Pull diagnostics model (`textDocument/diagnostic`)
+- [x] Pull diagnostics model (`textDocument/diagnostic`) for clients that declare support for it; other clients get their diagnostics pushed
 - [ ] Report all missing `#include` errors, not just the first — the parser stops on the first fatal error
 
   ```cpp

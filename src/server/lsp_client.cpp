@@ -166,20 +166,60 @@ LSPClient::AliasDocument* LSPClient::find_alias(Fid path_id, llvm::StringRef spe
     return alias != it->second.end() ? &*alias : nullptr;
 }
 
-kota::ipc::Error LSPClient::unserved(llvm::StringRef spelling) {
+LSPClient::AliasDocument* LSPClient::find_alias(llvm::StringRef spelling) {
     auto path_id =
         spelling.empty() ? std::nullopt : server.files.find(Spelling::absolute(spelling));
-    return path_id && find_alias(*path_id, spelling) ? content_modified() : document_not_open();
+    return path_id ? find_alias(*path_id, spelling) : nullptr;
+}
+
+kota::ipc::Error LSPClient::unserved(llvm::StringRef spelling) {
+    return find_alias(spelling) ? content_modified() : document_not_open();
+}
+
+/// A warning from clice itself, on the file's first character.
+static protocol::Diagnostic file_warning(std::string message) {
+    protocol::Diagnostic diagnostic;
+    diagnostic.range = protocol::Range{
+        .start = protocol::Position{.line = 0, .character = 0},
+        .end = protocol::Position{.line = 0, .character = 0},
+    };
+    diagnostic.severity = protocol::DiagnosticSeverity::Warning;
+    diagnostic.source = "clice";
+    diagnostic.message = std::move(message);
+    return diagnostic;
+}
+
+std::string LSPClient::divergence(const AliasDocument& alias) {
+    return std::format(
+        "This file is also open as {}, which clice analyzes; edits here are not "
+        "analyzed until the texts agree. Close one of the two.",
+        server.files.display(alias.buffer.path_id));
+}
+
+void LSPClient::refresh_diagnostics() {
+    if(diagnostic_refresh) {
+        fire_refresh(server.loop, peer, protocol::DiagnosticRefreshParams{});
+    }
 }
 
 void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, ProjectServer& project) {
     if(!client_ready) {
         return;
     }
+    // A pull of the second name answers the first name's diagnostics while
+    // the texts agree and the divergence warning while they differ (see
+    // the pull handler): the answer the client holds changes when they
+    // part or meet again.
     protocol::PublishDiagnosticsParams params;
     params.uri = feature::to_uri(alias.spelling);
     params.version = alias.buffer.version;
     if(owner && owner->text == alias.buffer.text) {
+        if(pull_diagnostics) {
+            if(std::exchange(alias.warned, false)) {
+                refresh_diagnostics();
+            }
+            return;
+        }
         // Shared once the owner's compile caught up with the text; until
         // then only a divergence warning is taken down.
         auto projection = project.ast.projections.projection(owner->path_id);
@@ -191,27 +231,21 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
         }
         alias.warned = false;
     } else {
-        auto first = server.files.display(alias.buffer.path_id);
-        auto message = std::format(
-            "This file is also open as {}, which clice analyzes; edits here are not "
-            "analyzed until the texts agree. Close one of the two.",
-            first);
-        protocol::Diagnostic diagnostic;
-        diagnostic.range = protocol::Range{
-            .start = protocol::Position{.line = 0, .character = 0},
-            .end = protocol::Position{.line = 0, .character = 0},
-        };
-        diagnostic.severity = protocol::DiagnosticSeverity::Warning;
-        diagnostic.source = "clice";
-        diagnostic.message = message;
-        params.diagnostics.push_back(std::move(diagnostic));
-        if(!alias.warned) {
-            alias.warned = true;
+        auto message = divergence(alias);
+        bool parted = !std::exchange(alias.warned, true);
+        if(parted) {
             peer.send_notification(protocol::ShowMessageParams{
                 .type = protocol::MessageType::Warning,
-                .message = std::move(message),
+                .message = message,
             });
         }
+        if(pull_diagnostics) {
+            if(parted) {
+                refresh_diagnostics();
+            }
+            return;
+        }
+        params.diagnostics.push_back(file_warning(std::move(message)));
     }
     publish(peer, params);
 }
@@ -276,7 +310,12 @@ void LSPClient::register_lifecycle() {
                 ws_caps.folding_range.has_value() && ws_caps.folding_range->refresh_support;
             versioned_edits =
                 ws_caps.workspace_edit.has_value() && ws_caps.workspace_edit->document_changes;
+            diagnostic_refresh =
+                ws_caps.diagnostics.has_value() && ws_caps.diagnostics->refresh_support;
         }
+
+        pull_diagnostics = params.capabilities.text_document.has_value() &&
+                           params.capabilities.text_document->diagnostic.has_value();
 
         if(params.capabilities.text_document.has_value() &&
            params.capabilities.text_document->folding_range.has_value()) {
@@ -352,6 +391,16 @@ void LSPClient::register_lifecycle() {
                 std::vector<protocol::CodeActionKind>(feature::code_action_kinds.begin(),
                                                       feature::code_action_kinds.end()),
         };
+        // No inter-file dependencies: an edit reaches no other document's
+        // diagnostics, open buffers are never depended upon (see Session).
+        // A saved file's dependents are recompiled on their next request
+        // and refreshed then (see push_output).
+        if(pull_diagnostics) {
+            caps.diagnostic_provider = protocol::DiagnosticOptions{
+                .inter_file_dependencies = false,
+                .workspace_diagnostics = false,
+            };
+        }
 
         protocol::WorkspaceFoldersServerCapabilities folder_caps;
         folder_caps.supported = true;
@@ -590,7 +639,7 @@ void LSPClient::register_document_sync() {
         // A second name's diagnostics end with it, whether it closes or
         // takes the file over.
         auto clear_alias = [&](llvm::StringRef spelling) {
-            if(client_ready) {
+            if(client_ready && !pull_diagnostics) {
                 peer.send_notification(
                     protocol::PublishDiagnosticsParams{.uri = feature::to_uri(spelling)});
             }
@@ -607,6 +656,7 @@ void LSPClient::register_document_sync() {
         // them, so a stale entry would misread the fresh document's first
         // compile as an unchanged-text recompile.
         published_versions.erase(path_id);
+        pulled_versions.erase(path_id);
         // The diagnostics clear goes out under the spelling being closed.
         srv.close_session(path_id);
         srv.files.unshow(path_id);
@@ -708,6 +758,32 @@ void LSPClient::register_language_features() {
              links = project->features.document_links(Ticket::take(session),
                                                       ctx.cancellation)]() mutable -> RawResult {
                 co_return to_raw(co_await std::move(links).or_fail());
+            });
+    });
+
+    // Every pull is answered a report, never an error: on one, clients
+    // clear what they hold or stop pulling the document.
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentDiagnosticParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        if(!session) {
+            protocol::RelatedFullDocumentDiagnosticReport report;
+            if(auto* alias = find_alias(path)) {
+                report.items.push_back(file_warning(divergence(*alias)));
+            }
+            return kota::co_invoke(
+                [report = std::move(report)]() -> RawResult { co_return to_raw(report); });
+        }
+        return kota::co_invoke(
+            [this, session, project, items = project->features.diagnostics(session)]() mutable
+                -> RawResult {
+                auto diagnostics = co_await std::move(items);
+                if(!session->closed) {
+                    pulled_versions[session->path_id] = session->version;
+                }
+                co_return to_raw(
+                    protocol::RelatedFullDocumentDiagnosticReport{.items = std::move(diagnostics)});
             });
     });
 
@@ -1172,13 +1248,23 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
     }
     auto& output = *projection->output;
 
-    protocol::PublishDiagnosticsParams params;
-    params.uri = feature::to_uri(server.files.display(session.path_id));
-    params.version = output.version;
-    params.diagnostics = format_diagnostics(output);
-    append_crash_notes(session, params.diagnostics);
-    publish(peer, params);
-    publish_aliases(session.path_id);
+    if(pull_diagnostics) {
+        // After an edit the client pulls on its own, and its pull awaits
+        // this compile; an answer already given for this very buffer is
+        // what went stale.
+        if(auto it = pulled_versions.find(session.path_id);
+           it != pulled_versions.end() && it->second == session.version) {
+            refresh_diagnostics();
+        }
+    } else {
+        protocol::PublishDiagnosticsParams params;
+        params.uri = feature::to_uri(server.files.display(session.path_id));
+        params.version = output.version;
+        params.diagnostics = format_diagnostics(output);
+        append_crash_notes(session, params.diagnostics);
+        publish(peer, params);
+        publish_aliases(session.path_id);
+    }
 
     // Two cases make the client re-pull whole-document results it already
     // holds: index projections served while this compile was pending
