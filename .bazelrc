@@ -29,9 +29,9 @@ common:Debug -c dbg --features=asan --symlink_prefix=build/Debug/
 common:windows --features=-asan
 
 # libclang is ThinLTO bitcode, whose code generation every link redoes
-# (minutes) unless lld's cache has it; xclang hands the directory to the
-# linker. The directory is in the links' action keys, so it is one path
-# everywhere.
+# (minutes) unless lld's cache has it; xclang creates the directory, which
+# the Linux sandbox can then make writable, and hands it to the linker. The
+# directory is in the links' action keys, so it is one path everywhere.
 common:linux --repo_env=XCLANG_THINLTO_CACHE=/var/tmp/xclang-thinlto
 common:linux --sandbox_writable_path=/var/tmp/xclang-thinlto
 common:macos --repo_env=XCLANG_THINLTO_CACHE=/var/tmp/xclang-thinlto
