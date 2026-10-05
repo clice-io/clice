@@ -43,11 +43,11 @@ npx bazel build //:clice //:unit_tests
 
 构建类型即 `.bazelrc` 中定义的配置：
 
-| 配置                      | 作用                                                                                                              |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `--config=RelWithDebInfo` | 默认配置：开启优化，带调试信息                                                                                    |
-| `--config=Debug`          | 不开启优化，启用 Address Sanitizer；Windows 上不启用                                                              |
-| `--config=release`        | 像正式发布版那样，用 LLVM/Clang 库的 ThinLTO bitcode 链接 clice；其他构建链接的是已编译为本机代码的库，速度快得多 |
+| 配置                      | 作用                                                                                                                   |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `--config=RelWithDebInfo` | 默认配置：开启优化，带调试信息                                                                                         |
+| `--config=Debug`          | 不开启优化，启用 Address Sanitizer；Windows 上不启用                                                                   |
+| `--config=release`        | 像发布 clice 时那样，用 LLVM/Clang 库的 ThinLTO bitcode 链接各个程序；其他构建链接的是已编译为本机代码的库，速度快得多 |
 
 `--` 之后的选项会经由 `pixi run build` 传给 Bazel，例如 `pixi run build RelWithDebInfo -- --config=release`。
 

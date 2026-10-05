@@ -20,9 +20,9 @@ common --@mimalloc//:skip_collect_on_exit=true
 
 # The build types. RelWithDebInfo is the default; `--config=Debug` is an ASan
 # build where xclang has the ASan libclang (Linux x64, macOS arm64), a plain
-# debug build on Windows. `--config=release` links clice with libclang's
-# ThinLTO bitcode, as releases ship it; other builds link it compiled to
-# native code (bazel/llvm.bzl).
+# debug build on Windows. `--config=release` links the programs with
+# libclang's ThinLTO bitcode, as releases ship clice; other builds link it
+# compiled to native code (bazel/llvm.bzl).
 common -c opt --copt=-g
 common:RelWithDebInfo -c opt
 common:Debug -c dbg --features=asan

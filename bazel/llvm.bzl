@@ -3,7 +3,7 @@
 xclang's libclang archives hold ThinLTO bitcode, so every link of them redoes
 LLVM's code generation: minutes per program. Builds that do not ship link the
 archives compiled once each, by a cacheable action per archive;
---config=release links the bitcode as it is released.
+--config=release links the bitcode as clice is released.
 """
 
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain", "use_cc_toolchain")

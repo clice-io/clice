@@ -43,11 +43,11 @@ npx bazel build //:clice //:unit_tests
 
 The build types are configurations of `.bazelrc`:
 
-| Configuration             | Effect                                                                                                                                       |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--config=RelWithDebInfo` | The default: optimized, with debug info                                                                                                      |
-| `--config=Debug`          | Unoptimized, with Address Sanitizer; on Windows without it                                                                                   |
-| `--config=release`        | Links clice with the LLVM/Clang libraries' ThinLTO bitcode, as releases ship it; other builds link them compiled to native code, much faster |
+| Configuration             | Effect                                                                                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--config=RelWithDebInfo` | The default: optimized, with debug info                                                                                                                |
+| `--config=Debug`          | Unoptimized, with Address Sanitizer; on Windows without it                                                                                             |
+| `--config=release`        | Links the programs with the LLVM/Clang libraries' ThinLTO bitcode, as releases ship clice; other builds link them compiled to native code, much faster |
 
 Options after `--` reach Bazel through `pixi run build`, for example `pixi run build RelWithDebInfo -- --config=release`.
 

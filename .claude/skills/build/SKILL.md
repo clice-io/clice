@@ -7,7 +7,7 @@ context: fork
 Build the project with the requested build type (default `RelWithDebInfo`).
 
 - Build: `pixi run build [type]` — Bazel (npm's bazelisk, `npx bazel`) builds `//:dist` with `--config=[type]`, and `scripts/build.py` lays it out in `build/[type]/{bin,lib}`, where the tests and everything else run it.
-- Other targets or Bazel options go after `--`: `pixi run build RelWithDebInfo -- //:scan_benchmark //:resource_dir`, or `-- --config=release` for clice linked as releases ship it (libclang's ThinLTO bitcode; minutes per link).
+- Other targets or Bazel options go after `--`: `pixi run build RelWithDebInfo -- //:scan_benchmark //:resource_dir`, or `-- --config=release` to link as releases ship clice (libclang's ThinLTO bitcode; minutes per link).
 - Bazel directly, without the layout: `npx bazel build --config=[type] //:clice` (targets: `clice`, `unit_tests`, the benchmarks; `BUILD.bazel`).
 - `compile_commands.json` for clice's own sources: `pixi run compile-commands [type]`.
 

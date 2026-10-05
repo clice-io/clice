@@ -122,11 +122,7 @@ alias(
 
 cc_library(
     name = "llvm_bitcode",
-    deps = select({
-        ":asan_linux": ["@libclang_asan//:" + lib for lib in LLVM_LIBRARIES],
-        ":asan_macos": ["@libclang_asan//:" + lib for lib in LLVM_LIBRARIES],
-        "//conditions:default": ["@libclang//:" + lib for lib in LLVM_LIBRARIES],
-    }),
+    deps = ["@libclang//:" + lib for lib in LLVM_LIBRARIES],
 )
 
 native_libraries(
@@ -134,11 +130,19 @@ native_libraries(
     deps = [":llvm_bitcode"],
 )
 
-# What a program links of LLVM: the bitcode in release builds, native code
-# otherwise. Programs that never ship link native code always.
+# Native code already.
+cc_library(
+    name = "llvm_asan",
+    deps = ["@libclang_asan//:" + lib for lib in LLVM_LIBRARIES],
+)
+
+# What the programs link of LLVM: the bitcode in release builds, native code
+# otherwise.
 alias(
     name = "llvm",
     actual = select({
+        ":asan_linux": ":llvm_asan",
+        ":asan_macos": ":llvm_asan",
         ":bitcode": ":llvm_bitcode",
         "//conditions:default": ":llvm_native",
     }),
@@ -270,7 +274,7 @@ cc_binary(
     linkopts = LINKOPTS,
     local_defines = ['CLICE_TESTS_DATA_DIR=\\"tests/data\\"'],
     deps = [
-        ":llvm_native",
+        ":llvm",
         ":server",
         "@kotatsu//:deco",
         "@kotatsu//:zest_async",
@@ -305,7 +309,7 @@ BENCHMARKS = [
     linkopts = LINKOPTS,
     tags = ["manual"],
     deps = [
-        ":llvm_native",
+        ":llvm",
         ":server",
         "@kotatsu//:deco",
     ],
