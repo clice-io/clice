@@ -23,6 +23,9 @@ import { afterAll, expect, test } from "vitest";
 const STARTUP_TIMEOUT = 300_000;
 /// How long a started server has to stay up for the start to count.
 const SETTLE_TIME = 10_000;
+/// Debug logs of how Zed loads the worktree environment and starts language
+/// servers, so a timeout's log tail shows where the start stopped.
+const ZED_LOG = "info,project::environment=debug,project::lsp_store=debug,language_extension=debug";
 /// Zed honors the proxy variables; nothing listens on this port.
 const OFFLINE = { ALL_PROXY: "http://127.0.0.1:9", NO_PROXY: "", no_proxy: "" };
 
@@ -64,9 +67,8 @@ function install(): void {
         path.join(installed, "extension.toml"),
     );
     fs.copyFileSync(extensionWasm, path.join(installed, "extension.wasm"));
-    // Only clice serves C and C++, so every server start in the log is clice's.
-    // A first start would also install the html extension, whose reload
-    // races clice's registration.
+    // Only clice serves C and C++, so every server start in the log is clice's;
+    // nothing is installed from Zed's registry.
     const settings = {
         session: { trust_all_worktrees: true },
         auto_update: false,
@@ -107,14 +109,38 @@ async function stop(zed: ChildProcess): Promise<void> {
     await exited;
 }
 
-/// Opens `file` of `dir` alone in Zed and returns the clice binary Zed started.
-async function startServer(dir: string, file: string, env: Record<string, string> = {}) {
+function launch(paths: string[], env: Record<string, string> = {}): ChildProcess {
     fs.rmSync(log, { force: true });
-    const zed = spawn(zedExecutable, ["--user-data-dir", data, dir, path.join(dir, file)], {
-        env: { ...process.env, ZED_ALLOW_EMULATED_GPU: "1", ...env },
+    return spawn(zedExecutable, ["--user-data-dir", data, ...paths], {
+        env: { ...process.env, ZED_ALLOW_EMULATED_GPU: "1", ZED_LOG, ...env },
         stdio: "ignore",
         detached: process.platform !== "win32",
     });
+}
+
+/// Without an index, Zed indexes the installed extensions only after it has
+/// opened the files it was given, and reloads the extension right after
+/// loading it; a file opened before that never gets clice. A user installs
+/// extensions in a running Zed, which writes the index the next start loads
+/// up front, so this start only writes the index.
+async function indexExtensions(): Promise<void> {
+    const zed = launch([]);
+    try {
+        await waitUntil(
+            () =>
+                fs.existsSync(path.join(data, "extensions", "index.json")) &&
+                readLog().includes("extensions updated"),
+            { timeout: STARTUP_TIMEOUT, interval: 1_000, description: "Zed to index extensions" },
+        );
+        await sleep(SETTLE_TIME);
+    } finally {
+        await stop(zed);
+    }
+}
+
+/// Opens `file` of `dir` alone in Zed and returns the clice binary Zed started.
+async function startServer(dir: string, file: string, env: Record<string, string> = {}) {
+    const zed = launch([dir, path.join(dir, file)], env);
     const checkFailed = () => {
         const failure = FAILED.exec(readLog());
         if (failure) {
@@ -136,7 +162,7 @@ async function startServer(dir: string, file: string, env: Record<string, string
                 description: `Zed to start clice for ${file}`,
             },
         ).catch((error: unknown) => {
-            const tail = readLog().split("\n").slice(-40).join("\n");
+            const tail = readLog().split("\n").slice(-80).join("\n");
             throw new Error(`${String(error)}\n--- end of ${log}:\n${tail}`);
         });
         await sleep(SETTLE_TIME);
@@ -157,6 +183,7 @@ test("a C++ file downloads and starts clice", async () => {
     expect(onPath, "clice on PATH would stop the extension from downloading").toBeUndefined();
 
     install();
+    await indexExtensions();
     const outdated = path.join(work, "clice-0.0.0");
     write(path.join(outdated, "clice", "bin", binaryName), "");
 
