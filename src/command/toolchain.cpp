@@ -1145,12 +1145,8 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
     LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);
 }
 
-#ifdef CLICE_ENABLE_TEST
-
 std::vector<std::string> Toolchain::parse_cc1(llvm::StringRef content) {
     return parse_cc1_output(content);
 }
-
-#endif
 
 }  // namespace clice

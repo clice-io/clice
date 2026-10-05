@@ -35,7 +35,7 @@ pixi run snap-test Debug
 
 ## Bazel
 
-Bazel is run through [bazelisk](https://github.com/bazelbuild/bazelisk), an npm package of the repository (`npm ci` installs it), which fetches the Bazel release `.bazelversion` names:
+Bazel is run through [bazelisk](https://github.com/bazelbuild/bazelisk), an npm package of the repository (`npm install` installs it), which fetches the Bazel release `.bazelversion` names:
 
 ```shell
 npx bazel build //:clice //:unit_tests

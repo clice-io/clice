@@ -2,7 +2,7 @@ name: clice
 
 # Promotes already-built, already-tested packages to a release. There is no
 # release build: every CI run on main packages the binaries its test suites
-# just validated (see native-test.yml / cross-pair.yml), and this workflow
+# just validated (see native-test.yml), and this workflow
 # only downloads those artifacts from the green run of the tagged commit,
 # renames them to their asset names, and attaches them to the release. It
 # also re-uploads the packages into the current run so publish-vscode.yml

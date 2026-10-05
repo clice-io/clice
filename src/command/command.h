@@ -472,8 +472,6 @@ public:
         return *chain;
     }
 
-#ifdef CLICE_ENABLE_TEST
-
     /// Append one command to the test source and return its entry;
     /// nullopt when normalization fails.
     std::optional<CompilationEntry> add_command(llvm::StringRef directory,
@@ -483,8 +481,6 @@ public:
     std::optional<CompilationEntry> add_command(llvm::StringRef directory,
                                                 llvm::StringRef file,
                                                 llvm::StringRef command);
-
-#endif
 
 private:
     friend class Toolchain;

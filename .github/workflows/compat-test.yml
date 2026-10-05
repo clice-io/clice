@@ -27,15 +27,15 @@ jobs:
           # has no packages elsewhere.
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            asset: x86_64-unknown-linux-gnu.tar.gz
+            ext: tar.gz
             environments: node cuda
           - os: windows-2025
             target: x86_64-w64-mingw32
-            asset: x86_64-w64-mingw32.zip
+            ext: zip
             environments: node
           - os: macos-15
             target: aarch64-apple-darwin
-            asset: aarch64-apple-darwin.tar.gz
+            ext: tar.gz
             environments: node
     runs-on: ${{ matrix.os }}
     steps:
@@ -93,7 +93,7 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "clice-*.${{ matrix.asset }}" --dir "$RUNNER_TEMP/release"
+            --pattern "clice-*.${{ matrix.target }}.${{ matrix.ext }}" --dir "$RUNNER_TEMP/release"
           (cd "$RUNNER_TEMP/release" && cmake -E tar xf clice-*)
           mkdir -p build/RelWithDebInfo
           cp -r "$RUNNER_TEMP/release/clice/bin" "$RUNNER_TEMP/release/clice/lib" build/RelWithDebInfo/

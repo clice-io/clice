@@ -10,7 +10,7 @@ namespace clice {
 /// commit hash), the project's base version for non-git builds
 /// (bazel/workspace_status.mjs).
 ///
-/// Defined in a stamped source of its own (BUILD.bazel): a disk or remote
+/// Defined in a stamped source of its own (bazel/BUILD.bazel): a disk or remote
 /// cache keys every compile on all headers its target can see, so a header
 /// carrying the version would miss the whole build on every commit.
 extern const std::string_view version;

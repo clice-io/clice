@@ -73,8 +73,8 @@ cuda-nvcc = "13.*"
 cuda-cudart-dev = "13.*"
 libcurand-dev = "*"
 
-# The linux-aarch64 cross-test job runs the integration suite on a native
-# arm64 runner, so the symbolization test needs the same tools there.
+# The integration suite runs on arm64 Linux too, so the symbolization test
+# needs the same tools there.
 [feature.test.target.linux-aarch64.dependencies]
 xclang = "==23.1.2.5"
 

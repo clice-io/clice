@@ -23,20 +23,16 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-
-
-def run(*command: str | Path) -> None:
-    subprocess.run([str(part) for part in command], check=True)
+from build import ROOT, remove
 
 
 def archive(output: Path, directory: Path) -> None:
     """The files of directory, under their paths relative to it."""
     files = sorted(path for path in directory.rglob("*") if path.is_file())
     if output.name.endswith(".zip"):
-        with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zip:
+        with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zip_file:
             for path in files:
-                zip.write(path, path.relative_to(directory).as_posix())
+                zip_file.write(path, path.relative_to(directory).as_posix())
     elif output.name.endswith(".tar.gz"):
         with tarfile.open(output, "w:gz") as tar:
             for path in files:
@@ -94,7 +90,7 @@ def main(argv: list[str]) -> int:
     symbols = build / "pack-symbol"
     stripped = symbols / "stripped" / binary.name
 
-    shutil.rmtree(symbols, ignore_errors=True)
+    remove(symbols)
     stripped.parent.mkdir(parents=True)
     # Copies, not copy2: Bazel's outputs are read-only, the release is not.
     shutil.copyfile(binary, stripped)
@@ -105,17 +101,21 @@ def main(argv: list[str]) -> int:
         # root, bazel-out of the workspace).
         dsym = symbols / "clice.dSYM"
         subprocess.run(["dsymutil", binary, "-o", dsym], cwd=ROOT, check=True)
-        run("strip", "-x", stripped)
+        subprocess.run(["strip", "-x", stripped], check=True)
         dwarf = dsym / "Contents" / "Resources" / "DWARF" / "clice"
     else:
         # DWARF on Windows as well: MinGW binaries carry it like ELF ones.
         dwarf = symbols / "clice.debug"
-        run("llvm-objcopy", "--only-keep-debug", binary, dwarf)
-        run("llvm-strip", "--strip-debug", "--strip-unneeded", stripped)
-        run("llvm-objcopy", f"--add-gnu-debuglink={dwarf}", stripped)
+        subprocess.run(["llvm-objcopy", "--only-keep-debug", binary, dwarf], check=True)
+        subprocess.run(
+            ["llvm-strip", "--strip-debug", "--strip-unneeded", stripped], check=True
+        )
+        subprocess.run(
+            ["llvm-objcopy", f"--add-gnu-debuglink={dwarf}", stripped], check=True
+        )
 
     pack = build / "pack"
-    shutil.rmtree(pack, ignore_errors=True)
+    remove(pack)
     (pack / "clice" / "bin").mkdir(parents=True)
     shutil.copy2(stripped, pack / "clice" / "bin")
     shutil.copytree(

@@ -13,29 +13,13 @@ the workspace's own files.
 """
 
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from build import ROOT, bazel
+
 TARGETS = "//:dist + //:benchmarks"
-
-
-def bazel(*args: str) -> str:
-    npx = shutil.which("npx")
-    if npx is None:
-        sys.exit("error: npx not found; run `npm ci` in a pixi environment")
-    result = subprocess.run(
-        [npx, "--no", "bazel", *args],
-        cwd=ROOT,
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-    )
-    if result.returncode != 0:
-        sys.exit(result.returncode)
-    return result.stdout
 
 
 def link_external(execroot: Path) -> None:
@@ -64,9 +48,10 @@ def main(argv: list[str]) -> int:
             *options,
             f'mnemonic("CppCompile", deps({TARGETS}))',
             "--output=jsonproto",
+            capture=True,
         )
     )
-    execroot = Path(bazel("info", *options, "execution_root").strip())
+    execroot = Path(bazel("info", *options, "execution_root", capture=True).strip())
 
     entries = []
     for action in query.get("actions", []):

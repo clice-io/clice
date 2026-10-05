@@ -13,6 +13,7 @@ the editors run the programs from there.
 
 import os
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -25,7 +26,7 @@ def bazel(*args: str, capture: bool = False) -> str:
     # npm's bazelisk (package.json), with the Bazel of .bazelversion.
     npx = shutil.which("npx")
     if npx is None:
-        sys.exit("error: npx not found; run `npm ci` in a pixi environment")
+        sys.exit("error: npx not found; run this through pixi (pixi run build)")
     result = subprocess.run(
         [npx, "--no", "bazel", *args],
         cwd=ROOT,
@@ -48,6 +49,16 @@ def place(source: Path, target: Path) -> None:
         shutil.copy2(source, target)
 
 
+def remove(directory: Path) -> None:
+    # Bazel's outputs are read-only, and Windows deletes no read-only file.
+    def writable(function, path, _):
+        os.chmod(path, stat.S_IWRITE)
+        function(path)
+
+    if directory.exists():
+        shutil.rmtree(directory, onexc=writable)
+
+
 def main(argv: list[str]) -> int:
     if not argv or argv[0].startswith("-"):
         print(__doc__.strip(), file=sys.stderr)
@@ -64,12 +75,12 @@ def main(argv: list[str]) -> int:
 
     dest = ROOT / "build" / build_type
     for directory in ("bin", "lib"):
-        shutil.rmtree(dest / directory, ignore_errors=True)
+        remove(dest / directory)
     for file in files:
         source = execroot / file
-        _, resource, rest = file.partition(RESOURCE_DIR)
+        _, resource, relative = file.partition(RESOURCE_DIR)
         if resource:
-            place(source, dest / "lib" / "clang" / rest)
+            place(source, dest / "lib" / "clang" / relative)
         else:
             place(source, dest / "bin" / source.name)
     print(f"build/{build_type}: {len(files)} files")

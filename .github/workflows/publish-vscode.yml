@@ -54,27 +54,21 @@ jobs:
           - vsce_target: linux-x64
             triple: x86_64-unknown-linux-gnu
             ext: tar.gz
-            build_artifact: build-x86_64-unknown-linux-gnu-RelWithDebInfo
           - vsce_target: linux-arm64
             triple: aarch64-unknown-linux-gnu
             ext: tar.gz
-            build_artifact: build-aarch64-unknown-linux-gnu-RelWithDebInfo
           - vsce_target: darwin-arm64
             triple: aarch64-apple-darwin
             ext: tar.gz
-            build_artifact: build-aarch64-apple-darwin-RelWithDebInfo
           - vsce_target: darwin-x64
             triple: x86_64-apple-darwin
             ext: tar.gz
-            build_artifact: build-x86_64-apple-darwin-RelWithDebInfo
           - vsce_target: win32-x64
             triple: x86_64-w64-mingw32
             ext: zip
-            build_artifact: build-x86_64-w64-mingw32-RelWithDebInfo
           - vsce_target: win32-arm64
             triple: aarch64-w64-mingw32
             ext: zip
-            build_artifact: build-aarch64-w64-mingw32-RelWithDebInfo
 
     runs-on: ubuntu-latest
 
@@ -92,7 +86,7 @@ jobs:
       - name: Download server binaries
         uses: actions/download-artifact@v8
         with:
-          name: ${{ inputs.source == 'package' && format('package-clice.{0}.{1}', matrix.triple, matrix.ext) || matrix.build_artifact }}
+          name: ${{ inputs.source == 'package' && format('package-clice.{0}.{1}', matrix.triple, matrix.ext) || format('build-{0}-RelWithDebInfo', matrix.triple) }}
           path: /tmp/server
 
       # Both sources end up as editors/vscode/clice/{bin,lib/clang,...}, the

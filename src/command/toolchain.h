@@ -79,8 +79,6 @@ public:
     static std::expected<std::vector<std::string>, std::string>
         query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file = {});
 
-#ifdef CLICE_ENABLE_TEST
-
     std::string probe_key_for(ConfigID id, InputKind input) {
         return probe_key(id, input).key;
     }
@@ -100,8 +98,6 @@ public:
     /// Parse the first `-cc1` line from driver `-###` output, dropping flags
     /// our linked cc1 does not understand (along with their values).
     static std::vector<std::string> parse_cc1(llvm::StringRef content);
-
-#endif
 
 private:
     struct ProbeKey {

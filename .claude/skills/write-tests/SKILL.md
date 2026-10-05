@@ -237,8 +237,9 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
   A debugger attached to `unit_tests` sees only the runner — take a
   backtrace with `--no-isolation --test-filter=Suite.Case`, which runs the
   test in-process (`lldb --batch -o run -k "bt 40" -- ...`).
-- The Tester's driver is the `clang++` on PATH: the cross test legs install
-  only the `test-run` env, so they compile against the runner's system
+- The Tester's driver is the `clang++` on PATH: the native-test legs with
+  `activate: test-run` (arm64 Linux, x64 macOS, arm64 Windows) run with only
+  the `test-run` env active, so they compile against the runner's system
   libstdc++, not conda's. A wrapper script named `clang++` that execs the
   pixi clang with another `--gcc-install-dir` reproduces such a leg locally.
 

@@ -25,8 +25,10 @@ constexpr inline bool Linux = true;
 constexpr inline bool Linux = false;
 #endif
 
-/// The checked-in fixture tree, tests/data of the checkout that built this
-/// binary. CLICE_TEST_DATA_DIR in the environment overrides it, the way
+/// The checked-in fixture tree, tests/data of the working directory (the
+/// repository root, where the tasks run the tests: a build that may be
+/// cached across checkouts names none of them). CLICE_TEST_DATA_DIR in the
+/// environment overrides it, the way
 /// CLICE_EXECUTABLE points the TypeScript suites at another build. Absolute
 /// and dot-free with native separators, the spelling the database loader
 /// produces for paths anchored under it.

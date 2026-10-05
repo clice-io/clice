@@ -2,7 +2,6 @@ module(name = "clice")
 
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "rules_cc", version = "0.2.25")
-bazel_dep(name = "rules_shell", version = "0.6.1")
 
 # kotatsu and the third-party libraries, as the clice Bazel registry
 # (.bazelrc) packages them. kotatsu's version is 0.1.0.<n> for the n-th

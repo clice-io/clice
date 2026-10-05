@@ -11,7 +11,10 @@ jobs:
         include:
           # asset_name marks the builds that get packaged into release
           # artifacts once their test suites pass; they link what releases
-          # ship (--config=release).
+          # ship (--config=release). The legs with activate: test-run run
+          # the suites without the build environment on PATH, as a machine
+          # with clice and a compiler of its own: the clang++ their tests
+          # find is another (on Windows arm64 the runner's, targeting MSVC).
           - os: ubuntu-24.04
             build_type: RelWithDebInfo
             target: x86_64-unknown-linux-gnu
@@ -22,6 +25,7 @@ jobs:
           - os: ubuntu-24.04-arm
             build_type: RelWithDebInfo
             target: aarch64-unknown-linux-gnu
+            activate: test-run
             asset_name: clice.aarch64-unknown-linux-gnu.tar.gz
           - os: macos-15
             build_type: RelWithDebInfo
@@ -33,6 +37,7 @@ jobs:
           - os: macos-15-intel
             build_type: RelWithDebInfo
             target: x86_64-apple-darwin
+            activate: test-run
             asset_name: clice.x86_64-apple-darwin.tar.gz
           - os: windows-2025
             build_type: RelWithDebInfo
@@ -41,6 +46,7 @@ jobs:
           - os: windows-11-arm
             build_type: RelWithDebInfo
             target: aarch64-w64-mingw32
+            activate: test-run
             asset_name: clice.aarch64-w64-mingw32.zip
     runs-on: ${{ matrix.os }}
     defaults:
@@ -55,7 +61,7 @@ jobs:
       - uses: ./.github/actions/setup-pixi
         with:
           environments: default test-run
-          activate-environment: default
+          activate-environment: ${{ matrix.activate || 'default' }}
 
       # Pull requests only restore: every push saving its own copy churns
       # the repository's 50 GB cache pool faster than the next run can reuse

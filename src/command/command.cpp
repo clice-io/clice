@@ -1554,8 +1554,6 @@ SearchConfig CompilationDatabase::search_config(const CommandRef& ref) {
     return it->second;
 }
 
-#ifdef CLICE_ENABLE_TEST
-
 std::optional<CompilationEntry>
     CompilationDatabase::append_test_command(Fid file, std::optional<ConfigID> normalized) {
     if(!normalized) {
@@ -1596,7 +1594,5 @@ std::optional<CompilationEntry> CompilationDatabase::add_command(llvm::StringRef
     auto fid = file_table.intern(Spelling(file, base));
     return append_test_command(fid, normalize(base, fid, command));
 }
-
-#endif
 
 }  // namespace clice

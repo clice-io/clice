@@ -186,10 +186,7 @@ cc_library(
     srcs = glob(["src/%s/**/*.cpp" % layer for layer in CORE]),
     hdrs = glob(["src/%s/**/*.h" % layer for layer in CORE] + ["src/compile/*.inc"]),
     copts = COPTS,
-    defines = [
-        "CLANG_BUILD_STATIC=1",
-        "CLICE_ENABLE_TEST=1",
-    ],
+    defines = ["CLANG_BUILD_STATIC=1"],
     linkopts = select({
         "@platforms//os:windows": [
             "-lversion",

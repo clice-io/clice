@@ -38,7 +38,7 @@ done | xargs -0 -r -n 1 -P "$jobs" "$BASH" -c \
 "$ar" rcs "$out" *
 """
 
-def _all_cores(_os, _inputs):
+def _four_cpus(_os, _inputs):
     # What the actions of a runner have: the action runs alone when it asks
     # for more than the machine has.
     return {"cpu": 4}
@@ -64,7 +64,7 @@ def _native_libraries_impl(ctx):
                 inputs = depset([archive], transitive = [cc_toolchain.all_files]),
                 outputs = [native],
                 mnemonic = "LlvmNativeArchive",
-                resource_set = _all_cores,
+                resource_set = _four_cpus,
                 progress_message = "Compiling the bitcode of %s to native code" % archive.basename,
             )
             libraries.append(cc_common.create_library_to_link(
