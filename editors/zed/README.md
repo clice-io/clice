@@ -19,9 +19,13 @@ The extension starts the first of:
    ```
 
 2. `clice` on your `PATH`.
-3. The newest clice release from GitHub, downloaded into the extension's work directory and replaced when a newer release appears. When the release lookup or the download fails, the last downloaded version keeps serving.
+3. A clice release from GitHub, downloaded into the extension's work directory. The extension checks for a newer release once per Zed session, when clice first starts; when the check or the download fails, the last downloaded version keeps serving.
 
-`lsp.clice.settings.release_channel` selects the releases to download: `"stable"` (the default; until a stable release ships your platform, the newest pre-release) or `"pre-release"` (nightly builds).
+`lsp.clice.settings.release_channel` selects the releases to download: `"stable"` (the default) takes the newest stable release, or the newest pre-release while no stable release ships your platform; `"pre-release"` always takes the newest nightly build:
+
+```json
+{ "lsp": { "clice": { "settings": { "release_channel": "pre-release" } } } }
+```
 
 ## Using clice instead of clangd
 

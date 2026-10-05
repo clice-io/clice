@@ -14,9 +14,7 @@ const SERVER_NAME: &str = "clice";
 
 const REPOSITORY: &str = "clice-io/clice";
 
-/// The default channel. It falls back to the newest pre-release while no
-/// stable release ships this platform's archive, so it works before the first
-/// stable release and follows stable releases once they exist.
+/// The default channel.
 const STABLE_CHANNEL: &str = "stable";
 const PRE_RELEASE_CHANNEL: &str = "pre-release";
 
@@ -96,8 +94,11 @@ fn selects_pre_release(channel: Option<&serde_json::Value>) -> Result<bool> {
     }
 }
 
-/// The version and download URL of the newest release in the channel that
-/// ships `asset_suffix`, from GitHub's release list (newest first).
+/// The version and download URL of the release to install, from GitHub's
+/// release list (newest first): the newest one of the channel that ships
+/// `asset_suffix`. The stable channel takes the newest pre-release while no
+/// stable release ships it, so it works before the first stable release and
+/// follows stable releases once they exist.
 fn select_release(
     releases: &serde_json::Value,
     pre_release: bool,
@@ -115,7 +116,7 @@ fn select_release(
                 let asset = release["assets"]
                     .as_array()?
                     .iter()
-                    .find(|asset| asset["name"] == name.as_str())?;
+                    .find(|asset| asset["name"] == name.as_str() && asset["state"] == "uploaded")?;
                 let url = asset["browser_download_url"].as_str()?;
                 Some((version.to_owned(), url.to_owned()))
             })
@@ -128,18 +129,107 @@ fn select_release(
     }
 }
 
-impl CliceExtension {
-    fn wants_pre_release(worktree: &Worktree) -> Result<bool> {
-        let settings = LspSettings::for_worktree(SERVER_NAME, worktree)
-            .ok()
-            .and_then(|settings| settings.settings);
-        selects_pre_release(
-            settings
-                .as_ref()
-                .and_then(|settings| settings.get("release_channel")),
-        )
+/// `zed::latest_github_release` only offers the newest release of a channel,
+/// whose archives are uploaded platform by platform after it is published,
+/// and scans only the first page of releases, which a month of nightlies
+/// fills.
+fn latest_release(pre_release: bool, package: &Package) -> Result<(String, String)> {
+    let response = HttpRequest::builder()
+        .method(HttpMethod::Get)
+        .url(format!(
+            "https://api.github.com/repos/{REPOSITORY}/releases?per_page=100"
+        ))
+        .build()?
+        .fetch()
+        .map_err(|error| format!("failed to list clice releases: {error}"))?;
+    let releases: serde_json::Value =
+        serde_json::from_slice(&response.body).map_err(|error| error.to_string())?;
+
+    select_release(&releases, pre_release, package.asset_suffix)
+        .ok_or_else(|| format!("no clice release ships a {} archive", package.asset_suffix))
+}
+
+/// The `clice-<version>` directories in the work directory.
+fn version_dirs() -> impl Iterator<Item = String> {
+    std::fs::read_dir(".")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| name.starts_with("clice-"))
+}
+
+/// Installs the newest release of the selected channel. Updating is best
+/// effort: when it fails (offline, rate limited), the installation an earlier
+/// session left behind keeps serving, the highest version if a removal left
+/// several.
+fn install(language_server_id: &LanguageServerId, worktree: &Worktree) -> Result<String> {
+    let settings = LspSettings::for_worktree(SERVER_NAME, worktree)
+        .ok()
+        .and_then(|settings| settings.settings);
+    let pre_release = selects_pre_release(
+        settings
+            .as_ref()
+            .and_then(|settings| settings.get("release_channel")),
+    )?;
+    let package = Package::current()?;
+
+    zed::set_language_server_installation_status(
+        language_server_id,
+        &LanguageServerInstallationStatus::CheckingForUpdate,
+    );
+
+    let path = install_latest(language_server_id, pre_release, &package).or_else(|error| {
+        version_dirs()
+            .map(|dir| format!("{dir}/{}", package.binary))
+            .filter(|path| is_file(path))
+            .max()
+            .ok_or(error)
+    })?;
+
+    zed::set_language_server_installation_status(
+        language_server_id,
+        &LanguageServerInstallationStatus::None,
+    );
+    Ok(path)
+}
+
+fn install_latest(
+    language_server_id: &LanguageServerId,
+    pre_release: bool,
+    package: &Package,
+) -> Result<String> {
+    let (version, url) = latest_release(pre_release, package)?;
+
+    let version_dir = format!("clice-{version}");
+    let binary_path = format!("{version_dir}/{}", package.binary);
+    if is_file(&binary_path) {
+        return Ok(binary_path);
     }
 
+    zed::set_language_server_installation_status(
+        language_server_id,
+        &LanguageServerInstallationStatus::Downloading,
+    );
+
+    std::fs::remove_dir_all(DOWNLOAD_DIR).ok();
+    zed::download_file(&url, DOWNLOAD_DIR, package.file_type)
+        .map_err(|error| format!("failed to download {url}: {error}"))?;
+    let staged_binary = format!("{DOWNLOAD_DIR}/{}", package.binary);
+    zed::make_file_executable(&staged_binary)
+        .map_err(|error| format!("failed to make {staged_binary} executable: {error}"))?;
+
+    std::fs::remove_dir_all(&version_dir).ok();
+    std::fs::rename(DOWNLOAD_DIR, &version_dir)
+        .map_err(|error| format!("failed to install {version_dir}: {error}"))?;
+    for dir in version_dirs().filter(|dir| *dir != version_dir) {
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    Ok(binary_path)
+}
+
+impl CliceExtension {
     /// Resolves the server binary, preferring anything the user already has:
     /// `clice` on the worktree's `$PATH`, then a download made earlier in this
     /// session, and only then a new download. Zed itself handles
@@ -159,108 +249,9 @@ impl CliceExtension {
             }
         }
 
-        let path = Self::install(language_server_id, worktree)?;
+        let path = install(language_server_id, worktree)?;
         self.cached_binary_path = Some(path.clone());
         Ok(path)
-    }
-
-    /// Installs the newest release of the selected channel. Updating is best
-    /// effort: when it fails (offline, rate limited), an earlier installation
-    /// keeps serving.
-    fn install(language_server_id: &LanguageServerId, worktree: &Worktree) -> Result<String> {
-        let pre_release = Self::wants_pre_release(worktree)?;
-        let package = Package::current()?;
-
-        zed::set_language_server_installation_status(
-            language_server_id,
-            &LanguageServerInstallationStatus::CheckingForUpdate,
-        );
-
-        let path = Self::install_latest(language_server_id, pre_release, &package)
-            .or_else(|error| Self::installed_binary(&package).ok_or(error))?;
-
-        zed::set_language_server_installation_status(
-            language_server_id,
-            &LanguageServerInstallationStatus::None,
-        );
-        Ok(path)
-    }
-
-    fn install_latest(
-        language_server_id: &LanguageServerId,
-        pre_release: bool,
-        package: &Package,
-    ) -> Result<String> {
-        let (version, url) = Self::latest_release(pre_release, package)?;
-
-        let version_dir = format!("clice-{version}");
-        let binary_path = format!("{version_dir}/{}", package.binary);
-        if is_file(&binary_path) {
-            return Ok(binary_path);
-        }
-
-        zed::set_language_server_installation_status(
-            language_server_id,
-            &LanguageServerInstallationStatus::Downloading,
-        );
-
-        std::fs::remove_dir_all(DOWNLOAD_DIR).ok();
-        zed::download_file(&url, DOWNLOAD_DIR, package.file_type)
-            .map_err(|error| format!("failed to download {url}: {error}"))?;
-        zed::make_file_executable(&format!("{DOWNLOAD_DIR}/{}", package.binary))
-            .map_err(|error| format!("failed to make {binary_path} executable: {error}"))?;
-
-        std::fs::remove_dir_all(&version_dir).ok();
-        std::fs::rename(DOWNLOAD_DIR, &version_dir)
-            .map_err(|error| format!("failed to install {version_dir}: {error}"))?;
-        Self::remove_other_versions(&version_dir);
-
-        Ok(binary_path)
-    }
-
-    /// `zed::latest_github_release` only offers the newest release of a channel,
-    /// whose archives are uploaded platform by platform after it is published,
-    /// and scans only the first page of releases, which a month of nightlies
-    /// fills.
-    fn latest_release(pre_release: bool, package: &Package) -> Result<(String, String)> {
-        let response = HttpRequest::builder()
-            .method(HttpMethod::Get)
-            .url(format!(
-                "https://api.github.com/repos/{REPOSITORY}/releases?per_page=100"
-            ))
-            .build()?
-            .fetch()
-            .map_err(|error| format!("failed to list clice releases: {error}"))?;
-        let releases: serde_json::Value =
-            serde_json::from_slice(&response.body).map_err(|error| error.to_string())?;
-
-        select_release(&releases, pre_release, package.asset_suffix)
-            .ok_or_else(|| format!("no clice release ships a {} archive", package.asset_suffix))
-    }
-
-    /// The newest installation an earlier session left behind.
-    fn installed_binary(package: &Package) -> Option<String> {
-        std::fs::read_dir(".")
-            .ok()?
-            .flatten()
-            .filter_map(|entry| entry.file_name().into_string().ok())
-            .filter(|name| name.starts_with("clice-"))
-            .map(|name| format!("{name}/{}", package.binary))
-            .filter(|path| is_file(path))
-            .max()
-    }
-
-    fn remove_other_versions(current: &str) {
-        let Ok(entries) = std::fs::read_dir(".") else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name.starts_with("clice-") && name != current {
-                std::fs::remove_dir_all(entry.path()).ok();
-            }
-        }
     }
 }
 
@@ -299,7 +290,7 @@ mod tests {
             .iter()
             .map(|suffix| {
                 let name = format!("clice-{version}.{suffix}");
-                json!({ "name": name, "browser_download_url": format!("https://dl/{name}") })
+                json!({ "name": name, "state": "uploaded", "browser_download_url": format!("https://dl/{name}") })
             })
             .collect();
         json!({ "tag_name": tag, "prerelease": prerelease, "assets": assets })
@@ -314,9 +305,13 @@ mod tests {
 
     #[test]
     fn skips_release_still_uploading() {
+        let mut uploading = release("v0.3.2026110208", true, &[LINUX]);
+        uploading["assets"][0]["state"] = json!("open");
         let releases = json!([
+            uploading,
             release("v0.3.2026110108", true, &["x86_64-apple-darwin.tar.gz"]),
             release("v0.3.2026103108", true, &[LINUX]),
+            release("v0.3.2026103008", true, &[LINUX]),
         ]);
         assert_eq!(
             select_release(&releases, true, LINUX),
@@ -359,6 +354,7 @@ mod tests {
             select_release(&releases, false, "x86_64-w64-mingw32.zip"),
             None
         );
+        assert_eq!(select_release(&releases, true, LINUX), None);
         assert_eq!(select_release(&json!({}), false, LINUX), None);
     }
 

@@ -150,16 +150,14 @@ jobs:
           "$RUNNER_TEMP/zed-setup.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART //SP- //CURRENTUSER
           echo "ZED=$LOCALAPPDATA/Programs/Zed/Zed.exe" >> "$GITHUB_ENV"
 
-      - name: E2E test
+      - name: E2E test (Linux)
+        if: runner.os == 'Linux'
         timeout-minutes: 20
-        env:
-          WASM: editors/zed/target/wasm32-wasip2/release/zed_clice.wasm
-        run: |
-          if [ "$RUNNER_OS" = Linux ]; then
-            xvfb-run -a python3 editors/zed/tests/e2e.py "$ZED" "$WASM"
-          else
-            python editors/zed/tests/e2e.py "$ZED" "$WASM"
-          fi
+        run: xvfb-run -a python3 editors/zed/tests/e2e.py "$ZED" editors/zed/target/wasm32-wasip2/release/zed_clice.wasm
+      - name: E2E test (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 20
+        run: python editors/zed/tests/e2e.py "$ZED" editors/zed/target/wasm32-wasip2/release/zed_clice.wasm
 
   native-test:
     needs: changes
