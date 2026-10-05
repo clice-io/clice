@@ -59,6 +59,10 @@ struct File {
     /// `includers` order.
     std::vector<std::string> spellings;
 
+    /// Its include directives the index saw enter or skip a scoped file:
+    /// the directive's line and that file.
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> directives;
+
     /// For a fragment, the includers whose Pasted rows at its directive
     /// name what it names there: it is a table pasted inside declarations,
     /// and its own rows are charged to no file.
@@ -303,6 +307,11 @@ struct Partition {
     /// exports, as `std.compat` exports the C library's.
     std::vector<llvm::StringSet<>> provides;
 
+    /// Per module: the primary interface unit of a program module rewritten
+    /// into a named module, workspace-relative; empty for one whose files
+    /// stay as they are.
+    std::vector<std::string> primaries;
+
     /// Whether files of other modules see the module's headers emptied.
     bool emptied(std::uint32_t module) const {
         return kinds[module] == ModuleKind::Wrapped || kinds[module] == ModuleKind::External;
@@ -330,6 +339,12 @@ struct PartitionSpec {
 
         /// The names of its headers another module's interface exports.
         llvm::StringSet<> provides;
+
+        /// A program module whose files are rewritten into the units of a
+        /// named module, its primary interface unit at `primary` (default:
+        /// `module.cppm` in the deepest directory holding its headers).
+        bool rewrite = false;
+        std::string primary;
     };
 
     /// Modules claimed by globs, first match wins; unclaimed files keep their
@@ -679,6 +694,27 @@ struct Obstacles {
     std::vector<Located> specializations;
 };
 
+/// A scoped file as a unit of its module, what rewriting it reads.
+struct Unit {
+    enum class Kind : std::uint8_t {
+        Source,
+        Fragment,
+        /// A header only its own module's sources reach, directly or through
+        /// other such headers: an implementation partition.
+        Internal,
+        Interface,
+    };
+
+    Kind kind = Kind::Source;
+
+    /// The files providing the entities it names, the fragments it pastes
+    /// counted as its own text; itself apart.
+    std::vector<std::uint32_t> names;
+
+    /// The files defining the macros it expands or tests; itself apart.
+    std::vector<std::uint32_t> macros;
+};
+
 /// A macro other files use. Imports carry no macros, so every one of these
 /// reaches its users through a textual macro header, its own module's files
 /// included.
@@ -804,6 +840,9 @@ struct Report {
     std::expected<std::vector<Interface>, std::string> interface(llvm::StringRef module) const;
 
     std::vector<Impact> impact() const;
+
+    /// Every scoped file as a unit of its module, by file id.
+    std::vector<Unit> units() const;
 };
 
 }  // namespace clice::analysis

@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "analysis/module_graph.h"
+#include "analysis/rewriting.h"
 #include "analysis/wrapping.h"
 #include "driver/analysis_support.h"
 #include "driver/driver.h"
@@ -19,6 +20,13 @@ namespace clice::driver {
 using kota::deco::decl::KVStyle;
 
 namespace {
+
+/// What the build needs: the wrapped modules, and the program modules the
+/// partition rewrites.
+struct Plan {
+    analysis::Wrapping::Plan wrapping;
+    analysis::Rewriting::Plan rewriting;
+};
 
 struct ModularizeOptions {
     kota::deco::decl::HelpOption help;
@@ -46,7 +54,8 @@ struct ModularizeOptions {
            help =
                "JSON file assigning modules by globs, first match wins; a module is wrapped, "
                R"("textual": true stays headers, "external": true is std, "provides": )"
-               R"("std.compat" names who exports its names)",
+               R"("std.compat" names who exports its names, "rewrite": true rewrites a )"
+               R"(program module into module units, its primary interface at "primary")",
            required = false)
     <std::string> partition;
 
@@ -165,7 +174,39 @@ int run_modularize(const ModularizeOptions& opts) {
     if(auto written = write_files(out, wrapping->files); !written) {
         return fail(written.error());
     }
-    print_json(wrapping->plan);
+    Plan plan{.wrapping = std::move(wrapping->plan)};
+    if(llvm::any_of(partition->primaries, [](auto& primary) { return !primary.empty(); })) {
+        // The prelude by its path from the workspace root, which the
+        // rewritten files' include path holds.
+        llvm::StringRef prelude_dir = out;
+        auto inside = prelude_dir.consume_front(loaded->root) && prelude_dir.consume_front("/");
+        llvm::SmallString<256> prelude(inside ? prelude_dir : llvm::StringRef(out));
+        llvm::sys::path::append(prelude, llvm::sys::path::Style::posix, plan.wrapping.prelude);
+        auto rewriting =
+            analysis::rewrite(loaded->facts, *partition, *interfaces, prelude, loaded->root);
+        if(!rewriting) {
+            return fail(rewriting.error());
+        }
+        auto at = [&](llvm::StringRef relative) {
+            llvm::SmallString<256> path(loaded->root);
+            llvm::sys::path::append(path, llvm::sys::path::Style::posix, relative);
+            return path;
+        };
+        for(auto& file: rewriting->files) {
+            auto path = at(file.path);
+            if(auto error = vfs::write(path, file.content)) {
+                return fail(std::format("cannot write {}: {}", path.str().str(), error.message()));
+            }
+        }
+        for(auto& removed: rewriting->plan.removed) {
+            auto path = at(removed);
+            if(auto error = vfs::remove(path)) {
+                return fail(std::format("cannot remove {}: {}", path.str().str(), error.message()));
+            }
+        }
+        plan.rewriting = std::move(rewriting->plan);
+    }
+    print_json(plan);
     return 0;
 }
 
@@ -181,7 +222,8 @@ void add_modularize(kota::deco::cli::SubCommander& root) {
         })
         .on_error([](auto err) { print_json(Failure{.error = err.message}); });
     root.add({.name = "modularize",
-              .description = "Wrap a partition's libraries as modules over their headers"},
+              .description = "Wrap a partition's libraries as modules over their headers and "
+                             "rewrite its program modules into module units"},
              std::move(command));
 }
 

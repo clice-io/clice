@@ -29,6 +29,11 @@ struct PartitionFile {
 
         /// The module exporting the names of its headers.
         std::optional<std::string> provides;
+
+        /// A program module rewritten into a named module, and where its
+        /// primary interface unit goes.
+        std::optional<bool> rewrite;
+        std::optional<std::string> primary;
     };
 
     std::vector<Module> modules;
@@ -81,6 +86,19 @@ std::expected<analysis::PartitionSpec, std::string>
         if(textual && external) {
             return std::unexpected(
                 std::format("module {} is both textual and external", claimed.name));
+        }
+        if(module.rewrite.value_or(false)) {
+            if(textual || external) {
+                return std::unexpected(
+                    std::format("module {} is both rewritten and wrapped", claimed.name));
+            }
+            claimed.kind = analysis::ModuleKind::Program;
+            claimed.rewrite = true;
+            claimed.primary = module.primary.value_or("");
+        } else if(module.primary) {
+            return std::unexpected(
+                std::format("module {} has a primary interface but is not rewritten",
+                            claimed.name));
         }
         if(textual) {
             claimed.kind = analysis::ModuleKind::Textual;

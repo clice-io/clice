@@ -324,6 +324,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             tree.skipped.push_back(node.skipped);
             if(auto from = id_of(includer), to = id_of(file); from != none && to != none) {
                 include_lines.try_emplace({from, to}, node.line);
+                facts.files[from].directives.emplace_back(node.line, to);
             }
             if(!node.skipped && unit != none) {
                 if(auto id = id_of(file); id != none) {
@@ -341,6 +342,10 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 }
             }
         }
+    }
+    for(auto& file: facts.files) {
+        std::ranges::sort(file.directives);
+        file.directives.erase(std::ranges::unique(file.directives).begin(), file.directives.end());
     }
     for(auto& [includer, targets]: includes) {
         std::ranges::sort(targets);
@@ -1593,6 +1598,8 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
     auto count = result.modules.size();
     result.kinds.assign(count, ModuleKind::Program);
     result.provides.resize(count);
+    result.primaries.resize(count);
+    std::vector<bool> rewritten(count, false);
     for(auto& claimed: spec.modules) {
         // A merge or move can still take a claimed module's files away.
         auto module = result.module_named(claimed.name);
@@ -1615,6 +1622,51 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
         for(auto& provided: claimed.provides) {
             result.provides[module].insert(provided.getKey());
         }
+        if(claimed.rewrite) {
+            rewritten[module] = true;
+            if(!claimed.primary.empty()) {
+                result.primaries[module] = claimed.primary;
+            }
+        }
+    }
+
+    // A rewritten module's primary interface defaults to the deepest
+    // directory holding its headers, its files' when it has none.
+    for(std::uint32_t module = 0; module < count; module += 1) {
+        if(rewritten[module] && result.kinds[module] != ModuleKind::Program) {
+            return std::unexpected(
+                std::format("module {} is both rewritten and wrapped", result.modules[module]));
+        }
+        auto& primary = result.primaries[module];
+        if(!rewritten[module] || !primary.empty()) {
+            continue;
+        }
+        auto within = [](llvm::StringRef dir, llvm::StringRef ancestor) {
+            return ancestor.empty() || dir == ancestor ||
+                   (dir.starts_with(ancestor) && dir[ancestor.size()] == '/');
+        };
+        std::optional<llvm::StringRef> common;
+        for(bool headers: {true, false}) {
+            for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+                auto& info = facts.files[file];
+                if(result.module_of[file] != module || (headers && info.source)) {
+                    continue;
+                }
+                auto dir = llvm::sys::path::parent_path(info.path, llvm::sys::path::Style::posix);
+                if(!common) {
+                    common = dir;
+                }
+                while(!within(dir, *common)) {
+                    common = llvm::sys::path::parent_path(*common, llvm::sys::path::Style::posix);
+                }
+            }
+            if(common) {
+                break;
+            }
+        }
+        llvm::SmallString<256> path(common.value_or(""));
+        llvm::sys::path::append(path, llvm::sys::path::Style::posix, "module.cppm");
+        primary = path.str().str();
     }
     return result;
 }
@@ -2825,6 +2877,38 @@ std::vector<Impact> Report::impact() const {
         };
         return std::tuple(weight(lhs), rhs.path) > std::tuple(weight(rhs), lhs.path);
     });
+    return result;
+}
+
+std::vector<Unit> Report::units() const {
+    Graph graph(facts, partition);
+    auto pasted = pasted_fragments(facts);
+    std::vector<Unit> result(facts.files.size());
+    for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+        auto& info = facts.files[file];
+        auto& unit = result[file];
+        unit.kind = info.source            ? Unit::Kind::Source
+                    : info.fragment        ? Unit::Kind::Fragment
+                    : graph.internal[file] ? Unit::Kind::Internal
+                                           : Unit::Kind::Interface;
+        for(auto named: llvm::concat<const std::uint32_t>(llvm::ArrayRef(file), pasted[file])) {
+            for(auto [uses, owners]: {
+                    std::pair{&facts.uses[named],       &unit.names },
+                    std::pair{&facts.macro_uses[named], &unit.macros}
+            }) {
+                for(auto& use: *uses) {
+                    auto owner = facts.entities[use.entity].owner;
+                    if(owner != file) {
+                        owners->push_back(owner);
+                    }
+                }
+            }
+        }
+        for(auto* owners: {&unit.names, &unit.macros}) {
+            std::ranges::sort(*owners);
+            owners->erase(std::ranges::unique(*owners).begin(), owners->end());
+        }
+    }
     return result;
 }
 

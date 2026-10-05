@@ -1,6 +1,7 @@
 /// `clice analyze modules --view interface` and `clice modularize`: a
 /// partition's libraries as module interface units over their headers, the
-/// standard library as libc++'s std.compat, and the C library kept headers.
+/// standard library as libc++'s std.compat, the C library kept headers, and
+/// the program's own modules rewritten into module units.
 /// The libraries, the standard library and its module sources are stand-ins
 /// in the workspace, so no real system header is involved.
 
@@ -25,6 +26,22 @@ interface Interface {
     textual: Header[];
     macros: { name: string; module: string; file: string; directive: string }[];
     reads: { name: string }[];
+}
+
+interface Rewriting {
+    modules: {
+        name: string;
+        primary: string;
+        interfaces: string[];
+        partitions: string[];
+        sources: string[];
+        imports: string[];
+    }[];
+    importers: string[];
+    macros: string[];
+    removed: string[];
+    moved: string[];
+    warnings: string[];
 }
 
 interface Plan {
@@ -54,8 +71,9 @@ function runClice(...args: string[]): Promise<ProcessResult> {
 /// A program over two libraries, beta including alpha, a standard library
 /// whose C++ headers include the C library's, and libc++'s module sources
 /// for it: std.cppm includes the headers `import std` stands for and
-/// std.compat exports fake_puts.
-async function writeProject(session: SessionFactory): Promise<Workspace> {
+/// std.compat exports fake_puts. With `program`, the program also has two
+/// modules of its own, core and tool, and a source using tool.
+async function writeProject(session: SessionFactory, program = false): Promise<Workspace> {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(
@@ -182,11 +200,19 @@ async function writeProject(session: SessionFactory): Promise<Workspace> {
         ),
     );
     const includes = ["std", "libc", "alpha", "beta"].map((dir) => `-I${ws.path(`third/${dir}`)}`);
-    ws.writeEntries([
-        ["app/main.cpp", includes],
-        ["app/direct.cpp", includes],
-        ["app/third.cpp", includes],
-    ]);
+    const sources = ["app/main.cpp", "app/direct.cpp", "app/third.cpp"];
+    if (program) {
+        writeProgram(ws);
+        includes.push(`-I${ws.path("app")}`);
+        sources.push(
+            "app/core/text.cpp",
+            "app/tool/tool.cpp",
+            "app/tool/hook.cpp",
+            "app/tool/cli.cpp",
+            "app/run.cpp",
+        );
+    }
+    ws.writeEntries(sources.map((source): [string, string[]] => [source, includes]));
 
     ws.write(
         "stdmod/std.cppm",
@@ -225,6 +251,93 @@ async function writeProject(session: SessionFactory): Promise<Workspace> {
     const run = await runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(run.status, `stderr: ${run.stderr}`).toBe(0);
     return ws;
+}
+
+/// core's text.h forward-declares sink.h's Sink and declares hook(), which
+/// tool's hook.cpp defines; detail.h is core's alone. tool.h forward-declares
+/// core's Sink, and tool.cpp expands core's CORE_TWICE.
+function writeProgram(ws: Workspace): void {
+    ws.write(
+        "app/core/text.h",
+        lines(
+            "#pragma once",
+            "#include <alpha/alpha.h>",
+            "#define CORE_TWICE(x) ((x) * 2)",
+            "namespace core {",
+            "struct Sink;",
+            "struct Text {",
+            "    alpha::Thing thing;",
+            "    int size() const;",
+            "};",
+            "int hook();",
+            "}",
+        ),
+    );
+    ws.write(
+        "app/core/sink.h",
+        lines("#pragma once", "namespace core {", "struct Sink { int lines; };", "}"),
+    );
+    ws.write(
+        "app/core/detail.h",
+        lines(
+            "#pragma once",
+            "namespace core {",
+            "namespace {",
+            "inline int hidden() { return 1; }",
+            "}",
+            "inline int detail() { return hidden(); }",
+            "}",
+        ),
+    );
+    ws.write(
+        "app/core/text.cpp",
+        lines(
+            '#include "core/text.h"',
+            '#include "core/detail.h"',
+            "int core::Text::size() const { return detail() + CORE_TWICE(thing.v); }",
+        ),
+    );
+    ws.write(
+        "app/tool/tool.h",
+        lines(
+            "#pragma once",
+            '#include "core/text.h"',
+            "namespace core {",
+            "struct Sink;",
+            "}",
+            "namespace tool {",
+            "int run(const core::Text& text, core::Sink* sink);",
+            "}",
+        ),
+    );
+    ws.write(
+        "app/tool/tool.cpp",
+        lines(
+            '#include "tool/tool.h"',
+            '#include "core/sink.h"',
+            "int tool::run(const core::Text& text, core::Sink* sink) {",
+            "    return text.size() + sink->lines + CORE_TWICE(1);",
+            "}",
+        ),
+    );
+    ws.write(
+        "app/tool/hook.cpp",
+        lines('#include "core/text.h"', "int core::hook() { return 7; }"),
+    );
+    ws.write(
+        "app/tool/cli.cpp",
+        lines(
+            '#include "tool/tool.h"',
+            "int main() {",
+            '    const char* code = R"(int main() {})";',
+            "    return code[0] == 'i' ? 0 : tool::run(core::Text{}, nullptr);",
+            "}",
+        ),
+    );
+    ws.write(
+        "app/run.cpp",
+        lines('#include "tool/tool.h"', "int main() { return tool::run(core::Text{}, nullptr); }"),
+    );
 }
 
 async function interfaces(ws: Workspace): Promise<Map<string, Interface>> {
@@ -320,7 +433,7 @@ test("modularize writes the wrapping", async ({ session }) => {
     ws.write("wrap/custom.cppm", "export module custom;\n");
     const run = await modularize(ws);
     expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
-    const plan = JSON.parse(run.stdout) as Plan;
+    const plan = (JSON.parse(run.stdout) as { wrapping: Plan }).wrapping;
 
     expect(plan.modules.map((module) => [module.name, module.imports, module.mirrors])).toEqual([
         ["alpha", [], ["mirror/std"]],
@@ -402,6 +515,115 @@ test("modularize writes the wrapping", async ({ session }) => {
     expect(ws.exists("wrap/custom.cppm")).toBe(true);
 });
 
+test("modularize rewrites program modules", async ({ session }) => {
+    const ws = await writeProject(session, true);
+    const partition = JSON.parse(ws.read("partition.json")) as { modules: unknown[] };
+    partition.modules.push(
+        { name: "app.core", files: ["app/core/**"], rewrite: true, primary: "app/core/core.cppm" },
+        { name: "app.tool", files: ["app/tool/**"], rewrite: true },
+    );
+    ws.write("program.json", JSON.stringify(partition));
+    const run = await modularize(ws, ws.path("program.json"));
+    expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
+    const plan = (JSON.parse(run.stdout) as { rewriting: Rewriting }).rewriting;
+
+    expect(plan.modules).toEqual([
+        {
+            name: "app.core",
+            primary: "app/core/core.cppm",
+            interfaces: ["app/core/sink.cppm", "app/core/text.cppm"],
+            partitions: ["app/core/detail.cppm"],
+            sources: ["app/core/text.cpp", "app/tool/hook.cpp"],
+            imports: [],
+        },
+        {
+            name: "app.tool",
+            primary: "app/tool/module.cppm",
+            interfaces: ["app/tool/tool.cppm"],
+            partitions: [],
+            sources: ["app/tool/cli.cpp", "app/tool/tool.cpp"],
+            imports: ["app.core"],
+        },
+    ]);
+    expect(plan.importers).toEqual(["app/run.cpp"]);
+    // Defining what core's text.h declares, it is attached to core.
+    expect(plan.moved).toEqual(["app/tool/hook.cpp=app.core"]);
+    expect(plan.macros).toEqual(["app/core/text.macros.h"]);
+    expect(plan.removed).toEqual([
+        "app/core/detail.h",
+        "app/core/sink.h",
+        "app/core/text.h",
+        "app/tool/tool.h",
+    ]);
+    expect(plan.warnings).toEqual([]);
+    expect(ws.exists("app/core/text.h")).toBe(false);
+
+    expect(ws.read("app/core/core.cppm")).toBe(
+        lines("export module app.core;", "", "export import :sink;", "export import :text;"),
+    );
+    expect(ws.read("app/tool/module.cppm")).toBe(
+        lines("export module app.tool;", "", "export import :tool;"),
+    );
+    // The prelude imports alpha; core's own forward declaration stays.
+    expect(ws.read("app/core/text.cppm")).toBe(
+        lines(
+            "module;",
+            "",
+            '#include "wrap/prelude.h"',
+            "#define CORE_TWICE(x) ((x) * 2)",
+            "",
+            "export module app.core:text;",
+            "",
+            "export {",
+            "namespace core {",
+            "struct Sink;",
+            "struct Text {",
+            "    alpha::Thing thing;",
+            "    int size() const;",
+            "};",
+            "int hook();",
+            "}",
+            "}",
+        ),
+    );
+    // An implementation partition, its anonymous namespace dissolved.
+    const detail = ws.read("app/core/detail.cppm");
+    expect(detail).toContain("\nmodule app.core:detail;\n");
+    expect(detail).not.toContain("namespace {");
+    expect(detail).toContain("inline int hidden() { return 1; }");
+    // The interface partition comes through the primary interface, the
+    // implementation partition by import; the macro through its header.
+    const text = ws.read("app/core/text.cpp");
+    expect(text).toContain("\nmodule app.core;\n");
+    expect(text).toContain("import :detail;");
+    expect(text).not.toContain("import :text;");
+    expect(text).toContain('#include "core/text.macros.h"');
+    expect(ws.read("app/core/text.macros.h")).toBe(
+        lines("#pragma once", "", "#define CORE_TWICE(x) ((x) * 2)"),
+    );
+    // core's Sink is core's to declare.
+    const tool = ws.read("app/tool/tool.cppm");
+    expect(tool).toContain("export module app.tool:tool;");
+    expect(tool).toContain("import app.core;");
+    expect(tool).not.toContain("struct Sink;");
+    expect(ws.read("app/tool/tool.cpp")).toContain('#include "core/text.macros.h"');
+    expect(ws.read("app/tool/hook.cpp")).toContain("\nmodule app.core;\n");
+    // main stays attached to the global module; the one in a string is text.
+    const cli = ws.read("app/tool/cli.cpp");
+    expect(cli).toContain('extern "C++" int main() {');
+    expect(cli).toContain('R"(int main() {})"');
+    // core::Text reaches it through tool's header, but no import re-exports.
+    expect(ws.read("app/run.cpp")).toBe(
+        lines(
+            '#include "wrap/prelude.h"',
+            "import app.core;",
+            "import app.tool;",
+            "",
+            "int main() { return tool::run(core::Text{}, nullptr); }",
+        ),
+    );
+});
+
 test("modularize partition errors", async ({ session }) => {
     const ws = await writeProject(session);
     const failure = (run: ProcessResult) => {
@@ -444,6 +666,20 @@ test("modularize partition errors", async ({ session }) => {
         { name: "libc", files: ["third/libc/**"], external: true },
     ]);
     expect(failure(await modularize(ws, both))).toContain("both textual and external");
+
+    const rewritten = partition("rewritten.json", [
+        { name: "alpha", files: ["third/alpha/**"], textual: true, rewrite: true },
+    ]);
+    expect(failure(await modularize(ws, rewritten))).toContain("both rewritten and wrapped");
+    const wrapped = partition("wrapped.json", [
+        { name: "alpha", files: ["third/alpha/alpha.h"], rewrite: true },
+        { name: "alpha", files: ["third/alpha/**"] },
+    ]);
+    expect(failure(await modularize(ws, wrapped))).toContain("both rewritten and wrapped");
+    const primary = partition("primary.json", [
+        { name: "alpha", files: ["third/alpha/**"], primary: "third/alpha/alpha.cppm" },
+    ]);
+    expect(failure(await modularize(ws, primary))).toContain("not rewritten");
 
     const noStd = await runClice(
         "modularize",
