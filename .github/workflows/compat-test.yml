@@ -1,14 +1,18 @@
 name: compat-test
 
-# Real build systems and compilers (tests/compat): called from main with
-# every build; weekly and on demand with the newest release and the commit
-# it was built from, so a compiler or build-tool release that breaks
-# command handling shows up without a code change.
+# Real build systems and compilers (tests/compat) on one platform: with every
+# build, the leg's programs; on compat-release's schedule, the newest release
+# and the commit it was built from, so a compiler or build-tool release that
+# breaks command handling shows up without a code change.
 on:
   workflow_call:
-  schedule:
-    - cron: "41 3 * * 1"
-  workflow_dispatch:
+    inputs:
+      os:
+        required: true
+        type: string
+      target:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -19,25 +23,7 @@ defaults:
 
 jobs:
   compat:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # The `cuda` environment holds nvcc for the Linux scenarios and
-          # has no packages elsewhere.
-          - os: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-            ext: tar.gz
-            environments: node cuda
-          - os: windows-2025
-            target: x86_64-w64-mingw32
-            ext: zip
-            environments: node
-          - os: macos-15
-            target: aarch64-apple-darwin
-            ext: tar.gz
-            environments: node
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ inputs.os }}
     steps:
       - name: Pick the newest release
         id: release
@@ -54,9 +40,11 @@ jobs:
           ref: ${{ steps.release.outputs.tag }}
           persist-credentials: false
 
+      # The `cuda` environment holds nvcc for the Linux scenarios and has no
+      # packages elsewhere.
       - uses: ./.github/actions/setup-pixi
         with:
-          environments: ${{ matrix.environments }}
+          environments: ${{ runner.os == 'Linux' && 'node cuda' || 'node' }}
           activate-environment: node
 
       # The Windows and macOS scenarios use what the runner images ship
@@ -83,7 +71,7 @@ jobs:
         if: steps.release.outputs.tag == ''
         uses: actions/download-artifact@v8
         with:
-          name: build-${{ matrix.target }}-RelWithDebInfo
+          name: build-${{ inputs.target }}-RelWithDebInfo
           path: build/RelWithDebInfo/bin/
 
       - name: Download the release
@@ -93,7 +81,7 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "clice-*.${{ matrix.target }}.${{ matrix.ext }}" --dir "$RUNNER_TEMP/release"
+            --pattern "clice-*.${{ inputs.target }}.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}" --dir "$RUNNER_TEMP/release"
           (cd "$RUNNER_TEMP/release" && cmake -E tar xf clice-*)
           mkdir -p build/RelWithDebInfo/bin
           cp -r "$RUNNER_TEMP/release/clice/bin" "$RUNNER_TEMP/release/clice/lib" build/RelWithDebInfo/bin/

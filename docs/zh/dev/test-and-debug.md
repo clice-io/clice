@@ -32,9 +32,10 @@ pixi run integration-test Debug    # debug build
 
 ```bash
 cd tests
-npm run check   # typecheck (tsc strict) + lint (ESLint)
 CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm test
 ```
+
+改动 TypeScript 时，还要在仓库根目录通过 `npm run check`：对每个包运行严格模式的 tsc 和 ESLint。
 
 常用变体：
 

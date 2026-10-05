@@ -51,7 +51,7 @@ compile_commands.json):
 python benchmarks/fetch_workload.py llvm
 ```
 
-clice's own CDB (`npx bazel run //:compile_commands` writes `compile_commands.json`)
+clice's own CDB (`npx bazel run @compdb//:refresh` writes `compile_commands.json`)
 doubles as an always-available medium workload.
 
 ## Typical sessions

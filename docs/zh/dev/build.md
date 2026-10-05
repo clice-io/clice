@@ -50,11 +50,13 @@ npx bazel build //:bin/clice //:bin/unit_tests
 
 `--` 之后的选项会经由 `pixi run build` 传给 Bazel，例如 `pixi run build RelWithDebInfo -- //:package`。
 
+`--platforms=@xclang//platforms:<triple>` 可以为宿主操作系统的另一种架构构建，例如在 x86_64 Linux 上使用 `--platforms=@xclang//platforms:aarch64-unknown-linux-gnu`。
+
 LLVM/Clang 库是 ThinLTO bitcode，每次链接程序都要重做它们的代码生成，每个程序要花几分钟。lld 会把生成的结果存进缓存 `/var/tmp/xclang-thinlto`（Windows 上是 `C:/xclang-thinlto`），之后的链接只需几秒。
 
-`npx bazel build //:package //:symbols` 会构建发布归档和符号包（即未 strip 的 clice）：`build/<type>/bin` 中的 `clice.tar.gz` 和 `clice-symbol.tar.xz`（Windows 上为 `.zip`）。
+`npx bazel build //:package //:symbols` 会构建发布归档和符号包（即供 `scripts/symbolize.py` 使用的 clice GSYM）：`build/<type>/bin` 中的 `clice.tar.gz` 和 `clice-symbol.tar.xz`（Windows 上为 `.zip`）。
 
-`npx bazel run //:compile_commands` 会在仓库根目录写出 clice 自身源码的 `compile_commands.json`，这样 clice 也能用于开发它自己的代码；它运行的是 [bazel-compile-commands](https://github.com/kiron1/bazel-compile-commands)。
+`npx bazel run @compdb//:refresh` 会在仓库根目录写出 clice 自身源码的 `compile_commands.json`，这样 clice 也能用于开发它自己的代码。
 
 在 Windows 上，Bazel 默认的输出根目录层级过深，超出了 Windows 路径的限制；请在 `%USERPROFILE%\.bazelrc` 中指定一个较短的路径：
 

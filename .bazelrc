@@ -29,18 +29,13 @@ common:Debug -c dbg --features=asan --symlink_prefix=build/Debug/
 common:windows --features=-asan
 
 # libclang is ThinLTO bitcode, whose code generation every link redoes
-# (minutes) unless lld's cache has it. The cache's path is in the link's
-# action key, so it is one path everywhere; lld creates it, under a
-# directory the Linux sandbox lets actions write to.
-common:linux --linkopt=-Wl,--thinlto-cache-dir=/var/tmp/xclang-thinlto
-common:linux --sandbox_writable_path=/var/tmp
-common:macos --linkopt=-Wl,-cache_path_lto,/var/tmp/xclang-thinlto
-common:windows --linkopt=-Wl,--thinlto-cache-dir=C:/xclang-thinlto
-
-# How //:package strips clice.
-common:linux --stripopt=--strip-unneeded
-common:macos --stripopt=-x
-common:windows --stripopt=--strip-unneeded
+# (minutes) unless lld's cache has it; xclang hands the directory to the
+# linker. The directory is in the links' action keys, so it is one path
+# everywhere.
+common:linux --repo_env=XCLANG_THINLTO_CACHE=/var/tmp/xclang-thinlto
+common:linux --sandbox_writable_path=/var/tmp/xclang-thinlto
+common:macos --repo_env=XCLANG_THINLTO_CACHE=/var/tmp/xclang-thinlto
+common:windows --repo_env=XCLANG_THINLTO_CACHE=C:/xclang-thinlto
 
 # version.cpp, stamped with the version git describes.
 common --workspace_status_command="node bazel/workspace_status.mjs"

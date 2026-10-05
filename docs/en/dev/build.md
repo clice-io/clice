@@ -50,11 +50,13 @@ The build types are configurations of `.bazelrc`:
 
 Options after `--` reach Bazel through `pixi run build`, for example `pixi run build RelWithDebInfo -- //:package`.
 
+`--platforms=@xclang//platforms:<triple>` builds for another architecture of the host's operating system, for example `--platforms=@xclang//platforms:aarch64-unknown-linux-gnu` on x86_64 Linux.
+
 The LLVM/Clang libraries hold ThinLTO bitcode, so every link of a program redoes their code generation, minutes per program. lld keeps what it generated in a cache, `/var/tmp/xclang-thinlto` (`C:/xclang-thinlto` on Windows), and later links take seconds.
 
-`npx bazel build //:package //:symbols` builds the release archive and the symbol package, the unstripped clice: `clice.tar.gz` and `clice-symbol.tar.xz` in `build/<type>/bin` (`.zip` on Windows).
+`npx bazel build //:package //:symbols` builds the release archive and the symbol package, clice's GSYM for `scripts/symbolize.py`: `clice.tar.gz` and `clice-symbol.tar.xz` in `build/<type>/bin` (`.zip` on Windows).
 
-`npx bazel run //:compile_commands` writes a `compile_commands.json` of clice's own sources to the repository root, for clice to work on its own code; it runs [bazel-compile-commands](https://github.com/kiron1/bazel-compile-commands).
+`npx bazel run @compdb//:refresh` writes a `compile_commands.json` of clice's own sources to the repository root, for clice to work on its own code.
 
 On Windows, Bazel's default output root is too deep for Windows paths; put a short one in `%USERPROFILE%\.bazelrc`:
 

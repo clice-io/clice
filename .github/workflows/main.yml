@@ -56,7 +56,7 @@ jobs:
               - '.bazelversion'
               - 'bazel/**'
               # Generated docs and the committed schema are verified against
-              # the built binary, so edits to them must run native-test.
+              # the built binary, so edits to them must run the tests.
               - 'docs/public/clice-config.schema.json'
               - 'docs/en/guide/configuration.md'
               - 'docs/en/features/**'
@@ -72,7 +72,9 @@ jobs:
               - 'pixi.lock'
               - 'package.json'
               - 'package-lock.json'
-              - '.github/workflows/native-test.yml'
+              - '.github/actions/**'
+              - '.github/workflows/test.yml'
+              - '.github/workflows/test-leg.yml'
               - '.github/workflows/editor-test.yml'
               - '.github/workflows/compat-test.yml'
 
@@ -122,25 +124,15 @@ jobs:
           rustup target add wasm32-wasip1
           cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip1 --release
 
-  native-test:
+  test:
     needs: changes
     if: ${{ needs.changes.outputs.build == 'true' }}
-    uses: ./.github/workflows/native-test.yml
-
-  editor-test:
-    needs: [changes, native-test]
-    if: ${{ needs.changes.outputs.build == 'true' }}
-    uses: ./.github/workflows/editor-test.yml
-
-  compat-test:
-    needs: [changes, native-test]
-    if: ${{ needs.changes.outputs.build == 'true' }}
-    uses: ./.github/workflows/compat-test.yml
+    uses: ./.github/workflows/test.yml
 
   # Instant builds: repackage the test-suite binaries as installable vsix
   # artifacts so a fix can be tried the moment CI is green.
   instant-vscode:
-    needs: [changes, native-test]
+    needs: [changes, test]
     if: ${{ needs.changes.outputs.build == 'true' }}
     uses: ./.github/workflows/publish-vscode.yml
     with:
@@ -173,9 +165,7 @@ jobs:
       - deploy
       - vscode
       - zed
-      - native-test
-      - editor-test
-      - compat-test
+      - test
       - instant-vscode
 
     runs-on: ubuntu-latest
@@ -185,5 +175,5 @@ jobs:
         with:
           allowed-skips: >-
             lint,deploy,vscode,zed,
-            native-test,editor-test,compat-test,instant-vscode
+            test,instant-vscode
           jobs: ${{ toJSON(needs) }}

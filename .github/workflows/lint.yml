@@ -66,6 +66,22 @@ jobs:
           pixi run -e node check-config-docs
           pixi run -e node check-doc-translations
 
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+
+      - name: Type check and lint
+        run: |
+          pixi run -e node install-tests
+          pixi run -e node npm run check
+
   format:
     if: ${{ inputs.format }}
     runs-on: ubuntu-latest

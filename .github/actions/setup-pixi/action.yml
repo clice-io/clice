@@ -22,3 +22,5 @@ runs:
         activate-environment: ${{ inputs.activate-environment }}
         cache: false
         locked: true
+        # Runners are thrown away after the job.
+        post-cleanup: false
