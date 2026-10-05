@@ -225,10 +225,8 @@ jobs:
             exit 1
           fi
 
-      # Open VSX serves the VS Code forks that cannot use the Marketplace
-      # (Cursor, VSCodium, Windsurf). It runs even when the Marketplace step
-      # failed, so one registry's outage never holds back the other; the job
-      # still ends red.
+      # Runs even when the Marketplace step failed, so one registry's outage
+      # never holds back the other; the job still ends red.
       - name: Publish to Open VSX
         if: ${{ !cancelled() && steps.release-upload.outcome == 'success' }}
         env:

@@ -15,7 +15,9 @@ odd minor above the newest release — `0.1.*` today, `0.3.*` after stable
 `bazel/workspace_status.mjs`, `pixi.toml`, and `editors/vscode/package.json`
 are permanent placeholders (`0.1.0`); the real version is injected from the
 tag at build time (binary via git describe, vsix via CI). A local `vsce publish` with the placeholder is rejected by the
-Marketplace — that is intentional accident protection.
+Marketplace — that is intentional accident protection. Open VSX has no such
+guard: a local `pixi run publish-ovsx` publishes the placeholder version for
+real, so leave Open VSX to CI.
 
 ## Tier 1 — Instant builds (every green CI run)
 
