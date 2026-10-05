@@ -214,7 +214,7 @@ cc_library(
     ("analysis", [":project"]),
 ]]
 
-# The programs are in bin/, next to the resource directory.
+# The programs are in bin/, next to the resource directory they read.
 cc_binary(
     name = "bin/clice",
     srcs = ["src/clice.cc"] + glob(["src/driver/*"]) + select({
@@ -222,6 +222,7 @@ cc_binary(
         "//conditions:default": [],
     }),
     copts = COPTS,
+    data = [":resource_dir"],
     # lld's --gc-sections, which xclang leaves off for Windows, where it
     # drops the static initializers of COMDAT sections: clice has none to
     # lose, unlike unit_tests, whose test registrations are such.
@@ -250,6 +251,7 @@ cc_binary(
         "tests/unit/**/*.h",
     ]),
     copts = COPTS + ["-Itests/unit"],
+    data = [":resource_dir"],
     linkopts = LINKOPTS,
     local_defines = ['CLICE_TESTS_DATA_DIR=\\"tests/data\\"'],
     deps = [
@@ -265,7 +267,6 @@ filegroup(
     srcs = [
         ":bin/clice",
         ":bin/unit_tests",
-        ":resource_dir",
     ],
 )
 
@@ -387,6 +388,7 @@ BENCHMARKS = [
         "benchmarks/stats.h",
     ],
     copts = COPTS,
+    data = [":resource_dir"],
     linkopts = LINKOPTS,
     tags = ["manual"],
     deps = [
@@ -398,6 +400,6 @@ BENCHMARKS = [
 
 filegroup(
     name = "benchmarks",
-    srcs = ["bin/" + benchmark for benchmark in BENCHMARKS] + [":resource_dir"],
+    srcs = ["bin/" + benchmark for benchmark in BENCHMARKS],
     tags = ["manual"],
 )

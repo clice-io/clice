@@ -143,6 +143,7 @@ jobs:
             build/${{ matrix.build_type }}/bin/bin/
             build/${{ matrix.build_type }}/bin/lib/
             !build/${{ matrix.build_type }}/bin/bin/*.stripped
+            !build/${{ matrix.build_type }}/bin/bin/*.runfiles
           if-no-files-found: error
           retention-days: 1
 
