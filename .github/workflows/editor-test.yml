@@ -28,10 +28,10 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: build-${{ matrix.target }}-RelWithDebInfo
-          path: build/RelWithDebInfo/
+          path: build/RelWithDebInfo/bin/
 
       - name: Make binaries executable
-        run: chmod +x build/RelWithDebInfo/bin/*
+        run: chmod +x build/RelWithDebInfo/bin/bin/*
 
       # Always the latest stable release on purpose: this job exists to
       # catch breakage caused by new editor versions.

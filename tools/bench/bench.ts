@@ -13,7 +13,7 @@
 /// Options:
 ///   --server clice|clangd    which server to drive (default clice)
 ///   --binary <path>          server executable (default: clice from
-///                            build/RelWithDebInfo/bin, clangd from PATH)
+///                            build/RelWithDebInfo/bin/bin, clangd from PATH)
 ///   --file <rel>             file to open/edit (default: first CDB entry)
 ///   --position <line:char>   position for warm requests (default: derived
 ///                            from the file's first call-like identifier)
@@ -117,7 +117,7 @@ function parseOptions(): Options {
     const binary =
         values.binary ??
         (server === "clice"
-            ? path.join(REPO_ROOT, "build", "RelWithDebInfo", "bin", "clice")
+            ? path.join(REPO_ROOT, "build", "RelWithDebInfo", "bin", "bin", "clice")
             : "clangd");
 
     const scenarios = (values.scenario ?? [...ALL_SCENARIOS]).map((name) => {

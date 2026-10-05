@@ -28,7 +28,7 @@ pixi run smoke-test Debug
 pixi run snap-test Debug
 ```
 
-`pixi run build` 用 Bazel 构建，并把程序放到 `build/<type>/bin` 中，与之并列的是资源目录 `build/<type>/lib/clang`，clice 从中读取 clang 的头文件；测试和编辑器都从这里运行这些程序。
+`pixi run build` 用 Bazel 构建 `//:dist`。每种构建类型都有自己的目录 `build/<type>`，其中的 `bin` 就是 Bazel 为该类型生成的输出树：clice 位于 `build/<type>/bin/bin/clice`，与之并列的是资源目录 `build/<type>/bin/lib/clang`，clice 从中读取 clang 的头文件；测试和编辑器都从这里运行它。
 
 > [!TIP]
 > 运行 `pixi shell` 可进入已配置好所有环境变量的 shell，在其中用 `npx bazel` 直接调用 Bazel。
@@ -38,20 +38,23 @@ pixi run snap-test Debug
 Bazel 通过 [bazelisk](https://github.com/bazelbuild/bazelisk) 运行。bazelisk 是仓库中的一个 npm 包（由 `npm install` 安装），它会下载 `.bazelversion` 指定的 Bazel 版本：
 
 ```shell
-npx bazel build //:clice //:unit_tests
+npx bazel build //:bin/clice //:bin/unit_tests
 ```
 
 构建类型即 `.bazelrc` 中定义的配置：
 
-| 配置                      | 作用                                                                                                                   |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `--config=RelWithDebInfo` | 默认配置：开启优化，带调试信息                                                                                         |
-| `--config=Debug`          | 不开启优化，启用 Address Sanitizer；Windows 上不启用                                                                   |
-| `--config=release`        | 像发布 clice 时那样，用 LLVM/Clang 库的 ThinLTO bitcode 链接各个程序；其他构建链接的是已编译为本机代码的库，速度快得多 |
+| 配置                      | 作用                                                 |
+| ------------------------- | ---------------------------------------------------- |
+| `--config=RelWithDebInfo` | 默认配置：开启优化，带调试信息                       |
+| `--config=Debug`          | 不开启优化，启用 Address Sanitizer；Windows 上不启用 |
 
-`--` 之后的选项会经由 `pixi run build` 传给 Bazel，例如 `pixi run build RelWithDebInfo -- --config=release`。
+`--` 之后的选项会经由 `pixi run build` 传给 Bazel，例如 `pixi run build RelWithDebInfo -- //:package`。
 
-`pixi run compile-commands` 会在仓库根目录写出 clice 自身源码的 `compile_commands.json`，这样 clice 也能用于开发它自己的代码。
+LLVM/Clang 库是 ThinLTO bitcode，每次链接程序都要重做它们的代码生成，每个程序要花几分钟。lld 会把生成的结果存进缓存 `/var/tmp/xclang-thinlto`（Windows 上是 `C:/xclang-thinlto`），之后的链接只需几秒。
+
+`npx bazel build //:package //:symbols` 会构建发布归档和符号包（即未 strip 的 clice）：`build/<type>/bin` 中的 `clice.tar.gz` 和 `clice-symbol.tar.xz`（Windows 上为 `.zip`）。
+
+`npx bazel run //:compile_commands` 会在仓库根目录写出 clice 自身源码的 `compile_commands.json`，这样 clice 也能用于开发它自己的代码；它运行的是 [bazel-compile-commands](https://github.com/kiron1/bazel-compile-commands)。
 
 在 Windows 上，Bazel 默认的输出根目录层级过深，超出了 Windows 路径的限制；请在 `%USERPROFILE%\.bazelrc` 中指定一个较短的路径：
 

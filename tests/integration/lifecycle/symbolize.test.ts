@@ -1,9 +1,10 @@
 /// End-to-end check of the release symbol-separation flow.
 ///
-/// Replays the release pipeline on the freshly built binary (split DWARF, convert
-/// to GSYM, strip), crashes a worker of the stripped binary, and verifies
-/// scripts/symbolize.py recovers function/file information from the raw-address
-/// crash log. This is the guarantee that shipped crash logs stay actionable.
+/// Strips a copy of the freshly built binary as the release archive's is
+/// stripped (.bazelrc), crashes a worker of it, and verifies scripts/symbolize.py
+/// recovers function/file information from the raw-address crash log against
+/// the unstripped binary, the release's symbol package. This is the guarantee
+/// that shipped crash logs stay actionable.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -41,27 +42,14 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
     async ({ session }) => {
         const executable = cliceExecutable();
 
-        for (const tool of ["llvm-objcopy", "llvm-strip", "llvm-gsymutil"]) {
+        for (const tool of ["llvm-strip", "llvm-symbolizer"]) {
             expect(which(tool), `${tool} must be available for the symbol flow`).toBe(true);
         }
 
         const tmp = session.tmpdir();
-        // Replay the strip and GSYM steps of scripts/package.py.
         const stripped = tmp.path("clice");
-        const debugFile = tmp.path("clice.debug");
-        const gsymFile = tmp.path("clice.gsym");
         fs.copyFileSync(executable, stripped);
         fs.chmodSync(stripped, 0o755);
-        await runTool("llvm-objcopy", "--only-keep-debug", stripped, debugFile);
-        await runTool(
-            "llvm-gsymutil",
-            "--convert",
-            debugFile,
-            "--merged-functions",
-            "--quiet",
-            "--out-file",
-            gsymFile,
-        );
         await runTool("llvm-strip", "--strip-debug", "--strip-unneeded", stripped);
 
         const workspace = new Workspace(tmp.path("ws"));
@@ -124,11 +112,11 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
             path.join(REPO_ROOT, "scripts", "symbolize.py"),
             crashLogs[0]!,
             "--symbols",
-            gsymFile,
+            executable,
         ]);
         expect(result.status, `symbolize.py failed: ${result.stderr.slice(0, 2000)}`).toBe(0);
         // The crash handler itself is always on the stack; recovering its source
-        // file proves rebasing and GSYM lookup both worked.
+        // file proves rebasing and the lookup both worked.
         expect(
             result.stdout,
             `symbolized output should name the crash handler source:\n${result.stdout.slice(

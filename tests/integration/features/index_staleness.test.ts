@@ -15,7 +15,7 @@ const CLOSED_TU = '#include "header.h"\nint use() { return alpha(); }\n';
 async function batchIndex(workspace: Workspace): Promise<number> {
     const exe = process.env["CLICE_EXECUTABLE"];
     if (!exe) {
-        throw new Error("CLICE_EXECUTABLE is not set; point it at build/<type>/bin/clice");
+        throw new Error("CLICE_EXECUTABLE is not set; point it at build/<type>/bin/bin/clice");
     }
     const run = await runProcess(exe, ["index", "--workspace", workspace.root], {
         timeout: 120_000,

@@ -16,7 +16,7 @@ pixi run unit-test Debug    # debug build
 等价于：
 
 ```bash
-./build/RelWithDebInfo/bin/unit_tests --verbose
+./build/RelWithDebInfo/bin/bin/unit_tests --verbose
 ```
 
 ### 集成测试
@@ -33,7 +33,7 @@ pixi run integration-test Debug    # debug build
 ```bash
 cd tests
 npm run check   # typecheck (tsc strict) + lint (ESLint)
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm test
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm test
 ```
 
 常用变体：
@@ -55,7 +55,7 @@ pixi run smoke-test Debug    # debug build
 
 ```bash
 node tools/replay.ts tests/smoke/*.jsonl \
-    --clice=./build/RelWithDebInfo/bin/clice
+    --clice=./build/RelWithDebInfo/bin/bin/clice
 ```
 
 ### 快照测试
@@ -71,7 +71,7 @@ pixi run snap-test Debug    # debug build
 
 ```bash
 cd tests
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm run snap
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm run snap
 ```
 
 fixture 可以是单个 `.cpp`，也可以是以 `main.cpp` 为入口的子目录——一个多文件单元，其中同级的源文件（模块接口、头文件和其他源文件）都属于该 fixture。用于说明某项能力的 fixture 位于语料库的章节目录中，命名为 `<section>/NN_name.cpp`（或 `<section>/NN_unit/main.cpp`），并以 `/// # Capability name` 文档头开头——标题只写名称，至多五个词——后接元数据列表，其中 `status`（`supported`、`partial` 或 `unsupported`）为必填项，再接一段一句话摘要，作为能力卡片的摘要：章节目录名用作功能页面生成区域的键，两位数字决定条目在该区域中的顺序，文档头内容则用于生成页面（见 `tools/docs/feature.ts`）。用于边界情况且没有文档头的 fixture 放在语料库根目录。整个语料库共用的编译标志写在该语料库的 `corpus.json` 清单中；单个 fixture 可用 `- flags: [...]` 追加自己的编译标志。server 路径每次运行时都会把 fixture 放入一次性工作区（源文件落盘时已剥除 `§` 标注），因此 fixture 之间绝不共享状态；后台索引默认关闭，可由各 fixture 使用 `- indexing: true` 开启，读取的字节与编译器完全相同。有意让编译产生诊断的 fixture 需声明 `- diagnostics: expected`；非预期诊断会使 fixture 失败，声明了该项却未产生任何诊断也同样会失败。
@@ -92,7 +92,7 @@ pixi run test Debug          # all tests with debug build
 这些冒烟测试使用真实编辑器（无头 Neovim 和 VS Code）测试本地构建的 clice 可执行文件，在两个 fixture（其中包括一个 C++20 模块项目）上覆盖启动、首次诊断、悬停、转到定义和代码补全。CI 在 Linux 上的 `test-editor` 作业中使用编辑器的最新稳定版本运行这些测试，并且有意不锁定版本：该作业用于发现编辑器新版本导致的故障。
 
 ```bash
-$ pixi run build                  # build/RelWithDebInfo/bin/clice
+$ pixi run build                  # build/RelWithDebInfo/bin/bin/clice
 $ pixi run -e editor editor-test  # nvim + vscode, both fixtures
 ```
 
@@ -117,7 +117,7 @@ pixi run compat-test          # default RelWithDebInfo
 如果想为 clice 附加调试器，请先以 socket 模式单独启动 clice，然后连接客户端。
 
 ```shell
-./build/Debug/bin/clice serve --mode socket --port 50051
+./build/Debug/bin/bin/clice serve --mode socket --port 50051
 ```
 
 服务器启动后，可以通过以下两种方式连接客户端：

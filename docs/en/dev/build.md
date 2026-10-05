@@ -28,7 +28,7 @@ pixi run smoke-test Debug
 pixi run snap-test Debug
 ```
 
-`pixi run build` builds with Bazel and lays the programs out in `build/<type>/bin`, next to the resource directory clice reads clang's headers from, `build/<type>/lib/clang`; the tests and the editors run them from there.
+`pixi run build` builds `//:dist` with Bazel. Each build type has a directory of its own, `build/<type>`, whose `bin` is Bazel's output tree of that type: clice is `build/<type>/bin/bin/clice`, next to the resource directory it reads clang's headers from, `build/<type>/bin/lib/clang`; the tests and the editors run it from there.
 
 > [!TIP]
 > Run `pixi shell` to enter a shell with all env vars configured, and `npx bazel` there for Bazel itself.
@@ -38,20 +38,23 @@ pixi run snap-test Debug
 Bazel is run through [bazelisk](https://github.com/bazelbuild/bazelisk), an npm package of the repository (`npm install` installs it), which fetches the Bazel release `.bazelversion` names:
 
 ```shell
-npx bazel build //:clice //:unit_tests
+npx bazel build //:bin/clice //:bin/unit_tests
 ```
 
 The build types are configurations of `.bazelrc`:
 
-| Configuration             | Effect                                                                                                                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--config=RelWithDebInfo` | The default: optimized, with debug info                                                                                                                |
-| `--config=Debug`          | Unoptimized, with Address Sanitizer; on Windows without it                                                                                             |
-| `--config=release`        | Links the programs with the LLVM/Clang libraries' ThinLTO bitcode, as releases ship clice; other builds link them compiled to native code, much faster |
+| Configuration             | Effect                                                     |
+| ------------------------- | ---------------------------------------------------------- |
+| `--config=RelWithDebInfo` | The default: optimized, with debug info                    |
+| `--config=Debug`          | Unoptimized, with Address Sanitizer; on Windows without it |
 
-Options after `--` reach Bazel through `pixi run build`, for example `pixi run build RelWithDebInfo -- --config=release`.
+Options after `--` reach Bazel through `pixi run build`, for example `pixi run build RelWithDebInfo -- //:package`.
 
-`pixi run compile-commands` writes a `compile_commands.json` of clice's own sources to the repository root, for clice to work on its own code.
+The LLVM/Clang libraries hold ThinLTO bitcode, so every link of a program redoes their code generation, minutes per program. lld keeps what it generated in a cache, `/var/tmp/xclang-thinlto` (`C:/xclang-thinlto` on Windows), and later links take seconds.
+
+`npx bazel build //:package //:symbols` builds the release archive and the symbol package, the unstripped clice: `clice.tar.gz` and `clice-symbol.tar.xz` in `build/<type>/bin` (`.zip` on Windows).
+
+`npx bazel run //:compile_commands` writes a `compile_commands.json` of clice's own sources to the repository root, for clice to work on its own code; it runs [bazel-compile-commands](https://github.com/kiron1/bazel-compile-commands).
 
 On Windows, Bazel's default output root is too deep for Windows paths; put a short one in `%USERPROFILE%\.bazelrc`:
 

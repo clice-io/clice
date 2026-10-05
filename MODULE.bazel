@@ -1,7 +1,9 @@
 module(name = "clice")
 
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "rules_cc", version = "0.2.25")
+bazel_dep(name = "rules_pkg", version = "1.3.0")
 
 # kotatsu and the third-party libraries, as the clice Bazel registry
 # (.bazelrc) packages them. kotatsu's version is 0.1.0.<n> for the n-th
@@ -16,8 +18,40 @@ bazel_dep(name = "spdlog", version = "1.15.3.clice.1")
 # The C++ toolchain on every platform and the LLVM/Clang libraries clice
 # links, both from one xclang release: libclang's ThinLTO bitcode needs the
 # lld of the same LLVM. pixi.toml pins the same release for the tools the
-# tests and the packaging run.
+# tests and the artifact checks run.
 bazel_dep(name = "xclang", version = "23.1.2.5")
 
 xclang = use_extension("@xclang//bazel:extensions.bzl", "xclang")
 use_repo(xclang, "libclang", "libclang_asan")
+
+# kiron1/bazel-compile-commands, which //:compile_commands runs; its release
+# has no Windows arm64 build, the x64 one runs there emulated.
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "bazel_compile_commands_linux_amd64",
+    build_file_content = 'exports_files(["usr/bin/bazel-compile-commands"])',
+    sha256 = "bb162adaefb282a9e4f0f399fe6223d1d2fe3740518148c1ca8f6f81db4003f6",
+    url = "https://github.com/kiron1/bazel-compile-commands/releases/download/bazel-compile-commands-v0.22.4/bazel-compile-commands_0.22.4-linux_amd64.zip",
+)
+
+http_archive(
+    name = "bazel_compile_commands_linux_arm64",
+    build_file_content = 'exports_files(["usr/bin/bazel-compile-commands"])',
+    sha256 = "c1ad5a5a1c7aaf79d8efe56201ede04b180b4031ee44cadafda1373b75029498",
+    url = "https://github.com/kiron1/bazel-compile-commands/releases/download/bazel-compile-commands-v0.22.4/bazel-compile-commands_0.22.4-linux_arm64.zip",
+)
+
+http_archive(
+    name = "bazel_compile_commands_macos_universal",
+    build_file_content = 'exports_files(["usr/bin/bazel-compile-commands"])',
+    sha256 = "6183cbaec5d9667e4def8590e4558a4e8eb106da34e2cd8a16733f8becf1ce4e",
+    url = "https://github.com/kiron1/bazel-compile-commands/releases/download/bazel-compile-commands-v0.22.4/bazel-compile-commands_0.22.4-macos_universal.zip",
+)
+
+http_archive(
+    name = "bazel_compile_commands_windows_amd64",
+    build_file_content = 'exports_files(["bazel-compile-commands/bin/bazel-compile-commands.exe"])',
+    sha256 = "623218e1a3c92625bdb579ba970b9a8db841938dc9a6a7232cf562bc63962b1b",
+    url = "https://github.com/kiron1/bazel-compile-commands/releases/download/bazel-compile-commands-v0.22.4/bazel-compile-commands_0.22.4-windows_amd64.zip",
+)

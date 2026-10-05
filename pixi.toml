@@ -36,11 +36,9 @@ python = ">=3.13"
 # Bazel is npm's bazelisk (package.json), which runs the release of
 # .bazelversion; bazel/workspace_status.mjs runs on it too.
 nodejs = ">=24"
-# The LLVM tools packaging and its checks run (llvm-objcopy, llvm-gsymutil,
-# dsymutil, ...), of the xclang release MODULE.bazel builds with.
+# The LLVM tools the artifact checks run (scripts/check_artifact_deps.py), of
+# the xclang release MODULE.bazel builds with.
 xclang = "==23.1.2.5"
-# scripts/package.py pipes tar through xz for the symbol archives.
-xz = ">=5.8.1,<6"
 
 # nodejs bundles npm on every platform including win-arm64. Floor 24: the tools
 # run as bare .ts (type stripping, default since node 23.6) and the
@@ -59,8 +57,9 @@ cmake = ">=3.30"
 ninja = "*"
 
 [feature.test.target.linux-64.dependencies]
-# The symbolization round-trip test replays the release strip/GSYM flow
-# (linux-only, like the crash tests it builds on) with xclang's LLVM tools.
+# The symbolization round-trip test strips clice as releases do and
+# symbolizes against the unstripped binary (linux-only, like the crash tests
+# it builds on) with xclang's LLVM tools.
 xclang = "==23.1.2.5"
 
 # The NVCC toolchain tests drive a real nvcc; cudart is the runtime the
@@ -98,29 +97,14 @@ scripts = ["scripts/activate_asan_macos.sh"]
 [feature.test.target.osx-arm64.activation]
 scripts = ["scripts/activate_asan_macos.sh"]
 
-# Packages the build of build/{{ type }}, which has to be there: the shipped
-# binary is the tested one.
-[feature.build.tasks.package]
-args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = "python scripts/package.py {{ type }}"
-
 # ============================================================================== #
 #                                   BAZEL                                        #
 # ============================================================================== #
-# Bazel builds into its output tree; scripts/build.py lays the programs out in
-# build/{{ type }}/{bin,lib}, where everything else runs them. Arguments after
-# `--` go to it: targets other than //:dist, and Bazel options, such as
-# --config=release for what releases ship.
+# The programs land in build/{{ type }}/bin/bin (.bazelrc). Arguments after
+# `--` go to Bazel: more targets, such as //:package, and options.
 [feature.build.tasks.build]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = "python scripts/build.py {{ type }}"
-depends-on = ["install-tests"]
-
-# compile_commands.json of clice's own sources, for clice on its own
-# repository (scripts/compile_commands.py).
-[feature.build.tasks.compile-commands]
-args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = "python scripts/compile_commands.py {{ type }}"
+cmd = "npx bazel build --config={{ type }} //:dist"
 depends-on = ["install-tests"]
 
 [feature.build.tasks.check-layers]
@@ -164,7 +148,7 @@ depends-on = ["install-tests"]
 
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = 'CLICE_TEST_DATA_DIR=$PIXI_PROJECT_ROOT/tests/data ./build/{{ type }}/bin/unit_tests --verbose'
+cmd = 'CLICE_TEST_DATA_DIR=$PIXI_PROJECT_ROOT/tests/data ./build/{{ type }}/bin/bin/unit_tests --verbose'
 depends-on = [{ task = "check-feature-docs" }]
 
 # npm workspaces: install runs at the repo root and covers tools/, tests/
@@ -187,7 +171,7 @@ outputs = ["node_modules/.package-lock.json"]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
 npm run check && \
-CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm test --workspace tests
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test --workspace tests
 """
 depends-on = ["install-tests"]
 
@@ -195,7 +179,7 @@ depends-on = ["install-tests"]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
 node tools/replay.ts tests/smoke/*.jsonl \
-    --clice=./build/{{ type }}/bin/clice
+    --clice=./build/{{ type }}/bin/bin/clice
 """
 
 # Feature snapshots exercise `clice inspect` and real server paths over
@@ -204,7 +188,7 @@ node tools/replay.ts tests/smoke/*.jsonl \
 [feature.test.tasks.snap-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm run snap --workspace tests
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm run snap --workspace tests
 """
 depends-on = ["install-tests"]
 
@@ -215,7 +199,7 @@ depends-on = ["install-tests"]
 [tasks.compat-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm run compat --workspace tests
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm run compat --workspace tests
 """
 depends-on = ["install-tests"]
 
@@ -251,16 +235,16 @@ cmd = "node tools/prepare.ts hello_world modules/hover_on_imported_symbol header
 [feature.editor.tasks.nvim-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/clice tests/data/hello_world && \
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/clice tests/data/modules/hover_on_imported_symbol && \
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/clice tests/data/header_context
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice tests/data/hello_world && \
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice tests/data/modules/hover_on_imported_symbol && \
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice tests/data/header_context
 """
 depends-on = ["editor-prepare"]
 
 [feature.editor.tasks.vscode-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "editors/vscode"
-cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm test"
+cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test"
 depends-on = ["install-vscode", "editor-prepare"]
 
 [feature.editor.tasks.editor-test]

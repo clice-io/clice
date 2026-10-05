@@ -16,7 +16,7 @@ pixi run unit-test Debug    # debug build
 Equivalent to:
 
 ```bash
-./build/RelWithDebInfo/bin/unit_tests --verbose
+./build/RelWithDebInfo/bin/bin/unit_tests --verbose
 ```
 
 ### Integration Tests
@@ -34,7 +34,7 @@ official vscode-languageserver-protocol stack. Equivalent to:
 ```bash
 cd tests
 npm run check   # typecheck (tsc strict) + lint (ESLint)
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm test
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm test
 ```
 
 Useful variants:
@@ -56,7 +56,7 @@ Equivalent to:
 
 ```bash
 node tools/replay.ts tests/smoke/*.jsonl \
-    --clice=./build/RelWithDebInfo/bin/clice
+    --clice=./build/RelWithDebInfo/bin/bin/clice
 ```
 
 ### Snap Tests
@@ -72,7 +72,7 @@ Equivalent to:
 
 ```bash
 cd tests
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm run snap
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm run snap
 ```
 
 A fixture is a single `.cpp`, or a subdirectory entered through its `main.cpp` — one multi-file unit whose sibling sources (module interfaces, headers, extra sources) belong to the fixture. A fixture that documents a capability lives in a section directory of the corpus as `<section>/NN_name.cpp` (or `<section>/NN_unit/main.cpp`) and opens with a `/// # Capability name` doc header — the name alone, at most five words — followed by its metadata list, where `status` (`supported`, `partial` or `unsupported`) is required, and a one-sentence summary paragraph that becomes the capability card's summary: the directory keys the feature page's generated region, the two-digit number orders the item within it, and the header feeds the page (see `tools/docs/feature.ts`). Edge-case fixtures without a doc header stay at the corpus root. Corpus-wide compile flags live in the corpus's `corpus.json` manifest; a fixture appends its own with `- flags: [...]`. Each server-path run materializes the fixture into a throwaway workspace (sources arrive on disk with `§`-annotations already stripped), so fixtures never share state and background indexing — off by default, enabled per fixture with `- indexing: true` — sees the same bytes the compiler does. A fixture that deliberately does not compile cleanly declares `- diagnostics: expected`; unexpected diagnostics fail the fixture, and so does a clean compile under that declaration.
@@ -93,7 +93,7 @@ pixi run test Debug          # all tests with debug build
 Smoke tests that run real editors (headless Neovim and VSCode) against a locally built clice binary, covering startup, first diagnostics, hover, definition and completion on two fixtures (including a C++20 modules project). CI runs them in the `test-editor` job on Linux with the latest stable editor releases, on purpose unpinned: the job exists to catch breakage caused by new editor versions.
 
 ```bash
-$ pixi run build                  # build/RelWithDebInfo/bin/clice
+$ pixi run build                  # build/RelWithDebInfo/bin/bin/clice
 $ pixi run -e editor editor-test  # nvim + vscode, both fixtures
 ```
 
@@ -118,7 +118,7 @@ Each scenario names the compilers of one platform as its CI runner image has the
 If you want to attach a debugger to clice, start it in socket mode independently, then connect a client.
 
 ```shell
-./build/Debug/bin/clice serve --mode socket --port 50051
+./build/Debug/bin/bin/clice serve --mode socket --port 50051
 ```
 
 After the server starts, you can connect a client in two ways:

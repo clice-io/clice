@@ -195,9 +195,9 @@ jobs:
             row "Windows x64" x86_64-w64-mingw32 zip zip
             row "Windows arm64" aarch64-w64-mingw32 zip zip
             echo
-            echo "Symbol packages hold GSYM data for crash log symbolization"
-            echo "via \`scripts/symbolize.py\`. VS Code users on the Marketplace"
-            echo "pre-release channel update automatically."
+            echo "Symbol packages hold the unstripped server for crash log"
+            echo "symbolization via \`scripts/symbolize.py\`. VS Code users on the"
+            echo "Marketplace pre-release channel update automatically."
           } > /tmp/notes.md
           gh release create "$TAG" --prerelease --title "$TAG" \
             --notes-file /tmp/notes.md

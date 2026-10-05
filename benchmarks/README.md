@@ -34,8 +34,8 @@ your question:
 pixi run build RelWithDebInfo -- //:benchmarks
 ```
 
-`//:benchmarks` is all four with the resource directory; name single ones
-(`//:scan_benchmark //:resource_dir`) to build less.
+`//:benchmarks` is all four; name single ones (`//:bin/scan_benchmark`) to
+build less. They land in `build/RelWithDebInfo/bin/bin`.
 
 Always benchmark `RelWithDebInfo`; Debug numbers are meaningless.
 
@@ -51,7 +51,7 @@ compile_commands.json):
 python benchmarks/fetch_workload.py llvm
 ```
 
-clice's own CDB (`pixi run compile-commands` writes `compile_commands.json`)
+clice's own CDB (`npx bazel run //:compile_commands` writes `compile_commands.json`)
 doubles as an always-available medium workload.
 
 ## Typical sessions
@@ -59,9 +59,9 @@ doubles as an always-available medium workload.
 Stage profile of the 100 largest TUs plus a Chrome trace of one:
 
 ```bash
-./build/RelWithDebInfo/bin/pipeline_benchmark --limit 100 --json /tmp/pipeline.json \
+./build/RelWithDebInfo/bin/bin/pipeline_benchmark --limit 100 --json /tmp/pipeline.json \
     benchmarks/workloads/llvm/build/compile_commands.json
-./build/RelWithDebInfo/bin/pipeline_benchmark --filter SemaExpr.cpp --runs 3 \
+./build/RelWithDebInfo/bin/bin/pipeline_benchmark --filter SemaExpr.cpp --runs 3 \
     --time-trace /tmp/traces benchmarks/workloads/llvm/build/compile_commands.json
 ```
 
@@ -97,7 +97,7 @@ preamble build and AST build times for the same TU without a server or
 background indexing in the way:
 
 ```bash
-./build/RelWithDebInfo/bin/pipeline_benchmark --filter SemaExpr.cpp --runs 5 \
+./build/RelWithDebInfo/bin/bin/pipeline_benchmark --filter SemaExpr.cpp --runs 5 \
     benchmarks/workloads/llvm/build/compile_commands.json
 clangd --check=benchmarks/workloads/llvm/clang/lib/Sema/SemaExpr.cpp \
     --compile-commands-dir=benchmarks/workloads/llvm/build 2>&1 | grep -E "preamble|AST"

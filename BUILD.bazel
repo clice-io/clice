@@ -1,6 +1,10 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//bazel:llvm.bzl", "native_libraries")
+load("@bazel_skylib//rules:native_binary.bzl", "native_binary")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files", "strip_prefix")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
+load("//bazel:resource_dir.bzl", "resource_dir")
 
 # What clice's own sources compile with; the libraries keep their own flags.
 COPTS = [
@@ -14,11 +18,10 @@ COPTS = [
 
 # Link optimizations in optimized builds: what the test suites run is what
 # releases ship. icf=safe (not =all) so address-taken functions keep C++
-# pointer identity. On macOS, --keep-icf-stabs: without it dsymutil cannot
-# see ICF-folded symbols, so they would be missing from the dSYM (and thus
-# from GSYM). macOS programs keep their debug info in the object files, and
-# the paths to them relative to the execution root, where they stay; the
-# sandbox an action links in is gone after it.
+# pointer identity. macOS programs keep their debug info in the object files,
+# which the debug map names: --keep-icf-stabs keeps the ICF-folded functions
+# in it, and -oso_prefix the paths relative to the execution root, where the
+# objects stay; the sandbox an action links in is gone after it.
 LINKOPTS = select({
     "@platforms//os:macos": ["-Wl,-oso_prefix,."],
     "//conditions:default": [],
@@ -57,11 +60,6 @@ config_setting(
     name = "asan_macos",
     constraint_values = ["@platforms//os:macos"],
     values = {"features": "asan"},
-)
-
-config_setting(
-    name = "bitcode",
-    define_values = {"llvm": "bitcode"},
 )
 
 # The LLVM and clang libraries clice links; each brings what it depends on.
@@ -120,40 +118,23 @@ alias(
     }),
 )
 
+# libclang's ThinLTO bitcode: every link of it redoes LLVM's code generation,
+# which lld's cache (.bazelrc) keeps from one link to the next.
 cc_library(
-    name = "llvm_bitcode",
-    deps = ["@libclang//:" + lib for lib in LLVM_LIBRARIES],
-)
-
-native_libraries(
-    name = "llvm_native",
-    deps = [":llvm_bitcode"],
-)
-
-# Native code already.
-cc_library(
-    name = "llvm_asan",
-    deps = ["@libclang_asan//:" + lib for lib in LLVM_LIBRARIES],
-)
-
-# What the programs link of LLVM: the bitcode in release builds, native code
-# otherwise.
-alias(
     name = "llvm",
-    actual = select({
-        ":asan_linux": ":llvm_asan",
-        ":asan_macos": ":llvm_asan",
-        ":bitcode": ":llvm_bitcode",
-        "//conditions:default": ":llvm_native",
+    deps = select({
+        ":asan_linux": ["@libclang_asan//:" + lib for lib in LLVM_LIBRARIES],
+        ":asan_macos": ["@libclang_asan//:" + lib for lib in LLVM_LIBRARIES],
+        "//conditions:default": ["@libclang//:" + lib for lib in LLVM_LIBRARIES],
     }),
 )
 
-alias(
+resource_dir(
     name = "resource_dir",
-    actual = select({
-        ":asan_linux": "@libclang_asan//:resource_dir",
-        ":asan_macos": "@libclang_asan//:resource_dir",
-        "//conditions:default": "@libclang//:resource_dir",
+    srcs = select({
+        ":asan_linux": ["@libclang_asan//:resource_dir"],
+        ":asan_macos": ["@libclang_asan//:resource_dir"],
+        "//conditions:default": ["@libclang//:resource_dir"],
     }),
 )
 
@@ -233,8 +214,9 @@ cc_library(
     ("analysis", [":project"]),
 ]]
 
+# The programs are in bin/, next to the resource directory.
 cc_binary(
-    name = "clice",
+    name = "bin/clice",
     srcs = ["src/clice.cc"] + glob(["src/driver/*"]) + select({
         "@platforms//os:windows": ["src/mimalloc.cc"],
         "//conditions:default": [],
@@ -257,7 +239,7 @@ cc_binary(
 )
 
 cc_binary(
-    name = "unit_tests",
+    name = "bin/unit_tests",
     srcs = [
         # The log level option, as the programs take it.
         "src/driver/driver.h",
@@ -278,15 +260,117 @@ cc_binary(
     ],
 )
 
-# The programs and the resource directory clice finds next to its own
-# directory, as scripts/build.py lays them out in build/<type>/{bin,lib}.
 filegroup(
     name = "dist",
     srcs = [
-        ":clice",
+        ":bin/clice",
+        ":bin/unit_tests",
         ":resource_dir",
-        ":unit_tests",
     ],
+)
+
+# The release archive, clice/{bin/clice, lib/clang, clice.toml, LICENSE}, and
+# the symbol package, the unstripped clice for scripts/symbolize.py: the
+# programs of these builds are the ones the test suites run.
+pkg_files(
+    name = "package_bin",
+    srcs = [":bin/clice.stripped"],
+    attributes = pkg_attributes(mode = "0755"),
+    prefix = "clice/bin",
+    renames = select({
+        "@platforms//os:windows": {":bin/clice.stripped": "clice.exe"},
+        "//conditions:default": {":bin/clice.stripped": "clice"},
+    }),
+)
+
+pkg_files(
+    name = "package_resource_dir",
+    srcs = [":resource_dir"],
+    prefix = "clice",
+    strip_prefix = strip_prefix.from_pkg(),
+)
+
+pkg_files(
+    name = "package_docs",
+    srcs = [
+        "LICENSE",
+        "docs/clice.toml",
+    ],
+    prefix = "clice",
+)
+
+PACKAGE = [
+    ":package_bin",
+    ":package_docs",
+    ":package_resource_dir",
+]
+
+pkg_tar(
+    name = "package_tar",
+    srcs = PACKAGE,
+    extension = "tar.gz",
+    package_file_name = "clice.tar.gz",
+    tags = ["manual"],
+)
+
+pkg_zip(
+    name = "package_zip",
+    srcs = PACKAGE,
+    package_file_name = "clice.zip",
+    tags = ["manual"],
+)
+
+alias(
+    name = "package",
+    actual = select({
+        "@platforms//os:windows": ":package_zip",
+        "//conditions:default": ":package_tar",
+    }),
+)
+
+pkg_tar(
+    name = "symbols_tar",
+    srcs = [":bin/clice"],
+    # xz's default level takes minutes on the binary, for 7% less.
+    compression_level = 1,
+    extension = "tar.xz",
+    package_file_name = "clice-symbol.tar.xz",
+    tags = ["manual"],
+)
+
+pkg_zip(
+    name = "symbols_zip",
+    srcs = [":bin/clice"],
+    package_file_name = "clice-symbol.zip",
+    tags = ["manual"],
+)
+
+alias(
+    name = "symbols",
+    actual = select({
+        "@platforms//os:windows": ":symbols_zip",
+        "//conditions:default": ":symbols_tar",
+    }),
+)
+
+# `bazel run //:compile_commands` writes compile_commands.json for clice's own
+# sources. The commands are relative to the execution root, whose links to
+# the external repositories are those of the last build: building //:dist
+# along keeps them all there, and the generated sources too.
+native_binary(
+    name = "compile_commands",
+    src = select({
+        "//bazel:linux_x86_64": "@bazel_compile_commands_linux_amd64//:usr/bin/bazel-compile-commands",
+        "//bazel:linux_aarch64": "@bazel_compile_commands_linux_arm64//:usr/bin/bazel-compile-commands",
+        "@platforms//os:macos": "@bazel_compile_commands_macos_universal//:usr/bin/bazel-compile-commands",
+        "@platforms//os:windows": "@bazel_compile_commands_windows_amd64//:bazel-compile-commands/bin/bazel-compile-commands.exe",
+    }),
+    args = [
+        "//:dist",
+        "//:benchmarks",
+    ],
+    data = [":dist"],
+    tags = ["manual"],
 )
 
 BENCHMARKS = [
@@ -297,7 +381,7 @@ BENCHMARKS = [
 ]
 
 [cc_binary(
-    name = benchmark,
+    name = "bin/" + benchmark,
     srcs = [
         "benchmarks/%s.cpp" % benchmark,
         "benchmarks/stats.h",
@@ -314,6 +398,6 @@ BENCHMARKS = [
 
 filegroup(
     name = "benchmarks",
-    srcs = BENCHMARKS + [":resource_dir"],
+    srcs = ["bin/" + benchmark for benchmark in BENCHMARKS] + [":resource_dir"],
     tags = ["manual"],
 )

@@ -33,7 +33,7 @@ Then build:
 pixi run build RelWithDebInfo
 ```
 
-Every file of the toolchain and of libclang is an input of the actions that read it, so the new release rebuilds everything, LLVM's libraries compiled to native code included (`bazel/llvm.bzl`); nothing has to be cleaned. A release re-published under the same tag needs a new module version on the registry (its archive digests are recorded there).
+Every file of the toolchain and of libclang is an input of the actions that read it, so the new release rebuilds everything; nothing has to be cleaned. The first links take minutes again: lld's ThinLTO cache has nothing of the new libclang yet. A release re-published under the same tag needs a new module version on the registry (its archive digests are recorded there).
 
 Compilation will likely fail — that's what Step 3 addresses.
 

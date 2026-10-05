@@ -1,12 +1,9 @@
 # Directories with no packages of this repository: npm's and pixi's trees,
-# the build output, compile_commands.json's link to the other repositories
-# (scripts/compile_commands.py), and the compat suite's Bazel project, a
-# module of its own.
+# the build output, and the compat suite's Bazel project, a module of its own.
 ignore_directories([
     "**/node_modules",
     ".pixi",
     "build",
-    "external",
     "temp",
     "tests/compat/project",
 ])

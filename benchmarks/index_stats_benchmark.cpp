@@ -18,7 +18,7 @@
 ///   index_stats_benchmark [OPTIONS] <compile_commands.json>
 ///
 /// Example:
-///   ./build/RelWithDebInfo/bin/index_stats_benchmark compile_commands.json
+///   ./build/RelWithDebInfo/bin/bin/index_stats_benchmark compile_commands.json
 
 #include <algorithm>
 #include <array>

@@ -6,10 +6,10 @@ context: fork
 
 Build the project with the requested build type (default `RelWithDebInfo`).
 
-- Build: `pixi run build [type]` — Bazel (npm's bazelisk, `npx bazel`) builds `//:dist` with `--config=[type]`, and `scripts/build.py` lays it out in `build/[type]/{bin,lib}`, where the tests and everything else run it.
-- Other targets or Bazel options go after `--`: `pixi run build RelWithDebInfo -- //:scan_benchmark //:resource_dir`, or `-- --config=release` to link as releases ship clice (libclang's ThinLTO bitcode; minutes per link).
-- Bazel directly, without the layout: `npx bazel build --config=[type] //:clice` (targets: `clice`, `unit_tests`, the benchmarks; `BUILD.bazel`).
-- `compile_commands.json` for clice's own sources: `pixi run compile-commands [type]`.
+- Build: `pixi run build [type]` = `npx bazel build --config=[type] //:dist` (npm's bazelisk). Each type has its own output directory: `build/[type]/bin` is Bazel's output tree, with `bin/clice`, `bin/unit_tests` and the resource directory `lib/clang` in it — the tests and everything else run `build/[type]/bin/bin/clice`.
+- Other targets or Bazel options go after `--`: `pixi run build RelWithDebInfo -- //:bin/scan_benchmark`; `//:package` and `//:symbols` are the release archive and the symbol package (`build/[type]/bin/clice.tar.gz`, `clice-symbol.tar.xz`).
+- libclang is ThinLTO bitcode: a link redoes its code generation (minutes) unless lld's ThinLTO cache (`.bazelrc`) has it, so the first link on a machine is slow and later ones take seconds.
+- `compile_commands.json` for clice's own sources: `npx bazel run //:compile_commands`.
 
 On failure:
 

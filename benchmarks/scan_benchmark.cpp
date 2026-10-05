@@ -4,10 +4,10 @@
 ///   scan_benchmark [OPTIONS] <compile_commands.json>
 ///
 /// Example:
-///   ./build/RelWithDebInfo/bin/scan_benchmark \
+///   ./build/RelWithDebInfo/bin/bin/scan_benchmark \
 ///       /home/ykiko/C++/clice/.llvm/build-debug/compile_commands.json
 ///
-///   ./build/RelWithDebInfo/bin/scan_benchmark --log-level info --export graph.json \
+///   ./build/RelWithDebInfo/bin/bin/scan_benchmark --log-level info --export graph.json \
 ///       /home/ykiko/C++/clice/.llvm/build-debug/compile_commands.json
 
 #include <algorithm>

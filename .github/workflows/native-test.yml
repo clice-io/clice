@@ -10,11 +10,11 @@ jobs:
       matrix:
         include:
           # asset_name marks the builds that get packaged into release
-          # artifacts once their test suites pass; they link what releases
-          # ship (--config=release). The legs with activate: test-run run
-          # the suites without the build environment on PATH, as a machine
-          # with clice and a compiler of its own: the clang++ their tests
-          # find is another (on Windows arm64 the runner's, targeting MSVC).
+          # artifacts once their test suites pass. The legs with activate:
+          # test-run run the suites without the build environment on PATH, as
+          # a machine with clice and a compiler of its own: the clang++ their
+          # tests find is another (on Windows arm64 the runner's, targeting
+          # MSVC).
           # pixi runs a task in the active environment unless told another:
           # the build steps name theirs.
           - os: ubuntu-24.04
@@ -76,7 +76,7 @@ jobs:
           path: |
             ${{ runner.temp }}/bazel-disk
             ${{ runner.temp }}/bazel-repo
-            ${{ runner.temp }}/thinlto
+            ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }}
           key: bazel-${{ matrix.target }}-${{ matrix.build_type }}-${{ github.sha }}
           restore-keys: |
             bazel-${{ matrix.target }}-${{ matrix.build_type }}-
@@ -84,12 +84,8 @@ jobs:
       # Bazel refuses a repository cache inside the workspace. On Windows,
       # the default output root under the user profile pushes action paths
       # past MAX_PATH. On main every cached output is fetched, which marks
-      # it used for the prune below; elsewhere only what is asked for, but
-      # on macOS also the object files dsymutil reads the debug info from.
-      # Every commit relinks clice (its version changes), and the release
-      # link redoes the ThinLTO code generation of LLVM's bitcode: lld's
-      # cache of it, outside Bazel, brings the link from minutes to seconds
-      # with the same output.
+      # it used for the prune below; elsewhere only what is asked for. lld's
+      # ThinLTO cache (.bazelrc) is outside Bazel's, in the same entry.
       - name: Bazel settings
         run: |
           temp=$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")
@@ -99,23 +95,16 @@ jobs:
             if [ "$RUNNER_OS" = Windows ]; then
               echo "startup --output_user_root=C:/b"
             fi
-            if [ "$GITHUB_REF" = refs/heads/main ] || [ "$RUNNER_OS" = macOS ]; then
+            if [ "$GITHUB_REF" = refs/heads/main ]; then
               echo "common --remote_download_all"
-            fi
-            if [ -n "${{ matrix.asset_name }}" ]; then
-              mkdir -p "$temp/thinlto"
-              if [ "$RUNNER_OS" = macOS ]; then
-                echo "common --linkopt=-Wl,-cache_path_lto,$temp/thinlto"
-              else
-                echo "common --linkopt=-Wl,--thinlto-cache-dir=$temp/thinlto"
-              fi
-              echo "common --sandbox_writable_path=$temp/thinlto"
             fi
           } > user.bazelrc
           touch "$RUNNER_TEMP/bazel-start"
 
+      # The packaged legs build the release archives along: the programs in
+      # them are the ones the suites below run.
       - name: Build
-        run: pixi run -e default build ${{ matrix.build_type }} -- ${{ matrix.asset_name && '--config=release' || '' }}
+        run: pixi run -e default build ${{ matrix.build_type }} ${{ matrix.asset_name && '-- //:package //:symbols' || '' }}
 
       # Bazel refreshes an entry's mtime when it reads it, so what this run
       # did not touch is what the current tree no longer needs.
@@ -123,7 +112,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           find "$RUNNER_TEMP/bazel-disk" -type f ! -newer "$RUNNER_TEMP/bazel-start" -delete
-          du -sh "$RUNNER_TEMP"/bazel-disk "$RUNNER_TEMP"/bazel-repo "$RUNNER_TEMP"/thinlto 2>/dev/null || true
+          du -sh "$RUNNER_TEMP"/bazel-disk "$RUNNER_TEMP"/bazel-repo ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }} 2>/dev/null || true
 
       - name: Save Bazel caches
         if: github.ref == 'refs/heads/main'
@@ -132,7 +121,7 @@ jobs:
           path: |
             ${{ runner.temp }}/bazel-disk
             ${{ runner.temp }}/bazel-repo
-            ${{ runner.temp }}/thinlto
+            ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }}
           key: bazel-${{ matrix.target }}-${{ matrix.build_type }}-${{ github.sha }}
 
       # Process start-up is the fixed cost every test-suite process pays
@@ -140,10 +129,10 @@ jobs:
       # linkage and sanitizers, so both are timed.
       - name: Process startup cost
         run: |
-          for _ in 1 2; do time build/${{ matrix.build_type }}/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }} --version; done
+          for _ in 1 2; do time build/${{ matrix.build_type }}/bin/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }} --version; done
 
       # The suites below and the jobs that follow (editor-test, compat-test,
-      # instant builds) take the programs from build/<type>, which this
+      # instant builds) take the programs from build/<type>/bin, which this
       # artifact holds.
       - name: Upload binaries
         uses: actions/upload-artifact@v7
@@ -151,8 +140,9 @@ jobs:
           name: build-${{ matrix.target }}-${{ matrix.build_type }}
           include-hidden-files: true
           path: |
-            build/${{ matrix.build_type }}/bin/
-            build/${{ matrix.build_type }}/lib/
+            build/${{ matrix.build_type }}/bin/bin/
+            build/${{ matrix.build_type }}/bin/lib/
+            !build/${{ matrix.build_type }}/bin/bin/*.stripped
           if-no-files-found: error
           retention-days: 1
 
@@ -179,41 +169,25 @@ jobs:
       - name: Config schema check
         if: ${{ matrix.target == 'x86_64-unknown-linux-gnu' && matrix.build_type == 'RelWithDebInfo' }}
         run: |
-          build/RelWithDebInfo/bin/clice inspect --config-schema > docs/public/clice-config.schema.json
+          build/RelWithDebInfo/bin/bin/clice inspect --config-schema > docs/public/clice-config.schema.json
           git diff --exit-code -- docs/public/clice-config.schema.json
-
-      # Package the exact binary the suites above just validated. These
-      # artifacts are what releases promote — there is no separate release
-      # build.
-      - name: Package release artifacts
-        if: ${{ matrix.asset_name }}
-        run: pixi run -e default package ${{ matrix.build_type }}
 
       - name: Check artifact dependencies
         if: ${{ matrix.asset_name }}
-        run: pixi run -e default -- python scripts/check_artifact_deps.py build/${{ matrix.build_type }}/pack/clice/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: pixi run -e default -- python scripts/check_artifact_deps.py build/${{ matrix.build_type }}/bin/bin/clice.stripped
 
+      # These artifacts are what releases promote — there is no separate
+      # release build.
       - name: Upload package artifacts
         if: ${{ matrix.asset_name }}
         uses: actions/upload-artifact@v7
         with:
           name: package-${{ matrix.asset_name }}
           path: |
-            build/${{ matrix.build_type }}/clice.tar.gz
-            build/${{ matrix.build_type }}/clice.zip
-            build/${{ matrix.build_type }}/clice-symbol.tar.xz
-            build/${{ matrix.build_type }}/clice-symbol.zip
+            build/${{ matrix.build_type }}/bin/clice.tar.gz
+            build/${{ matrix.build_type }}/bin/clice.zip
+            build/${{ matrix.build_type }}/bin/clice-symbol.tar.xz
+            build/${{ matrix.build_type }}/bin/clice-symbol.zip
           if-no-files-found: error
           # 30 days bounds how old a commit a stable tag can still promote.
           retention-days: 30
-
-      - name: Upload full debug info
-        if: ${{ matrix.asset_name }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: debug-info-${{ matrix.target }}
-          path: |
-            build/${{ matrix.build_type }}/pack-symbol/clice.debug
-            build/${{ matrix.build_type }}/pack-symbol/clice.dSYM
-          if-no-files-found: error
-          retention-days: 90

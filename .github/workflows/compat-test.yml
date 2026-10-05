@@ -84,7 +84,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: build-${{ matrix.target }}-RelWithDebInfo
-          path: build/RelWithDebInfo/
+          path: build/RelWithDebInfo/bin/
 
       - name: Download the release
         if: steps.release.outputs.tag != ''
@@ -95,11 +95,11 @@ jobs:
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern "clice-*.${{ matrix.target }}.${{ matrix.ext }}" --dir "$RUNNER_TEMP/release"
           (cd "$RUNNER_TEMP/release" && cmake -E tar xf clice-*)
-          mkdir -p build/RelWithDebInfo
-          cp -r "$RUNNER_TEMP/release/clice/bin" "$RUNNER_TEMP/release/clice/lib" build/RelWithDebInfo/
+          mkdir -p build/RelWithDebInfo/bin
+          cp -r "$RUNNER_TEMP/release/clice/bin" "$RUNNER_TEMP/release/clice/lib" build/RelWithDebInfo/bin/
 
       - name: Make binaries executable
-        run: chmod +x build/RelWithDebInfo/bin/*
+        run: chmod +x build/RelWithDebInfo/bin/bin/*
 
       - name: Compat tests
         timeout-minutes: 15
