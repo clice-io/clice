@@ -105,6 +105,7 @@ async function writeProject(session: SessionFactory): Promise<Workspace> {
             "#include <fassert.h>",
             "#define ALPHA_VERSION 3",
             "#define ALPHA_TWICE(x) ((x) * 2)",
+            "#define ALPHA_EXTERN extern",
             "#ifdef ALPHA_WIDE",
             "#endif",
             "#ifdef ALPHA_TMP",
@@ -142,9 +143,14 @@ async function writeProject(session: SessionFactory): Promise<Workspace> {
             "inline int beta_local() { return alpha_local(); }",
             "namespace beta {",
             "inline alpha::Thing wrap(int v) { return alpha::Thing{ALPHA_TWICE(v)}; }",
+            "#define BETA_COUNTER(name) ALPHA_EXTERN int name;",
+            '#include "counters.inc"',
+            "#undef BETA_COUNTER",
             "}",
         ),
     );
+    // Only the header pasting it expands its macro.
+    ws.write("third/beta/beta/counters.inc", lines("BETA_COUNTER(opened)"));
     ws.write(
         "app/main.cpp",
         lines(
@@ -271,7 +277,13 @@ test("library interfaces", async ({ session }) => {
     // A hidden friend is found by argument-dependent lookup alone.
     expect(exported.has("alpha::operator==")).toBe(false);
     expect(alpha.aliases).toEqual([{ name: "al", target: "::alpha" }]);
-    expect(alpha.macros.map((macro) => macro.name)).toEqual(["ALPHA_VERSION", "ALPHA_TWICE"]);
+    // ALPHA_EXTERN through a macro of beta's that only a fragment beta.h
+    // pastes expands.
+    expect(alpha.macros.map((macro) => macro.name)).toEqual([
+        "ALPHA_VERSION",
+        "ALPHA_TWICE",
+        "ALPHA_EXTERN",
+    ]);
     // The program's switch ahead of the include; the one it undefines again
     // is no switch.
     expect(alpha.reads.map((macro) => macro.name)).toEqual(["ALPHA_WIDE"]);
