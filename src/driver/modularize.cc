@@ -178,7 +178,8 @@ int run_modularize(const ModularizeOptions& opts) {
     if(llvm::any_of(partition->primaries, [](auto& primary) { return !primary.empty(); })) {
         // The prelude by its path from the workspace root, which the
         // rewritten files' include path holds.
-        llvm::StringRef prelude_dir = out;
+        CanonicalPath canonical_out(Spelling(*opts.out, Spelling::cwd()));
+        llvm::StringRef prelude_dir = canonical_out;
         auto inside = prelude_dir.consume_front(loaded->root) && prelude_dir.consume_front("/");
         llvm::SmallString<256> prelude(inside ? prelude_dir : llvm::StringRef(out));
         llvm::sys::path::append(prelude, llvm::sys::path::Style::posix, plan.wrapping.prelude);

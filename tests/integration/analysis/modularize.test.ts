@@ -254,8 +254,9 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
 }
 
 /// core's text.h forward-declares sink.h's Sink and declares hook(), which
-/// tool's hook.cpp defines; detail.h is core's alone. tool.h forward-declares
-/// core's Sink, and tool.cpp expands core's CORE_TWICE.
+/// tool's hook.cpp defines; detail.h is core's alone, all.h an umbrella over
+/// it. tool.h forward-declares core's Sink, and tool.cpp expands core's
+/// CORE_TWICE.
 function writeProgram(ws: Workspace): void {
     ws.write(
         "app/core/text.h",
@@ -289,10 +290,12 @@ function writeProgram(ws: Workspace): void {
             "}",
         ),
     );
+    ws.write("app/core/all.h", lines("#pragma once", '#include "core/detail.h"'));
     ws.write(
         "app/core/text.cpp",
         lines(
             '#include "core/text.h"',
+            '#include "core/all.h"',
             '#include "core/detail.h"',
             "int core::Text::size() const { return detail() + CORE_TWICE(thing.v); }",
         ),
@@ -532,7 +535,8 @@ test("modularize rewrites program modules", async ({ session }) => {
             name: "app.core",
             primary: "app/core/core.cppm",
             interfaces: ["app/core/sink.cppm", "app/core/text.cppm"],
-            partitions: ["app/core/detail.cppm"],
+            // The umbrella owns nothing; no interface includes it.
+            partitions: ["app/core/all.cppm", "app/core/detail.cppm"],
             sources: ["app/core/text.cpp", "app/tool/hook.cpp"],
             imports: [],
         },
@@ -550,6 +554,7 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(plan.moved).toEqual(["app/tool/hook.cpp=app.core"]);
     expect(plan.macros).toEqual(["app/core/text.macros.h"]);
     expect(plan.removed).toEqual([
+        "app/core/all.h",
         "app/core/detail.h",
         "app/core/sink.h",
         "app/core/text.h",
@@ -595,7 +600,7 @@ test("modularize rewrites program modules", async ({ session }) => {
     // implementation partition by import; the macro through its header.
     const text = ws.read("app/core/text.cpp");
     expect(text).toContain("\nmodule app.core;\n");
-    expect(text).toContain("import :detail;");
+    expect(text).toContain("import :all;\nimport :detail;");
     expect(text).not.toContain("import :text;");
     expect(text).toContain('#include "core/text.macros.h"');
     expect(ws.read("app/core/text.macros.h")).toBe(

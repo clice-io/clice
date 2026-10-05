@@ -2883,14 +2883,41 @@ std::vector<Impact> Report::impact() const {
 std::vector<Unit> Report::units() const {
     Graph graph(facts, partition);
     auto pasted = pasted_fragments(facts);
+
+    // A header owning nothing other files name, an umbrella over other
+    // headers, is internal too: its includers reach what it includes
+    // through those headers' partitions. An internal header an interface
+    // header or another module includes is none: an interface importing an
+    // implementation partition leaves its names unreachable to importers.
+    auto internal = graph.internal;
+    for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+        auto& info = facts.files[file];
+        if(!info.source && !info.fragment && info.specializes.empty() &&
+           graph.dependents[file].empty()) {
+            internal[file] = true;
+        }
+    }
+    for(bool changed = true; changed;) {
+        changed = false;
+        for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+            if(internal[file] && llvm::any_of(facts.files[file].includers, [&](std::uint32_t by) {
+                   return partition.module_of[by] != partition.module_of[file] ||
+                          (!facts.files[by].source && !facts.files[by].fragment && !internal[by]);
+               })) {
+                internal[file] = false;
+                changed = true;
+            }
+        }
+    }
+
     std::vector<Unit> result(facts.files.size());
     for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
         auto& info = facts.files[file];
         auto& unit = result[file];
-        unit.kind = info.source            ? Unit::Kind::Source
-                    : info.fragment        ? Unit::Kind::Fragment
-                    : graph.internal[file] ? Unit::Kind::Internal
-                                           : Unit::Kind::Interface;
+        unit.kind = info.source      ? Unit::Kind::Source
+                    : info.fragment  ? Unit::Kind::Fragment
+                    : internal[file] ? Unit::Kind::Internal
+                                     : Unit::Kind::Interface;
         for(auto named: llvm::concat<const std::uint32_t>(llvm::ArrayRef(file), pasted[file])) {
             for(auto [uses, owners]: {
                     std::pair{&facts.uses[named],       &unit.names },

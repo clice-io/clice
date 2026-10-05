@@ -349,8 +349,10 @@ struct Rewriter {
     /// Headers of wrapped modules that stay textual where they are included.
     llvm::DenseSet<std::uint32_t> kept;
 
-    /// Include operand -> the one scoped file includers name by it, for a
-    /// directive the index did not see: a branch this configuration skips.
+    /// Include operand -> the one rewritten header includers name by it,
+    /// for a directive the index did not see, in a branch this configuration
+    /// skips: that include still has to become an import. Any other such
+    /// directive stays as written.
     llvm::StringMap<std::uint32_t> spelled;
 
     bool rewritten(std::uint32_t file) const {
@@ -494,6 +496,9 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     }
     llvm::StringSet<> ambiguous;
     for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+        if(!rewriter.rewritten(file) || !rewriter.header(file)) {
+            continue;
+        }
         for(auto& spelled: facts.files[file].spellings) {
             if(spelled.empty() || ambiguous.contains(spelled)) {
                 continue;
