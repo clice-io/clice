@@ -11,7 +11,7 @@ struct ServeOptions {
     LogLevelOption log;
 };
 
-}  // namespace
+}  // anonymous namespace
 
 void add_serve(kota::deco::cli::SubCommander& root, const char* self_path) {
     auto cmd = kota::deco::cli::command<ServeOptions>("clice serve [OPTIONS]");
