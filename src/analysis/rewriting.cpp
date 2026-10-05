@@ -9,6 +9,7 @@
 
 #include "syntax/lexer.h"
 #include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -18,7 +19,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
+#include "clang/Basic/IdentifierTable.h"
 
 namespace clice::analysis {
 
@@ -28,10 +29,15 @@ constexpr std::uint32_t none = ~0u;
 
 constexpr auto posix = llvm::sys::path::Style::posix;
 
+const clang::LangOptions& cxx() {
+    const static auto options = raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx23);
+    return options;
+}
+
 /// A file's lines and what the lexer finds on each.
 struct Text {
     enum class Line : std::uint8_t {
-        /// Whitespace and comments.
+        /// Whitespace, comments, and an include guard's directives.
         Blank,
         Code,
         /// The first line of a preprocessor directive.
@@ -40,13 +46,15 @@ struct Text {
         Continued,
     };
 
-    std::vector<llvm::StringRef> lines;
+    llvm::SmallVector<llvm::StringRef, 0> lines;
     std::vector<std::uint32_t> starts;
     std::vector<Line> kinds;
 
-    /// Per line: the keyword of the directive it starts, and an include's
-    /// operand as written, `<...>` or `"..."`.
+    /// Per line: the keyword of the directive it starts, its first token
+    /// after the keyword, and an include's operand as written, `<...>` or
+    /// `"..."`.
     std::vector<llvm::StringRef> keywords;
+    std::vector<llvm::StringRef> arguments;
     std::vector<llvm::StringRef> operands;
 
     /// Per directive: its last line.
@@ -56,17 +64,19 @@ struct Text {
     std::vector<Token> tokens;
     std::vector<std::uint32_t> token_lines;
 
+    /// The `#ifndef`, `#define` and `#endif` of an include guard, which a
+    /// module unit does without.
+    llvm::SmallVector<std::uint32_t, 3> guard;
+
     llvm::StringRef content;
 
     /// `content` ends at a NUL terminator, as the lexer requires.
     explicit Text(llvm::StringRef content) : content(content) {
-        llvm::SmallVector<llvm::StringRef> parts;
-        content.split(parts, '\n');
+        content.split(lines, '\n');
         // The newline ending the last line starts none.
         if(content.ends_with("\n")) {
-            parts.pop_back();
+            lines.pop_back();
         }
-        lines.assign(parts.begin(), parts.end());
         std::uint32_t offset = 0;
         for(auto line: lines) {
             starts.push_back(offset);
@@ -75,12 +85,11 @@ struct Text {
         auto count = lines.size();
         kinds.assign(count, Line::Blank);
         keywords.resize(count);
+        arguments.resize(count);
         operands.resize(count);
         ends.resize(count);
 
-        const static auto options =
-            raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx23);
-        Lexer lexer(content, {.lang_opts = &options});
+        Lexer lexer(content, {.lang_opts = &cxx()});
         for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
             auto line = line_of(token.range.begin);
             if(!token.is_directive_hash()) {
@@ -102,6 +111,8 @@ struct Text {
                     keywords[line] = part.text(content);
                 } else if(part.is_header_name() && operands[line].empty()) {
                     operands[line] = part.text(content);
+                } else if(arguments[line].empty()) {
+                    arguments[line] = part.text(content);
                 }
             }
             ends[line] = last;
@@ -109,11 +120,51 @@ struct Text {
                 kinds[continued] = Line::Continued;
             }
         }
+        find_guard();
     }
 
     std::uint32_t line_of(std::uint32_t offset) const {
         return static_cast<std::uint32_t>(std::ranges::upper_bound(starts, offset) -
                                           starts.begin() - 1);
+    }
+
+    /// `#ifndef X` and `#define X` first, the `#endif` closing the first
+    /// last.
+    void find_guard() {
+        llvm::SmallVector<std::uint32_t> filled;
+        for(std::uint32_t line = 0; line < lines.size(); line += 1) {
+            if(kinds[line] != Line::Blank) {
+                filled.push_back(line);
+            }
+        }
+        if(filled.size() < 3) {
+            return;
+        }
+        auto opening = filled[0];
+        auto definition = filled[1];
+        if(kinds[opening] != Line::Directive || keywords[opening] != "ifndef" ||
+           kinds[definition] != Line::Directive || keywords[definition] != "define" ||
+           arguments[definition] != arguments[opening]) {
+            return;
+        }
+        int depth = 0;
+        for(auto line: filled) {
+            if(kinds[line] != Line::Directive) {
+                continue;
+            }
+            auto keyword = keywords[line];
+            depth += keyword == "if" || keyword == "ifdef" || keyword == "ifndef";
+            depth -= keyword == "endif";
+            if(depth == 0) {
+                if(line == filled.back()) {
+                    guard = {opening, definition, line};
+                    for(auto member: guard) {
+                        kinds[member] = Line::Blank;
+                    }
+                }
+                return;
+            }
+        }
     }
 
     /// The first line of the body: past the leading directives, before a
@@ -148,27 +199,36 @@ struct Text {
         return llvm::ArrayRef(tokens).slice(begin, end - begin);
     }
 
-    /// Whether `line` holds one forward declaration of a type and nothing
-    /// else: `class C;`, `template <typename T> struct S;`, `enum class E : int;`.
-    bool forward_declaration(std::uint32_t line) const {
-        auto rest = tokens_on(line);
+    /// The tokens past a leading template head `template <...>`: all of
+    /// them when there is none, none when the head does not close.
+    llvm::ArrayRef<Token> past_template_head(llvm::ArrayRef<Token> rest) const {
+        if(rest.empty() || rest.front().text(content) != "template") {
+            return rest;
+        }
+        int depth = 0;
+        for(std::size_t i = 1; i < rest.size(); i += 1) {
+            depth += rest[i].kind == clang::tok::less;
+            depth -= rest[i].kind == clang::tok::greater;
+            depth -= 2 * (rest[i].kind == clang::tok::greatergreater);
+            if(depth <= 0) {
+                return rest.drop_front(i + 1);
+            }
+        }
+        return {};
+    }
+
+    /// The lines of the forward declaration of a type on `line`, when they
+    /// hold it and nothing else: `class C;`, `enum class E : int;`, and
+    /// `template <typename T> struct S;` on one line or with the template
+    /// head on the line before.
+    std::optional<std::pair<std::uint32_t, std::uint32_t>>
+        forward_declaration(std::uint32_t line) const {
+        auto all = tokens_on(line);
+        auto rest = past_template_head(all);
         auto text = [&](std::size_t i) {
             return i < rest.size() ? rest[i].text(content) : llvm::StringRef();
         };
         std::size_t i = 0;
-        if(text(i) == "template") {
-            i += 1;
-            int depth = 0;
-            for(; i < rest.size(); i += 1) {
-                depth += rest[i].kind == clang::tok::less;
-                depth -= rest[i].kind == clang::tok::greater;
-                depth -= 2 * (rest[i].kind == clang::tok::greatergreater);
-                if(depth <= 0) {
-                    break;
-                }
-            }
-            i += 1;
-        }
         if(text(i) == "enum") {
             i += 1;
             if(text(i) == "class" || text(i) == "struct") {
@@ -177,10 +237,10 @@ struct Text {
         } else if(text(i) == "class" || text(i) == "struct" || text(i) == "union") {
             i += 1;
         } else {
-            return false;
+            return std::nullopt;
         }
         if(i >= rest.size() || !rest[i].is_identifier()) {
-            return false;
+            return std::nullopt;
         }
         i += 1;
         if(i < rest.size() && rest[i].kind == clang::tok::colon) {
@@ -188,7 +248,23 @@ struct Text {
                         (rest[i].is_identifier() || rest[i].kind == clang::tok::coloncolon);
                 i += 1) {}
         }
-        return i + 1 == rest.size() && rest[i].kind == clang::tok::semi;
+        if(i + 1 != rest.size() || rest[i].kind != clang::tok::semi) {
+            return std::nullopt;
+        }
+        auto first = line;
+        if(rest.size() == all.size() && line != 0) {
+            auto previous = line - 1;
+            while(previous != 0 && kinds[previous] == Line::Blank) {
+                previous -= 1;
+            }
+            auto head = tokens_on(previous);
+            if(kinds[previous] == Line::Code && !head.empty() &&
+               head.front().text(content) == "template" && past_template_head(head).empty() &&
+               head.back().kind != clang::tok::semi) {
+                first = previous;
+            }
+        }
+        return std::pair{first, line};
     }
 
     /// The opening and closing lines of each anonymous namespace standing on
@@ -235,40 +311,8 @@ struct Text {
 };
 
 bool is_keyword(llvm::StringRef word) {
-    const static llvm::StringSet<> keywords = {
-        "alignas",       "alignof",     "and",
-        "and_eq",        "asm",         "auto",
-        "bitand",        "bitor",       "bool",
-        "break",         "case",        "catch",
-        "char",          "char8_t",     "char16_t",
-        "char32_t",      "class",       "compl",
-        "concept",       "const",       "consteval",
-        "constexpr",     "constinit",   "const_cast",
-        "continue",      "co_await",    "co_return",
-        "co_yield",      "decltype",    "default",
-        "delete",        "do",          "double",
-        "dynamic_cast",  "else",        "enum",
-        "explicit",      "export",      "extern",
-        "false",         "float",       "for",
-        "friend",        "goto",        "if",
-        "inline",        "int",         "long",
-        "mutable",       "namespace",   "new",
-        "noexcept",      "not",         "not_eq",
-        "nullptr",       "operator",    "or",
-        "or_eq",         "private",     "protected",
-        "public",        "register",    "reinterpret_cast",
-        "requires",      "return",      "short",
-        "signed",        "sizeof",      "static",
-        "static_assert", "static_cast", "struct",
-        "switch",        "template",    "this",
-        "thread_local",  "throw",       "true",
-        "try",           "typedef",     "typeid",
-        "typename",      "union",       "unsigned",
-        "using",         "virtual",     "void",
-        "volatile",      "wchar_t",     "while",
-        "xor",           "xor_eq",
-    };
-    return keywords.contains(word);
+    static clang::IdentifierTable table(cxx());
+    return table.get(word).getTokenID() != clang::tok::identifier;
 }
 
 /// A partition name for the file at `path`: its path under `base` when it is
@@ -276,8 +320,7 @@ bool is_keyword(llvm::StringRef word) {
 /// identifier.
 std::string partition_name(llvm::StringRef path, llvm::StringRef base) {
     llvm::StringRef relative = path;
-    if(!base.empty() && path.starts_with(base) && path.size() > base.size() &&
-       path[base.size()] == '/') {
+    if(!base.empty() && path.size() > base.size() && path::under(path, base)) {
         relative = path.drop_front(base.size() + 1);
     }
     auto extension = llvm::sys::path::extension(relative, posix);
@@ -378,23 +421,47 @@ struct Rewriter {
         return partition_name(facts.files[file].path, llvm::sys::path::parent_path(primary, posix));
     }
 
-    /// How includers name the file, the most common spelling.
+    /// How includers name the file, the spelling most of those in other
+    /// directories use: `"a.h"` from beside it resolves there alone.
     std::string spelling(std::uint32_t file) const {
-        std::map<llvm::StringRef, std::uint32_t> counts;
-        for(auto& spelled: facts.files[file].spellings) {
-            if(!spelled.empty()) {
-                counts[spelled] += 1;
+        auto& info = facts.files[file];
+        auto directory = llvm::sys::path::parent_path(info.path, posix);
+        std::map<llvm::StringRef, std::uint32_t> all, elsewhere;
+        for(std::size_t i = 0; i < info.includers.size(); i += 1) {
+            llvm::StringRef spelled = info.spellings[i];
+            if(spelled.empty()) {
+                continue;
+            }
+            all[spelled] += 1;
+            if(llvm::sys::path::parent_path(facts.files[info.includers[i]].path, posix) !=
+               directory) {
+                elsewhere[spelled] += 1;
             }
         }
+        auto& counts = elsewhere.empty() ? all : elsewhere;
         auto best = std::ranges::max_element(counts, {}, [](auto& entry) { return entry.second; });
         return best == counts.end() ? std::string() : best->first.str();
     }
 
+    /// The file the include directive on `line` names. A forced include's
+    /// presumed line may coincide with a directive's; the operand's file name
+    /// tells them apart.
     std::uint32_t resolve(std::uint32_t file, std::uint32_t line, llvm::StringRef operand) const {
-        auto& directives = facts.files[file].directives;
-        auto it = std::ranges::lower_bound(directives, std::pair{line + 1, 0u});
-        if(it != directives.end() && it->first == line + 1) {
-            return it->second;
+        auto [begin, end] =
+            std::ranges::equal_range(facts.files[file].directives,
+                                     line + 1,
+                                     {},
+                                     &std::pair<std::uint32_t, std::uint32_t>::first);
+        if(end - begin > 1) {
+            auto name = llvm::sys::path::filename(operand.drop_front().drop_back(), posix);
+            for(auto it = begin; it != end; ++it) {
+                if(llvm::sys::path::filename(facts.files[it->second].path, posix) == name) {
+                    return it->second;
+                }
+            }
+        }
+        if(begin != end) {
+            return begin->second;
         }
         auto found = spelled.find(operand);
         return found == spelled.end() ? none : found->second;
@@ -434,13 +501,16 @@ struct Draft {
     std::set<std::string> modules;
     llvm::DenseSet<std::uint32_t> partitions;
 
-    /// Headers that stay headers, to include: the ones it names without
-    /// including them, and those of the partitions it reaches only through
-    /// another partition.
+    /// Headers that stay headers, to include: the ones it names or takes
+    /// macros from without including them, and those of the partitions it
+    /// reaches only through another partition.
     std::set<std::uint32_t> needed;
 
-    /// The headers that stay headers it includes itself.
+    /// The headers that stay headers it includes itself, and the lines doing
+    /// so.
     std::set<std::uint32_t> textual;
+    llvm::DenseSet<std::uint32_t> textual_lines;
+
     std::set<std::uint32_t> macro_headers;
 };
 
@@ -453,9 +523,6 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                                               llvm::StringRef root) {
     Rewriting result;
     auto& plan = result.plan;
-    auto is_rewritten_module = [&](std::uint32_t module) {
-        return !partition.primaries[module].empty();
-    };
 
     // A source defining what a header of a rewritten module declares joins
     // that module: a definition is attached to the module of its
@@ -465,7 +532,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         auto owner = facts.entities[redeclaration.entity].owner;
         auto module = partition.module_of[owner];
         if(redeclaration.definition && facts.files[redeclaration.file].source &&
-           !facts.files[owner].source && is_rewritten_module(module) &&
+           !facts.files[owner].source && !partition.primaries[module].empty() &&
            partition.module_of[redeclaration.file] != module) {
             joins[redeclaration.file].insert(module);
         }
@@ -489,9 +556,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             continue;
         }
         for(auto& header: interfaces[module].textual) {
-            if(auto it = facts.file_ids.find(header.file); it != facts.file_ids.end()) {
-                rewriter.kept.insert(it->second);
-            }
+            rewriter.kept.insert(facts.file_ids.lookup(header.file));
         }
     }
     llvm::StringSet<> ambiguous;
@@ -511,8 +576,6 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         }
     }
 
-    // The files to rewrite: every file of a rewritten module, and the
-    // sources of other modules including one of its headers.
     std::vector<std::uint32_t> files;
     for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
         auto& info = facts.files[file];
@@ -534,16 +597,15 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         }
     }
 
-    std::map<std::uint32_t, std::unique_ptr<llvm::MemoryBuffer>> buffers;
+    llvm::DenseMap<std::uint32_t, std::unique_ptr<llvm::MemoryBuffer>> buffers;
     std::map<std::uint32_t, Draft> drafts;
     for(auto file: files) {
         auto& info = facts.files[file];
-        llvm::SmallString<256> path(root);
-        llvm::sys::path::append(path, posix, info.path);
+        auto path = path::join(root, info.path);
         auto buffer = vfs::read(path);
         if(!buffer) {
             return std::unexpected(
-                std::format("cannot read {}: {}", path.str().str(), buffer.error().message()));
+                std::format("cannot read {}: {}", path, buffer.error().message()));
         }
         auto& draft = drafts[file];
         Text text((*buffer)->getBuffer());
@@ -551,13 +613,24 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         auto module_unit = rewriter.rewritten(file);
 
         // Declarations of other modules' entities: in a module unit they
-        // would declare a second entity, attached to its module.
-        llvm::DenseSet<std::uint32_t> dropped;
+        // would declare a second entity, attached to its module. One whose
+        // entity lies outside the scope moves to the global module fragment.
+        llvm::DenseSet<std::uint32_t> dropped(text.guard.begin(), text.guard.end());
         if(module_unit) {
-            auto drop = [&](std::uint32_t line) {
-                if(line != 0 && line <= text.lines.size() && text.forward_declaration(line - 1)) {
-                    dropped.insert(line - 1);
+            auto drop = [&](std::uint32_t line) -> std::optional<std::string> {
+                if(line == 0 || line > text.lines.size()) {
+                    return std::nullopt;
                 }
+                auto span = text.forward_declaration(line - 1);
+                if(!span) {
+                    return std::nullopt;
+                }
+                std::string declaration;
+                for(auto member = span->first; member <= span->second; member += 1) {
+                    dropped.insert(member);
+                    declaration += text.lines[member].trim().str() + " ";
+                }
+                return llvm::StringRef(declaration).rtrim().str();
             };
             for(auto& redeclaration: facts.redeclarations) {
                 auto owner = facts.entities[redeclaration.entity].owner;
@@ -568,8 +641,14 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 }
             }
             for(auto& foreign: facts.foreign_declarations) {
-                if(foreign.file == file && !foreign.friend_declaration) {
-                    drop(foreign.line);
+                if(foreign.file != file || foreign.friend_declaration) {
+                    continue;
+                }
+                if(auto declaration = drop(foreign.line)) {
+                    auto [scope, name] = llvm::StringRef(foreign.name).rsplit("::");
+                    draft.fragment.push_back(
+                        name.empty() ? *declaration
+                                     : std::format("namespace {} {{ {} }}", scope, *declaration));
                 }
             }
             if(rewriter.header(file)) {
@@ -588,7 +667,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             auto& out = line < end ? draft.fragment : draft.body;
             auto keyword = text.keywords[line];
             if(text.kinds[line] == Text::Line::Directive && keyword == "pragma" &&
-               text.lines[line].contains("once")) {
+               text.arguments[line] == "once") {
                 continue;
             }
             if(text.kinds[line] == Text::Line::Directive && takes_header_name(keyword) &&
@@ -603,6 +682,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                     case Action::Keep:
                         if(target != none && rewriter.textual(target)) {
                             draft.textual.insert(target);
+                            draft.textual_lines.insert(line);
                         }
                         break;
                 }
@@ -626,12 +706,15 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 draft.needed.insert(named);
             }
         }
+        // Imports carry no macros: a rewritten header's reach its users
+        // through its macro header, a textual header's through an include.
         for(auto defining: units[file].macros) {
             if(rewriter.rewritten(defining) && rewriter.header(defining)) {
                 draft.macro_headers.insert(defining);
+            } else if(rewriter.textual(defining) && !llvm::is_contained(info.includes, defining)) {
+                draft.needed.insert(defining);
             }
         }
-        draft.modules.erase(partition.modules[partition.module_of[file]]);
         draft.partitions.erase(file);
     }
 
@@ -663,18 +746,15 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         }
     }
 
-    auto include = [&](std::uint32_t file) -> std::optional<std::string> {
-        auto spelled = rewriter.spelling(file);
-        if(spelled.empty()) {
-            plan.warnings.push_back(
-                std::format("no include names {}, which other files need", facts.files[file].path));
-            return std::nullopt;
-        }
-        return std::format("#include {}", spelled);
-    };
     auto macro_header = [&](std::uint32_t file) {
         return with_extension(facts.files[file].path, "macros.h");
     };
+    llvm::StringSet<> primaries;
+    for(auto& primary: partition.primaries) {
+        if(!primary.empty()) {
+            primaries.insert(primary);
+        }
+    }
 
     std::map<std::uint32_t, Rewriting::Module> modules;
     std::set<std::uint32_t> macro_headers;
@@ -690,15 +770,16 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         lines.push_back(std::format(R"(#include "{}")", prelude.str()));
         llvm::append_range(lines, draft.fragment);
         for(auto needed: draft.needed) {
-            if(auto line = include(needed)) {
-                lines.push_back(std::move(*line));
+            auto spelled = rewriter.spelling(needed);
+            if(spelled.empty()) {
+                plan.warnings.push_back(std::format("no include names {}, which other files need",
+                                                    facts.files[needed].path));
+                continue;
             }
+            lines.push_back(std::format("#include {}", spelled));
         }
         std::set<std::string> macro_includes;
         for(auto defining: draft.macro_headers) {
-            if(defining == file) {
-                continue;
-            }
             macro_headers.insert(defining);
             // Named the way the header is, `"support/logging.h"` giving
             // `"support/logging.macros.h"`.
@@ -749,6 +830,10 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
 
         auto path =
             module_unit && rewriter.header(file) ? with_extension(info.path, "cppm") : info.path;
+        if(primaries.contains(path)) {
+            return std::unexpected(
+                std::format("{} becomes {}, the primary interface of its module", info.path, path));
+        }
         result.files.push_back({.path = path, .content = assemble(lines)});
         if(!module_unit) {
             plan.importers.push_back(path);
@@ -797,13 +882,17 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         plan.modules.push_back(std::move(entry));
     }
 
+    // A macro header replays the header's directives, the includes of the
+    // headers that stay headers among them: its conditions may test their
+    // macros.
     for(auto defining: macro_headers) {
         Text text(buffers[defining]->getBuffer());
+        auto& textual_lines = drafts.at(defining).textual_lines;
         std::vector<std::string> lines{"#pragma once", ""};
         for(std::uint32_t line = 0; line < text.lines.size(); line += 1) {
             auto keyword = text.keywords[line];
-            if(text.kinds[line] != Text::Line::Directive || takes_header_name(keyword) ||
-               keyword == "pragma") {
+            if(text.kinds[line] != Text::Line::Directive || keyword == "pragma" ||
+               (takes_header_name(keyword) && !textual_lines.contains(line))) {
                 continue;
             }
             for(auto part = line; part <= text.ends[line]; part += 1) {

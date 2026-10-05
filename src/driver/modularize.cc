@@ -74,6 +74,12 @@ struct ModularizeOptions {
     LogLevelOption log{.log_level = LogLevel::Warn};
 };
 
+llvm::SmallString<256> join(llvm::StringRef base, llvm::StringRef relative) {
+    llvm::SmallString<256> path(base);
+    llvm::sys::path::append(path, llvm::sys::path::Style::posix, relative);
+    return path;
+}
+
 /// Write the files whose content changed, so a regeneration rebuilds only
 /// what it touched, and remove the files the previous run wrote that this
 /// one no longer produces: a stale empty header in a mirror would hide the
@@ -82,9 +88,7 @@ struct ModularizeOptions {
 std::expected<void, std::string> write_files(llvm::StringRef out,
                                              llvm::ArrayRef<analysis::Wrapping::File> files) {
     auto at = [&](llvm::StringRef relative) {
-        llvm::SmallString<256> path(out);
-        llvm::sys::path::append(path, llvm::sys::path::Style::posix, relative);
-        return path;
+        return join(out, relative);
     };
     llvm::StringSet<> written;
     std::string manifest;
@@ -170,7 +174,8 @@ int run_modularize(const ModularizeOptions& opts) {
         return fail(wrapping.error());
     }
 
-    auto out = Spelling(*opts.out, Spelling::cwd()).str();
+    Spelling out_spelling(*opts.out, Spelling::cwd());
+    auto out = out_spelling.str();
     if(auto written = write_files(out, wrapping->files); !written) {
         return fail(written.error());
     }
@@ -178,7 +183,7 @@ int run_modularize(const ModularizeOptions& opts) {
     if(llvm::any_of(partition->primaries, [](auto& primary) { return !primary.empty(); })) {
         // The prelude by its path from the workspace root, which the
         // rewritten files' include path holds.
-        CanonicalPath canonical_out(Spelling(*opts.out, Spelling::cwd()));
+        CanonicalPath canonical_out(out_spelling);
         llvm::StringRef prelude_dir = canonical_out;
         auto inside = prelude_dir.consume_front(loaded->root) && prelude_dir.consume_front("/");
         llvm::SmallString<256> prelude(inside ? prelude_dir : llvm::StringRef(out));
@@ -188,19 +193,14 @@ int run_modularize(const ModularizeOptions& opts) {
         if(!rewriting) {
             return fail(rewriting.error());
         }
-        auto at = [&](llvm::StringRef relative) {
-            llvm::SmallString<256> path(loaded->root);
-            llvm::sys::path::append(path, llvm::sys::path::Style::posix, relative);
-            return path;
-        };
         for(auto& file: rewriting->files) {
-            auto path = at(file.path);
+            auto path = join(loaded->root, file.path);
             if(auto error = vfs::write(path, file.content)) {
                 return fail(std::format("cannot write {}: {}", path.str().str(), error.message()));
             }
         }
         for(auto& removed: rewriting->plan.removed) {
-            auto path = at(removed);
+            auto path = join(loaded->root, removed);
             if(auto error = vfs::remove(path)) {
                 return fail(std::format("cannot remove {}: {}", path.str().str(), error.message()));
             }

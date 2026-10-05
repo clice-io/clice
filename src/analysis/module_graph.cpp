@@ -1599,7 +1599,9 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
     result.kinds.assign(count, ModuleKind::Program);
     result.provides.resize(count);
     result.primaries.resize(count);
-    std::vector<bool> rewritten(count, false);
+    // Whether an entry rewrites the module, and whether one wraps it, as an
+    // entry without a kind says.
+    std::vector<bool> rewritten(count, false), wrapped(count, false);
     for(auto& claimed: spec.modules) {
         // A merge or move can still take a claimed module's files away.
         auto module = result.module_named(claimed.name);
@@ -1610,6 +1612,7 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
         // the module may name its kind.
         auto& kind = result.kinds[module];
         if(claimed.kind == ModuleKind::Wrapped) {
+            wrapped[module] = true;
             if(kind == ModuleKind::Program) {
                 kind = ModuleKind::Wrapped;
             }
@@ -1633,7 +1636,7 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
     // A rewritten module's primary interface defaults to the deepest
     // directory holding its headers, its files' when it has none.
     for(std::uint32_t module = 0; module < count; module += 1) {
-        if(rewritten[module] && result.kinds[module] != ModuleKind::Program) {
+        if(rewritten[module] && (wrapped[module] || result.kinds[module] != ModuleKind::Program)) {
             return std::unexpected(
                 std::format("module {} is both rewritten and wrapped", result.modules[module]));
         }
@@ -1641,10 +1644,6 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
         if(!rewritten[module] || !primary.empty()) {
             continue;
         }
-        auto within = [](llvm::StringRef dir, llvm::StringRef ancestor) {
-            return ancestor.empty() || dir == ancestor ||
-                   (dir.starts_with(ancestor) && dir[ancestor.size()] == '/');
-        };
         std::optional<llvm::StringRef> common;
         for(bool headers: {true, false}) {
             for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
@@ -1656,7 +1655,7 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
                 if(!common) {
                     common = dir;
                 }
-                while(!within(dir, *common)) {
+                while(!common->empty() && !path::under(dir, *common)) {
                     common = llvm::sys::path::parent_path(*common, llvm::sys::path::Style::posix);
                 }
             }

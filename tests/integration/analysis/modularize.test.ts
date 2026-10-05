@@ -254,29 +254,47 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
 }
 
 /// core's text.h forward-declares sink.h's Sink and declares hook(), which
-/// tool's hook.cpp defines; detail.h is core's alone, all.h an umbrella over
-/// it. tool.h forward-declares core's Sink, and tool.cpp expands core's
-/// CORE_TWICE.
+/// tool's hook.cpp defines, and includes cfg's config.h, which stays a
+/// header; detail.h is core's alone, all.h an umbrella over it, sink.h
+/// guarded. tool.h forward-declares core's Sink and Box, and tool.cpp
+/// expands core's CORE_TWICE.
 function writeProgram(ws: Workspace): void {
     ws.write(
         "app/core/text.h",
         lines(
             "#pragma once",
             "#include <alpha/alpha.h>",
+            '#include "cfg/config.h"',
             "#define CORE_TWICE(x) ((x) * 2)",
+            "#if CFG_FAST",
+            "#define CORE_FAST 1",
+            "#endif",
             "namespace core {",
             "struct Sink;",
             "struct Text {",
             "    alpha::Thing thing;",
             "    int size() const;",
             "};",
+            "template <typename T>",
+            "struct Box { T value; };",
             "int hook();",
             "}",
         ),
     );
     ws.write(
+        "app/cfg/config.h",
+        lines("#pragma once", "#define CFG_FAST 1", "#define CFG_SIZE 64"),
+    );
+    ws.write(
         "app/core/sink.h",
-        lines("#pragma once", "namespace core {", "struct Sink { int lines; };", "}"),
+        lines(
+            "#ifndef SINK_H",
+            "#define SINK_H",
+            "namespace core {",
+            "struct Sink { int lines; };",
+            "}",
+            "#endif",
+        ),
     );
     ws.write(
         "app/core/detail.h",
@@ -307,9 +325,11 @@ function writeProgram(ws: Workspace): void {
             '#include "core/text.h"',
             "namespace core {",
             "struct Sink;",
+            "template <typename T>",
+            "struct Box;",
             "}",
             "namespace tool {",
-            "int run(const core::Text& text, core::Sink* sink);",
+            "int run(const core::Text& text, core::Sink* sink, core::Box<int>* box = nullptr);",
             "}",
         ),
     );
@@ -318,8 +338,8 @@ function writeProgram(ws: Workspace): void {
         lines(
             '#include "tool/tool.h"',
             '#include "core/sink.h"',
-            "int tool::run(const core::Text& text, core::Sink* sink) {",
-            "    return text.size() + sink->lines + CORE_TWICE(1);",
+            "int tool::run(const core::Text& text, core::Sink* sink, core::Box<int>* box) {",
+            "    return text.size() + sink->lines + CORE_TWICE(1) + (box ? box->value : 0);",
             "}",
         ),
     );
@@ -339,7 +359,10 @@ function writeProgram(ws: Workspace): void {
     );
     ws.write(
         "app/run.cpp",
-        lines('#include "tool/tool.h"', "int main() { return tool::run(core::Text{}, nullptr); }"),
+        lines(
+            '#include "tool/tool.h"',
+            "int main() { return tool::run(core::Text{}, nullptr) + CFG_SIZE; }",
+        ),
     );
 }
 
@@ -526,6 +549,17 @@ test("modularize rewrites program modules", async ({ session }) => {
         { name: "app.tool", files: ["app/tool/**"], rewrite: true },
     );
     ws.write("program.json", JSON.stringify(partition));
+    // Nothing is written when a partition would take a primary interface's place.
+    const clash = JSON.parse(ws.read("program.json")) as { modules: Record<string, unknown>[] };
+    clash.modules.at(-2)!["primary"] = "app/core/text.cppm";
+    ws.write("clash.json", JSON.stringify(clash));
+    const failed = await modularize(ws, ws.path("clash.json"));
+    expect(failed.status, failed.stdout).toBe(1);
+    expect((JSON.parse(failed.stdout) as { error: string }).error).toBe(
+        "app/core/text.h becomes app/core/text.cppm, the primary interface of its module",
+    );
+    expect(ws.exists("app/core/text.h")).toBe(true);
+
     const run = await modularize(ws, ws.path("program.json"));
     expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
     const plan = (JSON.parse(run.stdout) as { rewriting: Rewriting }).rewriting;
@@ -569,13 +603,18 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(ws.read("app/tool/module.cppm")).toBe(
         lines("export module app.tool;", "", "export import :tool;"),
     );
-    // The prelude imports alpha; core's own forward declaration stays.
+    // The prelude imports alpha; cfg stays a header; core's own forward
+    // declaration stays.
     expect(ws.read("app/core/text.cppm")).toBe(
         lines(
             "module;",
             "",
             '#include "wrap/prelude.h"',
+            '#include "cfg/config.h"',
             "#define CORE_TWICE(x) ((x) * 2)",
+            "#if CFG_FAST",
+            "#define CORE_FAST 1",
+            "#endif",
             "",
             "export module app.core:text;",
             "",
@@ -586,7 +625,25 @@ test("modularize rewrites program modules", async ({ session }) => {
             "    alpha::Thing thing;",
             "    int size() const;",
             "};",
+            "template <typename T>",
+            "struct Box { T value; };",
             "int hook();",
+            "}",
+            "}",
+        ),
+    );
+    // A module unit needs no include guard.
+    expect(ws.read("app/core/sink.cppm")).toBe(
+        lines(
+            "module;",
+            "",
+            '#include "wrap/prelude.h"',
+            "",
+            "export module app.core:sink;",
+            "",
+            "export {",
+            "namespace core {",
+            "struct Sink { int lines; };",
             "}",
             "}",
         ),
@@ -603,28 +660,39 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(text).toContain("import :all;\nimport :detail;");
     expect(text).not.toContain("import :text;");
     expect(text).toContain('#include "core/text.macros.h"');
+    // Its conditions test cfg's macros.
     expect(ws.read("app/core/text.macros.h")).toBe(
-        lines("#pragma once", "", "#define CORE_TWICE(x) ((x) * 2)"),
+        lines(
+            "#pragma once",
+            "",
+            '#include "cfg/config.h"',
+            "#define CORE_TWICE(x) ((x) * 2)",
+            "#if CFG_FAST",
+            "#define CORE_FAST 1",
+            "#endif",
+        ),
     );
-    // core's Sink is core's to declare.
+    // core's Sink and Box are core's to declare, the template head with Box.
     const tool = ws.read("app/tool/tool.cppm");
     expect(tool).toContain("export module app.tool:tool;");
     expect(tool).toContain("import app.core;");
-    expect(tool).not.toContain("struct Sink;");
+    expect(tool).toContain("namespace core {\n}\n");
     expect(ws.read("app/tool/tool.cpp")).toContain('#include "core/text.macros.h"');
     expect(ws.read("app/tool/hook.cpp")).toContain("\nmodule app.core;\n");
     // main stays attached to the global module; the one in a string is text.
     const cli = ws.read("app/tool/cli.cpp");
     expect(cli).toContain('extern "C++" int main() {');
     expect(cli).toContain('R"(int main() {})"');
-    // core::Text reaches it through tool's header, but no import re-exports.
+    // core::Text and cfg's CFG_SIZE reach it through tool's header, but no
+    // import re-exports a name and none carries a macro.
     expect(ws.read("app/run.cpp")).toBe(
         lines(
             '#include "wrap/prelude.h"',
+            '#include "cfg/config.h"',
             "import app.core;",
             "import app.tool;",
             "",
-            "int main() { return tool::run(core::Text{}, nullptr); }",
+            "int main() { return tool::run(core::Text{}, nullptr) + CFG_SIZE; }",
         ),
     );
 });

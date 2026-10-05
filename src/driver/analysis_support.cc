@@ -88,11 +88,10 @@ std::expected<analysis::PartitionSpec, std::string>
                 std::format("module {} is both textual and external", claimed.name));
         }
         if(module.rewrite.value_or(false)) {
-            if(textual || external) {
-                return std::unexpected(
-                    std::format("module {} is both rewritten and wrapped", claimed.name));
+            // A kind beside it is left for the partition to reject.
+            if(!textual && !external) {
+                claimed.kind = analysis::ModuleKind::Program;
             }
-            claimed.kind = analysis::ModuleKind::Program;
             claimed.rewrite = true;
             claimed.primary = module.primary.value_or("");
         } else if(module.primary) {
