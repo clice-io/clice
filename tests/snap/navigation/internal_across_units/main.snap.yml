@@ -1,0 +1,18 @@
+---
+created_at: 2026-10-02
+input_file: internal_across_units/main.cpp
+---
+use:
+  definition:
+    - { file: "${WS}/internal_across_units/util.h", range: "2:11-2:17" }
+  declaration:
+    - { file: "${WS}/internal_across_units/util.h", range: "2:11-2:17" }
+  references:
+    - { file: "${WS}/internal_across_units/main.cpp", range: "9:11-9:17" }
+    - { file: "${WS}/internal_across_units/other.cpp", range: "3:11-3:17" }
+    - { file: "${WS}/internal_across_units/util.h", range: "2:11-2:17" }
+  callHierarchy:
+    - { name: "helper", kind: Function, file: "${WS}/internal_across_units/util.h", range: "2:0-4:1", selection: "2:11-2:17" }
+  incomingCalls:
+    - { name: "first", kind: Function, file: "${WS}/internal_across_units/main.cpp", range: "8:0-10:1", selection: "8:4-8:9", fromRanges: ["9:11-9:17"] }
+    - { name: "second", kind: Function, file: "${WS}/internal_across_units/other.cpp", range: "2:0-4:1", selection: "2:4-2:10", fromRanges: ["3:11-3:17"] }

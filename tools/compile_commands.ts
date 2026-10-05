@@ -47,26 +47,22 @@ export function buildCDBEntry(
 }
 
 /// Generate compile_commands.json using CMake with Ninja backend.
-///
-/// The toolchain file wires ccache in as the compiler launcher, which only
-/// the configure-time probes would go through here: they compile in a
-/// scratch directory with a fresh random name each time, and on Windows
-/// with -g, so ccache hashes that directory and every probe is a guaranteed
-/// miss stored into the shared cache.
 export function generateCDB(workspace: string): void {
-    const toolchain = path.join(REPO_ROOT, "cmake", "toolchain.cmake");
     execFileSync(
         "cmake",
         [
             "-G",
             "Ninja",
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-            `-DCMAKE_TOOLCHAIN_FILE=${toolchain}`,
+            // xclang's, from the test environment: its config files pick
+            // libc++, the runtimes and lld on every platform.
+            "-DCMAKE_C_COMPILER=clang",
+            "-DCMAKE_CXX_COMPILER=clang++",
             "-S",
             workspace,
             "-B",
             path.join(workspace, "build"),
         ],
-        { timeout: 120_000, stdio: "pipe", env: { ...process.env, CCACHE_DISABLE: "1" } },
+        { timeout: 120_000, stdio: "pipe" },
     );
 }

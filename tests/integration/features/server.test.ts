@@ -1,8 +1,7 @@
 /// Integration tests for the clice MasterServer.
 
-import { execFileSync } from "node:child_process";
 import * as proto from "vscode-languageserver-protocol";
-import { sleep, SETTLE_TIME, withTimeout } from "@clice/tools/client";
+import { runProcess, sleep, SETTLE_TIME, withTimeout } from "@clice/tools/client";
 import { cliceExecutable, cliceTest, expect } from "../fixtures.ts";
 
 const test = cliceTest("hello_world");
@@ -12,15 +11,15 @@ function capabilityEnabled(capability: unknown): boolean {
     return capability !== undefined && capability !== null && capability !== false;
 }
 
-test("server info", ({ client }) => {
+test("server info", async ({ client }) => {
     expect(client.initResult!.serverInfo!.name).toBe("clice");
     // The version is injected at build time (git describe or the base
     // version); instead of pinning a value, pin that the LSP handshake and
     // the --version CLI report the same thing.
-    const stdout = execFileSync(cliceExecutable(), ["--version"], {
-        encoding: "utf8",
+    const { status, stdout, stderr } = await runProcess(cliceExecutable(), ["--version"], {
         timeout: 10_000,
     });
+    expect(status, stderr).toBe(0);
     const cliVersion = stdout.trim().replace(/^clice version /, "");
     expect(cliVersion.length).toBeGreaterThan(0);
     expect(/[0-9]/.test(cliVersion[0]!)).toBe(true);
@@ -36,13 +35,10 @@ test("capabilities", ({ client }) => {
     expect(capabilityEnabled(caps.documentSymbolProvider)).toBe(true);
     expect(capabilityEnabled(caps.foldingRangeProvider)).toBe(true);
     expect(capabilityEnabled(caps.inlayHintProvider)).toBe(true);
-    // codeAction is not implemented yet, so it must not be advertised.
-    expect(capabilityEnabled(caps.codeActionProvider)).toBe(false);
-    // workspace/didChangeWorkspaceFolders is not handled, so workspace
-    // folder support must not be advertised.
-    expect(
-        caps.workspace === undefined || !capabilityEnabled(caps.workspace.workspaceFolders),
-    ).toBe(true);
+    expect(capabilityEnabled(caps.codeActionProvider)).toBe(true);
+    // Every workspace folder is a project, and folders come and go.
+    expect(caps.workspace?.workspaceFolders?.supported).toBe(true);
+    expect(caps.workspace?.workspaceFolders?.changeNotifications).toBe(true);
     expect(caps.documentFormattingProvider).toBe(true);
     expect(caps.documentRangeFormattingProvider).toBe(true);
     expect(capabilityEnabled(caps.diagnosticProvider)).toBe(true);

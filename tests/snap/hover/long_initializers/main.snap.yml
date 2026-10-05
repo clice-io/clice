@@ -1,0 +1,27 @@
+---
+created_at: 2026-10-03
+input_file: long_initializers/main.cpp
+---
+embedded: { range: "8:18-8:26" }
+### variable `embedded`  
+
+---
+Type: `const byte[630] (aka const unsigned char[630])`  
+Value = `{84, 104, 101, 32, 113, 117, 105, 99, 107, 32, ...}`  
+
+---
+```cpp
+static const byte embedded[]
+```
+
+literal: { range: "12:11-12:18" }
+### variable `literal`  
+
+---
+Type: `const char[601]`  
+Value = `{120, 120, 120, 120, 120, 120, 120, 120, 120, 120, ...}`  
+
+---
+```cpp
+const char literal[]
+```

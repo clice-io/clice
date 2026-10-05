@@ -48,7 +48,7 @@
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "description": "Path of the clice executable. Leave empty to use the bundled server."
+          "description": "Path of the clice executable; a relative path resolves against the first workspace folder. Leave empty to use the bundled server."
         },
         "clice.mode": {
           "type": "string",

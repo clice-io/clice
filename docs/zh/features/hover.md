@@ -59,13 +59,13 @@ tests/snap/hover/symbol_information/04_definition_rendering.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#710 -->
+<!-- BEGIN CAPABILITY: supported clangd#710 -->
 
 **初始化器截断**
 
 过大的初始化器会截断显示，不会完整呈现
 
-显示的定义省略了初始化器，但求值后的 `Value` 字段仍会列出全部 256 个元素。
+显示的定义省略了初始化器，求值后的 `Value` 字段只显示 256 个元素中的前十个。
 
 ```snap
 tests/snap/hover/symbol_information/05_initializer_truncation.cpp
@@ -623,9 +623,9 @@ tests/snap/hover/documentation/12_comment_suppression.cpp
 
 **各处均显示定义文本**
 
-在 `#define`、使用处、`#ifdef` 和 `#undef` 处均显示宏定义
+在 `#define`、使用处、`#ifdef`、`defined` 和 `#undef` 处均显示宏定义
 
-无论宏名称出现在何处，其悬停卡片都会显示对应的 `#define` 文本：包括宏定义本身、使用处、`#ifdef` 条件判断处以及 `#undef` 处。
+无论宏名称出现在何处，其悬停卡片都会显示对应的 `#define` 文本：包括宏定义本身、使用处、`#ifdef` 条件判断处、`defined` 检测处以及 `#undef` 处。
 
 ```snap
 tests/snap/hover/macro_hover/01_macro_definition_sites.cpp
@@ -888,16 +888,30 @@ tests/snap/hover/module_related/01_import_hover.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **模块名悬停**
 
-悬停于模块名时尚不列出其所属文件
+悬停于模块名时显示定义该模块的接口单元
 
-悬停于模块名时，尚不列出声明该模块的文件或分区。
+无论模块名位于 `import` 中还是模块声明中，卡片都会显示模块名及其接口单元所在的文件。
 
 ```snap
-tests/snap/hover/module_related/02_module_name_hover.cpp
+tests/snap/hover/module_related/02_module_name_hover/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**导出状态悬停**
+
+模块中声明的卡片会显示该声明是否被模块导出
+
+已导出声明的卡片中，定义部分会带有 `export`，无论它是单独导出还是位于 `export` 块中；模块未导出、仅在内部使用的声明，以及导出类的成员，则不会带有。
+
+```snap
+tests/snap/hover/module_related/03_export_status.cpp
 ```
 
 <!-- END CAPABILITY -->

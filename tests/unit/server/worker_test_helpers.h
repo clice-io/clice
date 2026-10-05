@@ -1,6 +1,6 @@
 #pragma once
 
-#include <csignal>
+#include <chrono>
 #include <string>
 
 #ifndef _WIN32
@@ -11,28 +11,17 @@
 #include "test/temp_dir.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
-#include "support/filesystem.h"
 #include "worker/protocol.h"
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/bincode.h"
 #include "kota/ipc/peer.h"
 #include "kota/ipc/transport.h"
+#include "kota/zest/async.h"
 
 namespace clice::testing {
 
 namespace {
-
-/// Ignore SIGPIPE so broken pipes from exited workers don't kill the test binary.
-struct SigpipeGuard {
-    SigpipeGuard() {
-#ifndef _WIN32
-        std::signal(SIGPIPE, SIG_IGN);
-#endif
-    }
-};
-
-static SigpipeGuard sigpipe_guard;
 
 /// Resolve path to the clice binary for spawning workers.
 inline std::string clice_binary() {
@@ -58,12 +47,16 @@ inline std::vector<std::string> make_args(const std::string& file_path,
 }
 
 /// Helper: spawn a worker process and return a BincodePeer connected to it.
-struct WorkerHandle {
-    kota::event_loop loop;
+struct WorkerHandle : kota::zest::LoopFixture {
     kota::process proc{};
     std::unique_ptr<kota::ipc::StreamTransport> transport;
     std::unique_ptr<kota::ipc::BincodePeer> peer;
     int stderr_fd = -1;
+
+    WorkerHandle() {
+        // Outlasts the 30s bound the cancellation tests put on a request.
+        watchdog = std::chrono::seconds(45);
+    }
 
     bool spawn(bool stateful = false, std::size_t max_documents = 0) {
         auto binary = clice_binary();
@@ -112,19 +105,17 @@ struct WorkerHandle {
         return true;
     }
 
-    /// Run a coroutine on the event loop and return when it completes.
-    /// Closes the worker's input afterwards — including when the body
-    /// unwound early through a failed CO_ASSERT — so the IO pump drains
-    /// and a failing test reports instead of hanging the suite.
+    /// Run a coroutine on the event loop and return once the worker has
+    /// exited. Closes the worker's input afterwards — including when the
+    /// body unwound early through a failed CO_ASSERT — so the IO pump
+    /// drains and a failing test reports instead of hanging the suite.
     template <typename F>
     void run(F&& coro_factory) {
         auto body = [](WorkerHandle& self, F factory) -> kota::task<> {
             co_await factory();
             self.peer->close_output();
         };
-        loop.schedule(peer->run());
-        loop.schedule(body(*this, std::forward<F>(coro_factory)));
-        loop.run();
+        LoopFixture::run(peer->run(), body(*this, std::forward<F>(coro_factory)), proc.wait());
     }
 };
 

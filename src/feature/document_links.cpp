@@ -19,12 +19,30 @@ auto find_directive_argument(llvm::StringRef content,
                              const clang::LangOptions* lang_opts)
     -> std::optional<LocalSourceRange> {
     auto lexer = Lexer::from_line(content, offset, {.lang_opts = lang_opts});
+    bool directive = lexer.next().kind == clang::tok::hash;
     bool after_keyword = false;
 
     while(true) {
         auto token = lexer.advance();
         if(token.is_eof() || token.is_eod()) {
             return std::nullopt;
+        }
+
+        // A filename passed through a macro argument (`#if HAS(<c.h>)`)
+        // follows no keyword of its own: the offset pins its start.
+        if(directive && token.range.begin == offset) {
+            if(token.kind == clang::tok::string_literal) {
+                return token.range;
+            }
+            if(token.kind == clang::tok::less) {
+                for(auto close = lexer.advance(); !close.is_eod() && !close.is_eof();
+                    close = lexer.advance()) {
+                    if(close.kind == clang::tok::greater) {
+                        return LocalSourceRange{token.range.begin, close.range.end};
+                    }
+                }
+                return std::nullopt;
+            }
         }
 
         if(token.is_identifier()) {
@@ -107,50 +125,6 @@ auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
     std::ranges::sort(links, {}, [](const DocumentLink& link) { return link.range.begin; });
 
     return links;
-}
-
-auto include_definition(CompilationUnitRef unit, std::uint32_t offset)
-    -> std::vector<protocol::Location> {
-    std::vector<protocol::Location> locations;
-
-    auto main_fid = unit.main_file();
-    auto directives_it = unit.directives().find(main_fid);
-    if(directives_it == unit.directives().end()) {
-        return locations;
-    }
-
-    auto content = unit.main_content();
-    auto* lang_opts = &unit.lang_options();
-
-    auto try_directive = [&](clang::SourceLocation loc, llvm::StringRef target) {
-        if(!locations.empty() || target.empty()) {
-            return;
-        }
-        auto [fid, directive_offset] = unit.decompose_location(loc);
-        if(fid != main_fid || directive_offset >= content.size()) {
-            return;
-        }
-        auto range = find_directive_argument(content, directive_offset, lang_opts);
-        if(!range || !range->contains(offset)) {
-            return;
-        }
-        locations.push_back(protocol::Location{
-            .uri = to_uri(target),
-            .range = protocol::Range{},
-        });
-    };
-
-    for(const auto& include: directives_it->second.includes) {
-        if(include.fid.isValid()) {
-            try_directive(include.location, unit.file_path(include.fid));
-        }
-    }
-    for(const auto& has_include: directives_it->second.has_includes) {
-        if(has_include.file) {
-            try_directive(has_include.location, unit.file_path(*has_include.file));
-        }
-    }
-    return locations;
 }
 
 }  // namespace clice::feature

@@ -1,8 +1,10 @@
 #include "compile/implement.h"
 #include "semantic/display.h"
-#include "support/filesystem.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/ipc/lsp/text.h"
+#include "clang/Lex/Preprocessor.h"
 
 namespace clice {
 
@@ -66,12 +68,10 @@ auto CompilationUnitRef::decompose_range(clang::SourceRange range)
 auto CompilationUnitRef::decompose_expansion_range(clang::SourceRange range)
     -> std::pair<clang::FileID, LocalSourceRange> {
     auto [begin, end] = range;
-    if(begin == end) {
-        return decompose_range(expansion_location(begin));
-    } else {
-        return decompose_range(
-            clang::SourceRange(expansion_location(begin), expansion_location(end)));
-    }
+    // An end inside a macro expansion extends to the invocation's last
+    // token: `MAKE_FN(name)` as a whole, not its macro name alone.
+    return decompose_range(
+        clang::SourceRange(expansion_location(begin), self->SM().getExpansionRange(end).getEnd()));
 }
 
 auto CompilationUnitRef::file_id(clang::SourceLocation location) -> clang::FileID {
@@ -87,28 +87,25 @@ auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef
         return it->second;
     }
 
-    auto& fm = self->SM().getFileManager();
-
-    /// Absolutize against the compile's working directory first, then
-    /// resolve through the compiler's VFS so remapped and in-memory
-    /// files canonicalize like on-disk ones. Symlinked spellings of a
-    /// file collapse into one path here; hardlinked spellings do not
-    /// (`real_path` does not fold them), and the cache is keyed by the
-    /// spelling-level FileEntryRef so each keeps its own path — the
-    /// dependency set must cover every spelling the compile read.
-    llvm::SmallString<128> path(entry.getName());
-    fm.makeAbsolutePath(path);
-
-    llvm::SmallString<128> real;
-    if(auto error = fm.getVirtualFileSystem().getRealPath(path, real)) {
-        /// The VFS cannot resolve it; keep the absolute path with dot
-        /// segments removed rather than a raw spelling — consumers stat
-        /// these paths from a different working directory.
-        path::remove_dots(path, /*remove_dot_dot=*/true);
-    } else {
-        path = real;
+    /// Absolutized against the compile's working directory, then named by
+    /// the identity the master interns: symlinked spellings of a file
+    /// collapse into one path here, hardlinked ones do not, and the cache
+    /// is keyed by the spelling-level FileEntryRef so each keeps its own
+    /// path — the dependency set must cover every spelling the compile
+    /// read. A file only memory holds (a header context's fragment) is
+    /// named like a missing one, through its directory.
+    llvm::SmallString<128> spelled(entry.getName());
+    auto& files = self->SM().getFileManager();
+    files.makeAbsolutePath(spelled);
+    // An -ivfsoverlay can name a file by a path only the overlay knows;
+    // the file read is the one it redirects to.
+    if(auto& vfs = files.getVirtualFileSystem(); llvm::isa<llvm::vfs::RedirectingFileSystem>(vfs)) {
+        llvm::SmallString<128> redirected;
+        if(!vfs.getRealPath(spelled, redirected)) {
+            spelled = redirected;
+        }
     }
-    assert(!path.empty() && "Invalid file path");
+    auto path = CanonicalPath(Spelling::absolute(spelled)).str();
 
     /// Allocate the path in the storage.
     auto size = path.size();
@@ -135,6 +132,10 @@ auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
     return file_path(*entry);
 }
 
+auto CompilationUnitRef::workspace() -> llvm::StringRef {
+    return self->workspace;
+}
+
 auto CompilationUnitRef::file_content(clang::FileID fid) -> llvm::StringRef {
     return self->SM().getBufferData(fid);
 }
@@ -147,6 +148,10 @@ auto CompilationUnitRef::main_file() -> clang::FileID {
     return self->SM().getMainFileID();
 }
 
+bool CompilationUnitRef::is_main_file(clang::FileID fid) {
+    return fid == main_file() || (fid.isValid() && fid == self->SM().getPreambleFileID());
+}
+
 auto CompilationUnitRef::main_content() -> llvm::StringRef {
     return file_content(main_file());
 }
@@ -154,10 +159,17 @@ auto CompilationUnitRef::main_content() -> llvm::StringRef {
 auto CompilationUnitRef::line_starts() -> std::span<const std::uint32_t> {
     if(self->line_starts_cache.empty()) {
         auto content = main_content();
-        self->line_starts_cache =
-            kota::ipc::lsp::build_line_starts({content.data(), content.size()});
+        self->line_starts_cache = kota::ipc::lsp::line_starts({content.data(), content.size()});
     }
     return self->line_starts_cache;
+}
+
+auto CompilationUnitRef::non_ascii_lines() -> std::span<const std::uint64_t> {
+    if(!self->non_ascii_cache) {
+        auto content = main_content();
+        self->non_ascii_cache = kota::ipc::lsp::non_ascii_lines({content.data(), content.size()});
+    }
+    return *self->non_ascii_cache;
 }
 
 bool CompilationUnitRef::is_builtin_file(clang::FileID fid) {
@@ -187,6 +199,79 @@ auto CompilationUnitRef::file_location(clang::SourceLocation location) -> clang:
 
 auto CompilationUnitRef::include_location(clang::FileID fid) -> clang::SourceLocation {
     return self->SM().getIncludeLoc(fid);
+}
+
+bool CompilationUnitRef::synthesized(clang::FileID fid) {
+    if(!borrows_context()) {
+        return false;
+    }
+    auto entry = self->SM().getFileEntryRefForID(fid);
+    return entry && self->synthesized.contains(file_path(*entry));
+}
+
+bool CompilationUnitRef::borrows_context() {
+    return !self->synthesized.empty();
+}
+
+auto CompilationUnitRef::source_path(clang::FileID fid) -> llvm::StringRef {
+    if(!synthesized(fid)) {
+        return file_path(fid);
+    }
+    // The fragment's own marker precedes the cut file's text, whose
+    // #line directives would rename what follows them.
+    auto& SM = self->SM();
+    auto text = SM.getBufferData(fid);
+    auto marker = text.find("#line ");
+    if(marker == llvm::StringRef::npos) {
+        return file_path(fid);
+    }
+    auto after = text.find('\n', marker) + 1;
+    return SM.getPresumedLoc(SM.getComposedLoc(fid, after)).getFilename();
+}
+
+bool CompilationUnitRef::host_source(clang::FileID fid) {
+    if(!borrows_context()) {
+        return is_main_file(fid);
+    }
+    if(!synthesized(fid)) {
+        return false;
+    }
+    // The host's first fragment is the one the compile -includes, from
+    // the predefines buffer.
+    if(!self->host) {
+        self->host.emplace();
+        auto& SM = self->SM();
+        auto predefines = self->instance->getPreprocessor().getPredefinesFileID();
+        for(auto path: self->synthesized.keys()) {
+            auto entry = SM.getFileManager().getOptionalFileRef(path);
+            if(!entry) {
+                continue;
+            }
+            auto root = SM.translateFile(*entry);
+            if(root.isValid() && SM.getFileID(SM.getIncludeLoc(root)) == predefines) {
+                *self->host = source_path(root);
+            }
+        }
+    }
+    return source_path(fid) == *self->host;
+}
+
+bool CompilationUnitRef::from_context(clang::FileID fid) {
+    if(!borrows_context()) {
+        return false;
+    }
+    auto [it, inserted] = self->context_files.try_emplace(fid);
+    if(!inserted) {
+        return it->second;
+    }
+    bool result = synthesized(fid);
+    if(!result) {
+        auto include = include_location(fid);
+        result = include.isValid() && from_context(file_id(include));
+    }
+    // The recursion may have grown the map: store through a fresh lookup.
+    self->context_files[fid] = result;
+    return result;
 }
 
 auto CompilationUnitRef::presumed_location(clang::SourceLocation location) -> clang::PresumedLoc {
@@ -289,9 +374,10 @@ std::vector<DepFile> CompilationUnitRef::deps() {
     /// single annotation token). Processing the directive loaded the file
     /// into the SourceManager's content cache, so this looks up the very
     /// buffer the build consumed; only an existence-only probe whose
-    /// content was never read loads it here instead. An unreadable file
-    /// hashes as 0 and the snapshot capture falls back to a
-    /// build_at-guarded disk hash.
+    /// content was never read loads it here instead. An embedded file's
+    /// buffer holds its bytes, hashed as text like every dependency. An
+    /// unreadable file hashes as 0 and the snapshot capture falls back to
+    /// a build_at-guarded disk hash.
     auto add_file = [&](clang::OptionalFileEntryRef file) {
         if(!file) {
             return;
@@ -303,28 +389,24 @@ std::vector<DepFile> CompilationUnitRef::deps() {
         auto it = deps.try_emplace(path, 0).first;
         if(it->second == 0) {
             if(auto buffer = self->SM().getMemoryBufferForFileOrNone(*file)) {
-                it->second = llvm::xxh3_64bits(buffer->getBuffer());
+                it->second = llvm::xxh3_64bits(vfs::without_bom(buffer->getBuffer()));
             }
         }
     };
 
     for(auto& [fid, directive]: directives()) {
         for(auto& include: directive.includes) {
-            /// A failed include leaves an invalid fid — nothing to depend on.
-            if(!include.skipped && include.fid.isValid()) {
+            /// A failed include leaves an invalid fid — nothing to depend
+            /// on; nor does a synthesized one, which no disk file carries.
+            if(!include.skipped && include.fid.isValid() && !synthesized(include.fid)) {
                 add_fid(include.fid);
             }
         }
 
-        /// FIXME: Not-found `__has_include`/`__has_embed` probes leave no
-        /// trace here, so creating the probed file later cannot invalidate
-        /// products built while it was missing. `clang -MD` drops misses
-        /// the same way — the build ecosystem accepts this hole, and even
-        /// clang's preamble simulates the failed lookup's candidate paths
-        /// only for `#include` misses. Rather than stat'ing candidate sets
-        /// per freshness check, the right home is the invalidation
-        /// pipeline: persist unresolved lookups and match them against
-        /// file-creation events from the workspace watcher.
+        /// FIXME: Not-found `__has_embed` probes leave no trace, so
+        /// creating the probed file later cannot invalidate products built
+        /// while it was missing (failed includes and `__has_include` are
+        /// recorded, see absent()).
         for(auto& has_include: directive.has_includes) {
             add_file(has_include.file);
         }
@@ -344,7 +426,25 @@ std::vector<DepFile> CompilationUnitRef::deps() {
     for(auto& dep: deps) {
         result.emplace_back(dep.getKey().str(), dep.getValue());
     }
+    for(auto& path: absent()) {
+        result.push_back({.path = std::move(path), .absent = true});
+    }
 
+    return result;
+}
+
+std::vector<std::string> CompilationUnitRef::absent() {
+    std::vector<std::string> result;
+    for(auto& entry: self->absent) {
+        // The candidates over-approximate where a lookup looked (an
+        // `#include_next` does not start at the first directory, a lookup
+        // also fails on a directory of that name): only a place holding
+        // nothing is absent.
+        if(!vfs::exists(entry.getKey())) {
+            result.emplace_back(entry.getKey());
+        }
+    }
+    std::ranges::sort(result);
     return result;
 }
 

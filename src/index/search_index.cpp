@@ -254,7 +254,8 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     llvm::DenseSet<SymbolHash> seen;
     for(std::uint32_t i = 0; i < snapshot.entries.size(); i += 1) {
         auto& entry = snapshot.entries[i];
-        if(!is_searchable_kind(entry.kind) || entry.name.empty() || entry.hash == 0 ||
+        if(!is_searchable_kind(entry.kind) || entry.name.empty() ||
+           has_flag(entry.flags, SymbolFlags::Unnamed) || entry.hash == 0 ||
            reserved_key(entry.hash) || !seen.insert(entry.hash).second) {
             continue;
         }
@@ -277,10 +278,23 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     for(std::uint32_t doc = 0; doc < count; doc += 1) {
         doc_of.try_emplace(entry_of(doc).hash, doc);
     }
-    // The chain a qualified name spells skips inline namespaces.
+    // The chain a qualified name spells skips transparent scopes: inline
+    // namespaces are documents, anonymous scopes are not, so their parents
+    // are kept apart.
+    llvm::DenseMap<SymbolHash, SymbolHash> anonymous_parents;
+    for(auto& entry: snapshot.entries) {
+        if(has_flag(entry.flags, SymbolFlags::AnonymousScope)) {
+            anonymous_parents.try_emplace(entry.hash, entry.parent);
+        }
+    }
     auto parent_of = [&](std::uint32_t doc) {
         auto parent = entry_of(doc).parent;
         for(std::size_t depth = 0; parent != 0 && depth < max_chain; depth += 1) {
+            if(auto anonymous = anonymous_parents.find(parent);
+               anonymous != anonymous_parents.end()) {
+                parent = anonymous->second;
+                continue;
+            }
             auto it = doc_of.find(parent);
             if(it == doc_of.end()) {
                 return no_doc;
@@ -896,7 +910,9 @@ bool SearchIndex::contains(SymbolHash hash) const {
     });
 }
 
-SearchOutcome SearchIndex::search(const SymbolQuery& query, std::size_t limit) const {
+SearchOutcome SearchIndex::search(const SymbolQuery& query,
+                                  std::size_t limit,
+                                  CanonicalRef workspace) const {
     if(!view || limit == 0 || !query.by_pattern()) {
         return {};
     }
@@ -922,9 +938,10 @@ SearchOutcome SearchIndex::search(const SymbolQuery& query, std::size_t limit) c
     if(!query.paths.empty()) {
         Bitmap allowed;
         for(std::uint32_t i = 0; i < index.paths.size(); i += 1) {
-            auto path = index.paths[i];
+            llvm::SmallString<256> storage;
+            auto file = path::local(to_ref(index.paths[i]), workspace, storage);
             if(llvm::any_of(query.paths, [&](const std::string& wanted) {
-                   return path_matches(wanted, to_ref(path));
+                   return path_matches(wanted, file);
                })) {
                 allowed |= index.file(i);
             }

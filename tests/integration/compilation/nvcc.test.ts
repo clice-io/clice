@@ -3,11 +3,10 @@
 /// parses CUDA files in the device view by default. Windows hosts drive cl,
 /// which the query does not support yet.
 
-import { spawnSync } from "node:child_process";
-import { asLocations } from "@clice/tools/client";
+import { asLocations, runProcess } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
-const hasNvcc = spawnSync("nvcc", ["--version"], { stdio: "ignore" }).status === 0;
+const hasNvcc = (await runProcess("nvcc", ["--version"])).status === 0;
 const runsNvcc = hasNvcc && process.platform !== "win32";
 
 test.skipIf(!runsNvcc)("nvcc direct cuh entry", async ({ session }) => {

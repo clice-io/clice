@@ -11,8 +11,10 @@
 
 #include "command/argument_parser.h"
 #include "command/nvcc.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "support/process.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/async/async.h"
 #include "kota/meta/enum.h"
@@ -29,96 +31,11 @@
 #include "clang/Driver/ToolChain.h"
 #include "clang/Driver/Types.h"
 
-#ifndef _WIN32
-#include <unistd.h>
-extern char** environ;
-#endif
-
 namespace clice {
 
 namespace {
 
 namespace ranges = std::ranges;
-
-#ifndef _WIN32
-/// Process environment with LANG pinned to C, so driver output is not localized.
-/// On Windows the env is left empty so the child inherits the parent's
-/// environment, which MSVC and clang rely on to locate the standard library.
-const std::vector<std::string>& process_env() {
-    const static auto env = [] {
-        std::vector<std::string> result;
-        if(environ) {
-            for(char** e = environ; *e; ++e) {
-                if(!llvm::StringRef(*e).starts_with("LANG="))
-                    result.emplace_back(*e);
-            }
-        }
-        result.emplace_back("LANG=C");
-        return result;
-    }();
-    return env;
-}
-#endif
-
-kota::task<std::string> drain_pipe(kota::pipe p) {
-    std::string buf;
-    while(true) {
-        auto result = co_await p.read();
-        if(!result.has_value())
-            break;
-        auto& chunk = result.value();
-        if(chunk.empty())
-            break;
-        buf += chunk;
-    }
-    co_return buf;
-}
-
-kota::task<std::expected<std::string, std::string>>
-    execute_async(std::vector<std::string> arguments,
-                  bool capture_stdout = false,
-                  std::string cwd = {}) {
-    kota::process::options opts;
-    opts.file = arguments[0];
-    opts.args = std::move(arguments);
-    opts.cwd = std::move(cwd);
-#ifndef _WIN32
-    opts.env = process_env();
-#endif
-    opts.streams = {
-        kota::process::stdio::ignore(),
-        kota::process::stdio::pipe(false, true),
-        kota::process::stdio::pipe(false, true),
-    };
-
-    LOG_INFO("Execute command: {}", opts.file);
-
-    auto spawn = kota::process::spawn(opts);
-    if(!spawn.has_value()) {
-        co_return std::unexpected(
-            std::format("Failed to spawn {}: {}", opts.file, spawn.error().message()));
-    }
-    auto& s = *spawn;
-
-    // Drain both pipes concurrently with process exit: a child blocking on a
-    // full pipe would otherwise deadlock against our wait().
-    auto [stdout_data, stderr_data] = co_await kota::when_all(drain_pipe(std::move(s.stdout_pipe)),
-                                                              drain_pipe(std::move(s.stderr_pipe)));
-
-    auto exit_result = co_await s.proc.wait();
-    if(!exit_result.has_value()) {
-        co_return std::unexpected(
-            std::format("Process wait failed: {}", exit_result.error().message()));
-    }
-
-    auto& exit = *exit_result;
-    if(exit.status != 0) {
-        co_return std::unexpected(
-            std::format("Process {} exited with code {}", opts.file, exit.status));
-    }
-
-    co_return capture_stdout ? std::move(stdout_data) : std::move(stderr_data);
-}
 
 std::expected<void, std::string> query_driver(
     llvm::ArrayRef<const char*> arguments,
@@ -142,7 +59,9 @@ std::expected<void, std::string> query_driver(
     /// inject related commands before querying.
     clang::driver::Driver driver(/*DriverExecutable=*/arguments[0],
                                  /*TargetTriple=*/llvm::sys::getDefaultTargetTriple(),
-                                 /*Diags=*/engine);
+                                 /*Diags=*/engine,
+                                 /*Title=*/"clang LLVM compiler",
+                                 /*VFS=*/llvm::makeIntrusiveRefCnt<vfs::View>());
     driver.setCheckInputsExist(false);
     driver.setProbePrecompiled(false);
 
@@ -195,12 +114,15 @@ std::vector<std::string> parse_cc1_output(llvm::StringRef content) {
         llvm::cl::TokenizeGNUCommandLine(line, saver, args);
 
         using namespace std::string_view_literals;
-        if(args.size() < 2 || args[1] != "-cc1"sv)
+        // A multi-call llvm (LLVM_TOOL_LLVM_DRIVER_BUILD, as in xclang) runs
+        // cc1 as `llvm clang -cc1`: the tool's name comes before -cc1.
+        std::size_t cc1 = args.size() > 2 && args[1] != "-cc1"sv && args[2] == "-cc1"sv ? 2 : 1;
+        if(args.size() <= cc1 || args[cc1] != "-cc1"sv)
             continue;
 
         std::vector<std::string> cc1_args;
         cc1_args.emplace_back(args[0]);
-        cc1_args.emplace_back(args[1]);
+        cc1_args.emplace_back(args[cc1]);
 
         // Parse with CC1 visibility: the external driver may be newer than the
         // linked clang, so flags it emits that our cc1 does not understand
@@ -210,7 +132,7 @@ std::vector<std::string> parse_cc1_output(llvm::StringRef content) {
         // through to preserve the exact spelling the driver emitted.
         // FIXME: Long-term we should unify the command pipeline so the driver
         // version always matches the embedded LLVM.
-        std::vector<std::string> raw(args.begin() + 2, args.end());
+        std::vector<std::string> raw(args.begin() + cc1 + 1, args.end());
         auto options =
             kota::option::ParseOptions{.greedy_unknown = true, .visibility = option::CC1Option};
         for(auto& r: option::table().parse(raw, options)) {
@@ -239,11 +161,11 @@ struct GCCToolchainFlags {
 
 kota::task<std::expected<GCCToolchainFlags, std::string>> query_gcc_flags(std::string driver,
                                                                           std::string cwd) {
-    auto target = co_await execute_async({driver, "-dumpmachine"}, true, cwd);
+    auto target = co_await execute({driver, "-dumpmachine"}, true, cwd);
     if(!target)
         co_return std::unexpected(std::move(target.error()));
 
-    auto search_dirs = co_await execute_async({driver, "-print-search-dirs"}, true, cwd);
+    auto search_dirs = co_await execute({driver, "-print-search-dirs"}, true, cwd);
     if(!search_dirs)
         co_return std::unexpected(std::move(search_dirs.error()));
 
@@ -272,7 +194,7 @@ kota::task<std::expected<GCCToolchainFlags, std::string>> query_gcc_flags(std::s
 /// (a stale CDB directory, or a foreign-platform path): probing from the
 /// process cwd degrades the answer instead of failing the spawn.
 std::string probe_cwd(llvm::StringRef wanted) {
-    if(wanted.empty() || !fs::is_directory(wanted)) {
+    if(wanted.empty() || !vfs::is_directory(wanted)) {
         return {};
     }
     return wanted.str();
@@ -340,7 +262,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
         }
     }
 
-    if(!fs::exists(driver) || !fs::can_execute(driver))
+    if(!vfs::exists(driver) || !llvm::sys::fs::can_execute(driver))
         co_return std::unexpected(
             std::format("Driver {} not found or not executable", driver.str()));
 
@@ -349,11 +271,12 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
     /// Create a file with the kind's suffix, because the real input may not
     /// exist on disk (and a borrowed header must probe as the host's
     /// language, not as its own extension).
-    llvm::SmallString<64> src_path;
-    if(auto e = fs::createTemporaryFile("query-toolchain", suffix, src_path))
-        co_return std::unexpected(std::format("Failed to create temp file: {}", e.message()));
+    auto src_path = vfs::temp_file("query-toolchain", suffix);
+    if(!src_path)
+        co_return std::unexpected(
+            std::format("Failed to create temp file: {}", src_path.error().message()));
     auto cleanup = llvm::make_scope_exit([&] {
-        if(auto e = fs::remove(src_path))
+        if(auto e = vfs::remove(*src_path))
             LOG_ERROR("Fail to remove temporary file: {}", e);
     });
 
@@ -363,7 +286,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
     llvm::SmallVector<const char*, 256> args;
     args.emplace_back(driver.data());
     args.append(spec.argv.begin() + 1, spec.argv.end());
-    args.insert(args.begin() + spec.slot, src_path.c_str());
+    args.insert(args.begin() + spec.slot, src_path->c_str());
 
     std::vector<std::string> cc1_args;
 
@@ -415,7 +338,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
             for(auto arg: remaining)
                 exec_args.emplace_back(arg);
 
-            auto content = co_await execute_async(std::move(exec_args), false, spec.cwd);
+            auto content = co_await execute(std::move(exec_args), false, spec.cwd);
             if(!content)
                 co_return std::unexpected(std::move(content.error()));
 
@@ -458,25 +381,22 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
             bool cuda_input = spec.kind == "cuda";
             llvm::StringRef probe_ext = cuda_input ? "cu" : llvm::StringRef(suffix);
 
-            llvm::SmallString<64> nvcc_probe;
-            if(auto e = fs::createTemporaryFile("query-toolchain", probe_ext, nvcc_probe))
+            auto nvcc_probe = vfs::temp_file("query-toolchain", probe_ext);
+            if(!nvcc_probe)
                 co_return std::unexpected(
-                    std::format("Failed to create temp file: {}", e.message()));
+                    std::format("Failed to create temp file: {}", nvcc_probe.error().message()));
             auto nvcc_cleanup = llvm::make_scope_exit([&] {
-                if(auto e = fs::remove(nvcc_probe))
+                if(auto e = vfs::remove(*nvcc_probe))
                     LOG_ERROR("Fail to remove temporary file: {}", e);
             });
 
-            std::vector<std::string> dryrun_args = {driver.str(),
-                                                    "--dryrun",
-                                                    "-c",
-                                                    std::string(nvcc_probe)};
+            std::vector<std::string> dryrun_args = {driver.str(), "--dryrun", "-c", *nvcc_probe};
             for(llvm::StringRef arg: args) {
                 if(is_nvcc_probe_flag(arg))
                     dryrun_args.push_back(arg.str());
             }
 
-            auto dryrun = co_await execute_async(std::move(dryrun_args), false, spec.cwd);
+            auto dryrun = co_await execute(std::move(dryrun_args), false, spec.cwd);
             if(!dryrun)
                 co_return std::unexpected(std::move(dryrun.error()));
 
@@ -492,14 +412,14 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
                 std::string resolved_host;
                 for(auto& dir: info->search_path) {
                     auto candidate = path::join(dir, host);
-                    if(fs::exists(candidate) && fs::can_execute(candidate)) {
+                    if(vfs::exists(candidate) && llvm::sys::fs::can_execute(candidate)) {
                         resolved_host = std::move(candidate);
                         break;
                     }
                 }
                 if(resolved_host.empty()) {
                     auto sibling = path::join(path::parent_path(driver), host);
-                    if(fs::exists(sibling) && fs::can_execute(sibling))
+                    if(vfs::exists(sibling) && llvm::sys::fs::can_execute(sibling))
                         resolved_host = std::move(sibling);
                 }
                 if(resolved_host.empty()) {
@@ -647,7 +567,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
     // paths verbatim, without canonicalizing them.
     std::erase_if(cc1_args, [&](const std::string& arg) {
         llvm::StringRef s(arg);
-        return s == src_path || s == "-fmodules-reduced-bmi" || s.starts_with("-fmodule-output");
+        return s == *src_path || s == "-fmodules-reduced-bmi" || s.starts_with("-fmodule-output");
     });
 
     if(cc1_args.empty())
@@ -702,27 +622,8 @@ bool search_env_all_absolute() {
     return result;
 }
 
-/// Options whose value names a filesystem location the driver resolves
-/// itself — a relative value ties the probe to the working directory even
-/// when it carries no separator (--sysroot=sdk).
-bool is_path_taking_option(unsigned id) {
-    switch(id) {
-        case option::OPT__sysroot_EQ:
-        case option::OPT__sysroot:
-        case option::OPT_isysroot:
-        case option::OPT_B:
-        case option::OPT_gcc_toolchain:
-        case option::OPT_gcc_install_dir_EQ:
-        case option::OPT_cuda_path_EQ:
-        case option::OPT_resource_dir:
-        case option::OPT_resource_dir_EQ:
-        case option::OPT_config:
-        case option::OPT_config_system_dir_EQ:
-        case option::OPT_config_user_dir_EQ: return true;
-        default: return false;
-    }
-}
-
+/// Whether an option clang does not know may name a path relative to the
+/// working directory: nothing tells, so any relative-looking value does.
 bool relative_suspect(llvm::StringRef value) {
     if(value.empty() || path::is_absolute(value)) {
         return false;
@@ -850,14 +751,8 @@ std::expected<std::vector<std::string>, std::string>
             spec.kind = arguments[i + 1];
     }
 
-    std::expected<std::vector<std::string>, std::string> result;
-    kota::event_loop loop;
-    auto task = [&]() -> kota::task<> {
-        result = co_await query_one(spec);
-    };
-    loop.schedule(task());
-    loop.run();
-    return result;
+    auto [ended] = kota::run(query_one(spec));
+    return std::move(*ended);
 }
 
 Toolchain::ProbeKey Toolchain::probe_key(ConfigID id, InputKind input) {
@@ -882,23 +777,17 @@ Toolchain::ProbeKey Toolchain::probe_key(ConfigID id, InputKind input) {
         path::is_absolute(driver) || (!driver.contains('/') && !driver.contains('\\'));
 #endif
 
+    /// A known option's path values were anchored when the command was
+    /// read (names_path); only an unknown one can still hold a
+    /// relative path.
     bool values_clean = true;
     for(auto& arg: config.args) {
-        if(!in_probe_view(arg, config.family)) {
+        if(arg.opt_id != option::OPT_UNKNOWN || !in_probe_view(arg, config.family)) {
             continue;
         }
-        if(arg.opt_id == option::OPT_UNKNOWN) {
-            llvm::StringRef spelling(arg.spelling);
-            if(relative_suspect(spelling.substr(spelling.find('=') + 1))) {
-                values_clean = false;
-            }
-            continue;
-        }
-        for(llvm::StringRef value: arg.values) {
-            if(relative_suspect(value) ||
-               (is_path_taking_option(arg.opt_id) && !path::is_absolute(value))) {
-                values_clean = false;
-            }
+        llvm::StringRef spelling(arg.spelling);
+        if(relative_suspect(spelling.substr(spelling.find('=') + 1))) {
+            values_clean = false;
         }
     }
 
@@ -939,7 +828,7 @@ Toolchain::ProbeKey Toolchain::probe_key(ConfigID id, InputKind input) {
     return out;
 }
 
-Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config, bool cwd_sensitive) {
+Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config) {
     ProbeArgv out;
     out.argv.push_back(config.driver);
     if(config.subcommand) {
@@ -963,34 +852,7 @@ Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config, bool cwd
             out.argv.push_back(arg.spelling);
             continue;
         }
-
-        /// A cwd-sensitive probe cannot rely on the working directory for
-        /// the in-process driver branches — relative path values absolutize
-        /// here (the subprocess branches also run with cwd = directory,
-        /// which resolves everything else, e.g. driver config files).
-        if(cwd_sensitive) {
-            Arg adjusted = arg;
-            llvm::SmallVector<const char*, 2> values;
-            bool changed = false;
-            for(llvm::StringRef value: arg.values) {
-                bool pathy =
-                    relative_suspect(value) || (is_path_taking_option(arg.opt_id) &&
-                                                !path::is_absolute(value) && !value.empty());
-                if(pathy) {
-                    values.push_back(db.strings.save(path::join(config.directory, value)).data());
-                    changed = true;
-                } else {
-                    values.push_back(value.data());
-                }
-            }
-            if(changed) {
-                adjusted.values = values;
-                render_arg(adjusted, emit);
-                continue;
-            }
-        }
-
-        render_arg(arg, emit);
+        render_driver_arg(arg, config.family, emit);
     }
 
     return out;
@@ -1064,28 +926,49 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
     }
 
     /// Preserve a real LLVM-MinGW resource tree (a matched installation:
-    /// resource headers and libc++ belong together). Other external
-    /// resource paths are replaced with ours to keep the embedded frontend
-    /// and builtin headers version-matched.
+    /// resource headers and libc++ belong together). Otherwise the external
+    /// resource dir and its builtin headers are replaced with ours to keep
+    /// them version-matched with the embedded frontend. Everything else the
+    /// driver derived from its resource dir stays external — sanitizer
+    /// ignorelists under share/, runtime libraries under lib/: the driver
+    /// verified those files exist there, our tree ships include/ alone, and
+    /// cc1 aborts the process on an ignorelist it cannot open.
     if(!resource_dir().empty()) {
         llvm::StringRef old_resource_dir;
         for(auto& arg: staged) {
             if((arg.opt_id == option::OPT_resource_dir ||
                 arg.opt_id == option::OPT_resource_dir_EQ) &&
                arg.values.size() == 1) {
-                old_resource_dir = arg.values[0];
+                // A trailing separator on the command's -resource-dir reaches
+                // cc1 verbatim while the derived paths append without doubling it.
+                old_resource_dir = llvm::StringRef(arg.values[0]).rtrim("/\\");
                 break;
             }
         }
-        bool keep_external =
-            uses_windows_gnu_target(config) && llvm::sys::fs::is_directory(old_resource_dir);
+        bool keep_external = uses_windows_gnu_target(config) && vfs::is_directory(old_resource_dir);
         if(!old_resource_dir.empty() && old_resource_dir != resource_dir() && !keep_external) {
+            // The remainder below the resource dir when ours ships it (the
+            // resource dir itself or its builtin headers), separators dropped.
+            auto shipped = [](llvm::StringRef rest) -> std::optional<llvm::StringRef> {
+                if(!rest.empty() && rest.front() != '/' && rest.front() != '\\') {
+                    return std::nullopt;
+                }
+                rest = rest.ltrim("/\\");
+                if(rest.empty() || rest == "include" || rest.starts_with("include/") ||
+                   rest.starts_with("include\\")) {
+                    return rest;
+                }
+                return std::nullopt;
+            };
             for(auto& arg: staged) {
                 for(auto& value: arg.values) {
-                    llvm::StringRef s(value);
-                    if(s.starts_with(old_resource_dir)) {
-                        auto replaced =
-                            resource_dir().str() + s.substr(old_resource_dir.size()).str();
+                    llvm::StringRef rest(value);
+                    if(!rest.consume_front(old_resource_dir)) {
+                        continue;
+                    }
+                    if(auto tail = shipped(rest)) {
+                        auto replaced = tail->empty() ? resource_dir().str()
+                                                      : path::join(resource_dir(), *tail);
                         value = db.strings.save(replaced).data();
                     }
                 }
@@ -1143,18 +1026,19 @@ Toolchain::ProbeAdmission Toolchain::admit_probe(ConfigID id, InputKind input) {
             return admission;
         }
         // Cooldown over: the failure may have been transient — retry the
-        // real query (cf. CrashBudget's bounded-burn revival).
+        // real query (cf. BlameBudget's bounded-burn revival).
         failed.erase(failed_it);
     }
 
     auto& config = db.config(id);
-    auto argv = probe_argv(config, pk.cwd_sensitive);
+    auto argv = probe_argv(config);
     admission.kind = ProbeAdmission::Kind::Ready;
     admission.spec.argv = std::move(argv.argv);
     admission.spec.slot = argv.slot;
     admission.spec.kind = input.value;
     admission.spec.family = config.family;
-    admission.spec.cwd = probe_cwd(pk.cwd_sensitive ? config.directory : db.workspace_root);
+    admission.spec.cwd =
+        probe_cwd(pk.cwd_sensitive ? config.directory : llvm::StringRef(db.workspace_root));
     return admission;
 }
 
@@ -1185,14 +1069,8 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(ConfigID id
     if(admission.kind == ProbeAdmission::Kind::Ready) {
         LOG_WARN("Toolchain probe miss: driver={} kind={}", db.config(id).driver, input.value);
 
-        std::expected<std::vector<std::string>, std::string> result;
-        kota::event_loop loop;
-        auto task = [&]() -> kota::task<> {
-            result = co_await query_one(admission.spec);
-        };
-        loop.schedule(task());
-        loop.run();
-
+        auto [ended] = kota::run(query_one(admission.spec));
+        auto& result = *ended;
         land_probe(admission.key, result);
         if(!result) {
             return std::unexpected(std::move(result.error()));
@@ -1243,23 +1121,19 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
         co_return QueryOutcome{std::move(p.key), std::move(result)};
     };
 
-    kota::small_vector<QueryOutcome> outcomes;
-
-    kota::event_loop loop;
-    auto run = [&]() -> kota::task<> {
+    auto query_all = [&]() -> kota::task<kota::small_vector<QueryOutcome>> {
         std::vector<kota::task<QueryOutcome>> tasks;
         tasks.reserve(pending.size());
         for(auto& p: pending) {
             tasks.push_back(make_task(std::move(p)));
         }
 
-        outcomes = co_await kota::when_all(std::move(tasks));
+        co_return co_await kota::when_all(std::move(tasks));
     };
-    loop.schedule(run());
-    loop.run();
+    auto [outcomes] = kota::run(query_all());
 
     std::size_t succeeded = 0;
-    for(auto& o: outcomes) {
+    for(auto& o: *outcomes) {
         if(o.result) {
             succeeded += 1;
         } else {
@@ -1271,12 +1145,8 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
     LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);
 }
 
-#ifdef CLICE_ENABLE_TEST
-
 std::vector<std::string> Toolchain::parse_cc1(llvm::StringRef content) {
     return parse_cc1_output(content);
 }
-
-#endif
 
 }  // namespace clice

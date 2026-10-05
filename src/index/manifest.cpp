@@ -6,6 +6,8 @@
 
 #include "index/serialization.h"
 
+#include "llvm/ADT/STLExtras.h"
+
 namespace clice::index {
 
 namespace {
@@ -33,6 +35,14 @@ struct ManifestBlob {
     /// contribution_count × (varint fv, 8-byte little-endian rows hash —
     /// hashes are random bits, varint would only inflate them)
     std::vector<std::uint8_t> contributions;
+
+    std::vector<std::uint32_t> absent;
+
+    /// TUManifest::local_fanout as columns: the symbols ascending, each
+    /// one's contribution indices back to back.
+    std::vector<std::uint64_t> local_symbols;
+    std::vector<std::uint32_t> local_file_ends;
+    std::vector<std::uint32_t> local_files;
 };
 
 void write_varint(std::vector<std::uint8_t>& out, std::uint64_t value) {
@@ -89,6 +99,16 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
         std::uint8_t bytes[8];
         std::memcpy(bytes, &hash, sizeof(hash));
         blob.contributions.insert(blob.contributions.end(), bytes, bytes + sizeof(bytes));
+    }
+
+    for(auto fv: manifest.absent) {
+        blob.absent.push_back(fv.raw);
+    }
+
+    for(auto& fanout: manifest.local_fanout) {
+        blob.local_symbols.push_back(fanout.symbol);
+        blob.local_files.insert(blob.local_files.end(), fanout.files.begin(), fanout.files.end());
+        blob.local_file_ends.push_back(static_cast<std::uint32_t>(blob.local_files.size()));
     }
 
     serialize_blob(blob, os);
@@ -164,6 +184,32 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     }
     if(pos != contributions.size()) {
         return std::nullopt;
+    }
+
+    for(auto fv: blob.absent) {
+        manifest.absent.push_back(VersionID{fv});
+    }
+
+    if(blob.local_file_ends.size() != blob.local_symbols.size() ||
+       !monotone_ends(blob.local_file_ends, blob.local_files.size()) ||
+       (!blob.local_file_ends.empty() && blob.local_file_ends.back() != blob.local_files.size())) {
+        return std::nullopt;
+    }
+    if(llvm::any_of(blob.local_files,
+                    [&](std::uint32_t index) { return index >= blob.contribution_count; })) {
+        return std::nullopt;
+    }
+    std::uint32_t begin = 0;
+    for(std::size_t i = 0; i < blob.local_symbols.size(); i += 1) {
+        if(i > 0 && blob.local_symbols[i] <= blob.local_symbols[i - 1]) {
+            return std::nullopt;
+        }
+        auto end = blob.local_file_ends[i];
+        manifest.local_fanout.push_back({
+            .symbol = blob.local_symbols[i],
+            .files = {blob.local_files.begin() + begin, blob.local_files.begin() + end},
+        });
+        begin = end;
     }
 
     return manifest;

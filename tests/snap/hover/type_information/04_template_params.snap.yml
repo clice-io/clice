@@ -11,7 +11,7 @@ Type: `typename`
 ---
 ```cpp
 // In accept_type
-public: typename Value = long
+typename Value = long
 ```
 
 02_template_template_param: { range: "12:36-12:45" }
@@ -23,7 +23,7 @@ Type: `template <typename> class`
 ---
 ```cpp
 // In accept_template
-public: template <typename> class Container
+template <typename> class Container
 ```
 
 03_non_type_param: { range: "15:15-15:20" }
@@ -35,5 +35,5 @@ Type: `long`
 ---
 ```cpp
 // In accept_value
-public: long Count = 8
+long Count = 8
 ```

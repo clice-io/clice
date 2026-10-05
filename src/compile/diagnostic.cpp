@@ -87,7 +87,7 @@ std::optional<std::string> DiagnosticID::diagnostic_document_uri() const {
             // clice's own guidance diagnostics link to the setup guide that
             // explains how to provide a compilation database.
             if(name == "inferred-compile-command") {
-                return "https://clice.io/en/guide/quick-start";
+                return "https://docs.clice.io/clice/guide/quick-start#project-setup";
             }
             return std::nullopt;
         }
@@ -188,6 +188,31 @@ class DiagnosticCollector : public clang::DiagnosticConsumer {
 public:
     DiagnosticCollector(CompilationUnitRef unit) : unit(unit) {}
 
+    /// Decompose a file location; the preamble a PCH recorded of the main
+    /// file is the main file.
+    auto decompose(clang::SourceLocation location) -> std::pair<clang::FileID, std::uint32_t> {
+        auto [fid, offset] = unit.decompose_location(location);
+        return {unit.is_main_file(fid) ? unit.main_file() : fid, offset};
+    }
+
+    /// The range in `fid` a source range covers, half-open; nullopt when it
+    /// crosses files or a macro expansion hides it.
+    auto file_range(clang::CharSourceRange range, clang::FileID fid)
+        -> std::optional<LocalSourceRange> {
+        range = clang::Lexer::makeFileCharRange(range, unit->SM(), unit.lang_options());
+        if(range.isInvalid()) {
+            return std::nullopt;
+        }
+        auto [begin_fid, begin] = decompose(range.getBegin());
+        auto [end_fid, end] = decompose(range.getEnd());
+        if(begin_fid != fid || end_fid != fid) {
+            return std::nullopt;
+        }
+        return LocalSourceRange{begin, end};
+    }
+
+    /// The first range that holds the caret, as clang underlines it; else
+    /// the token at the caret.
     auto diagnostic_range(const clang::Diagnostic& diagnostic)
         -> std::optional<std::pair<clang::FileID, LocalSourceRange>> {
         /// If location is invalid, it represents the diagnostic is
@@ -201,34 +226,21 @@ public:
         location = unit.file_location(location);
         assert(location.isFileID());
 
-        auto [fid, offset] = unit.decompose_location(location);
-
-        /// Select a proper range for the diagnostic.
+        auto [fid, offset] = decompose(location);
+        auto holds_caret = [&](LocalSourceRange range) {
+            return range.begin <= offset && offset < range.end;
+        };
         for(auto range: diagnostic.getRanges()) {
-            range = clang::Lexer::makeFileCharRange(range,
-                                                    unit.context().getSourceManager(),
-                                                    unit.lang_options());
-
-            auto [begin, end] = range.getAsRange();
-            auto [begin_fid, begin_offset] = unit.decompose_location(begin);
-            if(begin_fid != fid || begin_offset <= offset) {
-                continue;
+            if(auto local = file_range(range, fid); local && holds_caret(*local)) {
+                return std::pair{fid, *local};
             }
-
-            auto [end_fid, end_offset] = unit.decompose_location(end);
-            if(range.isTokenRange()) {
-                end_offset += unit.token_length(end);
-            }
-
-            if(end_fid == fid && end_offset >= offset) {
-                return std::pair{
-                    fid,
-                    LocalSourceRange{begin_offset, end_offset}
-                };
+        }
+        for(auto& hint: diagnostic.getFixItHints()) {
+            if(auto local = file_range(hint.RemoveRange, fid); local && holds_caret(*local)) {
+                return std::pair{fid, *local};
             }
         }
 
-        /// Use token range.
         auto end_offset = offset + unit.token_length(location);
         return std::pair{
             fid,
@@ -242,6 +254,9 @@ public:
                           const clang::Diagnostic& raw_diagnostic) override {
         auto& diagnostic = unit.diagnostics().emplace_back();
         diagnostic.id.value = raw_diagnostic.getID();
+        diagnostic.error_by_default =
+            raw_diagnostic.getDiags()->getDiagnosticIDs()->isDefaultMappingAsError(
+                raw_diagnostic.getID());
 
         if(!is_note(level)) {
             if(unit->checker) {
@@ -276,9 +291,6 @@ public:
         if(unit->checker) {
             unit->checker->adjust_diag(diagnostic);
         }
-
-        /// TODO: handle FixIts
-        /// raw_diagnostic.getFixItHints();
     }
 
     void EndSourceFile() override {}

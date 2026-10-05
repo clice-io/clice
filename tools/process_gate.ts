@@ -15,6 +15,13 @@ export const SANITIZER_MARKERS = [
 const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
 const CRASH_TRACE_MARKER = "=== CRASH STACK TRACE ===";
 
+/// The environment servers under test run in: every freshness answer given
+/// without a look at the disk is checked against one, a contradiction
+/// being an anomaly the gates catch.
+export function serverEnv(): NodeJS.ProcessEnv {
+    return { ...process.env, CLICE_SHADOW_FRESHNESS: "1" };
+}
+
 export function logFiles(root: string | null, ignoreLogs?: ReadonlySet<string>): string[] {
     if (root === null) {
         return [];

@@ -2,7 +2,7 @@ name: clice
 
 # Promotes already-built, already-tested packages to a release. There is no
 # release build: every CI run on main packages the binaries its test suites
-# just validated (see native-test.yml / cross-pair.yml), and this workflow
+# just validated (see native-test.yml), and this workflow
 # only downloads those artifacts from the green run of the tagged commit,
 # renames them to their asset names, and attaches them to the release. It
 # also re-uploads the packages into the current run so publish-vscode.yml
@@ -50,8 +50,8 @@ jobs:
                       package-clice.aarch64-unknown-linux-gnu.tar.gz \
                       package-clice.aarch64-apple-darwin.tar.gz \
                       package-clice.x86_64-apple-darwin.tar.gz \
-                      package-clice.x86_64-pc-windows-msvc.zip \
-                      package-clice.aarch64-pc-windows-msvc.zip; do
+                      package-clice.x86_64-w64-mingw32.zip \
+                      package-clice.aarch64-w64-mingw32.zip; do
             LIVE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?name=$NAME" \
               --jq '[.artifacts[] | select(.expired | not)] | length')
             if [ "$LIVE" -eq 0 ]; then
@@ -94,10 +94,10 @@ jobs:
           - triple: x86_64-apple-darwin
             ext: tar.gz
             symbol_ext: tar.xz
-          - triple: x86_64-pc-windows-msvc
+          - triple: x86_64-w64-mingw32
             ext: zip
             symbol_ext: zip
-          - triple: aarch64-pc-windows-msvc
+          - triple: aarch64-w64-mingw32
             ext: zip
             symbol_ext: zip
     runs-on: ubuntu-latest

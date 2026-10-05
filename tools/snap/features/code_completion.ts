@@ -11,15 +11,19 @@ import {
 } from "../render.ts";
 import { yamlStr } from "../snapshot.ts";
 
-/// A completion item reduced to the fields the snapshot pins. `score` is
-/// the fuzzy match score the feature layer stores in sort_text.
+/// A completion item reduced to the fields the snapshot pins. `edit` is
+/// the replace range; `insertRange` the shorter insert range of an
+/// insert/replace edit, when it differs. `sortText` orders the entries the
+/// way a client does.
 export interface CompletionEntry {
     label: string;
     kind: string | null;
-    score: number;
+    sortText: string;
+    filter: string | null;
     detail: string | null;
     description: string | null;
     edit: string | null;
+    insertRange: string | null;
     newText: string | null;
     snippet: boolean;
     deprecated: boolean;
@@ -33,21 +37,33 @@ interface RawPosition {
 /// Raw inspect JSON for one completion item: the protocol type serialized
 /// with native snake_case names and string enums, ranges already in LSP
 /// positions.
+interface RawRange {
+    start: RawPosition;
+    end: RawPosition;
+}
+
 interface RawCompletionItem {
     label: string;
     kind?: string | null;
     sort_text?: string | null;
+    filter_text?: string | null;
     label_details?: { detail?: string | null; description?: string | null } | null;
     tags?: string[] | null;
     insert_text?: string | null;
     insert_text_format?: string | null;
-    text_edit?: { range: { start: RawPosition; end: RawPosition }; new_text: string } | null;
+    text_edit?:
+        | { range: RawRange; new_text: string }
+        | { insert: RawRange; replace: RawRange; new_text: string }
+        | null;
 }
 
 function renderCompletionEntry(entry: CompletionEntry): string {
     let line = `- { label: ${yamlStr(entry.label)}`;
     if (entry.kind !== null) {
         line += `, kind: ${entry.kind}`;
+    }
+    if (entry.filter !== null && entry.filter !== entry.label) {
+        line += `, filter: ${yamlStr(entry.filter)}`;
     }
     if (entry.detail !== null) {
         line += `, detail: ${yamlStr(entry.detail)}`;
@@ -57,6 +73,9 @@ function renderCompletionEntry(entry: CompletionEntry): string {
     }
     if (entry.edit !== null) {
         line += `, edit: "${entry.edit}"`;
+    }
+    if (entry.insertRange !== null) {
+        line += `, insert_range: "${entry.insertRange}"`;
     }
     if (entry.newText !== null && entry.newText !== entry.label) {
         line += `, insert: ${yamlStr(entry.newText)}`;
@@ -72,16 +91,15 @@ function renderCompletionEntry(entry: CompletionEntry): string {
 
 export function completionLines(entries: CompletionEntry[]): string[] {
     // The feature layer returns candidates unsorted (clang's order is
-    // host-dependent) and scores carry architecture-dependent last bits
-    // (FMA contraction), so the snapshot order quantizes the score and
-    // then falls back to the full rendered line — deterministic on every
-    // host, unlike a raw score-then-label sort whose remaining ties kept
-    // the host-dependent input order.
+    // host-dependent), so ties of the sort text fall back to the full
+    // rendered line — deterministic on every host, unlike a label sort
+    // whose remaining ties kept the host-dependent input order.
+    const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
     const rendered = entries.map((entry) => ({
-        rank: Math.round(entry.score * 1e4),
+        sortText: entry.sortText,
         line: renderCompletionEntry(entry),
     }));
-    rendered.sort((a, b) => b.rank - a.rank || (a.line < b.line ? -1 : a.line > b.line ? 1 : 0));
+    rendered.sort((a, b) => order(a.sortText, b.sortText) || order(a.line, b.line));
     const out = rendered.slice(0, SNAP_ITEM_LIMIT).map((entry) => entry.line);
     if (rendered.length > SNAP_ITEM_LIMIT) {
         out.push(`… +${rendered.length - SNAP_ITEM_LIMIT} more`);
@@ -89,23 +107,26 @@ export function completionLines(entries: CompletionEntry[]): string[] {
     return out;
 }
 
-function rawRange(range: { start: RawPosition; end: RawPosition }): string {
+function rawRange(range: RawRange): string {
     return (
         `${range.start.line}:${range.start.character}-` + `${range.end.line}:${range.end.character}`
     );
 }
 
 function rawCompletionEntry(item: RawCompletionItem): CompletionEntry {
+    const edit = item.text_edit ?? null;
+    const replace = edit === null ? null : "range" in edit ? edit.range : edit.replace;
+    const insert = edit !== null && "insert" in edit ? rawRange(edit.insert) : null;
     return {
         label: item.label,
         kind: item.kind ?? null,
-        score: item.sort_text != null ? Number.parseFloat(item.sort_text) : 0,
+        sortText: item.sort_text ?? "",
+        filter: item.filter_text ?? null,
         detail: item.label_details?.detail ?? null,
         description: item.label_details?.description ?? null,
-        edit: item.text_edit != null ? rawRange(item.text_edit.range) : null,
-        // Items without a text edit may still carry a bare insert_text
-        // (import completion appends the closing semicolon through it).
-        newText: item.text_edit?.new_text ?? item.insert_text ?? null,
+        edit: replace !== null ? rawRange(replace) : null,
+        insertRange: insert,
+        newText: edit?.new_text ?? item.insert_text ?? null,
         snippet: item.insert_text_format === "Snippet",
         deprecated: item.tags?.includes("Deprecated") ?? false,
     };
@@ -113,18 +134,17 @@ function rawCompletionEntry(item: RawCompletionItem): CompletionEntry {
 
 function replyCompletionEntry(item: proto.CompletionItem): CompletionEntry {
     const edit = item.textEdit;
-    if (edit !== undefined && !("range" in edit)) {
-        throw new Error("clice always replies with plain TextEdit completion edits");
-    }
+    const replace = edit === undefined ? null : "range" in edit ? edit.range : edit.replace;
+    const insert = edit !== undefined && "insert" in edit ? fmtRange(edit.insert) : null;
     return {
         label: item.label,
         kind: item.kind !== undefined ? enumName(proto.CompletionItemKind, item.kind) : null,
-        score: item.sortText !== undefined ? Number.parseFloat(item.sortText) : 0,
+        sortText: item.sortText ?? "",
+        filter: item.filterText ?? null,
         detail: item.labelDetails?.detail ?? null,
         description: item.labelDetails?.description ?? null,
-        edit: edit !== undefined ? fmtRange(edit.range) : null,
-        // Items without a text edit may still carry a bare insertText
-        // (import completion appends the closing semicolon through it).
+        edit: replace !== null ? fmtRange(replace) : null,
+        insertRange: insert,
         newText: edit !== undefined ? edit.newText : (item.insertText ?? null),
         snippet: item.insertTextFormat === proto.InsertTextFormat.Snippet,
         deprecated: item.tags?.includes(proto.CompletionItemTag.Deprecated) ?? false,

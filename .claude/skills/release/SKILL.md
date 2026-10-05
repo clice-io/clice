@@ -11,17 +11,17 @@ One version number everywhere: git tag `vX.Y.Z` == extension version == release
 page. Odd minor = pre-release channel, even minor = stable (the VS Code
 Marketplace convention). Nightlies compute `X.<odd>.YYYYMMDDHH` (UTC hour) on the
 odd minor above the newest release — `0.1.*` today, `0.3.*` after stable
-`v0.2.0` — so nobody edits version numbers by hand. The versions in `CMakeLists.txt`, `pixi.toml`,
-and `editors/vscode/package.json` are permanent placeholders (`0.1.0`); the
-real version is injected from the tag at build time (binary via git describe,
-vsix via CI). A local `vsce publish` with the placeholder is rejected by the
+`v0.2.0` — so nobody edits version numbers by hand. The versions in
+`bazel/workspace_status.mjs`, `pixi.toml`, and `editors/vscode/package.json`
+are permanent placeholders (`0.1.0`); the real version is injected from the
+tag at build time (binary via git describe, vsix via CI). A local `vsce publish` with the placeholder is rejected by the
 Marketplace — that is intentional accident protection.
 
 ## Tier 1 — Instant builds (every green CI run)
 
 Nothing to operate. Every `main` push and PR run repackages the test-suite
-binaries (no LTO, no strip) into `vsix-build-<target>` workflow artifacts, and
-the raw binaries are in `native-build-*` / `cross-build-*` artifacts. To hand a
+binaries (no strip) into `vsix-build-<target>` workflow artifacts, and
+the raw binaries are in `build-<triple>-<type>` artifacts. To hand a
 fix to a user: point them at the run's artifact (GitHub login required), or
 have them set `clice.executable` to the extracted binary.
 
@@ -30,7 +30,7 @@ have them set `clice.executable` to the extracted binary.
 `nightly.yml` runs daily (cron) or via `gh workflow run nightly.yml`:
 skips when main has no new commits, otherwise tags the nightly version and
 **promotes** — nothing is rebuilt. Every main CI run already packages the
-binaries its test suites validated (strip + GSYM happen in the build jobs);
+binaries its test suites validated (the build jobs build the packages);
 nightly picks the newest main commit whose green run still has live
 package artifacts (path-filtered runs such as docs-only commits build
 nothing), tags exactly that commit, downloads its packages, attaches them
@@ -64,13 +64,13 @@ logs to releases by the commit hash; the release notes state the hash.
    first to regenerate the packages.
 3. Write the release notes on the GitHub release page (the download table
    format from the nightly notes is a good template).
-4. Verify: assets present (6 packages + 4 symbol archives + 2 PDB zips +
-   6 vsix), Marketplace shows the new stable version.
+4. Verify: assets present (6 packages + 6 symbol archives + 6 vsix),
+   Marketplace shows the new stable version.
 
 ## Plumbing changes
 
 There is no separate dry run: packaging runs on every CI build (the
-`Package release artifacts` steps in native-test/cross-pair) and the vsix
+packaged legs of native-test build `//:package` and `//:symbols`) and the vsix
 path runs as `instant-vscode`, so release plumbing is exercised by every
 code-touching PR. Only the promote/upload glue (`publish-clice.yml`,
 nightly orchestration) is release-time-only.
@@ -81,14 +81,15 @@ Ask the user for the log (worker `.log` from the session log directory —
 printed at startup in the editor's clice output panel, by default
 `~/.cache/clice/<workspace>-<hash>/logs/<session>/`, falling back to the
 workspace `.clice/logs/` when no home directory is available). The crash section starts with `clice <version> <target>` —
-download that release's `*.symbols.tar.xz` (GSYM) and run:
+download that release's `*.symbols.tar.xz` (`.zip` for Windows: the
+unstripped binary, full DWARF on Linux and Windows, function names only on
+macOS) and run:
 
 ```bash
-python scripts/symbolize.py crash.log --symbols clice.gsym
+python scripts/symbolize.py crash.log --symbols clice
 ```
 
-For core-dump-level debugging, fetch the full DWARF from the `debug-info-*`
-artifact of the main CI run that built the release (90-day retention; find
-it via the commit hash in the release notes). If the log predates the
-version line or the release was pruned, symbolization is not possible — ask
-the user to reproduce on a current nightly.
+Releases before the Bazel build shipped `clice.gsym` there, which the script
+takes as well. If the log predates the version line or the release was
+pruned, symbolization is not possible — ask the user to reproduce on a
+current nightly.

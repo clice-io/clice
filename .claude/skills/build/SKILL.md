@@ -6,10 +6,10 @@ context: fork
 
 Build the project with the requested build type (default `RelWithDebInfo`).
 
-- Full build (configure + build): `pixi run build [type]`
-- Configure only: `pixi run cmake-config [type]`
-- Build only (skip configure): `pixi run cmake-build [type]`
-- Specific target: `cmake --build build/[type] --target [target]` (common targets: `clice`, `unit_tests`)
+- Build: `pixi run build [type]` = `npx bazel build --config=[type] //:dist` (npm's bazelisk). Each type has its own output directory: `build/[type]/bin` is Bazel's output tree, with `bin/clice`, `bin/unit_tests` and the resource directory `lib/clang` in it — the tests and everything else run `build/[type]/bin/bin/clice`.
+- Other targets or Bazel options go after `--`: `pixi run build RelWithDebInfo -- //:bin/scan_benchmark`; `//:package` and `//:symbols` are the release archive and the symbol package (`build/[type]/bin/clice.tar.gz`, `clice-symbol.tar.xz`).
+- libclang is ThinLTO bitcode: a link redoes its code generation (minutes) unless lld's ThinLTO cache (`.bazelrc`) has it, so the first link on a machine is slow and later ones take seconds.
+- `compile_commands.json` for clice's own sources: `npx bazel run //:compile_commands`.
 
 On failure:
 

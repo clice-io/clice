@@ -35,6 +35,6 @@ default the `clang-format` found in `PATH`.
 
 Exit codes: `0` when every file is formatted (or, with `--check`, nothing
 would change), `1` when `--check` found files to format, `2` when the run
-could not complete: clang-format was not found or failed on a file, the
-workspace, its configuration or a compilation database could not be loaded,
-or the requested configuration does not exist.
+could not complete: the arguments do not parse, clang-format was not found
+or failed on a file, the workspace, its configuration or a compilation
+database could not be loaded, or the requested configuration does not exist.

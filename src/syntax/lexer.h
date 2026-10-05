@@ -5,9 +5,9 @@
 
 #include "syntax/token.h"
 
-#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "clang/Basic/LangOptions.h"
+#include "clang/Basic/LangStandard.h"
 
 namespace clang {
 
@@ -16,6 +16,12 @@ class Lexer;
 }
 
 namespace clice {
+
+/// The options a raw lex of `language` under `standard` runs with: the
+/// language defaults plus what the driver turns on by default and they
+/// leave off — `char8_t` and modules from C++20, the GNU keywords
+/// (`typeof`) in GNU modes — and line comments in every dialect.
+clang::LangOptions raw_dialect(clang::Language language, clang::LangStandard::Kind standard);
 
 struct LexerOptions {
     /// Emit comment tokens instead of dropping them.
@@ -66,18 +72,6 @@ public:
     Token last();
     Token next();
     Token advance();
-
-    std::optional<Token> advance_if(llvm::function_ref<bool(const Token&)> callback);
-
-    std::optional<Token> advance_if(llvm::StringRef spelling) {
-        return advance_if([&](const Token& token) {
-            return token.is_identifier() && token.text(content) == spelling;
-        });
-    }
-
-    std::optional<Token> advance_if(TokenKind kind) {
-        return advance_if([&](const Token& token) { return token.kind == kind; });
-    }
 
     Token advance_until(TokenKind kind);
 

@@ -16,11 +16,11 @@
 namespace clice {
 
 IndexPump::IndexPump(kota::event_loop& loop,
-                     Workspace& workspace,
+                     Project& project,
                      TURunFamily& turun,
                      IndexStore& store,
                      WorkerPool& pool) :
-    loop(loop), bg_tasks(loop), workspace(workspace), turun(turun), store(store), pool(pool) {
+    loop(loop), project(project), turun(turun), store(store), pool(pool) {
     capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
 }
 
@@ -48,7 +48,7 @@ void IndexPump::boost(Fid server_path_id) {
 bool IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
     // The one admission point of the background index: a rule's
     // `index = false` keeps its files out here, whichever path asked.
-    if(!workspace.build.indexed(workspace.file_table.resolve(server_path_id))) {
+    if(!project.build.indexed(project.file_table.resolve(server_path_id))) {
         return false;
     }
     // New debt voids the running round's freshness memos: a claim taken
@@ -137,6 +137,11 @@ void IndexPump::resume_indexing() {
 kota::task<> IndexPump::stop() {
     bg_tasks.cancel();
     co_await bg_tasks.join();
+    // Cancelling the round that waited on the idle timer leaves it armed,
+    // and an armed timer keeps the loop running until it fires.
+    if(index_idle_timer) {
+        index_idle_timer->stop();
+    }
     // Cancelled tasks unwind before their settle bookkeeping; release any
     // parked feature request rather than stranding it past shutdown.
     for(auto& waits: llvm::make_second_range(attempt_waits)) {
@@ -148,7 +153,7 @@ kota::task<> IndexPump::stop() {
 }
 
 void IndexPump::schedule(bool immediate) {
-    if(!workspace.config.project.enable_indexing.value || indexing_active)
+    if(!project.config.project.enable_indexing.value || indexing_active)
         return;
     if(indexing_scheduled) {
         // An immediate request colliding with an armed idle timer re-arms
@@ -170,17 +175,19 @@ void IndexPump::schedule(bool immediate) {
     // crashed file's retry must not owe an extra idle window on top of the
     // round boundary it already waited out.
     index_idle_timer->start(
-        std::chrono::milliseconds(immediate ? 0 : workspace.config.project.idle_timeout_ms.value));
+        std::chrono::milliseconds(immediate ? 0 : project.config.project.idle_timeout_ms.value));
 
     if(!bg_tasks.spawn(run_background_indexing())) {
         indexing_scheduled = false;
+        index_idle_timer->stop();
         LOG_WARN("Failed to spawn background indexing task (task group stopped)");
     }
 }
 
-auto IndexPump::note_dispatch_failure(const PendingLedger::Claim& claim, bool crashed)
+auto IndexPump::note_dispatch_failure(const PendingLedger::Claim& claim,
+                                      PendingLedger::Failure failure)
     -> PendingLedger::FailureVerdict {
-    auto outcome = ledger.on_dispatch_failure(claim, crashed);
+    auto outcome = ledger.on_dispatch_failure(claim, failure);
     if(outcome.needs_slot) {
         index_queue.push_back(claim.id);
     }
@@ -269,134 +276,123 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
                                        std::size_t total,
                                        RoundState& round) {
     auto server_path_id = claim.id;
-    // Dispatch-time admission: the serving side may veto the work. A veto
-    // settles the claimed debt below (an ordinary open session's skip must
-    // clear it, or the pump spins); only a Defer keeps the debt for a
-    // later round.
-    auto admit = admission ? admission(server_path_id) : Admission::Admit;
-    if(admit == Admission::Admit) {
-        auto file_path = std::string(workspace.file_table.resolve(server_path_id));
-        // The engine's own observation is authoritative for content
-        // changes: it saw the event. The dep-hash check cannot be trusted
-        // to see a file's own edit (it validates the recorded
-        // dependencies), so only deps-only slots — where it exists to
-        // deduplicate cascade storms — may take the shortcut.
-        if(ledger.pending_reason(server_path_id) == ReindexReason::ContentChanged ||
-           store.need_update(file_path)) {
-            LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
-            auto outcome = co_await turun.run(
-                server_path_id,
-                {.index = true},
-                {.superseded = [this, claim] { return ledger.superseded(claim); },
-                 .landing =
-                     [this, server_path_id] {
-                         return admission ? admission(server_path_id) : Admission::Admit;
-                     }});
-            if(outcome.verdict == TURunFamily::Verdict::Shutdown) {
-                // The graph refused the round: nothing ran, so the debt
-                // stays booked for the final snapshot and the next
-                // session; only the round bookkeeping below still runs so
-                // a live feeder is not left waiting on this slot.
-                round.completed += 1;
-                round.inflight -= 1;
-                round.task_done.set();
-                co_return;
+    auto file_path = std::string(project.file_table.resolve(server_path_id));
+    // The engine's own observation is authoritative for content
+    // changes: it saw the event. The dep-hash check cannot be trusted
+    // to see a file's own edit (it validates the recorded
+    // dependencies), so only deps-only slots — where it exists to
+    // deduplicate cascade storms — may take the shortcut.
+    bool content_changed = ledger.pending_reason(server_path_id) == ReindexReason::ContentChanged;
+    bool served = !content_changed && compiled_by_session && compiled_by_session(server_path_id);
+    if(!served && (content_changed || store.need_update(server_path_id))) {
+        LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
+        auto outcome =
+            co_await turun.run(server_path_id, {.index = true}, {.superseded = [this, claim] {
+                                   return ledger.superseded(claim);
+                               }});
+        if(outcome.verdict == TURunFamily::Verdict::Shutdown) {
+            // The graph refused the round: nothing ran, so the debt
+            // stays booked for the final snapshot and the next
+            // session; only the round bookkeeping below still runs so
+            // a live feeder is not left waiting on this slot.
+            round.completed += 1;
+            round.inflight -= 1;
+            round.task_done.set();
+            co_return;
+        }
+        // The report's debt is claimed before the settle and the
+        // waiter wake-ups below: a waker re-deriving its route must
+        // never observe rows as settled that the merge just declared
+        // stale.
+        claim_report(outcome.report);
+        switch(outcome.verdict) {
+            case TURunFamily::Verdict::Completed: {
+                failed_ids.erase(server_path_id);
+                indexed_total += 1;
+                LOG_PERF("index",
+                         "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
+                         index,
+                         total,
+                         file_path,
+                         outcome.perf.bytes,
+                         outcome.perf.index_ms,
+                         outcome.perf.merge_ms);
+                break;
             }
-            // The report's debt is claimed before the settle and the
-            // waiter wake-ups below: a waker re-deriving its route must
-            // never observe rows as settled that the merge just declared
-            // stale.
-            claim_report(outcome.report);
-            admit = outcome.landing;
-            switch(outcome.verdict) {
-                case TURunFamily::Verdict::Completed: {
-                    failed_ids.erase(server_path_id);
-                    indexed_total += 1;
-                    LOG_PERF("index",
-                             "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
-                             index,
-                             total,
-                             file_path,
-                             outcome.perf.bytes,
-                             outcome.perf.index_ms,
-                             outcome.perf.merge_ms);
-                    break;
-                }
-                case TURunFamily::Verdict::Skipped: {
-                    break;
-                }
-                case TURunFamily::Verdict::Failed: {
-                    LOG_WARN("[{}/{}] Index failed for {}: {}",
-                             index,
-                             total,
-                             file_path,
-                             outcome.error);
-                    failed_ids.insert(server_path_id);
-                    break;
-                }
-                case TURunFamily::Verdict::Crashed:
-                case TURunFamily::Verdict::Preempted: {
-                    // Preempted under memory pressure or lost to a worker
-                    // crash: the work itself is fine — requeue the file
-                    // with its original reason so the next round redoes it
-                    // instead of silently dropping coverage. Only crashes
-                    // spend the bounded budget.
-                    bool crashed = outcome.verdict == TURunFamily::Verdict::Crashed;
-                    switch(note_dispatch_failure(claim, crashed)) {
-                        case PendingLedger::FailureVerdict::Dropped: {
-                            LOG_INFO("[{}/{}] Index dropped for removed file {}",
-                                     index,
-                                     total,
-                                     file_path);
-                            break;
-                        }
-                        case PendingLedger::FailureVerdict::Superseded: {
-                            LOG_INFO("[{}/{}] Index failure for superseded content of {}",
-                                     index,
-                                     total,
-                                     file_path);
-                            break;
-                        }
-                        case PendingLedger::FailureVerdict::GaveUp: {
-                            // Log-only by design: the file is usually not
-                            // open (open documents are served by their
-                            // session, not the shard), so there is no
-                            // diagnostic surface. Cross-file references
-                            // into this file stay stale until its content
-                            // changes.
-                            LOG_WARN(
-                                "[{}/{}] Index giving up on {} after {} crash requeues; "
-                                "its cross-file data stays stale until it is edited: {}",
-                                index,
-                                total,
-                                file_path,
-                                max_requeue_attempts,
-                                outcome.error);
-                            failed_ids.insert(server_path_id);
-                            break;
-                        }
-                        case PendingLedger::FailureVerdict::Requeued: {
-                            if(crashed) {
-                                LOG_WARN("[{}/{}] Worker crashed while indexing {}; requeued: {}",
-                                         index,
-                                         total,
-                                         file_path,
-                                         outcome.error);
-                            } else {
-                                LOG_INFO("[{}/{}] Index requeued for {}: {}",
-                                         index,
-                                         total,
-                                         file_path,
-                                         outcome.error);
-                            }
-                            break;
-                        }
+            case TURunFamily::Verdict::Skipped: {
+                break;
+            }
+            case TURunFamily::Verdict::Failed: {
+                LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, outcome.error);
+                failed_ids.insert(server_path_id);
+                break;
+            }
+            case TURunFamily::Verdict::Crashed:
+            case TURunFamily::Verdict::Lost:
+            case TURunFamily::Verdict::Preempted: {
+                // Preempted under memory pressure or lost to a worker
+                // death: the work itself is fine — requeue the file with
+                // its original reason so the next round redoes it instead
+                // of silently dropping coverage; only lost runs spend the
+                // bounded budget. A run that crashed its worker waits for
+                // the file to change: the same bytes would crash again.
+                using enum PendingLedger::Failure;
+                auto failure = outcome.verdict == TURunFamily::Verdict::Crashed ? Crashed
+                               : outcome.verdict == TURunFamily::Verdict::Lost  ? Lost
+                                                                                : Preempted;
+                switch(note_dispatch_failure(claim, failure)) {
+                    case PendingLedger::FailureVerdict::Dropped: {
+                        LOG_INFO("[{}/{}] Index dropped for removed file {}",
+                                 index,
+                                 total,
+                                 file_path);
+                        break;
                     }
-                    break;
+                    case PendingLedger::FailureVerdict::Superseded: {
+                        LOG_INFO("[{}/{}] Index failure for superseded content of {}",
+                                 index,
+                                 total,
+                                 file_path);
+                        break;
+                    }
+                    case PendingLedger::FailureVerdict::GaveUp: {
+                        // Log-only by design: the file is usually not
+                        // open (open documents are served by their
+                        // session, not the shard), so there is no
+                        // diagnostic surface. Cross-file references
+                        // into this file stay stale until its content
+                        // changes.
+                        LOG_WARN(
+                            "[{}/{}] Index giving up on {} ({}); its cross-file data stays "
+                            "stale until it changes",
+                            index,
+                            total,
+                            file_path,
+                            outcome.error);
+                        failed_ids.insert(server_path_id);
+                        break;
+                    }
+                    case PendingLedger::FailureVerdict::Requeued: {
+                        if(failure == Lost) {
+                            LOG_WARN("[{}/{}] Worker died while indexing {}; requeued: {}",
+                                     index,
+                                     total,
+                                     file_path,
+                                     outcome.error);
+                        } else {
+                            LOG_INFO("[{}/{}] Index requeued for {}: {}",
+                                     index,
+                                     total,
+                                     file_path,
+                                     outcome.error);
+                        }
+                        break;
+                    }
                 }
-                case TURunFamily::Verdict::Shutdown: {
-                    std::unreachable();
-                }
+                break;
+            }
+            case TURunFamily::Verdict::Shutdown: {
+                std::unreachable();
             }
         }
     }
@@ -407,9 +403,7 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
     // since only a future event re-enqueues it. Any such event re-judges
     // staleness by content hash. A re-enqueue during the flight booked
     // newer debt: the settle leaves it standing.
-    if(admit != Admission::Defer) {
-        ledger.settle(claim);
-    }
+    ledger.settle(claim);
     // The attempt settled with no retry pending; the serving side judges
     // whether an open session still waiting on the index can ever be
     // served by it, before its waiters wake (contract 15).
@@ -450,7 +444,7 @@ kota::task<> IndexPump::run_background_indexing() {
     store.begin_round();
 
     std::stable_partition(index_queue.begin() + index_queue_pos, index_queue.end(), [this](Fid id) {
-        return !workspace.dep_graph.module_of(id).empty();
+        return !project.dep_graph.module_of(id).empty();
     });
 
     // This round consumes [index_queue_pos, round_end) only. Anything
@@ -472,16 +466,11 @@ kota::task<> IndexPump::run_background_indexing() {
     // Timed at the start of real work; the reporter's token handshake runs
     // off to the side and cannot inflate the reported indexing duration.
     ScopedTimer timer;
-    kota::task_group<> workers(loop);
-
-    // The dispatch loop runs as a child of `workers`, so this frame's only
-    // suspension while children live is the join below: a shutdown cancel
-    // cascades through the join into the group, and the feeder plus every
-    // in-flight task unwind before `workers` is destroyed. Parking the
-    // feeder's waits on this frame instead would let the cancel finalize
-    // the frame — destroying the group with children still in flight.
-    workers.spawn(run_round_feeder(workers, round, round_end, total, dispatched));
-    co_await workers.join();
+    // The dispatch loop runs as the first child of the group it fills, so a
+    // shutdown cancel reaches the feeder and every in-flight task alike.
+    co_await kota::with_task_group([&](kota::task_group<>& workers) {
+        return run_round_feeder(workers, round, round_end, total, dispatched);
+    });
 
     // Skipped files bump `completed` without a Report emit; refresh the
     // materialized count so a subscriber waking up on End reads the truth.
@@ -519,26 +508,6 @@ kota::task<> IndexPump::run_background_indexing() {
     // stay skipped for that whole wait.
     if(index_queue_pos < index_queue.size()) {
         schedule(/*immediate=*/true);
-    }
-}
-
-kota::task<> shutdown_indexing(TaskGraph& graph,
-                               IndexPump& pump,
-                               IndexStore& store,
-                               WorkerPool& pool,
-                               Workspace& workspace) {
-    co_await graph.shutdown();
-    auto report = co_await store.save(pump.save_debt(), /*settle=*/true);
-    pump.claim_report(report);
-    if(report.snapshot_stale) {
-        // Debt surfaced after the snapshot serialized (write-time
-        // corruption recovery): one metadata retry, or a dropped
-        // standalone header's repair debt dies with this process.
-        pump.claim_report(co_await store.save(pump.save_debt(), /*settle=*/true));
-    }
-    co_await pool.stop();
-    if(workspace.store) {
-        workspace.store->shutdown();
     }
 }
 

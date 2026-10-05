@@ -5,13 +5,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { waitUntil, withTimeout, type CliceClient } from "@clice/tools/client";
+import { SETTLE_TIME, sleep, waitUntil, withTimeout, type CliceClient } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, test, type SessionFactory } from "../fixtures.ts";
 
 const TEST_TOML =
     '[project]\ncache_dir = "${workspace}/.clice"\nenable_indexing = false\n' +
-    "\n[tracker]\ncdb_poll_seconds = 0\nworkspace_poll_seconds = 0\n";
+    "\n[tracker]\nworkspace_poll_seconds = 0\n";
 
 // hello_world's main.cpp, recreated in a temp workspace so the pre-handshake
 // tests never touch the shared data workspace.
@@ -47,6 +47,68 @@ test("open before initialize", async ({ session }) => {
     await withTimeout(arrived, 60_000, "diagnostics");
     expect(client.errors(uri)).toEqual([]);
 });
+
+test.skipIf(process.platform === "win32")("second name for an open file", async ({ session }) => {
+    // One file, one buffer: a document naming an open file through a
+    // symlink shares the first document's answers while their texts agree,
+    // gets none once they diverge, never edits the first document's
+    // buffer, and closing it leaves nothing to take over after it.
+    const { client, workspace } = session.tmp();
+    workspace.write("real/main.cpp", "int main() { return 0; }\n");
+    fs.symlinkSync(workspace.path("real"), workspace.path("link"));
+    workspace.writeCDB(["real/main.cpp"]);
+    await client.initialize(workspace);
+
+    const [first] = await client.openAndWait("real/main.cpp");
+    const second = workspace.uri("link/main.cpp");
+    const shared = client.armDiagnostics(second);
+    client.open("link/main.cpp");
+    await withTimeout(shared, 30_000, "the second name's diagnostics");
+    expect(await client.hoverAt(second, 0, 5), "equal texts share answers").not.toBeNull();
+
+    const diverged = client.armDiagnostics(second);
+    client.change(second, 1, "int main() { return undefined_name; }\n");
+    await withTimeout(diverged, 30_000, "the divergence warning");
+    const warnings = (client.diagnostics.get(second) ?? []).map((d) =>
+        typeof d.message === "string" ? d.message : d.message.value,
+    );
+    expect(warnings).toEqual([expect.stringContaining("also open as")]);
+    expect(client.diagnostics.get(second)?.[0]?.range, "at the document's start").toEqual({
+        start: { line: 0, character: 0 },
+        end: { line: 0, character: 0 },
+    });
+    await expect(client.hoverAt(second, 0, 5)).rejects.toThrow("Document changed");
+    expect(await client.referencesAt(second, 0, 5), "no rows answer for other text").toEqual([]);
+    const cleared = client.armDiagnostics(second);
+    client.close(second);
+    await withTimeout(cleared, 30_000, "the closed second name's clear");
+    expect(client.diagnostics.get(second) ?? [], "its warning leaves with it").toEqual([]);
+    // An edit folded into the first buffer would recompile it on this pull.
+    expect(await client.hoverAt(first, 0, 5), "the first document stays open").not.toBeNull();
+    await sleep(SETTLE_TIME);
+    client.assertNoErrors(first, "the first document's buffer must be untouched");
+    client.close(first);
+    await sleep(SETTLE_TIME);
+    expect((await client.stats()).sessions, "the closed second name stays closed").toBe(0);
+});
+
+test.skipIf(process.platform === "win32")(
+    "second name takes over on close",
+    async ({ session }) => {
+        const { client, workspace } = session.tmp();
+        workspace.write("real/main.cpp", "int main() { return 0; }\n");
+        fs.symlinkSync(workspace.path("real"), workspace.path("link"));
+        workspace.writeCDB(["real/main.cpp"]);
+        await client.initialize(workspace);
+
+        const [first] = await client.openAndWait("real/main.cpp");
+        const [second] = client.open("link/main.cpp");
+        client.change(second, 1, "int main() { return undefined_name; }\n");
+        client.close(first);
+        await client.waitForRecompile(second);
+        client.assertHasErrors(second, "the second document compiles with its own edits");
+    },
+);
 
 test("close before initialize", async ({ session }) => {
     const { client, workspace } = session.tmp();

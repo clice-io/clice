@@ -3,41 +3,57 @@ name: native-test
 on:
   workflow_call:
 
-env:
-  CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
-  CCACHE_BASEDIR: ${{ github.workspace }}
-  CCACHE_COMPILERCHECK: content
-  # The precompiled headers plus one full build come to about 1 GB
-  # compressed per leg, and ccache's LRU cleanup starts evicting live
-  # objects once the cache nears its cap, so allow twice that. Eight legs
-  # at 2 GB per main commit fit the repository's 50 GB cache pool.
-  CCACHE_MAXSIZE: 2G
-
 jobs:
   build-and-test:
     strategy:
       fail-fast: false
       matrix:
         include:
-          # asset_name marks the RelWithDebInfo builds that get packaged into
-          # release artifacts once their test suites pass.
+          # asset_name marks the builds that get packaged into release
+          # artifacts once their test suites pass. The legs with activate:
+          # test-run run the suites without the build environment on PATH, as
+          # a machine with clice and a compiler of its own: the clang++ their
+          # tests find is another (on Windows arm64 the runner's, targeting
+          # MSVC).
+          # pixi runs a task in the active environment unless told another:
+          # the build steps name theirs.
+          - os: ubuntu-24.04
+            build_type: RelWithDebInfo
+            target: x86_64-unknown-linux-gnu
+            asset_name: clice.x86_64-unknown-linux-gnu.tar.gz
+          - os: ubuntu-24.04
+            build_type: Debug
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            build_type: RelWithDebInfo
+            target: aarch64-unknown-linux-gnu
+            activate: test-run
+            asset_name: clice.aarch64-unknown-linux-gnu.tar.gz
+          - os: macos-15
+            build_type: RelWithDebInfo
+            target: aarch64-apple-darwin
+            asset_name: clice.aarch64-apple-darwin.tar.gz
+          - os: macos-15
+            build_type: Debug
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            build_type: RelWithDebInfo
+            target: x86_64-apple-darwin
+            activate: test-run
+            asset_name: clice.x86_64-apple-darwin.tar.gz
           - os: windows-2025
             build_type: RelWithDebInfo
-            asset_name: clice.x86_64-pc-windows-msvc.zip
-            target_name: x86_64-pc-windows-msvc
-          - os: ubuntu-24.04
-            build_type: Debug
-          - os: ubuntu-24.04
+            target: x86_64-w64-mingw32
+            asset_name: clice.x86_64-w64-mingw32.zip
+          - os: windows-11-arm
             build_type: RelWithDebInfo
-            asset_name: clice.x86_64-unknown-linux-gnu.tar.gz
-            target_name: x86_64-unknown-linux-gnu
-          - os: macos-15
-            build_type: Debug
-          - os: macos-15
-            build_type: RelWithDebInfo
-            asset_name: clice.aarch64-apple-darwin.tar.gz
-            target_name: aarch64-apple-darwin
+            target: aarch64-w64-mingw32
+            activate: test-run
+            asset_name: clice.aarch64-w64-mingw32.zip
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -47,51 +63,87 @@ jobs:
       - uses: ./.github/actions/setup-pixi
         with:
           environments: default test-run
-          activate-environment: default
+          activate-environment: ${{ matrix.activate || 'default' }}
 
       # Pull requests only restore: every push saving its own copy churns
       # the repository's 50 GB cache pool faster than the next run can reuse
-      # it. Saved from main below, once per merge.
-      - name: Restore compiler cache
+      # it. Saved from main below, once per merge. Every input of an action,
+      # the toolchain's files among them, is in its key, so nothing else
+      # needs to be in the cache's.
+      - name: Restore Bazel caches
         uses: actions/cache/restore@v6
         with:
-          path: .cache/ccache
-          key: ${{ runner.os }}-${{ matrix.build_type }}-native-ccache-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/bazel-disk
+            ${{ runner.temp }}/bazel-repo
+            ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }}
+          key: bazel-${{ matrix.target }}-${{ matrix.build_type }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.build_type }}-native-ccache-
+            bazel-${{ matrix.target }}-${{ matrix.build_type }}-
 
-      - name: Zero cache stats
-        run: pixi run -- ccache --zero-stats
+      # Bazel refuses a repository cache inside the workspace. On Windows,
+      # the default output root under the user profile pushes action paths
+      # past MAX_PATH. On main every cached output is fetched, which marks
+      # it used for the prune below; elsewhere only what is asked for. lld's
+      # ThinLTO cache (.bazelrc) is outside Bazel's, in the same entry.
+      - name: Bazel settings
+        run: |
+          temp=$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")
+          {
+            echo "common --disk_cache=$temp/bazel-disk"
+            echo "common --repository_cache=$temp/bazel-repo"
+            if [ "$RUNNER_OS" = Windows ]; then
+              echo "startup --output_user_root=C:/b"
+            fi
+            if [ "$GITHUB_REF" = refs/heads/main ]; then
+              echo "common --remote_download_all"
+            fi
+          } > user.bazelrc
+          touch "$RUNNER_TEMP/bazel-start"
 
+      # The packaged legs build the release archives along: the programs in
+      # them are the ones the suites below run.
       - name: Build
-        run: pixi run build ${{ matrix.build_type }} ON
+        run: pixi run -e default build ${{ matrix.build_type }} ${{ matrix.asset_name && '-- //:package //:symbols' || '' }}
 
-      - name: Save compiler cache
+      # Bazel refreshes an entry's mtime when it reads it, so what this run
+      # did not touch is what the current tree no longer needs.
+      - name: Prune the disk cache
+        if: github.ref == 'refs/heads/main'
+        run: |
+          find "$RUNNER_TEMP/bazel-disk" -type f ! -newer "$RUNNER_TEMP/bazel-start" -delete
+          du -sh "$RUNNER_TEMP"/bazel-disk "$RUNNER_TEMP"/bazel-repo ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }} 2>/dev/null || true
+
+      - name: Save Bazel caches
         if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6
         with:
-          path: .cache/ccache
-          key: ${{ runner.os }}-${{ matrix.build_type }}-native-ccache-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/bazel-disk
+            ${{ runner.temp }}/bazel-repo
+            ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }}
+          key: bazel-${{ matrix.target }}-${{ matrix.build_type }}-${{ github.sha }}
 
       # Process start-up is the fixed cost every test-suite process pays
       # (inspect runs, servers, workers); the two build types differ in
       # linkage and sanitizers, so both are timed.
       - name: Process startup cost
-        shell: bash
         run: |
-          for _ in 1 2; do time build/${{ matrix.build_type }}/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }} --version; done
+          for _ in 1 2; do time build/${{ matrix.build_type }}/bin/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }} --version; done
 
-      # Upload artifacts for editor tests (the ubuntu and macOS RelWithDebInfo
-      # builds are consumed by editor-test; uploading all keeps the option open
-      # for other downstream consumers).
+      # The suites below and the jobs that follow (editor-test, compat-test,
+      # instant builds) take the programs from build/<type>/bin, which this
+      # artifact holds.
       - name: Upload binaries
         uses: actions/upload-artifact@v7
         with:
-          name: native-build-${{ matrix.os }}-${{ matrix.build_type }}
+          name: build-${{ matrix.target }}-${{ matrix.build_type }}
           include-hidden-files: true
           path: |
-            build/${{ matrix.build_type }}/bin/
-            build/${{ matrix.build_type }}/lib/
+            build/${{ matrix.build_type }}/bin/bin/
+            build/${{ matrix.build_type }}/bin/lib/
+            !build/${{ matrix.build_type }}/bin/bin/*.stripped
+            !build/${{ matrix.build_type }}/bin/bin/*.runfiles
           if-no-files-found: error
           retention-days: 1
 
@@ -116,49 +168,27 @@ jobs:
       # machine-independent by construction. The pure-node doc checks
       # (feature/config/translation) run in the lint workflow instead.
       - name: Config schema check
-        if: ${{ matrix.os == 'ubuntu-24.04' && matrix.build_type == 'RelWithDebInfo' }}
+        if: ${{ matrix.target == 'x86_64-unknown-linux-gnu' && matrix.build_type == 'RelWithDebInfo' }}
         run: |
-          build/RelWithDebInfo/bin/clice inspect --config-schema > docs/public/clice-config.schema.json
+          build/RelWithDebInfo/bin/bin/clice inspect --config-schema > docs/public/clice-config.schema.json
           git diff --exit-code -- docs/public/clice-config.schema.json
 
-      # Package the exact binary the suites above just validated. These
-      # artifacts are what releases promote — there is no separate release
-      # build.
-      - name: Package release artifacts
-        if: ${{ matrix.asset_name }}
-        shell: bash
-        run: pixi run -- cmake --build build/${{ matrix.build_type }} --target clice-pack clice-pack-symbol
-
       - name: Check artifact dependencies
-        if: ${{ matrix.asset_name && !contains(matrix.os, 'windows') }}
-        shell: bash
-        run: pixi run -- python scripts/check_artifact_deps.py build/${{ matrix.build_type }}/pack/clice/bin/clice
+        if: ${{ matrix.asset_name }}
+        run: pixi run -e default -- python scripts/check_artifact_deps.py build/${{ matrix.build_type }}/bin/bin/clice.stripped
 
+      # These artifacts are what releases promote — there is no separate
+      # release build.
       - name: Upload package artifacts
         if: ${{ matrix.asset_name }}
         uses: actions/upload-artifact@v7
         with:
           name: package-${{ matrix.asset_name }}
           path: |
-            build/${{ matrix.build_type }}/clice.tar.gz
-            build/${{ matrix.build_type }}/clice.zip
-            build/${{ matrix.build_type }}/clice-symbol.tar.xz
-            build/${{ matrix.build_type }}/clice-symbol.zip
+            build/${{ matrix.build_type }}/bin/clice.tar.gz
+            build/${{ matrix.build_type }}/bin/clice.zip
+            build/${{ matrix.build_type }}/bin/clice-symbol.tar.xz
+            build/${{ matrix.build_type }}/bin/clice-symbol.zip
           if-no-files-found: error
           # 30 days bounds how old a commit a stable tag can still promote.
           retention-days: 30
-
-      - name: Upload full debug info
-        if: ${{ matrix.asset_name && !contains(matrix.os, 'windows') }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: debug-info-${{ matrix.target_name }}
-          path: |
-            build/${{ matrix.build_type }}/pack-symbol/clice.debug
-            build/${{ matrix.build_type }}/pack-symbol/clice.dSYM
-          if-no-files-found: error
-          retention-days: 90
-
-      - name: Print cache stats
-        if: always()
-        run: pixi run -- ccache --show-stats

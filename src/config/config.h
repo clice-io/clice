@@ -24,6 +24,20 @@ namespace clice {
 std::uint32_t default_stateless_worker_count();
 std::uint32_t default_max_stateless_worker_count();
 
+/// A cache directory keys its indexes, configuration selection and server
+/// record by configuration alone, so it serves one project, whose root it
+/// records. One inside a workspace root belongs to that root whatever it
+/// records; one outside (a shared location) to the root it records, while
+/// that exists.
+std::string cache_dir_owner(llvm::StringRef cache_dir);
+
+/// Whether `cache_dir` serves another project than `workspace_root`'s.
+bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef workspace_root);
+
+/// Record `workspace_root` as the owner of a cache directory it may use
+/// (owned_elsewhere is false); called under the directory's writer lock.
+void claim_cache_dir(llvm::StringRef cache_dir, CanonicalRef workspace_root);
+
 /// The configuration files a workspace root may hold, in lookup order.
 constexpr inline std::array<llvm::StringRef, 2> config_file_names = {"clice.toml",
                                                                      ".clice/config.toml"};
@@ -178,6 +192,7 @@ struct ProjectConfig {
     <bool> enable_indexing = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     choices = {"off", "on", "auto"},
                      description =
                          "Read-only serving for open files: \"off\" targets a "
                          "full AST for every open file — builds are pulled by "
@@ -208,6 +223,7 @@ struct ProjectConfig {
     <bool> test_hooks = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     minimum = 1,
                      description =
                          "Number of stateful workers — they hold ASTs in memory "
                          "and serve queries (hover, semantic tokens, ...); `0` is "
@@ -215,6 +231,8 @@ struct ProjectConfig {
     <std::uint32_t> stateful_worker_count = 2;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     schema_default = false,
+                     minimum = 1,
                      description =
                          "Initial number of stateless workers — they handle "
                          "ephemeral tasks (PCH/PCM builds, completion, signature "
@@ -224,12 +242,14 @@ struct ProjectConfig {
 
     /// See WorkerPoolOptions.
     KOTATSU_ANNOTATE(defaulted = true,
+                     minimum = 1,
                      description =
                          "Lower bound for dynamic stateless-worker scaling; `0` "
                          "is invalid and falls back to the default.")
     <std::uint32_t> min_stateless_worker_count = 1;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     schema_default = false,
                      description =
                          "Upper bound for dynamic stateless-worker scaling; `0` "
                          "means the machine's parallelism, which is also the "
@@ -237,20 +257,16 @@ struct ProjectConfig {
     <std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
 };
 
-/// Corresponds to the `[tracker]` section in clice.toml: the stat-polling
-/// file tracker's intervals (integration tests drive ticks through the
-/// clice/internal/poll hook instead).
+/// Corresponds to the `[tracker]` section in clice.toml: how often files
+/// are looked at in the background (integration tests drive ticks through
+/// the clice/internal/poll hook instead).
 struct TrackerConfig {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Compilation database poll interval in seconds; 0 disables "
-                         "polling.")
-    <std::uint32_t> cdb_poll_seconds = 3;
-
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "Workspace file sweep interval in seconds; 0 disables "
-                         "polling.")
+                         "Longest interval in seconds between two background looks at a "
+                         "workspace file: the interval doubles at every look that finds the "
+                         "file unchanged, up to this. 0 disables background polling, "
+                         "compilation databases included.")
     <std::uint32_t> workspace_poll_seconds = 30;
 };
 
@@ -263,19 +279,19 @@ struct CompiledRule {
 
         /// The literal directory the pattern starts in (the workspace root
         /// for `**`-led patterns): where the files it claims are enumerated.
-        std::string root;
+        CanonicalPath root;
     };
 
     std::vector<Pattern> patterns;
     std::string configuration;
     /// Absolute paths of the declared databases, in priority order; an
     /// existing directory resolved to the compile_commands.json under it.
-    std::vector<std::string> compile_commands;
+    std::vector<Spelling> compile_commands;
     /// The command's argv (a string spelling tokenized with the host's
     /// shell rules), `${workspace}` substituted; empty means none.
     /// `directory` is its working directory.
     std::vector<std::string> default_command;
-    std::string directory;
+    Spelling directory;
     std::vector<std::string> append;
     std::vector<std::string> remove;
     bool index = true;
@@ -293,8 +309,8 @@ struct CompiledRule {
     /// commands.
     bool declares_sources() const;
 
-    /// Whether the rule applies to `path` (canonical absolute).
-    bool matches(llvm::StringRef path) const;
+    /// Whether the rule applies to `path`.
+    bool matches(CanonicalRef path) const;
 };
 
 /// A problem found while loading a configuration file, carrying enough
@@ -342,7 +358,7 @@ struct Config {
     <ProjectConfig> project;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [tracker] section: file tracker poll intervals.")
+                     description = "The [tracker] section: background polling of files.")
     <TrackerConfig> tracker;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -366,27 +382,25 @@ struct Config {
     KOTATSU_ANNOTATE(skip = true)
     <std::vector<CompiledRule>> compiled_rules;
 
-    /// The workspace root finalize() ran for, canonical: the `${workspace}`
-    /// value, the anchor of rules and databases no configuration file
-    /// supplied, and the enumeration root of `**`-led patterns.
+    /// The workspace root finalize() ran for: the `${workspace}` value, the
+    /// anchor of rules and databases no configuration file supplied, and
+    /// the enumeration root of `**`-led patterns.
     KOTATSU_ANNOTATE(skip = true)
-    <std::string> workspace_root;
-
-    /// workspace_root with symlinks resolved (itself when the resolution
-    /// fails): the spelling workers report file paths in.
-    KOTATSU_ANNOTATE(skip = true)
-    <std::string> workspace_real_root;
+    <CanonicalPath> workspace_root;
 
     /// Compute the values derived from the final merged config: default
     /// cache/logging directories, ${workspace} substitution, path
     /// canonicalization and anchoring, and rule compilation. Run once per
     /// load, after every source has been overlaid.
-    void finalize(llvm::StringRef workspace_root);
+    void finalize(CanonicalRef workspace_root);
 
-    /// The compiled rules applying to `path` (absolute), in declaration
-    /// order, restricted to untagged rules and rules tagged
-    /// `configuration`.
-    llvm::SmallVector<const CompiledRule*> matching_rules(llvm::StringRef path,
+    /// After finalize: move off a cache directory another project owns
+    /// (owned_elsewhere) to the default one under the workspace root.
+    void keep_own_cache_dir();
+
+    /// The compiled rules applying to `path`, in declaration order,
+    /// restricted to untagged rules and rules tagged `configuration`.
+    llvm::SmallVector<const CompiledRule*> matching_rules(CanonicalRef path,
                                                           llvm::StringRef configuration) const;
 
     /// The distinct configuration tags, in first-appearance order.
@@ -402,19 +416,18 @@ struct Config {
     /// logging_dir, ...) must be computed only once, from the final merged
     /// values.
     static std::optional<Config> load(llvm::StringRef path,
-                                      llvm::StringRef workspace_root,
+                                      CanonicalRef workspace_root,
                                       std::vector<ConfigIssue>* issues = nullptr,
                                       bool finalized = true);
 
     /// Try to load configuration from a JSON string (e.g. initializationOptions).
-    static std::optional<Config> load_from_json(llvm::StringRef json,
-                                                llvm::StringRef workspace_root);
+    static std::optional<Config> load_from_json(llvm::StringRef json, CanonicalRef workspace_root);
 
     /// Load config from the workspace, trying standard locations.
     /// Returns a default config if no file is found. `loaded_path`, when
     /// provided, receives the path of the config file that was found (even
     /// if it failed to parse), or stays empty. `finalized` as in load().
-    static Config load_from_workspace(llvm::StringRef workspace_root,
+    static Config load_from_workspace(CanonicalRef workspace_root,
                                       std::vector<ConfigIssue>* issues = nullptr,
                                       std::string* loaded_path = nullptr,
                                       bool finalized = true);
@@ -423,8 +436,7 @@ struct Config {
     /// Fields whose defaults derive from the running machine (the worker
     /// counts follow the CPU count) carry no `default` annotation, so the
     /// schema is byte-identical on every host. Unknown properties are
-    /// rejected — the schema-side face of the strict decode pass's typo
-    /// warnings.
+    /// rejected — the schema-side face of load()'s unknown-key warnings.
     static std::expected<std::string, std::string> json_schema();
 };
 

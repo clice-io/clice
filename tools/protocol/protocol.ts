@@ -1,6 +1,6 @@
 /// Typed definitions of clice's custom LSP extensions — the single source
 /// shared by the integration tests and the VSCode extension. Wire shapes
-/// mirror src/server/protocol/extension.h (camelCase on the wire).
+/// mirror src/server/extension.h (camelCase on the wire).
 
 import { RequestType, RequestType0 } from "vscode-languageserver-protocol";
 
@@ -101,15 +101,25 @@ export interface ListConfigurationsResult {
     defaultConfiguration: string;
 }
 
-export const ListConfigurationsRequest = new RequestType0<ListConfigurationsResult, void>(
-    "clice/listConfigurations",
-);
+/// clice/listConfigurations: the menu of the project serving `uri`;
+/// without one, of the first project over a folder.
+export interface ListConfigurationsParams {
+    uri?: string;
+}
+
+export const ListConfigurationsRequest = new RequestType<
+    ListConfigurationsParams,
+    ListConfigurationsResult,
+    void
+>("clice/listConfigurations");
 
 /// clice/switchConfiguration: persist `name` as the selected configuration.
 /// The running server keeps its configuration; the choice takes effect when
 /// the client restarts it.
 export interface SwitchConfigurationParams {
     name: string;
+    /// The project, as in ListConfigurationsParams.
+    uri?: string;
 }
 
 export interface SwitchConfigurationResult {
@@ -163,7 +173,8 @@ export const LogFloodRequest = new RequestType<LogFloodParams, LogFloodResult, v
 
 /// clice/internal/stats — TEST-ONLY, not a stable API. Ownership gauges
 /// for memory-lifecycle regression tests: each leak class is pinned by a
-/// deterministic counter instead of brittle RSS assertions.
+/// deterministic counter instead of brittle RSS assertions; and the counts
+/// of freshness checks, which pin what a request looks at.
 export interface StatsResult {
     pchLoadedStates: number;
     pchStateBytes: number;
@@ -173,7 +184,14 @@ export interface StatsResult {
     pendingTmpFiles: number;
     pchCacheEntries: number;
     headerContexts: number;
+    synthesizedContexts: number;
     sessions: number;
+    /// Freshness checks of files answered by a look at the disk, and from a
+    /// look not yet due.
+    checksLooked: number;
+    checksTrusted: number;
+    /// Preprocessor passes that looked for a unit's imports.
+    importScans: number;
 }
 
 export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/stats");

@@ -9,12 +9,13 @@ direct_use:
     - { file: "${WS}/using_alias.cpp", range: "4:4-4:11" }
   references:
     - { file: "${WS}/using_alias.cpp", range: "4:4-4:11" }
+    - { file: "${WS}/using_alias.cpp", range: "12:12-12:19" }
     - { file: "${WS}/using_alias.cpp", range: "15:11-15:18" }
     - { file: "${WS}/using_alias.cpp", range: "15:33-15:40" }
   callHierarchy:
-    - { name: "compute", kind: Function, file: "${WS}/using_alias.cpp", range: "4:4-4:11" }
+    - { name: "compute", kind: Function, file: "${WS}/using_alias.cpp", range: "4:0-6:1", selection: "4:4-4:11" }
   incomingCalls:
-    - { name: "run", kind: Function, file: "${WS}/using_alias.cpp", range: "14:4-14:7", fromRanges: ["15:11-15:25", "15:28-15:47"] }
+    - { name: "run", kind: Function, file: "${WS}/using_alias.cpp", range: "14:0-16:1", selection: "14:4-14:7", fromRanges: ["15:11-15:18", "15:33-15:40"] }
 
 ns_alias:
   definition:
@@ -42,12 +43,13 @@ qualified_use:
     - { file: "${WS}/using_alias.cpp", range: "4:4-4:11" }
   references:
     - { file: "${WS}/using_alias.cpp", range: "4:4-4:11" }
+    - { file: "${WS}/using_alias.cpp", range: "12:12-12:19" }
     - { file: "${WS}/using_alias.cpp", range: "15:11-15:18" }
     - { file: "${WS}/using_alias.cpp", range: "15:33-15:40" }
   callHierarchy:
-    - { name: "compute", kind: Function, file: "${WS}/using_alias.cpp", range: "4:4-4:11" }
+    - { name: "compute", kind: Function, file: "${WS}/using_alias.cpp", range: "4:0-6:1", selection: "4:4-4:11" }
   incomingCalls:
-    - { name: "run", kind: Function, file: "${WS}/using_alias.cpp", range: "14:4-14:7", fromRanges: ["15:11-15:25", "15:28-15:47"] }
+    - { name: "run", kind: Function, file: "${WS}/using_alias.cpp", range: "14:0-16:1", selection: "14:4-14:7", fromRanges: ["15:11-15:18", "15:33-15:40"] }
 
 target_def:
   definition:
@@ -56,12 +58,13 @@ target_def:
     - { file: "${WS}/using_alias.cpp", range: "4:4-4:11" }
   references:
     - { file: "${WS}/using_alias.cpp", range: "4:4-4:11" }
+    - { file: "${WS}/using_alias.cpp", range: "12:12-12:19" }
     - { file: "${WS}/using_alias.cpp", range: "15:11-15:18" }
     - { file: "${WS}/using_alias.cpp", range: "15:33-15:40" }
   callHierarchy:
-    - { name: "compute", kind: Function, file: "${WS}/using_alias.cpp", range: "4:4-4:11" }
+    - { name: "compute", kind: Function, file: "${WS}/using_alias.cpp", range: "4:0-6:1", selection: "4:4-4:11" }
   incomingCalls:
-    - { name: "run", kind: Function, file: "${WS}/using_alias.cpp", range: "14:4-14:7", fromRanges: ["15:11-15:25", "15:28-15:47"] }
+    - { name: "run", kind: Function, file: "${WS}/using_alias.cpp", range: "14:0-16:1", selection: "14:4-14:7", fromRanges: ["15:11-15:18", "15:33-15:40"] }
 
 using_decl:
   definition:
@@ -70,9 +73,10 @@ using_decl:
     - { file: "${WS}/using_alias.cpp", range: "4:4-4:11" }
   references:
     - { file: "${WS}/using_alias.cpp", range: "4:4-4:11" }
+    - { file: "${WS}/using_alias.cpp", range: "12:12-12:19" }
     - { file: "${WS}/using_alias.cpp", range: "15:11-15:18" }
     - { file: "${WS}/using_alias.cpp", range: "15:33-15:40" }
   callHierarchy:
-    - { name: "compute", kind: Function, file: "${WS}/using_alias.cpp", range: "4:4-4:11" }
+    - { name: "compute", kind: Function, file: "${WS}/using_alias.cpp", range: "4:0-6:1", selection: "4:4-4:11" }
   incomingCalls:
-    - { name: "run", kind: Function, file: "${WS}/using_alias.cpp", range: "14:4-14:7", fromRanges: ["15:11-15:25", "15:28-15:47"] }
+    - { name: "run", kind: Function, file: "${WS}/using_alias.cpp", range: "14:0-16:1", selection: "14:4-14:7", fromRanges: ["15:11-15:18", "15:33-15:40"] }

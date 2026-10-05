@@ -13,4 +13,8 @@ int enabled = 1;
 int disabled = 0;
 #endif
 
+#if defined(§(defined_paren)FEATURE_ON) && defined §(defined_bare)FEATURE_ON
+int both = 2;
+#endif
+
 int line = §(builtin_use)__LINE__;

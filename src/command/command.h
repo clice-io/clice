@@ -127,6 +127,14 @@ constexpr inline ConfigID invalid_config = ConfigID(~0u);
 /// unknown suffixes alike.
 clang::driver::types::ID suffix_type(llvm::StringRef path);
 
+/// Whether clang types the file as a C or C++ header by its extension.
+bool is_header_path(llvm::StringRef path);
+
+/// Whether the extension marks a fragment only ever included into a
+/// translation unit — a `.def` list, a `.inc`, `.inl`, `.tpp` or `.ipp`
+/// body — which compiles only under its includer's context.
+bool is_context_header_path(llvm::StringRef path);
+
 /// The language dimension of a command for one input file: the clang
 /// language name ("c++", "cuda", ...) selected by the governing selector or
 /// derived from the file extension; the raw extension itself when no table
@@ -178,6 +186,10 @@ struct CommandEdit {
 
     Kind kind;
     std::vector<std::string> flags;
+
+    /// Where the rule's relative paths are relative to: its configuration
+    /// file's directory.
+    Spelling directory;
 };
 
 /// Config-rule edits applied on top of a base config (structured, no
@@ -225,6 +237,12 @@ struct CompilationEntry {
     /// entries in configuration order, so this is the default-selection
     /// order within one source.
     std::uint32_t ordinal = 0;
+
+    /// How the database names the file when that is not its identity (a
+    /// symlinked source), empty otherwise: the build compiles it under that
+    /// name, which decides where its quoted includes look and what
+    /// `__FILE__` says.
+    llvm::StringRef spelling;
 };
 
 /// Render one structured argument back into argv fragments. Unknown args
@@ -232,6 +250,16 @@ struct CompilationEntry {
 /// option table (canonical name + render style). Never called on the
 /// input slot.
 void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb);
+
+/// Render one argument for the command's own driver. A cl-mode driver
+/// reads a `-` spelling as its own option where one exists (`-Wall` is
+/// `/Wall`, -Weverything) and drops the GCC-style ones it lacks, so an
+/// argument the parse unaliased out of a cl spelling (`/W3` is -Wall, `/J`
+/// -funsigned-char) is spelled through a cl alias of its option, else
+/// through `/clang:`.
+void render_driver_arg(const Arg& arg,
+                       CompilerFamily family,
+                       llvm::function_ref<void(std::string_view)> cb);
 
 /// The option-table visibility mask of a driver family: CL families see
 /// /U-, /D-style options; the rest exclude them so Unix absolute paths
@@ -270,9 +298,10 @@ public:
     CompilationDatabase(const CompilationDatabase&) = delete;
     CompilationDatabase& operator=(const CompilationDatabase&) = delete;
 
-    /// Where probes of cwd-insensitive configs run. Set before load; empty
-    /// means the process working directory.
-    void set_workspace_root(llvm::StringRef root);
+    /// Where probes of cwd-insensitive configs run, and what entry hashes
+    /// name the paths under relative to (path::portable). Set before load;
+    /// empty means the process working directory, and absolute paths.
+    void set_workspace_root(CanonicalRef root);
 
     FileTable& files() {
         return file_table;
@@ -281,9 +310,9 @@ public:
     /// Register a database file, or look up its id when already known;
     /// `path` may name a directory holding compile_commands.json. Nothing
     /// is read until load_source().
-    SourceID add_source(llvm::StringRef path);
+    SourceID add_source(const Spelling& path);
 
-    std::optional<SourceID> find_source(llvm::StringRef path) const;
+    std::optional<SourceID> find_source(const Spelling& path) const;
 
     llvm::StringRef source_path(SourceID id) const;
 
@@ -310,17 +339,32 @@ public:
     /// Whether the source's last load succeeded, so its entries are current.
     bool loaded(SourceID id) const;
 
+    /// One file a load read: the database, or a response file its
+    /// commands name. `hash` names the bytes the entries were built from;
+    /// nullopt when the file could not be read.
+    struct LoadInput {
+        Fid file;
+        std::optional<std::uint64_t> hash;
+
+        friend bool operator==(const LoadInput&, const LoadInput&) = default;
+    };
+
+    /// What the source's last load read: the database first, then the
+    /// response files (`@file`) its commands name, readable or not — a
+    /// change to one changes the commands as much as an edit of the
+    /// database itself. A load that could not parse the database read it
+    /// alone, its entries staying those of the load before; a source never
+    /// loaded has only the database, unread. A watcher compares the disk
+    /// against these hashes, not against a stat taken after the load, which
+    /// a rewrite landing in between would already describe.
+    llvm::ArrayRef<LoadInput> inputs(SourceID id) const;
+
     /// Whether the source's file exists on disk as last observed: set by a
-    /// successful load, then maintained by the file tracker's stats. A
+    /// successful load, then maintained by the CDBWatcher's stats. A
     /// discovered source that vanished keeps serving its entries but yields
     /// to the present ones (see Build::source_order).
     bool present(SourceID id) const;
     void set_present(SourceID id, bool present);
-
-    /// The response files (`@file`) the source's commands name, readable
-    /// or not, as recorded by its last load: a change to one changes the
-    /// commands as much as an edit of the database itself.
-    llvm::ArrayRef<std::string> response_files(SourceID id) const;
 
     /// Register and load `path` in one step; the entry count on success.
     std::optional<std::size_t> load(llvm::StringRef path);
@@ -369,7 +413,7 @@ public:
     /// spelling). `directory` is its working directory. Nullopt (logged
     /// once) when the spelling is not a compile command — blank, or a
     /// launcher with nothing to launch.
-    std::optional<ConfigID> intern_command(llvm::StringRef directory,
+    std::optional<ConfigID> intern_command(const Spelling& directory,
                                            llvm::ArrayRef<const char*> arguments);
 
     /// Derive the language of `file` compiled under `id`: walk the
@@ -383,7 +427,9 @@ public:
     llvm::StringRef forced_language(ConfigID id) const;
 
     /// Identity hash of a config (Frontend view + slot position + directory
-    /// + schema salt). The CDB diff identity, the index snapshot command
+    /// + schema salt), with the directory and the option values under the
+    /// workspace root taken by their portable names so a moved checkout
+    /// keeps it. The CDB diff identity, the index snapshot command
     /// identity, and — computed over a rules-applied config — the pin
     /// identity of clice/switchContext.
     std::uint64_t entry_hash(ConfigID id);
@@ -426,8 +472,6 @@ public:
         return *chain;
     }
 
-#ifdef CLICE_ENABLE_TEST
-
     /// Append one command to the test source and return its entry;
     /// nullopt when normalization fails.
     std::optional<CompilationEntry> add_command(llvm::StringRef directory,
@@ -438,8 +482,6 @@ public:
                                                 llvm::StringRef file,
                                                 llvm::StringRef command);
 
-#endif
-
 private:
     friend class Toolchain;
 
@@ -448,16 +490,16 @@ private:
     /// dedup). `file` is the entry's normalized path used to pick the input
     /// slot among the command's inputs; invalid synthesizes the slot at the
     /// end.
-    std::optional<ConfigID> normalize(llvm::StringRef directory,
+    std::optional<ConfigID> normalize(const Spelling& directory,
                                       Fid file,
                                       llvm::ArrayRef<const char*> arguments);
 
-    std::optional<ConfigID> normalize(llvm::StringRef directory, Fid file, llvm::StringRef command);
+    std::optional<ConfigID> normalize(const Spelling& directory, Fid file, llvm::StringRef command);
 
     /// Expand @file tokens in place, driver-mode aware (CL commands
     /// tokenize with Windows rules).
     void expand_response_files(llvm::SmallVectorImpl<const char*>& tokens,
-                               llvm::StringRef directory,
+                               const Spelling& directory,
                                CompilerFamily family,
                                llvm::StringSaver& saver,
                                unsigned depth = 0);
@@ -473,7 +515,7 @@ private:
     /// source, ordinal).
     void rebuild_entry_list();
 
-    std::optional<CompilationEntry> append_test_command(llvm::StringRef file,
+    std::optional<CompilationEntry> append_test_command(Fid file,
                                                         std::optional<ConfigID> normalized);
 
     std::unique_ptr<llvm::BumpPtrAllocator> allocator = std::make_unique<llvm::BumpPtrAllocator>();
@@ -483,8 +525,8 @@ private:
 
     ObjectSet<CompileConfig> configs{allocator.get()};
 
-    /// The workspace-wide file table (owned by Workspace, or by the
-    /// driver in multi-CDB tools — nested databases share one id space).
+    /// The process's file table (borrowed by the project that owns this
+    /// database — nested databases share one id space).
     FileTable& file_table;
 
     /// Registered sources: canonical file path and the entries its last
@@ -494,19 +536,23 @@ private:
         std::vector<CompilationEntry> entries;
         bool loaded = false;
         bool present = false;
-        std::vector<std::string> response_files;
+        std::vector<LoadInput> inputs;
     };
 
     std::vector<Source> source_files;
 
     /// The source being loaded, which records the response files its
-    /// commands expand; nullopt outside a load.
+    /// commands expand among its inputs; nullopt outside a load.
     std::optional<SourceID> loading;
 
     /// Every source's entries, sorted by (file, source, ordinal).
     std::vector<CompilationEntry> entry_list;
 
-    std::string workspace_root;
+    /// The path a command gives its input file as: a database's spelling
+    /// of it (CompilationEntry::spelling), else its identity.
+    llvm::StringRef input_path(Fid file) const;
+
+    CanonicalPath workspace_root;
 
     /// Derivation memos, append-only alongside the pools.
     llvm::DenseMap<std::uint32_t, std::uint64_t> entry_hashes;

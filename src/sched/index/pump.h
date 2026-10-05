@@ -5,11 +5,12 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
+#include "project/index_store.h"
+#include "project/project.h"
 #include "sched/index/ledger.h"
-#include "sched/index/store.h"
-#include "sched/workspace.h"
 #include "support/signal.h"
 
 #include "kota/async/async.h"
@@ -36,23 +37,15 @@ struct IndexerFixture;
 /// produces (the TURun family) or where results live (the IndexStore).
 ///
 /// The pump is serving-neutral: it never sees a SessionStore. The serving
-/// side injects its vetoes through `admission` and its escalation through
-/// `on_attempt_settled`; a batch driver installs neither and everything is
-/// admitted.
+/// side injects its policy through `compiled_by_session` and
+/// `on_attempt_settled`; a batch driver installs neither.
 class IndexPump {
 public:
     IndexPump(kota::event_loop& loop,
-              Workspace& workspace,
+              Project& project,
               TURunFamily& turun,
               IndexStore& store,
               WorkerPool& pool);
-
-    /// Dispatch- and landing-time admission on one claimed file, supplied
-    /// by the serving side (open sessions veto); null admits everything.
-    /// A veto settles the claimed debt — an ordinary open session's skip
-    /// must clear it, or the pump spins; only Defer keeps the debt for a
-    /// later round.
-    std::function<Admission(Fid)> admission;
 
     /// Invoked when an index attempt settled with no retry pending, before
     /// the attempt's waiters wake (contract 15): the serving side decides
@@ -62,6 +55,12 @@ public:
     /// refuses — a file a rule keeps out of the index — since no attempt
     /// will ever settle for it.
     std::function<void(Fid path_id)> on_attempt_settled;
+
+    /// Whether an open document's own compile serves the file: debt other
+    /// than a change of its own content then settles without a background
+    /// compile, which would compile the file a second time. The serving
+    /// side enqueues the file again when the document closes.
+    std::function<bool(Fid path_id)> compiled_by_session;
 
     /// Emitted when store rows that may be index-served changed (merged,
     /// re-masked, dropped or shed). Carries the affected path_ids; the
@@ -77,20 +76,24 @@ public:
     /// Resume background indexing after a pause.
     void resume_indexing();
 
-    /// RAII guard that pauses indexing for its lifetime.
+    /// RAII guard that pauses indexing for its lifetime; a moved-from one
+    /// holds nothing.
     struct [[nodiscard]] ScopedPause {
-        IndexPump& pump;
+        IndexPump* pump;
 
-        explicit ScopedPause(IndexPump& pump) : pump(pump) {
+        explicit ScopedPause(IndexPump& pump) : pump(&pump) {
             pump.pause_indexing();
         }
 
-        ~ScopedPause() {
-            pump.resume_indexing();
-        }
+        ScopedPause(ScopedPause&& other) noexcept : pump(std::exchange(other.pump, nullptr)) {}
 
-        ScopedPause(const ScopedPause&) = delete;
-        ScopedPause& operator=(const ScopedPause&) = delete;
+        ScopedPause& operator=(ScopedPause&&) = delete;
+
+        ~ScopedPause() {
+            if(pump) {
+                pump->resume_indexing();
+            }
+        }
     };
 
     ScopedPause scoped_pause() {
@@ -208,7 +211,7 @@ private:
 
     kota::event_loop& loop;
     kota::task_group<> bg_tasks;
-    Workspace& workspace;
+    Project& project;
     TURunFamily& turun;
     IndexStore& store;
     WorkerPool& pool;
@@ -222,9 +225,9 @@ private:
     /// The pending-reindex debt: claim/settle bookkeeping, tickets and
     /// the crash-requeue budget live in the ledger. The pump-side rules
     /// on top of it, each born from a concrete bug:
-    /// 1. The admission + freshness checks inside the index task are the
-    ///    ONLY places that decide to skip work. Duplicating them at the
-    ///    feeder reintroduces reason-blind skips.
+    /// 1. The freshness check inside the index task is the ONLY place
+    ///    that decides to skip work. Duplicating it at the feeder
+    ///    reintroduces reason-blind skips.
     /// 2. need_update() may shortcut deps-only slots ONLY: the engine
     ///    observed content changes itself, and the dep-hash check cannot
     ///    see a file's own edit.
@@ -236,7 +239,7 @@ private:
     /// the pump-side halves: a Requeued file gets its queue slot, an
     /// abandoned one wakes its waiters.
     PendingLedger::FailureVerdict note_dispatch_failure(const PendingLedger::Claim& claim,
-                                                        bool crashed);
+                                                        PendingLedger::Failure failure);
 
     /// Wake the file's await_attempt waiters whose observed ticket the
     /// settled attempt covers (`ticket` and older) and drop their events.
@@ -306,15 +309,5 @@ private:
                                 std::size_t total,
                                 RoundState& round);
 };
-
-/// The shutdown tail every indexing stack shares once its compile and
-/// index work is quiesced (contract 11): wind down the graph's rounds,
-/// the final save with the one metadata retry late debt may owe, then
-/// the pool and the store.
-kota::task<> shutdown_indexing(TaskGraph& graph,
-                               IndexPump& pump,
-                               IndexStore& store,
-                               WorkerPool& pool,
-                               Workspace& workspace);
 
 }  // namespace clice

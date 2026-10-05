@@ -10,9 +10,9 @@ func:
   references:
     - { file: "${WS}/call_hierarchy/01_calls_prepare.cpp", range: "14:5-14:11" }
   callHierarchy:
-    - { name: "launch", kind: Function, file: "${WS}/call_hierarchy/01_calls_prepare.cpp", range: "14:5-14:11" }
+    - { name: "launch", kind: Function, file: "${WS}/call_hierarchy/01_calls_prepare.cpp", range: "14:0-16:1", selection: "14:5-14:11" }
   outgoingCalls:
-    - { name: "start", kind: Method, file: "${WS}/call_hierarchy/01_calls_prepare.cpp", range: "12:14-12:19", fromRanges: ["15:4-15:13"] }
+    - { name: "start", kind: Method, file: "${WS}/call_hierarchy/01_calls_prepare.cpp", range: "12:0-12:24", selection: "12:14-12:19", fromRanges: ["15:6-15:11"] }
 
 method:
   definition:
@@ -24,6 +24,6 @@ method:
     - { file: "${WS}/call_hierarchy/01_calls_prepare.cpp", range: "12:14-12:19" }
     - { file: "${WS}/call_hierarchy/01_calls_prepare.cpp", range: "15:6-15:11" }
   callHierarchy:
-    - { name: "start", kind: Method, file: "${WS}/call_hierarchy/01_calls_prepare.cpp", range: "12:14-12:19" }
+    - { name: "start", kind: Method, file: "${WS}/call_hierarchy/01_calls_prepare.cpp", range: "12:0-12:24", selection: "12:14-12:19" }
   incomingCalls:
-    - { name: "launch", kind: Function, file: "${WS}/call_hierarchy/01_calls_prepare.cpp", range: "14:5-14:11", fromRanges: ["15:4-15:13"] }
+    - { name: "launch", kind: Function, file: "${WS}/call_hierarchy/01_calls_prepare.cpp", range: "14:0-16:1", selection: "14:5-14:11", fromRanges: ["15:6-15:11"] }

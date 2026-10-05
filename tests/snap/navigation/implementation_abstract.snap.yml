@@ -1,0 +1,28 @@
+---
+created_at: 2026-10-01
+input_file: implementation_abstract.cpp
+---
+concrete_root:
+  definition:
+    - { file: "${WS}/implementation_abstract.cpp", range: "19:17-19:18" }
+  declaration:
+    - { file: "${WS}/implementation_abstract.cpp", range: "19:17-19:18" }
+  implementation:
+    - { file: "${WS}/implementation_abstract.cpp", range: "23:9-23:10" }
+  references:
+    - { file: "${WS}/implementation_abstract.cpp", range: "19:17-19:18" }
+  callHierarchy:
+    - { name: "g", kind: Method, file: "${WS}/implementation_abstract.cpp", range: "19:4-19:24", selection: "19:17-19:18" }
+
+pure_root:
+  definition:
+    - { file: "${WS}/implementation_abstract.cpp", range: "7:17-7:18" }
+  declaration:
+    - { file: "${WS}/implementation_abstract.cpp", range: "7:17-7:18" }
+  implementation:
+    - { file: "${WS}/implementation_abstract.cpp", range: "11:9-11:10" }
+    - { file: "${WS}/implementation_abstract.cpp", range: "15:9-15:10" }
+  references:
+    - { file: "${WS}/implementation_abstract.cpp", range: "7:17-7:18" }
+  callHierarchy:
+    - { name: "f", kind: Method, file: "${WS}/implementation_abstract.cpp", range: "7:4-7:24", selection: "7:17-7:18" }

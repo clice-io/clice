@@ -12,13 +12,13 @@
 namespace clice::testing {
 namespace {
 
-TEST_SUITE(PersistedIndex) {
+ZEST_SUITE(PersistedIndex) {
 
 llvm::StringRef bytes_of(const std::vector<std::uint8_t>& blob) {
     return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
 }
 
-TEST_CASE(ManifestRoundTrip) {
+ZEST_CASE(ManifestRoundTrip) {
     index::TUManifest manifest;
     manifest.global_gen = 7;
     manifest.built_at = 1234567;
@@ -34,18 +34,22 @@ TEST_CASE(ManifestRoundTrip) {
         {VersionID{300}, 0xdeadbeefdeadbeefull},
         {VersionID{302}, 42                   },
     };
+    manifest.local_fanout = {
+        {.symbol = 5, .files = {0, 1}},
+        {.symbol = 9, .files = {1, 0}},
+    };
 
     llvm::SmallString<256> buf;
     llvm::raw_svector_ostream os(buf);
     index::serialize_manifest(manifest, os);
 
     auto loaded = index::deserialize_manifest(buf.str());
-    ASSERT_TRUE(loaded.has_value());
-    ASSERT_TRUE(*loaded == manifest);
+    ZASSERT(loaded);
+    ZASSERT(*loaded == manifest);
 }
 
-TEST_CASE(ManifestJunkRejected) {
-    ASSERT_FALSE(index::deserialize_manifest("not a flatbuffer").has_value());
+ZEST_CASE(ManifestJunkRejected) {
+    ZASSERT(!index::deserialize_manifest("not a flatbuffer").has_value());
 }
 
 /// Field order MUST mirror ManifestBlob (manifest.cpp).
@@ -58,9 +62,46 @@ struct ManifestBlobMirror {
     std::uint32_t contribution_count = 0;
     std::vector<std::uint8_t> nodes;
     std::vector<std::uint8_t> contributions;
+    std::vector<std::uint32_t> absent;
+    std::vector<std::uint64_t> local_symbols;
+    std::vector<std::uint32_t> local_file_ends;
+    std::vector<std::uint32_t> local_files;
 };
 
-TEST_CASE(ManifestCountMismatchRejected) {
+ZEST_CASE(ManifestFanoutRejected) {
+    ManifestBlobMirror valid;
+    valid.format_version = index::index_format_version;
+    valid.contribution_count = 1;
+    valid.contributions = {1, 0, 0, 0, 0, 0, 0, 0, 0};
+    valid.local_symbols = {5, 7};
+    valid.local_file_ends = {1, 2};
+    valid.local_files = {0, 0};
+
+    auto decodes = [&](const ManifestBlobMirror& mirror) {
+        auto blob = kota::codec::fbs::to_bytes(mirror);
+        return blob.has_value() && index::deserialize_manifest(bytes_of(*blob)).has_value();
+    };
+    ZASSERT(decodes(valid));
+
+    // A fanout file must name one of the manifest's contributions.
+    auto mirror = valid;
+    mirror.local_files = {0, 1};
+    ZASSERT(!decodes(mirror));
+
+    mirror = valid;
+    mirror.local_symbols = {7, 5};
+    ZASSERT(!decodes(mirror));
+
+    mirror = valid;
+    mirror.local_file_ends = {1};
+    ZASSERT(!decodes(mirror));
+
+    mirror = valid;
+    mirror.local_file_ends = {1, 1};
+    ZASSERT(!decodes(mirror));
+}
+
+ZEST_CASE(ManifestCountMismatchRejected) {
     // A node count claiming more nodes than the payload holds must not
     // decode.
     ManifestBlobMirror mirror;
@@ -69,11 +110,11 @@ TEST_CASE(ManifestCountMismatchRejected) {
     mirror.nodes = {1, 0, 5};  // one node's worth of varints
 
     auto blob = kota::codec::fbs::to_bytes(mirror);
-    ASSERT_TRUE(blob.has_value());
-    ASSERT_FALSE(index::deserialize_manifest(bytes_of(*blob)).has_value());
+    ZASSERT(blob);
+    ZASSERT(!index::deserialize_manifest(bytes_of(*blob)).has_value());
 }
 
-TEST_CASE(ManifestVarintOverflowRejected) {
+ZEST_CASE(ManifestVarintOverflowRejected) {
     // A ten-byte varint whose last byte carries more than value bit 63
     // would silently shift the excess out and decode to an unrelated small
     // id, redirecting contributions to another file.
@@ -83,8 +124,8 @@ TEST_CASE(ManifestVarintOverflowRejected) {
     mirror.nodes = {0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02, 0x00, 0x00};
 
     auto blob = kota::codec::fbs::to_bytes(mirror);
-    ASSERT_TRUE(blob.has_value());
-    ASSERT_FALSE(index::deserialize_manifest(bytes_of(*blob)).has_value());
+    ZASSERT(blob);
+    ZASSERT(!index::deserialize_manifest(bytes_of(*blob)).has_value());
 }
 
 /// A project whose FileVersion for `path` is referenced by one manifest of
@@ -94,20 +135,18 @@ index::ProjectIndex build_project(clice::FileTable& pool,
                                   llvm::StringRef path,
                                   llvm::StringRef tu) {
     index::ProjectIndex project;
-    auto path_id = pool.intern(path);
+    auto path_id = pool.intern(Spelling::absolute(path));
     auto fv = pool.intern_version(path_id, 0xabcd);
-    pool.versions[fv.raw].size = 100;
-    pool.versions[fv.raw].mtime_ns = 5555;
 
     index::TUManifest manifest;
-    manifest.tu_fv = pool.intern_version(pool.intern(tu), 0x1111);
+    manifest.tu_fv = pool.intern_version(pool.intern(Spelling::absolute(tu)), 0x1111);
     manifest.nodes = {
         {fv.raw, ~0u, 3}
     };
     manifest.contributions = {
         {fv, 777}
     };
-    project.apply_manifest(pool, pool.intern(tu), std::move(manifest));
+    project.apply_manifest(pool, pool.intern(Spelling::absolute(tu)), std::move(manifest));
 
     auto& symbol = project.touch(42);
     symbol.name = "sym";
@@ -123,11 +162,12 @@ std::vector<std::uint32_t> reference_files(const index::ProjectIndex& project,
     return files;
 }
 
-TEST_CASE(GlobalRoundTripRemap) {
+ZEST_CASE(GlobalRoundTripRemap) {
     clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
     project.global_generation = 9;
-    auto& manifest = project.manifests.find(pool.intern("/proj/tu.cpp"))->second;
+    auto& manifest =
+        project.manifests.find(pool.intern(Spelling::absolute("/proj/tu.cpp")))->second;
     manifest.global_gen = 9;
 
     llvm::SmallString<1024> buf;
@@ -138,36 +178,35 @@ TEST_CASE(GlobalRoundTripRemap) {
     // different pool id; both the FileVersion table and the loaded bitmap
     // must follow the path, not the id.
     clice::FileTable fresh;
-    fresh.intern("/proj/opened-first.cpp");
+    fresh.intern(Spelling::absolute("/proj/opened-first.cpp"));
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
+    ZASSERT(loaded.load_global(buf.str(), fresh, pins));
 
-    auto id = fresh.find("/proj/used.h");
-    ASSERT_TRUE(id.has_value());
-    ASSERT_TRUE(llvm::is_contained(reference_files(loaded, 42), id->raw));
-    ASSERT_EQ(loaded.reference_count(42), 1u);
-    ASSERT_EQ(fresh.versions.size(), pool.versions.size());
-    ASSERT_EQ(loaded.global_generation, 9u);
+    auto id = fresh.find(Spelling::absolute("/proj/used.h"));
+    ZASSERT(id);
+    ZASSERT(llvm::is_contained(reference_files(loaded, 42), id->raw));
+    ZASSERT(loaded.reference_count(42) == 1u);
+    ZASSERT(fresh.versions.size() == pool.versions.size());
+    ZASSERT(loaded.global_generation == 9u);
 
     // The blob pins the TU's manifest at the stamp it was saved under.
-    ASSERT_EQ(pins.size(), std::size_t(1));
-    ASSERT_EQ(pins.find(manifest.tu_fv)->second, 9u);
+    auto tu_fv = fresh.version_ids.find(
+        {*fresh.find(Spelling::absolute("/proj/tu.cpp")), std::uint64_t(0x1111)});
+    ZASSERT(tu_fv != fresh.version_ids.end());
+    ZASSERT(pins.size() == std::size_t(1));
+    ZASSERT(pins.find(tu_fv->second)->second == 9u);
 
-    auto fv_it = fresh.version_ids.find({*id, std::uint64_t(0xabcd)});
-    ASSERT_TRUE(fv_it != fresh.version_ids.end());
-    auto& record = fresh.version(fv_it->second);
-    ASSERT_EQ(record.size, 100u);
-    ASSERT_EQ(record.mtime_ns, 5555);
+    ZASSERT(fresh.version_ids.contains({*id, std::uint64_t(0xabcd)}));
 }
 
-TEST_CASE(GlobalRebaseKeepsChanges) {
+ZEST_CASE(GlobalRebaseKeepsChanges) {
     // The rows a write serialized read from the landed blob afterwards,
     // while rows changed across the write stay changed — and a write that
     // never landed gives its rows back.
     clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
-    auto other = pool.intern("/proj/other.h");
+    auto other = pool.intern(Spelling::absolute("/proj/other.h"));
 
     std::string first;
     llvm::raw_string_ostream first_os(first);
@@ -175,16 +214,16 @@ TEST_CASE(GlobalRebaseKeepsChanges) {
     project.touch(43).name = "late";
     project.touch(42).reference_files.add(other.raw);
     project.rebase(llvm::MemoryBuffer::getMemBufferCopy(first), pool);
-    ASSERT_EQ(project.symbol_count(), 2u);
-    ASSERT_EQ(project.identity_of(43)->name, "late");
-    ASSERT_EQ(project.reference_count(42), 2u);
+    ZASSERT(project.symbol_count() == 2u);
+    ZASSERT(project.identity_of(43)->name == "late");
+    ZASSERT(project.reference_count(42) == 2u);
 
     std::string second;
     llvm::raw_string_ostream second_os(second);
     project.serialize_global(second_os, pool);
     project.restore_unwritten();
-    ASSERT_EQ(project.identity_of(43)->name, "late");
-    ASSERT_EQ(project.reference_count(42), 2u);
+    ZASSERT(project.identity_of(43)->name == "late");
+    ZASSERT(project.reference_count(42) == 2u);
 
     // The base blob's path table is kept as it is, so a base row's bitmap
     // survives the next write byte for byte.
@@ -194,34 +233,35 @@ TEST_CASE(GlobalRebaseKeepsChanges) {
     clice::FileTable fresh;
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ASSERT_TRUE(loaded.load_global(third, fresh, pins));
-    ASSERT_EQ(loaded.symbol_count(), 2u);
-    ASSERT_EQ(loaded.reference_count(42), 2u);
-    ASSERT_TRUE(llvm::is_contained(reference_files(loaded, 42), fresh.find("/proj/other.h")->raw));
+    ZASSERT(loaded.load_global(third, fresh, pins));
+    ZASSERT(loaded.symbol_count() == 2u);
+    ZASSERT(loaded.reference_count(42) == 2u);
+    ZASSERT(llvm::is_contained(reference_files(loaded, 42),
+                               fresh.find(Spelling::absolute("/proj/other.h"))->raw));
 }
 
-TEST_CASE(GlobalCollectsGarbage) {
+ZEST_CASE(GlobalCollectsGarbage) {
     clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
     // Interned but referenced by no manifest — must not reach disk. The
     // shared table keeps it: other consumers may still anchor on it.
-    auto dead_id = pool.intern("/proj/dead.h");
+    auto dead_id = pool.intern(Spelling::absolute("/proj/dead.h"));
     pool.intern_version(dead_id, 0xdead);
 
     llvm::SmallString<1024> buf;
     llvm::raw_svector_ostream os(buf);
     project.serialize_global(os, pool);
-    ASSERT_TRUE(pool.version_ids.contains({dead_id, std::uint64_t(0xdead)}));
+    ZASSERT(pool.version_ids.contains({dead_id, std::uint64_t(0xdead)}));
 
     clice::FileTable fresh;
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
-    ASSERT_FALSE(fresh.find("/proj/dead.h").has_value());
-    ASSERT_TRUE(fresh.find("/proj/used.h").has_value());
+    ZASSERT(loaded.load_global(buf.str(), fresh, pins));
+    ZASSERT(!fresh.find(Spelling::absolute("/proj/dead.h")).has_value());
+    ZASSERT(fresh.find(Spelling::absolute("/proj/used.h")));
 }
 
-TEST_CASE(GlobalVersionGate) {
+ZEST_CASE(GlobalVersionGate) {
     // Only the version slot is written: every other field reads back absent,
     // which is structurally valid — the verdict must hinge on the value.
     struct VersionOnly {
@@ -233,29 +273,26 @@ TEST_CASE(GlobalVersionGate) {
     llvm::DenseMap<VersionID, std::uint64_t> pins;
 
     auto stale = kota::codec::fbs::to_bytes(VersionOnly{});
-    ASSERT_TRUE(stale.has_value());
-    ASSERT_FALSE(loaded.load_global(bytes_of(*stale), pool, pins).has_value());
+    ZASSERT(stale);
+    ZASSERT(!loaded.load_global(bytes_of(*stale), pool, pins).has_value());
 
     auto current = kota::codec::fbs::to_bytes(VersionOnly{index::index_format_version});
-    ASSERT_TRUE(current.has_value());
-    ASSERT_TRUE(loaded.load_global(bytes_of(*current), pool, pins));
-    ASSERT_EQ(loaded.symbol_count(), 0u);
-    ASSERT_TRUE(pins.empty());
+    ZASSERT(current);
+    ZASSERT(loaded.load_global(bytes_of(*current), pool, pins));
+    ZASSERT(loaded.symbol_count() == 0u);
+    ZASSERT(pins.empty());
 
-    ASSERT_FALSE(loaded.load_global("not a flatbuffer", pool, pins).has_value());
+    ZASSERT(!loaded.load_global("not a flatbuffer", pool, pins).has_value());
 }
 
 /// Field order MUST mirror GlobalBlob (project_index.cpp).
 struct GlobalBlobMirror {
     std::uint32_t format_version = index::index_format_version;
     std::uint64_t generation = 0;
-    std::uint64_t revocation_generation = 0;
     std::uint32_t next_fv_id = 0;
     std::vector<std::uint32_t> fv_ids;
     std::vector<std::string> fv_paths;
     std::vector<std::uint64_t> fv_hashes;
-    std::vector<std::uint64_t> fv_sizes;
-    std::vector<std::int64_t> fv_mtimes;
     std::vector<std::string> paths;
     std::vector<std::uint64_t> sym_hashes;
     std::string sym_names;
@@ -305,7 +342,7 @@ std::vector<std::string> four_paths() {
     return {"/proj/0.h", "/proj/1.h", "/proj/2.h", "/proj/ref.h"};
 }
 
-TEST_CASE(GlobalBitmapPayloadGate) {
+ZEST_CASE(GlobalBitmapPayloadGate) {
     // A malformed reference bitmap must fail the whole load: normalized to
     // empty it would silently lose the symbol's reference files, with
     // nothing ever rebuilding them.
@@ -318,11 +355,12 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto valid = encode(mirror);
-    ASSERT_TRUE(valid.has_value());
+    ZASSERT(valid);
     index::ProjectIndex loaded;
-    ASSERT_TRUE(loaded.load_global(bytes_of(*valid), pool, pins));
-    ASSERT_TRUE(loaded.identity_of(42).has_value());
-    ASSERT_TRUE(llvm::is_contained(reference_files(loaded, 42), pool.find("/proj/ref.h")->raw));
+    ZASSERT(loaded.load_global(bytes_of(*valid), pool, pins));
+    ZASSERT(loaded.identity_of(42));
+    ZASSERT(llvm::is_contained(reference_files(loaded, 42),
+                               pool.find(Spelling::absolute("/proj/ref.h"))->raw));
 
     // A malformed image after columns that decoded fine: the reject must
     // leave no partial state — file versions or symbols — that later
@@ -331,20 +369,18 @@ TEST_CASE(GlobalBitmapPayloadGate) {
     mirror.fv_ids = {7};
     mirror.fv_paths = {"/proj/partial.h"};
     mirror.fv_hashes = {0x1};
-    mirror.fv_sizes = {10};
-    mirror.fv_mtimes = {10};
     mirror.add_symbol(43, "other", {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}});
     auto corrupt = encode(mirror);
-    ASSERT_TRUE(corrupt.has_value());
+    ZASSERT(corrupt);
     index::ProjectIndex rejecting;
     clice::FileTable untouched;
-    ASSERT_FALSE(rejecting.load_global(bytes_of(*corrupt), untouched, pins).has_value());
-    ASSERT_EQ(rejecting.symbol_count(), 0u);
-    ASSERT_TRUE(untouched.versions.empty());
-    ASSERT_FALSE(untouched.find("/proj/partial.h").has_value());
+    ZASSERT(!rejecting.load_global(bytes_of(*corrupt), untouched, pins).has_value());
+    ZASSERT(rejecting.symbol_count() == 0u);
+    ZASSERT(untouched.versions.empty());
+    ZASSERT(!untouched.find(Spelling::absolute("/proj/partial.h")).has_value());
 }
 
-TEST_CASE(UncoveredBitmapIdRejected) {
+ZEST_CASE(UncoveredBitmapIdRejected) {
     // The writer emits a path-table entry for every id its bitmaps
     // reference; dropping an uncovered id would silently lose the symbol's
     // reference files while every manifest stays fresh.
@@ -357,19 +393,19 @@ TEST_CASE(UncoveredBitmapIdRejected) {
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto uncovered = encode(mirror);
-    ASSERT_TRUE(uncovered.has_value());
+    ZASSERT(uncovered);
     index::ProjectIndex loaded;
-    ASSERT_FALSE(loaded.load_global(bytes_of(*uncovered), pool, pins).has_value());
-    ASSERT_EQ(loaded.symbol_count(), 0u);
+    ZASSERT(!loaded.load_global(bytes_of(*uncovered), pool, pins).has_value());
+    ZASSERT(loaded.symbol_count() == 0u);
 
     mirror.paths = four_paths();
     auto covered = encode(mirror);
-    ASSERT_TRUE(covered.has_value());
-    ASSERT_TRUE(loaded.load_global(bytes_of(*covered), pool, pins));
-    ASSERT_TRUE(loaded.identity_of(42).has_value());
+    ZASSERT(covered);
+    ZASSERT(loaded.load_global(bytes_of(*covered), pool, pins));
+    ZASSERT(loaded.identity_of(42));
 }
 
-TEST_CASE(GlobalDuplicateVersionsRejected) {
+ZEST_CASE(GlobalDuplicateVersionsRejected) {
     // Version-table ids and (path, hash) pairs are both map keys in the
     // writer; a repeated id in particular would intern the earlier pair to
     // an id whose record names the later path, attributing contributions
@@ -379,39 +415,36 @@ TEST_CASE(GlobalDuplicateVersionsRejected) {
     mirror.fv_ids = {7, 7};
     mirror.fv_paths = {"/proj/a.h", "/proj/b.h"};
     mirror.fv_hashes = {0x1, 0x2};
-    mirror.fv_sizes = {1, 2};
-    mirror.fv_mtimes = {1, 2};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto dup_id = encode(mirror);
-    ASSERT_TRUE(dup_id.has_value());
+    ZASSERT(dup_id);
     index::ProjectIndex loaded;
-    ASSERT_FALSE(loaded.load_global(bytes_of(*dup_id), pool, pins).has_value());
-    ASSERT_TRUE(pool.versions.empty());
+    ZASSERT(!loaded.load_global(bytes_of(*dup_id), pool, pins).has_value());
+    ZASSERT(pool.versions.empty());
 
     mirror.fv_ids = {7, 8};
     mirror.fv_paths = {"/proj/a.h", "/proj/a.h"};
     mirror.fv_hashes = {0x1, 0x1};
     auto dup_pair = encode(mirror);
-    ASSERT_TRUE(dup_pair.has_value());
-    ASSERT_FALSE(loaded.load_global(bytes_of(*dup_pair), pool, pins).has_value());
+    ZASSERT(dup_pair);
+    ZASSERT(!loaded.load_global(bytes_of(*dup_pair), pool, pins).has_value());
 
     // The same path under two content hashes is the legitimate shape: two
-    // observed versions of one file. The table adopts the writer's id
-    // space up to its counter; garbage-collected ids stay behind as
-    // holes, not live versions.
+    // observed versions of one file. Only the ids the blob carries map
+    // into the table; the ones the writer garbage-collected map nowhere.
     mirror.fv_hashes = {0x1, 0x2};
     auto distinct = encode(mirror);
-    ASSERT_TRUE(distinct.has_value());
-    ASSERT_TRUE(loaded.load_global(bytes_of(*distinct), pool, pins));
-    ASSERT_EQ(pool.versions.size(), std::size_t(9));
-    ASSERT_TRUE(pool.knows_version(VersionID{7}));
-    ASSERT_TRUE(pool.knows_version(VersionID{8}));
-    ASSERT_FALSE(pool.knows_version(VersionID{0}));
+    ZASSERT(distinct);
+    ZASSERT(loaded.load_global(bytes_of(*distinct), pool, pins));
+    ZASSERT(pool.versions.size() == std::size_t(2));
+    ZASSERT(loaded.runtime_version(7));
+    ZASSERT(loaded.runtime_version(8));
+    ZASSERT(!loaded.runtime_version(0).has_value());
 }
 
-TEST_CASE(GlobalBadCounterRejected) {
+ZEST_CASE(GlobalBadCounterRejected) {
     // Ids are handed out from the counter, so a legit writer's ids all sit
     // below it; a lagging counter would alias stored ids on the next
     // intern, and a sentinel one would insert a DenseMap reserved key.
@@ -420,43 +453,38 @@ TEST_CASE(GlobalBadCounterRejected) {
     mirror.fv_ids = {7};
     mirror.fv_paths = {"/proj/a.h"};
     mirror.fv_hashes = {0x1};
-    mirror.fv_sizes = {1};
-    mirror.fv_mtimes = {1};
 
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto ahead = encode(mirror);
-    ASSERT_TRUE(ahead.has_value());
+    ZASSERT(ahead);
     index::ProjectIndex loaded;
-    ASSERT_TRUE(loaded.load_global(bytes_of(*ahead), pool, pins));
+    ZASSERT(loaded.load_global(bytes_of(*ahead), pool, pins));
 
     mirror.next_fv_id = 7;
     auto lagging = encode(mirror);
-    ASSERT_TRUE(lagging.has_value());
-    ASSERT_FALSE(loaded.load_global(bytes_of(*lagging), pool, pins).has_value());
+    ZASSERT(lagging);
+    ZASSERT(!loaded.load_global(bytes_of(*lagging), pool, pins).has_value());
 
     mirror.next_fv_id = std::numeric_limits<std::uint32_t>::max() - 1;
     mirror.fv_ids = {};
     mirror.fv_paths = {};
     mirror.fv_hashes = {};
-    mirror.fv_sizes = {};
-    mirror.fv_mtimes = {};
     auto reserved = encode(mirror);
-    ASSERT_TRUE(reserved.has_value());
-    ASSERT_FALSE(loaded.load_global(bytes_of(*reserved), pool, pins).has_value());
+    ZASSERT(reserved);
+    ZASSERT(!loaded.load_global(bytes_of(*reserved), pool, pins).has_value());
 
-    // A garbage high-water mark far beyond any real table must reject
-    // before the id-space resize tries to allocate it.
+    // A garbage high-water mark far beyond any real lineage rejects.
     mirror.next_fv_id = 0xf0000000;
     auto oversized = encode(mirror);
-    ASSERT_TRUE(oversized.has_value());
-    ASSERT_FALSE(loaded.load_global(bytes_of(*oversized), pool, pins).has_value());
+    ZASSERT(oversized);
+    ZASSERT(!loaded.load_global(bytes_of(*oversized), pool, pins).has_value());
 }
 
-TEST_CASE(GlobalRoundTripSymbolFacts) {
+ZEST_CASE(GlobalRoundTripSymbolFacts) {
     clice::FileTable pool;
     index::ProjectIndex project;
-    auto file = pool.intern("/proj/facts.h");
+    auto file = pool.intern(Spelling::absolute("/proj/facts.h"));
     auto& parent = project.touch(7);
     parent.name = "ns";
     parent.kind = SymbolKind::Namespace;
@@ -474,24 +502,24 @@ TEST_CASE(GlobalRoundTripSymbolFacts) {
 
     // The file column follows the path across pools like the bitmaps do.
     clice::FileTable fresh;
-    fresh.intern("/proj/opened-first.cpp");
+    fresh.intern(Spelling::absolute("/proj/opened-first.cpp"));
     index::ProjectIndex loaded;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
-    ASSERT_TRUE(loaded.load_global(buf.str(), fresh, pins));
+    ZASSERT(loaded.load_global(buf.str(), fresh, pins));
     auto restored = loaded.identity_of(42);
-    ASSERT_TRUE(restored.has_value());
-    ASSERT_EQ(restored->name, "Box");
-    ASSERT_EQ(restored->args, "<int>");
-    ASSERT_EQ(restored->parent, 7u);
-    ASSERT_EQ(static_cast<std::uint16_t>(restored->flags),
-              static_cast<std::uint16_t>(symbol.flags));
-    auto moved = fresh.find("/proj/facts.h");
-    ASSERT_TRUE(moved.has_value());
-    ASSERT_EQ(restored->file, moved->raw);
-    ASSERT_EQ(loaded.identity_of(7)->file, index::no_file);
+    ZASSERT(restored);
+    ZASSERT(restored->name == "Box");
+    ZASSERT(restored->args == "<int>");
+    ZASSERT(restored->parent == 7u);
+    ZASSERT(static_cast<std::uint16_t>(restored->flags) ==
+            static_cast<std::uint16_t>(symbol.flags));
+    auto moved = fresh.find(Spelling::absolute("/proj/facts.h"));
+    ZASSERT(moved);
+    ZASSERT(restored->file == moved->raw);
+    ZASSERT(loaded.identity_of(7)->file == index::no_file);
 }
 
-TEST_CASE(UncoveredFileIdRejected) {
+ZEST_CASE(UncoveredFileIdRejected) {
     // A file id the path table does not cover would resolve to whatever
     // this session interned at that id: reject it like an uncovered
     // bitmap id.
@@ -501,19 +529,19 @@ TEST_CASE(UncoveredFileIdRejected) {
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto control = encode(mirror);
-    ASSERT_TRUE(control.has_value());
+    ZASSERT(control);
     index::ProjectIndex loaded;
-    ASSERT_TRUE(loaded.load_global(bytes_of(*control), pool, pins));
+    ZASSERT(loaded.load_global(bytes_of(*control), pool, pins));
 
     mirror.sym_files = {5};
     auto uncovered = encode(mirror);
-    ASSERT_TRUE(uncovered.has_value());
+    ZASSERT(uncovered);
     index::ProjectIndex rejecting;
-    ASSERT_FALSE(rejecting.load_global(bytes_of(*uncovered), pool, pins).has_value());
-    ASSERT_EQ(rejecting.symbol_count(), 0u);
+    ZASSERT(!rejecting.load_global(bytes_of(*uncovered), pool, pins).has_value());
+    ZASSERT(rejecting.symbol_count() == 0u);
 }
 
-TEST_CASE(GlobalDuplicateSymbolRejected) {
+ZEST_CASE(GlobalDuplicateSymbolRejected) {
     // Rows are looked up by binary search over the hash column, so it
     // must ascend strictly; a repeated hash would let one row shadow the
     // other's identity and reference bitmap while every manifest still
@@ -528,24 +556,24 @@ TEST_CASE(GlobalDuplicateSymbolRejected) {
     clice::FileTable pool;
     llvm::DenseMap<VersionID, std::uint64_t> pins;
     auto dup = encode(mirror);
-    ASSERT_TRUE(dup.has_value());
+    ZASSERT(dup);
     index::ProjectIndex loaded;
-    ASSERT_FALSE(loaded.load_global(bytes_of(*dup), pool, pins).has_value());
-    ASSERT_EQ(loaded.symbol_count(), 0u);
+    ZASSERT(!loaded.load_global(bytes_of(*dup), pool, pins).has_value());
+    ZASSERT(loaded.symbol_count() == 0u);
 
     mirror.sym_hashes = {42, 43};
     auto distinct = encode(mirror);
-    ASSERT_TRUE(distinct.has_value());
-    ASSERT_TRUE(loaded.load_global(bytes_of(*distinct), pool, pins));
-    ASSERT_EQ(loaded.symbol_count(), std::size_t(2));
+    ZASSERT(distinct);
+    ZASSERT(loaded.load_global(bytes_of(*distinct), pool, pins));
+    ZASSERT(loaded.symbol_count() == std::size_t(2));
 
     mirror.sym_hashes = {43, 42};
     auto descending = encode(mirror);
-    ASSERT_TRUE(descending.has_value());
-    ASSERT_FALSE(loaded.load_global(bytes_of(*descending), pool, pins).has_value());
+    ZASSERT(descending);
+    ZASSERT(!loaded.load_global(bytes_of(*descending), pool, pins).has_value());
 }
 
-TEST_CASE(GlobalReservedKeysRejected) {
+ZEST_CASE(GlobalReservedKeysRejected) {
     // The two DenseMap sentinel key values can never sit in the in-memory
     // tables, so the writer can never emit them; a blob carrying one is
     // corrupt, and inserting it would corrupt (or assert in) the loader's
@@ -559,11 +587,9 @@ TEST_CASE(GlobalReservedKeysRejected) {
         mirror.fv_ids = {0xffffffffu};
         mirror.fv_paths = {"/proj/a.h"};
         mirror.fv_hashes = {0x1};
-        mirror.fv_sizes = {1};
-        mirror.fv_mtimes = {1};
         auto bytes = encode(mirror);
-        ASSERT_TRUE(bytes.has_value());
-        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
+        ZASSERT(bytes);
+        ZASSERT(!loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
     }
     {
         clice::Bitmap bits;
@@ -572,44 +598,109 @@ TEST_CASE(GlobalReservedKeysRejected) {
         mirror.paths = four_paths();
         mirror.add_symbol(~std::uint64_t(0), "sym", index::write_bitmap(bits));
         auto bytes = encode(mirror);
-        ASSERT_TRUE(bytes.has_value());
-        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
+        ZASSERT(bytes);
+        ZASSERT(!loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
     }
     {
         GlobalBlobMirror mirror;
         mirror.add_symbol(42, "sym", index::write_bitmap(clice::Bitmap{}), ~std::uint64_t(0));
         auto bytes = encode(mirror);
-        ASSERT_TRUE(bytes.has_value());
-        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
+        ZASSERT(bytes);
+        ZASSERT(!loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
     }
     {
         GlobalBlobMirror mirror;
         mirror.paths = {""};
         auto bytes = encode(mirror);
-        ASSERT_TRUE(bytes.has_value());
-        ASSERT_FALSE(loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
+        ZASSERT(bytes);
+        ZASSERT(!loaded.load_global(bytes_of(*bytes), pool, pins).has_value());
     }
-    ASSERT_TRUE(pool.versions.empty());
-    ASSERT_EQ(loaded.symbol_count(), 0u);
+    ZASSERT(pool.versions.empty());
+    ZASSERT(loaded.symbol_count() == 0u);
 }
 
-TEST_CASE(UnknownFileVersionsDetected) {
+ZEST_CASE(UnknownFileVersionsDetected) {
+    GlobalBlobMirror mirror;
+    mirror.next_fv_id = 4;
+    mirror.fv_ids = {3};
+    mirror.fv_paths = {"/proj/a.h"};
+    mirror.fv_hashes = {0x1};
+    auto bytes = encode(mirror);
+    ZASSERT(bytes);
+
     clice::FileTable pool;
-    index::ProjectIndex project;
-    auto known = pool.intern_version(Fid{0}, 0x1);
+    pool.intern_version(pool.intern(Spelling::absolute("/proj/opened-first.cpp")), 0x9);
+    index::ProjectIndex loaded;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
+    ZASSERT(loaded.load_global(bytes_of(*bytes), pool, pins));
+    auto known =
+        pool.version_ids.find({*pool.find(Spelling::absolute("/proj/a.h")), std::uint64_t(0x1)})
+            ->second;
 
     index::TUManifest manifest;
-    manifest.tu_fv = known;
+    manifest.tu_fv = VersionID{3};
     manifest.nodes = {
-        {known.raw, ~0u, 1}
+        {3, ~0u, 1}
     };
-    ASSERT_TRUE(project.knows_file_versions(pool, manifest));
+    manifest.contributions = {
+        {VersionID{3}, 7}
+    };
+    auto imported = manifest;
+    ZASSERT(loaded.import_manifest(imported));
+    ZASSERT(imported.tu_fv == known);
+    ZASSERT(imported.nodes[0].file == known.raw);
+    ZASSERT(imported.contributions[0].first == known);
 
-    manifest.nodes.push_back({known.raw + 1, ~0u, 2});
-    ASSERT_FALSE(project.knows_file_versions(pool, manifest));
+    manifest.nodes.push_back({2, ~0u, 2});
+    ZASSERT(!loaded.import_manifest(manifest));
+    manifest.nodes.back().file = ~0u;
+    ZASSERT(!loaded.import_manifest(manifest));
 }
 
-};  // TEST_SUITE(PersistedIndex)
+ZEST_CASE(SharedTableLineages) {
+    // Two projects' indexes over one file table: each keeps its own
+    // persisted ids, so the second loads beside the first and writes its
+    // manifests back under the ids it read them with.
+    clice::FileTable first_pool;
+    auto first = build_project(first_pool, "/lib/used.h", "/lib/tu.cpp");
+    std::string first_bytes;
+    llvm::raw_string_ostream first_os(first_bytes);
+    first.serialize_global(first_os, first_pool);
+
+    clice::FileTable second_pool;
+    second_pool.intern_version(second_pool.intern(Spelling::absolute("/app/pad.cpp")), 0x5);
+    auto second = build_project(second_pool, "/lib/used.h", "/app/tu.cpp");
+    auto& written =
+        second.manifests.find(second_pool.intern(Spelling::absolute("/app/tu.cpp")))->second;
+    auto persisted = second.export_manifest(written);
+    std::string second_bytes;
+    llvm::raw_string_ostream second_os(second_bytes);
+    second.serialize_global(second_os, second_pool);
+
+    clice::FileTable shared;
+    index::ProjectIndex first_loaded;
+    index::ProjectIndex second_loaded;
+    llvm::DenseMap<VersionID, std::uint64_t> first_pins;
+    llvm::DenseMap<VersionID, std::uint64_t> second_pins;
+    ZASSERT(first_loaded.load_global(first_bytes, shared, first_pins));
+    ZASSERT(second_loaded.load_global(second_bytes, shared, second_pins));
+
+    // The header both index is one version of the shared table.
+    ZASSERT(shared.versions.size() == std::size_t(3));
+    auto header = shared.version_ids.find(
+        {*shared.find(Spelling::absolute("/lib/used.h")), std::uint64_t(0xabcd)});
+    ZASSERT(header != shared.version_ids.end());
+
+    auto imported = persisted;
+    ZASSERT(second_loaded.import_manifest(imported));
+    ZASSERT(shared.version(imported.tu_fv).fid == *shared.find(Spelling::absolute("/app/tu.cpp")));
+    ZASSERT(imported.contributions[0].first == header->second);
+    ZASSERT(second_pins.size() == std::size_t(1));
+    ZASSERT(second_pins.contains(imported.tu_fv));
+    ZASSERT(second_loaded.export_manifest(imported) == persisted);
+}
+
+};  // ZEST_SUITE(PersistedIndex)
 
 }  // namespace
 }  // namespace clice::testing

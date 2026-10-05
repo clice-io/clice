@@ -41,6 +41,7 @@ import {
     anomaliesInMessages,
     processGateFailures,
     SANITIZER_MARKERS,
+    serverEnv,
     serverStderrExcerpt,
 } from "../process_gate.ts";
 import { canonicalUri, Workspace } from "./workspace.ts";
@@ -51,6 +52,7 @@ export {
     logFiles,
     SANITIZER_MARKERS,
 } from "../process_gate.ts";
+export { runProcess, type ProcessOptions, type ProcessResult } from "./process.ts";
 import { withTimeout } from "../promise.ts";
 
 // The harness's timing helpers are reached through this module.
@@ -118,41 +120,6 @@ export function asLocations(result: unknown): proto.Location[] {
 
 const SANITIZER_MARKER_BUFFERS = SANITIZER_MARKERS.map((m) => Buffer.from(m));
 
-let nextPortOffset = 0;
-
-function tryBind(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-        const server = net.createServer();
-        server.once("error", () => {
-            resolve(false);
-        });
-        server.listen(port, "127.0.0.1", () => {
-            server.close(() => {
-                resolve(true);
-            });
-        });
-    });
-}
-
-/// Pick a port from a per-worker range.
-///
-/// bind(0) draws from the kernel's shared pool: two concurrent workers can
-/// grab the same port in the close-then-rebind gap. Disjoint per-worker
-/// ranges (below the ephemeral range) remove that race; the advancing
-/// offset avoids immediately reusing a just-released port.
-export async function findFreePort(): Promise<number> {
-    const index = Number(process.env["VITEST_POOL_ID"] ?? "0") || 0;
-    const base = 21000 + index * 100;
-    for (let i = 0; i < 100; i++) {
-        const port = base + nextPortOffset;
-        nextPortOffset = (nextPortOffset + 1) % 100;
-        if (await tryBind(port)) {
-            return port;
-        }
-    }
-    throw new Error(`no free port in range ${base}-${base + 99}`);
-}
-
 export interface StartOptions {
     /// The server treats stderr as best-effort, but a client that never
     /// reads it forfeits the full mirror (lines are dropped once the pipe
@@ -162,18 +129,29 @@ export interface StartOptions {
     args?: string[] | undefined;
     /// Working directory of the server process; the caller's by default.
     cwd?: string | undefined;
+    /// Extra environment for the server process, which its workers inherit:
+    /// the CLICE_TEST_* hooks.
+    env?: Record<string, string> | undefined;
 }
 
 export interface InitializeOptions {
     initializationOptions?: Record<string, unknown> | undefined;
     /// Whether to overlay the test defaults — one worker of each kind and
-    /// the tracker's polling loops off — onto the initialization options.
+    /// background polling off — onto the initialization options.
     /// A benchmark switches them off to run the server's real defaults,
     /// which stay spelled in one place: the C++ config initializers.
     testDefaults?: boolean | undefined;
     /// Client capabilities to advertise; empty by default so servers see
     /// the most conservative client unless a test opts in.
     capabilities?: proto.ClientCapabilities | undefined;
+    /// The workspace folders to announce, workspace-relative; the
+    /// workspace root alone when omitted, no root at all (neither folders
+    /// nor rootUri) when empty, and the root through rootUri alone — a
+    /// client without folder support — when null.
+    folders?: string[] | null | undefined;
+    /// Runs between the initialize response and the initialized
+    /// notification.
+    beforeInitialized?: (() => Promise<void>) | undefined;
 }
 
 interface Transport {
@@ -185,7 +163,7 @@ interface Transport {
 /// the cache pinned into the workspace (so `.clice/` cleanup prevents a
 /// stale PCH) and, unless switched off, the test defaults — one worker of
 /// each kind (halves the per-test spawn cost; tests needing more pass their
-/// own counts) and the stat-polling loops disabled (tests drive ticks
+/// own counts) and background polling disabled (tests drive ticks
 /// deterministically through the clice/internal/poll hook).
 export function initializationOptionsFor(
     ws: Workspace,
@@ -202,7 +180,6 @@ export function initializationOptionsFor(
     if (options.testDefaults ?? true) {
         project["stateless_worker_count"] ??= 1;
         project["stateful_worker_count"] ??= 1;
-        tracker["cdb_poll_seconds"] ??= 0;
         tracker["workspace_poll_seconds"] ??= 0;
     }
     initializationOptions["project"] = project;
@@ -213,11 +190,14 @@ export function initializationOptionsFor(
 export class CliceClient {
     child: ChildProcessWithoutNullStreams;
     protected connection: proto.ProtocolConnection;
+    private transport: Transport;
     /// Non-null only in socket mode: the LSP transport rides this socket
     /// instead of the child's stdio, and must be torn down with the client.
     private socket: net.Socket | null = null;
 
     diagnostics = new Map<string, proto.Diagnostic[]>();
+    /// Every publishDiagnostics received, in order.
+    publishedDiagnostics: proto.PublishDiagnosticsParams[] = [];
     logMessages: proto.LogMessageParams[] = [];
     progressTokens: string[] = [];
     progressEvents: { token: string; value: unknown }[] = [];
@@ -244,6 +224,7 @@ export class CliceClient {
     disposed = false;
 
     private diagnosticsWaiters = new Map<string, (() => void)[]>();
+    private publishes = new Map<string, number>();
 
     // Retention cap for drained stderr: long stress runs mirror the whole
     // server log, and the teardown scans only need the tail (sanitizer
@@ -252,6 +233,7 @@ export class CliceClient {
 
     private constructor(child: ChildProcessWithoutNullStreams, transport: Transport) {
         this.child = child;
+        this.transport = transport;
         this.connection = createProtocolConnection(
             new StreamMessageReader(transport.reader),
             new StreamMessageWriter(transport.writer),
@@ -268,9 +250,11 @@ export class CliceClient {
         });
 
         this.onNotification(proto.PublishDiagnosticsNotification.type, (params) => {
+            this.publishedDiagnostics.push(params);
             const rawUri = params.uri;
             const normalized = this.normalizeUri(rawUri);
             const diags = [...params.diagnostics];
+            this.publishes.set(normalized, (this.publishes.get(normalized) ?? 0) + 1);
             this.diagnostics.set(rawUri, diags);
             if (rawUri !== normalized) {
                 this.diagnostics.set(normalized, diags);
@@ -323,6 +307,7 @@ export class CliceClient {
         const child = spawn(executable, options.args ?? ["serve"], {
             stdio: ["pipe", "pipe", "pipe"],
             cwd: options.cwd,
+            env: { ...serverEnv(), ...options.env },
         });
         const client = new CliceClient(child, { reader: child.stdout, writer: child.stdin });
         client.stderrDrainedFromStart = options.drainStderr !== false;
@@ -339,13 +324,17 @@ export class CliceClient {
     static async startSocket(
         executable: string,
         port: number,
-        options: { host?: string | undefined; args?: string[] | undefined } = {},
+        options: {
+            host?: string | undefined;
+            args?: string[] | undefined;
+            env?: Record<string, string> | undefined;
+        } = {},
     ): Promise<CliceClient> {
         const host = options.host ?? "127.0.0.1";
         const child = spawn(
             executable,
             options.args ?? ["serve", "--mode", "socket", "--port", String(port)],
-            { stdio: ["pipe", "pipe", "pipe"] },
+            { stdio: ["pipe", "pipe", "pipe"], env: { ...serverEnv(), ...options.env } },
         );
         let socket: net.Socket | null = null;
         for (let i = 0; i < 150; i++) {
@@ -397,6 +386,70 @@ export class CliceClient {
             : conn.sendRequest(type, params, token);
     }
 
+    /// Writes `messages` in one write, which the server reads together, and
+    /// resolves with the response to each request among them, by id. The
+    /// client's own connection ignores those responses: the ids must be
+    /// strings, which it never sends.
+    sendTogether(
+        messages: (proto.RequestMessage | proto.NotificationMessage)[],
+    ): Promise<Map<string, proto.ResponseMessage>> {
+        const pending = new Set(
+            messages.flatMap((message) => ("id" in message ? [String(message.id)] : [])),
+        );
+        const responses = new Map<string, proto.ResponseMessage>();
+        const { reader, writer } = this.transport;
+        const answered = new Promise<Map<string, proto.ResponseMessage>>((resolve) => {
+            if (pending.size === 0) {
+                resolve(responses);
+                return;
+            }
+            // Attached mid-stream, the first chunk may begin inside a
+            // message: a frame is found by the end of its header, and the
+            // length the header names.
+            let buffer = Buffer.alloc(0);
+            const onData = (chunk: Buffer): void => {
+                buffer = Buffer.concat([buffer, chunk]);
+                for (;;) {
+                    const end = buffer.indexOf("\r\n\r\n");
+                    if (end < 0) {
+                        break;
+                    }
+                    const header = buffer.subarray(0, end).toString("latin1");
+                    const named = /Content-Length: (\d+)/i.exec(
+                        header.slice(header.lastIndexOf("Content-Length:")),
+                    );
+                    const length = Number(named?.[1] ?? 0);
+                    if (buffer.length < end + 4 + length) {
+                        break;
+                    }
+                    const body = buffer.subarray(end + 4, end + 4 + length).toString("utf-8");
+                    buffer = buffer.subarray(end + 4 + length);
+                    const message = JSON.parse(body) as proto.Message;
+                    if (proto.Message.isResponse(message) && pending.delete(String(message.id))) {
+                        responses.set(String(message.id), message);
+                    }
+                }
+                if (pending.size === 0) {
+                    reader.off("data", onData);
+                    resolve(responses);
+                }
+            };
+            reader.on("data", onData);
+        });
+        writer.write(
+            Buffer.concat(
+                messages.map((message) => {
+                    const body = Buffer.from(JSON.stringify(message), "utf-8");
+                    return Buffer.concat([
+                        Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, "ascii"),
+                        body,
+                    ]);
+                }),
+            ),
+        );
+        return answered;
+    }
+
     sendNotification<P>(type: proto.NotificationType<P>, params: P): Promise<void>;
     sendNotification(type: proto.NotificationType0): Promise<void>;
     sendNotification(method: string, params?: unknown): Promise<void>;
@@ -436,15 +489,44 @@ export class CliceClient {
         const wsUri = URI.file(ws.root).toString();
         const params: proto.InitializeParams = {
             processId: process.pid,
-            capabilities: options.capabilities ?? {},
-            rootUri: wsUri,
-            workspaceFolders: [{ uri: wsUri, name: "test" }],
+            // Versioned workspace edits, like every editor client: code
+            // action replies then carry the buffer version they apply to.
+            capabilities: options.capabilities ?? {
+                workspace: { workspaceEdit: { documentChanges: true } },
+                textDocument: { rename: { prepareSupport: true } },
+            },
+            rootUri: options.folders?.length === 0 ? null : wsUri,
             initializationOptions,
         };
+        if (options.folders === undefined) {
+            params.workspaceFolders = [{ uri: wsUri, name: "test" }];
+        } else if (options.folders !== null) {
+            params.workspaceFolders = options.folders.map((folder) => ({
+                uri: URI.file(ws.path(folder)).toString(),
+                name: folder,
+            }));
+        }
         this.initResult = await this.sendRequest(proto.InitializeRequest.type, params);
-        await this.sendNotification(proto.InitializedNotification.type, {});
         this.workspace = ws;
+        await options.beforeInitialized?.();
+        await this.sendNotification(proto.InitializedNotification.type, {});
         return this;
+    }
+
+    /// Announce workspace folders coming and going
+    /// (didChangeWorkspaceFolders), workspace-relative like `folders` at
+    /// initialize.
+    changeWorkspaceFolders(change: { added?: string[]; removed?: string[] }): Promise<void> {
+        const folder = (name: string) => ({
+            uri: URI.file(this.resolvePath(name)).toString(),
+            name,
+        });
+        return this.sendNotification(proto.DidChangeWorkspaceFoldersNotification.type, {
+            event: {
+                added: (change.added ?? []).map(folder),
+                removed: (change.removed ?? []).map(folder),
+            },
+        });
     }
 
     /// Gracefully shut down: shutdown request, exit notification, then the
@@ -536,6 +618,37 @@ export class CliceClient {
             }
             throw new Error(failures.join("\n"));
         }
+    }
+
+    /// The PIDs of the server's worker processes whose command line names
+    /// `kind` ("SF-" stateful, "SL-" stateless; every worker when empty).
+    /// Linux only: read from /proc.
+    workerPids(kind = ""): number[] {
+        const pids: number[] = [];
+        for (const entry of fs.readdirSync("/proc")) {
+            if (!/^\d+$/.test(entry)) {
+                continue;
+            }
+            let stat: string;
+            let cmdline: Buffer;
+            try {
+                stat = fs.readFileSync(`/proc/${entry}/stat`, "utf8");
+                cmdline = fs.readFileSync(`/proc/${entry}/cmdline`);
+            } catch {
+                continue;
+            }
+            // /proc/<pid>/stat: pid (comm) state ppid ...
+            const ppid = Number(
+                stat
+                    .slice(stat.lastIndexOf(")") + 1)
+                    .trim()
+                    .split(/\s+/)[1],
+            );
+            if (ppid === this.child.pid && cmdline.includes(kind)) {
+                pids.push(Number(entry));
+            }
+        }
+        return pids;
     }
 
     /// Force-kill the server process, simulating a crash.
@@ -722,6 +835,11 @@ export class CliceClient {
         await withTimeout(arrived, timeout, `diagnostics ${uri}`);
     }
 
+    /// How many diagnostics publishes the document has received.
+    publishCount(uri: string): number {
+        return this.publishes.get(this.normalizeUri(uri)) ?? 0;
+    }
+
     errors(uri: string): proto.Diagnostic[] {
         return (this.diagnostics.get(uri) ?? []).filter(
             (d) => d.severity === proto.DiagnosticSeverity.Error,
@@ -831,12 +949,50 @@ export class CliceClient {
         });
     }
 
+    prepareRenameAt(uri: string, line: number, character: number) {
+        return this.sendRequest(
+            proto.PrepareRenameRequest.type,
+            this.textDocumentPosition(uri, line, character),
+        );
+    }
+
+    renameAt(uri: string, line: number, character: number, newName: string) {
+        return this.sendRequest(proto.RenameRequest.type, {
+            ...this.textDocumentPosition(uri, line, character),
+            newName,
+        });
+    }
+
     /// URIs of the references at a position (declaration excluded).
     async referenceUris(uri: string, line: number, character: number): Promise<string[]> {
         const refs = await this.referencesAt(uri, line, character, {
             includeDeclaration: false,
         });
         return (refs ?? []).map((ref) => ref.uri);
+    }
+
+    /// URIs of the definitions at a position.
+    async definitionUris(uri: string, line: number, character: number): Promise<string[]> {
+        return asLocations(await this.definitionAt(uri, line, character)).map(
+            (location) => location.uri,
+        );
+    }
+
+    /// Poll definitions at a position until expectedUri shows up.
+    async waitForDefinition(
+        uri: string,
+        line: number,
+        character: number,
+        expectedUri: string,
+        timeoutSeconds = 30,
+    ): Promise<boolean> {
+        for (let i = 0; i < timeoutSeconds; i++) {
+            if ((await this.definitionUris(uri, line, character)).includes(expectedUri)) {
+                return true;
+            }
+            await sleep(1_000);
+        }
+        return false;
     }
 
     /// Poll references at a position until expectedUri shows up.
@@ -1032,12 +1188,17 @@ export class CliceClient {
         });
     }
 
-    listConfigurations(): Promise<ListConfigurationsResult> {
-        return this.sendRequest(ListConfigurationsRequest);
+    /// The build configuration menu of the project serving `uri`, else of
+    /// the first project over a folder.
+    listConfigurations(uri?: string): Promise<ListConfigurationsResult> {
+        return this.sendRequest(ListConfigurationsRequest, uri === undefined ? {} : { uri });
     }
 
-    switchConfiguration(name: string): Promise<SwitchConfigurationResult> {
-        return this.sendRequest(SwitchConfigurationRequest, { name });
+    switchConfiguration(name: string, uri?: string): Promise<SwitchConfigurationResult> {
+        return this.sendRequest(
+            SwitchConfigurationRequest,
+            uri === undefined ? { name } : { name, uri },
+        );
     }
 
     /// clice/internal/poll (test hook): run one tracker tick and apply its

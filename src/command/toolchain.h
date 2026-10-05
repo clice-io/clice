@@ -48,7 +48,7 @@ public:
     };
 
     /// `failed_retry` bounds the negative cache: a failed key is retried
-    /// once the cooldown passes (cf. CrashBudget), so a transient driver
+    /// once the cooldown passes (cf. BlameBudget), so a transient driver
     /// failure — an upgrade replacing the binary mid-stat, a full tmpfs —
     /// cannot poison the key for the rest of the session.
     explicit Toolchain(CompilationDatabase& db,
@@ -79,18 +79,12 @@ public:
     static std::expected<std::vector<std::string>, std::string>
         query(llvm::ArrayRef<const char*> arguments, llvm::StringRef file = {});
 
-#ifdef CLICE_ENABLE_TEST
-
     std::string probe_key_for(ConfigID id, InputKind input) {
         return probe_key(id, input).key;
     }
 
     void set_failed_retry(std::chrono::steady_clock::duration retry) {
         failed_retry = retry;
-    }
-
-    bool probe_cwd_sensitive_for(ConfigID id) {
-        return probe_key(id, {}).cwd_sensitive;
     }
 
     std::size_t probe_count() const {
@@ -105,8 +99,6 @@ public:
     /// our linked cc1 does not understand (along with their values).
     static std::vector<std::string> parse_cc1(llvm::StringRef content);
 
-#endif
-
 private:
     struct ProbeKey {
         std::string key;
@@ -117,14 +109,12 @@ private:
 
     /// The probe argv: driver (+ subcommand) + non-user-content args, with
     /// the input slot position recorded for the temp-file insertion.
-    /// Relative path-suspect values of cwd-sensitive configs absolutize
-    /// against the directory (the in-process driver cannot change cwd).
     struct ProbeArgv {
         std::vector<const char*> argv;
         std::size_t slot = 0;
     };
 
-    ProbeArgv probe_argv(const CompileConfig& config, bool cwd_sensitive);
+    ProbeArgv probe_argv(const CompileConfig& config);
 
     /// Parse raw probe output into a Resolved entry for `id`, re-attaching
     /// the config's user-content args and replacing external resource dirs.

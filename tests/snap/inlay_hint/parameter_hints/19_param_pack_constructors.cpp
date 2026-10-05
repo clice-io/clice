@@ -18,7 +18,8 @@ void relay(Args... args) {
 
 template <typename... Args>
 void construct(Args... args) {
-    // The written Foo{args...} and the literal after it get no hints yet.
+    // Inside Foo{args...} no hint lands: which constructor parameter a pack
+    // element meets is only known per instantiation.
     consume(Foo{args...}, 1);
 }
 

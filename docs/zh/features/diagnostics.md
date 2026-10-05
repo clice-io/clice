@@ -6,6 +6,8 @@
 - [x] 严重程度映射（错误、警告）
 - [x] 带源位置的诊断范围
 - [x] 相关信息（附加到诊断的备注）
+- [x] 被包含头文件中的错误定位到引入该头文件的 `#include` 处，模板实例化中的错误定位到请求该实例化的代码处
+- [x] Preamble 中的预处理指令所产生的警告（`#warning`、`#pragma message`、宏重定义）
 - [x] 跨文件诊断的文件 URI 转换
 - [x] 拉取式诊断模型（`textDocument/diagnostic`）
 - [ ] 报告所有因缺少 `#include` 而产生的错误，而不只是第一个——解析器遇到首个致命错误后便会停止
@@ -30,7 +32,7 @@
   // main.cpp: calls new_func() → should NOT show "undeclared identifier"
   ```
 
-- [ ] Preamble 头文件中的模板实例化错误诊断（[clangd#137](https://github.com/clangd/clangd/issues/137)）
+- [x] Preamble 头文件中的模板实例化错误诊断（[clangd#137](https://github.com/clangd/clangd/issues/137)）
 
 ## 标签
 
@@ -50,9 +52,9 @@
 
 ## 诊断抑制
 
-- [x] 使用 `// NOLINT` 注释抑制诊断
-- [x] 使用 `// NOLINTNEXTLINE` 注释抑制诊断
-- [x] `// NOLINTBEGIN` / `// NOLINTEND` 块级抑制
+- [x] 使用 `// NOLINT` 注释抑制 `clice lint` 中的诊断
+- [x] 使用 `// NOLINTNEXTLINE` 注释抑制 `clice lint` 中的诊断
+- [x] `clice lint` 中的 `// NOLINTBEGIN` / `// NOLINTEND` 块级抑制
 - [ ] include-cleaner 诊断支持 `NOLINT`（[clangd#1982](https://github.com/clangd/clangd/issues/1982)）
 - [ ] 配置文件中可按诊断类别配置严重程度（[clangd#1937](https://github.com/clangd/clangd/issues/1937)）
 - [ ] 根据版本控制 diff 过滤诊断——仅显示变更行附近的警告（[clangd#822](https://github.com/clangd/clangd/issues/822)）
@@ -64,7 +66,7 @@
 ## 头文件诊断
 
 - [ ] 针对未使用或缺少的 `#include` 指令提供 include-cleaner 诊断
-- [ ] 抑制头文件中的 static inline 函数所触发的 `-Wunused-function` 误报（[clangd#1211](https://github.com/clangd/clangd/issues/1211)）
+- [x] 抑制头文件中的 static inline 函数所触发的 `-Wunused-function` 误报（[clangd#1211](https://github.com/clangd/clangd/issues/1211)）
 
   ```cpp
   // utils.h
@@ -79,7 +81,7 @@
 ## clang-tidy 集成
 
 - [ ] clang-tidy 诊断（由配置控制）
-- [x] 抑制源自系统头文件中宏的 clang-tidy 警告（[clangd#1587](https://github.com/clangd/clangd/issues/1587)、[clangd#2000](https://github.com/clangd/clangd/issues/2000)）
+- [x] 在 `clice lint` 中抑制源自系统头文件中宏的 clang-tidy 警告（[clangd#1587](https://github.com/clangd/clangd/issues/1587)、[clangd#2000](https://github.com/clangd/clangd/issues/2000)）
 - [ ] Clang 静态分析器支持（[clangd#905](https://github.com/clangd/clangd/issues/905)）
 - [ ] 特定版本的 clang-tidy 文档链接（[clangd#2136](https://github.com/clangd/clangd/issues/2136)）
 - [ ] 对位于代码之前的预处理指令进行诊断（[clangd#2501](https://github.com/clangd/clangd/issues/2501)）

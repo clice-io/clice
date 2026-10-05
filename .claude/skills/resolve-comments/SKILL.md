@@ -45,9 +45,8 @@ how it is phrased.
   anything overturned becomes follow-up work or a dedicated refactor PR.
 - Low-priority corner case — a state no user workflow reaches, a
   transition the plan never asked to handle: no code. Record it as an
-  accepted limitation in the report's Decisions block and in the area's
-  page under `temp/objectives/`; reproducibility alone is not a reason
-  to fix.
+  accepted limitation in the report's Decisions block; reproducibility
+  alone is not a reason to fix.
 
 ## Convergence
 

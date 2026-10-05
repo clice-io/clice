@@ -2,11 +2,15 @@
 
 /// Shared utilities for stateful and stateless worker processes.
 
+#include <cstdint>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "compile/compilation.h"
 #include "support/timer.h"
+#include "vfs/file_system.h"
 #include "worker/protocol.h"
 #include "worker/serialize.h"
 
@@ -21,5 +25,35 @@ inline void fill_args(CompilationParams& cp,
         cp.arguments.push_back(arg.c_str());
     }
 }
+
+/// Hand a compile the master's PCH and PCMs. The PCH comes from clice's
+/// store, so the process keeps its mapping for later compiles.
+inline void use_artifacts(CompilationParams& cp,
+                          const std::pair<std::string, std::uint32_t>& pch,
+                          const std::unordered_map<std::string, std::string>& pcms) {
+    if(!pch.first.empty()) {
+        cp.pch = pch;
+        vfs::keep_mapped(pch.first);
+    }
+    for(auto& [name, path]: pcms) {
+        cp.pcms.try_emplace(name, path);
+    }
+}
+
+/// The largest index blob a worker reply carries. The transport refuses a
+/// frame past 64 MiB (kotatsu's limit) and the whole reply is lost with it,
+/// so a larger index is dropped at the source and the rest of the reply
+/// still lands; the margin leaves room for that rest. Tests lower it
+/// through CLICE_TEST_MAX_INDEX_BYTES.
+std::size_t max_index_bytes();
+
+/// Hand freed heap back to the system. glibc keeps the pages of large freed
+/// arenas — an AST, a TU's index — so without this a worker's RSS only ever
+/// grows across documents.
+void release_free_memory();
+
+/// Make the kernel's OOM killer pick a worker before the master: a worker is
+/// restartable by design, the master holds every open session.
+void prefer_as_oom_victim();
 
 }  // namespace clice

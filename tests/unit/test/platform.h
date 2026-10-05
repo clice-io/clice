@@ -3,6 +3,8 @@
 #include <cstdlib>
 #include <string>
 
+#include "vfs/path.h"
+
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -23,14 +25,10 @@ constexpr inline bool Linux = true;
 constexpr inline bool Linux = false;
 #endif
 
-#ifdef CLICE_CI_ENVIRONMENT
-constexpr inline bool CIEnvironment = true;
-#else
-constexpr inline bool CIEnvironment = false;
-#endif
-
-/// The checked-in fixture tree, tests/data of the checkout that built this
-/// binary. CLICE_TEST_DATA_DIR in the environment overrides it, the way
+/// The checked-in fixture tree, tests/data of the working directory (the
+/// repository root, where the tasks run the tests: a build that may be
+/// cached across checkouts names none of them). CLICE_TEST_DATA_DIR in the
+/// environment overrides it, the way
 /// CLICE_EXECUTABLE points the TypeScript suites at another build. Absolute
 /// and dot-free with native separators, the spelling the database loader
 /// produces for paths anchored under it.
@@ -54,22 +52,25 @@ public:
 
     const static char* root() {
 #ifdef _WIN32
-        return "C:\\clice-test";
+        return "c:/clice-test";
 #else
         return "/clice-test";
 #endif
     }
 
-    /// root() + relative → absolute path; an absolute path stays as is
-    /// (a file that must live outside the root, e.g. inside a cache
-    /// store's directory).
+    /// root() + relative → absolute path, spelled the way the file table
+    /// names a file (path::canonicalize); an absolute path stays as is (a
+    /// file that must live outside the root, e.g. inside a cache store's
+    /// directory).
     static std::string path(llvm::StringRef relative) {
         if(llvm::sys::path::is_absolute(relative)) {
             return relative.str();
         }
-        llvm::SmallString<128> result;
-        llvm::sys::path::append(result, root(), relative);
-        return std::string(result);
+        llvm::SmallString<128> joined;
+        llvm::sys::path::append(joined, root(), relative);
+        std::string result(joined);
+        path::canonicalize(result);
+        return result;
     }
 
     /// Add a file with an optional content (relative path, auto-prefixed

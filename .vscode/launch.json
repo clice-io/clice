@@ -5,7 +5,7 @@
       "type": "lldb",
       "request": "launch",
       "name": "Debug clice",
-      "program": "${workspaceFolder}/build/Debug/bin/clice",
+      "program": "${workspaceFolder}/build/Debug/bin/bin/clice",
       "args": ["serve", "--mode", "socket", "--port", "50051"],
       "cwd": "${workspaceFolder}"
     },
@@ -13,7 +13,7 @@
       "type": "lldb",
       "request": "launch",
       "name": "Debug clice (tcp, RelWithDebInfo)",
-      "program": "${workspaceFolder}/build/RelWithDebInfo/bin/clice",
+      "program": "${workspaceFolder}/build/RelWithDebInfo/bin/bin/clice",
       "args": ["serve", "--mode", "socket", "--port", "50051"],
       "cwd": "${workspaceFolder}"
     },
@@ -53,16 +53,22 @@
       "type": "lldb",
       "request": "launch",
       "name": "Unit Test",
-      "program": "${workspaceFolder}/build/Debug/bin/unit_tests",
-      "args": ["--test-dir=./tests/data", "--test-filter=${input:filter}"],
+      "program": "${workspaceFolder}/build/Debug/bin/bin/unit_tests",
+      "args": ["--test-filter=${input:filter}"],
+      "env": {
+        "CLICE_TEST_DATA_DIR": "${workspaceFolder}/tests/data"
+      },
       "cwd": "${workspaceFolder}"
     },
     {
       "type": "lldb",
       "request": "launch",
       "name": "Release Unit Test",
-      "program": "${workspaceFolder}/build/RelWithDebInfo/bin/unit_tests",
-      "args": ["--test-dir=./tests/data", "--test-filter=${input:filter}"],
+      "program": "${workspaceFolder}/build/RelWithDebInfo/bin/bin/unit_tests",
+      "args": ["--test-filter=${input:filter}"],
+      "env": {
+        "CLICE_TEST_DATA_DIR": "${workspaceFolder}/tests/data"
+      },
       "cwd": "${workspaceFolder}"
     }
   ],

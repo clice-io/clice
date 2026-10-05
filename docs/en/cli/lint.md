@@ -15,8 +15,9 @@ index from the same parses, so a follow-up `clice index` run has nothing left
 to do.
 
 Exit codes: `0` for a clean run, `1` when there are findings, `2` when the
-run could not complete as asked: a translation unit failed to run or the
-index could not be persisted. An interrupted run exits with `130`.
+run could not complete as asked: the arguments do not parse, a translation
+unit failed to run or the index could not be persisted. An interrupted run
+exits with `130`.
 
 ## What is checked
 

@@ -57,6 +57,7 @@ import { renderMarkdownTable, rewriteRegions, type RegionMarkers } from "./gener
 // (navigation.md aggregates the navigation and workspace_symbol corpora);
 // their fixtures must then use disjoint section keys.
 const FEATURES: Record<string, string> = {
+    code_action: "docs/en/features/code-action.md",
     code_completion: "docs/en/features/completion.md",
     document_links: "docs/en/features/document-links.md",
     document_symbol: "docs/en/features/document-symbols.md",
@@ -85,7 +86,7 @@ const OVERVIEW_ROWS: { name: string; page: string; keys?: string[]; label?: stri
     { name: "Document Symbols", page: "document-symbols", keys: ["document_symbol"] },
     { name: "Formatting", page: "formatting", label: "Implemented" },
     { name: "Diagnostics", page: "diagnostics", label: "Partial" },
-    { name: "Code Action", page: "code-action", label: "Stub" },
+    { name: "Code Action", page: "code-action", keys: ["code_action"] },
 ];
 
 const OVERVIEW_DOC = "docs/en/features/overview.md";

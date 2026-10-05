@@ -5,7 +5,13 @@
 /// back to disk after a save, saves write only the true dirty set, and
 /// cancelled builds leave no tmp blobs behind.
 
-import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
+import {
+    MTIME_GRANULARITY,
+    SETTLE_TIME,
+    sleep,
+    waitUntil,
+    type CliceClient,
+} from "@clice/tools/client";
 import { wireKeys, type StatsResult } from "@clice/tools/protocol";
 import { expect, test } from "../fixtures.ts";
 
@@ -74,8 +80,6 @@ test("save writes only dirty shards", async ({ session }) => {
     const [uri] = await client.openAndWait("file0.cpp");
     expect(await client.waitForIndex(uri, "func_3"), "background index did not finish").toBe(true);
     await waitStats(client, (s) => s.indexInmemoryShards === 0, "initial round did not settle");
-    // The first workspace tick only seeds the stat baseline.
-    await client.poll("workspace");
 
     // Change one file on disk and tick the tracker: only its shard should
     // be re-merged and re-saved.
@@ -98,18 +102,26 @@ test("save writes only dirty shards", async ({ session }) => {
         `an incremental save must write only the touched shard: ${JSON.stringify(stats)}`,
     ).toBe(1);
 
-    // Saving the open file indexes its disk snapshot: the first save lands
-    // the shard its session never contributed, a second save of the same
-    // bytes is a round with nothing to write.
-    const before = stats.indexShardContentBytes;
+    // The open file compiles itself, so the rounds leave its disk snapshot
+    // alone and saving the same bytes queues nothing; closing it hands the
+    // file back to the background index.
     client.save(uri);
+    await sleep(SETTLE_TIME);
+    const settled = await waitStats(
+        client,
+        (s) => s.indexInmemoryShards === 0,
+        "the save left shards in memory",
+    );
+    expect(settled.indexShardContentBytes).toBe(stats.indexShardContentBytes);
+
+    client.close(uri);
     await waitStats(
         client,
-        (s) => s.indexShardContentBytes > before && s.indexInmemoryShards === 0,
-        "the open file's shard did not land",
+        (s) =>
+            s.indexShardContentBytes > settled.indexShardContentBytes &&
+            s.indexInmemoryShards === 0,
+        "the closed file's shard did not land",
     );
-    client.save(uri);
-    await waitStats(client, (s) => s.lastSaveShards === 0, "a no-op round must save zero shards");
     client.assertNoAnomaly();
 });
 
@@ -150,7 +162,11 @@ test("cancel storm leaves no tmp", async ({ session }) => {
     expect(Object.keys(stats).sort()).toEqual(
         [
             ...wireKeys<StatsResult>()([
+                "checksLooked",
+                "checksTrusted",
+                "importScans",
                 "headerContexts",
+                "synthesizedContexts",
                 "indexInmemoryShards",
                 "indexShardContentBytes",
                 "lastSaveShards",

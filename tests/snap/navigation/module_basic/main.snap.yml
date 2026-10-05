@@ -21,9 +21,9 @@ imported_use:
     - { file: "${WS}/module_basic/main.cpp", range: "5:11-5:14" }
     - { file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
   callHierarchy:
-    - { name: "add", kind: Function, file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
+    - { name: "add", kind: Function, file: "${WS}/module_basic/math.cppm", range: "2:7-4:1", selection: "2:11-2:14" }
   incomingCalls:
-    - { name: "total", kind: Function, file: "${WS}/module_basic/main.cpp", range: "4:4-4:9", fromRanges: ["5:11-5:27"] }
+    - { name: "total", kind: Function, file: "${WS}/module_basic/main.cpp", range: "4:0-6:1", selection: "4:4-4:9", fromRanges: ["5:11-5:14"] }
 
 --- math.cppm
 exported_def:
@@ -35,9 +35,9 @@ exported_def:
     - { file: "${WS}/module_basic/main.cpp", range: "5:11-5:14" }
     - { file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
   callHierarchy:
-    - { name: "add", kind: Function, file: "${WS}/module_basic/math.cppm", range: "2:11-2:14" }
+    - { name: "add", kind: Function, file: "${WS}/module_basic/math.cppm", range: "2:7-4:1", selection: "2:11-2:14" }
   incomingCalls:
-    - { name: "total", kind: Function, file: "${WS}/module_basic/main.cpp", range: "4:4-4:9", fromRanges: ["5:11-5:27"] }
+    - { name: "total", kind: Function, file: "${WS}/module_basic/main.cpp", range: "4:0-6:1", selection: "4:4-4:9", fromRanges: ["5:11-5:14"] }
 
 internal_def:
   definition:
@@ -47,4 +47,4 @@ internal_def:
   references:
     - { file: "${WS}/module_basic/math.cppm", range: "6:4-6:9" }
   callHierarchy:
-    - { name: "carry", kind: Function, file: "${WS}/module_basic/math.cppm", range: "6:4-6:9" }
+    - { name: "carry", kind: Function, file: "${WS}/module_basic/math.cppm", range: "6:0-8:1", selection: "6:4-6:9" }

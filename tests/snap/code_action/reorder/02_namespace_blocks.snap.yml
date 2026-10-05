@@ -1,0 +1,10 @@
+---
+created_at: 2026-09-21
+input_file: reorder/02_namespace_blocks.cpp
+---
+cls:
+- [refactor.rewrite] Reorder definitions of 'S' by declaration order
+  16:0-18:0 => "void S::a() {\n}\n"
+  18:0-20:0 => "void S::b() {\n}\n"
+  22:0-24:0 => "void ns::S::c() {\n}\n"
+  24:0-26:0 => "void ns::S::d() {\n}\n"

@@ -1,0 +1,9 @@
+---
+created_at: 2026-09-21
+input_file: define/08_placement_after_definitions.cpp
+---
+b:
+- [refactor.rewrite] Define 'b' inline
+  11:12-11:13 => " {}"
+- [refactor.rewrite] Define 'ns::S::b' out of line
+  17:0-17:0 => "\nvoid ns::S::b() {\n}\n"

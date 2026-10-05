@@ -12,9 +12,9 @@ use:
     - { file: "${WS}/module_navigation/02_module_partition_import/main.cpp", range: "11:11-11:16" }
     - { file: "${WS}/module_navigation/02_module_partition_import/pack_items.cppm", range: "2:11-2:16" }
   callHierarchy:
-    - { name: "count", kind: Function, file: "${WS}/module_navigation/02_module_partition_import/pack_items.cppm", range: "2:11-2:16" }
+    - { name: "count", kind: Function, file: "${WS}/module_navigation/02_module_partition_import/pack_items.cppm", range: "2:7-4:1", selection: "2:11-2:16" }
   incomingCalls:
-    - { name: "run", kind: Function, file: "${WS}/module_navigation/02_module_partition_import/main.cpp", range: "10:4-10:7", fromRanges: ["11:11-11:18"] }
+    - { name: "run", kind: Function, file: "${WS}/module_navigation/02_module_partition_import/main.cpp", range: "10:0-12:1", selection: "10:4-10:7", fromRanges: ["11:11-11:16"] }
 
 --- pack.cppm
 partition_ref:
@@ -23,5 +23,5 @@ partition_ref:
   declaration:
     - { file: "${WS}/module_navigation/02_module_partition_import/pack_items.cppm", range: "0:14-0:24" }
   references:
-    - { file: "${WS}/module_navigation/02_module_partition_import/pack.cppm", range: "2:14-2:15" }
+    - { file: "${WS}/module_navigation/02_module_partition_import/pack.cppm", range: "2:15-2:20" }
     - { file: "${WS}/module_navigation/02_module_partition_import/pack_items.cppm", range: "0:14-0:24" }

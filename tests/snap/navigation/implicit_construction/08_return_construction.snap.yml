@@ -13,6 +13,6 @@ ret_brace:
     - { file: "${WS}/implicit_construction/08_return_construction.cpp", range: "11:4-11:10" }
     - { file: "${WS}/implicit_construction/08_return_construction.cpp", range: "15:11-15:12" }
   callHierarchy:
-    - { name: "Widget", kind: Method, file: "${WS}/implicit_construction/08_return_construction.cpp", range: "11:4-11:10" }
+    - { name: "Widget", kind: Method, file: "${WS}/implicit_construction/08_return_construction.cpp", range: "11:4-11:24", selection: "11:4-11:10" }
   incomingCalls:
-    - { name: "create", kind: Function, file: "${WS}/implicit_construction/08_return_construction.cpp", range: "14:7-14:13", fromRanges: ["15:11-15:21"] }
+    - { name: "create", kind: Function, file: "${WS}/implicit_construction/08_return_construction.cpp", range: "14:0-16:1", selection: "14:7-14:13", fromRanges: ["15:11-15:12"] }

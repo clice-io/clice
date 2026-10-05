@@ -67,9 +67,6 @@ struct Condition {
 
     /// Location of the directive identifier.
     clang::SourceLocation loc;
-
-    /// Range of the condition.
-    clang::SourceRange condition_range;
 };
 
 /// Information about macro definition, reference and undef.
@@ -89,31 +86,6 @@ struct MacroRef {
     Kind kind;
 
     /// The location of the macro name.
-    clang::SourceLocation loc;
-};
-
-/// Information about `#pragma` directive.
-struct Pragma {
-    enum class Kind : std::uint8_t {
-        Region,
-        EndRegion,
-
-        // Other unused cases in clice, For example: `#pragma once`.
-        Other,
-    };
-
-    using enum Kind;
-
-    /// The pragma text in that line, for example:
-    ///     "#pragma region"
-    ///     "#pragma once"
-    ///     "#pragma GCC error"
-    llvm::StringRef stmt;
-
-    /// Kind of the pragma.
-    Kind kind;
-
-    /// Location of the `#` token.
     clang::SourceLocation loc;
 };
 
@@ -200,8 +172,11 @@ struct Directive {
     std::vector<HasInclude> has_includes;
     std::vector<Condition> conditions;
     std::vector<MacroRef> macros;
-    std::vector<Pragma> pragmas;
     std::vector<DiagnosticPragma> diagnostic_pragmas;
+    /// The `_Pragma` and `__pragma` operators the preprocessor executed,
+    /// keyed by the file their expansion lies in: the `_Pragma` token,
+    /// a macro location when a macro spelled it.
+    std::vector<clang::SourceLocation> pragma_operators;
     std::vector<Import> imports;
     std::vector<Embed> embeds;
     std::vector<HasEmbed> has_embeds;

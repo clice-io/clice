@@ -1,0 +1,15 @@
+---
+created_at: 2026-09-21
+input_file: define/04_class_template_member.cpp
+---
+get:
+- [refactor.rewrite] Define 'get' inline
+  10:17-10:18 => " {}"
+- [refactor.rewrite] Define 'Box<T, N>::get' out of line
+  12:0-12:0 => "\ntemplate <typename T, int N>\nT Box<T, N>::get() const {\n}\n"
+
+single:
+- [refactor.rewrite] Define 'single' inline
+  15:15-15:16 => " {}"
+- [refactor.rewrite] Define 'Box<T*, 1>::single' out of line
+  17:0-17:0 => "\ntemplate <typename T>\nT* Box<T*, 1>::single() {\n}\n"

@@ -1,6 +1,5 @@
 #include <format>
 #include <map>
-#include <print>
 #include <ranges>
 
 #include "command/command.h"
@@ -11,14 +10,14 @@
 #include "feature/feature.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "sched/bootstrap.h"
-#include "sched/configuration.h"
-#include "sched/context.h"
-#include "sched/workspace.h"
-#include "semantic/content.h"
-#include "support/filesystem.h"
+#include "project/command_resolver.h"
+#include "project/configuration.h"
+#include "project/load.h"
+#include "project/project.h"
 #include "syntax/annotation.h"
 #include "syntax/scan.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/StringSet.h"
@@ -26,28 +25,12 @@
 #include "llvm/Support/VirtualFileSystem.h"
 #include "clang/Driver/Types.h"
 
-namespace kota::codec {
-
-/// SymbolKind is a struct wrapping its enum for implicit conversions, so
-/// reflection would serialize it as `{"kind_value": ...}`; emit the enum
-/// name instead, matching how plain enums serialize under enum_repr::String.
-template <typename Config>
-struct serialize_visit<json::ValueWriter, clice::SymbolKind, Config> {
-    static bool visit(json::ValueWriter& vis, const clice::SymbolKind& kind) {
-        return vis.visit_str(
-            kota::meta::enum_name(static_cast<clice::SymbolKind::Kind>(kind), "Invalid"));
-    }
-};
-
-}  // namespace kota::codec
-
 namespace clice::driver {
 
 namespace {
 
 struct InspectOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoFlag(names = {"--config-schema"},
              help = "Print the JSON schema of the clice configuration and exit",
@@ -56,9 +39,9 @@ struct InspectOptions {
 
     DecoInput(meta_var = "<FEATURE> <PATH>",
               help =
-                  "Feature to run (code_completion, content, document_links, document_symbol, "
-                  "folding_range, hover, inlay_hint, semantic_tokens, signature_help, "
-                  "tu_index) and a source file or directory",
+                  "Feature to run (code_action, code_completion, document_links, "
+                  "document_symbol, folding_range, hover, inlay_hint, semantic_tokens, "
+                  "signature_help, tu_index) and a source file or directory",
               required = false)
     <std::vector<std::string>> inputs;
 
@@ -93,18 +76,16 @@ struct InspectOptions {
                  required = false)
     <std::string> configuration;
 
-    DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
-                 names = {"--log-level", "--log-level="},
-                 help = "Log level: trace, debug, info, warn, error, off",
-                 required = false)
-    <std::string> log_level;
+    LogLevelOption log{.log_level = LogLevel::Warn};
 };
 
 /// JSON layout of the inspect output. Field names stay snake_case (the
 /// project's native spelling) and enums serialize as their C++ value
-/// names; the TS side owns any mapping to LSP vocabulary.
+/// names; the TS side owns any mapping to LSP vocabulary. Text that is not
+/// UTF-8 is written as U+FFFD, as the server writes it to the client.
 struct InspectJsonConfig {
     constexpr static auto enum_repr = kota::codec::enum_repr::String;
+    constexpr static auto invalid_utf8 = kota::codec::invalid_utf8::Replace;
 };
 
 struct FileEntry {
@@ -208,6 +189,54 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
                              *parse_feature_config<feature::InlayHintsOptions>(config)));
 }
 
+struct RawCodeAction {
+    std::string title;
+    std::string kind;
+    std::vector<feature::TextReplacement> edits;
+    /// The definitions a host-source request would place; the request
+    /// itself stays unresolved here, having no host and no index.
+    std::optional<std::vector<std::string>> host_definitions;
+};
+
+/// The index requests resolved as an empty index would: definitions into
+/// the main file are all kept, no header declares any name.
+std::optional<kota::codec::RawValue> run_code_action(CompilationUnitRef unit,
+                                                     LocalSourceRange selection,
+                                                     [[maybe_unused]] llvm::StringRef config) {
+    std::vector<RawCodeAction> out;
+    auto path = unit.file_path(unit.main_file());
+    for(auto& action: feature::code_actions(unit, selection)) {
+        RawCodeAction raw{
+            .title = std::move(action.title),
+            .kind = std::string(action.kind),
+            .edits = std::move(action.edits),
+        };
+        if(action.index) {
+            auto keep = [](std::uint64_t) {
+                return false;
+            };
+            if(auto* request = std::get_if<feature::DefineRequest>(&*action.index)) {
+                auto text = feature::assemble_definitions(request->pieces, keep);
+                raw.edits = feature::format_edits(
+                    path,
+                    unit.main_content(),
+                    {
+                        {request->range, request->before + *text + request->after}
+                });
+            } else if(auto* host = std::get_if<feature::DefineInHostRequest>(&*action.index)) {
+                raw.host_definitions.emplace();
+                for(const auto& piece: host->pieces) {
+                    raw.host_definitions->push_back(piece.text);
+                }
+            } else {
+                continue;
+            }
+        }
+        out.push_back(std::move(raw));
+    }
+    return to_raw_json(out);
+}
+
 /// nullopt = serialization failure; an empty RawValue serializes as null
 /// and records a marker with no hover.
 std::optional<kota::codec::RawValue> run_hover(CompilationUnitRef unit,
@@ -232,9 +261,11 @@ std::optional<kota::codec::RawValue> run_hover(CompilationUnitRef unit,
 /// the completion offset.
 std::optional<kota::codec::RawValue> run_code_completion(CompilationParams& params,
                                                          llvm::StringRef config) {
+    // The replies of an editor client that takes everything an item can carry.
     return to_raw_json(
         feature::code_complete(params,
-                               *parse_feature_config<feature::CodeCompletionOptions>(config)));
+                               *parse_feature_config<feature::CodeCompletionOptions>(config),
+                               {.snippets = true, .insert_replace = true}));
 }
 
 std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& params,
@@ -243,8 +274,9 @@ std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& param
 }
 
 /// Occurrence dump of the TU index for the compiled file — the
-/// inspect-path pin of the index layer. No LSP request carries this
-/// shape, so tu_index fixtures are `verify: inspect`.
+/// inspect-path pin of the index layer — each with the kinds of its
+/// symbol's rows spanning it. No LSP request carries this shape, so
+/// tu_index fixtures are `verify: inspect`.
 struct RawOccurrence {
     LocalSourceRange range;
     SymbolKind kind;
@@ -271,7 +303,7 @@ std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
         raw.kind = symbol ? symbol->kind : SymbolKind(SymbolKind::Invalid);
         if(auto found = relations.find(occurrence.target); found != relations.end()) {
             for(const auto& relation: found->second) {
-                if(relation.range == occurrence.range) {
+                if(relation.range.contains(occurrence.range)) {
                     raw.relations.emplace_back(kota::meta::enum_name(relation.kind, "Invalid"));
                 }
             }
@@ -282,88 +314,12 @@ std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
     return to_raw_json(out);
 }
 
-struct RawContentDep {
-    std::uint32_t file;
-    std::uint32_t unit;
-};
-
-struct RawContentUnit {
-    /// 1-based lines of the unit's range in its file.
-    std::uint32_t line;
-    std::uint32_t end_line;
-    std::string kind;
-    std::string name;
-    std::string entity;
-    std::string own;
-    std::string content;
-    std::vector<RawContentDep> deps;
-};
-
-struct RawContentFile {
-    std::string path;
-    std::string digest;
-    std::vector<RawContentUnit> units;
-};
-
-/// Content-hash dump of the whole TU the compiled file heads — the
-/// inspect-path pin of the content layer (semantic/content.h). No LSP
-/// request carries this shape, so content fixtures are `verify: inspect`.
-std::optional<kota::codec::RawValue> run_content(CompilationUnitRef unit,
-                                                 [[maybe_unused]] llvm::StringRef config) {
-    auto table = ContentTable::compute(unit);
-
-    // Units come sorted by (file, offset): one entry per file in that
-    // order, so a file included twice keeps two entries; deps point at
-    // (file entry, unit position).
-    std::vector<RawContentFile> files;
-    std::vector<RawContentDep> position;
-    std::vector<std::uint32_t> newlines;
-    clang::FileID current;
-    for(auto& row: table.units) {
-        if(files.empty() || row.fid != current) {
-            current = row.fid;
-            files.push_back({.path = unit.file_path(row.fid).str(),
-                             .digest = std::format("{}", table.digests.lookup(row.fid))});
-            newlines.clear();
-            llvm::StringRef content = unit.file_content(row.fid);
-            for(auto offset = content.find('\n'); offset != llvm::StringRef::npos;
-                offset = content.find('\n', offset + 1)) {
-                newlines.push_back(static_cast<std::uint32_t>(offset));
-            }
-        }
-        auto line_of = [&](std::uint32_t offset) {
-            return static_cast<std::uint32_t>(std::ranges::lower_bound(newlines, offset) -
-                                              newlines.begin()) +
-                   1;
-        };
-        RawContentUnit raw{
-            .line = line_of(row.range.begin),
-            .end_line = line_of(row.range.end - 1),
-            .kind = row.decl->getDeclKindName(),
-            .entity = std::format("{:016x}", row.entity),
-            .own = std::format("{}", row.own),
-            .content = std::format("{}", row.content),
-        };
-        if(auto* named = llvm::dyn_cast<clang::NamedDecl>(row.decl)) {
-            raw.name = named->getNameAsString();
-        }
-        position.push_back({.file = static_cast<std::uint32_t>(files.size() - 1),
-                            .unit = static_cast<std::uint32_t>(files.back().units.size())});
-        files.back().units.push_back(std::move(raw));
-    }
-    for(std::uint32_t u = 0; u < table.units.size(); u += 1) {
-        auto& raw = files[position[u].file].units[position[u].unit];
-        for(auto dep: table.units[u].deps) {
-            raw.deps.push_back(position[dep]);
-        }
-    }
-    return to_raw_json(files);
-}
-
 /// A feature runs in exactly one shape: whole-document (`run`), once per
 /// `§` point against a shared unit (`run_at`), once per `§⟦...⟧` range
-/// with a whole-document default (`run_over`), or once per `§` point with
-/// its own completion compile (`run_complete`).
+/// with a whole-document default (`run_over`), once per `§` point (an
+/// empty selection) and per `§⟦...⟧` range with no default
+/// (`run_select`), or once per `§` point with its own completion compile
+/// (`run_complete`).
 struct FeatureSpec {
     llvm::StringRef name;
     std::optional<kota::codec::RawValue> (*run)(CompilationUnitRef, llvm::StringRef) = nullptr;
@@ -373,6 +329,9 @@ struct FeatureSpec {
     std::optional<kota::codec::RawValue> (*run_over)(CompilationUnitRef,
                                                      LocalSourceRange,
                                                      llvm::StringRef) = nullptr;
+    std::optional<kota::codec::RawValue> (*run_select)(CompilationUnitRef,
+                                                       LocalSourceRange,
+                                                       llvm::StringRef) = nullptr;
     std::optional<kota::codec::RawValue> (*run_complete)(CompilationParams&,
                                                          llvm::StringRef) = nullptr;
     /// Validates --config JSON for the feature; null for features without
@@ -386,10 +345,10 @@ bool check_feature_config(llvm::StringRef config) {
 }
 
 constexpr std::array features = {
+    FeatureSpec{.name = "code_action", .run_select = run_code_action},
     FeatureSpec{.name = "code_completion",
                 .run_complete = run_code_completion,
                 .check_config = check_feature_config<feature::CodeCompletionOptions>},
-    FeatureSpec{.name = "content", .run = run_content},
     FeatureSpec{.name = "document_links", .run = run_document_links},
     FeatureSpec{.name = "document_symbol", .run = run_document_symbols},
     FeatureSpec{.name = "folding_range", .run = run_folding_ranges},
@@ -464,6 +423,8 @@ struct SourceFile {
 struct FileCommand {
     std::vector<std::string> arguments;
     std::string directory;
+    std::string workspace;
+    std::shared_ptr<const SynthesizedContext> synthesized;
 };
 
 void apply_command(CompilationParams& params, const FileCommand& command) {
@@ -471,6 +432,10 @@ void apply_command(CompilationParams& params, const FileCommand& command) {
         params.arguments.push_back(arg.c_str());
     }
     params.directory = command.directory;
+    params.workspace = command.workspace;
+    if(command.synthesized) {
+        params.add_synthesized(command.synthesized->files);
+    }
 }
 
 bool is_header_type(clang::driver::types::ID type) {
@@ -484,20 +449,20 @@ bool is_header_type(clang::driver::types::ID type) {
 /// the server would from the project root; `start` itself when none does.
 /// Only the ancestors themselves are checked — scanning their
 /// subdirectories would let an unrelated sibling project's database win.
-std::string workspace_of(llvm::StringRef start) {
-    std::string root = start.str();
-    path::walk_ancestors(start, "", [&](llvm::StringRef dir) {
+CanonicalPath workspace_of(CanonicalRef start) {
+    CanonicalPath workspace = start;
+    path::walk_ancestors(start, [&](CanonicalRef dir) {
         bool marked = llvm::any_of(config_file_names,
                                    [&](llvm::StringRef marker) {
-                                       return fs::exists(path::join(dir, marker));
+                                       return vfs::exists(path::join(dir, marker));
                                    }) ||
-                      fs::exists(path::join(dir, "compile_commands.json"));
+                      vfs::exists(path::join(dir, "compile_commands.json"));
         if(marked) {
-            root = dir.str();
+            workspace = dir;
         }
         return !marked;
     });
-    return root;
+    return workspace;
 }
 
 /// The compile command for `file`. Explicit --flag arguments (the snap-test
@@ -510,7 +475,8 @@ std::optional<FileCommand> file_command(FileEntry& entry,
                                         const std::string& file,
                                         llvm::ArrayRef<std::string> flags,
                                         llvm::StringRef flags_directory,
-                                        ContextResolver* contexts) {
+                                        FileTable& files,
+                                        CommandResolver* commands) {
     namespace types = clang::driver::types;
     auto type = suffix_type(file);
     bool is_header = is_header_type(type);
@@ -551,7 +517,11 @@ std::optional<FileCommand> file_command(FileEntry& entry,
         return command;
     }
 
-    contexts->resolve_command(file, command.directory, command.arguments, ContextUse::Background);
+    command.synthesized = commands
+                              ->resolve_command(files.intern(Spelling::absolute(file)),
+                                                command.directory,
+                                                command.arguments)
+                              .synthesized;
     return command;
 }
 
@@ -565,6 +535,9 @@ bool participates(const FeatureSpec& spec, const SourceFile& file) {
     bool has_points = !file.source.offsets.empty() || !file.source.nameless_offsets.empty();
     if(spec.run_at != nullptr || spec.run_complete != nullptr) {
         return has_points;
+    }
+    if(spec.run_select != nullptr) {
+        return has_points || !file.source.ranges.empty();
     }
     return file.rel == "main.cpp" || has_points || !file.source.ranges.empty();
 }
@@ -684,14 +657,25 @@ void run_feature(FileEntry& entry,
         return;
     }
 
-    // Range feature: run once per `§⟦...⟧` range, or over the whole
-    // document when the fixture marks none.
+    // Range and selection features run once per `§⟦...⟧` range; a
+    // selection feature also once per `§` point, as an empty selection,
+    // and has no whole-document default.
     auto ranges = marker_ranges(source);
+    auto run = spec.run_select != nullptr ? spec.run_select : spec.run_over;
+    if(spec.run_select != nullptr) {
+        for(auto& [name, offset]: marker_points(source)) {
+            ranges.emplace_back(name, LocalSourceRange(offset, offset));
+        }
+        std::ranges::sort(ranges, {}, [](const auto& pair) { return pair.first; });
+        if(ranges.empty()) {
+            entry.error = "no_markers";
+            return;
+        }
+    }
     if(ranges.empty()) {
-        entry.result =
-            spec.run_over(unit,
-                          LocalSourceRange(0, static_cast<std::uint32_t>(source.content.size())),
-                          config);
+        entry.result = run(unit,
+                           LocalSourceRange(0, static_cast<std::uint32_t>(source.content.size())),
+                           config);
         if(!entry.result.has_value()) {
             entry.error = "serialize_error";
         }
@@ -699,7 +683,7 @@ void run_feature(FileEntry& entry,
     }
     std::map<std::string, kota::codec::RawValue> markers;
     for(auto& [name, range]: ranges) {
-        auto value = spec.run_over(unit, range, config);
+        auto value = run(unit, range, config);
         if(!value.has_value()) {
             entry.error = "serialize_error";
             return;
@@ -733,17 +717,12 @@ int run_inspect(const InspectOptions& opts) {
         }
     }
 
-    llvm::SmallString<256> abs_path(inputs[1]);
-    if(auto err = fs::make_absolute(abs_path)) {
-        LOG_ERROR("cannot resolve {}: {}", inputs[1], err.message());
-        return 1;
-    }
-    path::remove_dots(abs_path, /*remove_dot_dot=*/true);
-    if(!fs::exists(abs_path)) {
+    Spelling abs_path(inputs[1], Spelling::cwd());
+    if(!vfs::exists(abs_path)) {
         LOG_ERROR("no such file or directory: {}", abs_path);
         return 1;
     }
-    bool is_dir = fs::is_directory(abs_path);
+    bool is_dir = vfs::is_directory(abs_path);
 
     /// (rel key, absolute path) per file, sorted by the map later.
     std::vector<std::pair<std::string, std::string>> files;
@@ -751,28 +730,22 @@ int run_inspect(const InspectOptions& opts) {
     /// above it may list members the suffix filter does not admit.
     llvm::StringSet<> directories;
     if(is_dir) {
-        std::error_code ec;
-        for(llvm::sys::fs::recursive_directory_iterator it(abs_path, ec), end; it != end && !ec;
-            it.increment(ec)) {
-            if(it->type() == llvm::sys::fs::file_type::regular_file) {
-                directories.insert(path::parent_path(it->path()));
+        vfs::walk(abs_path, [&](const vfs::Entry& entry) {
+            if(entry.type == llvm::sys::fs::file_type::regular_file) {
+                directories.insert(path::parent_path(entry.path));
             }
-            if(!is_c_family_file(it->path())) {
-                continue;
+            if(is_c_family_file(entry.path)) {
+                llvm::StringRef rel = entry.path;
+                rel.consume_front(abs_path.str());
+                rel.consume_front("/");
+                rel.consume_front("\\");
+                files.emplace_back(path::convert_to_slash(rel), entry.path);
             }
-            llvm::StringRef rel = it->path();
-            rel.consume_front(abs_path);
-            rel.consume_front("/");
-            rel.consume_front("\\");
-            files.emplace_back(path::convert_to_slash(rel), it->path());
-        }
-        if(ec) {
-            LOG_ERROR("cannot walk {}: {}", abs_path, ec.message());
-            return 1;
-        }
+            return true;
+        });
     } else {
-        files.emplace_back(path::filename(abs_path).str(), std::string(abs_path));
-        directories.insert(path::parent_path(abs_path));
+        files.emplace_back(path::filename(abs_path.str()).str(), abs_path.str());
+        directories.insert(path::parent_path(abs_path.str()));
     }
 
     InspectOutput output;
@@ -795,32 +768,33 @@ int run_inspect(const InspectOptions& opts) {
     // give every file the command the server would use — the same loading
     // path as `clice serve`. The inspected tree belongs to the nearest
     // project at or above it.
-    llvm::StringRef unit_directory =
-        is_dir ? llvm::StringRef(abs_path) : path::parent_path(abs_path);
-    Workspace workspace;
-    ContextResolver contexts(workspace);
+    auto unit_directory = is_dir ? abs_path : abs_path.parent();
+    FileTable file_table;
+    Project project{file_table};
+    CommandResolver commands(project);
     if(!flags.empty() && opts.configuration.has_value()) {
         LOG_ERROR("--configuration selects among the workspace's rules; --flags replaces them");
         return 1;
     }
     if(flags.empty()) {
-        std::string root = workspace_of(unit_directory);
-        workspace.config = Config::load_from_workspace(root);
+        auto root = workspace_of(CanonicalPath(unit_directory));
+        project.config = Config::load_from_workspace(root);
         auto requested = opts.configuration.value_or("");
-        if(!check_requested_configuration(workspace.config, requested)) {
+        if(!check_requested_configuration(project.config, requested)) {
             return 1;
         }
         // What the server discovers when a file is opened: the databases
         // between each inspected directory and the root.
-        llvm::SmallVector<std::string> nearby;
+        llvm::SmallVector<Spelling> nearby;
         for(auto& directory: directories) {
-            for(auto& database: compile_commands_above(directory.getKey(), root)) {
+            auto identity = CanonicalPath(Spelling::absolute(directory.getKey()));
+            for(auto& database: compile_commands_above(identity, root)) {
                 if(!llvm::is_contained(nearby, database)) {
                     nearby.push_back(database);
                 }
             }
         }
-        load_build(workspace, root, resolve_configuration(workspace.config, requested), nearby);
+        load_build(project, root, resolve_configuration(project.config, requested), nearby);
     }
 
     // Directory mode covers what the build compiles under the tree, not only
@@ -829,18 +803,16 @@ int run_inspect(const InspectOptions& opts) {
     if(is_dir && flags.empty()) {
         llvm::StringSet<> listed;
         for(auto& [rel, abs]: files) {
-            llvm::SmallString<256> storage;
-            listed.insert(path::canonical(abs, storage));
+            listed.insert(CanonicalPath(Spelling::absolute(abs)));
         }
-        llvm::SmallString<256> storage;
-        auto root = path::canonical(abs_path, storage);
-        for(auto member: workspace.build.members()) {
-            auto abs = workspace.file_table.resolve(member);
-            if(!abs.starts_with(root) || abs.size() <= root.size() || abs[root.size()] != '/' ||
-               listed.contains(abs)) {
+        auto root = CanonicalPath(abs_path);
+        for(auto member: project.build.members()) {
+            auto abs = project.file_table.resolve(member);
+            if(!path::under(abs, root) || abs == root || listed.contains(abs)) {
                 continue;
             }
-            files.emplace_back(abs.drop_front(root.size() + 1).str(), abs.str());
+            auto relative = llvm::StringRef(abs).drop_front(root.size()).ltrim('/');
+            files.emplace_back(relative.str(), abs.str());
         }
     }
 
@@ -849,11 +821,11 @@ int run_inspect(const InspectOptions& opts) {
     // and module/feature errors below land on stable entries.
     std::vector<SourceFile> sources;
     for(auto& [rel, abs]: files) {
-        auto buffer = llvm::MemoryBuffer::getFile(abs);
+        auto buffer = vfs::read(abs);
         if(!buffer) {
             FileEntry entry;
             entry.error = "read_error";
-            entry.diagnostics = {buffer.getError().message()};
+            entry.diagnostics = {buffer.error().message()};
             output.files.emplace(rel, std::move(entry));
             continue;
         }
@@ -861,10 +833,11 @@ int run_inspect(const InspectOptions& opts) {
         // code may legitimately contain `§` (in strings or comments) and
         // must reach the compiler verbatim.
         AnnotatedSource source;
+        auto text = (*buffer)->getBuffer();
         if(opts.annotations) {
-            source = AnnotatedSource::from((*buffer)->getBuffer());
+            source = AnnotatedSource::from(text);
         } else {
-            source.content = (*buffer)->getBuffer().str();
+            source.content = text.str();
         }
         FileEntry entry;
         entry.stripped_hash = sha256_hex(source.content);
@@ -873,11 +846,16 @@ int run_inspect(const InspectOptions& opts) {
     }
 
     auto command_for = [&](FileEntry& entry, const SourceFile& file) {
-        return file_command(entry,
-                            file.abs,
-                            flags,
-                            unit_directory,
-                            flags.empty() ? &contexts : nullptr);
+        auto command = file_command(entry,
+                                    file.abs,
+                                    flags,
+                                    unit_directory,
+                                    file_table,
+                                    flags.empty() ? &commands : nullptr);
+        if(command) {
+            command->workspace = project.config.workspace_root.str();
+        }
+        return command;
     };
 
     // Serial module builder (directory mode): scan for module declarations
@@ -905,7 +883,7 @@ int run_inspect(const InspectOptions& opts) {
                                 llvm::MemoryBuffer::getMemBufferCopy(source.source.content));
             }
             auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
-                llvm::vfs::getRealFileSystem());
+                llvm::makeIntrusiveRefCnt<vfs::View>());
             overlay->pushOverlay(memory);
 
             SharedScanCache cache;
@@ -973,7 +951,7 @@ int run_inspect(const InspectOptions& opts) {
                 if(!command) {
                     return;
                 }
-                auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
+                auto tmp = vfs::temp_file("clice-pcm", "pcm");
                 if(!tmp) {
                     entry.error = "module_error";
                     entry.diagnostics = {"failed to create temporary PCM file"};
@@ -1025,7 +1003,7 @@ int run_inspect(const InspectOptions& opts) {
     }
 
     for(auto& path: pcm_files) {
-        fs::remove(path);
+        vfs::remove(path);
     }
 
     auto json = kota::codec::json::to_string<InspectJsonConfig>(output);
@@ -1033,7 +1011,7 @@ int run_inspect(const InspectOptions& opts) {
         LOG_ERROR("serialization failed: {}", json.error().message);
         return 1;
     }
-    std::println("{}", *json);
+    driver::println("{}", *json);
     return 0;
 }
 
@@ -1043,38 +1021,28 @@ auto make_command() {
 
 }  // namespace
 
-void add_inspect(kota::deco::cli::SubCommander& root, int& exit_code) {
+void add_inspect(kota::deco::cli::SubCommander& root) {
     auto cmd = make_command();
-    cmd.matchAll([&exit_code](InspectOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           // A mode flag like --help: ignores feature/path inputs.
-           if(opts.config_schema) {
-               auto schema = Config::json_schema();
-               if(!schema) {
-                   LOG_ERROR("config schema generation failed: {}", schema.error());
-                   return;
-               }
-               std::println("{}", *schema);
-               exit_code = 0;
-               return;
-           }
-           if(!apply_log_level(opts.log_level.value_or("warn"))) {
-               return;
-           }
-           logging::stderr_logger("inspect", logging::options);
-           if(!opts.inputs.has_value() || opts.inputs->size() != 2) {
-               auto help = make_command();
-               print_usage(help);
-               return;
-           }
-           exit_code = run_inspect(opts);
-       })
-        .on_error([](auto err) { LOG_ERROR("{}", err.message); });
+    cmd.match_all([](InspectOptions opts) {
+        // A mode flag like --help: ignores feature/path inputs.
+        if(opts.config_schema) {
+            auto schema = Config::json_schema();
+            if(!schema) {
+                LOG_ERROR("config schema generation failed: {}", schema.error());
+                return 1;
+            }
+            driver::println("{}", *schema);
+            return 0;
+        }
+        opts.log.apply();
+        logging::stderr_logger("inspect", logging::options);
+        if(!opts.inputs.has_value() || opts.inputs->size() != 2) {
+            auto help = make_command();
+            print_usage(help);
+            return 1;
+        }
+        return run_inspect(opts);
+    });
 
     root.add({.name = "inspect",
               .description = "Run a feature on source files and print raw results as JSON"},

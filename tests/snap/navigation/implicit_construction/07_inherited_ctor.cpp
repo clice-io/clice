@@ -1,15 +1,13 @@
 /// # Inherited constructors
 ///
-/// - status: partial
+/// - status: supported
 /// - verify: server
 ///
-/// An inherited-constructor declaration navigates to one imported base
+/// An inherited-constructor declaration navigates to every imported base
 /// constructor
 ///
 /// Go-to-definition on an inherited-constructor declaration
-/// (`using Base::Base;`) reaches a base constructor. When the base declares
-/// several constructors the reply resolves to one of them rather than
-/// listing the whole set.
+/// (`using Base::Base;`) lists each constructor of the base it imports.
 
 struct Base {
     Base(int x);

@@ -32,20 +32,20 @@ struct AnomalyCapture {
     }
 };
 
-TEST_SUITE(Anomaly) {
+ZEST_SUITE(Anomaly) {
 
-TEST_CASE(MarkerAndNotify) {
+ZEST_CASE(MarkerAndNotify) {
     AnomalyCapture capture;
 
     LOG_ANOMALY(PCHBuildFail, "stale build for {}", "main.cpp");
 
-    ASSERT_EQ(capture.notified.size(), 1u);
+    ZASSERT(capture.notified.size() == 1u);
     auto& [level, message] = capture.notified.front();
-    EXPECT_EQ(level, NotifyLevel::Error);
-    EXPECT_EQ(message, "[anomaly:PCHBuildFail] stale build for main.cpp");
+    ZEXPECT(level == NotifyLevel::Error);
+    ZEXPECT(message == "[anomaly:PCHBuildFail] stale build for main.cpp");
 }
 
-TEST_CASE(TrapInvokedPerReport) {
+ZEST_CASE(TrapInvokedPerReport) {
     /// The trap fires once per reported (non-suppressed) anomaly. In Debug
     /// builds the default trap aborts the process; the override used here is
     /// the mock point that lets us observe it in any build type.
@@ -54,11 +54,11 @@ TEST_CASE(TrapInvokedPerReport) {
     LOG_ANOMALY(WorkerCrash, "worker {} died", 1);
     LOG_ANOMALY(WorkerCrash, "worker {} died", 2);
 
-    ASSERT_EQ(capture.trapped.size(), 2u);
-    EXPECT_EQ(capture.trapped[0], AnomalyId::WorkerCrash);
+    ZASSERT(capture.trapped.size() == 2u);
+    ZEXPECT(capture.trapped[0] == AnomalyId::WorkerCrash);
 }
 
-TEST_CASE(RateLimitSuppresses) {
+ZEST_CASE(RateLimitSuppresses) {
     AnomalyCapture capture;
 
     for(std::uint32_t i = 0; i < logging::anomaly_report_limit + 5; ++i) {
@@ -67,12 +67,12 @@ TEST_CASE(RateLimitSuppresses) {
 
     /// The client sees the reports plus one final suppression notice; the
     /// trap fires only for real reports.
-    ASSERT_EQ(capture.notified.size(), logging::anomaly_report_limit + 1);
-    EXPECT_NE(capture.notified.back().second.find("report limit"), std::string::npos);
-    EXPECT_EQ(capture.trapped.size(), logging::anomaly_report_limit);
+    ZASSERT(capture.notified.size() == logging::anomaly_report_limit + 1);
+    ZEXPECT(capture.notified.back().second.find("report limit") != std::string::npos);
+    ZEXPECT(capture.trapped.size() == logging::anomaly_report_limit);
 }
 
-TEST_CASE(RateLimitPerId) {
+ZEST_CASE(RateLimitPerId) {
     AnomalyCapture capture;
 
     for(std::uint32_t i = 0; i < logging::anomaly_report_limit + 5; ++i) {
@@ -81,10 +81,10 @@ TEST_CASE(RateLimitPerId) {
     LOG_ANOMALY(PCMBuildFail, "different id still reports");
 
     /// CompileFail reports + its suppression notice + the PCMBuildFail report.
-    EXPECT_EQ(capture.notified.size(), logging::anomaly_report_limit + 2);
+    ZEXPECT(capture.notified.size() == logging::anomaly_report_limit + 2);
 }
 
-TEST_CASE(SuppressedArgsNotEvaluated) {
+ZEST_CASE(SuppressedArgsNotEvaluated) {
     /// Locks the lazy-evaluation contract: once the rate limit gate fails,
     /// the format arguments must not be evaluated at all.
     AnomalyCapture capture;
@@ -99,10 +99,10 @@ TEST_CASE(SuppressedArgsNotEvaluated) {
         LOG_ANOMALY(PositionMapFail, "value {}", observe());
     }
 
-    EXPECT_EQ(evaluations, static_cast<int>(logging::anomaly_report_limit));
+    ZEXPECT(evaluations == static_cast<int>(logging::anomaly_report_limit));
 }
 
-TEST_CASE(LevelGateSkipsEvaluation) {
+ZEST_CASE(LevelGateSkipsEvaluation) {
     AnomalyCapture capture;
     logging::options.level = logging::Level::off;
 
@@ -113,24 +113,24 @@ TEST_CASE(LevelGateSkipsEvaluation) {
     };
     LOG_ANOMALY(PCHBuildFail, "value {}", observe());
 
-    EXPECT_EQ(evaluations, 0);
-    EXPECT_EQ(capture.notified.size(), 0u);
-    EXPECT_EQ(capture.trapped.size(), 0u);
+    ZEXPECT(evaluations == 0);
+    ZEXPECT(capture.notified.size() == 0u);
+    ZEXPECT(capture.trapped.size() == 0u);
 }
 
-TEST_CASE(GuidanceMarkerAndLevel) {
+ZEST_CASE(GuidanceMarkerAndLevel) {
     AnomalyCapture capture;
 
     LOG_GUIDANCE("no compilation database found in {}", "/tmp/ws");
 
-    ASSERT_EQ(capture.notified.size(), 1u);
+    ZASSERT(capture.notified.size() == 1u);
     auto& [level, message] = capture.notified.front();
-    EXPECT_EQ(level, NotifyLevel::Warning);
-    EXPECT_EQ(message, "[guidance] no compilation database found in /tmp/ws");
-    EXPECT_EQ(capture.trapped.size(), 0u);
+    ZEXPECT(level == NotifyLevel::Warning);
+    ZEXPECT(message == "[guidance] no compilation database found in /tmp/ws");
+    ZEXPECT(capture.trapped.size() == 0u);
 }
 
-TEST_CASE(GuidanceLazyAtLevel) {
+ZEST_CASE(GuidanceLazyAtLevel) {
     AnomalyCapture capture;
     logging::options.level = logging::Level::off;
 
@@ -141,11 +141,11 @@ TEST_CASE(GuidanceLazyAtLevel) {
     };
     LOG_GUIDANCE("value {}", observe());
 
-    EXPECT_EQ(evaluations, 0);
-    EXPECT_EQ(capture.notified.size(), 0u);
+    ZEXPECT(evaluations == 0);
+    ZEXPECT(capture.notified.size() == 0u);
 }
 
-TEST_CASE(MarkerNamesStable) {
+ZEST_CASE(MarkerNamesStable) {
     /// Every id fires through the macro once and produces its wire marker.
     /// Integration tests grep these exact strings — keep them stable.
     AnomalyCapture capture;
@@ -157,8 +157,9 @@ TEST_CASE(MarkerNamesStable) {
     LOG_ANOMALY(WorkerCrash, "x");
     LOG_ANOMALY(WorkerSpawnFail, "x");
     LOG_ANOMALY(PositionMapFail, "x");
+    LOG_ANOMALY(StaleTrust, "x");
 
-    ASSERT_EQ(capture.notified.size(), logging::anomaly_id_count);
+    ZASSERT(capture.notified.size() == logging::anomaly_id_count);
     const char* expected[] = {
         "PCHBuildFail",
         "PCMBuildFail",
@@ -167,13 +168,14 @@ TEST_CASE(MarkerNamesStable) {
         "WorkerCrash",
         "WorkerSpawnFail",
         "PositionMapFail",
+        "StaleTrust",
     };
     for(std::size_t i = 0; i < logging::anomaly_id_count; ++i) {
-        EXPECT_EQ(capture.notified[i].second, std::format("[anomaly:{}] x", expected[i]));
+        ZEXPECT(capture.notified[i].second == std::format("[anomaly:{}] x", expected[i]));
     }
 }
 
-};  // TEST_SUITE(Anomaly)
+};  // ZEST_SUITE(Anomaly)
 
 }  // namespace
 }  // namespace clice::testing

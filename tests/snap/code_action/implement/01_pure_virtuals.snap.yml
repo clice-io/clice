@@ -1,0 +1,9 @@
+---
+created_at: 2026-09-21
+input_file: implement/01_pure_virtuals.cpp
+---
+circle:
+- [refactor.rewrite] Implement pure virtual methods of 'Circle'
+  18:0-18:0 => "    double area() const override;\n    void scale(double factor) noexcept override;\n"
+- [refactor.rewrite] Generate a memberwise constructor for 'Circle'
+  18:0-18:0 => "    explicit Circle(double radius) : radius(radius) {}\n"

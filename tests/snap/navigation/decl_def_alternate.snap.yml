@@ -12,9 +12,9 @@ decl:
     - { file: "${WS}/decl_def_alternate.cpp", range: "4:4-4:9" }
     - { file: "${WS}/decl_def_alternate.cpp", range: "9:11-9:16" }
   callHierarchy:
-    - { name: "scale", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "4:4-4:9" }
+    - { name: "scale", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "4:0-6:1", selection: "4:4-4:9" }
   incomingCalls:
-    - { name: "apply", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "8:4-8:9", fromRanges: ["9:11-9:23"] }
+    - { name: "apply", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "8:0-10:1", selection: "8:4-8:9", fromRanges: ["9:11-9:16"] }
 
 def:
   definition:
@@ -26,9 +26,9 @@ def:
     - { file: "${WS}/decl_def_alternate.cpp", range: "4:4-4:9" }
     - { file: "${WS}/decl_def_alternate.cpp", range: "9:11-9:16" }
   callHierarchy:
-    - { name: "scale", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "4:4-4:9" }
+    - { name: "scale", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "4:0-6:1", selection: "4:4-4:9" }
   incomingCalls:
-    - { name: "apply", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "8:4-8:9", fromRanges: ["9:11-9:23"] }
+    - { name: "apply", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "8:0-10:1", selection: "8:4-8:9", fromRanges: ["9:11-9:16"] }
 
 use:
   definition:
@@ -41,6 +41,6 @@ use:
     - { file: "${WS}/decl_def_alternate.cpp", range: "4:4-4:9" }
     - { file: "${WS}/decl_def_alternate.cpp", range: "9:11-9:16" }
   callHierarchy:
-    - { name: "scale", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "4:4-4:9" }
+    - { name: "scale", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "4:0-6:1", selection: "4:4-4:9" }
   incomingCalls:
-    - { name: "apply", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "8:4-8:9", fromRanges: ["9:11-9:23"] }
+    - { name: "apply", kind: Function, file: "${WS}/decl_def_alternate.cpp", range: "8:0-10:1", selection: "8:4-8:9", fromRanges: ["9:11-9:16"] }

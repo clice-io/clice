@@ -6,11 +6,11 @@
 #include <vector>
 
 #include "compile/compilation.h"
-#include "sched/context.h"
+#include "project/command_resolver.h"
+#include "project/index_store.h"
+#include "project/project.h"
 #include "sched/graph.h"
 #include "sched/index/ledger.h"
-#include "sched/index/store.h"
-#include "sched/workspace.h"
 #include "worker/pool.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -29,15 +29,14 @@ class PCMFamily;
 /// with the first concurrent consumer (in-server background checks).
 ///
 /// The family owns the run policy: command resolution, module-PCM edges,
-/// the worker dispatch, and the store merge with its supersede and
-/// landing-admission gates. The pump owns the debt ledger, the queue and
-/// the requeue budget; it reads this family's per-attempt outcome to
-/// settle them.
+/// the worker dispatch, and the store merge with its supersede gate. The
+/// pump owns the debt ledger, the queue and the requeue budget; it reads
+/// this family's per-attempt outcome to settle them.
 class TURunFamily {
 public:
     TURunFamily(TaskGraph& graph,
-                Workspace& workspace,
-                ContextResolver& contexts,
+                Project& project,
+                CommandResolver& commands,
                 PCMFamily& pcm,
                 IndexStore& store,
                 WorkerPool& pool);
@@ -59,16 +58,19 @@ public:
         /// The run produced its planned products (the index merged into
         /// the store, the tidy findings landed in the outcome).
         Completed,
-        /// Deliberately produced nothing: the result was superseded or
-        /// vetoed at landing, or the TU has no real command but keeps its
-        /// last-known rows.
+        /// Deliberately produced nothing: the result was superseded, or
+        /// the TU has no real command but keeps its last-known rows.
         Skipped,
         /// Terminal failure on current content: the worker rejected the
         /// TU, returned an empty or unverifiable result, the merge was
         /// rejected, or the TU has no real command and no surviving rows.
         Failed,
-        /// The worker died mid-parse; requeue-worthy on the crash budget.
+        /// The run killed its worker: the worker named it, or it ran past
+        /// the pool's deadline. The same bytes would again.
         Crashed,
+        /// The worker died under it for some other reason; requeue-worthy
+        /// on the budget.
+        Lost,
         /// Preempted (deliberate cancellation, or an outage the pool will
         /// revive from): budget-free requeue.
         Preempted,
@@ -80,10 +82,6 @@ public:
     /// the round's recorded detail.
     struct Outcome {
         Verdict verdict = Verdict::Shutdown;
-
-        /// The landing-time admission verdict; Defer keeps the claimed
-        /// debt for a later round.
-        Admission landing = Admission::Admit;
 
         /// Merge debt and serving-row changes — the pump claims these
         /// before the attempt settles and its waiters wake.
@@ -104,11 +102,9 @@ public:
 
     /// Attempt context the pump threads through one run — work-input
     /// ownership (the debt-claim contract), not staleness snapshots: the
-    /// supersede check asks the live ledger, and the landing admission
-    /// asks the serving side, both at merge time.
+    /// supersede check asks the live ledger at merge time.
     struct Guards {
         std::function<bool()> superseded;
-        std::function<Admission()> landing;
     };
 
     /// Run one attempt of the plan for the TU through its graph node and
@@ -126,8 +122,8 @@ private:
     }
 
     TaskGraph& graph;
-    Workspace& workspace;
-    ContextResolver& contexts;
+    Project& project;
+    CommandResolver& commands;
     PCMFamily& pcm;
     IndexStore& store;
     WorkerPool& pool;

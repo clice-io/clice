@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <limits>
 #include <optional>
 #include <span>
@@ -75,6 +76,21 @@ bool reserved_key(T value) {
     return value >= std::numeric_limits<T>::max() - 1;
 }
 
+/// A symbol's id on the command line and in JSON answers: `#<hex>`, which
+/// a JavaScript number would round.
+inline std::string symbol_id(SymbolHash hash) {
+    return std::format("#{:016x}", hash);
+}
+
+/// The hash a `#<hex>` id names; nullopt for anything else.
+inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
+    SymbolHash hash = 0;
+    if(!id.consume_front("#") || id.getAsInteger(16, hash) || reserved_key(hash)) {
+        return std::nullopt;
+    }
+    return hash;
+}
+
 }  // namespace clice::index
 
 namespace kota::meta {
@@ -94,21 +110,6 @@ struct repr<clice::Bitmap, codec::fbs::format> {
 
     static clice::Bitmap from(const type& buffer) {
         return clice::index::read_bitmap(buffer.data(), buffer.size()).value_or(clice::Bitmap{});
-    }
-};
-
-/// SymbolKind hides its enum behind constructors, which keeps it out of
-/// reflection; persist the underlying value.
-template <>
-struct repr<clice::SymbolKind, codec::fbs::format> {
-    using type = std::uint8_t;
-
-    static type to(clice::SymbolKind kind) {
-        return kind.value();
-    }
-
-    static clice::SymbolKind from(type value) {
-        return clice::SymbolKind(value);
     }
 };
 
@@ -132,8 +133,24 @@ namespace clice::index {
 /// include tree is one node type on the wire and in manifests, and module
 /// names are keyed by their entity; v15: the global blob is columnar in
 /// hash order with a stable path table and pins its search blob, so it
-/// is read in place; v16: entity hashes follow clang 23's node kinds).
-constexpr inline std::uint32_t index_format_version = 16;
+/// is read in place; v16: entity hashes follow clang 23's node kinds;
+/// v17: file versions carry no stat stamps; v18: files under the
+/// workspace root are named, and hashed into symbols, by their portable
+/// names; v19: entity hashes follow clang 23.1.2, xclang's; v20: preamble
+/// envelopes carry the preamble's diagnostics; v21: aliases at namespace
+/// scope are global symbols, and the rows cover weak call edges, implicit
+/// calls and the names the traversal used to skip; v22: specializations
+/// relate to their templates, manifests list the files their internal
+/// symbols span, the global blob carries the reverse include graph,
+/// module linkage is external, and C tags and C-linkage functions follow
+/// C's identity rules; v23: names without linkage outside a function reach
+/// as far as their scope, `defined` operands reference their macro,
+/// dependent operators reference no candidates, and the include pasting a
+/// fragment into a declaration carries the fragment's uses; v24: symbols a
+/// module exports carry the Exported flag, and anonymous structs, unions
+/// and enums the AnonymousScope flag; v25: shards mark the lines ending in
+/// "\r\n", whose '\r' is no longer a column of the line).
+constexpr inline std::uint32_t index_format_version = 25;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more
@@ -236,6 +253,12 @@ struct ShardBlob {
     std::vector<std::uint8_t> line_lengths;
     std::vector<std::uint32_t> long_line_rows;
     std::vector<std::uint32_t> long_line_lengths;
+
+    /// A bit for each line ending in "\r\n" — line `n` is bit `n % 64` of
+    /// word `n / 64`, the words ending at the last set bit — for mapping
+    /// positions without the content. Empty when the content is stored,
+    /// whose bytes tell.
+    std::vector<std::uint64_t> crlf_lines;
 
     /// Referenced symbols, sorted by hash; the index into this table is
     /// the symbol id the row columns use.

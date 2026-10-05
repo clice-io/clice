@@ -309,7 +309,10 @@ auto decl_hover(const clang::NamedDecl* decl,
     HoverInfo info;
     auto& context = decl->getASTContext();
 
-    info.access_specifier = clang::getAccessSpelling(decl->getAccess()).str();
+    /// Clang gives template parameters public access; only members have one.
+    if(!decl->isTemplateParameter()) {
+        info.access_specifier = clang::getAccessSpelling(decl->getAccess()).str();
+    }
     info.namespace_scope = display::namespace_scope(decl);
     if(!info.namespace_scope->empty()) {
         info.namespace_scope->append("::");
@@ -344,12 +347,10 @@ auto decl_hover(const clang::NamedDecl* decl,
     /// Fill in types and params.
     if(const clang::FunctionDecl* function = underlying_function(decl)) {
         fill_function_type_and_params(info, decl, function, options);
+    } else if(decl->isTemplateParameter()) {
+        info.type = display::template_param_type(decl, options);
     } else if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(decl)) {
         info.type = display::type(context, value->getType(), options);
-    } else if(const auto* type_param = llvm::dyn_cast<clang::TemplateTypeParmDecl>(decl)) {
-        info.type = type_param->wasDeclaredWithTypename() ? "typename" : "class";
-    } else if(const auto* template_param = llvm::dyn_cast<clang::TemplateTemplateParmDecl>(decl)) {
-        info.type = display::template_param_type(template_param, options);
     } else if(const auto* var_template = llvm::dyn_cast<clang::VarTemplateDecl>(decl)) {
         info.type = display::type(context, var_template->getTemplatedDecl()->getType(), options);
     } else if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefNameDecl>(decl)) {
@@ -380,6 +381,9 @@ auto decl_hover(const clang::NamedDecl* decl,
     }
 
     info.definition = display::definition(decl, options, &tb);
+    if(decls::is_exported(decl)) {
+        info.definition.insert(0, "export ");
+    }
     return info;
 }
 
@@ -912,6 +916,21 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
     auto spelled = semantics.spelled_tokens();
     llvm::SmallVector<const clang::NamedDecl*, 4> decls;
 
+    /// Whether the token is a later token the occurrence's name owns: any
+    /// token of `~Foo` or `operator==` names the function, `Foo` the
+    /// destructor rather than the class.
+    auto inside = [&](const NameOccurrence& occurrence, clang::SourceLocation token) {
+        if(occurrence.name_end.isInvalid() || !occurrence.owns_whole_name()) {
+            return false;
+        }
+        auto [fid, offset] = unit.decompose_location(token);
+        auto [begin_fid, begin_offset] =
+            unit.decompose_location(unit.spelling_location(occurrence.location));
+        auto [end_fid, end_offset] =
+            unit.decompose_location(unit.spelling_location(occurrence.name_end));
+        return fid == begin_fid && fid == end_fid && begin_offset < offset && offset <= end_offset;
+    };
+
     for(const auto& token: llvm::reverse(touched)) {
         if(should_ignore_token(token)) {
             continue;
@@ -927,6 +946,7 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
 
         llvm::DenseSet<std::uint32_t> visited;
         llvm::SmallPtrSet<const clang::NamedDecl*, 4> seen;
+        llvm::SmallVector<const clang::NamedDecl*, 4> named;
         for(auto owner: semantics.owners(index)) {
             for(auto n = owner; n != Semantics::invalid; n = semantics.node(n).parent) {
                 /// Owners of a macro token share ancestors; scan each chain
@@ -941,17 +961,21 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
                 }
 
                 for(auto& occurrence: resolve_occurrences(semantics, n, &unit.resolver())) {
-                    auto location = occurrence.location;
-                    if(location.isMacroID()) {
-                        location = unit.spelling_location(location);
-                    }
-                    if(location == token.location() && seen.insert(occurrence.decl).second) {
-                        decls.push_back(occurrence.decl);
+                    if(unit.spelling_location(occurrence.location) == token.location()) {
+                        if(seen.insert(occurrence.decl).second) {
+                            decls.push_back(occurrence.decl);
+                        }
+                    } else if(inside(occurrence, token.location()) &&
+                              !llvm::is_contained(named, occurrence.decl)) {
+                        named.push_back(occurrence.decl);
                     }
                 }
             }
         }
 
+        if(!named.empty()) {
+            return named;
+        }
         if(!decls.empty()) {
             break;
         }
@@ -1171,16 +1195,16 @@ void reformat_definition(HoverInfo& info) {
 
 }  // namespace
 
-auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const LineMap& map)
+auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const PositionMap& map)
     -> protocol::Hover {
     auto document = info.present();
 
     protocol::MarkupContent content;
     if(options.parse_comment_as_markdown) {
-        content.kind = protocol::MarkupKind::markdown;
+        content.kind = protocol::MarkupKind::Markdown;
         content.value = document.as_markdown();
     } else {
-        content.kind = protocol::MarkupKind::plain_text;
+        content.kind = protocol::MarkupKind::PlainText;
         content.value = document.as_plain_text();
     }
 
@@ -1189,7 +1213,7 @@ auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const
     };
 
     if(info.symbol_range) {
-        result.range = to_range(map, *info.symbol_range);
+        result.range = map.to_range(*info.symbol_range);
     }
 
     return result;
@@ -1465,8 +1489,7 @@ auto hover(CompilationUnitRef unit,
         return std::nullopt;
     }
 
-    LineMap map(unit.main_content(), unit.line_starts(), encoding);
-    return to_protocol_hover(*info, options, map);
+    return to_protocol_hover(*info, options, main_position_map(unit, encoding));
 }
 
 }  // namespace clice::feature

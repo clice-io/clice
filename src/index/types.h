@@ -23,11 +23,14 @@ using SymbolHash = std::uint64_t;
 /// Visibility scope of a symbol, determining which level of the multi-level
 /// symbol table stores it.
 enum class SymbolScope : std::uint8_t {
-    /// Can be referenced from any TU (external linkage).  Stored in ProjectIndex.
+    /// Can be referenced from any TU (external or module linkage). Stored
+    /// in ProjectIndex, whose reference bitmaps list the files holding its
+    /// rows.
     External = 0,
     /// Can be referenced across files within one TU but not across TUs
-    /// (internal linkage: static, anonymous namespace).  Stored in the main
-    /// file's Shard blob.
+    /// (internal linkage: static, anonymous namespace). Stored in the
+    /// shards holding its rows; the TUs that reference it from several
+    /// files list those files (TUManifest::local_fanout).
     TULocal = 1,
     /// Cannot be referenced from any other file (local variables, parameters,
     /// labels).  Stored in the defining file's Shard blob.
@@ -50,7 +53,7 @@ struct Relation {
         target_symbol = std::bit_cast<SymbolHash>(range);
     }
 
-    constexpr auto definition_range() {
+    constexpr auto definition_range() const {
         return std::bit_cast<LocalSourceRange>(target_symbol);
     }
 };
@@ -99,8 +102,8 @@ enum class SymbolFlags : std::uint16_t {
     /// No name of its own; `Symbol::name` holds a presentation such as
     /// "(anonymous struct)".
     Unnamed = 1 << 5,
-    /// The declaring token comes out of a macro expansion, so no written
-    /// source spells the name.
+    /// Every declaration's name token comes out of a macro expansion, so no
+    /// written source spells the name.
     SpelledInMacro = 1 << 6,
     /// The canonical declaration sits in a system header.
     SystemHeader = 1 << 7,
@@ -111,6 +114,11 @@ enum class SymbolFlags : std::uint16_t {
     Completable = 1 << 8,
     /// Three bits holding the NameForm.
     FormMask = 7 << 9,
+    /// Exported by its module (decls::is_exported).
+    Exported = 1 << 12,
+    /// An anonymous struct or union, or an unscoped enum without a name:
+    /// the enclosing scope names its members.
+    AnonymousScope = 1 << 13,
 };
 
 constexpr SymbolFlags operator|(SymbolFlags lhs, SymbolFlags rhs) {
@@ -124,6 +132,12 @@ constexpr SymbolFlags& operator|=(SymbolFlags& lhs, SymbolFlags rhs) {
 
 constexpr bool has_flag(SymbolFlags flags, SymbolFlags bit) {
     return (static_cast<std::uint16_t>(flags) & static_cast<std::uint16_t>(bit)) != 0;
+}
+
+/// Whether a qualified name skips this container, as lookup does.
+constexpr bool transparent_scope(SymbolFlags flags) {
+    return has_flag(flags, SymbolFlags::InlineNamespace) ||
+           has_flag(flags, SymbolFlags::AnonymousScope);
 }
 
 /// The shape of a declaration's name, for consumers that treat special
@@ -195,7 +209,9 @@ struct Symbol {
     /// symbol is only referenced.
     std::uint32_t file = no_file;
 
-    /// All files that referenced this symbol.
+    /// All files that referenced this symbol; for an internal-linkage one
+    /// also the files whose rows target it (a structured binding's
+    /// TypeDefinition row naming a type the file never spells).
     Bitmap reference_files;
 
     /// The identity a reader hands out for this row; the strings borrow it.

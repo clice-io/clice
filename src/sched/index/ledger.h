@@ -33,20 +33,6 @@ enum class ReindexReason : std::uint8_t {
     ContentChanged,
 };
 
-/// Dispatch/landing-time admission verdict on one unit of pump work,
-/// produced by the client (the serving side knows sessions; batch is
-/// trivially Admit) — the pump itself never sees a SessionStore.
-enum class Admission : std::uint8_t {
-    /// Run the work as planned.
-    Admit,
-    /// Skip the work and settle the claimed debt: an ordinary open
-    /// session's veto must clear the debt, or the pump spins and a
-    /// ContentChanged suppression hangs for the whole open period.
-    SkipAndSettle,
-    /// Skip the work and keep the debt for a later round.
-    Defer,
-};
-
 /// The pump's per-file debt ledger — the claim/settle contract behind
 /// background reindexing:
 ///
@@ -58,8 +44,8 @@ enum class Admission : std::uint8_t {
 /// - settle() consumes exactly the claimed debt: a newer recording
 ///   survives an older attempt's completion.
 /// - on_dispatch_failure() merges a failed claim back into pending debt
-///   (bounded for crashes by the requeue budget), unless newer content
-///   already re-booked the work.
+///   (bounded for worker deaths by the requeue budget), unless newer
+///   content already re-booked the work or the file's own run crashed.
 ///
 /// Claims carry an opaque monotonic ticket as their identity; the ledger
 /// never touches queues, sessions or workers.
@@ -70,6 +56,19 @@ public:
         std::uint64_t ticket = 0;
     };
 
+    /// Why a dispatch failed.
+    enum class Failure : std::uint8_t {
+        /// The run killed its worker (the worker named it): the same
+        /// bytes would again, so the file waits for a change.
+        Crashed,
+        /// The worker died under it for some other reason — a death that
+        /// named nothing, another request's crash: requeue on the budget.
+        Lost,
+        /// Preempted, or an outage the pool revives from: says nothing
+        /// about the file, requeue freely.
+        Preempted,
+    };
+
     /// What a failed dispatch did to the file's pending state.
     enum class FailureVerdict : std::uint8_t {
         /// No pending entry survived (file removed mid-flight).
@@ -77,8 +76,8 @@ public:
         /// The failed dispatch carried bytes older than the pending
         /// content; the newer content's own booking redoes the work.
         Superseded,
-        /// The crash budget is spent; the file is abandoned and its
-        /// ledger state cleared.
+        /// The file's run crashed, or its requeue budget is spent; the
+        /// file is abandoned and its ledger state cleared.
         GaveUp,
         /// The claim merged back into pending debt for the next round.
         Requeued,
@@ -122,13 +121,14 @@ public:
     /// coverage hole.
     bool superseded(const Claim& claim) const;
 
-    /// Merge a failed claim back into pending debt. Only crashes spend
-    /// the bounded budget — a preemption says nothing about the file, and
-    /// capping it would silently drop coverage. The requeue carries the
-    /// debt class the dispatch was launched for, not the entry's current
-    /// one: a deps-only downgrade during the flight bet on the content
-    /// pass landing, and a failed pass leaves the edit uncovered.
-    FailureOutcome on_dispatch_failure(const Claim& claim, bool crashed);
+    /// Merge a failed claim back into pending debt. A crash of the
+    /// file's own abandons it; only lost runs spend the bounded budget — a
+    /// preemption says nothing about the file, and capping it would
+    /// silently drop coverage. The requeue carries the debt class the
+    /// dispatch was launched for, not the entry's current one: a
+    /// deps-only downgrade during the flight bet on the content pass
+    /// landing, and a failed pass leaves the edit uncovered.
+    FailureOutcome on_dispatch_failure(const Claim& claim, Failure failure);
 
     /// Why the file awaits re-indexing (queued or in flight), or nullopt
     /// when nothing is pending. O(1), no I/O.
@@ -162,8 +162,9 @@ public:
     }
 
     /// Some file still holds a queued-and-unconsumed slot. The drained
-    /// queue's compaction invariant: deferred debt (admission's Defer)
-    /// legitimately outlives the round, a queued slot must not.
+    /// queue's compaction invariant: debt legitimately outlives the round
+    /// (a round the graph refused keeps its booking), a queued slot must
+    /// not.
     bool has_queued_slots() const {
         return !queued.empty();
     }
@@ -180,10 +181,9 @@ private:
         /// must not discard an in-flight content pass.
         std::uint64_t content_ticket;
 
-        /// Crash requeues of this entry. Bounds the damage of a poison
-        /// file that reliably crashes workers: without a cap, every
-        /// requeue would burn another worker's crash budget until the
-        /// whole pool is dead.
+        /// Lost-run requeues of this entry. Bounds the damage of a file
+        /// whose runs keep dying without the worker naming it (an OOM
+        /// kill): without a cap, every requeue would burn another worker.
         unsigned requeue_attempts = 0;
     };
 

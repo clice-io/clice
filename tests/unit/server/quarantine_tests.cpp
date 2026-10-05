@@ -1,332 +1,220 @@
 #include <chrono>
+#include <cstdint>
+#include <string>
 
 #include "test/test.h"
-#include "sched/crash_budget.h"
-#include "server/state/quarantine.h"
+#include "sched/blame_budget.h"
+#include "server/quarantine.h"
 
 namespace clice::testing {
 
 namespace {
 
-TEST_SUITE(QuarantineMachine) {
+using Clock = Quarantine::Clock;
+using std::chrono::seconds;
 
-TEST_CASE(CrashesAccumulate) {
+constexpr std::uint8_t compile = 0;
+constexpr std::uint8_t hover = 1;
+
+ZEST_SUITE(QuarantineMachine) {
+
+ZEST_CASE(CrashBarsItsKind) {
     Quarantine q;
-    EXPECT_FALSE(q.active());
+    auto t0 = Clock::now();
+    ZEXPECT(!q.barred(compile, t0));
 
-    q.on_crash();
-    EXPECT_EQ(q.crashes(), 1u);
-    EXPECT_FALSE(q.active());
-    EXPECT_FALSE(q.blocked());
+    q.on_crash(compile, "d1", "killed by signal 11", t0);
+    ZEXPECT(q.barred(compile, t0));
+    ZEXPECT(q.crashed(compile));
+    ZEXPECT(!q.barred(hover, t0));
 
-    q.on_crash();
-    EXPECT_EQ(q.crashes(), 2u);
-    EXPECT_TRUE(q.active());
-    EXPECT_TRUE(q.blocked());
+    // A document that sits still is never retried.
+    ZEXPECT(q.barred(compile, t0 + seconds(3600)));
 }
 
-TEST_CASE(LandClearsInherited) {
+ZEST_CASE(ChangeRetriesAfterSpacing) {
     Quarantine q;
-    q.on_crash();
-
-    // A crash recorded while the flight was up survives its landing: the
-    // same content will kill again on the next request.
-    auto flight = q.begin_flight();
-    q.on_crash();
-    EXPECT_TRUE(q.grew(flight));
-    q.land(flight);
-    EXPECT_EQ(q.crashes(), 1u);
-
-    // A clean flight clears everything it inherited.
-    auto clean = q.begin_flight();
-    EXPECT_FALSE(q.grew(clean));
-    q.land(clean);
-    EXPECT_EQ(q.crashes(), 0u);
+    auto t0 = Clock::now();
+    q.on_crash(compile, "d1", "cause", t0);
+    q.on_change(t0 + seconds(1));
+    ZEXPECT(q.barred(compile, t0 + seconds(1)));
+    ZEXPECT(!q.barred(compile, t0 + Quarantine::retry_spacing));
 }
 
-TEST_CASE(LandNeverUnderflows) {
+ZEST_CASE(StrikesLeaveSaveOnly) {
     Quarantine q;
-    q.on_crash();
-    auto flight = q.begin_flight();
-
-    // A reopen (reset) while the flight is up must not underflow the
-    // fresh record when the stale flight lands.
-    q.reset();
-    q.land(flight);
-    EXPECT_EQ(q.crashes(), 0u);
-}
-
-TEST_CASE(EditArmsOneProbe) {
-    Quarantine q;
-
-    // Below the threshold an edit grants nothing.
-    q.on_crash();
-    q.on_edit(true);
-    EXPECT_FALSE(q.blocked());
-    q.on_crash();
-    EXPECT_TRUE(q.blocked());
-
-    // Dropped and no-op edits grant nothing; a real one arms the probe.
-    q.on_edit(false);
-    EXPECT_TRUE(q.blocked());
-    q.on_edit(true);
-    EXPECT_FALSE(q.blocked());
-    EXPECT_TRUE(q.active());
-
-    // The attempt spends it; back to blocked. Re-arming is only honored
-    // while quarantined — a stray re-arm below the threshold must not
-    // pre-arm a future spell.
-    q.spend_probe();
-    EXPECT_TRUE(q.blocked());
-    q.land(q.begin_flight());
-    q.re_arm_probe();
-    q.on_crash();
-    q.on_crash();
-    EXPECT_TRUE(q.blocked());
-    q.on_edit(true);
-
-    // An attempt that never ran hands the license back.
-    q.on_edit(true);
-    q.spend_probe();
-    q.re_arm_probe();
-    EXPECT_FALSE(q.blocked());
-}
-
-TEST_CASE(ProbeSuccessRecovers) {
-    Quarantine q;
-    q.on_crash();
-    q.on_crash();
-    q.on_edit(true);
-
-    // The probe compile: takes off, spends the probe, lands clean.
-    auto flight = q.begin_flight();
-    q.spend_probe();
-    q.land(flight);
-    EXPECT_EQ(q.crashes(), 0u);
-    EXPECT_FALSE(q.active());
-    EXPECT_FALSE(q.blocked());
-
-    // Recovery leaves no stale probe: the next spell blocks immediately
-    // instead of inheriting a free attempt from the last one.
-    q.on_crash();
-    q.on_crash();
-    EXPECT_TRUE(q.blocked());
-}
-
-TEST_CASE(QueryCrashSurvivesCompile) {
-    Quarantine q;
-    q.on_kind_crash(1);
-
-    // A successful compile does not disprove a kind crash: the same AST
-    // crashes the same query again. Without the separate ledger, the
-    // crash-triggered recompile would launder the evidence forever.
-    q.land(q.begin_flight());
-    EXPECT_EQ(q.crashes(), 1u);
-    q.on_kind_crash(1);
-    EXPECT_TRUE(q.blocked());
-
-    // Recovery: an edit grants the probe, its compile lands, and the
-    // crashing kind answering clears the ledger.
-    q.on_edit(true);
-    q.spend_probe();
-    q.land(q.begin_flight());
-    EXPECT_TRUE(q.active());
-    q.on_kind_land(1);
-    EXPECT_FALSE(q.active());
-    EXPECT_FALSE(q.blocked());
-}
-
-TEST_CASE(KindsRecoverIndependently) {
-    Quarantine q;
-    q.on_kind_crash(1);
-    q.on_kind_crash(1);
-    EXPECT_TRUE(q.blocked());
-
-    // A harmless other kind answering (a hover while semantic tokens is
-    // the crasher) must not launder the crashing kind's evidence.
-    q.on_kind_land(2);
-    EXPECT_TRUE(q.blocked());
-
-    q.on_kind_land(1);
-    EXPECT_FALSE(q.active());
-
-    // Leaving quarantine via a kind landing retires an armed probe too —
-    // an adoption (PCH cache hit) can land a kind before any dispatch
-    // spent the probe, and the next spell must not inherit it.
-    q.on_edit(true);
-    q.on_kind_crash(3);
-    q.on_kind_crash(3);
-    EXPECT_TRUE(q.blocked());
-}
-
-TEST_CASE(MixedEvidenceCounts) {
-    Quarantine q;
-    q.on_crash();
-
-    // Kind evidence accrued mid-flight counts toward grew(); the landing
-    // clears only the inherited compile share.
-    auto flight = q.begin_flight();
-    q.on_kind_crash(1);
-    EXPECT_TRUE(q.grew(flight));
-    q.land(flight);
-    EXPECT_EQ(q.crashes(), 1u);
-
-    q.on_kind_land(1);
-    EXPECT_EQ(q.crashes(), 0u);
-}
-
-TEST_CASE(DeathCountedOnce) {
-    Quarantine q;
-
-    // One process death fails every request in flight on it: a compile and
-    // a query blaming the same incarnation count once, across ledgers.
-    q.on_crash("sf:1:7");
-    q.on_kind_crash(1, "sf:1:7");
-    EXPECT_EQ(q.crashes(), 1u);
-
-    // A different incarnation is a different death.
-    q.on_crash("sf:1:8");
-    EXPECT_EQ(q.crashes(), 2u);
-
-    // Anonymous evidence (no identity) always counts.
-    q.on_crash();
-    q.on_crash();
-    EXPECT_EQ(q.crashes(), 4u);
-}
-
-TEST_CASE(ProbeRidesCrashingKind) {
-    Quarantine q;
-    q.on_kind_crash(1);
-    q.on_kind_crash(1);
-    q.on_edit(true);
-
-    // Only the crashing kind's dispatch is the recovery attempt: a
-    // harmless other kind or an innocent compile must not spend the probe.
-    EXPECT_FALSE(q.recovery_compile());
-    EXPECT_FALSE(q.recovery_kind(2));
-    EXPECT_TRUE(q.recovery_kind(1));
-
-    // Compile strikes make the compile the recovery vehicle.
-    q.on_crash();
-    EXPECT_TRUE(q.recovery_compile());
-
-    // The predicates require the armed probe: a concurrent request that
-    // lost the race to spend it holds no license, and the kind is simply
-    // blocked again.
-    q.spend_probe();
-    EXPECT_FALSE(q.recovery_compile());
-    EXPECT_FALSE(q.recovery_kind(1));
-    EXPECT_TRUE(q.kind_blocked(1));
-    EXPECT_FALSE(q.kind_blocked(2));
-}
-
-TEST_CASE(GuardReturnsUnspentProbe) {
-    Quarantine q;
-    q.on_kind_crash(1);
-    q.on_kind_crash(1);
-    q.on_edit(true);
-
-    // Unwinding with no strike recorded (a cancellation before dispatch)
-    // hands the license back.
-    {
-        Quarantine::ProbeGuard guard(q);
-        EXPECT_TRUE(q.blocked());
+    auto t = Clock::now();
+    for(unsigned strike = 1; strike <= Quarantine::max_strikes; strike += 1) {
+        q.on_crash(compile, std::to_string(strike), "cause", t);
+        q.on_change(t);
+        t += seconds(10);
     }
-    EXPECT_FALSE(q.blocked());
+    ZEXPECT(q.barred(compile, t));
+    ZASSERT(q.notes().size() == 1u);
+    ZEXPECT(q.notes()[0].save_only);
 
-    // A recorded strike keeps it spent: the attempt ran and crashed.
-    {
-        Quarantine::ProbeGuard guard(q);
-        q.on_kind_crash(1);
-    }
-    EXPECT_TRUE(q.blocked());
+    q.on_save();
+    ZEXPECT(!q.barred(compile, t));
+
+    // The save starts a fresh run: one crash later, a change retries again.
+    q.on_crash(compile, "after-save", "cause", t);
+    q.on_change(t);
+    ZEXPECT(!q.barred(compile, t + seconds(10)));
 }
 
-TEST_CASE(AnnounceOncePerSpell) {
+ZEST_CASE(LandClearsRecord) {
     Quarantine q;
-    EXPECT_FALSE(q.needs_announcement());
-
-    q.on_crash();
-    q.on_crash();
-    EXPECT_TRUE(q.needs_announcement());
-    q.mark_announced();
-    EXPECT_FALSE(q.needs_announcement());
-
-    // More crashes in the same spell do not re-announce, and neither does
-    // a landing that clears only part of the evidence and stays active.
-    q.on_crash();
-    EXPECT_FALSE(q.needs_announcement());
-    {
-        auto flight = q.begin_flight();
-        q.on_crash();
-        q.on_crash();
-        q.land(flight);
-        EXPECT_TRUE(q.active());
-        EXPECT_FALSE(q.needs_announcement());
-    }
-    q.land(q.begin_flight());
-    q.on_crash();
-    q.on_crash();
-    EXPECT_TRUE(q.needs_announcement());
+    auto t0 = Clock::now();
+    q.on_crash(compile, "d1", "cause", t0);
+    q.on_land(compile);
+    ZEXPECT(!q.crashed(compile));
+    ZEXPECT(!q.barred(compile, t0));
+    ZEXPECT(q.empty());
 }
 
-TEST_CASE(ResetClearsAll) {
+ZEST_CASE(DeathCountsOnce) {
     Quarantine q;
-    q.on_crash();
-    q.on_crash();
-    q.on_edit(true);
-    q.mark_announced();
+    auto t0 = Clock::now();
+    q.on_crash(hover, "d1", "cause", t0);
+    q.on_crash(hover, "d1", "cause", t0);
+    ZASSERT(q.notes().size() == 1u);
+    ZEXPECT(q.notes()[0].strikes == 1u);
 
-    q.on_kind_crash(1);
-    q.reset();
-    EXPECT_EQ(q.crashes(), 0u);
-    EXPECT_FALSE(q.active());
-    EXPECT_FALSE(q.blocked());
-    EXPECT_FALSE(q.needs_announcement());
-
-    // reset() must clear the probe and the announcement, not just the
-    // streak: a fresh spell must block and announce again.
-    q.on_crash();
-    q.on_crash();
-    EXPECT_TRUE(q.blocked());
-    EXPECT_TRUE(q.needs_announcement());
+    // Anonymous evidence always counts.
+    q.on_crash(hover, "", "cause", t0);
+    q.on_crash(hover, "", "cause", t0);
+    ZEXPECT(q.notes()[0].strikes == 3u);
 }
 
-TEST_CASE(BudgetBlocksAtThreshold) {
-    CrashBudget budget;
-    EXPECT_FALSE(budget.blocked("key-a"));
+ZEST_CASE(AttemptSpendsLicense) {
+    Quarantine q;
+    auto t0 = Clock::now();
+    q.on_crash(compile, "d1", "cause", t0);
+    q.on_save();
+    {
+        Quarantine::Attempt attempt(q, compile);
+        ZEXPECT(q.barred(compile, t0));
+    }
+    // Ended without a crash: the license comes back.
+    ZEXPECT(!q.barred(compile, t0));
 
-    budget.on_crash("key-a");
-    EXPECT_FALSE(budget.blocked("key-a"));
-    budget.on_crash("key-a");
-    EXPECT_TRUE(budget.blocked("key-a"));
+    {
+        Quarantine::Attempt attempt(q, compile);
+        q.on_crash(compile, "d2", "cause", t0);
+    }
+    ZEXPECT(q.barred(compile, t0 + seconds(10)));
+}
+
+ZEST_CASE(SaveThenCrashKeepsBar) {
+    // The strikes a save reset climb back to the count the attempt saw;
+    // the crash still spends the license it carried.
+    Quarantine q;
+    auto t0 = Clock::now();
+    q.on_crash(compile, "d1", "cause", t0);
+    q.on_change(t0);
+    {
+        Quarantine::Attempt attempt(q, compile);
+        q.on_save();
+        q.on_crash(compile, "d2", "cause", t0 + seconds(1));
+    }
+    ZEXPECT(q.barred(compile, t0 + seconds(10)));
+}
+
+ZEST_CASE(SiblingCrashOvertakes) {
+    Quarantine q;
+    auto t0 = Clock::now();
+    Quarantine::Attempt attempt(q, hover);
+    ZEXPECT(!attempt.overtaken());
+    q.on_crash(compile, "d1", "cause", t0);
+    ZEXPECT(!attempt.overtaken());
+    q.on_crash(hover, "d2", "cause", t0);
+    ZEXPECT(attempt.overtaken());
+}
+
+ZEST_CASE(ChangeDuringFlightStands) {
+    // The crash describes the inputs the attempt carried; an edit during
+    // its flight is still untried.
+    Quarantine q;
+    auto t0 = Clock::now();
+    {
+        Quarantine::Attempt attempt(q, compile);
+        q.on_change(t0);
+        q.on_crash(compile, "d1", "cause", t0 + seconds(20));
+    }
+    ZEXPECT(!q.barred(compile, t0 + seconds(30)));
+}
+
+ZEST_CASE(EditingCrashStaysSilent) {
+    Quarantine q;
+    auto t0 = Clock::now();
+    q.on_change(t0);
+    q.on_crash(compile, "d1", "cause", t0 + seconds(1));
+    ZEXPECT(!q.shows(compile));
+    ZEXPECT(q.notes().empty());
+
+    // A repeat shows.
+    q.on_change(t0 + seconds(2));
+    q.on_crash(compile, "d2", "cause", t0 + seconds(5));
+    ZEXPECT(q.shows(compile));
+    ZEXPECT(q.notes().size() == 1u);
+}
+
+ZEST_CASE(SavedCrashShows) {
+    // Saved code is no half-typed code, however recent the edit.
+    Quarantine q;
+    auto t0 = Clock::now();
+    q.on_change(t0);
+    q.on_save();
+    q.on_crash(compile, "d1", "cause", t0 + seconds(1));
+    ZEXPECT(q.shows(compile));
+}
+
+ZEST_CASE(ColdCrashShows) {
+    Quarantine q;
+    auto t0 = Clock::now();
+    q.on_change(t0);
+    q.on_crash(hover, "d1", "killed by signal 6 (SIGABRT)", t0 + Quarantine::editing_window);
+    ZASSERT(q.notes().size() == 1u);
+    ZEXPECT(q.notes()[0].kind == hover);
+    ZEXPECT(q.notes()[0].cause == "killed by signal 6 (SIGABRT)");
+    ZEXPECT(!q.notes()[0].save_only);
+}
+
+ZEST_CASE(BudgetBlocksAtThreshold) {
+    BlameBudget budget;
+    ZEXPECT(!budget.blocked("key-a"));
+
+    budget.on_blame("key-a");
+    ZEXPECT(!budget.blocked("key-a"));
+    budget.on_blame("key-a");
+    ZEXPECT(budget.blocked("key-a"));
 
     // Keys are independent: fresh content (fresh key) starts fresh.
-    EXPECT_FALSE(budget.blocked("key-b"));
+    ZEXPECT(!budget.blocked("key-b"));
 }
 
-TEST_CASE(BudgetClearsOnLand) {
-    // A successful build proves the strikes were transient: without the
+ZEST_CASE(BudgetClearsOnLand) {
+    // A consumer landing proves the blames were transient: without the
     // clear, two unrelated hiccups far apart would block a key that
-    // rebuilds fine in between.
-    CrashBudget budget;
-    budget.on_crash("key");
+    // serves fine in between.
+    BlameBudget budget;
+    budget.on_blame("key");
     budget.on_land("key");
-    budget.on_crash("key");
-    EXPECT_FALSE(budget.blocked("key"));
+    budget.on_blame("key");
+    ZEXPECT(!budget.blocked("key"));
 }
 
-TEST_CASE(BudgetRearmsAfterCooldown) {
+ZEST_CASE(BudgetRearmsAfterCooldown) {
     // The poison may live in content the key cannot see (a header included
     // by the hashed preamble text): a block is a cooldown, not a verdict.
     // Zero cooldown models "elapsed" — the key earns a fresh budget.
-    CrashBudget budget{std::chrono::milliseconds(0)};
-    budget.on_crash("key");
-    budget.on_crash("key");
-    EXPECT_FALSE(budget.blocked("key"));
+    BlameBudget budget{std::chrono::milliseconds(0)};
+    budget.on_blame("key");
+    budget.on_blame("key");
+    ZEXPECT(!budget.blocked("key"));
 }
 
-};  // TEST_SUITE(QuarantineMachine)
+};  // ZEST_SUITE(QuarantineMachine)
 
 }  // namespace
 

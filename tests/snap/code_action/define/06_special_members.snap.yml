@@ -1,0 +1,33 @@
+---
+created_at: 2026-09-21
+input_file: define/06_special_members.cpp
+---
+assign:
+- [refactor.rewrite] Define 'operator=' inline
+  14:32-14:33 => " {}"
+- [refactor.rewrite] Define 'S::operator=' out of line
+  17:0-17:0 => "\nS& S::operator=(const S& other) {\n}\n"
+
+conversion:
+- [refactor.rewrite] Define 'operator Meter' inline
+  15:26-15:27 => " {}"
+- [refactor.rewrite] Define 'S::operator Meter' out of line
+  17:0-17:0 => "\nS::operator Meter() const {\n}\n"
+
+ctor:
+- [refactor.rewrite] Define 'S' inline
+  11:7-11:8 => " {}"
+- [refactor.rewrite] Define 'S::S' out of line
+  17:0-17:0 => "\nS::S() {\n}\n"
+
+dtor:
+- [refactor.rewrite] Define '~S' inline
+  13:8-13:9 => " {}"
+- [refactor.rewrite] Define 'S::~S' out of line
+  17:0-17:0 => "\nS::~S() {\n}\n"
+
+explicit_ctor:
+- [refactor.rewrite] Define 'S' inline
+  12:25-12:26 => " {}"
+- [refactor.rewrite] Define 'S::S' out of line
+  17:0-17:0 => "\nS::S(int value) {\n}\n"

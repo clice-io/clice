@@ -1,0 +1,15 @@
+---
+created_at: 2026-09-21
+input_file: reorder/01_class_members.cpp
+---
+cls:
+- [refactor.rewrite] Reorder definitions of 'Parser' by declaration order
+  14:0-17:0 => "void Parser::first() {\n}\n"
+  18:0-20:0 => "// The middle one.\nvoid Parser::second() {\n}\n"
+  21:0-24:0 => "/// Parses the tail.\nvoid Parser::third() {\n}\n"
+
+second:
+- [refactor.rewrite] Reorder definitions of 'Parser' by declaration order
+  14:0-17:0 => "void Parser::first() {\n}\n"
+  18:0-20:0 => "// The middle one.\nvoid Parser::second() {\n}\n"
+  21:0-24:0 => "/// Parses the tail.\nvoid Parser::third() {\n}\n"

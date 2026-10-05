@@ -215,34 +215,43 @@ bool should_ignore_token(const clang::syntax::Token& token);
 /// the token spelling its name — invalid for a use no token spells (an
 /// implicit constructor or destructor call, a range-for's generated
 /// `begin`, a user-defined literal's operator, whose suffix cannot be
-/// split off its token).
+/// split off its token). A name written with several tokens also has the
+/// location of its last one (see written_name).
 struct Reference {
     const clang::NamedDecl* decl;
 
     RelationKind kind;
 
     clang::SourceLocation location;
+
+    /// Invalid for a name of one token.
+    clang::SourceLocation name_end;
 };
 
 /// A name occurrence a node gives rise to: the decl the written name refers
-/// to, its role, and the name token's location — the references whose
-/// location is valid. Multi-token names (`~Foo`, `operator int`) anchor at
-/// their first token: widening them to the full name overlaps the nested
-/// type reference, which the shard's disjoint-or-identical occurrence
-/// invariant cannot represent.
+/// to, its role, and the name's first and last token — the references whose
+/// location is valid.
 struct NameOccurrence {
     const clang::NamedDecl* decl;
 
     RelationKind kind;
 
     clang::SourceLocation location;
+
+    /// Invalid for a name of one token.
+    clang::SourceLocation name_end;
+
+    /// Whether the decl owns every token of the name, a name nested in it
+    /// (`Foo` of `~Foo`) included. A conversion function owns its
+    /// `operator` keyword alone: the type its name embeds is a reference
+    /// of its own.
+    bool owns_whole_name() const;
 };
 
 /// Every declaration `node` refers to — the single implementation of
 /// "node → referenced decl" (the distilled content of the former
 /// SemanticVisitor visit methods). Semantic tokens, the index projection
-/// and hover consume the spelled subset through resolve_occurrences; the
-/// content table consumes all of them as dependencies.
+/// and hover consume the spelled subset through resolve_occurrences.
 ///
 /// Dependent names (typename T::type, unresolved lookups, dependent using
 /// declarations) resolve through the template resolver into WeakReference
@@ -256,12 +265,25 @@ struct NameOccurrence {
 llvm::SmallVector<Reference, 2> resolve_references(const SemanticNode& node,
                                                    types::TemplateResolver* resolver = nullptr);
 
+/// The `new` / `delete` keyword of an allocation expression beginning at
+/// `begin`, past the `::` of a global-qualified one.
+clang::SourceLocation keyword_after_scope(const clang::ASTContext& context,
+                                          clang::SourceLocation begin,
+                                          bool global_qualified);
+
+/// The tokens a written name spans: an operator, conversion or literal
+/// operator name spelled with `operator` through its last token, a
+/// destructor's `~` through its class name (its template arguments are
+/// references of their own), any other name its one token. An operator
+/// used through its symbol (`a == b`, `a[i]`) is that token alone.
+clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
+                                const clang::SourceManager& SM);
+
 struct SemanticsOptions {
     /// Traverse only the main file's top-level decls — the shape features
     /// consume, cached on the unit. Without it the whole TU is traversed,
-    /// the transient shape the full index projection and the content table
-    /// use; token ownership still only covers the main file's spelled
-    /// tokens.
+    /// the transient shape the full index projection uses; token ownership
+    /// still only covers the main file's spelled tokens.
     bool main_file_only = true;
 
     /// Also traverse template instantiations, flagged in_instantiation:
@@ -380,6 +402,23 @@ public:
     /// build time). The same objects back the Module nodes.
     llvm::ArrayRef<LexicalInfo::ModuleDeclaration> module_declarations() const {
         return lexical.modules;
+    }
+
+    /// The main file's conditional and region directives in source order,
+    /// the preamble's and skipped blocks' included.
+    llvm::ArrayRef<LexicalInfo::BlockDirective> block_directives() const {
+        return lexical.block_directives;
+    }
+
+    /// The main file's include directives in source order, the preamble's
+    /// and skipped blocks' included.
+    llvm::ArrayRef<LocalSourceRange> include_directives() const {
+        return lexical.include_directives;
+    }
+
+    /// The main file's raw string literal tokens in source order.
+    llvm::ArrayRef<LocalSourceRange> raw_strings() const {
+        return lexical.raw_strings;
     }
 
 private:

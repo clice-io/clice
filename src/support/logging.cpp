@@ -1,6 +1,7 @@
 #include "support/logging.h"
 
 #include <array>
+#include <cassert>
 #include <chrono>
 #include <ctime>
 #include <format>
@@ -19,10 +20,9 @@
 #endif
 
 #include "version.h"
-#include "support/filesystem.h"
-#include "support/stderr_sink.h"
+#include "support/log_sinks.h"
+#include "vfs/path.h"
 
-#include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/ringbuffer_sink.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Process.h"
@@ -34,12 +34,21 @@ Options options;
 
 static std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> ringbuffer_sink;
 
+/// The stderr sink stderr_logger chose, mirrored again by file_logger.
+static spdlog::sink_ptr console_sink;
+
 constexpr static auto pattern = "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [thread %t] [%s:%#] %v";
 
 void stderr_logger(std::string_view name, const Options& options) {
-    std::shared_ptr<spdlog::logger> logger;
+    std::shared_ptr<StderrSink> client_stderr;
+    if(options.never_block_stderr) {
+        client_stderr = std::make_shared<StderrSink>();
+        console_sink = client_stderr;
+    } else {
+        console_sink = std::make_shared<FileSink>(2, /*owned=*/false);
+    }
 
-    auto console_sink = std::make_shared<StderrSink>();
+    std::shared_ptr<spdlog::logger> logger;
     if(options.replay_console) {
         ringbuffer_sink = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(128);
         std::array<spdlog::sink_ptr, 2> sinks = {console_sink, ringbuffer_sink};
@@ -52,6 +61,13 @@ void stderr_logger(std::string_view name, const Options& options) {
     logger->set_pattern(pattern);
     logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
+
+    if(client_stderr && client_stderr->inoperative()) {
+        // The sink fails closed (drops everything) rather than risk the
+        // caller blocking on an unswitchable pipe; the line reaches the
+        // file log through the replay buffer.
+        LOG_WARN("stderr mirror disabled: pipe could not be switched to non-blocking");
+    }
 }
 
 std::string session_log_directory(std::string_view logging_dir) {
@@ -76,38 +92,25 @@ bool file_logger(std::string_view name,
         return false;
     }
     auto filepath = path::join(dir, std::format("{}.log", name));
-    // Verify we can write to the file before constructing the sink.
-    // (spdlog would throw on failure, but exceptions are disabled in this project.)
-    {
-        std::error_code ec;
-        llvm::raw_fd_ostream test(filepath, ec, llvm::sys::fs::OF_Append);
-        if(ec) {
-            spdlog::error("Failed to open log file {}: {}", filepath, ec.message());
-            return false;
-        }
+    auto opened = FileSink::open(filepath);
+    if(!opened) {
+        spdlog::error("Failed to open log file {}: {}", filepath, opened.error().message());
+        return false;
     }
-    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filepath);
+    auto file_sink = std::move(*opened);
 
     auto replay_buffer = ringbuffer_sink;
 
     llvm::SmallVector<spdlog::sink_ptr, 2> sinks = {file_sink};
-    std::shared_ptr<StderrSink> mirror;
     if(mirror_stderr) {
-        mirror = std::make_shared<StderrSink>();
-        sinks.push_back(mirror);
+        assert(console_sink && "stderr_logger chooses the sink file_logger mirrors to");
+        sinks.push_back(console_sink);
     }
     auto logger = std::make_shared<spdlog::logger>(std::string(name), sinks.begin(), sinks.end());
     logger->set_level(options.level);
     logger->set_pattern(pattern);
     logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
-
-    if(mirror && mirror->inoperative()) {
-        // The mirror fails closed (drops everything) rather than risk the
-        // caller blocking on an unswitchable pipe; say so where it can be
-        // seen — the file log.
-        LOG_WARN("stderr mirror disabled: pipe could not be switched to non-blocking");
-    }
 
     // Replay buffered logs after swapping the default logger, so no messages
     // emitted between the snapshot and the swap are lost.

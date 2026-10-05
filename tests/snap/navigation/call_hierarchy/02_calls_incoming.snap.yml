@@ -13,7 +13,7 @@ target:
     - { file: "${WS}/call_hierarchy/02_calls_incoming.cpp", range: "17:11-17:17" }
     - { file: "${WS}/call_hierarchy/02_calls_incoming.cpp", range: "17:23-17:29" }
   callHierarchy:
-    - { name: "helper", kind: Function, file: "${WS}/call_hierarchy/02_calls_incoming.cpp", range: "8:4-8:10" }
+    - { name: "helper", kind: Function, file: "${WS}/call_hierarchy/02_calls_incoming.cpp", range: "8:0-10:1", selection: "8:4-8:10" }
   incomingCalls:
-    - { name: "alpha", kind: Function, file: "${WS}/call_hierarchy/02_calls_incoming.cpp", range: "12:4-12:9", fromRanges: ["13:11-13:20"] }
-    - { name: "beta", kind: Function, file: "${WS}/call_hierarchy/02_calls_incoming.cpp", range: "16:4-16:8", fromRanges: ["17:11-17:20", "17:23-17:32"] }
+    - { name: "alpha", kind: Function, file: "${WS}/call_hierarchy/02_calls_incoming.cpp", range: "12:0-14:1", selection: "12:4-12:9", fromRanges: ["13:11-13:17"] }
+    - { name: "beta", kind: Function, file: "${WS}/call_hierarchy/02_calls_incoming.cpp", range: "16:0-18:1", selection: "16:4-16:8", fromRanges: ["17:11-17:17", "17:23-17:29"] }

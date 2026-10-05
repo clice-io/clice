@@ -2,6 +2,7 @@
 
 #include "compile/directive.h"
 #include "feature/feature.h"
+#include "support/text.h"
 
 #include "llvm/ADT/SmallVector.h"
 
@@ -18,19 +19,6 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
     if(end_offset > content.size()) {
         end_offset = static_cast<std::uint32_t>(content.size());
     }
-
-    // Offset just past the end of the line containing `offset`.
-    auto line_end = [&](std::uint32_t offset) -> std::uint32_t {
-        auto pos = content.find('\n', offset);
-        return pos == llvm::StringRef::npos ? static_cast<std::uint32_t>(content.size())
-                                            : static_cast<std::uint32_t>(pos + 1);
-    };
-
-    // Offset of the start of the line containing `offset`.
-    auto line_begin = [&](std::uint32_t offset) -> std::uint32_t {
-        auto pos = content.rfind('\n', offset);
-        return pos == llvm::StringRef::npos ? 0 : static_cast<std::uint32_t>(pos + 1);
-    };
 
     auto local_offset = [&](clang::SourceLocation loc) -> std::optional<std::uint32_t> {
         auto [fid, offset] = unit.decompose_location(loc);
@@ -92,7 +80,7 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
                 case Condition::BranchKind::Ifndef: {
                     stack.push_back({});
                     if(is_inactive(condition)) {
-                        stack.back().inactive_begin = line_end(*offset);
+                        stack.back().inactive_begin = line_end(content, *offset);
                     } else {
                         stack.back().taken = true;
                     }
@@ -104,9 +92,9 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
                     if(stack.empty()) {
                         break;
                     }
-                    close_pending(stack.back(), line_begin(*offset));
+                    close_pending(stack.back(), line_begin(content, *offset));
                     if(is_inactive(condition)) {
-                        stack.back().inactive_begin = line_end(*offset);
+                        stack.back().inactive_begin = line_end(content, *offset);
                     } else {
                         stack.back().taken = true;
                     }
@@ -116,11 +104,11 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
                     if(stack.empty()) {
                         break;
                     }
-                    close_pending(stack.back(), line_begin(*offset));
+                    close_pending(stack.back(), line_begin(content, *offset));
                     // #else has no condition value: it is inactive exactly
                     // when an earlier branch of this level was taken.
                     if(stack.back().taken) {
-                        stack.back().inactive_begin = line_end(*offset);
+                        stack.back().inactive_begin = line_end(content, *offset);
                     }
                     break;
                 }
@@ -128,7 +116,7 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
                     if(stack.empty()) {
                         break;
                     }
-                    close_pending(stack.back(), line_begin(*offset));
+                    close_pending(stack.back(), line_begin(content, *offset));
                     stack.pop_back();
                     break;
                 }

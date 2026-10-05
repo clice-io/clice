@@ -1,0 +1,31 @@
+---
+created_at: 2026-10-01
+input_file: synthesized_calls.cpp
+---
+- { loc: "6:10", kind: Namespace, text: "std", relations: [Definition] }
+- { loc: "7:16", kind: Type, text: "T", relations: [Definition] }
+- { loc: "8:7", kind: Struct, text: "reference_wrapper", relations: [Definition] }
+- { loc: "9:4", kind: Type, text: "T", relations: [Reference] }
+- { loc: "9:7", kind: Field, text: "pointer", relations: [Definition] }
+- { loc: "10:4", kind: Type, text: "T", relations: [Reference] }
+- { loc: "10:7", kind: Method, text: "get", relations: [Definition] }
+- { loc: "11:16", kind: Field, text: "pointer", relations: [Reference] }
+- { loc: "15:16", kind: Type, text: "T", relations: [Definition] }
+- { loc: "16:0", kind: Struct, text: "reference_wrapper", relations: [Reference] }
+- { loc: "16:18", kind: Type, text: "T", relations: [Reference] }
+- { loc: "16:21", kind: Function, text: "ref", relations: [Definition] }
+- { loc: "16:25", kind: Type, text: "T", relations: [Reference] }
+- { loc: "16:28", kind: Parameter, text: "value", relations: [Definition] }
+- { loc: "17:13", kind: Parameter, text: "value", relations: [Reference] }
+- { loc: "21:7", kind: Struct, text: "S", relations: [Definition] }
+- { loc: "22:9", kind: Method, text: "func", relations: [Definition] }
+- { loc: "25:5", kind: Function, text: "call", relations: [Definition] }
+- { loc: "26:4", kind: Struct, text: "S", relations: [Reference] }
+- { loc: "26:6", kind: Variable, text: "s", relations: [Definition] }
+- { loc: "27:4", kind: Method, text: "__builtin_invoke", relations: [Reference, Caller] }
+- { loc: "27:22", kind: Struct, text: "S", relations: [Reference] }
+- { loc: "27:25", kind: Method, text: "func", relations: [Reference] }
+- { loc: "27:31", kind: Namespace, text: "std", relations: [Reference] }
+- { loc: "27:36", kind: Function, text: "ref", relations: [Reference, Caller] }
+- { loc: "27:40", kind: Variable, text: "s", relations: [Reference] }
+- { loc: "28:4", kind: Function, text: "__noop", relations: [Reference, Caller] }

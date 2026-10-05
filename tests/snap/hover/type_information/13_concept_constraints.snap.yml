@@ -21,7 +21,7 @@ Type: `class`
 ---
 ```cpp
 // In sum
-public: Addable U
+Addable U
 ```
 
 03_concept_ref: { range: "18:12-18:19" }

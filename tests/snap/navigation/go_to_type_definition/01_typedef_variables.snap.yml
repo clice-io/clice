@@ -33,4 +33,4 @@ type:
     - { file: "${WS}/go_to_type_definition/01_typedef_variables.cpp", range: "12:10-12:16" }
     - { file: "${WS}/go_to_type_definition/01_typedef_variables.cpp", range: "13:4-13:10" }
   typeHierarchy:
-    - { name: "Widget", kind: Struct, file: "${WS}/go_to_type_definition/01_typedef_variables.cpp", range: "8:7-8:13" }
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_type_definition/01_typedef_variables.cpp", range: "8:0-8:16", selection: "8:7-8:13" }

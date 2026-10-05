@@ -1,0 +1,7 @@
+---
+created_at: 2026-09-21
+input_file: define/10_missing_from_definition.cpp
+---
+parse:
+- [refactor.rewrite] Define missing members of 'Parser'
+  17:0-17:0 => "\nvoid Parser::reset() {\n}\n\nbool Parser::done() const {\n}\n"

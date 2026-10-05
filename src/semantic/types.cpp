@@ -141,6 +141,34 @@ auto unwrap(clang::TypeLoc type, bool unwrap_function_type) -> clang::TypeLoc {
     return type;
 }
 
+auto unwrap(clang::QualType type) -> clang::QualType {
+    while(!type.isNull()) {
+        const clang::Type* written = type.getTypePtr();
+        if(auto* paren = llvm::dyn_cast<clang::ParenType>(written)) {
+            type = paren->getInnerType();
+        } else if(auto* adjusted = llvm::dyn_cast<clang::AdjustedType>(written)) {
+            type = adjusted->getOriginalType();
+        } else if(auto* pointer = llvm::dyn_cast<clang::PointerType>(written)) {
+            type = pointer->getPointeeType();
+        } else if(auto* reference = llvm::dyn_cast<clang::ReferenceType>(written)) {
+            type = reference->getPointeeType();
+        } else if(auto* array = llvm::dyn_cast<clang::ArrayType>(written)) {
+            type = array->getElementType();
+        } else {
+            break;
+        }
+    }
+    return type;
+}
+
+auto destructor_of(clang::QualType type) -> const clang::CXXDestructorDecl* {
+    auto* RD = type->getAsCXXRecordDecl();
+    if(!RD || !RD->hasDefinition() || RD->hasTrivialDestructor()) {
+        return nullptr;
+    }
+    return RD->getDestructor();
+}
+
 auto declared_type(const clang::TypeDecl* decl) -> clang::QualType {
     assert(decl);
     clang::ASTContext& context = decl->getASTContext();

@@ -1,27 +1,23 @@
-/// # Inactive preprocessor branch indication
+/// # Inactive preprocessor branches
 ///
-/// - status: partial
-/// - snap: skip
+/// - status: supported
 ///
-/// Inactive branches are not visually distinguished or folded automatically yet
+/// Untaken branches fold like taken ones
 ///
-/// The server emits a fold range for the region between the condition and
-/// `#else`, so the first branch can be folded manually; the post-`#else`
-/// branch gets no range yet. Knowing which branch is _inactive_ — to dim or
-/// auto-fold it — is not implemented here; that information belongs to the
-/// inactive-regions feature.
-///
-/// > **Note**: this overlaps with semantic tokens (inactive code dimming) and
-/// > is partly a client UX concern. The server can mark these ranges with
-/// > `FoldingRangeKind.Region` and clients can choose to auto-fold them.
-
-// snap: skip because the leading directives fall into the server's
-// snap: preamble PCH and the server reply drops the conditionDirective fold that
-// snap: the inspect-path (no-PCH) compile reports. Un-skip once the two paths
-// snap: agree.
+/// Every branch of a conditional folds whether or not the compile takes it,
+/// conditionals nested in an untaken branch included, so dead code can be
+/// folded away by hand. Untaken code is dimmed by the `inactive` modifier of
+/// semantic tokens; the folds themselves do not tell the branches apart.
 
 #ifdef _WIN32
-    // ... Windows code (active) ...
+    // ... Windows code (untaken here) ...
 #else
-    // ... POSIX code (inactive, could auto-fold) ...
+    // ... POSIX code (taken here) ...
+#endif
+
+#if 0
+#ifdef NESTED
+int nested_in_untaken;
+#endif
+int untaken;
 #endif

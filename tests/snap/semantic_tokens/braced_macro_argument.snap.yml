@@ -1,0 +1,22 @@
+---
+created_at: 2026-10-03
+input_file: braced_macro_argument.cpp
+---
+- { loc: "0:0", text: "// - diagnostics: expected", kind: comment }
+- { loc: "2:0", text: "// A braced initializer splits a one-parameter macro's argument at its", kind: comment }
+- { loc: "3:0", text: "// comma. Clang recovers by parenthesizing the argument, and its tokens keep", kind: comment }
+- { loc: "4:0", text: "// their kinds.", kind: comment }
+- { loc: "6:0", text: "struct", kind: keyword }
+- { loc: "6:7", text: "Pt", kind: struct, modifiers: [definition] }
+- { loc: "7:4", text: "int", kind: primitive }
+- { loc: "7:8", text: "x", kind: field, modifiers: [definition] }
+- { loc: "8:4", text: "int", kind: primitive }
+- { loc: "8:8", text: "y", kind: field, modifiers: [definition] }
+- { loc: "11:0", text: "#define", kind: directive }
+- { loc: "11:8", text: "CALL", kind: macro, modifiers: [definition] }
+- { loc: "13:0", text: "int", kind: primitive }
+- { loc: "13:4", text: "main", kind: function, modifiers: [definition] }
+- { loc: "14:4", text: "CALL", kind: macro }
+- { loc: "14:9", text: "Pt", kind: struct }
+- { loc: "14:12", text: "1", kind: number }
+- { loc: "14:15", text: "2", kind: number }

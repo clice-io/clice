@@ -1,0 +1,7 @@
+---
+created_at: 2026-09-21
+input_file: constructor/04_declarator_fields.cpp
+---
+callbacks:
+- [refactor.rewrite] Generate a memberwise constructor for 'Callbacks'
+  10:0-10:0 => "    Callbacks(void (*on_open)(int), int (&counter)[4], const char* name) : on_open(on_open), counter(counter), name(name) {}\n"

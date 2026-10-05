@@ -27,7 +27,7 @@ General-purpose utilities and infrastructure shared by all other modules.
 
 ### `src/vfs/` — File Identity and Versions
 
-- `FileTable`: Internalizes file paths as stable `Fid` identifiers used throughout the system, and owns the shared per-file facts derived from them — stat stamps, content versions, scan results, directory listings. The two-layer freshness check (stat fast path, then content hash with stamp repair) lives here once and is shared by every consumer: PCH validation, index staleness, and disk polling.
+- `FileTable`: Internalizes file paths as stable `Fid` identifiers used throughout the system, and owns the shared per-file facts derived from them — the last observation of each file on disk, content versions, scan results, directory listings. A file has one `Fid` however a path spells it: it is identified by the name the operating system gives it (through symlinks, and on Windows through letter case, junctions and subst drives), and shown to the user under the name the user knows it by — the open document's, else its own path under the workspace folder the user opened, never the spelling an include lookup reached it by. The two-layer freshness check (stat fast path, then content hash) lives here once and is shared by every consumer: PCH validation, index staleness, and disk polling. Every look that finds other content than the last one is reported as a change, whoever looked.
 
 ### `src/config/` — Configuration
 
@@ -88,7 +88,17 @@ Concrete implementations of LSP features. Each feature takes a `CompilationUnitR
 
 Includes: code completion, hover information, signature help, semantic highlighting, inlay hints, document symbols, document links, folding ranges, formatting, diagnostics, etc.
 
-> `feature/` only covers single-file, AST-based feature implementations. Cross-file navigation features (go to definition, find references, etc.) are served from index data by the server's `service/` layer (`Features`/`IndexQuery`). Some features involve multi-phase processing -- for example, include path completion in code completion can be resolved at the syntax layer without full compilation.
+> `feature/` only covers single-file, AST-based feature implementations. Cross-file navigation features (go to definition, find references, etc.) are served from index data by the server's read services (`Features`/`IndexQuery`). Some features involve multi-phase processing -- for example, include path completion in code completion can be resolved at the syntax layer without full compilation.
+
+### `src/project/` — Projects on Disk
+
+A project is what one set of compilation databases and one cache directory describe: the state derived from files on disk, independent of editors and of scheduling. The command line runs one project. The server runs one per workspace folder, plus one for any file opened outside them whose directory or an ancestor holds a `clice.toml` or a `compile_commands.json`, and routes each file to the project that compiles it.
+
+- `Project`: The disk-truth aggregate — configuration, compilation database, build view, dependency graph, artifact records, persisted index. Core invariant: unsaved buffer contents of open files never modify a `Project`; it only reflects the state on disk
+- `CommandResolver`: Resolves the compile command a file is compiled under from the project alone — own entry, a host's command for a header, a default or borrowed command — and synthesizes the includer context a header needs, owning the header-context verdicts
+- `IndexStore`: Index persistence transactions — merge, save, reconcile with the CDB — and the metadata blobs the index database carries beside it
+- `CDBWatcher`: Stat-polling of the project's compilation databases, judged against the reads their entries came from
+- Project loading: opens the cache store and index, loads the build, scans the dependency graph
 
 ### `src/sched/` — Compile Scheduling Core
 
@@ -96,32 +106,32 @@ The task-graph engine that decides what gets built, when, and shares the results
 
 - `TaskGraph`: The shared build graph. Every expensive product is a node; concurrent requests for the same node join one build round instead of duplicating work, cancellation is cooperative, and edges drive dependency-aware invalidation
 - `PCHFamily` / `PCMFamily` / `TURunFamily`: Node families for preamble PCHs (keyed by content), C++20 module PCMs (with import edges and provider tracking), and one-shot translation-unit runs shared by indexing and lint
-- `Workspace`: The disk-truth aggregate — compilation database, dependency graph, artifact registries, project index. Core invariant: unsaved buffer contents of open files never modify the `Workspace`; it only reflects the state on disk
-- `ContextResolver`: Resolves the compile command and includer context a file is compiled under, owning header-context verdicts, user context choices, and synthesized preambles
-- `IndexStore` / `IndexPump`: Index persistence transactions (merge, save, reconcile with the CDB) and the background scheduler that feeds stale files through workers with foreground-aware budgeting
+- `IndexPump`: The background scheduler that feeds stale files through workers with foreground-aware budgeting
+- `SchedulingStack`: The worker pool, the task graph with its families, and a project's index store and pump, assembled the same way for the server and the batch drivers
 - Bootstrap and batch drivers: cold-start orchestration for the server, and the headless execution mode behind `clice index` / `clice lint`
 
 ### `src/worker/` — Worker Processes
 
-- `WorkerPool`: Manages worker process lifecycles and scheduling — spawn/monitor/respawn with crash budgets and cooldown revival, stateful placement with document affinity, and stateless dispatch with priority queues and foreground-aware capacity
+- `WorkerPool`: Manages worker process lifecycles and scheduling — spawn/monitor/respawn with crash budgets and cooldown revival, attribution of every worker death to the request that caused it, a deadline on every request, stateful placement with document affinity, and stateless dispatch with priority queues and foreground-aware capacity
 - `StatefulWorker`: Holds document ASTs and serves query requests
 - Stateless workers execute one-shot tasks (PCH/PCM builds, completion, formatting, indexing runs)
 
 ### `src/server/` — Server Runtime
 
-The language server's core runtime, responsible for assembling all the layers above into a runnable service.
+The language server's core runtime, responsible for assembling all the layers above into a runnable service. Its files share one directory and fall into four groups.
 
-**`protocol/`** — Protocol definitions. Describes the message formats for communication between the master process and worker processes, as well as between the server and clients. Includes Worker protocol (compilation/query/build requests), LSP extension protocol (compilation context switching, etc.), and the control protocol through which `clice index` and `clice query --fresh` ask a running server to index.
+**Protocols** — Protocol definitions. Describes the message formats for communication between the master process and worker processes, as well as between the server and clients. Includes Worker protocol (compilation/query/build requests), LSP extension protocol (compilation context switching, etc.), and the control protocol through which `clice index` and `clice query --fresh` ask a running server to index.
 
-**`state/`** — Document state and the invalidation machinery.
+**Document state** — Document state and the invalidation machinery.
 
 - `Session` / `SessionStore`: The open-buffer truth for each open file — content, document version, generation, and serving state — created on didOpen and destroyed on didClose. Compile products do not live here
 - `ASTProjection` / `ASTProjectionTable`: The published products of each document's most recent compilation (feature results, PCH key, dependency snapshot) — an immutable read model replaced wholesale on each publication
-- `Invalidator`: The invalidation engine — folds file events (buffer opens/saves, on-disk changes, compilation-database reloads, worker crashes) into a deduplicated set of invalidation effects
-- `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`
-- `Quarantine`: Per-document crash accounting — documents whose content keeps killing workers are isolated and recover through licensed probe attempts
+- `EditorContext`: The editor's side of command resolution — the user's context choices and the header contexts resolved for open files — layered over the project's `CommandResolver` for editor-facing compiles only
+- `Invalidator`: The invalidation engine — folds file events (on-disk changes and removals, compilation-database reloads, worker crashes) into a deduplicated set of invalidation effects
+- `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`: the project's database watch plus a sweep, through the file table, of the files on disk and of the places a failed include lookup looked
+- `Quarantine`: Per-document crash records — a kind of work that crashed a worker on a document pauses for that document until it changes (spaced and bounded) or is saved
 
-**`service/`** — Read-side services consuming compilation and index results.
+**Services** — Read-side services consuming compilation and index results.
 
 - `Features`: Assembles each feature's answer from its providers — the worker's AST, the PCH's cached preamble products, or the index — routing each request by readiness: an up-to-date AST answers when available, otherwise index-backed projections answer immediately. Under `readonly = on/auto`, documents serve exclusively from the index until an edit escalates them to full AST service; compilation is pull-based throughout, triggered by requests rather than lifecycle events
 - `ASTFamily`: The document-AST node family in the task graph — schedules compiles for open documents and publishes their results
@@ -129,17 +139,18 @@ The language server's core runtime, responsible for assembling all the layers ab
 - `IndexQuery`: Read-only queries over every index source — the project index, per-file shards, and the live data of open files — under one freshness arbitration, answering in domain values that the transports project onto their protocols
 - `ContextService`: The protocol adapter for compilation-context queries and switching
 
-**`transport/`** — Protocol endpoints driving the server.
+**Endpoints** — Protocol endpoints driving the server.
 
-- `MasterServer`: The composition root. Owns the workspace, sessions, worker pool, and all services above, and executes the `Invalidator`'s effects through its single dispatch entry point
+- `MasterServer`: The composition root. Owns the file table, the worker pool and the projects served, and routes each open file to the project that compiles it
+- `ProjectServer`: Everything served for one project — its scheduling stack, the open documents routed to it and the services above — executing the `Invalidator`'s effects through its single dispatch entry point
 - `LSPClient`: Request handlers for the LSP protocol
-- The control channel: a loopback listener the server opens while it holds the workspace's index writer lock, recorded next to the lock for the command-line tools to find
+- The control channel: a loopback listener the server opens while it holds the project's index writer lock, recorded next to the lock for the command-line tools to find
 
 See [Multi-process Architecture](multi-process.md).
 
 ### `src/driver/` — Subcommands
 
-Entry points for the `clice` binary: `serve` (the LSP server), `worker`, `index` (batch indexing), `lint` (batch clang-tidy), `inspect`, `format`, `query`, and `doc`.
+Entry points for the `clice` binary: `serve` (the LSP server), `worker`, `index` (batch indexing), `lint` (batch clang-tidy), `inspect`, `format`, `query`, `refactor`, and `analyze`.
 
 ## Inter-module Relationships
 

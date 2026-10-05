@@ -1,5 +1,3 @@
-#include <print>
-
 #include "driver/driver.h"
 #include "sched/batch.h"
 #include "support/logging.h"
@@ -11,8 +9,7 @@ using kota::deco::decl::KVStyle;
 namespace {
 
 struct LintOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Workspace root directory (default: current directory)",
@@ -36,33 +33,25 @@ struct LintOptions {
              required = false)
     index;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--log-level", "--log-level="},
-           help = "Log level: trace, debug, info, warn, error, off",
-           required = false)
-    <std::string> log_level;
+    LogLevelOption log;
 };
-
-auto make_command() {
-    return kota::deco::cli::command<LintOptions>("clice lint [OPTIONS]");
-}
 
 void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
     for(auto& d: diagnostics) {
-        std::println("{}:{}:{}: {}: {} [{}]",
-                     d.file,
-                     d.line,
-                     d.column,
-                     d.error ? "error" : "warning",
-                     d.message,
-                     d.check);
+        driver::println("{}:{}:{}: {}: {} [{}]",
+                        d.file,
+                        d.line,
+                        d.column,
+                        d.error ? "error" : "warning",
+                        d.message,
+                        d.check);
         for(auto& note: d.notes) {
-            std::println("{}:{}:{}: note: {}", note.file, note.line, note.column, note.message);
+            driver::println("{}:{}:{}: note: {}", note.file, note.line, note.column, note.message);
         }
     }
 }
 
-int run_lint(std::string root,
+int run_lint(Spelling root,
              std::string configuration,
              std::uint32_t workers,
              bool with_index,
@@ -76,56 +65,43 @@ int run_lint(std::string root,
     });
     print_findings(result.findings);
     if(result.interrupted) {
-        std::println("Lint interrupted. Rerun `clice lint` for a full report.");
+        driver::println("Lint interrupted. Rerun `clice lint` for a full report.");
         return result.exit_code;
     }
     if(!result.completed) {
         return result.exit_code;
     }
-    std::println("Linted {} translation unit{} in {:.1f}s: {} finding{}.",
-                 result.checked_tus,
-                 plural_s(result.checked_tus),
-                 result.seconds,
-                 result.findings.size(),
-                 plural_s(result.findings.size()));
+    driver::println("Linted {} translation unit{} in {:.1f}s: {} finding{}.",
+                    result.checked_tus,
+                    plural_s(result.checked_tus),
+                    result.seconds,
+                    result.findings.size(),
+                    plural_s(result.findings.size()));
     if(result.failed_tus != 0) {
-        std::println("{} translation unit{} failed to run (see the log); the report is partial.",
-                     result.failed_tus,
-                     plural_s(result.failed_tus));
+        driver::println("{} translation unit{} failed to run (see the log); the report is partial.",
+                        result.failed_tus,
+                        plural_s(result.failed_tus));
     }
     if(result.unsaved) {
-        std::println("Part of the index could not be persisted (see the log).");
+        driver::println("Part of the index could not be persisted (see the log).");
     }
     return result.exit_code;
 }
 
 }  // namespace
 
-void add_lint(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path) {
-    auto cmd = make_command();
-    cmd.matchAll([&exit_code, self_path](LintOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           if(!apply_log_level(opts.log_level.value_or("info"))) {
-               exit_code = 2;
-               return;
-           }
-           logging::stderr_logger("lint", logging::options);
+void add_lint(kota::deco::cli::SubCommander& root, const char* self_path) {
+    auto cmd = kota::deco::cli::command<LintOptions>("clice lint [OPTIONS]");
+    cmd.match_all([self_path](LintOptions opts) {
+        opts.log.apply();
+        logging::stderr_logger("lint", logging::options);
 
-           exit_code = run_lint(workspace_root(opts.workspace.value_or("")),
-                                opts.configuration.value_or(""),
-                                opts.workers.value_or(0),
-                                static_cast<bool>(opts.index),
-                                self_path);
-       })
-        .on_error([&exit_code](auto err) {
-            LOG_ERROR("{}", err.message);
-            exit_code = 2;
-        });
+        return run_lint(workspace_spelling(opts.workspace.value_or("")),
+                        opts.configuration.value_or(""),
+                        opts.workers.value_or(0),
+                        static_cast<bool>(opts.index),
+                        self_path);
+    });
 
     root.add({.name = "lint", .description = "Lint C++ source files"}, std::move(cmd));
 }

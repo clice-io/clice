@@ -1,0 +1,9 @@
+---
+created_at: 2026-09-21
+input_file: reorder/03_free_functions.cpp
+---
+alpha:
+- [refactor.rewrite] Reorder definitions by declaration order
+  10:0-13:0 => "int alpha() {\n    return 1;\n}\n"
+  14:0-17:0 => "int beta() {\n    return 2;\n}\n"
+  18:0-21:0 => "int gamma() {\n    return 3;\n}\n"

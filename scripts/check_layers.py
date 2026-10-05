@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Enforce the src/ include layering: core <- config <- worker <- sched <- server.
+"""Enforce the src/ include layering: core <- config <- {project, worker} <- sched <- server,
+and project <- analysis.
 
-Each layer may include downward only. The CMake link DAG catches symbol-level
-violations; this check catches header-only ones, which link happily.
+Each layer may include downward only. Bazel enforces it too, as it checks that every
+header a source includes belongs to the target or its dependencies; this check needs no
+build.
 """
 
 import re
@@ -13,10 +15,16 @@ CORE = ["support", "syntax", "command", "compile", "semantic", "index", "feature
 
 # Directory -> prefixes its sources must never include.
 FORBIDDEN = {
-    **{layer: ["config/", "worker/", "sched/", "server/"] for layer in CORE},
-    "config": ["worker/", "sched/", "server/"],
-    "worker": ["sched/", "server/"],
-    "sched": ["server/"],
+    **{
+        layer: ["config/", "project/", "worker/", "sched/", "server/", "analysis/"]
+        for layer in CORE
+    },
+    "config": ["project/", "worker/", "sched/", "server/", "analysis/"],
+    "project": ["worker/", "sched/", "server/", "analysis/"],
+    "worker": ["project/", "sched/", "server/", "analysis/"],
+    "sched": ["server/", "analysis/"],
+    "server": ["analysis/"],
+    "analysis": ["worker/", "sched/", "server/"],
 }
 
 INCLUDE = re.compile(r'^\s*#include\s+"([^"]+)"')
@@ -47,7 +55,8 @@ def main() -> int:
     if violations:
         print(
             f"\n{len(violations)} layering violation(s): "
-            "core <- config <- worker <- sched <- server, includes go downward only."
+            "core <- config <- {project, worker} <- sched <- server, project <- analysis, "
+            "includes go downward only."
         )
         return 1
     return 0

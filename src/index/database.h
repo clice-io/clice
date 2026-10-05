@@ -23,9 +23,10 @@ class CacheStore;
 namespace clice::index {
 
 /// Stable blob key for a file's shard or a TU's manifest: runtime pool ids
-/// are per-session, so blobs are named by a hash of the path instead.
-inline std::string blob_key(llvm::StringRef path) {
-    return std::format("{:016x}", llvm::xxh3_64bits(path));
+/// are per-session, so blobs are named by a hash of the file's name in the
+/// database (ProjectIndex::portable) instead.
+inline std::string blob_key(llvm::StringRef name) {
+    return std::format("{:016x}", llvm::xxh3_64bits(name));
 }
 
 /// The blob families the index persists.

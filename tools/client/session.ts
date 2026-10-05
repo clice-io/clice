@@ -14,7 +14,7 @@ import { DATA_DIR, generateCDB } from "../compile_commands.ts";
 export function cliceExecutable(): string {
     let exe = process.env["CLICE_EXECUTABLE"];
     if (!exe) {
-        throw new Error("CLICE_EXECUTABLE is not set; point it at build/<type>/bin/clice");
+        throw new Error("CLICE_EXECUTABLE is not set; point it at build/<type>/bin/bin/clice");
     }
     if (process.platform === "win32" && !exe.toLowerCase().endsWith(".exe")) {
         const withSuffix = `${exe}.exe`;
@@ -227,6 +227,7 @@ export function createSessionFactory(): SessionHandle {
         const client = CliceClient.start(cliceExecutable(), {
             drainStderr: options.drainStderr,
             args: options.args,
+            env: options.env,
         });
         opened.push({
             client,
@@ -244,10 +245,12 @@ export function createSessionFactory(): SessionHandle {
             options.socketPort !== undefined
                 ? await CliceClient.startSocket(cliceExecutable(), options.socketPort, {
                       args: options.args,
+                      env: options.env,
                   })
                 : CliceClient.start(cliceExecutable(), {
                       drainStderr: options.drainStderr,
                       args: options.args,
+                      env: options.env,
                   });
         opened.push({
             client,

@@ -4,16 +4,16 @@ input_file: implicit_construction/02_copy_move.cpp
 ---
 assign_eq:
   definition:
-    - { file: "${WS}/implicit_construction/02_copy_move.cpp", range: "17:12-17:20" }
+    - { file: "${WS}/implicit_construction/02_copy_move.cpp", range: "17:12-17:21" }
   declaration:
-    - { file: "${WS}/implicit_construction/02_copy_move.cpp", range: "17:12-17:20" }
+    - { file: "${WS}/implicit_construction/02_copy_move.cpp", range: "17:12-17:21" }
   references:
-    - { file: "${WS}/implicit_construction/02_copy_move.cpp", range: "17:12-17:20" }
+    - { file: "${WS}/implicit_construction/02_copy_move.cpp", range: "17:12-17:21" }
     - { file: "${WS}/implicit_construction/02_copy_move.cpp", range: "23:6-23:7" }
   callHierarchy:
-    - { name: "operator=", kind: Operator, file: "${WS}/implicit_construction/02_copy_move.cpp", range: "17:12-17:20" }
+    - { name: "operator=", kind: Operator, file: "${WS}/implicit_construction/02_copy_move.cpp", range: "17:4-17:42", selection: "17:12-17:21" }
   incomingCalls:
-    - { name: "copies", kind: Function, file: "${WS}/implicit_construction/02_copy_move.cpp", range: "20:5-20:11", fromRanges: ["23:4-23:9"] }
+    - { name: "copies", kind: Function, file: "${WS}/implicit_construction/02_copy_move.cpp", range: "20:0-24:1", selection: "20:5-20:11", fromRanges: ["23:6-23:7"] }
 
 copy_eq: none
 

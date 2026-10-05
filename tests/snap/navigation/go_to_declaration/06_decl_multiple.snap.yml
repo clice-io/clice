@@ -14,9 +14,9 @@ first:
     - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
     - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "18:11-18:16" }
   callHierarchy:
-    - { name: "clamp", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
+    - { name: "clamp", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:0-15:1", selection: "13:4-13:9" }
   incomingCalls:
-    - { name: "hold", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "17:4-17:8", fromRanges: ["18:11-18:23"] }
+    - { name: "hold", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "17:0-19:1", selection: "17:4-17:8", fromRanges: ["18:11-18:16"] }
 
 second:
   definition:
@@ -30,9 +30,9 @@ second:
     - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
     - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "18:11-18:16" }
   callHierarchy:
-    - { name: "clamp", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
+    - { name: "clamp", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:0-15:1", selection: "13:4-13:9" }
   incomingCalls:
-    - { name: "hold", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "17:4-17:8", fromRanges: ["18:11-18:23"] }
+    - { name: "hold", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "17:0-19:1", selection: "17:4-17:8", fromRanges: ["18:11-18:16"] }
 
 use:
   definition:
@@ -47,6 +47,6 @@ use:
     - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
     - { file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "18:11-18:16" }
   callHierarchy:
-    - { name: "clamp", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:4-13:9" }
+    - { name: "clamp", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "13:0-15:1", selection: "13:4-13:9" }
   incomingCalls:
-    - { name: "hold", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "17:4-17:8", fromRanges: ["18:11-18:23"] }
+    - { name: "hold", kind: Function, file: "${WS}/go_to_declaration/06_decl_multiple.cpp", range: "17:0-19:1", selection: "17:4-17:8", fromRanges: ["18:11-18:16"] }

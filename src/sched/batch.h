@@ -23,7 +23,9 @@ struct BatchProgress {
 };
 
 struct BatchOptions {
-    std::string root;
+    /// The workspace as the command line spells it; the result names files
+    /// under this spelling.
+    Spelling root;
 
     /// The build configuration to activate (`--configuration`); empty
     /// takes the persisted selection, else the default.
@@ -85,7 +87,9 @@ struct BatchResult {
 BatchResult run_batch_index(const BatchOptions& options);
 
 struct BatchLintOptions {
-    std::string root;
+    /// The workspace as the command line spells it; findings name files
+    /// under this spelling.
+    Spelling root;
 
     /// The build configuration to activate (`--configuration`); empty
     /// takes the persisted selection, else the default.
@@ -128,7 +132,7 @@ struct BatchLintResult {
 };
 
 struct BatchFormatOptions {
-    std::string root;
+    CanonicalPath root;
 
     /// The build configuration to activate (`--configuration`); empty
     /// takes the persisted selection, else the default.
@@ -137,7 +141,7 @@ struct BatchFormatOptions {
     /// What to format instead of the build's own files, canonical and
     /// absolute: a directory narrows the set to the files under it, a
     /// file is formatted whether or not the build knows it.
-    std::vector<std::string> paths;
+    std::vector<Spelling> paths;
 
     /// The clang-format executable: a name looked up in PATH, or a path.
     std::string clang_format = "clang-format";

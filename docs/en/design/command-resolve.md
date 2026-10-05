@@ -67,7 +67,7 @@ Commands written by hand — a rule's `default_command`, the builtin fallback �
 
 ### Build
 
-`Build` is the one reader of the configuration's `[[rules]]` and the one place that knows which command a file compiles with — a pure function of the configuration and the database, shared by the server and every CLI entry point (`clice index`, `clice lint`, `clice inspect` load a workspace the same way). Every consumer — the context resolver, the dependency scan, the indexer, the context protocol — asks it rather than the database:
+`Build` is the one reader of the configuration's `[[rules]]` and the one place that knows which command a file compiles with — a pure function of the configuration and the database, shared by the server and every CLI entry point (`clice index`, `clice lint`, `clice inspect` load a workspace the same way). Every consumer — the command resolver, the dependency scan, the indexer, the context protocol — asks it rather than the database:
 
 - **Entries.** A file's database entries in build order: the sources of the rules matching the file first, then those of the other active rules, each in declaration order, discovered sources last; within one source, file order. The first entry is the default selection; a user's pin (`clice/switchContext`) can choose another. Entries never disappear because a pattern does not name their file — the rules only decide priority.
 - **Edits.** The `remove` and `append` lists of every matching active rule, applied in declaration order — a rule's removes before its appends, a later `remove` reaching what an earlier rule appended. A header borrowing a host's command carries the edits of both files, each rule once, so it sees the same macros the host compiles with.

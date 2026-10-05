@@ -1,0 +1,12 @@
+---
+created_at: 2026-09-27
+input_file: member_access/11_designated_initializer.cpp
+---
+no_fields:
+
+partial:
+- { label: "stride", kind: Field, description: "int", edit: "36:23-36:23" }
+
+plain:
+- { label: "x", kind: Field, description: "int", edit: "35:17-35:17" }
+- { label: "y", kind: Field, description: "int", edit: "35:17-35:17" }

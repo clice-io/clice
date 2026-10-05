@@ -16,6 +16,9 @@ namespace clice {
 struct DepFile {
     std::string path;
     std::uint64_t hash = 0;
+
+    /// A place a failed lookup looked: the build saw no file there.
+    bool absent = false;
 };
 
 }  // namespace clice

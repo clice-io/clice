@@ -43,9 +43,10 @@ namespace clice::index {
 /// - the name search index and the rows it does not describe.
 ///
 /// The FileVersion table manifests reference lives in clice::FileTable,
-/// shared with every other freshness consumer; the global blob persists
-/// the versions some manifest references, and adopt_file_versions restores
-/// them id-for-id — so it must run before anything interns a version.
+/// shared with every other freshness consumer — and, in a server running
+/// several projects, with every other project's index. The global blob
+/// persists the versions some manifest references under ids of its own
+/// (see persisted_ids), which adopt_file_versions maps into the table.
 ///
 /// There is a single path-id space at runtime (clice::FileTable); the blob
 /// carries its own path table, appended to across writes and mapped to
@@ -56,6 +57,22 @@ struct ProjectIndex {
     ProjectIndex(ProjectIndex&&) noexcept;
     ProjectIndex& operator=(ProjectIndex&&) noexcept;
 
+    /// The root the database names the files under relative to, by their
+    /// portable names (path::portable), so a moved checkout keeps its
+    /// index; empty names every file by its identity. Set before a blob
+    /// is bound or written.
+    CanonicalPath workspace;
+
+    /// The name the database keeps for `path`.
+    std::string portable(llvm::StringRef path) const;
+
+    /// The path a name the database keeps names in this checkout.
+    Spelling local(llvm::StringRef name) const;
+
+    /// The key of a file's blobs (its shard, a TU's manifest) in the
+    /// database.
+    std::string key_of(const FileTable& files, Fid file) const;
+
     /// Bind a global blob as the table's base, mapping its path table into
     /// `files`. False — and the index untouched — when the bytes are not
     /// a global blob of this format or are inconsistent. The base's
@@ -63,15 +80,15 @@ struct ProjectIndex {
     /// reaches it, a writer proves them all with verify_bitmaps.
     bool bind_global(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files);
 
-    /// The writer's half of a bound blob: adopt its file versions
-    /// (id-for-id, which is why it must run before anything else interns
-    /// a version) and read the per-TU manifest pins — `manifest_pins`
-    /// maps each pinned TU's tu_fv to the generation stamp its manifest
-    /// must carry to be adopted. Rejects a blob whose version table is
-    /// inconsistent, leaving `files` untouched.
+    /// The writer's half of a bound blob: intern its file versions into
+    /// `files` and read the per-TU manifest
+    /// pins — `manifest_pins` maps each pinned TU's tu_fv (as the table's
+    /// id) to the generation stamp its manifest must carry to be adopted.
+    /// Rejects a blob whose version table is inconsistent, leaving `files`
+    /// untouched.
     std::expected<void, llvm::StringRef>
         adopt_file_versions(FileTable& files,
-                            llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins) const;
+                            llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins);
 
     /// Whether every reference bitmap of the base decodes and stays inside
     /// its path table — the writer's gate: a malformed image normalized to
@@ -156,9 +173,22 @@ struct ProjectIndex {
     /// Derived from `manifests`: file fid -> (TU fid -> rows hash).
     llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>> contributions;
 
-    /// Whether every FileVersion id the manifest references is known —
-    /// the loader's staleness gate for manifests read from disk.
-    bool knows_file_versions(const FileTable& files, const TUManifest& manifest) const;
+    /// Derived from `manifests`: a place some TU's failed lookup looked ->
+    /// those TUs (TUManifest::absent).
+    llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> probed;
+
+    /// The file table's id for a version id the loaded global blob
+    /// carries; nullopt for any other.
+    std::optional<VersionID> runtime_version(std::uint32_t persisted) const;
+
+    /// Rewrite a manifest read from disk into the file table's version
+    /// ids. False when it names a version the loaded global blob does not
+    /// carry — the loader's staleness gate for manifests.
+    bool import_manifest(TUManifest& manifest) const;
+
+    /// The manifest as persisted: its versions under this index's
+    /// persisted ids, handing ids out to versions that have none yet.
+    TUManifest export_manifest(const TUManifest& manifest);
 
     /// Install (or replace) a TU's manifest and rederive the affected
     /// contribution entries. Returns the file path_ids whose contribution
@@ -174,6 +204,27 @@ struct ProjectIndex {
     /// The distinct rows hashes contributed to `path_id` — the file's live
     /// variant set.
     llvm::SmallVector<std::uint64_t> live_variants(Fid path_id) const;
+
+    /// The TUs that contributed rows to `file`: from `contributions` in a
+    /// writer, from the global blob's persisted copy in a reader, which
+    /// holds no manifests to derive it from.
+    void each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const;
+
+    /// The files holding rows of an internal-linkage symbol, starting from
+    /// `anchor`, a file that holds some: the anchor, and every file the
+    /// local fanout (TUManifest::local_fanout) of a TU contributing to a
+    /// file reached so far lists for the symbol. A `static` in a header is
+    /// thus reached in every unit including the header, whichever of its
+    /// files the walk starts from. Each file once.
+    void each_fanout_file(SymbolHash hash,
+                          Fid anchor,
+                          const FileTable& files,
+                          llvm::function_ref<void(Fid)> visit) const;
+
+    /// A TU's manifest: held by a writer, fetched on first use by a reader
+    /// — whose copy names its versions by persisted ids. Null when the TU
+    /// has none current.
+    const TUManifest* tu_manifest(Fid tu) const;
 
     /// Per-file row blobs keyed by project-level path_id: symbol
     /// occurrences, relations and stored content for position mapping,
@@ -209,14 +260,19 @@ struct ProjectIndex {
     /// from it on first use. False when there is no readable global blob.
     bool open(BlobDatabase& db, FileTable& files);
 
+    /// The byte split of the base blob's symbol table and reverse include
+    /// graph; everything else in the blob (file versions, the path table,
+    /// framing) is the remainder of its serialized size.
     struct GlobalColumns {
         std::size_t names = 0;
         std::size_t args = 0;
         std::size_t bitmaps = 0;
+        /// Hash, parent, kind, flags and file per symbol.
         std::size_t fixed = 0;
+        std::size_t contributors = 0;
     };
 
-    /// The base blob's symbol columns in bytes, for `clice index --stats`.
+    /// For `clice index --stats`.
     GlobalColumns global_columns() const;
 
 private:
@@ -230,9 +286,26 @@ private:
     /// have landed; reads consult them after `changed`.
     llvm::DenseMap<SymbolHash, Symbol> written;
 
+    /// A reader's manifests, fetched on first use; nullopt remembers a
+    /// TU without a current one.
+    mutable llvm::DenseMap<Fid, std::optional<TUManifest>> fetched_manifests;
+
     /// The database shard() fetches from, when opened over one.
     BlobDatabase* db = nullptr;
     const FileTable* files = nullptr;
+
+    /// The persisted FileVersion id space: the global blob and the
+    /// manifests name versions by ids private to this index's lineage,
+    /// handed out from `next_persisted_id` and never reused, so one file
+    /// table can hold the versions of several projects' indexes. Loading
+    /// maps the blob's ids to the table's (`runtime_ids`, consulted while
+    /// the manifests load); writing maps back, handing out ids to the
+    /// versions the lineage has not persisted yet.
+    llvm::DenseMap<std::uint32_t, VersionID> runtime_ids;
+    llvm::DenseMap<VersionID, std::uint32_t> persisted_ids;
+    std::uint32_t next_persisted_id = 0;
+
+    std::uint32_t persisted_id(VersionID version);
 };
 
 }  // namespace clice::index

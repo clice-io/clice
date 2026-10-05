@@ -4,10 +4,10 @@
 ///   scan_benchmark [OPTIONS] <compile_commands.json>
 ///
 /// Example:
-///   ./build/RelWithDebInfo/bin/scan_benchmark \
+///   ./build/RelWithDebInfo/bin/bin/scan_benchmark \
 ///       /home/ykiko/C++/clice/.llvm/build-debug/compile_commands.json
 ///
-///   ./build/RelWithDebInfo/bin/scan_benchmark --log-level info --export graph.json \
+///   ./build/RelWithDebInfo/bin/bin/scan_benchmark --log-level info --export graph.json \
 ///       /home/ykiko/C++/clice/.llvm/build-debug/compile_commands.json
 
 #include <algorithm>
@@ -22,8 +22,7 @@
 
 #include "command/command.h"
 #include "config/config.h"
-#include "sched/build.h"
-#include "support/filesystem.h"
+#include "project/build.h"
 #include "support/logging.h"
 #include "syntax/dependency_graph.h"
 #include "vfs/file_table.h"
@@ -160,7 +159,6 @@ void print_report(const ScanReport& report) {
     std::println("    Dir cache pre-pop: {}ms (overlapped with Phase 1)", report.dir_cache_ms);
     std::println("    Phase 1 (read+scan, parallel): {}ms", report.phase1_ms);
     std::println("    Phase 2 (include resolve):     {}ms", report.phase2_ms);
-    std::println("    Phase 3 (graph build):         {}ms", report.phase3_ms);
 
     // Per-wave breakdown.
     if(!report.wave_stats.empty()) {

@@ -11,9 +11,9 @@ double_def:
     - { file: "${WS}/overload_references.cpp", range: "6:7-6:13" }
     - { file: "${WS}/overload_references.cpp", range: "11:40-11:46" }
   callHierarchy:
-    - { name: "select", kind: Function, file: "${WS}/overload_references.cpp", range: "6:7-6:13" }
+    - { name: "select", kind: Function, file: "${WS}/overload_references.cpp", range: "6:0-8:1", selection: "6:7-6:13" }
   incomingCalls:
-    - { name: "choose", kind: Function, file: "${WS}/overload_references.cpp", range: "10:4-10:10", fromRanges: ["11:40-11:51"] }
+    - { name: "choose", kind: Function, file: "${WS}/overload_references.cpp", range: "10:0-12:1", selection: "10:4-10:10", fromRanges: ["11:40-11:46"] }
 
 double_use:
   definition:
@@ -24,9 +24,9 @@ double_use:
     - { file: "${WS}/overload_references.cpp", range: "6:7-6:13" }
     - { file: "${WS}/overload_references.cpp", range: "11:40-11:46" }
   callHierarchy:
-    - { name: "select", kind: Function, file: "${WS}/overload_references.cpp", range: "6:7-6:13" }
+    - { name: "select", kind: Function, file: "${WS}/overload_references.cpp", range: "6:0-8:1", selection: "6:7-6:13" }
   incomingCalls:
-    - { name: "choose", kind: Function, file: "${WS}/overload_references.cpp", range: "10:4-10:10", fromRanges: ["11:40-11:51"] }
+    - { name: "choose", kind: Function, file: "${WS}/overload_references.cpp", range: "10:0-12:1", selection: "10:4-10:10", fromRanges: ["11:40-11:46"] }
 
 int_def:
   definition:
@@ -37,9 +37,9 @@ int_def:
     - { file: "${WS}/overload_references.cpp", range: "2:4-2:10" }
     - { file: "${WS}/overload_references.cpp", range: "11:11-11:17" }
   callHierarchy:
-    - { name: "select", kind: Function, file: "${WS}/overload_references.cpp", range: "2:4-2:10" }
+    - { name: "select", kind: Function, file: "${WS}/overload_references.cpp", range: "2:0-4:1", selection: "2:4-2:10" }
   incomingCalls:
-    - { name: "choose", kind: Function, file: "${WS}/overload_references.cpp", range: "10:4-10:10", fromRanges: ["11:11-11:20"] }
+    - { name: "choose", kind: Function, file: "${WS}/overload_references.cpp", range: "10:0-12:1", selection: "10:4-10:10", fromRanges: ["11:11-11:17"] }
 
 int_use:
   definition:
@@ -50,6 +50,6 @@ int_use:
     - { file: "${WS}/overload_references.cpp", range: "2:4-2:10" }
     - { file: "${WS}/overload_references.cpp", range: "11:11-11:17" }
   callHierarchy:
-    - { name: "select", kind: Function, file: "${WS}/overload_references.cpp", range: "2:4-2:10" }
+    - { name: "select", kind: Function, file: "${WS}/overload_references.cpp", range: "2:0-4:1", selection: "2:4-2:10" }
   incomingCalls:
-    - { name: "choose", kind: Function, file: "${WS}/overload_references.cpp", range: "10:4-10:10", fromRanges: ["11:11-11:20"] }
+    - { name: "choose", kind: Function, file: "${WS}/overload_references.cpp", range: "10:0-12:1", selection: "10:4-10:10", fromRanges: ["11:11-11:17"] }

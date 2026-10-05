@@ -1,12 +1,16 @@
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include "test/cdb_helper.h"
 #include "test/platform.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/argument_parser.h"
 #include "command/command.h"
-#include "sched/build.h"
-#include "support/filesystem.h"
+#include "project/build.h"
 #include "support/shell.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/raw_ostream.h"
@@ -17,9 +21,8 @@ namespace {
 
 using namespace std::literals;
 
-#define EXPECT_CONTAINS(haystack, needle) EXPECT_TRUE(llvm::StringRef(haystack).contains(needle))
-#define EXPECT_NOT_CONTAINS(haystack, needle)                                                      \
-    EXPECT_FALSE(llvm::StringRef(haystack).contains(needle))
+#define EXPECT_CONTAINS(haystack, needle) ZEXPECT(llvm::StringRef(haystack).contains(needle))
+#define EXPECT_NOT_CONTAINS(haystack, needle) ZEXPECT(!llvm::StringRef(haystack).contains(needle))
 
 /// `config.directory` is stored in canonical spelling; expectations built
 /// from native paths must be too.
@@ -28,7 +31,13 @@ std::string canonical_dir(std::string path) {
     return path;
 }
 
-TEST_SUITE(Command) {
+/// A file the hand-added commands below compile: they run in /fake, and a
+/// render names the input by its identity.
+std::string fake(llvm::StringRef name) {
+    return CanonicalPath(Spelling(name, Spelling::absolute("/fake"))).str();
+}
+
+ZEST_SUITE(Command) {
 
 /// The builtin fallback render for a file without an entry and no default
 /// command, resource dir stripped like render_entry.
@@ -36,11 +45,14 @@ std::vector<const char*> render_fallback(CompilationDatabase& db,
                                          llvm::StringRef file,
                                          const CommandOptions& options = {}) {
     Config config;
-    config.finalize("");
+    config.finalize(CanonicalPath());
     Build build{config, db, db.files()};
     auto source = CommandSource::Fallback;
-    auto applied = db.apply_rules(build.builtin(file), options);
-    CommandRef ref{db.files().intern(file), applied, db.input_kind(applied, file), source};
+    auto applied = db.apply_rules(build.builtin(CanonicalPath(Spelling::absolute(file))), options);
+    CommandRef ref{db.files().intern(Spelling::absolute(file)),
+                   applied,
+                   db.input_kind(applied, file),
+                   source};
     auto argv = db.render_driver(ref);
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
         if(llvm::StringRef(argv[i]) == "-resource-dir") {
@@ -51,59 +63,63 @@ std::vector<const char*> render_fallback(CompilationDatabase& db,
     return argv;
 }
 
-void EXPECT_STRIP(llvm::StringRef argv, llvm::StringRef result) {
+/// `result` spells the rendered input `{}`.
+void EXPECT_STRIP(llvm::StringRef argv, std::string_view result) {
     FileTable file_table;
     CompilationDatabase database{file_table};
-    llvm::StringRef file = "main.cpp";
-    database.add_command("fake/", file, argv);
-    ASSERT_EQ(result, print_argv(render_entry(database, file)));
+    auto file = fake("main.cpp");
+    database.add_command("/fake", "main.cpp", argv);
+    ZASSERT(std::vformat(result, std::make_format_args(file)) ==
+            print_argv(render_entry(database, file)));
 };
 
-TEST_CASE(DefaultFilters) {
+ZEST_CASE(DefaultFilters) {
     /// Filter -c, -o and keep the input in place.
-    EXPECT_STRIP("g++ main.cpp", "g++ main.cpp");
-    EXPECT_STRIP("clang++ -c main.cpp", "clang++ main.cpp");
-    EXPECT_STRIP("clang++ -o main.o main.cpp", "clang++ main.cpp");
-    EXPECT_STRIP("clang++ -c -o main.o main.cpp", "clang++ main.cpp");
-    EXPECT_STRIP("cl.exe /c /Fomain.cpp.o main.cpp", "cl.exe main.cpp");
+    EXPECT_STRIP("g++ main.cpp", "g++ {}");
+    EXPECT_STRIP("clang++ -c main.cpp", "clang++ {}");
+    EXPECT_STRIP("clang++ -o main.o main.cpp", "clang++ {}");
+    EXPECT_STRIP("clang++ -c -o main.o main.cpp", "clang++ {}");
+    EXPECT_STRIP("cl.exe /c /Fomain.cpp.o main.cpp", "cl.exe {}");
     /// CL options stay visible under Windows's free-form driver casing.
-    EXPECT_STRIP("CL.exe /FIfoo.h /c main.cpp", "CL.exe -include foo.h main.cpp");
+    EXPECT_STRIP("CL.exe /FIfoo.h /c main.cpp", "CL.exe /FIfoo.h {}");
 
     /// Filter PCH related.
 
     /// CMake
     EXPECT_STRIP("g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx -o main.cpp.o -c main.cpp",
-                 "g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx main.cpp");
+                 "g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx {}");
     EXPECT_STRIP(
         "clang++ -Winvalid-pch -Xclang -include-pch -Xclang cmake_pch.hxx.pch -Xclang -include -Xclang cmake_pch.hxx -o main.cpp.o -c main.cpp",
-        "clang++ -Winvalid-pch -Xclang -include -Xclang cmake_pch.hxx main.cpp");
+        "clang++ -Winvalid-pch -Xclang -include -Xclang cmake_pch.hxx {}");
     EXPECT_STRIP("cl.exe /Yufoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp",
-                 "cl.exe -include foo.h main.cpp");
+                 "cl.exe /FIfoo.h {}");
+    EXPECT_STRIP("cl.exe /Ycfoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp",
+                 "cl.exe /FIfoo.h {}");
 };
 
-TEST_CASE(ConfigDedup) {
+ZEST_CASE(ConfigDedup) {
     FileTable file_table;
     CompilationDatabase database{file_table};
-    database.add_command("fake", "test.cpp", "clang++ -std=c++23 test.cpp"sv);
-    database.add_command("fake", "test2.cpp", "clang++ -std=c++23 test2.cpp"sv);
-    database.add_command("fake", "test3.cpp", "clang++ -std=c++23 -DA test3.cpp"sv);
+    database.add_command("/fake", "test.cpp", "clang++ -std=c++23 test.cpp"sv);
+    database.add_command("/fake", "test2.cpp", "clang++ -std=c++23 test2.cpp"sv);
+    database.add_command("/fake", "test3.cpp", "clang++ -std=c++23 -DA test3.cpp"sv);
 
     /// Same flags dedupe to one config; a user-content difference splits.
-    auto config1 = database.candidate_entries("test.cpp").front().config;
-    auto config2 = database.candidate_entries("test2.cpp").front().config;
-    auto config3 = database.candidate_entries("test3.cpp").front().config;
-    EXPECT_EQ(config1, config2);
-    EXPECT_NE(config1, config3);
+    auto config1 = database.candidate_entries(fake("test.cpp")).front().config;
+    auto config2 = database.candidate_entries(fake("test2.cpp")).front().config;
+    auto config3 = database.candidate_entries(fake("test3.cpp")).front().config;
+    ZEXPECT(config1 == config2);
+    ZEXPECT(config1 != config3);
 
-    auto argv1 = render_entry(database, "test.cpp");
-    ASSERT_EQ(argv1.size(), 3U);
-    EXPECT_EQ(argv1[0], "clang++"sv);
-    EXPECT_EQ(argv1[1], "-std=c++23"sv);
-    EXPECT_EQ(argv1[2], "test.cpp"sv);
-    EXPECT_EQ(render_entry(database, "test2.cpp").back(), "test2.cpp"sv);
+    auto argv1 = render_entry(database, fake("test.cpp"));
+    ZASSERT(argv1.size() == 3U);
+    ZEXPECT(argv1[0] == "clang++"sv);
+    ZEXPECT(argv1[1] == "-std=c++23"sv);
+    ZEXPECT(argv1[2] == fake("test.cpp"));
+    ZEXPECT(render_entry(database, fake("test2.cpp")).back() == fake("test2.cpp"));
 };
 
-TEST_CASE(RemoveAppend) {
+ZEST_CASE(RemoveAppend) {
     llvm::SmallVector args = {
         "clang++",
         "--output=main.o",
@@ -117,6 +133,7 @@ TEST_CASE(RemoveAppend) {
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake", "main.cpp", args);
+    auto main = fake("main.cpp");
 
     std::vector<CommandEdit> edits;
     CommandOptions options{.edits = edits};
@@ -128,29 +145,31 @@ TEST_CASE(RemoveAppend) {
     };
 
     remove_only({"-DA"});
-    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ -D B=0 main.cpp");
+    ZEXPECT(print_argv(render_entry(database, main, options)) ==
+            std::format("clang++ -D B=0 {}", main));
 
     remove_only({"-D", "A"});
-    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ -D B=0 main.cpp");
+    ZEXPECT(print_argv(render_entry(database, main, options)) ==
+            std::format("clang++ -D B=0 {}", main));
 
     remove_only({"-DA", "-D", "B=0"});
-    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ main.cpp");
+    ZEXPECT(print_argv(render_entry(database, main, options)) == std::format("clang++ {}", main));
 
     remove_only({"-D*"});
-    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ main.cpp");
+    ZEXPECT(print_argv(render_entry(database, main, options)) == std::format("clang++ {}", main));
 
     remove_only({"-D", "*"});
-    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ main.cpp");
+    ZEXPECT(print_argv(render_entry(database, main, options)) == std::format("clang++ {}", main));
 
     edits = {
         {CommandEdit::Kind::Append, {"-D", "C"}}
     };
     options.edits = edits;
-    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)),
-              "clang++ -D A -D B=0 -D C main.cpp");
+    ZEXPECT(print_argv(render_entry(database, main, options)) ==
+            std::format("clang++ -D A -D B=0 -D C {}", main));
 };
 
-TEST_CASE(AppendUnknownValue) {
+ZEST_CASE(AppendUnknownValue) {
     /// An appended option the table does not know keeps its separate value:
     /// an edit cannot name the entry input, so an input-classified token is
     /// really the option's value.
@@ -162,11 +181,11 @@ TEST_CASE(AppendUnknownValue) {
         {CommandEdit::Kind::Append, {"-fnot-a-real-flag", "value"}}
     };
     CommandOptions options{.edits = edits};
-    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)),
-              "clang++ -fnot-a-real-flag value main.cpp");
+    ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), options)) ==
+            std::format("clang++ -fnot-a-real-flag value {}", fake("main.cpp")));
 };
 
-TEST_CASE(AppendBeforeSlot) {
+ZEST_CASE(AppendBeforeSlot) {
     /// Appends insert before the input slot, so they always govern the
     /// compile — even when the CDB command carries flags after the input.
     FileTable file_table;
@@ -178,53 +197,55 @@ TEST_CASE(AppendBeforeSlot) {
     };
     CommandOptions options{.edits = edits};
 
-    EXPECT_EQ(print_argv(render_entry(database, "a.c", options)), "clang -x c -x c++ a.c -x none");
+    ZEXPECT(print_argv(render_entry(database, fake("a.c"), options)) ==
+            std::format("clang -x c -x c++ {} -x none", fake("a.c")));
 
-    auto applied = database.apply_rules(database.candidate_entries("a.c").front().config, options);
-    EXPECT_EQ(llvm::StringRef(database.input_kind(applied, "a.c").value), "c++");
+    auto applied =
+        database.apply_rules(database.candidate_entries(fake("a.c")).front().config, options);
+    ZEXPECT(llvm::StringRef(database.input_kind(applied, "a.c").value) == "c++");
 };
 
-TEST_CASE(SelectorHistoryRestored) {
+ZEST_CASE(SelectorHistoryRestored) {
     /// Removing the later selector re-exposes the earlier one.
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake", "a.c", "clang -x cuda -x c++ a.c"sv);
 
-    auto base = database.candidate_entries("a.c").front().config;
-    EXPECT_EQ(llvm::StringRef(database.input_kind(base, "a.c").value), "c++");
+    auto base = database.candidate_entries(fake("a.c")).front().config;
+    ZEXPECT(llvm::StringRef(database.input_kind(base, "a.c").value) == "c++");
 
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Remove, {"-x", "c++"}}
     };
     CommandOptions options{.edits = edits};
     auto applied = database.apply_rules(base, options);
-    EXPECT_EQ(llvm::StringRef(database.input_kind(applied, "a.c").value), "cuda");
+    ZEXPECT(llvm::StringRef(database.input_kind(applied, "a.c").value) == "cuda");
 };
 
-TEST_CASE(SelectorPositional) {
+ZEST_CASE(SelectorPositional) {
     /// -x only governs inputs after it: a trailing selector leaves the
     /// input to its extension, and removing the leading one restores it.
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake", "a.cu", "clang -x c++ a.cu -x c"sv);
 
-    auto base = database.candidate_entries("a.cu").front().config;
-    EXPECT_EQ(llvm::StringRef(database.input_kind(base, "a.cu").value), "c++");
+    auto base = database.candidate_entries(fake("a.cu")).front().config;
+    ZEXPECT(llvm::StringRef(database.input_kind(base, "a.cu").value) == "c++");
 
     std::vector<CommandEdit> edits = {
         {CommandEdit::Kind::Remove, {"-x", "c++"}}
     };
     CommandOptions options{.edits = edits};
     auto applied = database.apply_rules(base, options);
-    EXPECT_EQ(llvm::StringRef(database.input_kind(applied, "a.cu").value), "cuda");
+    ZEXPECT(llvm::StringRef(database.input_kind(applied, "a.cu").value) == "cuda");
 
     /// -x none resets the state; the extension decides again.
     database.add_command("/fake", "b.c", "clang -x c++ -x none b.c"sv);
-    auto reset = database.candidate_entries("b.c").front().config;
-    EXPECT_EQ(llvm::StringRef(database.input_kind(reset, "b.c").value), "c");
+    auto reset = database.candidate_entries(fake("b.c")).front().config;
+    ZEXPECT(llvm::StringRef(database.input_kind(reset, "b.c").value) == "c");
 };
 
-TEST_CASE(PerFileClSelectors) {
+ZEST_CASE(PerFileClSelectors) {
     /// /Tc<file> and /Tp<file> pair a selector with one input: the entry's
     /// own selector rewrites to the equivalent global form, the other
     /// input vanishes with its selector.
@@ -235,10 +256,10 @@ TEST_CASE(PerFileClSelectors) {
 
     auto alpha = database.candidate_entries("/fake/alpha.c").front().config;
     auto beta = database.candidate_entries("/fake/beta.c").front().config;
-    EXPECT_NE(alpha, beta);
+    ZEXPECT(alpha != beta);
 
-    EXPECT_EQ(llvm::StringRef(database.input_kind(alpha, "/fake/alpha.c").value), "c");
-    EXPECT_EQ(llvm::StringRef(database.input_kind(beta, "/fake/beta.c").value), "c++");
+    ZEXPECT(llvm::StringRef(database.input_kind(alpha, "/fake/alpha.c").value) == "c");
+    ZEXPECT(llvm::StringRef(database.input_kind(beta, "/fake/beta.c").value) == "c++");
 
     auto beta_argv = print_argv(render_entry(database, "/fake/beta.c"));
     EXPECT_CONTAINS(beta_argv, "/TP");
@@ -249,7 +270,32 @@ TEST_CASE(PerFileClSelectors) {
     EXPECT_NOT_CONTAINS(alpha_argv, "beta.c");
 };
 
-TEST_CASE(IdentityHashes) {
+ZEST_CASE(ClAliasesRender) {
+    /// cl spellings unalias to options a cl-mode driver reads as another
+    /// (`-Wall` is its /Wall) or not at all: a cl alias spells them in
+    /// place, `/clang:` (appended last by the driver) only when none does.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake",
+                         "/fake/a.cpp",
+                         "cl.exe /W3 -Wno-unused-variable /J /Zp4 /Iinc /FIpre.h /std:c++17 /c "
+                         "/fake/a.cpp"sv);
+
+    auto argv = print_argv(render_entry(database, "/fake/a.cpp"));
+    EXPECT_CONTAINS(argv, "/W1 -Wno-unused-variable");
+    EXPECT_CONTAINS(argv, "/J");
+    EXPECT_CONTAINS(argv, "/Zp4");
+    EXPECT_CONTAINS(argv, "/FIpre.h");
+    EXPECT_CONTAINS(argv, "-I /fake/inc");
+    EXPECT_CONTAINS(argv, "/std:c++17");
+    EXPECT_NOT_CONTAINS(argv, "/clang:");
+
+    /// GCC-style, with no cl spelling at all.
+    database.add_command("/fake", "/fake/b.cpp", "cl.exe -std=c++20 /c /fake/b.cpp"sv);
+    EXPECT_CONTAINS(print_argv(render_entry(database, "/fake/b.cpp")), "/clang:-std=c++20");
+};
+
+ZEST_CASE(IdentityHashes) {
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake", "a.cpp", "clang++ -std=c++20 a.cpp"sv);
@@ -260,46 +306,47 @@ TEST_CASE(IdentityHashes) {
     database.add_command("/fake", "g.cpp", "clang++ -std=c++20 -g a.cpp"sv);
 
     auto hash_of = [&](llvm::StringRef file) {
-        return database.entry_hash(database.candidate_entries(file).front().config);
+        return database.entry_hash(database.candidate_entries(fake(file)).front().config);
     };
 
     /// Same command, different file: one config, one identity.
-    EXPECT_EQ(hash_of("a.cpp"), hash_of("b.cpp"));
+    ZEXPECT(hash_of("a.cpp") == hash_of("b.cpp"));
     /// A semantic flag difference changes the identity.
-    EXPECT_NE(hash_of("a.cpp"), hash_of("c.cpp"));
+    ZEXPECT(hash_of("a.cpp") != hash_of("c.cpp"));
     /// A selector difference changes the identity (selectors live in args).
-    EXPECT_NE(hash_of("x1.c"), hash_of("x2.c"));
+    ZEXPECT(hash_of("x1.c") != hash_of("x2.c"));
     /// Codegen-only flags never enter the identity.
-    EXPECT_EQ(hash_of("a.cpp"), hash_of("g.cpp"));
+    ZEXPECT(hash_of("a.cpp") == hash_of("g.cpp"));
     /// Driver-ignored flags never enter the identity.
     database.add_command("/fake", "r.cpp", "clang++ -std=c++20 -frandom-seed=r.o r.cpp"sv);
-    EXPECT_EQ(hash_of("a.cpp"), hash_of("r.cpp"));
+    ZEXPECT(hash_of("a.cpp") == hash_of("r.cpp"));
 
     /// The input slot's position is part of the identity.
     database.add_command("/fake", "p1.cpp", "clang++ p1.cpp -Wall"sv);
     database.add_command("/fake", "p2.cpp", "clang++ -Wall p2.cpp"sv);
-    EXPECT_NE(hash_of("p1.cpp"), hash_of("p2.cpp"));
+    ZEXPECT(hash_of("p1.cpp") != hash_of("p2.cpp"));
 
-    EXPECT_EQ(database.entry_hash_hex(database.candidate_entries("a.cpp").front().config).size(),
-              16U);
+    ZEXPECT(
+        database.entry_hash_hex(database.candidate_entries(fake("a.cpp")).front().config).size() ==
+        16U);
 };
 
-TEST_CASE(WrapperStripped) {
+ZEST_CASE(WrapperStripped) {
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake", "a.cpp", "ccache clang++ -std=c++20 a.cpp"sv);
     database.add_command("/fake", "b.cpp", "clang++ -std=c++20 b.cpp"sv);
 
     /// The wrapper is stripped and takes no part in the config identity.
-    auto& a = database.candidate_entries("a.cpp").front();
-    auto& b = database.candidate_entries("b.cpp").front();
-    EXPECT_EQ(a.config, b.config);
+    auto& a = database.candidate_entries(fake("a.cpp")).front();
+    auto& b = database.candidate_entries(fake("b.cpp")).front();
+    ZEXPECT(a.config == b.config);
 
-    EXPECT_EQ(llvm::StringRef(database.config(a.config).driver), "clang++");
-    EXPECT_NOT_CONTAINS(print_argv(render_entry(database, "a.cpp")), "ccache");
+    ZEXPECT(llvm::StringRef(database.config(a.config).driver) == "clang++");
+    EXPECT_NOT_CONTAINS(print_argv(render_entry(database, fake("a.cpp"))), "ccache");
 };
 
-TEST_CASE(WrapperValueOptions) {
+ZEST_CASE(WrapperValueOptions) {
     /// A wrapper option's separate KEY=VAL value must not be mistaken for
     /// the compiler.
     FileTable file_table;
@@ -309,51 +356,81 @@ TEST_CASE(WrapperValueOptions) {
                          "ccache --set-config cache_dir=/tmp/cc clang++ -std=c++20 a.cpp"sv);
     database.add_command("/fake", "b.cpp", "clang++ -std=c++20 b.cpp"sv);
 
-    auto& a = database.candidate_entries("a.cpp").front();
-    auto& b = database.candidate_entries("b.cpp").front();
-    EXPECT_EQ(a.config, b.config);
-    EXPECT_EQ(llvm::StringRef(database.config(a.config).driver), "clang++");
+    auto& a = database.candidate_entries(fake("a.cpp")).front();
+    auto& b = database.candidate_entries(fake("b.cpp")).front();
+    ZEXPECT(a.config == b.config);
+    ZEXPECT(llvm::StringRef(database.config(a.config).driver) == "clang++");
 };
 
-TEST_CASE(WrapperCaseInsensitive) {
+ZEST_CASE(WrapperCaseInsensitive) {
     /// Windows tools emit launcher spellings like CCACHE.EXE.
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake", "a.cpp", "CCACHE.EXE clang++ -std=c++20 a.cpp"sv);
 
-    auto& a = database.candidate_entries("a.cpp").front();
-    EXPECT_EQ(llvm::StringRef(database.config(a.config).driver), "clang++");
+    auto& a = database.candidate_entries(fake("a.cpp")).front();
+    ZEXPECT(llvm::StringRef(database.config(a.config).driver) == "clang++");
 };
 
-TEST_CASE(InputKindNoExtension) {
+ZEST_CASE(InputKindNoExtension) {
     /// An extensionless file must yield a real (non-null) empty kind, not
     /// a null C string.
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake", "noext", "clang++ -std=c++20 noext"sv);
 
-    auto& entry = database.candidate_entries("noext").front();
+    auto& entry = database.candidate_entries(fake("noext")).front();
     auto kind = database.input_kind(entry.config, "noext");
-    ASSERT_TRUE(kind.value != nullptr);
-    EXPECT_TRUE(llvm::StringRef(kind.value).empty());
+    ZASSERT(kind.value != nullptr);
+    ZEXPECT(llvm::StringRef(kind.value).empty());
 };
 
-TEST_CASE(ResponseFileExpansion) {
+ZEST_CASE(ResponseFileExpansion) {
     TempDir tmp;
     tmp.touch("flags.rsp", "-std=c++23 -DFROM_RSP=1\n");
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command(tmp.root.str(), "main.cpp", "clang++ @flags.rsp main.cpp"sv);
 
-    auto argv = print_argv(render_entry(database, "main.cpp"));
+    auto argv = print_argv(render_entry(database, tmp.path("main.cpp")));
     EXPECT_CONTAINS(argv, "-std=c++23");
     EXPECT_CONTAINS(argv, "FROM_RSP=1");
     EXPECT_NOT_CONTAINS(argv, "@");
 };
 
-TEST_CASE(ResponseFilesRecorded) {
-    /// A load records the response files its commands name, the ones it
-    /// could not read included, so the tracker can watch them all.
+#ifndef _WIN32
+ZEST_CASE(SymlinkedSourceSpelling) {
+    /// A database entry naming a symlinked source compiles under that name,
+    /// as the build does; its identity stays the file it points to.
+    TempDir tmp;
+    tmp.touch("real/main.cpp", "int main() {}\n");
+    ZASSERT(::symlink(tmp.path("real/main.cpp").c_str(), tmp.path("main.cpp").c_str()) == 0);
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    ZASSERT(database.load(tmp.path("compile_commands.json")));
+    auto argv = render_entry(database, tmp.path("real/main.cpp"));
+    ZASSERT(!argv.empty());
+    ZEXPECT(llvm::StringRef(argv.back()) == tmp.path("main.cpp"));
+
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("real/main.cpp"), {}}
+    }));
+    ZASSERT(database.load(tmp.path("compile_commands.json")));
+    argv = render_entry(database, tmp.path("real/main.cpp"));
+    ZASSERT(!argv.empty());
+    ZEXPECT(llvm::StringRef(argv.back()) == tmp.path("real/main.cpp"));
+};
+#endif
+
+ZEST_CASE(ResponseFilesRecorded) {
+    /// A load records the response files its commands name among its
+    /// inputs, the ones it could not read included, so the tracker can
+    /// watch them all.
     TempDir tmp;
     tmp.touch("flags.rsp", "-DFROM_RSP=1\n");
     tmp.touch("compile_commands.json",
@@ -363,23 +440,30 @@ TEST_CASE(ResponseFilesRecorded) {
     }));
     FileTable file_table;
     CompilationDatabase database{file_table};
-    auto id = database.add_source(tmp.path("compile_commands.json"));
-    ASSERT_TRUE(database.load_source(id).has_value());
-    auto recorded = database.response_files(id);
-    ASSERT_EQ(recorded.size(), 2u);
-    EXPECT_EQ(recorded[0], path::join(tmp.root, "flags.rsp"));
-    EXPECT_EQ(recorded[1], path::join(tmp.root, "missing.rsp"));
-    EXPECT_TRUE(database.present(id));
+    auto id = database.add_source(Spelling::absolute(tmp.path("compile_commands.json")));
+    ZASSERT(database.load_source(id));
+    auto recorded = database.inputs(id);
+    ZASSERT(recorded.size() == 3u);
+    ZEXPECT(file_table.resolve(recorded[0].file) ==
+            CanonicalPath(Spelling::absolute(tmp.path("compile_commands.json"))));
+    ZEXPECT(recorded[0].hash);
+    ZEXPECT(file_table.resolve(recorded[1].file) ==
+            CanonicalPath(Spelling::absolute(path::join(tmp.root, "flags.rsp"))));
+    ZEXPECT(recorded[1].hash);
+    ZEXPECT(file_table.resolve(recorded[2].file) ==
+            CanonicalPath(Spelling::absolute(path::join(tmp.root, "missing.rsp"))));
+    ZEXPECT(!recorded[2].hash.has_value());
+    ZEXPECT(database.present(id));
 
     tmp.touch("compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"@flags.rsp"}}
     }));
-    ASSERT_TRUE(database.load_source(id).has_value());
-    EXPECT_EQ(database.response_files(id).size(), 1u);
+    ZASSERT(database.load_source(id));
+    ZEXPECT(database.inputs(id).size() == 2u);
 };
 
-TEST_CASE(DriverModeFromRsp) {
+ZEST_CASE(DriverModeFromRsp) {
     /// --driver-mode=cl inside a response file still switches on CL option
     /// visibility (clang interprets the mode after expansion).
     TempDir tmp;
@@ -388,10 +472,10 @@ TEST_CASE(DriverModeFromRsp) {
     CompilationDatabase database{file_table};
     database.add_command(tmp.root.str(), "main.cpp", "clang++ @flags.rsp main.cpp"sv);
 
-    EXPECT_CONTAINS(print_argv(render_entry(database, "main.cpp")), "/TP");
+    EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("main.cpp"))), "/TP");
 };
 
-TEST_CASE(PrependAfterBinary) {
+ZEST_CASE(PrependAfterBinary) {
     llvm::SmallVector args = {"clang++", "-DA", "main.cpp"};
 
     FileTable file_table;
@@ -403,54 +487,54 @@ TEST_CASE(PrependAfterBinary) {
     options.extra_prepend = prepend;
     // Prepends sit ahead of the command's own flags, so the command wins
     // on collision. (Defines render canonicalized, as two tokens.)
-    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)),
-              "clang++ -std=c++17 -D B -D A main.cpp");
+    ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), options)) ==
+            std::format("clang++ -std=c++17 -D B -D A {}", fake("main.cpp")));
 };
 
-TEST_CASE(DefaultFallback) {
+ZEST_CASE(DefaultFallback) {
     FileTable file_table;
     CompilationDatabase database{file_table};
 
     /// C++ files get "clang++ -std=c++20 <file>".
-    auto cpp_argv = render_fallback(database, "unknown.cpp");
-    ASSERT_EQ(cpp_argv.size(), 3U);
-    EXPECT_EQ(cpp_argv[0], "clang++"sv);
-    EXPECT_EQ(cpp_argv[1], "-std=c++20"sv);
-    EXPECT_EQ(cpp_argv[2], "unknown.cpp"sv);
+    auto cpp_argv = render_fallback(database, fake("unknown.cpp"));
+    ZASSERT(cpp_argv.size() == 3U);
+    ZEXPECT(cpp_argv[0] == "clang++"sv);
+    ZEXPECT(cpp_argv[1] == "-std=c++20"sv);
+    ZEXPECT(cpp_argv[2] == fake("unknown.cpp"));
 
     /// Every extension clang classifies as C++ gets the C++ default.
     for(llvm::StringRef cxx_file: {"header.hpp", "file.cc", "file.cxx", "file.C", "file.hh"}) {
-        EXPECT_EQ(render_fallback(database, cxx_file)[0], "clang++"sv);
+        ZEXPECT(render_fallback(database, fake(cxx_file))[0] == "clang++"sv);
     }
 
     /// C files get "clang <file>".
-    auto c_argv = render_fallback(database, "unknown.c");
-    ASSERT_EQ(c_argv.size(), 2U);
-    EXPECT_EQ(c_argv[0], "clang"sv);
-    EXPECT_EQ(c_argv[1], "unknown.c"sv);
+    auto c_argv = render_fallback(database, fake("unknown.c"));
+    ZASSERT(c_argv.size() == 2U);
+    ZEXPECT(c_argv[0] == "clang"sv);
+    ZEXPECT(c_argv[1] == fake("unknown.c"));
 
     /// An ambiguous header is C++ by default, forced through -x so it
     /// compiles as a translation unit; other extensions get plain clang.
-    auto h_argv = render_fallback(database, "foo.h");
-    ASSERT_EQ(h_argv.size(), 5U);
-    EXPECT_EQ(h_argv[0], "clang++"sv);
-    EXPECT_EQ(h_argv[2], "-x"sv);
-    EXPECT_EQ(h_argv[3], "c++"sv);
-    EXPECT_EQ(render_fallback(database, "foo.m")[0], "clang"sv);
+    auto h_argv = render_fallback(database, fake("foo.h"));
+    ZASSERT(h_argv.size() == 5U);
+    ZEXPECT(h_argv[0] == "clang++"sv);
+    ZEXPECT(h_argv[2] == "-x"sv);
+    ZEXPECT(h_argv[3] == "c++"sv);
+    ZEXPECT(render_fallback(database, fake("foo.m"))[0] == "clang"sv);
 
     /// CUDA files pin cuda mode and the device-side view NVCC-backed
     /// commands default to (the render spells the unaliased form).
     for(llvm::StringRef cuda_file: {"kern.cu", "kernels.cuh"}) {
-        auto cu_argv = render_fallback(database, cuda_file);
-        ASSERT_EQ(cu_argv.size(), 6U);
-        EXPECT_EQ(cu_argv[0], "clang++"sv);
-        EXPECT_EQ(cu_argv[2], "-x"sv);
-        EXPECT_EQ(cu_argv[3], "cuda"sv);
-        EXPECT_EQ(cu_argv[4], "--offload-device-only"sv);
+        auto cu_argv = render_fallback(database, fake(cuda_file));
+        ZASSERT(cu_argv.size() == 6U);
+        ZEXPECT(cu_argv[0] == "clang++"sv);
+        ZEXPECT(cu_argv[2] == "-x"sv);
+        ZEXPECT(cu_argv[3] == "cuda"sv);
+        ZEXPECT(cu_argv[4] == "--offload-device-only"sv);
     }
 };
 
-TEST_CASE(FallbackAppliesAppend) {
+ZEST_CASE(FallbackAppliesAppend) {
     /// Config rule appends must reach the synthesized fallback command:
     /// users without a CDB rely on them to supply include paths.
     FileTable file_table;
@@ -460,15 +544,16 @@ TEST_CASE(FallbackAppliesAppend) {
     };
     CommandOptions options{.edits = edits};
 
-    auto argv = print_argv(render_fallback(database, "unknown.cpp", options));
+    auto argv = print_argv(render_fallback(database, fake("unknown.cpp"), options));
     EXPECT_CONTAINS(argv, "-std=c++20");
     EXPECT_CONTAINS(argv, "/opt/include");
 
     /// The plain-clang branch applies them too.
-    EXPECT_CONTAINS(print_argv(render_fallback(database, "unknown.c", options)), "/opt/include");
+    EXPECT_CONTAINS(print_argv(render_fallback(database, fake("unknown.c"), options)),
+                    "/opt/include");
 };
 
-TEST_CASE(LaterRemoveCancelsAppend) {
+ZEST_CASE(LaterRemoveCancelsAppend) {
     /// Edits apply in rule order: a later remove reaches what an earlier
     /// rule appended, by option semantics (spelling-independent).
     FileTable file_table;
@@ -479,7 +564,8 @@ TEST_CASE(LaterRemoveCancelsAppend) {
         {CommandEdit::Kind::Remove, {"-D", "FOO=1"}     },
     };
     CommandOptions options{.edits = edits};
-    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ -D BAR main.cpp");
+    ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), options)) ==
+            std::format("clang++ -D BAR {}", fake("main.cpp")));
 
     /// The other way round the append wins: nothing before it to cancel.
     std::vector<CommandEdit> reversed = {
@@ -487,10 +573,45 @@ TEST_CASE(LaterRemoveCancelsAppend) {
         {CommandEdit::Kind::Append, {"-DFOO=1"}},
     };
     options.edits = reversed;
-    EXPECT_EQ(print_argv(render_entry(database, "main.cpp", options)), "clang++ -D FOO=1 main.cpp");
+    ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), options)) ==
+            std::format("clang++ -D FOO=1 {}", fake("main.cpp")));
 };
 
-TEST_CASE(InternedCommand) {
+ZEST_CASE(RemoveIncludeWildcard) {
+    /// `*` removes every value of a path option instead of naming a file
+    /// in the rule's directory.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake", "main.cpp", "clang++ -Iinc -I/opt/include main.cpp"sv);
+    for(auto flags: {
+            std::vector<std::string>{"-I*"},
+            std::vector<std::string>{"-I", "*"}
+    }) {
+        std::vector<CommandEdit> edits = {
+            {CommandEdit::Kind::Remove, flags, Spelling::absolute("/config")}
+        };
+        ZEXPECT(print_argv(render_entry(database, fake("main.cpp"), {.edits = edits})) ==
+                std::format("clang++ {}", fake("main.cpp")));
+    }
+};
+
+ZEST_CASE(RuleAnchorKeysMemo) {
+    /// One rule text read from two configuration directories names two
+    /// include directories.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake", "main.cpp", "clang++ main.cpp"sv);
+    auto render = [&](llvm::StringRef directory) {
+        std::vector<CommandEdit> edits = {
+            {CommandEdit::Kind::Append, {"-Iinc"}, Spelling::absolute(directory)}
+        };
+        return print_argv(render_entry(database, fake("main.cpp"), {.edits = edits}));
+    };
+    EXPECT_CONTAINS(render("/one"), Spelling("inc", Spelling::absolute("/one")).str());
+    EXPECT_CONTAINS(render("/two"), Spelling("inc", Spelling::absolute("/two")).str());
+};
+
+ZEST_CASE(InternedCommand) {
     /// A hand-written command normalizes like an entry: one ConfigID per
     /// (directory, spelling), the string and argv forms meeting on it, the
     /// input slot synthesized at the end.
@@ -501,35 +622,36 @@ TEST_CASE(InternedCommand) {
     for(auto& token: tokens) {
         tokenized.push_back(token.c_str());
     }
-    auto spelled = *database.intern_command("/ws", tokenized);
+    auto spelled = *database.intern_command(Spelling::absolute("/ws"), tokenized);
     llvm::SmallVector<const char*> argv = {"clang++", "-std=c++20", "-Iinclude"};
-    EXPECT_EQ(spelled, *database.intern_command("/ws", argv));
-    EXPECT_NE(spelled, *database.intern_command("/other", argv));
+    ZEXPECT(spelled == *database.intern_command(Spelling::absolute("/ws"), argv));
+    ZEXPECT(spelled != *database.intern_command(Spelling::absolute("/other"), argv));
 
     /// Spellings that name no compiler are rejected, not asserted on.
-    EXPECT_FALSE(database.intern_command("/ws", llvm::ArrayRef<const char*>{}).has_value());
-    EXPECT_FALSE(database.intern_command("/ws", {"ccache"}).has_value());
+    ZEXPECT(!database.intern_command(Spelling::absolute("/ws"), llvm::ArrayRef<const char*>{})
+                 .has_value());
+    ZEXPECT(!database.intern_command(Spelling::absolute("/ws"), {"ccache"}).has_value());
 
-    CommandRef ref{file_table.intern("/ws/src/a.cpp"),
+    CommandRef ref{file_table.intern(Spelling::absolute("/ws/src/a.cpp")),
                    spelled,
                    database.input_kind(spelled, "/ws/src/a.cpp"),
                    CommandSource::Default};
     auto rendered = database.render_driver(ref);
-    EXPECT_TRUE(llvm::is_contained(rendered, "-std=c++20"sv));
-    EXPECT_TRUE(has_arg(rendered, "/ws/include"));
-    EXPECT_EQ(std::string_view(rendered.back()), "/ws/src/a.cpp"sv);
+    ZEXPECT(llvm::is_contained(rendered, "-std=c++20"sv));
+    ZEXPECT(has_arg(rendered, "/ws/include"));
+    ZEXPECT(std::string_view(rendered.back()) == file_table.resolve(ref.file).str());
 };
 
-TEST_CASE(MultiCommand) {
+ZEST_CASE(MultiCommand) {
     /// A file can have multiple compilation commands (e.g. different configs).
     FileTable file_table;
     CompilationDatabase database{file_table};
-    database.add_command("fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
-    database.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
-    database.add_command("fake", "other.cpp", "clang++ -std=c++23 other.cpp"sv);
+    database.add_command("/fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
+    database.add_command("/fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+    database.add_command("/fake", "other.cpp", "clang++ -std=c++23 other.cpp"sv);
 
-    auto candidates = database.candidate_entries("main.cpp");
-    ASSERT_EQ(candidates.size(), 2U);
+    auto candidates = database.candidate_entries(fake("main.cpp"));
+    ZASSERT(candidates.size() == 2U);
 
     /// Both commands are present, in file order.
     bool has_17 = false, has_20 = false;
@@ -540,32 +662,32 @@ TEST_CASE(MultiCommand) {
         if(llvm::StringRef(argv).contains("-std=c++20"))
             has_20 = true;
     }
-    EXPECT_TRUE(has_17);
-    EXPECT_TRUE(has_20);
+    ZEXPECT(has_17);
+    ZEXPECT(has_20);
 
-    ASSERT_EQ(database.candidate_entries("other.cpp").size(), 1U);
+    ZASSERT(database.candidate_entries(fake("other.cpp")).size() == 1U);
 };
 
-TEST_CASE(CandidateOrderIsFileOrder) {
+ZEST_CASE(CandidateOrderIsFileOrder) {
     /// A file's entries keep the order their source lists them in:
     /// generators emit configurations in a fixed order, so the first entry
     /// is the same configuration for every file.
     FileTable file_table;
     CompilationDatabase database{file_table};
-    database.add_command("fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
-    database.add_command("fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
-    database.add_command("fake", "other.cpp", "clang++ -std=c++20 other.cpp"sv);
-    database.add_command("fake", "other.cpp", "clang++ -std=c++17 other.cpp"sv);
+    database.add_command("/fake", "main.cpp", "clang++ -std=c++20 main.cpp"sv);
+    database.add_command("/fake", "main.cpp", "clang++ -std=c++17 main.cpp"sv);
+    database.add_command("/fake", "other.cpp", "clang++ -std=c++20 other.cpp"sv);
+    database.add_command("/fake", "other.cpp", "clang++ -std=c++17 other.cpp"sv);
 
-    EXPECT_CONTAINS(print_argv(render_entry(database, "main.cpp")), "-std=c++20");
-    EXPECT_CONTAINS(print_argv(render_entry(database, "other.cpp")), "-std=c++20");
-    auto candidates = database.candidate_entries("main.cpp");
-    ASSERT_EQ(candidates.size(), 2U);
-    EXPECT_EQ(candidates[0].ordinal, 0U);
-    EXPECT_EQ(candidates[1].ordinal, 1U);
+    EXPECT_CONTAINS(print_argv(render_entry(database, fake("main.cpp"))), "-std=c++20");
+    EXPECT_CONTAINS(print_argv(render_entry(database, fake("other.cpp"))), "-std=c++20");
+    auto candidates = database.candidate_entries(fake("main.cpp"));
+    ZASSERT(candidates.size() == 2U);
+    ZEXPECT(candidates[0].ordinal == 0U);
+    ZEXPECT(candidates[1].ordinal == 1U);
 };
 
-TEST_CASE(MultipleSources) {
+ZEST_CASE(MultipleSources) {
     /// Two sources load side by side; a file present in both keeps one
     /// candidate per source, and reloading one source leaves the other's
     /// entries alone.
@@ -580,40 +702,40 @@ TEST_CASE(MultipleSources) {
     tmp.touch("b/compile_commands.json", R"([{"directory": ")" + dir + R"(", "file": "shared.cpp",
                   "arguments": ["clang++", "-DFROM_B", "shared.cpp"]}])");
 
-    auto a = database.add_source(tmp.path("a"));
-    auto b = database.add_source(tmp.path("b/compile_commands.json"));
-    EXPECT_EQ(database.add_source(tmp.path("a/compile_commands.json")), a);
-    ASSERT_EQ(database.load_source(a).value(), 2U);
-    ASSERT_EQ(database.load_source(b).value(), 1U);
-    EXPECT_TRUE(database.loaded(a));
+    auto a = database.add_source(Spelling::absolute(tmp.path("a")));
+    auto b = database.add_source(Spelling::absolute(tmp.path("b/compile_commands.json")));
+    ZEXPECT(database.add_source(Spelling::absolute(tmp.path("a/compile_commands.json"))) == a);
+    ZASSERT(database.load_source(a).value() == 2U);
+    ZASSERT(database.load_source(b).value() == 1U);
+    ZEXPECT(database.loaded(a));
 
     auto shared = database.candidate_entries(tmp.path("shared.cpp"));
-    ASSERT_EQ(shared.size(), 2U);
-    EXPECT_EQ(shared[0].source, a);
-    EXPECT_EQ(shared[1].source, b);
-    EXPECT_EQ(database.entries().size(), 3U);
+    ZASSERT(shared.size() == 2U);
+    ZEXPECT(shared[0].source == a);
+    ZEXPECT(shared[1].source == b);
+    ZEXPECT(database.entries().size() == 3U);
 
     auto diff = database.unload_source(a);
-    EXPECT_FALSE(database.loaded(a));
-    EXPECT_EQ(diff.removed.size(), 1U);
-    EXPECT_EQ(diff.changed.size(), 1U);
-    EXPECT_EQ(database.candidate_entries(tmp.path("shared.cpp")).size(), 1U);
-    EXPECT_TRUE(database.candidate_entries(tmp.path("only_a.cpp")).empty());
-    EXPECT_EQ(database.load_source(a).value(), 2U);
-    EXPECT_EQ(database.entries().size(), 3U);
+    ZEXPECT(!database.loaded(a));
+    ZEXPECT(diff.removed.size() == 1U);
+    ZEXPECT(diff.changed.size() == 1U);
+    ZEXPECT(database.candidate_entries(tmp.path("shared.cpp")).size() == 1U);
+    ZEXPECT(database.candidate_entries(tmp.path("only_a.cpp")).empty());
+    ZEXPECT(database.load_source(a).value() == 2U);
+    ZEXPECT(database.entries().size() == 3U);
 };
 
-TEST_CASE(CodegenFilter) {
+ZEST_CASE(CodegenFilter) {
     /// Codegen-only options never reach the compile render.
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command(
-        "fake",
+        "/fake",
         "main.cpp",
         "clang++ -std=c++20 -fPIC -fno-omit-frame-pointer -fstack-protector-strong "
         "-fdata-sections -ffunction-sections -flto -fcolor-diagnostics -g main.cpp"sv);
 
-    auto argv = print_argv(render_entry(database, "main.cpp"));
+    auto argv = print_argv(render_entry(database, fake("main.cpp")));
 
     EXPECT_CONTAINS(argv, "-std=c++20");
 
@@ -627,20 +749,20 @@ TEST_CASE(CodegenFilter) {
     EXPECT_NOT_CONTAINS(argv, "-g");
 
     /// They survive in the full build.
-    auto full =
-        print_argv(database.render_full(database.candidate_entries("main.cpp").front().config));
+    auto full = print_argv(
+        database.render_full(database.candidate_entries(fake("main.cpp")).front().config));
     EXPECT_CONTAINS(full, "-fPIC");
     EXPECT_CONTAINS(full, "-flto");
 };
 
-TEST_CASE(DependencyScanFilter) {
+ZEST_CASE(DependencyScanFilter) {
     FileTable file_table;
     CompilationDatabase database{file_table};
-    database.add_command("fake",
+    database.add_command("/fake",
                          "main.cpp",
                          "clang++ -std=c++20 -MD -MF main.d -MT main.o main.cpp"sv);
 
-    auto argv = print_argv(render_entry(database, "main.cpp"));
+    auto argv = print_argv(render_entry(database, fake("main.cpp")));
 
     EXPECT_CONTAINS(argv, "-std=c++20");
     EXPECT_NOT_CONTAINS(argv, "-MD");
@@ -649,25 +771,24 @@ TEST_CASE(DependencyScanFilter) {
     EXPECT_NOT_CONTAINS(argv, "main.d");
 };
 
-TEST_CASE(ModuleFilter) {
+ZEST_CASE(ModuleFilter) {
     /// A named module mapping is discarded (clice builds its own PCMs);
     /// the bare header-unit form stays part of the frontend semantics.
-    EXPECT_STRIP("clang++ -std=c++20 -fmodule-file=m=mod.pcm main.cpp",
-                 "clang++ -std=c++20 main.cpp");
+    EXPECT_STRIP("clang++ -std=c++20 -fmodule-file=m=mod.pcm main.cpp", "clang++ -std=c++20 {}");
     EXPECT_STRIP("clang++ -std=c++20 -fmodule-file=mod.pcm main.cpp",
-                 "clang++ -std=c++20 -fmodule-file=mod.pcm main.cpp");
+                 "clang++ -std=c++20 -fmodule-file=mod.pcm {}");
     EXPECT_STRIP("clang++ -std=c++20 -fprebuilt-module-path=/tmp main.cpp",
-                 "clang++ -std=c++20 main.cpp");
+                 "clang++ -std=c++20 {}");
 };
 
-TEST_CASE(UserContentClassification) {
+ZEST_CASE(UserContentClassification) {
     FileTable file_table;
     CompilationDatabase database{file_table};
-    database.add_command("fake", "a.cpp", "clang++ -std=c++20 -Wall -DA=1 -DFOO a.cpp"sv);
-    database.add_command("fake", "b.cpp", "clang++ -std=c++20 -Wall -DB=2 b.cpp"sv);
+    database.add_command("/fake", "a.cpp", "clang++ -std=c++20 -Wall -DA=1 -DFOO a.cpp"sv);
+    database.add_command("/fake", "b.cpp", "clang++ -std=c++20 -Wall -DB=2 b.cpp"sv);
 
-    auto a_argv = print_argv(render_entry(database, "a.cpp"));
-    auto b_argv = print_argv(render_entry(database, "b.cpp"));
+    auto a_argv = print_argv(render_entry(database, fake("a.cpp")));
+    auto b_argv = print_argv(render_entry(database, fake("b.cpp")));
 
     EXPECT_CONTAINS(a_argv, "-std=c++20");
     EXPECT_CONTAINS(a_argv, "-Wall");
@@ -682,7 +803,7 @@ TEST_CASE(UserContentClassification) {
     EXPECT_NOT_CONTAINS(b_argv, "A=1");
 };
 
-TEST_CASE(IncludePathAbsolutize) {
+ZEST_CASE(IncludePathAbsolutize) {
     /// Relative include paths absolutize against the entry directory.
     FileTable file_table;
     CompilationDatabase database{file_table};
@@ -690,40 +811,117 @@ TEST_CASE(IncludePathAbsolutize) {
                          "main.cpp",
                          "clang++ -Iinclude -isystem sys/inc -iquote ../src main.cpp"sv);
 
-    auto result = render_entry(database, "main.cpp");
-    EXPECT_TRUE(has_arg(result, "/project/build/include"));
-    EXPECT_TRUE(has_arg(result, "/project/build/sys/inc"));
-    EXPECT_TRUE(has_arg(result, "/project/"));
+    auto result = render_entry(database, "/project/build/main.cpp");
+    ZEXPECT(has_arg(result, "/project/build/include"));
+    ZEXPECT(has_arg(result, "/project/build/sys/inc"));
+    ZEXPECT(has_arg(result, "/project/"));
 
     /// Absolute paths are kept as-is.
     FileTable file_table2;
     CompilationDatabase database2{file_table2};
     database2.add_command("/project/build", "main.cpp", "clang++ -I/usr/include main.cpp"sv);
-    EXPECT_TRUE(has_arg(render_entry(database2, "main.cpp"), "/usr/include"));
+    ZEXPECT(has_arg(render_entry(database2, "/project/build/main.cpp"), "/usr/include"));
 };
 
-TEST_CASE(SemanticOptionsPreserved) {
-    EXPECT_STRIP("clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp",
-                 "clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp");
-    EXPECT_STRIP("clang++ -std=c++20 -Wall -Werror main.cpp",
-                 "clang++ -std=c++20 -Wall -Werror main.cpp");
-};
-
-TEST_CASE(ForcedLanguage) {
+ZEST_CASE(WorkingDirectoryAnchorsIncludes) {
+    /// Relative include paths resolve where the compile runs: the entry
+    /// directory, moved by -working-directory.
     FileTable file_table;
     CompilationDatabase database{file_table};
-    database.add_command("fake", "a.h", "clang++ -x c++ a.h"sv);
-    database.add_command("fake", "b.cpp", "clang++ b.cpp"sv);
+    database.add_command("/project",
+                         "main.cpp",
+                         "clang++ -working-directory build -Iinclude main.cpp"sv);
+    ZEXPECT(has_arg(render_entry(database, "/project/main.cpp"), "/project/build/include"));
+    /// The directory itself is anchored too, so no reader depends on
+    /// where it runs.
+    auto config = database.candidate_entries("/project/main.cpp").front().config;
+    auto working = llvm::find_if(database.config(config).args, [](const Arg& arg) {
+        return arg.opt_id == option::OPT_working_directory;
+    });
+    ZASSERT(working != database.config(config).args.end());
+    auto value = path::convert_to_slash(working->values[0]);
+    ZEXPECT((path::is_rooted(value) && llvm::StringRef(value).ends_with("/project/build")));
+};
 
-    EXPECT_EQ(database.forced_language(database.candidate_entries("a.h").front().config), "c++");
-    EXPECT_TRUE(
-        database.forced_language(database.candidate_entries("b.cpp").front().config).empty());
+ZEST_CASE(BareFileValueAnchored) {
+    /// A file an option reads is relative to the entry directory with or
+    /// without a separator; the toolchain probe runs elsewhere. A bare
+    /// `--config` name is clang's to search in its configuration
+    /// directories.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/project",
+                         "main.cpp",
+                         "clang++ -fsanitize-ignorelist=ignore.txt --config=x.cfg --sysroot sdk "
+                         "main.cpp"sv);
+    auto config = database.candidate_entries("/project/main.cpp").front().config;
+    llvm::SmallVector<std::string> values;
+    for(auto& arg: database.config(config).args) {
+        for(llvm::StringRef value: arg.values) {
+            values.push_back(path::convert_to_slash(value));
+        }
+    }
+    ZEXPECT(llvm::is_contained(values, "/project/ignore.txt"));
+    ZEXPECT(llvm::is_contained(values, "/project/sdk"));
+    ZEXPECT(llvm::is_contained(values, "x.cfg"));
+};
+
+ZEST_CASE(EntryHashSurvivesMove) {
+    /// Paths under the workspace — the compiler, the directory, path
+    /// options — hash by their portable names: a moved checkout keeps its
+    /// commands' identity.
+    auto hash = [](const TempDir& workspace) {
+        FileTable file_table;
+        CompilationDatabase database{file_table};
+        database.set_workspace_root(CanonicalPath(Spelling::absolute(workspace.root)));
+        auto driver = workspace.path("tools/clang++");
+        auto include = "-I" + workspace.path("inc");
+        auto entry = database.add_command(workspace.root,
+                                          workspace.path("main.cpp"),
+                                          {driver.c_str(), include.c_str(), "main.cpp"});
+        return database.entry_hash(entry->config);
+    };
+    TempDir before;
+    TempDir after;
+    ZEXPECT(hash(before) == hash(after));
+};
+
+ZEST_CASE(SysrootIncludeKept) {
+    /// A leading `=` names the sysroot, which clang substitutes.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/project",
+                         "main.cpp",
+                         "clang++ --sysroot=/sdk -I=/usr/include/foo main.cpp"sv);
+    auto argv = render_entry(database, "/project/main.cpp");
+    ZEXPECT(llvm::any_of(argv, [](llvm::StringRef arg) {
+        return arg == "=/usr/include/foo" || arg == "-I=/usr/include/foo";
+    }));
+};
+
+ZEST_CASE(SemanticOptionsPreserved) {
+    EXPECT_STRIP("clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp",
+                 "clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic {}");
+    EXPECT_STRIP("clang++ -std=c++20 -Wall -Werror main.cpp",
+                 "clang++ -std=c++20 -Wall -Werror {}");
+};
+
+ZEST_CASE(ForcedLanguage) {
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake", "a.h", "clang++ -x c++ a.h"sv);
+    database.add_command("/fake", "b.cpp", "clang++ b.cpp"sv);
+
+    ZEXPECT(database.forced_language(database.candidate_entries(fake("a.h")).front().config) ==
+            "c++");
+    ZEXPECT(
+        database.forced_language(database.candidate_entries(fake("b.cpp")).front().config).empty());
 };
 
 /// Write JSON to a temp file, load into a CDB, remove the file.
 /// Returns the number of entries loaded.
 std::size_t load_json(CompilationDatabase& database, llvm::StringRef json) {
-    auto path = fs::createTemporaryFile("cdb", "json");
+    auto path = vfs::temp_file("cdb", "json");
     if(!path)
         return 0;
     {
@@ -738,7 +936,7 @@ std::size_t load_json(CompilationDatabase& database, llvm::StringRef json) {
     return count;
 }
 
-TEST_CASE(LoadMixedFormats) {
+ZEST_CASE(LoadMixedFormats) {
     /// "arguments" array and "command" string can coexist in the same CDB.
     TempDir tmp;
     auto dir = json_escape(tmp.root);
@@ -749,12 +947,12 @@ TEST_CASE(LoadMixedFormats) {
          {"directory": ")" + dir + R"(", "file": "b.cpp",
           "command": "clang++ -std=c++23 b.cpp"}])");
 
-    ASSERT_EQ(count, 2U);
+    ZASSERT(count == 2U);
     EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("a.cpp"))), "-std=c++20");
     EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("b.cpp"))), "-std=c++23");
 };
 
-TEST_CASE(RelativeDirectoryAnchored) {
+ZEST_CASE(RelativeDirectoryAnchored) {
     /// A relative CDB `directory` anchors to the CDB file's own location,
     /// both for resolving the entry's file and as the config's directory.
     TempDir tmp;
@@ -764,18 +962,18 @@ TEST_CASE(RelativeDirectoryAnchored) {
         {"directory": "build", "file": "main.cpp",
          "arguments": ["clang++", "-std=c++20", "main.cpp"]}
     ])");
-    ASSERT_EQ(database.load(tmp.path("compile_commands.json")).value_or(0), 1U);
+    ZASSERT(database.load(tmp.path("compile_commands.json")).value_or(0) == 1U);
 
     auto file = path::join(tmp.root, "build", "main.cpp");
     auto candidates = database.candidate_entries(file);
-    ASSERT_EQ(candidates.size(), 1U);
-    EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
-              canonical_dir(path::join(tmp.root, "build")));
+    ZASSERT(candidates.size() == 1U);
+    ZEXPECT(llvm::StringRef(database.config(candidates.front().config).directory) ==
+            canonical_dir(path::join(tmp.root, "build")));
 };
 
-TEST_CASE(RelativeLoadPathAnchored) {
-    /// A relative CDB path given to load() must not leak relative entry
-    /// identities: the anchor base is absolutized first.
+ZEST_CASE(RelativeLoadPathAnchored) {
+    /// A relative CDB path from the command line anchors at the working
+    /// directory before load(), so no entry carries a relative identity.
     TempDir tmp;
     tmp.touch("compile_commands.json", R"([
         {"directory": "build", "file": "main.cpp",
@@ -783,21 +981,21 @@ TEST_CASE(RelativeLoadPathAnchored) {
     ])");
 
     llvm::SmallString<256> saved_cwd;
-    ASSERT_FALSE(bool(llvm::sys::fs::current_path(saved_cwd)));
-    ASSERT_FALSE(bool(llvm::sys::fs::set_current_path(tmp.root)));
+    ZASSERT(!bool(llvm::sys::fs::current_path(saved_cwd)));
+    ZASSERT(!bool(llvm::sys::fs::set_current_path(tmp.root)));
     auto restore = llvm::make_scope_exit([&] { llvm::sys::fs::set_current_path(saved_cwd); });
 
     FileTable file_table;
     CompilationDatabase database{file_table};
-    ASSERT_EQ(database.load("compile_commands.json").value_or(0), 1U);
+    ZASSERT(database.load(Spelling("compile_commands.json", Spelling::cwd())).value_or(0) == 1U);
 
     auto candidates = database.candidate_entries(path::join(tmp.root, "build", "main.cpp"));
-    ASSERT_EQ(candidates.size(), 1U);
-    EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
-              canonical_dir(path::join(tmp.root, "build")));
+    ZASSERT(candidates.size() == 1U);
+    ZEXPECT(llvm::StringRef(database.config(candidates.front().config).directory) ==
+            canonical_dir(path::join(tmp.root, "build")));
 };
 
-TEST_CASE(LoadErrorRecovery) {
+ZEST_CASE(LoadErrorRecovery) {
     /// Bad entries should be skipped; good entries still load.
     TempDir tmp;
     auto dir = json_escape(tmp.root);
@@ -819,12 +1017,12 @@ TEST_CASE(LoadErrorRecovery) {
                                R"(", "file": "also_good.cpp",
           "command": "clang++ -Wall also_good.cpp"}])");
 
-    ASSERT_EQ(count, 2U);
+    ZASSERT(count == 2U);
     EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("good.cpp"))), "-std=c++20");
     EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("also_good.cpp"))), "-Wall");
 };
 
-TEST_CASE(LoadCudaHeader) {
+ZEST_CASE(LoadCudaHeader) {
     /// .cuh entries are C-family despite clang's extension table; non-C
     /// entries some build systems emit are skipped.
     TempDir tmp;
@@ -836,29 +1034,30 @@ TEST_CASE(LoadCudaHeader) {
          {"directory": ")" + dir + R"(", "file": "app.rc",
           "command": "rc /fo app.res app.rc"}])");
 
-    ASSERT_EQ(count, 1U);
-    EXPECT_TRUE(database.has_entry(tmp.path("kernels.cuh")));
+    ZASSERT(count == 1U);
+    ZEXPECT(database.has_entry(tmp.path("kernels.cuh")));
 };
 
-TEST_CASE(LoadEmptyCommand) {
+ZEST_CASE(LoadEmptyCommand) {
     /// Whitespace-only or empty "command" should not crash.
     TempDir tmp;
     auto dir = json_escape(tmp.root);
     FileTable file_table;
     CompilationDatabase database{file_table};
     auto count = load_json(database,
-                           R"([{"directory": ")" + dir + R"(", "file": "empty.cpp", "command": ""},
+                           R"([{"directory": ")" + dir +
+                               R"(", "file": "empty.cpp", "command": ""},
          {"directory": ")" + dir +
                                R"(", "file": "spaces.cpp", "command": "   "},
          {"directory": ")" + dir +
                                R"(", "file": "ok.cpp",
           "command": "clang++ -std=c++20 ok.cpp"}])");
 
-    ASSERT_EQ(count, 1U);
+    ZASSERT(count == 1U);
     EXPECT_CONTAINS(print_argv(render_entry(database, tmp.path("ok.cpp"))), "-std=c++20");
 };
 
-TEST_CASE(LoadReload) {
+ZEST_CASE(LoadReload) {
     /// Loading the same source again replaces all of its entries.
     TempDir tmp;
     auto dir = json_escape(tmp.root);
@@ -871,20 +1070,20 @@ TEST_CASE(LoadReload) {
 
     tmp.touch("compile_commands.json", R"([{"directory": ")" + dir + R"(", "file": "a.cpp",
           "arguments": ["clang++", "-std=c++17", "a.cpp"]}])");
-    ASSERT_EQ(database.load(cdb_path).value_or(0), 1U);
+    ZASSERT(database.load(cdb_path).value_or(0) == 1U);
     EXPECT_CONTAINS(print_argv(render_entry(database, file_a)), "-std=c++17");
 
     tmp.touch("compile_commands.json", R"([{"directory": ")" + dir + R"(", "file": "b.cpp",
           "arguments": ["clang++", "-std=c++23", "b.cpp"]}])");
     auto count = database.load(cdb_path).value_or(0);
-    ASSERT_EQ(count, 1U);
-    EXPECT_EQ(database.source_count(), 1U);
+    ZASSERT(count == 1U);
+    ZEXPECT(database.source_count() == 1U);
 
-    EXPECT_TRUE(database.candidate_entries(file_a).empty());
+    ZEXPECT(database.candidate_entries(file_a).empty());
     EXPECT_CONTAINS(print_argv(render_entry(database, file_b)), "-std=c++23");
 };
 
-TEST_CASE(LoadCommandQuoting) {
+ZEST_CASE(LoadCommandQuoting) {
     /// "command" string with spaces in paths and quoted defines.
     TempDir tmp;
     auto dir = json_escape(tmp.root);
@@ -893,13 +1092,13 @@ TEST_CASE(LoadCommandQuoting) {
     auto count = load_json(database, R"([{"directory": ")" + dir + R"(", "file": "main.cpp",
           "command": "clang++ -std=c++20 \"-DMSG=hello world\" -I\"/path with spaces\" main.cpp"}])");
 
-    ASSERT_EQ(count, 1U);
+    ZASSERT(count == 1U);
     auto argv = print_argv(render_entry(database, tmp.path("main.cpp")));
     EXPECT_CONTAINS(argv, "hello world");
     EXPECT_CONTAINS(argv, "with spaces");
 };
 
-TEST_CASE(LoadRelativePath) {
+ZEST_CASE(LoadRelativePath) {
     /// load() resolves relative file paths against the directory.
     TempDir tmp;
     auto project = tmp.path("project/build");
@@ -914,18 +1113,19 @@ TEST_CASE(LoadRelativePath) {
                                R"(", "file": "src/main.cpp",
           "arguments": ["clang++", "-std=c++17", "src/main.cpp"]}])");
 
-    ASSERT_EQ(count, 2U);
+    ZASSERT(count == 2U);
 
     EXPECT_CONTAINS(print_argv(render_entry(database, path::join(project, "src", "main.cpp"))),
                     "-std=c++20");
     EXPECT_CONTAINS(print_argv(render_entry(database, path::join(other, "src", "main.cpp"))),
                     "-std=c++17");
 
-    /// A relative spelling is a different path — no entry.
-    EXPECT_TRUE(database.candidate_entries("src/main.cpp").empty());
+    /// The same relative spelling anchored elsewhere is a different path —
+    /// no entry.
+    ZEXPECT(database.candidate_entries(tmp.path("src/main.cpp")).empty());
 };
 
-TEST_CASE(LoadDotSegments) {
+ZEST_CASE(LoadDotSegments) {
     /// Entry paths intern without . and .. segments, so lookups against
     /// clang-reported (realpath'd) spellings match.
     TempDir tmp;
@@ -937,16 +1137,16 @@ TEST_CASE(LoadDotSegments) {
                                R"(", "file": "../src/./main.cpp",
           "arguments": ["clang++", "-std=c++20", "../src/./main.cpp"]}])");
 
-    ASSERT_EQ(count, 1U);
-    EXPECT_TRUE(database.has_entry(tmp.path("project/src/main.cpp")));
+    ZASSERT(count == 1U);
+    ZEXPECT(database.has_entry(tmp.path("project/src/main.cpp")));
 };
 
-TEST_CASE(ResourceDir) {
+ZEST_CASE(ResourceDir) {
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake", "main.cpp", "clang++ -std=c++23 test.cpp"sv);
 
-    auto& entry = database.candidate_entries("main.cpp").front();
+    auto& entry = database.candidate_entries(fake("main.cpp")).front();
     CommandRef ref{entry.file,
                    entry.config,
                    database.input_kind(entry.config, "main.cpp"),
@@ -956,18 +1156,18 @@ TEST_CASE(ResourceDir) {
     bool has_resource_dir = false;
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
         if(argv[i] == "-resource-dir"sv) {
-            EXPECT_EQ(llvm::StringRef(argv[i + 1]), resource_dir());
+            ZEXPECT(llvm::StringRef(argv[i + 1]) == resource_dir());
             has_resource_dir = true;
             break;
         }
     }
-    EXPECT_EQ(has_resource_dir, !resource_dir().empty());
+    ZEXPECT(has_resource_dir == !resource_dir().empty());
 
     /// A command carrying its own resource dir is not double-injected.
     FileTable file_table2;
     CompilationDatabase database2{file_table2};
     database2.add_command("/fake", "main.cpp", "clang++ -resource-dir /custom main.cpp"sv);
-    auto& entry2 = database2.candidate_entries("main.cpp").front();
+    auto& entry2 = database2.candidate_entries(fake("main.cpp")).front();
     CommandRef ref2{entry2.file,
                     entry2.config,
                     database2.input_kind(entry2.config, "main.cpp"),
@@ -979,10 +1179,10 @@ TEST_CASE(ResourceDir) {
             count += 1;
         }
     }
-    EXPECT_EQ(count, 1);
+    ZEXPECT(count == 1);
 };
 
-TEST_CASE(FixtureLayouts) {
+ZEST_CASE(FixtureLayouts) {
     /// The checked-in layouts under tests/data/cdb go through load() like a
     /// real project's database; each pins the one property it exists for.
     /// Macros are asserted by name: the driver render spells -D with a
@@ -1000,7 +1200,7 @@ TEST_CASE(FixtureLayouts) {
     {
         FileTable files;
         CompilationDatabase database{files};
-        ASSERT_EQ(load_layout(database, "single_root"), 1U);
+        ZASSERT(load_layout(database, "single_root") == 1U);
         EXPECT_CONTAINS(print_argv(render_entry(database, source("single_root"))), "SINGLE");
     }
 
@@ -1009,11 +1209,11 @@ TEST_CASE(FixtureLayouts) {
         /// directory and the entry's relative file climbs out of it.
         FileTable files;
         CompilationDatabase database{files};
-        ASSERT_EQ(load_layout(database, "subdir_cdb", "cmake/compile_commands.json"), 1U);
+        ZASSERT(load_layout(database, "subdir_cdb", "cmake/compile_commands.json") == 1U);
         auto candidates = database.candidate_entries(source("subdir_cdb"));
-        ASSERT_EQ(candidates.size(), 1U);
-        EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
-                  canonical_dir(path::join(layouts, "subdir_cdb", "cmake")));
+        ZASSERT(candidates.size() == 1U);
+        ZEXPECT(llvm::StringRef(database.config(candidates.front().config).directory) ==
+                canonical_dir(path::join(layouts, "subdir_cdb", "cmake")));
         EXPECT_CONTAINS(print_argv(render_entry(database, source("subdir_cdb"))), "OUT");
     }
 
@@ -1021,9 +1221,9 @@ TEST_CASE(FixtureLayouts) {
         /// One file, two configurations, the Ninja Multi-Config shape.
         FileTable files;
         CompilationDatabase database{files};
-        ASSERT_EQ(load_layout(database, "multi_entry"), 2U);
+        ZASSERT(load_layout(database, "multi_entry") == 2U);
         auto candidates = database.candidate_entries(source("multi_entry"));
-        ASSERT_EQ(candidates.size(), 2U);
+        ZASSERT(candidates.size() == 2U);
         std::string joined;
         for(auto& entry: candidates) {
             joined += print_argv(database.render_full(entry.config));
@@ -1036,7 +1236,7 @@ TEST_CASE(FixtureLayouts) {
     {
         FileTable files;
         CompilationDatabase database{files};
-        ASSERT_EQ(load_layout(database, "command_string"), 1U);
+        ZASSERT(load_layout(database, "command_string") == 1U);
         auto argv = print_argv(render_entry(database, source("command_string")));
         EXPECT_CONTAINS(argv, "CMD");
         EXPECT_NOT_CONTAINS(argv, " -c ");
@@ -1046,38 +1246,38 @@ TEST_CASE(FixtureLayouts) {
     {
         FileTable files;
         CompilationDatabase database{files};
-        ASSERT_EQ(load_layout(database, "relative_directory"), 1U);
+        ZASSERT(load_layout(database, "relative_directory") == 1U);
         auto file = source("relative_directory", "src/main.cpp");
         auto candidates = database.candidate_entries(file);
-        ASSERT_EQ(candidates.size(), 1U);
-        EXPECT_EQ(llvm::StringRef(database.config(candidates.front().config).directory),
-                  canonical_dir(path::join(layouts, "relative_directory", "src")));
+        ZASSERT(candidates.size() == 1U);
+        ZEXPECT(llvm::StringRef(database.config(candidates.front().config).directory) ==
+                canonical_dir(path::join(layouts, "relative_directory", "src")));
         EXPECT_CONTAINS(print_argv(render_entry(database, file)), "RELATIVE");
     }
 
     {
         FileTable files;
         CompilationDatabase database{files};
-        ASSERT_EQ(load_layout(database, "launcher_prefix"), 1U);
+        ZASSERT(load_layout(database, "launcher_prefix") == 1U);
         auto candidates = database.candidate_entries(source("launcher_prefix"));
-        ASSERT_EQ(candidates.size(), 1U);
+        ZASSERT(candidates.size() == 1U);
         auto argv = render_entry(database, source("launcher_prefix"));
-        ASSERT_FALSE(argv.empty());
-        EXPECT_EQ(argv.front(), "clang++"sv);
+        ZASSERT(!argv.empty());
+        ZEXPECT(argv.front() == "clang++"sv);
         EXPECT_CONTAINS(print_argv(argv), "WRAPPED");
     }
 
     {
         FileTable files;
         CompilationDatabase database{files};
-        ASSERT_EQ(load_layout(database, "response_file"), 1U);
+        ZASSERT(load_layout(database, "response_file") == 1U);
         auto argv = print_argv(render_entry(database, source("response_file")));
         EXPECT_CONTAINS(argv, "FROM_RSP");
         EXPECT_NOT_CONTAINS(argv, "@flags.rsp");
     }
 };
 
-};  // TEST_SUITE(Command)
+};  // ZEST_SUITE(Command)
 
 }  // namespace
 

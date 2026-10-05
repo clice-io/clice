@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <format>
 #include <thread>
 
 #include "test/temp_dir.h"
@@ -7,8 +8,8 @@
 #include "command/command.h"
 #include "command/toolchain.h"
 #include "compile/compilation.h"
-#include "support/filesystem.h"
 #include "syntax/scan.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/xxhash.h"
@@ -17,9 +18,9 @@ namespace clice::testing {
 
 namespace {
 
-TEST_SUITE(Compiler, Tester) {
+ZEST_SUITE(Compiler, Tester) {
 
-TEST_CASE(TopLevelDecls) {
+ZEST_CASE(TopLevelDecls) {
     add_file("header.h", R"(
 #pragma once
 int helper();
@@ -44,11 +45,11 @@ struct Bar {
 )";
 
     add_main("main.cpp", content);
-    ASSERT_TRUE(compile_with_pch());
-    ASSERT_EQ(unit->top_level_decls().size(), 4U);
+    ZASSERT(compile_with_pch());
+    ZASSERT(unit->top_level_decls().size() == 4U);
 }
 
-TEST_CASE(DirectoryAnchorsIncludes) {
+ZEST_CASE(DirectoryAnchorsIncludes) {
     /// The entry's `directory` governs relative search paths in the
     /// compile: -Igen must resolve against it, not the process cwd.
     TempDir tmp;
@@ -65,11 +66,48 @@ int x = FROM_GEN;
     params.directory = tmp.root.str().str();
 
     auto built = clice::compile(params);
-    ASSERT_TRUE(built.completed());
-    ASSERT_TRUE(built.diagnostics().empty());
+    ZASSERT(built.completed());
+    ZASSERT(built.diagnostics().empty());
 }
 
-TEST_CASE(StopCompilation) {
+ZEST_CASE(OverlayNamesRedirectedFile) {
+    /// A header an -ivfsoverlay maps under a virtual name is a dependency
+    /// under the name of the file actually read.
+    TempDir tmp;
+    tmp.touch("real/config.h", "#define FROM_REAL 1\n");
+    tmp.touch("main.cpp", "#include <config.h>\nint x = FROM_REAL;\n");
+    auto overlay = std::format(R"({{
+  "version": 0,
+  "use-external-names": false,
+  "roots": [{{
+    "name": "{}",
+    "type": "directory",
+    "contents": [{{ "name": "config.h", "type": "file", "external-contents": "{}" }}]
+  }}]
+}})",
+                               path::convert_to_slash(tmp.path("virtual")),
+                               path::convert_to_slash(tmp.path("real/config.h")));
+    tmp.touch("overlay.yaml", overlay);
+
+    std::vector<std::string> owned = {"clang++",
+                                      "-std=c++20",
+                                      "-ivfsoverlay",
+                                      tmp.path("overlay.yaml"),
+                                      "-I" + tmp.path("virtual"),
+                                      tmp.path("main.cpp")};
+    for(auto& arg: owned) {
+        params.arguments.push_back(arg.c_str());
+    }
+    params.directory = tmp.root.str().str();
+
+    auto built = clice::compile(params);
+    ZASSERT(built.completed());
+    ZASSERT(built.diagnostics().empty());
+    auto real = CanonicalPath(Spelling::absolute(tmp.path("real/config.h"))).str();
+    ZEXPECT(llvm::any_of(built.deps(), [&](const DepFile& dep) { return dep.path == real; }));
+}
+
+ZEST_CASE(StopCompilation) {
     std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
 
     llvm::StringRef content = R"(
@@ -84,14 +122,14 @@ int main() { return 0; }
     stop->store(true);
 
     auto built = clice::compile(params);
-    ASSERT_FALSE(built.completed());
+    ZASSERT(!built.completed());
     // Pinned distinctly from setup_fail: the worker maps this status to
     // CompileStatus::Cancelled, which the master discards without blaming
     // any artifact.
-    ASSERT_TRUE(built.cancelled());
+    ZASSERT(built.cancelled());
 }
 
-TEST_CASE(PCHBuildPopulatesInfo) {
+ZEST_CASE(PCHBuildPopulatesInfo) {
     add_file("preamble.h", R"(
 #pragma once
 int preamble_func();
@@ -110,8 +148,8 @@ int main() { return 0; }
     // Switch to Preamble kind for PCH building.
     params.kind = CompilationKind::Preamble;
 
-    auto pch_path = fs::createTemporaryFile("clice-test", "pch");
-    ASSERT_TRUE(pch_path.operator bool());
+    auto pch_path = vfs::temp_file("clice-test", "pch");
+    ZASSERT(pch_path.operator bool());
     params.output_file = *pch_path;
 
     // Add truncated main file buffer for preamble build.
@@ -122,33 +160,33 @@ int main() { return 0; }
 
     PCHInfo info;
     auto preamble_unit = clice::compile(params, info);
-    ASSERT_TRUE(preamble_unit.completed());
+    ZASSERT(preamble_unit.completed());
 
     // PCHInfo.path should match the output file.
-    ASSERT_EQ(info.path, *pch_path);
+    ZASSERT(info.path == *pch_path);
 
     // build_at is sampled before the compile runs (non-zero, recent).
-    ASSERT_TRUE(preamble_unit.build_at().count() > 0);
+    ZASSERT(preamble_unit.build_at().count() > 0);
 
     // PCHInfo.preamble should be non-empty (contains the #include directives).
-    ASSERT_FALSE(info.preamble.empty());
+    ZASSERT(!info.preamble.empty());
 
     // PCHInfo.deps should list files involved in building the PCH, each with
     // the hash of the consumed bytes.
-    ASSERT_FALSE(info.deps.empty());
+    ZASSERT(!info.deps.empty());
     for(auto& dep: info.deps) {
-        ASSERT_FALSE(dep.path.empty());
-        ASSERT_TRUE(dep.hash != 0);
+        ZASSERT(!dep.path.empty());
+        ZASSERT(dep.hash != 0);
     }
 
     // PCHInfo.arguments should match what was passed in.
-    ASSERT_EQ(info.arguments.size(), params.arguments.size());
+    ZASSERT(info.arguments.size() == params.arguments.size());
 
     // Clean up the temp file.
     llvm::sys::fs::remove(*pch_path);
 }
 
-TEST_CASE(CorruptPCHAttributable) {
+ZEST_CASE(CorruptPCHAttributable) {
     add_file("preamble.h", R"(
 #pragma once
 int preamble_func();
@@ -163,13 +201,13 @@ int main() { return preamble_func(); }
     prepare();
 
     // Consuming the PCH reads it from real disk; overlay like compile_with_pch.
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 
-    auto pch_path = fs::createTemporaryFile("clice-test", "pch");
-    ASSERT_TRUE(pch_path.operator bool());
+    auto pch_path = vfs::temp_file("clice-test", "pch");
+    ZASSERT(pch_path.operator bool());
 
     auto& source = sources.all_files["main.cpp"];
     auto bound = compute_preamble_bound(source.content);
@@ -199,12 +237,12 @@ int main() { return preamble_func(); }
         PCHInfo info;
         {
             auto preamble_unit = clice::compile(params, info);
-            ASSERT_TRUE(preamble_unit.completed());
+            ZASSERT(preamble_unit.completed());
         }
 
-        auto blob = fs::read(*pch_path);
-        ASSERT_TRUE(blob.operator bool());
-        ASSERT_TRUE(fs::write(*pch_path, corrupt(std::move(*blob), shape)).operator bool());
+        auto blob = read_file(*pch_path);
+        ZASSERT(blob.operator bool());
+        ZASSERT(!vfs::write(*pch_path, corrupt(std::move(*blob), shape)));
 
         params.kind = CompilationKind::Content;
         params.output_file.clear();
@@ -212,8 +250,8 @@ int main() { return preamble_func(); }
         params.buffers.clear();
 
         auto content_unit = clice::compile(params);
-        ASSERT_FALSE(content_unit.completed());
-        ASSERT_TRUE(content_unit.setup_fail() || content_unit.fatal_error());
+        ZASSERT(!content_unit.completed());
+        ZASSERT((content_unit.setup_fail() || content_unit.fatal_error()));
         // The blame signal the master's retraction keys on (pch_suspect):
         // a diagnostic naming the blob, or an AST-deserialization error —
         // that family's messages do not reliably carry the path ("Blob
@@ -222,13 +260,63 @@ int main() { return preamble_func(); }
             return llvm::StringRef(diag.message).contains(*pch_path) ||
                    diag.id.is_deserialization_error();
         });
-        ASSERT_TRUE(blames_pch);
+        ZASSERT(blames_pch);
     }
 
     llvm::sys::fs::remove(*pch_path);
 }
 
-TEST_CASE(PCHBuildAndReuse) {
+ZEST_CASE(PCHIgnoresInputMtime) {
+    TempDir tmp;
+    tmp.touch("preamble.h", "int preamble_func();\n");
+    auto header = tmp.path("preamble.h");
+    auto content =
+        std::format("#include \"{}\"\n\nint main() {{ return preamble_func(); }}\n", header);
+    add_main("main.cpp", content);
+    prepare();
+
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
+    overlay->pushOverlay(vfs);
+    params.vfs = overlay;
+
+    auto pch_path = vfs::temp_file("clice-test", "pch");
+    ZASSERT(pch_path.operator bool());
+    auto main_vfs_path = TestVFS::path("main.cpp");
+    auto bound = compute_preamble_bound(content);
+
+    params.kind = CompilationKind::Preamble;
+    params.output_file = *pch_path;
+    params.add_remapped_file(main_vfs_path, content, bound);
+    PCHInfo info;
+    ZASSERT(clice::compile(params, info).completed());
+
+    auto compile_with = [&] {
+        params.kind = CompilationKind::Content;
+        params.output_file.clear();
+        params.pch = {*pch_path, bound};
+        params.buffers.clear();
+        return clice::compile(params);
+    };
+
+    // A same-bytes rewrite moves only the mtime.
+    ZASSERT(set_file_mtime(header, file_mtime_ns(header) + 10'000'000'000));
+    {
+        auto unit = compile_with();
+        ZASSERT(unit.completed());
+        ZASSERT(std::ranges::none_of(unit.diagnostics(), [](auto& diag) {
+            return diag.id.level >= DiagnosticLevel::Error;
+        }));
+    }
+
+    // A size change still rejects it.
+    tmp.touch("preamble.h", "int preamble_func();\nint more;\n");
+    ZASSERT(!compile_with().completed());
+
+    llvm::sys::fs::remove(*pch_path);
+}
+
+ZEST_CASE(PCHBuildAndReuse) {
     add_file("types.h", R"(
 #pragma once
 template <typename T>
@@ -251,16 +339,16 @@ int main() {
     add_main("main.cpp", content);
 
     // compile_with_pch does the full PCH build + content compile cycle.
-    ASSERT_TRUE(compile_with_pch());
+    ZASSERT(compile_with_pch());
 
     // The resulting unit should have completed successfully.
-    ASSERT_TRUE(unit.has_value());
+    ZASSERT(unit);
 
     // Verify we can access the AST (top level decls should exist).
-    ASSERT_TRUE(unit->top_level_decls().size() >= 1U);
+    ZASSERT(unit->top_level_decls().size() >= 1U);
 }
 
-TEST_CASE(PreambleBoundComputation) {
+ZEST_CASE(PreambleBoundComputation) {
     // Test that compute_preamble_bound correctly identifies the end of the preamble.
     llvm::StringRef code_with_preamble = R"(
 #include "a.h"
@@ -271,23 +359,23 @@ int main() { return 0; }
 
     auto bound = compute_preamble_bound(code_with_preamble);
     // Bound should be > 0 (there are includes).
-    ASSERT_TRUE(bound > 0);
+    ZASSERT(bound > 0);
     // Bound should be less than the total content size.
-    ASSERT_TRUE(bound < code_with_preamble.size());
+    ZASSERT(bound < code_with_preamble.size());
 
     // The content before the bound should contain the includes.
     auto preamble_part = code_with_preamble.substr(0, bound);
-    ASSERT_TRUE(preamble_part.contains("#include"));
+    ZASSERT(preamble_part.contains("#include"));
 
     // Code with no preamble.
     llvm::StringRef no_preamble = R"(
 int main() { return 0; }
 )";
     auto bound2 = compute_preamble_bound(no_preamble);
-    ASSERT_EQ(bound2, 0U);
+    ZASSERT(bound2 == 0U);
 }
 
-TEST_CASE(PCMBuildChain) {
+ZEST_CASE(PCMBuildChain) {
     // Test that A imports B works: build PCM for B, then compile A using B's PCM.
     TempDir tmp;
 
@@ -313,7 +401,7 @@ export int a_value() { return b_value() + 1; }
                        entry.config,
                        cdb.input_kind(entry.config, file),
                        CommandSource::CDBExact};
-        EXPECT_TRUE(cdb.toolchain().resolve(ref.config, ref.input).has_value());
+        ZEXPECT(cdb.toolchain().resolve(ref.config, ref.input));
         return cdb.render(ref);
     };
 
@@ -326,14 +414,14 @@ export int a_value() { return b_value() + 1; }
     params_b.kind = CompilationKind::ModuleInterface;
     params_b.arguments = render_entry(tmp.path("mod_b.cppm"));
 
-    auto pcm_b_path = fs::createTemporaryFile("mod_b", "pcm");
-    ASSERT_TRUE(pcm_b_path.operator bool());
+    auto pcm_b_path = vfs::temp_file("mod_b", "pcm");
+    ZASSERT(pcm_b_path.operator bool());
     params_b.output_file = *pcm_b_path;
 
     PCMInfo info_b;
     auto unit_b = clice::compile(params_b, info_b);
-    ASSERT_TRUE(unit_b.completed());
-    ASSERT_EQ(info_b.path, *pcm_b_path);
+    ZASSERT(unit_b.completed());
+    ZASSERT(info_b.path == *pcm_b_path);
 
     // Build PCM for mod_a, passing B's PCM.
     cdb.add_command(tmp.root.str(),
@@ -345,24 +433,24 @@ export int a_value() { return b_value() + 1; }
     params_a.arguments = render_entry(tmp.path("mod_a.cppm"));
     params_a.pcms.try_emplace("mod_b", info_b.path);
 
-    auto pcm_a_path = fs::createTemporaryFile("mod_a", "pcm");
-    ASSERT_TRUE(pcm_a_path.operator bool());
+    auto pcm_a_path = vfs::temp_file("mod_a", "pcm");
+    ZASSERT(pcm_a_path.operator bool());
     params_a.output_file = *pcm_a_path;
 
     PCMInfo info_a;
     auto unit_a = clice::compile(params_a, info_a);
-    ASSERT_TRUE(unit_a.completed());
-    ASSERT_EQ(info_a.path, *pcm_a_path);
+    ZASSERT(unit_a.completed());
+    ZASSERT(info_a.path == *pcm_a_path);
 
     // info_a should record mod_b as a dependency.
-    ASSERT_TRUE(llvm::find(info_a.mods, "mod_b") != info_a.mods.end());
+    ZASSERT(llvm::find(info_a.mods, "mod_b") != info_a.mods.end());
 
     // Clean up temp PCM files.
     llvm::sys::fs::remove(*pcm_b_path);
     llvm::sys::fs::remove(*pcm_a_path);
 }
 
-TEST_CASE(PCHContentDifference) {
+ZEST_CASE(PCHContentDifference) {
     // PCH should only contain the preamble portion; modifying code after
     // the preamble should not require PCH rebuild.
     add_file("common.h", R"(
@@ -386,20 +474,20 @@ int bar() { return 3; }
     // Both versions should have the same preamble bound.
     auto bound_v1 = compute_preamble_bound(content_v1);
     auto bound_v2 = compute_preamble_bound(content_v2);
-    ASSERT_EQ(bound_v1, bound_v2);
+    ZASSERT(bound_v1 == bound_v2);
 
     // Build PCH with v1.
     add_main("main.cpp", content_v1);
-    ASSERT_TRUE(compile_with_pch());
-    ASSERT_TRUE(unit.has_value());
-    ASSERT_TRUE(unit->top_level_decls().size() >= 1U);
+    ZASSERT(compile_with_pch());
+    ZASSERT(unit);
+    ZASSERT(unit->top_level_decls().size() >= 1U);
 }
 
-};  // TEST_SUITE(Compiler)
+};  // ZEST_SUITE(Compiler)
 
-TEST_SUITE(PreambleHash) {
+ZEST_SUITE(PreambleHash) {
 
-TEST_CASE(StableForBodyChanges) {
+ZEST_CASE(StableForBodyChanges) {
     // Same preamble (#include lines) but different body → same hash → PCH reusable.
     llvm::StringRef v1 = R"cpp(
 #include "a.h"
@@ -415,14 +503,14 @@ void foo() {}
 
     auto bound1 = compute_preamble_bound(v1);
     auto bound2 = compute_preamble_bound(v2);
-    EXPECT_EQ(bound1, bound2);
+    ZEXPECT(bound1 == bound2);
 
     auto hash1 = llvm::xxh3_64bits(v1.substr(0, bound1));
     auto hash2 = llvm::xxh3_64bits(v2.substr(0, bound2));
-    EXPECT_EQ(hash1, hash2);
+    ZEXPECT(hash1 == hash2);
 }
 
-TEST_CASE(ChangesForNewInclude) {
+ZEST_CASE(ChangesForNewInclude) {
     // Different preamble (#include added) → different hash → PCH must rebuild.
     llvm::StringRef v1 = R"cpp(
 #include "a.h"
@@ -431,29 +519,30 @@ int x = 1;
     llvm::StringRef v2 = R"cpp(
 #include "a.h"
 #include "b.h"
+#include "vfs/file_system.h"
 int x = 1;
 )cpp";
 
     auto bound1 = compute_preamble_bound(v1);
     auto bound2 = compute_preamble_bound(v2);
-    EXPECT_NE(bound1, bound2);
+    ZEXPECT(bound1 != bound2);
 
     auto hash1 = llvm::xxh3_64bits(v1.substr(0, bound1));
     auto hash2 = llvm::xxh3_64bits(v2.substr(0, bound2));
-    EXPECT_NE(hash1, hash2);
+    ZEXPECT(hash1 != hash2);
 }
 
-TEST_CASE(ZeroBoundNoPCH) {
+ZEST_CASE(ZeroBoundNoPCH) {
     // No preprocessor directives → bound is 0 → PCH should be skipped.
     llvm::StringRef code = R"cpp(
 int main() { return 0; }
 )cpp";
 
     auto bound = compute_preamble_bound(code);
-    EXPECT_EQ(bound, 0u);
+    ZEXPECT(bound == 0u);
 }
 
-};  // TEST_SUITE(PreambleHash)
+};  // ZEST_SUITE(PreambleHash)
 
 }  // namespace
 

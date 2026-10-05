@@ -53,7 +53,7 @@ Resolution results for angle-bracket includes (e.g., `<vector>`) can be cached a
 
 Rather than processing all files at once, scanning unfolds in waves:
 
-- **Wave 0**: Scan all source files in the compilation database (parallel I/O + lexical scanning)
+- **Wave 0**: Scan all source files in the compilation database (parallel I/O + lexical scanning), and resolve each command's forced includes (`-include`) the way the compiler does -- the compile's working directory first, then the search paths as for a quoted include
 - **Path resolution**: Map discovered include names to file paths, identifying newly discovered headers
 - **Wave 1**: Scan the newly discovered headers, discovering their includes...
 - Repeat until no new files are found
@@ -67,6 +67,8 @@ DependencyGraph stores include relationships between files and supports both for
 **Forward includes**: Given a file and compilation configuration, returns all files it directly includes. Each edge records whether it is a conditional include (distinguished via bit flags). A file may have different include sets under different compilation configurations (because search paths differ), so the key is a (file, configuration) pair.
 
 **Reverse includes**: Given a file, returns all files that directly include it. This is a reverse index built in bulk after all forward includes have been established. It is used for "finding host source files" -- BFS upward from the target header along reverse edges until a source file with a CDB entry is found.
+
+**Forced includes**: The headers a source file's compilation commands include ahead of its text (`-include`, such as the `cmake_pch.hxx` of a CMake precompiled header) are scanned like any header, so their own includes and their import syntax are part of the graph. The link from the source file to a forced header is kept apart from the include edges: no directive in the source file's text names it, so host lookup and context synthesis never walk it, while the question "which source files read this file" does.
 
 **Module mapping**: A mapping from module names to module interface unit file paths, used for C++20 module dependency resolution. Only interface units (`export module`) are registered in the mapping. A module name may map to multiple paths (when the same module is discovered in different compilation configurations).
 
@@ -101,6 +103,8 @@ Scan results are cached at multiple levels:
 - **Directory listing cache**: File listings for each directory in the search paths are cached in memory, populated via concurrent readdir tasks during the initial scan.
 - **Include resolution cache**: Resolution results for angle-bracket includes are cached by (configuration, header name), including negative caches for resolution failures.
 
+A file whose content changes on disk is rescanned by the same per-file step as the startup scan: the graph records how the scan reached each file — the compilation configuration that resolved it and the search directory it was found in — and the rescan resolves the new content the same way, so a header's edges after a save are the ones a fresh start would give it, `#include_next` included. Files the new content reaches for the first time are scanned too. A file the scan never reached stays out of the graph: no unit's text names it.
+
 ### Collaboration with Host Source File Lookup
 
 One of the core uses of dependency scanning is finding host source files for headers. The process is as follows:
@@ -116,7 +120,7 @@ The include chain lookup uses BFS to guarantee the shortest path is found. The c
 
 The fast scan provides approximate results during the startup phase. As the server runs, the background indexing system gradually compiles every translation unit in the project, obtaining precise include relationships during compilation (with full preprocessing, evaluating all macros and conditional compilation). These precise include relationships are recorded in the index data (TUIndex/MergedIndex). Note that background indexing currently does not update the DependencyGraph built during startup — the fast-scan include graph remains in use for host source lookup and file-dependency queries throughout the server's lifetime.
 
-Additionally, the system provides a precise scanning mode (scan_precise) -- running the full Clang preprocessor for specific scenarios that require accurate dependency information, such as lazy dependency resolution during module compilation (via CompileGraph's resolve_fn). Precise scan results are resolved file paths (rather than raw include names), accurately reflecting the actual include relationships under a specific compilation configuration.
+Additionally, the system provides a precise scanning mode (scan_precise) -- running the full Clang preprocessor where an exact answer is needed: the modules a unit imports, resolved at the start of each of its build rounds (see [Task Graph](task-graph.md)). The fast scan decides where that is: it records which files hold module syntax (an import or a module declaration), and a unit that reaches none of them through its includes and forced includes imports nothing -- no macro can produce an import directive -- so it is never precise-scanned.
 
 Fast scanning and background indexing are complementary: fast scanning guarantees that a usable include graph is available within seconds of startup (so users immediately get header file support), while background indexing gradually supplements precise information over the following minutes. The two are not alternatives -- even after background indexing completes, fast scanning results are still used for initial file discovery and building the initial dependency graph.
 

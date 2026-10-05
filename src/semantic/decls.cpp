@@ -15,6 +15,7 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/Module.h"
 #include "clang/Basic/Specifiers.h"
 
 namespace clice::decls {
@@ -32,6 +33,23 @@ bool is_templated(const clang::Decl* decl) {
     }
 
     return false;
+}
+
+bool is_exported(const clang::Decl* decl) {
+    // A concept's or alias template's parameters sit in the enclosing
+    // context, the `export` block included.
+    if(decl->isTemplateParameter() ||
+       !decl->getDeclContext()->getRedeclContext()->isFileContext()) {
+        return false;
+    }
+    // Clang marks what a named module exports visible to importers — a
+    // namespace too once it holds an exported declaration.
+    return llvm::any_of(decl->redecls(), [](const clang::Decl* redecl) {
+        auto* module = redecl->getOwningModule();
+        return module && module->isNamedModule() &&
+               redecl->getModuleOwnershipKind() ==
+                   clang::Decl::ModuleOwnershipKind::VisibleWhenImported;
+    });
 }
 
 namespace {
@@ -74,6 +92,11 @@ bool is_instantiation(const clang::Decl* decl) {
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
         return clang::isTemplateInstantiation(var->getTemplateSpecializationKind());
     }
+    /// A member class of a class template specialization, instantiated
+    /// along with it or explicitly (`template struct Outer<int>::Inner;`).
+    if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+        return clang::isTemplateInstantiation(record->getTemplateSpecializationKind());
+    }
     return false;
 }
 
@@ -82,8 +105,8 @@ namespace {
 /// The pattern an undeclared specialization would be instantiated from:
 /// match the partial specializations against the written arguments the way
 /// real instantiation would. Falls back to the primary template when no
-/// partial matches, the match is ambiguous, or the winner is constrained
-/// (constraint satisfaction needs Sema).
+/// partial matches, the match is ambiguous, or the winner's match could not
+/// be verified (see deduce_arguments).
 template <typename Partial, typename Spec>
 const clang::NamedDecl* undeclared_pattern(const Spec* spec) {
     auto* primary = spec->getSpecializedTemplate();
@@ -93,19 +116,17 @@ const clang::NamedDecl* undeclared_pattern(const Spec* spec) {
     llvm::SmallVector<Partial*> partials;
     primary->getPartialSpecializations(partials);
 
-    auto matches = [&](Partial* partial) {
-        llvm::SmallVector<clang::TemplateArgument> deduced;
-        return types::deduce_arguments(context,
-                                       partial->getTemplateParameters(),
-                                       partial->getTemplateArgs().asArray(),
-                                       arguments,
-                                       deduced);
-    };
-
-    llvm::SmallVector<Partial*, 4> matched;
+    llvm::SmallVector<types::PartialMatch<Partial>, 4> matched;
     for(auto* partial: partials) {
-        if(matches(partial)) {
-            matched.push_back(partial);
+        llvm::SmallVector<clang::TemplateArgument> deduced;
+        auto deduction = types::deduce_arguments(context,
+                                                 partial->getTemplateParameters(),
+                                                 partial->getTemplateArgs().asArray(),
+                                                 arguments,
+                                                 deduced);
+        if(deduction != types::Deduction::Failed) {
+            matched.push_back(
+                {.partial = partial, .verified = deduction == types::Deduction::Matched});
         }
     }
 

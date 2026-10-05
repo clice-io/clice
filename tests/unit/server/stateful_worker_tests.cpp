@@ -1,3 +1,4 @@
+#include <csignal>
 #include <format>
 #include <string>
 #include <vector>
@@ -12,24 +13,22 @@ namespace clice::testing {
 
 namespace {
 
-TEST_SUITE(StatefulWorker) {
+ZEST_SUITE(StatefulWorker) {
 
-TEST_CASE(SpawnAndExit) {
+ZEST_CASE(SpawnAndExit) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
-    w.peer->close_output();
-    w.loop.schedule(w.peer->run());
-    w.loop.run();
+    w.run([]() -> kota::task<> { co_return; });
 }
 
-TEST_CASE(CompileRequest) {
+ZEST_CASE(CompileRequest) {
     TempDir tmp;
     tmp.touch("compile_test.cpp", "int main() { return 0; }\n");
     auto src = tmp.path("compile_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -44,21 +43,21 @@ TEST_CASE(CompileRequest) {
         params.pcms = {};
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().version, 1);
+        ZASSERT(result);
+        ZEXPECT(result.value().version == 1);
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(CancelledCompileFreesStrand) {
+ZEST_CASE(CancelledCompileFreesStrand) {
     TempDir tmp;
     tmp.touch("cancel_test.cpp", "");
     auto src = tmp.path("cancel_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -88,7 +87,7 @@ TEST_CASE(CancelledCompileFreesStrand) {
         opts.token = source.token();
 
         bool first_failed = false;
-        kota::task_group<> group(w.loop);
+        kota::task_group<> group;
         auto sender = [&]() -> kota::task<> {
             auto result = co_await w.peer->send_request(cp, opts);
             first_failed = !result.has_value();
@@ -104,7 +103,7 @@ TEST_CASE(CancelledCompileFreesStrand) {
         co_await kota::sleep(20, w.loop);
         source.cancel();
         co_await group.join();
-        EXPECT_TRUE(first_failed);
+        ZEXPECT(first_failed);
 
         // The strand must be free again: a second compile of the same
         // document completes instead of hanging behind the cancelled one's
@@ -119,22 +118,22 @@ TEST_CASE(CancelledCompileFreesStrand) {
         kota::ipc::request_options retry_opts;
         retry_opts.timeout = std::chrono::milliseconds(30'000);
         auto retry = co_await w.peer->send_request(cp, retry_opts);
-        CO_ASSERT_TRUE(retry.has_value());
-        EXPECT_EQ(retry.value().version, 2);
+        ZASSERT(retry);
+        ZEXPECT(retry.value().version == 2);
 
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(CancelNotificationInterruptsCompile) {
+ZEST_CASE(WireCancelInterruptsCompile) {
     TempDir tmp;
     tmp.touch("interrupt.cpp", "");
     auto src = tmp.path("interrupt.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -154,43 +153,103 @@ TEST_CASE(CancelNotificationInterruptsCompile) {
         cp.pch = {"", 0};
         cp.pcms = {};
 
-        // The notification chases the request down the pipe and flips the
-        // stop flag mid-parse. Unlike a wire cancel the request runs to a
-        // reply, and an interrupted parse reports no deps and no index —
-        // the reply's content, not the clock, is the assertion.
-        std::optional<worker::CompileResult> reply;
-        kota::task_group<> group(w.loop);
+        // The cancel chases the request down the pipe and flips the stop
+        // flag mid-parse; the request still waits for the worker's answer.
+        // An interrupted parse leaves the document without an AST, which
+        // the next query reports — the content, not the clock, is the
+        // assertion.
+        kota::cancellation_source source;
+        bool cancelled = false;
+        kota::task_group<> group;
         auto sender = [&]() -> kota::task<> {
-            kota::ipc::request_options opts;
-            opts.timeout = std::chrono::milliseconds(30'000);
-            auto result = co_await w.peer->send_request(cp, opts);
-            if(result.has_value()) {
-                reply = std::move(result.value());
-            }
+            auto result = co_await w.peer->send_request(
+                cp,
+                {.token = source.token(), .timeout = std::chrono::seconds(30)});
+            cancelled =
+                !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
         group.spawn(sender());
         co_await kota::sleep(20, w.loop);
-        w.peer->send_notification(worker::CancelCompileParams{src});
+        source.cancel();
         co_await group.join();
+        ZASSERT(cancelled);
 
-        CO_ASSERT_TRUE(reply.has_value());
-        EXPECT_EQ(reply->version, 1);
-        EXPECT_TRUE(reply->deps.empty());
-        EXPECT_TRUE(reply->tu_index_data.empty());
+        worker::QueryParams qp;
+        qp.kind = worker::QueryKind::DocumentSymbol;
+        qp.path = src;
+        auto symbols = co_await w.peer->send_request(qp);
+        ZASSERT(symbols);
+        ZEXPECT(symbols.value().data == "null");
 
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(CancelledQueryFreesStrand) {
+#ifndef _WIN32
+ZEST_CASE(UnstartedCompileWakesQueries) {
+    TempDir tmp;
+    tmp.touch("unstarted.cpp", "");
+    auto src = tmp.path("unstarted.cpp");
+
+    WorkerHandle w;
+    ZASSERT(w.spawn(true));
+
+    bool test_done = false;
+
+    w.run([&]() -> kota::task<> {
+        worker::CompileParams cp;
+        cp.path = src;
+        cp.version = 1;
+        cp.text = "int x;\n";
+        cp.directory = "/tmp";
+        cp.arguments = make_args(src);
+        cp.pch = {"", 0};
+        cp.pcms = {};
+
+        // Stopped, the worker reads the request and its cancel in one read
+        // once it resumes, so the compile's task never starts.
+        ZASSERT(!w.proc.kill(SIGSTOP));
+        kota::cancellation_source source;
+        bool cancelled = false;
+        kota::task_group<> group;
+        auto sender = [&]() -> kota::task<> {
+            auto result = co_await w.peer->send_request(
+                cp,
+                {.token = source.token(), .timeout = std::chrono::seconds(30)});
+            cancelled =
+                !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
+        };
+        group.spawn(sender());
+        co_await kota::sleep(50, w.loop);
+        source.cancel();
+        co_await kota::sleep(50, w.loop);
+        ZASSERT(!w.proc.kill(SIGCONT));
+        co_await group.join();
+        ZASSERT(cancelled);
+
+        worker::QueryParams qp;
+        qp.kind = worker::QueryKind::DocumentSymbol;
+        qp.path = src;
+        auto symbols = co_await w.peer->send_request(qp, {.timeout = std::chrono::seconds(30)});
+        ZASSERT(symbols);
+        ZEXPECT(symbols.value().data == "null");
+
+        test_done = true;
+    });
+
+    ZASSERT(test_done);
+}
+#endif
+
+ZEST_CASE(CancelledQueryFreesStrand) {
     TempDir tmp;
     tmp.touch("query_cancel.cpp", "");
     auto src = tmp.path("query_cancel.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -204,7 +263,7 @@ TEST_CASE(CancelledQueryFreesStrand) {
         cp.pch = {"", 0};
         cp.pcms = {};
         auto compiled = co_await w.peer->send_request(cp);
-        CO_ASSERT_TRUE(compiled.has_value());
+        ZASSERT(compiled);
 
         // Queries take the strand through with_ast_or: a cancelled query
         // must release it on unwind like a cancelled compile does.
@@ -216,7 +275,7 @@ TEST_CASE(CancelledQueryFreesStrand) {
         kota::ipc::request_options opts;
         opts.token = source.token();
 
-        kota::task_group<> group(w.loop);
+        kota::task_group<> group;
         auto sender = [&]() -> kota::task<> {
             [[maybe_unused]] auto result = co_await w.peer->send_request(qp, opts);
         };
@@ -228,45 +287,45 @@ TEST_CASE(CancelledQueryFreesStrand) {
         kota::ipc::request_options retry_opts;
         retry_opts.timeout = std::chrono::milliseconds(30'000);
         auto retry = co_await w.peer->send_request(qp, retry_opts);
-        CO_ASSERT_TRUE(retry.has_value());
+        ZASSERT(retry);
 
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(HoverWithoutCompile) {
+ZEST_CASE(HoverWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        // Hover on a file that hasn't been compiled should return null.
         worker::QueryParams params;
         params.kind = worker::QueryKind::Hover;
         params.path = "/tmp/nonexistent.cpp";
         params.offset = 0;
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        // Should be "null" RawValue since document doesn't exist.
-        EXPECT_EQ(result.value().data, std::string("null"));
+        // An unknown document is no empty answer: the master hears it was
+        // evicted (or never sent) and compiles it again.
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(CompileThenHover) {
+ZEST_CASE(CompileThenHover) {
     std::string text = "int foo() { return 42; }\nint main() { return foo(); }\n";
     TempDir tmp;
     tmp.touch("hover_test.cpp", text);
     auto src = tmp.path("hover_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -280,7 +339,7 @@ TEST_CASE(CompileThenHover) {
         cp.arguments = make_args(src);
 
         auto compile_result = co_await w.peer->send_request(cp);
-        CO_ASSERT_TRUE(compile_result.has_value());
+        ZASSERT(compile_result);
 
         // After successful compilation, hover should return info.
         // "int foo() { return 42; }\n" is 25 chars, then char 22 on line 1 = offset 47
@@ -290,62 +349,72 @@ TEST_CASE(CompileThenHover) {
         hp.offset = 47;  // position of 'foo' in 'return foo();'
 
         auto hover_result = co_await w.peer->send_request(hp);
-        EXPECT_TRUE(hover_result.has_value());
+        ZEXPECT(hover_result);
         // Should return non-null hover info for 'foo'.
-        EXPECT_NE(hover_result.value().data, std::string("null"));
+        ZEXPECT(hover_result.value().data != std::string("null"));
 
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(CodeActionReturnsEmpty) {
+ZEST_CASE(InvalidUTF8Replaced) {
+    std::string text = "/// caf\xe9\nint foo();\nint x = foo();\n";
+    TempDir tmp;
+    tmp.touch("latin1.cpp", text);
+    auto src = tmp.path("latin1.cpp");
+
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
+
+    std::string hover;
+    w.run([&]() -> kota::task<> {
+        worker::CompileParams cp;
+        cp.path = src;
+        cp.version = 1;
+        cp.text = text;
+        cp.directory = "/tmp";
+        cp.arguments = make_args(src);
+        ZASSERT(co_await w.peer->send_request(cp));
+
+        worker::QueryParams hp;
+        hp.kind = worker::QueryKind::Hover;
+        hp.path = src;
+        hp.offset = static_cast<std::uint32_t>(text.find("foo()"));
+        auto result = co_await w.peer->send_request(hp);
+        ZASSERT(result);
+        hover = result.value().data;
+    });
+
+    ZEXPECT(
+        hover.contains("caf"
+                       "\xef\xbf\xbd"));
+}
+
+ZEST_CASE(CodeActionWithoutCompile) {
+    WorkerHandle w;
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::QueryParams params;
-        params.kind = worker::QueryKind::CodeAction;
+        worker::CodeActionParams params;
         params.path = "/tmp/test.cpp";
+        params.range = {0, 0};
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        // No document: the shared with_ast default is "null".
-        EXPECT_EQ(result.value().data, std::string("[]"));
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(GoToDefinitionWithoutCompile) {
+ZEST_CASE(SemanticTokensWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
-
-    bool test_done = false;
-
-    w.run([&]() -> kota::task<> {
-        worker::QueryParams params;
-        params.kind = worker::QueryKind::GoToDefinition;
-        params.path = "/tmp/test.cpp";
-        params.offset = 0;
-
-        auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        // No document: the shared with_ast default is "null".
-        EXPECT_EQ(result.value().data, std::string("null"));
-        test_done = true;
-    });
-
-    ASSERT_TRUE(test_done);
-}
-
-TEST_CASE(SemanticTokensWithoutCompile) {
-    WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -355,37 +424,36 @@ TEST_CASE(SemanticTokensWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(FoldingRangeWithoutCompile) {
+ZEST_CASE(FoldingRangeWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::QueryParams params;
-        params.kind = worker::QueryKind::FoldingRange;
+        worker::FoldingRangeParams params;
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(DocumentSymbolWithoutCompile) {
+ZEST_CASE(DocumentSymbolWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -395,17 +463,17 @@ TEST_CASE(DocumentSymbolWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(DocumentLinkWithoutCompile) {
+ZEST_CASE(DocumentLinkWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -414,17 +482,17 @@ TEST_CASE(DocumentLinkWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_TRUE(result.value().empty());
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(InlayHintsWithoutCompile) {
+ZEST_CASE(InlayHintsWithoutCompile) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -434,15 +502,15 @@ TEST_CASE(InlayHintsWithoutCompile) {
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(MultipleSequentialRequests) {
+ZEST_CASE(MultipleSequentialRequests) {
     TempDir tmp;
     tmp.touch("seq_test.cpp",
               "int foo(int x) {\n"
@@ -454,7 +522,7 @@ TEST_CASE(MultipleSequentialRequests) {
     auto src = tmp.path("seq_test.cpp");
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -468,7 +536,7 @@ TEST_CASE(MultipleSequentialRequests) {
         cp.arguments = make_args(src);
 
         auto cr = co_await w.peer->send_request(cp);
-        CO_ASSERT_TRUE(cr.has_value());
+        ZASSERT(cr);
 
         // Now send multiple different feature requests sequentially.
         worker::QueryParams hp;
@@ -476,43 +544,32 @@ TEST_CASE(MultipleSequentialRequests) {
         hp.path = src;
         hp.offset = 4;  // 'foo' on line 0
         auto r1 = co_await w.peer->send_request(hp);
-        EXPECT_TRUE(r1.has_value());
+        ZEXPECT(r1);
 
-        worker::QueryParams cap;
-        cap.kind = worker::QueryKind::CodeAction;
+        worker::CodeActionParams cap;
         cap.path = src;
+        cap.range = {4, 4};
         auto r2 = co_await w.peer->send_request(cap);
-        EXPECT_TRUE(r2.has_value());
-
-        // 'foo' in 'return foo(0);' at line 4, char 11
-        // lines: "int foo(int x) {\n"=17, "    return x + 1;\n"=18, "}\n"=2, "int main() {\n"=14
-        // offset = 17+18+2+14+11 = 62
-        worker::QueryParams gdp;
-        gdp.kind = worker::QueryKind::GoToDefinition;
-        gdp.path = src;
-        gdp.offset = 62;
-        auto r3 = co_await w.peer->send_request(gdp);
-        EXPECT_TRUE(r3.has_value());
+        ZEXPECT(r2);
 
         worker::QueryParams stp;
         stp.kind = worker::QueryKind::SemanticTokens;
         stp.path = src;
-        auto r4 = co_await w.peer->send_request(stp);
-        EXPECT_TRUE(r4.has_value());
+        auto r3 = co_await w.peer->send_request(stp);
+        ZEXPECT(r3);
 
-        worker::QueryParams frp;
-        frp.kind = worker::QueryKind::FoldingRange;
+        worker::FoldingRangeParams frp;
         frp.path = src;
-        auto r5 = co_await w.peer->send_request(frp);
-        EXPECT_TRUE(r5.has_value());
+        auto r4 = co_await w.peer->send_request(frp);
+        ZEXPECT(r4);
 
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(MultipleDocuments) {
+ZEST_CASE(MultipleDocuments) {
     TempDir tmp;
     std::vector<std::string> paths;
     std::vector<std::string> texts;
@@ -525,7 +582,7 @@ TEST_CASE(MultipleDocuments) {
     }
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -540,7 +597,7 @@ TEST_CASE(MultipleDocuments) {
             cp.arguments = make_args(paths[i]);
 
             auto result = co_await w.peer->send_request(cp);
-            EXPECT_TRUE(result.has_value());
+            ZEXPECT(result);
         }
 
         // Hover on each document after compilation.
@@ -551,18 +608,18 @@ TEST_CASE(MultipleDocuments) {
             hp.offset = 4;  // 'var_N'
 
             auto result = co_await w.peer->send_request(hp);
-            EXPECT_TRUE(result.has_value());
+            ZEXPECT(result);
         }
 
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(EvictNotification) {
+ZEST_CASE(EvictNotification) {
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true));
+    ZASSERT(w.spawn(true));
 
     bool test_done = false;
 
@@ -572,23 +629,23 @@ TEST_CASE(EvictNotification) {
         ep.path = "/tmp/evict_test.cpp";
         w.peer->send_notification(ep);
 
-        // Hover on the evicted document should return null (document doesn't exist).
+        // Hover on the evicted document reports it unloaded.
         worker::QueryParams hp;
         hp.kind = worker::QueryKind::Hover;
         hp.path = "/tmp/evict_test.cpp";
         hp.offset = 0;
 
         auto result = co_await w.peer->send_request(hp);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
 
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
+    ZASSERT(test_done);
 }
 
-TEST_CASE(DocumentLimitEvicts) {
+ZEST_CASE(DocumentLimitEvicts) {
     TempDir tmp;
     std::vector<std::string> paths;
     std::vector<std::string> texts;
@@ -601,7 +658,7 @@ TEST_CASE(DocumentLimitEvicts) {
     }
 
     WorkerHandle w;
-    ASSERT_TRUE(w.spawn(true, /*max_documents=*/2));
+    ZASSERT(w.spawn(true, /*max_documents=*/2));
 
     std::vector<std::string> evicted;
     w.peer->on_notification(
@@ -619,7 +676,7 @@ TEST_CASE(DocumentLimitEvicts) {
             cp.arguments = make_args(paths[i]);
 
             auto result = co_await w.peer->send_request(cp);
-            EXPECT_TRUE(result.has_value());
+            ZEXPECT(result);
         }
 
         // The third compile overflowed the 2-document cap: the least
@@ -630,17 +687,62 @@ TEST_CASE(DocumentLimitEvicts) {
         hp.offset = 4;  // 'var_0'
 
         auto result = co_await w.peer->send_request(hp);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().data, std::string("null"));
+        ZASSERT(!result.has_value());
+        ZEXPECT(result.error().code == worker::dispatch_errc::document_unloaded);
 
         test_done = true;
     });
 
-    ASSERT_TRUE(test_done);
-    ASSERT_EQ(evicted, std::vector<std::string>{paths[0]});
+    ZASSERT(test_done);
+    ZASSERT(evicted == std::vector<std::string>{paths[0]});
 }
 
-};  // TEST_SUITE(StatefulWorker)
+ZEST_CASE(BusyDocumentsStay) {
+    // A document in flight is never evicted: the master would hear of the
+    // eviction while the compile is still to land and compile it again.
+    // The large document's compile is still running when the small one's
+    // lands over the cap; only the small one, idle by the time the large
+    // one lands, may go.
+    TempDir tmp;
+    std::string large = "#include <vector>\n";
+    for(int i = 0; i < 5000; i += 1) {
+        large += std::format("std::vector<int> v_{};\n", i);
+    }
+    tmp.touch("large.cpp", large);
+    tmp.touch("small.cpp", "int x;\n");
+    std::vector<std::pair<std::string, std::string>> documents = {
+        {tmp.path("large.cpp"), large     },
+        {tmp.path("small.cpp"), "int x;\n"},
+    };
+
+    WorkerHandle w;
+    ZASSERT(w.spawn(true, /*max_documents=*/1));
+
+    std::vector<std::string> evicted;
+    w.peer->on_notification(
+        [&](const worker::EvictedParams& params) { evicted.push_back(params.path); });
+
+    bool test_done = false;
+    w.run([&]() -> kota::task<> {
+        auto compile = [&](std::size_t i) -> kota::task<> {
+            worker::CompileParams cp;
+            cp.path = documents[i].first;
+            cp.version = 1;
+            cp.text = documents[i].second;
+            cp.directory = "/tmp";
+            cp.arguments = make_args(cp.path);
+            auto result = co_await w.peer->send_request(cp);
+            ZEXPECT(result);
+        };
+        co_await kota::when_all(compile(0), compile(1));
+        test_done = true;
+    });
+
+    ZASSERT(test_done);
+    ZASSERT(evicted == std::vector<std::string>{documents[1].first});
+}
+
+};  // ZEST_SUITE(StatefulWorker)
 
 }  // namespace
 

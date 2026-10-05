@@ -1,9 +1,7 @@
-#include <print>
-
 #include "driver/driver.h"
 #include "sched/batch.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/path.h"
 
 namespace clice::driver {
 
@@ -12,8 +10,7 @@ using kota::deco::decl::KVStyle;
 namespace {
 
 struct FormatOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Workspace root directory (default: current directory)",
@@ -43,11 +40,7 @@ struct FormatOptions {
            required = false)
     <std::uint32_t> jobs;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--log-level", "--log-level="},
-           help = "Log level: trace, debug, info, warn, error, off",
-           required = false)
-    <std::string> log_level;
+    LogLevelOption log;
 
     DecoInput(meta_var = "<PATH>...",
               help =
@@ -57,86 +50,58 @@ struct FormatOptions {
     <std::vector<std::string>> paths;
 };
 
-auto make_command() {
-    return kota::deco::cli::command<FormatOptions>("clice format [OPTIONS] [<PATH>...]");
-}
-
-/// An argument as the build spells paths: absolute under the workspace,
-/// dot segments folded, canonical.
-std::string argument_path(llvm::StringRef root, llvm::StringRef argument) {
-    llvm::SmallString<256> absolute(path::is_absolute(argument) ? argument.str()
-                                                                : path::join(root, argument));
-    path::remove_dots(absolute, /*remove_dot_dot=*/true);
-    std::string result(absolute.str());
-    path::canonicalize(result);
-    return result;
-}
-
 int run_format(BatchFormatOptions options) {
     auto result = run_batch_format(options);
-    std::print(stderr, "{}", result.output);
+    write_output(stderr, result.output);
     if(result.exit_code == 2) {
-        std::println(stderr, "{}", result.error);
+        driver::println(stderr, "{}", result.error);
         return 2;
     }
     if(result.files == 0) {
-        std::println("No files to format under {}.", options.root);
+        driver::println("No files to format under {}.", options.root);
         return 0;
     }
     if(!options.check) {
-        std::println("Formatted {} file{} in {:.1f}s.",
-                     result.files,
-                     plural_s(result.files),
-                     result.seconds);
+        driver::println("Formatted {} file{} in {:.1f}s.",
+                        result.files,
+                        plural_s(result.files),
+                        result.seconds);
     } else if(result.unformatted.empty()) {
-        std::println("Checked {} file{} in {:.1f}s: all formatted.",
-                     result.files,
-                     plural_s(result.files),
-                     result.seconds);
+        driver::println("Checked {} file{} in {:.1f}s: all formatted.",
+                        result.files,
+                        plural_s(result.files),
+                        result.seconds);
     } else {
-        std::println("Checked {} file{} in {:.1f}s: {} need{} formatting.",
-                     result.files,
-                     plural_s(result.files),
-                     result.seconds,
-                     result.unformatted.size(),
-                     result.unformatted.size() == 1 ? "s" : "");
+        driver::println("Checked {} file{} in {:.1f}s: {} need{} formatting.",
+                        result.files,
+                        plural_s(result.files),
+                        result.seconds,
+                        result.unformatted.size(),
+                        result.unformatted.size() == 1 ? "s" : "");
     }
     return result.exit_code;
 }
 
 }  // namespace
 
-void add_format(kota::deco::cli::SubCommander& root, int& exit_code) {
-    auto cmd = make_command();
-    cmd.matchAll([&exit_code](FormatOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           if(!apply_log_level(opts.log_level.value_or("info"))) {
-               exit_code = 2;
-               return;
-           }
-           logging::stderr_logger("format", logging::options);
+void add_format(kota::deco::cli::SubCommander& root) {
+    auto cmd = kota::deco::cli::command<FormatOptions>("clice format [OPTIONS] [<PATH>...]");
+    cmd.match_all([](FormatOptions opts) {
+        opts.log.apply();
+        logging::stderr_logger("format", logging::options);
 
-           BatchFormatOptions options{
-               .root = workspace_root(opts.workspace.value_or("")),
-               .configuration = opts.configuration.value_or(""),
-               .clang_format = opts.clang_format.value_or("clang-format"),
-               .jobs = opts.jobs.value_or(0),
-               .check = static_cast<bool>(opts.check),
-           };
-           for(auto& argument: opts.paths.value_or(std::vector<std::string>{})) {
-               options.paths.push_back(argument_path(options.root, argument));
-           }
-           exit_code = run_format(std::move(options));
-       })
-        .on_error([&exit_code](auto err) {
-            LOG_ERROR("{}", err.message);
-            exit_code = 2;
-        });
+        BatchFormatOptions options{
+            .root = workspace_root(opts.workspace.value_or("")),
+            .configuration = opts.configuration.value_or(""),
+            .clang_format = opts.clang_format.value_or("clang-format"),
+            .jobs = opts.jobs.value_or(0),
+            .check = static_cast<bool>(opts.check),
+        };
+        for(auto& argument: opts.paths.value_or(std::vector<std::string>{})) {
+            options.paths.emplace_back(argument, Spelling(options.root));
+        }
+        return run_format(std::move(options));
+    });
 
     root.add({.name = "format", .description = "Format C++ source files"}, std::move(cmd));
 }

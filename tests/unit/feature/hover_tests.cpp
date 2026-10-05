@@ -8,7 +8,6 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
-#include "support/filesystem.h"
 
 #include "kota/meta/enum.h"
 
@@ -198,7 +197,7 @@ std::string dump(const HoverInfo& info) {
     return out;
 }
 
-TEST_SUITE(hover, Tester) {
+ZEST_SUITE(hover, Tester) {
 
 std::optional<protocol::Hover> result;
 std::optional<HoverInfo> info;
@@ -206,17 +205,17 @@ llvm::StringRef current_code;
 
 void run(llvm::StringRef code) {
     add_main("main.cpp", code);
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     auto points = nameless_points();
-    ASSERT_EQ(points.size(), 1U);
+    ZASSERT(points.size() == 1U);
     auto offset = points[0];
     result = feature::hover(*unit, offset, {}, feature::PositionEncoding::UTF8);
 }
 
 void compile_only(llvm::StringRef code) {
     add_main("main.cpp", code);
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 }
 
 /// Compile the code and compute hover info on the (single) annotated point.
@@ -229,7 +228,7 @@ void run_info(llvm::StringRef code,
     current_code = code;
 
     add_main("main.cpp", code);
-    ASSERT_TRUE(compile(standard));
+    ZASSERT(compile(standard));
 
     auto points = nameless_points();
     std::uint32_t offset = points.size() == 1 ? points[0] : point("p");
@@ -240,7 +239,7 @@ void expect_hover(const HoverInfo& expected) {
     if(!info) {
         std::println("no hover result for:\n{}", current_code.str());
     }
-    ASSERT_TRUE(info.has_value());
+    ZASSERT(info);
 
     bool same =
         info->namespace_scope == expected.namespace_scope &&
@@ -258,24 +257,24 @@ void expect_hover(const HoverInfo& expected) {
         std::println("hover mismatch for:\n{}", current_code.str());
     }
 
-    EXPECT_EQ(dump(info->namespace_scope), dump(expected.namespace_scope));
-    EXPECT_EQ(info->local_scope, expected.local_scope);
-    EXPECT_EQ(info->name, expected.name);
-    EXPECT_EQ(info->kind.value(), expected.kind.value());
-    EXPECT_EQ(info->documentation, expected.documentation);
-    EXPECT_EQ(info->definition, expected.definition);
-    EXPECT_EQ(info->access_specifier, expected.access_specifier);
-    EXPECT_EQ(dump(info->type), dump(expected.type));
-    EXPECT_EQ(dump(info->return_type), dump(expected.return_type));
-    EXPECT_EQ(dump(info->parameters), dump(expected.parameters));
-    EXPECT_EQ(dump(info->template_parameters), dump(expected.template_parameters));
-    EXPECT_EQ(dump(info->value), dump(expected.value));
-    EXPECT_EQ(dump(info->size), dump(expected.size));
-    EXPECT_EQ(dump(info->offset), dump(expected.offset));
-    EXPECT_EQ(dump(info->padding), dump(expected.padding));
-    EXPECT_EQ(dump(info->align), dump(expected.align));
-    EXPECT_EQ(dump(info->callee_arg_info), dump(expected.callee_arg_info));
-    EXPECT_EQ(dump(info->call_pass_type), dump(expected.call_pass_type));
+    ZEXPECT(dump(info->namespace_scope) == dump(expected.namespace_scope));
+    ZEXPECT(info->local_scope == expected.local_scope);
+    ZEXPECT(info->name == expected.name);
+    ZEXPECT(info->kind.value() == expected.kind.value());
+    ZEXPECT(info->documentation == expected.documentation);
+    ZEXPECT(info->definition == expected.definition);
+    ZEXPECT(info->access_specifier == expected.access_specifier);
+    ZEXPECT(dump(info->type) == dump(expected.type));
+    ZEXPECT(dump(info->return_type) == dump(expected.return_type));
+    ZEXPECT(dump(info->parameters) == dump(expected.parameters));
+    ZEXPECT(dump(info->template_parameters) == dump(expected.template_parameters));
+    ZEXPECT(dump(info->value) == dump(expected.value));
+    ZEXPECT(dump(info->size) == dump(expected.size));
+    ZEXPECT(dump(info->offset) == dump(expected.offset));
+    ZEXPECT(dump(info->padding) == dump(expected.padding));
+    ZEXPECT(dump(info->align) == dump(expected.align));
+    ZEXPECT(dump(info->callee_arg_info) == dump(expected.callee_arg_info));
+    ZEXPECT(dump(info->call_pass_type) == dump(expected.call_pass_type));
 }
 
 void check_sym_range() {
@@ -284,12 +283,12 @@ void check_sym_range() {
     }
 
     auto expected = range("sym");
-    ASSERT_TRUE(info->symbol_range.has_value());
+    ZASSERT(info->symbol_range);
     if(*info->symbol_range != expected) {
         std::println("symbol range mismatch for:\n{}", current_code.str());
     }
-    EXPECT_EQ(info->symbol_range->begin, expected.begin);
-    EXPECT_EQ(info->symbol_range->end, expected.end);
+    ZEXPECT(info->symbol_range->begin == expected.begin);
+    ZEXPECT(info->symbol_range->end == expected.end);
 }
 
 struct HoverCase {
@@ -307,31 +306,31 @@ void check_cases(llvm::ArrayRef<HoverCase> cases, llvm::StringRef standard = "-s
     }
 }
 
-TEST_CASE(namespace_decl) {
+ZEST_CASE(namespace_decl) {
     run(R"cpp(
 namespace §A {
 }
 )cpp");
 
-    ASSERT_TRUE(result.has_value());
+    ZASSERT(result);
     auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
-    ASSERT_TRUE(content != nullptr);
-    ASSERT_TRUE(content->value.find("namespace") != std::string::npos);
+    ZASSERT(content != nullptr);
+    ZASSERT(content->value.find("namespace") != std::string::npos);
 }
 
-TEST_CASE(function_reference) {
+ZEST_CASE(function_reference) {
     run(R"cpp(
 int foo() { return 0; }
 int x = §foo();
 )cpp");
 
-    ASSERT_TRUE(result.has_value());
+    ZASSERT(result);
     auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
-    ASSERT_TRUE(content != nullptr);
-    ASSERT_TRUE(content->value.find("foo") != std::string::npos);
+    ZASSERT(content != nullptr);
+    ZASSERT(content->value.find("foo") != std::string::npos);
 }
 
-TEST_CASE(record_scope) {
+ZEST_CASE(record_scope) {
     compile_only(R"cpp(
 typedef struct A {
     struct B {
@@ -380,7 +379,7 @@ namespace out {
 )cpp");
 }
 
-TEST_CASE(enum_style) {
+ZEST_CASE(enum_style) {
     compile_only(R"cpp(
 enum Free {
     A = 1,
@@ -396,7 +395,7 @@ enum class Scope: long {
 )cpp");
 }
 
-TEST_CASE(function_style) {
+ZEST_CASE(function_style) {
     compile_only(R"cpp(
 typedef long long ll;
 
@@ -421,7 +420,7 @@ struct A {
 )cpp");
 }
 
-TEST_CASE(variable_style) {
+ZEST_CASE(variable_style) {
     compile_only(R"cpp(
 void f() {
     constexpr static auto x1 = 1;
@@ -429,7 +428,7 @@ void f() {
 )cpp");
 }
 
-TEST_CASE(auto_and_decltype) {
+ZEST_CASE(auto_and_decltype) {
     compile_only(R"cpp(
 §(a1)aut§(a2)o§(a3) i = -1;
 
@@ -447,7 +446,7 @@ int f3(au§(fn_para_auto)to x) {}
 )cpp");
 }
 
-TEST_CASE(expr) {
+ZEST_CASE(expr) {
     compile_only(R"cpp(
 int xxxx = 1;
 int yyyy = xx§(e1)xx;
@@ -464,7 +463,7 @@ struct A {
 )cpp");
 }
 
-TEST_CASE(structured_no_crash) {
+ZEST_CASE(structured_no_crash) {
     HoverCase cases[] = {
         // Field type initializer.
         {R"cpp(
@@ -551,7 +550,7 @@ TEST_CASE(structured_no_crash) {
     check_cases(cases);
 }
 
-TEST_CASE(all_no_crash) {
+ZEST_CASE(all_no_crash) {
     HoverCase cases[] = {
         {R"cpp(// Should not crash when evaluating the initializer.
             struct Test {};
@@ -581,7 +580,7 @@ TEST_CASE(all_no_crash) {
     check_cases(cases);
 }
 
-TEST_CASE(spaceship_doc_no_crash) {
+ZEST_CASE(spaceship_doc_no_crash) {
     run_info(R"cpp(
   namespace std {
   struct strong_ordering {
@@ -602,29 +601,29 @@ TEST_CASE(spaceship_doc_no_crash) {
   static_assert(S<void>() =§= S<void>());
     )cpp");
 
-    ASSERT_TRUE(info.has_value());
-    EXPECT_EQ(info->documentation, "");
+    ZASSERT(info);
+    ZEXPECT(info->documentation == "");
 }
 
-TEST_CASE(invalid_default_args) {
+ZEST_CASE(invalid_default_args) {
     // Function parameter default values are not evaluated on invalid decls.
     run_info(R"cpp(
         // error-ok testing behavior on invalid decl
         class Foo {};
         void foo(Foo p§aram = nullptr);
         )cpp");
-    ASSERT_TRUE(info.has_value());
-    EXPECT_FALSE(info->value.has_value());
+    ZASSERT(info);
+    ZEXPECT(!info->value.has_value());
 
     run_info(R"cpp(
         class Foo {};
         void foo(Foo *p§aram = nullptr);
         )cpp");
-    ASSERT_TRUE(info.has_value());
-    EXPECT_EQ(dump(info->value), "nullptr");
+    ZASSERT(info);
+    ZEXPECT(dump(info->value) == "nullptr");
 }
 
-TEST_CASE(disable_show_aka) {
+ZEST_CASE(disable_show_aka) {
     feature::HoverOptions options;
     options.show_aka = false;
 
@@ -635,29 +634,29 @@ TEST_CASE(disable_show_aka) {
              options,
              "-std=c++17");
 
-    ASSERT_TRUE(info.has_value());
-    EXPECT_EQ(dump(info->type), dump(std::optional(PrintedType("m_int"))));
+    ZASSERT(info);
+    ZEXPECT(dump(info->type) == dump(std::optional(PrintedType("m_int"))));
     check_sym_range();
 }
 
-TEST_CASE(big_ints_no_crash) {
+ZEST_CASE(big_ints_no_crash) {
     // APInt64 wrap around.
     run_info(R"cpp(
     constexpr unsigned long value = -1; // wrap around
     void foo() { va§lue; }
   )cpp");
-    ASSERT_TRUE(info.has_value());
+    ZASSERT(info);
 
     // __int128_t value printing.
     run_info(R"cpp(
     constexpr __int128_t value = -4;
     void foo() { va§lue; }
   )cpp");
-    ASSERT_TRUE(info.has_value());
-    EXPECT_EQ(dump(info->value), "-4 (0xfffffffc)");
+    ZASSERT(info);
+    ZEXPECT(dump(info->value) == "-4 (0xfffffffc)");
 }
 
-TEST_CASE(global_casts_no_crash) {
+ZEST_CASE(global_casts_no_crash) {
     /// Use `unsigned long long` so the cast does not truncate the pointer on
     /// LLP64 targets (Windows), where `unsigned long` is only 32 bits.
     run_info(R"cpp(
@@ -668,8 +667,8 @@ TEST_CASE(global_casts_no_crash) {
       Test v§al = static_cast<Test>(reinterpret_cast<uintptr_t>(&global_var));
     }
   )cpp");
-    ASSERT_TRUE(info.has_value());
-    EXPECT_EQ(dump(info->value), "&global_var");
+    ZASSERT(info);
+    ZEXPECT(dump(info->value) == "&global_var");
 
     run_info(R"cpp(
     using uintptr_t = unsigned long long;
@@ -678,21 +677,21 @@ TEST_CASE(global_casts_no_crash) {
       uintptr_t a§ddress = reinterpret_cast<uintptr_t>(&global_var);
     }
   )cpp");
-    ASSERT_TRUE(info.has_value());
-    EXPECT_EQ(dump(info->value), "&global_var");
+    ZASSERT(info);
+    ZEXPECT(dump(info->value) == "&global_var");
 }
 
-TEST_CASE(setter_heuristic_no_crash) {
+ZEST_CASE(setter_heuristic_no_crash) {
     run_info(R"cpp(
     /* error-ok */
     template<typename T> T foo(T);
 
     // Setter variable heuristic might fail if the callexpr is broken.
     struct X { int Y; void §(sym)⟦§setY⟧(float) { Y = foo(undefined); } };)cpp");
-    ASSERT_TRUE(info.has_value());
+    ZASSERT(info);
 }
 
-TEST_CASE(parse_documentation) {
+ZEST_CASE(parse_documentation) {
     struct {
         llvm::StringRef documentation;
         llvm::StringRef markdown;
@@ -723,196 +722,186 @@ TEST_CASE(parse_documentation) {
     for(const auto& c: cases) {
         markup::Document output;
         feature::parse_documentation(c.documentation, output);
-        EXPECT_EQ(output.as_markdown(), c.markdown);
-        EXPECT_EQ(output.as_plain_text(), c.plain_text);
+        ZEXPECT(output.as_markdown() == c.markdown);
+        ZEXPECT(output.as_plain_text() == c.plain_text);
     }
 }
 
-TEST_CASE(plaintext_content) {
+ZEST_CASE(plaintext_content) {
     add_main("main.cpp", R"cpp(
 int §foo = 1;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     feature::HoverOptions options;
     options.parse_comment_as_markdown = false;
     result = feature::hover(*unit, nameless_points()[0], options, feature::PositionEncoding::UTF8);
 
-    ASSERT_TRUE(result.has_value());
+    ZASSERT(result);
     auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
-    ASSERT_TRUE(content != nullptr);
-    ASSERT_EQ(content->kind, protocol::MarkupKind::plain_text);
-    ASSERT_TRUE(content->value.find("variable foo") != std::string::npos);
+    ZASSERT(content != nullptr);
+    ZASSERT(content->kind == protocol::MarkupKind::PlainText);
+    ZASSERT(content->value.find("variable foo") != std::string::npos);
 }
 
-TEST_CASE(protocol_range) {
+ZEST_CASE(protocol_range) {
     run(R"cpp(
 int §foo = 1;
 )cpp");
 
-    ASSERT_TRUE(result.has_value());
-    ASSERT_TRUE(result->range.has_value());
+    ZASSERT(result);
+    ZASSERT(result->range);
 
     // The highlighted token is `foo` on line 1, columns [4, 7).
-    ASSERT_EQ(result->range->start.line, 1U);
-    ASSERT_EQ(result->range->start.character, 4U);
-    ASSERT_EQ(result->range->end.line, 1U);
-    ASSERT_EQ(result->range->end.character, 7U);
+    ZASSERT(result->range->start.line == 1U);
+    ZASSERT(result->range->start.character == 4U);
+    ZASSERT(result->range->end.line == 1U);
+    ZASSERT(result->range->end.character == 7U);
 }
 
-TEST_CASE(include_header) {
+ZEST_CASE(include_header) {
     add_file("test.h", "#pragma once\n");
     add_main("main.cpp", R"cpp(
 #include §(arg)⟦"test.h"§⟧
 §(outside)
 int x = 0;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     auto arg = range("arg", "main.cpp");
     info = feature::hover_info(*unit, arg.begin + 1);
-    ASSERT_TRUE(info.has_value());
-    EXPECT_EQ(info->kind, SymbolKind::Header);
-    EXPECT_EQ(info->name, "test.h");
+    ZASSERT(info);
+    ZEXPECT(info->kind == SymbolKind::Header);
+    ZEXPECT(info->name == "test.h");
 
-    llvm::SmallString<128> path(info->definition);
-    path::remove_dots(path);
-    EXPECT_EQ(path, TestVFS::path("test.h"));
-    ASSERT_TRUE(info->symbol_range.has_value());
-    EXPECT_EQ(info->symbol_range->begin, arg.begin);
-    EXPECT_EQ(info->symbol_range->end, arg.end);
+    ZEXPECT(info->definition == TestVFS::path("test.h"));
+    ZASSERT(info->symbol_range);
+    ZEXPECT(info->symbol_range->begin == arg.begin);
+    ZEXPECT(info->symbol_range->end == arg.end);
 
     result = feature::hover(*unit, arg.begin + 1, {}, feature::PositionEncoding::UTF8);
-    ASSERT_TRUE(result.has_value());
+    ZASSERT(result);
     auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
-    ASSERT_TRUE(content != nullptr);
-    EXPECT_TRUE(content->value.contains("test.h"));
-    EXPECT_TRUE(content->value.contains(TestVFS::path("test.h")));
-    ASSERT_TRUE(result->range.has_value());
-    EXPECT_EQ(result->range->start.line, 1U);
-    EXPECT_EQ(result->range->start.character, 9U);
-    EXPECT_EQ(result->range->end.line, 1U);
-    EXPECT_EQ(result->range->end.character, 17U);
+    ZASSERT(content != nullptr);
+    ZEXPECT(content->value.contains("test.h"));
+    ZEXPECT(content->value.contains(TestVFS::path("test.h")));
+    ZASSERT(result->range);
+    ZEXPECT(result->range->start.line == 1U);
+    ZEXPECT(result->range->start.character == 9U);
+    ZEXPECT(result->range->end.line == 1U);
+    ZEXPECT(result->range->end.character == 17U);
 
-    EXPECT_FALSE(feature::hover_info(*unit, point("outside")).has_value());
+    ZEXPECT(!feature::hover_info(*unit, point("outside")).has_value());
 }
 
-TEST_CASE(has_include_header) {
+ZEST_CASE(has_include_header) {
     add_file("test.h", "#pragma once\n");
     add_main("main.cpp", R"cpp(
 #if __has_include(§(arg)⟦"test.h"§⟧)
 #endif
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     auto arg = range("arg", "main.cpp");
     auto hover = feature::hover_info(*unit, arg.begin + 1);
-    ASSERT_TRUE(hover.has_value());
-    EXPECT_EQ(hover->kind, SymbolKind::Header);
-    EXPECT_EQ(hover->name, "test.h");
+    ZASSERT(hover);
+    ZEXPECT(hover->kind == SymbolKind::Header);
+    ZEXPECT(hover->name == "test.h");
 
-    llvm::SmallString<128> path(hover->definition);
-    path::remove_dots(path);
-    EXPECT_EQ(path, TestVFS::path("test.h"));
-    EXPECT_EQ(hover->symbol_range, arg);
+    ZEXPECT(hover->definition == TestVFS::path("test.h"));
+    ZEXPECT(hover->symbol_range == arg);
 }
 
-TEST_CASE(embed_file) {
+ZEST_CASE(embed_file) {
     add_file("data.bin", "0123456789");
     add_main("main.cpp", R"cpp(
 const unsigned char data[] = {
 #embed §(arg)⟦"data.bin"§⟧
 };
 )cpp");
-    ASSERT_TRUE(compile("-std=c++23"));
+    ZASSERT(compile("-std=c++23"));
 
     auto arg = range("arg", "main.cpp");
     auto hover = feature::hover_info(*unit, arg.begin + 1);
-    ASSERT_TRUE(hover.has_value());
-    EXPECT_EQ(hover->kind, SymbolKind::Header);
-    EXPECT_EQ(hover->name, "data.bin");
+    ZASSERT(hover);
+    ZEXPECT(hover->kind == SymbolKind::Header);
+    ZEXPECT(hover->name == "data.bin");
 
-    llvm::SmallString<128> path(hover->definition);
-    path::remove_dots(path);
-    EXPECT_EQ(path, TestVFS::path("data.bin"));
-    EXPECT_EQ(hover->symbol_range, arg);
+    ZEXPECT(hover->definition == TestVFS::path("data.bin"));
+    ZEXPECT(hover->symbol_range == arg);
 }
 
-TEST_CASE(has_embed_file) {
+ZEST_CASE(has_embed_file) {
     add_file("data.bin", "0123456789");
     add_main("main.cpp", R"cpp(
 #if __has_embed(§(arg)⟦"data.bin"§⟧)
 #endif
 )cpp");
-    ASSERT_TRUE(compile("-std=c++23"));
+    ZASSERT(compile("-std=c++23"));
 
     auto arg = range("arg", "main.cpp");
     auto hover = feature::hover_info(*unit, arg.begin + 1);
-    ASSERT_TRUE(hover.has_value());
-    EXPECT_EQ(hover->kind, SymbolKind::Header);
-    EXPECT_EQ(hover->name, "data.bin");
+    ZASSERT(hover);
+    ZEXPECT(hover->kind == SymbolKind::Header);
+    ZEXPECT(hover->name == "data.bin");
 
-    llvm::SmallString<128> path(hover->definition);
-    path::remove_dots(path);
-    EXPECT_EQ(path, TestVFS::path("data.bin"));
-    EXPECT_EQ(hover->symbol_range, arg);
+    ZEXPECT(hover->definition == TestVFS::path("data.bin"));
+    ZEXPECT(hover->symbol_range == arg);
 }
 
-TEST_CASE(macro_include_header) {
+ZEST_CASE(macro_include_header) {
     add_file("test.h", "#pragma once\n");
     add_main("main.cpp", R"cpp(
 #define HEADER "test.h"
 #include §(arg)⟦HEADER§⟧
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     auto arg = range("arg", "main.cpp");
     auto hover = feature::hover_info(*unit, arg.begin + 1);
-    ASSERT_TRUE(hover.has_value());
-    EXPECT_EQ(hover->kind, SymbolKind::Header);
-    EXPECT_EQ(hover->name, "HEADER");
+    ZASSERT(hover);
+    ZEXPECT(hover->kind == SymbolKind::Header);
+    ZEXPECT(hover->name == "HEADER");
 
-    llvm::SmallString<128> path(hover->definition);
-    path::remove_dots(path);
-    EXPECT_EQ(path, TestVFS::path("test.h"));
-    EXPECT_EQ(hover->symbol_range, arg);
+    ZEXPECT(hover->definition == TestVFS::path("test.h"));
+    ZEXPECT(hover->symbol_range == arg);
 }
 
-TEST_CASE(missing_include_header) {
+ZEST_CASE(missing_include_header) {
     add_main("main.cpp", R"cpp(
 /* error-ok */
 #include §(arg)⟦"missing.h"§⟧
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     auto arg = range("arg", "main.cpp");
-    EXPECT_FALSE(feature::hover_info(*unit, arg.begin + 1).has_value());
+    ZEXPECT(!feature::hover_info(*unit, arg.begin + 1).has_value());
 }
 
-TEST_CASE(scoped_attribute) {
+ZEST_CASE(scoped_attribute) {
     run_info(R"cpp(
 [[gnu::no§inline]] void foo();
 )cpp");
 
-    ASSERT_TRUE(info.has_value());
-    ASSERT_EQ(info->name, "noinline");
-    ASSERT_EQ(info->local_scope, "gnu");
-    ASSERT_EQ(info->kind, SymbolKind::Invalid);
+    ZASSERT(info);
+    ZASSERT(info->name == "noinline");
+    ZASSERT(info->local_scope == "gnu");
+    ZASSERT(info->kind == SymbolKind::Invalid);
 }
 
-TEST_CASE(whitespace_no_hover) {
+ZEST_CASE(whitespace_no_hover) {
     add_main("main.cpp", R"cpp(
 int x = 1;
 §(p)
 int y = 2;
 )cpp");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     // No spelled token touches the empty line, so there is no hover.
-    ASSERT_TRUE(!feature::hover_info(*unit, point("p")).has_value());
+    ZASSERT(!feature::hover_info(*unit, point("p")).has_value());
 }
 
-};  // TEST_SUITE(hover)
+};  // ZEST_SUITE(hover)
 
 }  // namespace
 

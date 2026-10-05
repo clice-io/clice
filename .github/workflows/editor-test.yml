@@ -10,7 +10,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
           - os: macos-15
+            target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -25,11 +27,11 @@ jobs:
       - name: Download binaries
         uses: actions/download-artifact@v8
         with:
-          name: native-build-${{ matrix.os }}-RelWithDebInfo
-          path: build/RelWithDebInfo/
+          name: build-${{ matrix.target }}-RelWithDebInfo
+          path: build/RelWithDebInfo/bin/
 
       - name: Make binaries executable
-        run: chmod +x build/RelWithDebInfo/bin/*
+        run: chmod +x build/RelWithDebInfo/bin/bin/*
 
       # Always the latest stable release on purpose: this job exists to
       # catch breakage caused by new editor versions.

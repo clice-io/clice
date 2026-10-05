@@ -1,0 +1,24 @@
+---
+created_at: 2026-09-27
+input_file: functions_snippets/10_statement_snippets.cpp
+---
+default:
+  no_placeholders:
+  - { label: "return", kind: Keyword, edit: "13:4-13:8" }
+
+  pos:
+  - { label: "while", kind: Keyword, edit: "11:4-11:7" }
+
+  variants:
+  - { label: "for", kind: Keyword, edit: "12:4-12:6" }
+
+configured:
+  no_placeholders:
+  - { label: "return", kind: Snippet, detail: ";", edit: "13:4-13:8", insert: "return;" }
+
+  pos:
+  - { label: "while", kind: Snippet, detail: " (condition) { statements }", edit: "11:4-11:7", insert: "while (${1:condition}) {\n${2:statements}\n}", snippet: true }
+
+  variants:
+  - { label: "for", kind: Snippet, detail: " (init-statement; condition; inc-expression) { statements }", edit: "12:4-12:6", insert: "for (${1:init-statement}; ${2:condition}; ${3:inc-expression}) {\n${4:statements}\n}", snippet: true }
+  - { label: "for", kind: Snippet, detail: " (range-declaration : range-expression) { statements }", edit: "12:4-12:6", insert: "for (${1:range-declaration} : ${2:range-expression}) {\n${3:statements}\n}", snippet: true }

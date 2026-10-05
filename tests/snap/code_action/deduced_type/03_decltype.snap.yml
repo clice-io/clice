@@ -1,0 +1,7 @@
+---
+created_at: 2026-09-21
+input_file: deduced_type/03_decltype.cpp
+---
+dt:
+- [refactor.rewrite] Replace 'decltype(value())' with 'int'
+  9:4-9:21 => "int"

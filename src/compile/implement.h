@@ -64,7 +64,24 @@ struct CompilationUnitRef::Self {
 
     std::shared_ptr<std::atomic_bool> stop;
 
+    /// See CompilationParams::workspace.
+    std::string workspace;
+
     llvm::StringMap<std::unique_ptr<llvm::MemoryBuffer>> remapped_buffers;
+
+    /// See CompilationParams::synthesized.
+    llvm::StringSet<> synthesized;
+
+    /// Every place a failed include or `__has_include` lookup looked, see
+    /// CompilationUnitRef::absent.
+    llvm::StringSet<> absent;
+
+    /// Memo of CompilationUnitRef::from_context.
+    llvm::DenseMap<clang::FileID, bool> context_files;
+
+    /// Memo of the host path CompilationUnitRef::host_source compares
+    /// against.
+    std::optional<std::string> host;
 
     /// The frontend action used to build the unit.
     std::unique_ptr<clang::FrontendAction> action;
@@ -93,6 +110,10 @@ struct CompilationUnitRef::Self {
 
     /// Cache for line starts of the main file.
     std::vector<std::uint32_t> line_starts_cache;
+
+    /// Cache for the main file's non-ASCII lines; an ASCII file has none,
+    /// so only nullopt means not built yet.
+    std::optional<std::vector<std::uint64_t>> non_ascii_cache;
 
     llvm::BumpPtrAllocator path_storage;
 

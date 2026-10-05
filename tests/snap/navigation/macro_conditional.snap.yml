@@ -4,6 +4,30 @@ input_file: macro_conditional.cpp
 ---
 builtin_use: none
 
+defined_bare:
+  definition:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+  declaration:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+  references:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+    - { file: "${WS}/macro_conditional.cpp", range: "7:7-7:17" }
+    - { file: "${WS}/macro_conditional.cpp", range: "11:8-11:18" }
+    - { file: "${WS}/macro_conditional.cpp", range: "15:12-15:22" }
+    - { file: "${WS}/macro_conditional.cpp", range: "15:35-15:45" }
+
+defined_paren:
+  definition:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+  declaration:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+  references:
+    - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
+    - { file: "${WS}/macro_conditional.cpp", range: "7:7-7:17" }
+    - { file: "${WS}/macro_conditional.cpp", range: "11:8-11:18" }
+    - { file: "${WS}/macro_conditional.cpp", range: "15:12-15:22" }
+    - { file: "${WS}/macro_conditional.cpp", range: "15:35-15:45" }
+
 guard_def:
   definition:
     - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
@@ -13,6 +37,8 @@ guard_def:
     - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
     - { file: "${WS}/macro_conditional.cpp", range: "7:7-7:17" }
     - { file: "${WS}/macro_conditional.cpp", range: "11:8-11:18" }
+    - { file: "${WS}/macro_conditional.cpp", range: "15:12-15:22" }
+    - { file: "${WS}/macro_conditional.cpp", range: "15:35-15:45" }
 
 ifdef_use:
   definition:
@@ -23,6 +49,8 @@ ifdef_use:
     - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
     - { file: "${WS}/macro_conditional.cpp", range: "7:7-7:17" }
     - { file: "${WS}/macro_conditional.cpp", range: "11:8-11:18" }
+    - { file: "${WS}/macro_conditional.cpp", range: "15:12-15:22" }
+    - { file: "${WS}/macro_conditional.cpp", range: "15:35-15:45" }
 
 ifndef_use:
   definition:
@@ -33,3 +61,5 @@ ifndef_use:
     - { file: "${WS}/macro_conditional.cpp", range: "5:8-5:18" }
     - { file: "${WS}/macro_conditional.cpp", range: "7:7-7:17" }
     - { file: "${WS}/macro_conditional.cpp", range: "11:8-11:18" }
+    - { file: "${WS}/macro_conditional.cpp", range: "15:12-15:22" }
+    - { file: "${WS}/macro_conditional.cpp", range: "15:35-15:45" }

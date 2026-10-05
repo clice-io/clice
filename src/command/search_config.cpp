@@ -2,6 +2,7 @@
 
 #include "command/argument_parser.h"
 #include "command/command.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSet.h"
@@ -21,14 +22,31 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     std::vector<SearchDir> angled;
     std::vector<SearchDir> system;
     std::vector<SearchDir> after;
+    std::vector<std::string> forced_includes;
 
-    auto make_absolute = [&](std::string_view path) -> std::string {
-        llvm::SmallString<256> abs_path(path);
-        if(!llvm::sys::path::is_absolute(abs_path)) {
-            llvm::sys::path::make_absolute(directory, abs_path);
+    // A leading `=` names the sysroot: the last -isysroot, else the last
+    // --sysroot.
+    std::string_view isysroot;
+    std::string_view sysroot;
+    for(auto& arg: args) {
+        if(arg.values.empty()) {
+            continue;
         }
-        llvm::sys::path::remove_dots(abs_path, true);
-        return abs_path.str().str();
+        if(arg.opt_id == OPT_isysroot) {
+            isysroot = arg.values[0];
+        } else if(arg.opt_id == OPT__sysroot_EQ || arg.opt_id == OPT__sysroot) {
+            sysroot = arg.values[0];
+        }
+    }
+    if(!isysroot.empty()) {
+        sysroot = isysroot;
+    }
+    auto base = Spelling::absolute(directory);
+    auto make_absolute = [&](std::string_view path) -> std::string {
+        if(path.starts_with('=') && !sysroot.empty()) {
+            return Spelling(std::string(sysroot) + std::string(path.substr(1)), base).str();
+        }
+        return Spelling(path, base).str();
     };
 
     // Track -iprefix state for -iwithprefix/-iwithprefixbefore.
@@ -47,9 +65,11 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
             case OPT_I: angled.push_back({make_absolute(value)}); break;
 
             // System group (clang: frontend::System / ExternCSystem)
-            case OPT_isystem:
+            case OPT_isystem: system.push_back({make_absolute(value)}); break;
             case OPT_internal_isystem:
-            case OPT_internal_externc_isystem: system.push_back({make_absolute(value)}); break;
+            case OPT_internal_externc_isystem:
+                system.push_back({.path = make_absolute(value), .driver = true});
+                break;
 
             // Prefix options: must be processed in argument order.
             case OPT_iprefix: prefix = value; break;
@@ -64,6 +84,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
 
             case OPT_idirafter: after.push_back({make_absolute(value)}); break;
 
+            case OPT_include: forced_includes.emplace_back(value); break;
+
             // TODO: -cxx-isystem (clang: frontend::CXXSystem, C++-only system dirs)
             // TODO: -iwithsysroot (prepends sysroot to path, then adds to System)
             // TODO: HeaderMap support (-I foo.hmap remaps include names)
@@ -73,6 +95,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
 
     // Concatenate: Quoted → Angled → System → After
     SearchConfig config;
+    config.forced_includes = std::move(forced_includes);
     config.dirs.reserve(quoted.size() + angled.size() + system.size() + after.size());
     config.dirs.insert(config.dirs.end(),
                        std::make_move_iterator(quoted.begin()),
@@ -94,6 +117,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     // RemoveDuplicates(SearchList, NumQuoted). If a path appears in both
     // Angled and System, keep the first (Angled) occurrence. This is
     // critical for #include_next correctness.
+    // Duplicates are one directory however spelled, as clang tells them
+    // apart by the directory itself.
     {
         llvm::StringSet<> seen;
         // Do NOT seed with Quoted paths. clang's RemoveDuplicates(SearchList,
@@ -104,7 +129,8 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
         unsigned removed_before_system = 0;
         unsigned removed_before_after = 0;
         for(unsigned read = config.angled_start_idx; read < config.dirs.size(); ++read) {
-            if(seen.insert(config.dirs[read].path).second) {
+            if(seen.insert(CanonicalPath(Spelling::absolute(config.dirs[read].path)).str())
+                   .second) {
                 if(write != read) {
                     config.dirs[write] = std::move(config.dirs[read]);
                 }

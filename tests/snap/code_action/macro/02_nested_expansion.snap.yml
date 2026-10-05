@@ -1,0 +1,7 @@
+---
+created_at: 2026-09-21
+input_file: macro/02_nested_expansion.cpp
+---
+quad:
+- [refactor.inline] Expand macro 'QUAD'
+  10:11-10:18 => "((((n) + (n))) + (((n) + (n))))"

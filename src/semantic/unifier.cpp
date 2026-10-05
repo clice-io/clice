@@ -559,13 +559,8 @@ bool Unifier::unify(const clang::TemplateArgument& pattern,
 
         case clang::TemplateArgument::Expression: {
             /// A bare reference to an NTTP deduces it; any other expression
-            /// is a non-deduced context.
-            /// TODO(nttp-expr): compound expression patterns (`P<N, N + 1>`)
-            /// are accepted without post-deduction validation, which can keep
-            /// a partial real deduction would reject. Validating requires
-            /// evaluating dependent expressions under bindings; deliberately
-            /// deferred — the failure mode must stay mis-selection between
-            /// declared specializations, never a crash. Constant expression arguments are
+            /// is a non-deduced context, checked once the bindings are
+            /// known (see Deferred). Constant expression arguments are
             /// normalized to Integral so downstream substitution (e.g. array
             /// bounds) sees a value, not an expression.
             if(auto NTTP = referenced_nttp(pattern.getAsExpr());
@@ -596,6 +591,7 @@ bool Unifier::unify(const clang::TemplateArgument& pattern,
                 }
                 return bind(NTTP->getIndex(), bound);
             }
+            deferred_checks.push_back({.pattern = pattern.getAsExpr(), .argument = argument});
             return true;
         }
 
@@ -753,14 +749,324 @@ bool Unifier::unify(TemplateArguments patterns, TemplateArguments arguments) {
     return i == flat.size();
 }
 
-bool deduce_arguments(clang::ASTContext& context,
-                      clang::TemplateParameterList* params,
-                      llvm::ArrayRef<clang::TemplateArgument> patterns,
-                      llvm::ArrayRef<clang::TemplateArgument> arguments,
-                      llvm::SmallVectorImpl<clang::TemplateArgument>& deduced) {
+namespace {
+
+llvm::APSInt truth(bool value) {
+    return llvm::APSInt(llvm::APInt(1, value ? 1 : 0), /*isUnsigned=*/true);
+}
+
+struct Folder {
+    clang::ASTContext& context;
+    llvm::function_ref<std::optional<llvm::APSInt>(const clang::Expr*)> value_of;
+
+    /// A node whose type is still dependent (`Config<T>::k + 1`) keeps the
+    /// width its operands gave it.
+    std::optional<llvm::APSInt> typed(const llvm::APSInt& value, clang::QualType type) {
+        return type->isDependentType() ? value : convert_integral(context, value, type);
+    }
+
+    /// Sema promotes the operands of an arithmetic node whose type is known;
+    /// under a still-dependent one (`-Config<T>::n`) the folding applies the
+    /// integral promotion itself.
+    llvm::APSInt promoted(const llvm::APSInt& value, clang::QualType type) {
+        auto width = context.getIntWidth(context.IntTy);
+        if(!type->isDependentType() || value.getBitWidth() >= width) {
+            return value;
+        }
+        return llvm::APSInt(value.extend(width), /*isUnsigned=*/false);
+    }
+
+    std::optional<llvm::APSInt> fold(const clang::Expr* expr) {
+        if(!expr->isValueDependent()) {
+            return expr->getIntegerConstantExpr(context);
+        }
+
+        expr = expr->IgnoreParens();
+        if(auto* cast = llvm::dyn_cast<clang::CastExpr>(expr)) {
+            auto value = fold(cast->getSubExpr());
+            return value ? convert_integral(context, *value, cast->getType()) : std::nullopt;
+        }
+
+        if(auto* unary = llvm::dyn_cast<clang::UnaryOperator>(expr)) {
+            auto value = fold(unary->getSubExpr());
+            if(!value) {
+                return std::nullopt;
+            }
+            *value = promoted(*value, unary->getType());
+            switch(unary->getOpcode()) {
+                case clang::UO_Plus: break;
+                case clang::UO_Minus: {
+                    if(value->isSigned() && value->isMinSignedValue()) {
+                        return std::nullopt;
+                    }
+                    *value = -*value;
+                    break;
+                }
+                case clang::UO_Not: *value = ~*value; break;
+                case clang::UO_LNot: *value = truth(value->isZero()); break;
+                default: return std::nullopt;
+            }
+            return typed(*value, unary->getType());
+        }
+
+        if(auto* binary = llvm::dyn_cast<clang::BinaryOperator>(expr)) {
+            return fold_binary(binary);
+        }
+
+        if(auto* conditional = llvm::dyn_cast<clang::ConditionalOperator>(expr)) {
+            auto condition = fold(conditional->getCond());
+            if(!condition) {
+                return std::nullopt;
+            }
+            auto* chosen =
+                condition->isZero() ? conditional->getFalseExpr() : conditional->getTrueExpr();
+            auto value = fold(chosen);
+            if(!value) {
+                return std::nullopt;
+            }
+            auto type = conditional->getType();
+            if(!type->isDependentType()) {
+                return typed(*value, type);
+            }
+
+            /// Under a still-dependent type Sema has not brought the branches
+            /// to their common type; the other branch must already agree.
+            auto other = fold(chosen == conditional->getTrueExpr() ? conditional->getFalseExpr()
+                                                                   : conditional->getTrueExpr());
+            if(!other) {
+                return std::nullopt;
+            }
+            auto result = promoted(*value, type);
+            auto rest = promoted(*other, type);
+            if(result.getBitWidth() != rest.getBitWidth() ||
+               result.isUnsigned() != rest.isUnsigned()) {
+                return std::nullopt;
+            }
+            return result;
+        }
+
+        auto value = value_of(expr);
+        return value ? typed(*value, expr->getType()) : std::nullopt;
+    }
+
+    std::optional<llvm::APSInt> fold_binary(const clang::BinaryOperator* binary) {
+        auto op = binary->getOpcode();
+        auto lhs = fold(binary->getLHS());
+        auto rhs = fold(binary->getRHS());
+
+        /// An operand that does not fold may stand for a substitution
+        /// failure, which leaves the whole expression false: `false` settles
+        /// `&&` regardless, `true` settles `||` only beside a known operand.
+        if(op == clang::BO_LAnd && ((lhs && lhs->isZero()) || (rhs && rhs->isZero()))) {
+            return typed(truth(false), binary->getType());
+        }
+        if(!lhs || !rhs) {
+            return std::nullopt;
+        }
+        if(op == clang::BO_LAnd || op == clang::BO_LOr) {
+            return typed(truth(op == clang::BO_LAnd ? lhs->getBoolValue() && rhs->getBoolValue()
+                                                    : lhs->getBoolValue() || rhs->getBoolValue()),
+                         binary->getType());
+        }
+        lhs = promoted(*lhs, binary->getType());
+        rhs = promoted(*rhs, binary->getType());
+
+        if(op == clang::BO_Shl || op == clang::BO_Shr) {
+            if(rhs->isNegative() || rhs->uge(lhs->getBitWidth())) {
+                return std::nullopt;
+            }
+            auto amount = static_cast<unsigned>(rhs->getZExtValue());
+            auto result = op == clang::BO_Shl ? *lhs << amount : *lhs >> amount;
+            return typed(result, binary->getType());
+        }
+
+        /// Sema has already brought both operands to their common type; a
+        /// mismatch means an operand we folded through an unmodeled path.
+        if(lhs->getBitWidth() != rhs->getBitWidth() || lhs->isUnsigned() != rhs->isUnsigned()) {
+            return std::nullopt;
+        }
+
+        /// Signed overflow leaves the expression no constant at all.
+        bool overflow = false;
+        bool is_signed = lhs->isSigned();
+        auto signed_result = [](llvm::APInt value) {
+            return llvm::APSInt(std::move(value), /*isUnsigned=*/false);
+        };
+        llvm::APSInt result;
+        switch(op) {
+            case clang::BO_Mul: {
+                result = is_signed ? signed_result(lhs->smul_ov(*rhs, overflow)) : *lhs * *rhs;
+                break;
+            }
+            case clang::BO_Div:
+            case clang::BO_Rem: {
+                if(rhs->isZero()) {
+                    return std::nullopt;
+                }
+                overflow = is_signed && lhs->isMinSignedValue() && rhs->isAllOnes();
+                result = op == clang::BO_Div ? *lhs / *rhs : *lhs % *rhs;
+                break;
+            }
+            case clang::BO_Add: {
+                result = is_signed ? signed_result(lhs->sadd_ov(*rhs, overflow)) : *lhs + *rhs;
+                break;
+            }
+            case clang::BO_Sub: {
+                result = is_signed ? signed_result(lhs->ssub_ov(*rhs, overflow)) : *lhs - *rhs;
+                break;
+            }
+            case clang::BO_And: result = *lhs & *rhs; break;
+            case clang::BO_Xor: result = *lhs ^ *rhs; break;
+            case clang::BO_Or: result = *lhs | *rhs; break;
+            case clang::BO_LT: result = truth(*lhs < *rhs); break;
+            case clang::BO_GT: result = truth(*lhs > *rhs); break;
+            case clang::BO_LE: result = truth(*lhs <= *rhs); break;
+            case clang::BO_GE: result = truth(*lhs >= *rhs); break;
+            case clang::BO_EQ: result = truth(*lhs == *rhs); break;
+            case clang::BO_NE: result = truth(*lhs != *rhs); break;
+            default: return std::nullopt;
+        }
+        if(overflow) {
+            return std::nullopt;
+        }
+        return typed(result, binary->getType());
+    }
+};
+
+/// The value of a converted argument, when it is one.
+std::optional<llvm::APSInt> constant_value(clang::ASTContext& context,
+                                           const clang::TemplateArgument& argument) {
+    if(argument.getKind() == clang::TemplateArgument::Integral) {
+        return argument.getAsIntegral();
+    }
+    if(argument.getKind() == clang::TemplateArgument::Expression &&
+       !argument.getAsExpr()->isValueDependent()) {
+        return argument.getAsExpr()->getIntegerConstantExpr(context);
+    }
+    return std::nullopt;
+}
+
+bool same_profile(clang::ASTContext& context, const clang::Expr* lhs, const clang::Expr* rhs) {
+    llvm::FoldingSetNodeID left;
+    llvm::FoldingSetNodeID right;
+    lhs->Profile(left, context, /*Canonical=*/true);
+    rhs->Profile(right, context, /*Canonical=*/true);
+    return left == right;
+}
+
+/// Is `pattern`, with the bindings of `params` substituted in, the same
+/// expression as `argument`? Compared node by node over the operators the
+/// folding models; a bound parameter matches the subexpression its binding
+/// denotes. Anything else is not provably the same.
+bool same_expression(clang::ASTContext& context,
+                     clang::TemplateParameterList* params,
+                     llvm::ArrayRef<clang::TemplateArgument> bindings,
+                     const clang::Expr* pattern,
+                     const clang::Expr* argument) {
+    pattern = pattern->IgnoreParenImpCasts();
+    argument = argument->IgnoreParenImpCasts();
+
+    if(auto NTTP = referenced_nttp(pattern);
+       NTTP && NTTP->getDepth() == params->getDepth() && NTTP->getIndex() < bindings.size()) {
+        auto& bound = bindings[NTTP->getIndex()];
+        if(bound.getKind() == clang::TemplateArgument::Expression) {
+            return same_profile(context, bound.getAsExpr()->IgnoreParenImpCasts(), argument);
+        }
+        auto expected = constant_value(context, bound);
+        auto actual =
+            argument->isValueDependent() ? std::nullopt : argument->getIntegerConstantExpr(context);
+        return expected && actual && llvm::APSInt::isSameValue(*expected, *actual);
+    }
+
+    if(!pattern->isValueDependent() && !argument->isValueDependent()) {
+        auto expected = pattern->getIntegerConstantExpr(context);
+        auto actual = argument->getIntegerConstantExpr(context);
+        return expected && actual && llvm::APSInt::isSameValue(*expected, *actual);
+    }
+
+    if(pattern->getStmtClass() != argument->getStmtClass()) {
+        return false;
+    }
+    auto same = [&](const clang::Expr* lhs, const clang::Expr* rhs) {
+        return same_expression(context, params, bindings, lhs, rhs);
+    };
+    if(auto* binary = llvm::dyn_cast<clang::BinaryOperator>(pattern)) {
+        auto* other = llvm::cast<clang::BinaryOperator>(argument);
+        return binary->getOpcode() == other->getOpcode() &&
+               same(binary->getLHS(), other->getLHS()) && same(binary->getRHS(), other->getRHS());
+    }
+    if(auto* unary = llvm::dyn_cast<clang::UnaryOperator>(pattern)) {
+        auto* other = llvm::cast<clang::UnaryOperator>(argument);
+        return unary->getOpcode() == other->getOpcode() &&
+               same(unary->getSubExpr(), other->getSubExpr());
+    }
+    if(auto* conditional = llvm::dyn_cast<clang::ConditionalOperator>(pattern)) {
+        auto* other = llvm::cast<clang::ConditionalOperator>(argument);
+        return same(conditional->getCond(), other->getCond()) &&
+               same(conditional->getTrueExpr(), other->getTrueExpr()) &&
+               same(conditional->getFalseExpr(), other->getFalseExpr());
+    }
+    return false;
+}
+
+/// Whether a constraint is satisfied. Its top-level `&&` and `||`
+/// (through parentheses) join separately checked atomic constraints, so a
+/// satisfied disjunct settles a disjunction and an unsatisfied conjunct a
+/// conjunction, whatever the other side.
+std::optional<bool>
+    satisfaction(clang::ASTContext& context,
+                 const clang::Expr* constraint,
+                 llvm::function_ref<std::optional<llvm::APSInt>(const clang::Expr*)> value_of) {
+    constraint = constraint->IgnoreParens();
+    if(auto* binary = llvm::dyn_cast<clang::BinaryOperator>(constraint);
+       binary && binary->isLogicalOp()) {
+        auto lhs = satisfaction(context, binary->getLHS(), value_of);
+        auto rhs = satisfaction(context, binary->getRHS(), value_of);
+        bool absorbing = binary->getOpcode() == clang::BO_LOr;
+        if((lhs && *lhs == absorbing) || (rhs && *rhs == absorbing)) {
+            return absorbing;
+        }
+        if(!lhs || !rhs) {
+            return std::nullopt;
+        }
+        return !absorbing;
+    }
+    auto value = evaluate_integral(context, constraint, value_of);
+    return value ? std::optional(value->getBoolValue()) : std::nullopt;
+}
+
+}  // namespace
+
+std::optional<llvm::APSInt> convert_integral(clang::ASTContext& context,
+                                             const llvm::APSInt& value,
+                                             clang::QualType type) {
+    if(type->isDependentType() || !type->isIntegralOrEnumerationType()) {
+        return std::nullopt;
+    }
+    auto width = context.getIntWidth(type);
+    if(type->isBooleanType()) {
+        return llvm::APSInt(llvm::APInt(width, value.getBoolValue() ? 1 : 0), /*isUnsigned=*/true);
+    }
+    auto result = value.extOrTrunc(width);
+    result.setIsUnsigned(type->isUnsignedIntegerOrEnumerationType());
+    return result;
+}
+
+std::optional<llvm::APSInt> evaluate_integral(
+    clang::ASTContext& context,
+    const clang::Expr* expr,
+    llvm::function_ref<std::optional<llvm::APSInt>(const clang::Expr*)> value_of) {
+    return Folder{.context = context, .value_of = value_of}.fold(expr);
+}
+
+Deduction deduce_arguments(clang::ASTContext& context,
+                           clang::TemplateParameterList* params,
+                           llvm::ArrayRef<clang::TemplateArgument> patterns,
+                           llvm::ArrayRef<clang::TemplateArgument> arguments,
+                           llvm::SmallVectorImpl<clang::TemplateArgument>& deduced) {
     Unifier unifier(context, params->getDepth(), params->size());
     if(!unifier.unify(patterns, arguments)) {
-        return false;
+        return Deduction::Failed;
     }
 
     deduced.assign(unifier.results().begin(), unifier.results().end());
@@ -775,15 +1081,52 @@ bool deduce_arguments(clang::ASTContext& context,
             continue;
         }
 
-        return false;
+        return Deduction::Failed;
     }
-    return true;
+
+    auto value_of = [&](const clang::Expr* expr) -> std::optional<llvm::APSInt> {
+        auto NTTP = referenced_nttp(expr);
+        if(!NTTP || NTTP->getDepth() != params->getDepth() || NTTP->getIndex() >= deduced.size()) {
+            return std::nullopt;
+        }
+        return constant_value(context, deduced[NTTP->getIndex()]);
+    };
+
+    auto verdict = Deduction::Matched;
+    for(auto& check: unifier.deferred()) {
+        auto expected = evaluate_integral(context, check.pattern, value_of);
+        auto actual = constant_value(context, check.argument);
+        if(expected && actual) {
+            if(!llvm::APSInt::isSameValue(*expected, *actual)) {
+                return Deduction::Failed;
+            }
+            continue;
+        }
+        if(check.argument.getKind() == clang::TemplateArgument::Expression &&
+           same_expression(context, params, deduced, check.pattern, check.argument.getAsExpr())) {
+            continue;
+        }
+        verdict = Deduction::Unverified;
+    }
+
+    llvm::SmallVector<clang::AssociatedConstraint, 2> constraints;
+    params->getAssociatedConstraints(constraints);
+    for(auto& constraint: constraints) {
+        auto satisfied = satisfaction(context, constraint.ConstraintExpr, value_of);
+        if(!satisfied) {
+            verdict = Deduction::Unverified;
+        } else if(!*satisfied) {
+            return Deduction::Failed;
+        }
+    }
+    return verdict;
 }
 
 namespace {
 
 /// Partial ordering via symmetric deduction: `left` is more specialized than
-/// `right` iff right's pattern matches left's and not vice versa.
+/// `right` iff right's pattern matches left's and not vice versa — or the
+/// patterns are equivalent and only `left` is constrained.
 template <typename Partial>
 bool more_specialized(clang::ASTContext& context, Partial* left, Partial* right) {
     auto matches = [&](Partial* pattern, Partial* argument) {
@@ -793,43 +1136,48 @@ bool more_specialized(clang::ASTContext& context, Partial* left, Partial* right)
                              argument->getTemplateArgs().asArray());
     };
 
-    return matches(right, left) && !matches(left, right);
+    bool forward = matches(right, left);
+    if(forward != matches(left, right)) {
+        return forward;
+    }
+    return forward && left->getTemplateParameters()->hasAssociatedConstraints() &&
+           !right->getTemplateParameters()->hasAssociatedConstraints();
 }
 
 template <typename Partial>
 PartialChoice<Partial> select_partial_impl(clang::ASTContext& context,
-                                           llvm::ArrayRef<Partial*> viable) {
-    Partial* best = nullptr;
-    for(auto* partial: viable) {
-        if(!best || more_specialized(context, partial, best)) {
-            best = partial;
+                                           llvm::ArrayRef<PartialMatch<Partial>> viable) {
+    const PartialMatch<Partial>* best = nullptr;
+    for(auto& match: viable) {
+        if(!best || more_specialized(context, match.partial, best->partial)) {
+            best = &match;
         }
     }
     if(!best) {
         return {};
     }
-    for(auto* partial: viable) {
-        if(partial != best && !more_specialized(context, best, partial)) {
+    for(auto& match: viable) {
+        if(&match != best && !more_specialized(context, best->partial, match.partial)) {
             return {.verdict = PartialVerdict::Ambiguous};
         }
     }
-    if(best->getTemplateParameters()->hasAssociatedConstraints()) {
-        return {.verdict = PartialVerdict::Constrained};
+    if(!best->verified) {
+        return {.verdict = PartialVerdict::Unverified};
     }
-    return {.verdict = PartialVerdict::Selected, .winner = best};
+    return {.verdict = PartialVerdict::Selected, .winner = best->partial};
 }
 
 }  // namespace
 
-PartialChoice<clang::ClassTemplatePartialSpecializationDecl>
-    select_partial(clang::ASTContext& context,
-                   llvm::ArrayRef<clang::ClassTemplatePartialSpecializationDecl*> viable) {
+PartialChoice<clang::ClassTemplatePartialSpecializationDecl> select_partial(
+    clang::ASTContext& context,
+    llvm::ArrayRef<PartialMatch<clang::ClassTemplatePartialSpecializationDecl>> viable) {
     return select_partial_impl(context, viable);
 }
 
-PartialChoice<clang::VarTemplatePartialSpecializationDecl>
-    select_partial(clang::ASTContext& context,
-                   llvm::ArrayRef<clang::VarTemplatePartialSpecializationDecl*> viable) {
+PartialChoice<clang::VarTemplatePartialSpecializationDecl> select_partial(
+    clang::ASTContext& context,
+    llvm::ArrayRef<PartialMatch<clang::VarTemplatePartialSpecializationDecl>> viable) {
     return select_partial_impl(context, viable);
 }
 

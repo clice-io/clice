@@ -11,4 +11,4 @@ agg_brace:
     - { file: "${WS}/implicit_construction/04_aggregate_init.cpp", range: "10:7-10:12" }
     - { file: "${WS}/implicit_construction/04_aggregate_init.cpp", range: "16:13-16:18" }
   typeHierarchy:
-    - { name: "Point", kind: Struct, file: "${WS}/implicit_construction/04_aggregate_init.cpp", range: "10:7-10:12" }
+    - { name: "Point", kind: Struct, file: "${WS}/implicit_construction/04_aggregate_init.cpp", range: "10:0-13:1", selection: "10:7-10:12" }

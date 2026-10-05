@@ -1,0 +1,17 @@
+---
+created_at: 2026-09-27
+input_file: symbols/13_required_qualifier.cpp
+---
+argument:
+- { label: "Color::Green", kind: EnumMember, filter: "Green", description: "Color", edit: "20:10-20:13" }
+
+case_label:
+- { label: "Color::Red", kind: EnumMember, filter: "Red", description: "Color", edit: "23:13-23:15" }
+
+initializer:
+- { label: "Color::Red", kind: EnumMember, filter: "Red", description: "Color", edit: "19:14-19:16" }
+- { label: "reinterpret_cast", kind: Keyword, edit: "19:14-19:16" }
+- { label: "requires", kind: Keyword, edit: "19:14-19:16" }
+
+namespace_enum:
+- { label: "ns::Apple", kind: EnumMember, filter: "Apple", description: "ns::Fruit", edit: "21:18-21:21" }

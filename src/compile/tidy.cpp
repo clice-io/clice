@@ -2,6 +2,7 @@
 
 #include "compile/implement.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
@@ -473,7 +474,8 @@ TidyParams resolve_tidy_params(llvm::StringRef file) {
             opts.Checks->clear();
             return opts;
         }(),
-        tidy::ClangTidyOptions());
+        tidy::ClangTidyOptions(),
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     auto opts = provider.getOptions(file);
 
     TidyParams params;

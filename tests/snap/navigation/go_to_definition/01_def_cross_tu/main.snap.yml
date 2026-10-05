@@ -13,6 +13,6 @@ cross_use:
     - { file: "${WS}/go_to_definition/01_def_cross_tu/main.cpp", range: "11:11-11:20" }
     - { file: "${WS}/go_to_definition/01_def_cross_tu/shared.h", range: "2:4-2:13" }
   callHierarchy:
-    - { name: "transform", kind: Function, file: "${WS}/go_to_definition/01_def_cross_tu/lib.cpp", range: "2:4-2:13" }
+    - { name: "transform", kind: Function, file: "${WS}/go_to_definition/01_def_cross_tu/lib.cpp", range: "2:0-4:1", selection: "2:4-2:13" }
   incomingCalls:
-    - { name: "run", kind: Function, file: "${WS}/go_to_definition/01_def_cross_tu/main.cpp", range: "10:4-10:7", fromRanges: ["11:11-11:27"] }
+    - { name: "run", kind: Function, file: "${WS}/go_to_definition/01_def_cross_tu/main.cpp", range: "10:0-12:1", selection: "10:4-10:7", fromRanges: ["11:11-11:20"] }
