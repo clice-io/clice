@@ -125,8 +125,10 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         auto& interface = interfaces[module];
         auto kind = partition.kinds[module];
         if((kind == ModuleKind::Wrapped || kind == ModuleKind::Textual) &&
-           !is_module_name(interface.module)) {
-            return std::unexpected(std::format("module {}: not a module name", interface.module));
+           (!is_module_name(interface.module) || interface.module == "std" ||
+            interface.module == "std.compat")) {
+            return std::unexpected(
+                std::format("module {}: not a module name to generate", interface.module));
         }
         switch(kind) {
             case ModuleKind::Program: break;
@@ -265,7 +267,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
             for(auto& name: header.names) {
                 llvm::SmallString<128> spelled(name);
                 llvm::sys::path::remove_dots(spelled, true, llvm::sys::path::Style::posix);
-                if(spelled.empty() || spelled.starts_with("../") ||
+                if(spelled.empty() || spelled.starts_with("../") || spelled.contains('\\') ||
                    llvm::sys::path::is_absolute(spelled)) {
                     continue;
                 }
