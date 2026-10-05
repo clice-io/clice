@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "project/index_store.h"
@@ -75,20 +76,24 @@ public:
     /// Resume background indexing after a pause.
     void resume_indexing();
 
-    /// RAII guard that pauses indexing for its lifetime.
+    /// RAII guard that pauses indexing for its lifetime; a moved-from one
+    /// holds nothing.
     struct [[nodiscard]] ScopedPause {
-        IndexPump& pump;
+        IndexPump* pump;
 
-        explicit ScopedPause(IndexPump& pump) : pump(pump) {
+        explicit ScopedPause(IndexPump& pump) : pump(&pump) {
             pump.pause_indexing();
         }
 
-        ~ScopedPause() {
-            pump.resume_indexing();
-        }
+        ScopedPause(ScopedPause&& other) noexcept : pump(std::exchange(other.pump, nullptr)) {}
 
-        ScopedPause(const ScopedPause&) = delete;
-        ScopedPause& operator=(const ScopedPause&) = delete;
+        ScopedPause& operator=(ScopedPause&&) = delete;
+
+        ~ScopedPause() {
+            if(pump) {
+                pump->resume_indexing();
+            }
+        }
     };
 
     ScopedPause scoped_pause() {
@@ -234,7 +239,7 @@ private:
     /// the pump-side halves: a Requeued file gets its queue slot, an
     /// abandoned one wakes its waiters.
     PendingLedger::FailureVerdict note_dispatch_failure(const PendingLedger::Claim& claim,
-                                                        bool crashed);
+                                                        PendingLedger::Failure failure);
 
     /// Wake the file's await_attempt waiters whose observed ticket the
     /// settled attempt covers (`ticket` and older) and drop their events.

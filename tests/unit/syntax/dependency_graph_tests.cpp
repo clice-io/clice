@@ -10,42 +10,42 @@
 namespace clice::testing {
 namespace {
 
-TEST_SUITE(DependencyGraph) {
+ZEST_SUITE(DependencyGraph) {
 
 // ============================================================================
 // Module mapping tests
 // ============================================================================
 
-TEST_CASE(LookupModuleEmpty) {
+ZEST_CASE(LookupModuleEmpty) {
     clice::DependencyGraph graph;
-    EXPECT_TRUE(graph.lookup_module("foo.bar").empty());
+    ZEXPECT(graph.lookup_module("foo.bar").empty());
 }
 
-TEST_CASE(AddAndLookupModule) {
+ZEST_CASE(AddAndLookupModule) {
     clice::DependencyGraph graph;
     graph.add_module("foo.bar", Fid{42});
 
     auto result = graph.lookup_module("foo.bar");
-    ASSERT_EQ(result.size(), 1u);
-    EXPECT_EQ(result[0].raw, 42u);
+    ZASSERT(result.size() == 1u);
+    ZEXPECT(result[0].raw == 42u);
 }
 
-TEST_CASE(DuplicateModuleDedup) {
+ZEST_CASE(DuplicateModuleDedup) {
     clice::DependencyGraph graph;
     // Same module name, same path_id — should dedup.
     graph.add_module("foo", Fid{10});
     graph.add_module("foo", Fid{10});
-    ASSERT_EQ(graph.lookup_module("foo").size(), 1u);
+    ZASSERT(graph.lookup_module("foo").size() == 1u);
 
     // Same module name, different path_id — multiple candidates.
     graph.add_module("foo", Fid{20});
     auto result = graph.lookup_module("foo");
-    ASSERT_EQ(result.size(), 2u);
-    EXPECT_EQ(result[0].raw, 10u);
-    EXPECT_EQ(result[1].raw, 20u);
+    ZASSERT(result.size() == 2u);
+    ZEXPECT(result[0].raw == 10u);
+    ZEXPECT(result[1].raw == 20u);
 }
 
-TEST_CASE(RedeclareKeepsProviderOrder) {
+ZEST_CASE(RedeclareKeepsProviderOrder) {
     clice::DependencyGraph graph;
     graph.update_module_decl(Fid{1}, "foo");
     graph.update_module_decl(Fid{2}, "foo");
@@ -54,41 +54,38 @@ TEST_CASE(RedeclareKeepsProviderOrder) {
     // name must not rotate the duplicate-name list.
     graph.update_module_decl(Fid{1}, "foo");
     auto result = graph.lookup_module("foo");
-    ASSERT_EQ(result.size(), 2u);
-    EXPECT_EQ(result[0].raw, 1u);
-    EXPECT_EQ(result[1].raw, 2u);
+    ZASSERT(result.size() == 2u);
+    ZEXPECT(result[0].raw == 1u);
+    ZEXPECT(result[1].raw == 2u);
 
     // A real name change still moves the path.
     graph.update_module_decl(Fid{1}, "bar");
-    ASSERT_EQ(graph.lookup_module("foo").size(), 1u);
-    EXPECT_EQ(graph.lookup_module("foo")[0].raw, 2u);
-    ASSERT_EQ(graph.lookup_module("bar").size(), 1u);
+    ZASSERT(graph.lookup_module("foo").size() == 1u);
+    ZEXPECT(graph.lookup_module("foo")[0].raw == 2u);
+    ZASSERT(graph.lookup_module("bar").size() == 1u);
 }
 
-TEST_CASE(ModuleOfFollowsDeclarations) {
+ZEST_CASE(ModuleOfFollowsDeclarations) {
     clice::DependencyGraph graph;
-    EXPECT_FALSE(graph.has_modules());
-    EXPECT_TRUE(graph.module_of(Fid{1}).empty());
+    ZEXPECT(graph.module_of(Fid{1}).empty());
 
     graph.add_module("foo", Fid{1});
-    EXPECT_TRUE(graph.has_modules());
-    EXPECT_EQ(graph.module_of(Fid{1}), "foo");
+    ZEXPECT(graph.module_of(Fid{1}) == "foo");
 
     // A re-declaration moves the file: the old name loses it, the
     // reverse view follows in the same write.
     graph.update_module_decl(Fid{1}, "bar");
-    EXPECT_EQ(graph.module_of(Fid{1}), "bar");
-    EXPECT_TRUE(graph.lookup_module("foo").empty());
+    ZEXPECT(graph.module_of(Fid{1}) == "bar");
+    ZEXPECT(graph.lookup_module("foo").empty());
 
     // Dropping the declaration leaves the name behind as an empty
-    // provider list, yet the file declares nothing and no module remains.
+    // provider list, yet the file declares nothing.
     graph.update_module_decl(Fid{1}, {});
-    EXPECT_TRUE(graph.module_of(Fid{1}).empty());
-    EXPECT_FALSE(graph.has_modules());
-    EXPECT_TRUE(graph.lookup_module("bar").empty());
+    ZEXPECT(graph.module_of(Fid{1}).empty());
+    ZEXPECT(graph.lookup_module("bar").empty());
 }
 
-TEST_CASE(ModuleOfFollowsRedeclaredName) {
+ZEST_CASE(ModuleOfFollowsRedeclaredName) {
     // A file scanned under two configurations can be listed under two
     // names (a macro picks the declaration). Re-declaring one of them
     // keeps both provider lists untouched — no reselection — but the
@@ -96,67 +93,67 @@ TEST_CASE(ModuleOfFollowsRedeclaredName) {
     clice::DependencyGraph graph;
     graph.add_module("a", Fid{1});
     graph.add_module("b", Fid{1});
-    EXPECT_EQ(graph.module_of(Fid{1}), "b");
+    ZEXPECT(graph.module_of(Fid{1}) == "b");
 
     graph.update_module_decl(Fid{1}, "a");
-    EXPECT_EQ(graph.module_of(Fid{1}), "a");
-    EXPECT_TRUE(llvm::is_contained(graph.lookup_module("a"), Fid{1}));
-    EXPECT_TRUE(llvm::is_contained(graph.lookup_module("b"), Fid{1}));
+    ZEXPECT(graph.module_of(Fid{1}) == "a");
+    ZEXPECT(llvm::is_contained(graph.lookup_module("a"), Fid{1}));
+    ZEXPECT(llvm::is_contained(graph.lookup_module("b"), Fid{1}));
 }
 
-TEST_CASE(MultipleModules) {
+ZEST_CASE(MultipleModules) {
     clice::DependencyGraph graph;
     graph.add_module("mod.a", Fid{1});
     graph.add_module("mod.b", Fid{2});
     graph.add_module("mod.c:part", Fid{3});
 
-    ASSERT_EQ(graph.lookup_module("mod.a").size(), 1u);
-    EXPECT_EQ(graph.lookup_module("mod.a")[0].raw, 1u);
-    ASSERT_EQ(graph.lookup_module("mod.b").size(), 1u);
-    EXPECT_EQ(graph.lookup_module("mod.b")[0].raw, 2u);
-    ASSERT_EQ(graph.lookup_module("mod.c:part").size(), 1u);
-    EXPECT_EQ(graph.lookup_module("mod.c:part")[0].raw, 3u);
-    EXPECT_TRUE(graph.lookup_module("mod.d").empty());
+    ZASSERT(graph.lookup_module("mod.a").size() == 1u);
+    ZEXPECT(graph.lookup_module("mod.a")[0].raw == 1u);
+    ZASSERT(graph.lookup_module("mod.b").size() == 1u);
+    ZEXPECT(graph.lookup_module("mod.b")[0].raw == 2u);
+    ZASSERT(graph.lookup_module("mod.c:part").size() == 1u);
+    ZEXPECT(graph.lookup_module("mod.c:part")[0].raw == 3u);
+    ZEXPECT(graph.lookup_module("mod.d").empty());
 }
 
-TEST_CASE(ModuleCount) {
+ZEST_CASE(ModuleCount) {
     clice::DependencyGraph graph;
-    EXPECT_EQ(graph.module_count(), 0u);
+    ZEXPECT(graph.module_count() == 0u);
 
     graph.add_module("a", Fid{1});
-    EXPECT_EQ(graph.module_count(), 1u);
+    ZEXPECT(graph.module_count() == 1u);
 
     graph.add_module("b", Fid{2});
-    EXPECT_EQ(graph.module_count(), 2u);
+    ZEXPECT(graph.module_count() == 2u);
 
     // Second candidate for "a" doesn't increase module name count.
     graph.add_module("a", Fid{3});
-    EXPECT_EQ(graph.module_count(), 2u);
+    ZEXPECT(graph.module_count() == 2u);
 }
 
 // ============================================================================
 // Include edge tests
 // ============================================================================
 
-TEST_CASE(EmptyGraphIncludes) {
+ZEST_CASE(EmptyGraphIncludes) {
     clice::DependencyGraph graph;
     auto includes = graph.get_includes(Fid{0}, 0);
-    EXPECT_TRUE(includes.empty());
+    ZEXPECT(includes.empty());
 }
 
-TEST_CASE(SetAndGetIncludes) {
+ZEST_CASE(SetAndGetIncludes) {
     clice::DependencyGraph graph;
     llvm::SmallVector<IncludeEdge> ids = {{Fid{10}}, {Fid{20}}, {Fid{30}}};
     graph.set_includes(Fid{1}, 0, ids);
 
     auto result = graph.get_includes(Fid{1}, 0);
-    ASSERT_EQ(result.size(), 3u);
-    EXPECT_EQ(result[0].fid.raw, 10u);
-    EXPECT_EQ(result[1].fid.raw, 20u);
-    EXPECT_EQ(result[2].fid.raw, 30u);
+    ZASSERT(result.size() == 3u);
+    ZEXPECT(result[0].fid.raw == 10u);
+    ZEXPECT(result[1].fid.raw == 20u);
+    ZEXPECT(result[2].fid.raw == 30u);
 }
 
-TEST_CASE(IncludesPerConfig) {
+ZEST_CASE(IncludesPerConfig) {
     clice::DependencyGraph graph;
 
     // Same file, different configs.
@@ -164,17 +161,17 @@ TEST_CASE(IncludesPerConfig) {
     graph.set_includes(Fid{1}, 1, {{Fid{20}}, {Fid{30}}});
 
     auto config0 = graph.get_includes(Fid{1}, 0);
-    ASSERT_EQ(config0.size(), 2u);
-    EXPECT_EQ(config0[0].fid.raw, 10u);
-    EXPECT_EQ(config0[1].fid.raw, 20u);
+    ZASSERT(config0.size() == 2u);
+    ZEXPECT(config0[0].fid.raw == 10u);
+    ZEXPECT(config0[1].fid.raw == 20u);
 
     auto config1 = graph.get_includes(Fid{1}, 1);
-    ASSERT_EQ(config1.size(), 2u);
-    EXPECT_EQ(config1[0].fid.raw, 20u);
-    EXPECT_EQ(config1[1].fid.raw, 30u);
+    ZASSERT(config1.size() == 2u);
+    ZEXPECT(config1[0].fid.raw == 20u);
+    ZEXPECT(config1[1].fid.raw == 30u);
 }
 
-TEST_CASE(GetAllIncludesUnion) {
+ZEST_CASE(GetAllIncludesUnion) {
     clice::DependencyGraph graph;
 
     graph.set_includes(Fid{1}, 0, {{Fid{10}}, {Fid{20}}});
@@ -182,13 +179,13 @@ TEST_CASE(GetAllIncludesUnion) {
 
     auto all = graph.get_all_includes(Fid{1});
     // Union of {10, 20} and {20, 30} = {10, 20, 30}.
-    ASSERT_EQ(all.size(), 3u);
-    EXPECT_TRUE(llvm::is_contained(all, Fid{10}));
-    EXPECT_TRUE(llvm::is_contained(all, Fid{20}));
-    EXPECT_TRUE(llvm::is_contained(all, Fid{30}));
+    ZASSERT(all.size() == 3u);
+    ZEXPECT(llvm::is_contained(all, Fid{10}));
+    ZEXPECT(llvm::is_contained(all, Fid{20}));
+    ZEXPECT(llvm::is_contained(all, Fid{30}));
 }
 
-TEST_CASE(ConditionalFlag) {
+ZEST_CASE(ConditionalFlag) {
     clice::DependencyGraph graph;
 
     // PathID 5 unconditional, PathID 7 conditional.
@@ -199,65 +196,65 @@ TEST_CASE(ConditionalFlag) {
     graph.set_includes(Fid{1}, 0, ids);
 
     auto result = graph.get_includes(Fid{1}, 0);
-    ASSERT_EQ(result.size(), 2u);
+    ZASSERT(result.size() == 2u);
 
     // First: unconditional.
-    EXPECT_EQ(result[0].fid.raw, 5u);
-    EXPECT_FALSE(result[0].conditional);
+    ZEXPECT(result[0].fid.raw == 5u);
+    ZEXPECT(!result[0].conditional);
 
     // Second: conditional.
-    EXPECT_EQ(result[1].fid.raw, 7u);
-    EXPECT_TRUE(result[1].conditional);
+    ZEXPECT(result[1].fid.raw == 7u);
+    ZEXPECT(result[1].conditional);
 }
 
-TEST_CASE(FileCount) {
+ZEST_CASE(FileCount) {
     clice::DependencyGraph graph;
-    EXPECT_EQ(graph.file_count(), 0u);
+    ZEXPECT(graph.file_count() == 0u);
 
     graph.set_includes(Fid{1}, 0, {{Fid{10}}});
-    EXPECT_EQ(graph.file_count(), 1u);
+    ZEXPECT(graph.file_count() == 1u);
 
     // Same file, different config.
     graph.set_includes(Fid{1}, 1, {{Fid{20}}});
-    EXPECT_EQ(graph.file_count(), 1u);
+    ZEXPECT(graph.file_count() == 1u);
 
     // Different file.
     graph.set_includes(Fid{2}, 0, {{Fid{30}}});
-    EXPECT_EQ(graph.file_count(), 2u);
+    ZEXPECT(graph.file_count() == 2u);
 }
 
-TEST_CASE(EdgeCount) {
+ZEST_CASE(EdgeCount) {
     clice::DependencyGraph graph;
-    EXPECT_EQ(graph.edge_count(), 0u);
+    ZEXPECT(graph.edge_count() == 0u);
 
     graph.set_includes(Fid{1}, 0, {{Fid{10}}, {Fid{20}}});
-    EXPECT_EQ(graph.edge_count(), 2u);
+    ZEXPECT(graph.edge_count() == 2u);
 
     graph.set_includes(Fid{2}, 0, {{Fid{30}}});
-    EXPECT_EQ(graph.edge_count(), 3u);
+    ZEXPECT(graph.edge_count() == 3u);
 }
 
-TEST_CASE(EmptyIncludes) {
+ZEST_CASE(EmptyIncludes) {
     clice::DependencyGraph graph;
     graph.set_includes(Fid{1}, 0, {});
 
     auto result = graph.get_includes(Fid{1}, 0);
-    EXPECT_TRUE(result.empty());
-    EXPECT_EQ(graph.file_count(), 1u);
-    EXPECT_EQ(graph.edge_count(), 0u);
+    ZEXPECT(result.empty());
+    ZEXPECT(graph.file_count() == 1u);
+    ZEXPECT(graph.edge_count() == 0u);
 }
 
-TEST_CASE(IncluderListedOnce) {
+ZEST_CASE(IncluderListedOnce) {
     // One includer through two configurations is one includer.
     clice::DependencyGraph graph;
     graph.set_includes(Fid{1}, 0, {{Fid{10}}});
     graph.set_includes(Fid{1}, 1, {{Fid{10}}});
     graph.set_includes(Fid{2}, 0, {{Fid{10}}});
     graph.build_reverse_map();
-    ASSERT_EQ(graph.get_includers(Fid{10}), (llvm::ArrayRef<Fid>{Fid{1}, Fid{2}}));
+    ZASSERT(graph.get_includers(Fid{10}) == (llvm::ArrayRef<Fid>{Fid{1}, Fid{2}}));
 }
 
-TEST_CASE(ClearDropsEveryConfig) {
+ZEST_CASE(ClearDropsEveryConfig) {
     // Clearing a file drops every configuration's edges, and nothing of
     // other files.
     clice::DependencyGraph graph;
@@ -266,51 +263,97 @@ TEST_CASE(ClearDropsEveryConfig) {
     graph.set_includes(Fid{2}, 0, {{Fid{10}}});
 
     graph.clear_includes(Fid{1});
-    ASSERT_TRUE(graph.get_all_includes(Fid{1}).empty());
-    ASSERT_EQ(graph.get_all_includes(Fid{2}), llvm::SmallVector<Fid>{Fid{10}});
+    ZASSERT(graph.get_all_includes(Fid{1}).empty());
+    ZASSERT(graph.get_all_includes(Fid{2}) == llvm::SmallVector<Fid>{Fid{10}});
 }
 
-TEST_CASE(EdgesKeepReverseMap) {
+ZEST_CASE(EdgesKeepReverseMap) {
     // Once built, the reverse map follows every edge update.
     clice::DependencyGraph graph;
     graph.set_includes(Fid{1}, 0, {{Fid{10}}});
     graph.build_reverse_map();
 
     graph.set_includes(Fid{2}, 0, {{Fid{10}}, {Fid{20}}});
-    ASSERT_EQ(graph.get_includers(Fid{10}), (llvm::ArrayRef<Fid>{Fid{1}, Fid{2}}));
-    ASSERT_EQ(graph.get_includers(Fid{20}), llvm::ArrayRef<Fid>{Fid{2}});
+    ZASSERT(graph.get_includers(Fid{10}) == (llvm::ArrayRef<Fid>{Fid{1}, Fid{2}}));
+    ZASSERT(graph.get_includers(Fid{20}) == llvm::ArrayRef<Fid>{Fid{2}});
 
     // A second configuration keeps an edge the first one drops.
     graph.set_includes(Fid{2}, 1, {{Fid{20}}});
     graph.set_includes(Fid{2}, 0, {{Fid{10}}});
-    ASSERT_EQ(graph.get_includers(Fid{20}), llvm::ArrayRef<Fid>{Fid{2}});
+    ZASSERT(graph.get_includers(Fid{20}) == llvm::ArrayRef<Fid>{Fid{2}});
 
     graph.clear_includes(Fid{2});
-    ASSERT_EQ(graph.get_includers(Fid{10}), llvm::ArrayRef<Fid>{Fid{1}});
-    ASSERT_TRUE(graph.get_includers(Fid{20}).empty());
+    ZASSERT(graph.get_includers(Fid{10}) == llvm::ArrayRef<Fid>{Fid{1}});
+    ZASSERT(graph.get_includers(Fid{20}).empty());
 }
 
-};  // TEST_SUITE(DependencyGraph)
+ZEST_CASE(ReadersClimbForcedIncludes) {
+    // Unit 1 includes header 10; units 1 and 2 force header 20 in, which
+    // includes 30. Hosting stops at the forced header, readers do not.
+    clice::DependencyGraph graph;
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}});
+    graph.set_includes(Fid{20}, 0, {{Fid{30}}});
+    graph.add_forced_include(Fid{2}, Fid{20});
+    graph.add_forced_include(Fid{1}, Fid{20});
+    graph.build_reverse_map();
+
+    ZASSERT(graph.get_forcing_units(Fid{20}) == (llvm::ArrayRef<Fid>{Fid{1}, Fid{2}}));
+    ZASSERT(graph.get_includers(Fid{20}).empty());
+    ZASSERT(graph.find_host_sources(Fid{30}) == (llvm::SmallVector<Fid, 4>{Fid{20}}));
+    ZASSERT(graph.find_include_chain(Fid{1}, Fid{30}).empty());
+
+    auto readers = graph.find_readers(Fid{30});
+    llvm::sort(readers);
+    ZASSERT(readers == (llvm::SmallVector<Fid, 4>{Fid{1}, Fid{2}}));
+    ZASSERT(graph.find_readers(Fid{10}) == (llvm::SmallVector<Fid, 4>{Fid{1}}));
+}
+
+ZEST_CASE(CountsDuplicateIncludes) {
+    // One edge per directive, under the configuration with the most.
+    clice::DependencyGraph graph;
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}, {Fid{20}}, {Fid{10}}});
+    graph.set_includes(Fid{1}, 1, {{Fid{10}}});
+
+    ZEXPECT(graph.count_includes(Fid{1}, Fid{10}) == 2u);
+    ZEXPECT(graph.count_includes(Fid{1}, Fid{20}) == 1u);
+    ZEXPECT(graph.count_includes(Fid{1}, Fid{30}) == 0u);
+}
+
+ZEST_CASE(ImportReachedThroughForced) {
+    // Unit 1 forces header 20 in, which includes candidate 30; unit 2
+    // includes only header 10.
+    clice::DependencyGraph graph;
+    graph.set_includes(Fid{20}, 0, {{Fid{30}}});
+    graph.set_includes(Fid{2}, 0, {{Fid{10}}});
+    graph.add_forced_include(Fid{1}, Fid{20});
+    graph.record_scan(Fid{30}, ScanResult{.has_import = true});
+
+    ZEXPECT(graph.reaches_import(Fid{1}));
+    ZEXPECT(graph.reaches_import(Fid{30}));
+    ZEXPECT(!graph.reaches_import(Fid{2}));
+}
+
+};  // ZEST_SUITE(DependencyGraph)
 
 // ============================================================================
 // scan_dependency_graph() integration tests
 // ============================================================================
 
-TEST_SUITE(ScanDependencyGraph) {
+ZEST_SUITE(ScanDependencyGraph) {
 
-TEST_CASE(EmptyCDB) {
+ZEST_CASE(EmptyCDB) {
     FileTable file_table;
     CompilationDatabase cdb{file_table};
     DependencyGraph graph;
 
     scan_all(cdb, graph);
 
-    EXPECT_EQ(graph.file_count(), 0u);
-    EXPECT_EQ(graph.module_count(), 0u);
-    EXPECT_EQ(graph.edge_count(), 0u);
+    ZEXPECT(graph.file_count() == 0u);
+    ZEXPECT(graph.module_count() == 0u);
+    ZEXPECT(graph.edge_count() == 0u);
 }
 
-TEST_CASE(GuardedModuleRuleDefine) {
+ZEST_CASE(GuardedModuleRuleDefine) {
     /// A module declaration unguarded only by a rule-added define: the
     /// preprocess fallback must scan with the rules-applied command, like
     /// the main scan groups.
@@ -343,11 +386,11 @@ export module m;
     }
     scan_dependency_graph(cdb, graph, units);
 
-    EXPECT_EQ(graph.module_count(), 1u);
-    EXPECT_EQ(graph.lookup_module("m").size(), 1u);
+    ZEXPECT(graph.module_count() == 1u);
+    ZEXPECT(graph.lookup_module("m").size() == 1u);
 }
 
-TEST_CASE(GuardedModulePerCandidate) {
+ZEST_CASE(GuardedModulePerCandidate) {
     /// Two candidates whose defines select different module names: every
     /// entry is a scan unit preprocessed under its own command, so both
     /// names resolve; a scan handed only the second unit sees only its
@@ -370,12 +413,12 @@ export module m1;
     write_cdb(tmp, cdb, json);
     scan_all(cdb, graph);
 
-    EXPECT_EQ(graph.lookup_module("m1").size(), 1u);
-    EXPECT_EQ(graph.lookup_module("m2").size(), 1u);
+    ZEXPECT(graph.lookup_module("m1").size() == 1u);
+    ZEXPECT(graph.lookup_module("m2").size() == 1u);
 
     auto file = file_table.intern(Spelling::absolute(tmp.path("src/m.cppm")));
     auto candidates = cdb.candidate_entries(file);
-    ASSERT_EQ(candidates.size(), 2u);
+    ZASSERT(candidates.size() == 2u);
     llvm::SmallVector<CommandRef> v2_units = {
         {file,
          candidates[1].config,
@@ -384,18 +427,18 @@ export module m1;
     };
     DependencyGraph graph_v2;
     scan_dependency_graph(cdb, graph_v2, v2_units);
-    EXPECT_TRUE(graph_v2.lookup_module("m1").empty());
-    EXPECT_EQ(graph_v2.lookup_module("m2").size(), 1u);
+    ZEXPECT(graph_v2.lookup_module("m1").empty());
+    ZEXPECT(graph_v2.lookup_module("m2").size() == 1u);
 
-    // A warm run must reproduce both: the module-decl memo keys by
-    // (content, rendered command), so each command resolves its own name.
+    // A warm run reproduces both: each command preprocesses its own
+    // declaration again.
     DependencyGraph graph2;
     scan_all(cdb, graph2);
-    EXPECT_EQ(graph2.lookup_module("m1").size(), 1u);
-    EXPECT_EQ(graph2.lookup_module("m2").size(), 1u);
+    ZEXPECT(graph2.lookup_module("m1").size() == 1u);
+    ZEXPECT(graph2.lookup_module("m2").size() == 1u);
 }
 
-TEST_CASE(SingleFileNoIncludes) {
+ZEST_CASE(SingleFileNoIncludes) {
     TempDir tmp;
     tmp.touch("src/main.cpp", R"(int main() { return 0; })");
 
@@ -409,12 +452,12 @@ TEST_CASE(SingleFileNoIncludes) {
     write_cdb(tmp, cdb, json);
     scan_all(cdb, graph);
 
-    EXPECT_EQ(graph.file_count(), 1u);
-    EXPECT_EQ(graph.edge_count(), 0u);
-    EXPECT_EQ(graph.module_count(), 0u);
+    ZEXPECT(graph.file_count() == 1u);
+    ZEXPECT(graph.edge_count() == 0u);
+    ZEXPECT(graph.module_count() == 0u);
 }
 
-TEST_CASE(SingleFileWithInclude) {
+ZEST_CASE(SingleFileWithInclude) {
     TempDir tmp;
     tmp.touch("include/header.h", R"(int x = 1;)");
     tmp.touch("src/main.cpp", R"(
@@ -432,11 +475,11 @@ int main() { return x; }
     write_cdb(tmp, cdb, json);
     scan_all(cdb, graph);
 
-    EXPECT_GE(graph.file_count(), 1u);
-    EXPECT_GE(graph.edge_count(), 1u);
+    ZEXPECT(graph.file_count() >= 1u);
+    ZEXPECT(graph.edge_count() >= 1u);
 }
 
-TEST_CASE(TransitiveIncludes) {
+ZEST_CASE(TransitiveIncludes) {
     TempDir tmp;
     tmp.touch("inc/a.h", R"(#include "b.h")");
     tmp.touch("inc/b.h", R"(#include "c.h")");
@@ -457,11 +500,11 @@ int main() {}
     scan_all(cdb, graph);
 
     // main->a, a->b, b->c across 4 waves.
-    EXPECT_GE(graph.file_count(), 3u);
-    EXPECT_GE(graph.edge_count(), 3u);
+    ZEXPECT(graph.file_count() >= 3u);
+    ZEXPECT(graph.edge_count() >= 3u);
 }
 
-TEST_CASE(MultipleSourceFiles) {
+ZEST_CASE(MultipleSourceFiles) {
     TempDir tmp;
     tmp.touch("inc/shared.h", R"(int shared = 1;)");
     tmp.touch("src/a.cpp", R"(
@@ -485,11 +528,11 @@ void b() {}
     write_cdb(tmp, cdb, json);
     scan_all(cdb, graph);
 
-    EXPECT_GE(graph.file_count(), 2u);
-    EXPECT_GE(graph.edge_count(), 2u);
+    ZEXPECT(graph.file_count() >= 2u);
+    ZEXPECT(graph.edge_count() >= 2u);
 }
 
-TEST_CASE(ConditionalIncludes) {
+ZEST_CASE(ConditionalIncludes) {
     TempDir tmp;
     tmp.touch("inc/always.h", R"(// always)");
     tmp.touch("inc/maybe.h", R"(// maybe)");
@@ -511,7 +554,7 @@ TEST_CASE(ConditionalIncludes) {
     scan_all(cdb, graph);
 
     // Both headers discovered (over-approximate).
-    EXPECT_GE(graph.edge_count(), 2u);
+    ZEXPECT(graph.edge_count() >= 2u);
 
     // Verify conditional flag.
     bool found_unconditional = false;
@@ -525,11 +568,11 @@ TEST_CASE(ConditionalIncludes) {
             found_unconditional = true;
         }
     }
-    EXPECT_TRUE(found_unconditional);
-    EXPECT_TRUE(found_conditional);
+    ZEXPECT(found_unconditional);
+    ZEXPECT(found_conditional);
 }
 
-TEST_CASE(ModuleExtraction) {
+ZEST_CASE(ModuleExtraction) {
     TempDir tmp;
     tmp.touch("src/mymod.cpp", R"(
 export module my.module;
@@ -547,13 +590,13 @@ export int foo() { return 42; }
     scan_all(cdb, graph);
 
     auto result = graph.lookup_module("my.module");
-    ASSERT_EQ(result.size(), 1u);
+    ZASSERT(result.size() == 1u);
 
     auto path = cdb.files().resolve(result[0]);
-    EXPECT_TRUE(llvm::sys::fs::equivalent(path, tmp.path("src/mymod.cpp")));
+    ZEXPECT(llvm::sys::fs::equivalent(path, tmp.path("src/mymod.cpp")));
 }
 
-TEST_CASE(ModulePartition) {
+ZEST_CASE(ModulePartition) {
     TempDir tmp;
     tmp.touch("src/mod.cpp", R"(
 export module my.mod:part;
@@ -570,10 +613,10 @@ void impl() {}
     write_cdb(tmp, cdb, json);
     scan_all(cdb, graph);
 
-    ASSERT_EQ(graph.lookup_module("my.mod:part").size(), 1u);
+    ZASSERT(graph.lookup_module("my.mod:part").size() == 1u);
 }
 
-TEST_CASE(DiamondIncludes) {
+ZEST_CASE(DiamondIncludes) {
     TempDir tmp;
     tmp.touch("inc/common.h", R"(int common = 1;)");
     tmp.touch("inc/a.h", R"(
@@ -601,11 +644,11 @@ int main() {}
     scan_all(cdb, graph);
 
     // main->a, main->b, a->common, b->common.
-    EXPECT_GE(graph.edge_count(), 4u);
-    EXPECT_GE(graph.file_count(), 3u);
+    ZEXPECT(graph.edge_count() >= 4u);
+    ZEXPECT(graph.file_count() >= 3u);
 }
 
-TEST_CASE(AngledVsQuoted) {
+ZEST_CASE(AngledVsQuoted) {
     TempDir tmp;
     tmp.touch("quoted/header.h", R"(int q = 1;)");
     tmp.touch("angled/header.h", R"(int a = 1;)");
@@ -627,10 +670,10 @@ int main() {}
     write_cdb(tmp, cdb, json);
     scan_all(cdb, graph);
 
-    EXPECT_GE(graph.edge_count(), 2u);
+    ZEXPECT(graph.edge_count() >= 2u);
 }
 
-TEST_CASE(MissingInclude) {
+ZEST_CASE(MissingInclude) {
     TempDir tmp;
     tmp.touch("src/main.cpp", R"(
 #include "nonexistent.h"
@@ -647,11 +690,165 @@ int main() {}
     write_cdb(tmp, cdb, json);
     scan_all(cdb, graph);
 
-    EXPECT_EQ(graph.file_count(), 1u);
-    EXPECT_EQ(graph.edge_count(), 0u);
+    ZEXPECT(graph.file_count() == 1u);
+    ZEXPECT(graph.edge_count() == 0u);
 }
 
-TEST_CASE(MultipleModules) {
+ZEST_CASE(ForcedIncludeScanned) {
+    // A forced header is a scanned node: its includes are edges, its
+    // import syntax reaches the candidate set, and its unit reaches it
+    // through the forced relation only.
+    TempDir tmp;
+    tmp.touch("build/force.h", R"(#include "dep.h"
+import m;
+)");
+    tmp.touch("build/dep.h", "int dep;\n");
+    tmp.touch("src/main.cpp", "int main() {}\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.path("build"), tmp.path("src/main.cpp"), {"-include", "force.h"}}
+    }));
+    scan_all(cdb, graph);
+    graph.build_reverse_map();
+
+    auto main = file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto force = file_table.intern(Spelling::absolute(tmp.path("build/force.h")));
+    auto dep = file_table.intern(Spelling::absolute(tmp.path("build/dep.h")));
+    ZEXPECT(graph.get_forcing_units(force) == llvm::ArrayRef<Fid>{main});
+    ZEXPECT(graph.get_all_includes(main).empty());
+    ZEXPECT(graph.get_all_includes(force) == llvm::SmallVector<Fid>{dep});
+    ZEXPECT(graph.reaches_import(main));
+    ZEXPECT(graph.find_readers(dep) == (llvm::SmallVector<Fid, 4>{main}));
+}
+
+ZEST_CASE(ForcedIncludeLookupOrder) {
+    // As clang does: the compile's working directory first, then the
+    // search path as for a quoted include.
+    TempDir tmp;
+    tmp.touch("build/first.h", "\n");
+    tmp.touch("inc/first.h", "\n");
+    tmp.touch("inc/second.h", "\n");
+    tmp.touch("src/main.cpp", "int main() {}\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.path("build"),
+                   tmp.path("src/main.cpp"),
+                   {"-I", tmp.path("inc"), "-include", "first.h", "-include", "second.h"}}
+    }));
+    scan_all(cdb, graph);
+
+    auto main = file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto forced = [&](llvm::StringRef path) {
+        return graph.get_forcing_units(file_table.intern(Spelling::absolute(tmp.path(path))));
+    };
+    ZEXPECT(forced("build/first.h") == llvm::ArrayRef<Fid>{main});
+    ZEXPECT(forced("inc/first.h").empty());
+    ZEXPECT(forced("inc/second.h") == llvm::ArrayRef<Fid>{main});
+}
+
+ZEST_CASE(RescanScansNewHeader) {
+    // A save that includes a file the scan never reached scans it under
+    // the includer's context: its own includes and import syntax join.
+    TempDir tmp;
+    tmp.touch("inc/a.h", "\n");
+    tmp.touch("inc/b.h", "#include <c.h>\nimport m;\n");
+    tmp.touch("inc/c.h", "\n");
+    tmp.touch("src/main.cpp", "#include <a.h>\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
+    }));
+    scan_all(cdb, graph);
+    graph.build_reverse_map();
+    auto main = file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto b = file_table.intern(Spelling::absolute(tmp.path("inc/b.h")));
+    auto c = file_table.intern(Spelling::absolute(tmp.path("inc/c.h")));
+    ZEXPECT(!graph.reaches_import(main));
+
+    tmp.touch("src/main.cpp", "#include <a.h>\n#include <b.h>\n");
+    rescan_dependency_graph(cdb, graph, main);
+    ZEXPECT(graph.get_all_includes(b) == llvm::SmallVector<Fid>{c});
+    ZEXPECT(graph.reaches_import(main));
+}
+
+ZEST_CASE(RescanResumesIncludeNext) {
+    // A rescan resumes #include_next after the directory the scan found
+    // the file in, as the full scan and clang do.
+    TempDir tmp;
+    tmp.touch("z/other.h", "\n");
+    tmp.touch("a/x.h", "#include_next <x.h>\n");
+    tmp.touch("b/x.h", "\n");
+    tmp.touch("src/main.cpp", "#include <x.h>\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.root,
+                   tmp.path("src/main.cpp"),
+                   {"-I", tmp.path("z"), "-I", tmp.path("a"), "-I", tmp.path("b")}}
+    }));
+    scan_all(cdb, graph);
+    graph.build_reverse_map();
+    auto wrapper = file_table.intern(Spelling::absolute(tmp.path("a/x.h")));
+    auto next = file_table.intern(Spelling::absolute(tmp.path("b/x.h")));
+    ZASSERT(graph.get_all_includes(wrapper) == llvm::SmallVector<Fid>{next});
+
+    tmp.touch("a/x.h", "#include_next <x.h>\n#define CHANGED\n");
+    rescan_dependency_graph(cdb, graph, wrapper);
+    ZEXPECT(graph.get_all_includes(wrapper) == llvm::SmallVector<Fid>{next});
+}
+
+ZEST_CASE(RescanForcedUnderUnit) {
+    // A rescanned forced header resolves its includes under the command
+    // forcing it in, as the full scan did — not under a nearer unit's.
+    TempDir tmp;
+    tmp.touch("a/cfg.h", "\n");
+    tmp.touch("b/cfg.h", "\n");
+    tmp.touch("build/force.h", "#include <cfg.h>\n");
+    tmp.touch("src/main.cpp", "\n");
+    tmp.touch("build/near.cpp", "\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.root,
+                   tmp.path("src/main.cpp"),
+                   {"-I", tmp.path("a"), "-include", tmp.path("build/force.h")}},
+                  {tmp.root, tmp.path("build/near.cpp"), {"-I", tmp.path("b")} },
+    }));
+    scan_all(cdb, graph);
+    graph.build_reverse_map();
+
+    auto force = file_table.intern(Spelling::absolute(tmp.path("build/force.h")));
+    auto cfg = file_table.intern(Spelling::absolute(tmp.path("a/cfg.h")));
+    ZASSERT(graph.get_all_includes(force) == llvm::SmallVector<Fid>{cfg});
+    tmp.touch("build/force.h", "#include <cfg.h>\n#define CHANGED\n");
+    rescan_dependency_graph(cdb, graph, force);
+    ZEXPECT(graph.get_all_includes(force) == llvm::SmallVector<Fid>{cfg});
+}
+
+ZEST_CASE(MultipleModules) {
     TempDir tmp;
     tmp.touch("src/mod_a.cpp", R"(
 export module mod.a;
@@ -678,12 +875,12 @@ void a_impl() {}
     write_cdb(tmp, cdb, json);
     scan_all(cdb, graph);
 
-    EXPECT_EQ(graph.module_count(), 2u);
-    ASSERT_FALSE(graph.lookup_module("mod.a").empty());
-    ASSERT_FALSE(graph.lookup_module("mod.b").empty());
+    ZEXPECT(graph.module_count() == 2u);
+    ZASSERT(!graph.lookup_module("mod.a").empty());
+    ZASSERT(!graph.lookup_module("mod.b").empty());
 }
 
-TEST_CASE(DeepIncludeChain) {
+ZEST_CASE(DeepIncludeChain) {
     TempDir tmp;
     tmp.touch("inc/h4.h", R"(int h4 = 4;)");
     tmp.touch("inc/h3.h", R"(#include "h4.h")");
@@ -706,11 +903,11 @@ int main() {}
     scan_all(cdb, graph);
 
     // main->h0->h1->h2->h3->h4 across 5 waves.
-    EXPECT_GE(graph.edge_count(), 5u);
-    EXPECT_GE(graph.file_count(), 5u);
+    ZEXPECT(graph.edge_count() >= 5u);
+    ZEXPECT(graph.file_count() >= 5u);
 }
 
-TEST_CASE(ModuleWithIncludes) {
+ZEST_CASE(ModuleWithIncludes) {
     TempDir tmp;
     tmp.touch("inc/util.h", R"(int util = 1;)");
     tmp.touch("src/mymod.cpp", R"(
@@ -730,11 +927,11 @@ export int value() { return util; }
     write_cdb(tmp, cdb, json);
     scan_all(cdb, graph);
 
-    ASSERT_FALSE(graph.lookup_module("my.lib").empty());
-    EXPECT_GE(graph.edge_count(), 1u);
+    ZASSERT(!graph.lookup_module("my.lib").empty());
+    ZEXPECT(graph.edge_count() >= 1u);
 }
 
-TEST_CASE(ScanCacheWarmRun) {
+ZEST_CASE(ScanCacheWarmRun) {
     TempDir tmp;
     tmp.touch("inc/util.h", R"(int util = 1;)");
     tmp.touch("src/main.cpp", R"(
@@ -743,10 +940,10 @@ int main() {}
 )");
     // Out of the mtime guard window, or the cold scan's pairs stay
     // unreliable and cannot vouch for the warm run.
-    ASSERT_TRUE(set_file_mtime(tmp.path("inc/util.h"),
-                               file_mtime_ns(tmp.path("inc/util.h")) - 10'000'000'000));
-    ASSERT_TRUE(set_file_mtime(tmp.path("src/main.cpp"),
-                               file_mtime_ns(tmp.path("src/main.cpp")) - 10'000'000'000));
+    ZASSERT(set_file_mtime(tmp.path("inc/util.h"),
+                           file_mtime_ns(tmp.path("inc/util.h")) - 10'000'000'000));
+    ZASSERT(set_file_mtime(tmp.path("src/main.cpp"),
+                           file_mtime_ns(tmp.path("src/main.cpp")) - 10'000'000'000));
 
     FileTable file_table;
     CompilationDatabase cdb{file_table};
@@ -758,15 +955,15 @@ int main() {}
 
     DependencyGraph graph;
     auto cold = scan_all(cdb, graph);
-    EXPECT_GE(graph.edge_count(), 1u);
+    ZEXPECT(graph.edge_count() >= 1u);
 
     // A rescan against the same shared table skips the read and the lex
     // for every unchanged file (stat-validated through the shared pairs).
     DependencyGraph graph2;
     auto warm = scan_all(cdb, graph2);
-    EXPECT_GT(warm.scan_cache_hits, std::size_t(0));
-    EXPECT_EQ(graph2.edge_count(), graph.edge_count());
-    EXPECT_EQ(graph2.file_count(), graph.file_count());
+    ZEXPECT(warm.scan_cache_hits > std::size_t(0));
+    ZEXPECT(graph2.edge_count() == graph.edge_count());
+    ZEXPECT(graph2.file_count() == graph.file_count());
 }
 
 // TODO: add tests for:
@@ -776,7 +973,7 @@ int main() {}
 //   fids — conditionality is per-config, asserted via get_includes)
 // - set_includes overwrite: calling twice with same (path_id, config_id)
 
-};  // TEST_SUITE(ScanDependencyGraph)
+};  // ZEST_SUITE(ScanDependencyGraph)
 
 }  // namespace
 }  // namespace clice::testing

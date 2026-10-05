@@ -33,7 +33,7 @@ underlying:
     - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "11:15-11:19" }
     - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "13:8-13:12" }
   typeHierarchy:
-    - { name: "Impl", kind: Struct, file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "9:7-9:11" }
+    - { name: "Impl", kind: Struct, file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "9:0-9:14", selection: "9:7-9:11" }
 
 var:
   definition:

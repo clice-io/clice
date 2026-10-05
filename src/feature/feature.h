@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <format>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -10,16 +11,16 @@
 
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
+#include "feature/position.h"
 #include "index/manifest.h"
 #include "index/types.h"
 #include "semantic/display.h"
 #include "semantic/symbol.h"
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "support/markup.h"
+#include "vfs/path.h"
 
 #include "kota/codec/macro.h"
-#include "kota/ipc/lsp/position.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/lsp/uri.h"
 #include "kota/meta/annotation.h"
@@ -33,16 +34,10 @@ class Shard;
 
 namespace clice::feature {
 
-namespace lsp = kota::ipc::lsp;
-namespace protocol = kota::ipc::protocol;
-
 // Feature options double as their clice.toml/initializationOptions config
 // sections: `defaulted = true` lets a decode leave unmentioned fields at
 // their initializers, so those are the single source of every default and a
 // config source only ever overlays what it names.
-
-using kota::ipc::lsp::LineMap;
-using kota::ipc::lsp::PositionEncoding;
 
 /// Render an absolute path as an LSP URI string.
 ///
@@ -57,27 +52,25 @@ inline auto to_uri(llvm::StringRef file) -> std::string {
     return uri->str();
 }
 
-inline auto to_position(const LineMap& map, std::uint32_t offset)
-    -> std::optional<protocol::Position> {
-    if(auto position = map.to_position(offset)) {
-        return *position;
-    }
-    LOG_ANOMALY(PositionMapFail, "offset {} cannot be mapped to a position", offset);
-    return std::nullopt;
-}
-
-inline auto to_range(const LineMap& map, LocalSourceRange range) -> std::optional<protocol::Range> {
-    auto start = to_position(map, range.begin);
-    auto end = to_position(map, range.end);
-    if(!start || !end)
-        return std::nullopt;
-    return protocol::Range{.start = *start, .end = *end};
+/// The main file's positions, over the line tables the unit caches.
+inline auto main_position_map(CompilationUnitRef unit, PositionEncoding encoding) -> PositionMap {
+    auto content = unit.main_content();
+    return {
+        .content = {content.data(), content.size()},
+        .lines = unit.line_starts(),
+        .non_ascii = unit.non_ascii_lines(),
+        .encoding = encoding,
+    };
 }
 
 /// Corresponds to the `[code_completion]` section in clice.toml.
 struct CodeCompletionOptions {
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Complete keywords as snippets (not yet implemented).")
+                     description =
+                         "Complete statements such as `if` and `for` as snippets "
+                         "with placeholders for their parts; otherwise only the "
+                         "keyword is inserted. Ignored for clients without "
+                         "snippet support.")
     <bool> enable_keyword_snippet = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -86,19 +79,22 @@ struct CodeCompletionOptions {
                          "a call. For functions this applies to individually "
                          "listed overloads, so it requires `bundle_overloads = "
                          "false`; function-like macros have no overload sets and "
-                         "always take the snippet.")
+                         "always take the snippet. Ignored for clients without "
+                         "snippet support.")
     <bool> enable_function_arguments_snippet = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Insert template arguments as a snippet on completion "
-                         "(not yet implemented).")
+                         "Insert template arguments as a snippet when completing "
+                         "a class, alias or variable template. Ignored for clients "
+                         "without snippet support.")
     <bool> enable_template_arguments_snippet = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Insert parentheses when completing a function call "
-                         "(not yet implemented).")
+                         "Insert parentheses when completing a function call, "
+                         "unless the name is already followed by one; with snippet "
+                         "support the cursor lands between them.")
     <bool> insert_paren_in_function_call = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -108,6 +104,17 @@ struct CodeCompletionOptions {
     KOTATSU_ANNOTATE(defaulted = true,
                      description = "Maximum number of completion items (not yet implemented).")
     <std::uint32_t> limit = 0;
+};
+
+/// What the client takes from a completion item, from its completion
+/// capabilities.
+struct CompletionClient {
+    /// Insert texts may carry placeholders.
+    bool snippets = false;
+
+    /// An item may carry both an insert and a replace range; the editor
+    /// picks one by its own setting.
+    bool insert_replace = false;
 };
 
 /// Corresponds to the `[hover]` section in clice.toml.
@@ -279,10 +286,17 @@ struct SemanticToken {
     std::uint32_t modifiers = 0;
 };
 
+/// A fold in byte offsets of the main file; it becomes an LSP FoldingRange
+/// only at the reply edge, which knows how the client folds.
 struct FoldingRange {
     LocalSourceRange range;
     std::optional<protocol::FoldingRangeKind> kind;
     std::string collapsed_text;
+
+    /// What a client folding whole lines folds, when it differs from what
+    /// `range` implies: the line holding `begin` stays visible and the
+    /// lines after it hide through the line holding `end`.
+    std::optional<LocalSourceRange> lines;
 };
 
 /// A resolved document link: the argument range of an include-like
@@ -352,28 +366,42 @@ auto semantic_tokens(CompilationUnitRef unit,
 /// Wire encoding of computed tokens against the text they describe — one
 /// encoder for the worker's AST results and the master's index
 /// projections, so both paths emit byte-identical replies.
-auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
-                                 llvm::StringRef content,
-                                 llvm::ArrayRef<std::uint32_t> line_starts,
-                                 PositionEncoding encoding) -> protocol::SemanticTokens;
+auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens, const PositionMap& map)
+    -> protocol::SemanticTokens;
 
 auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange>;
-auto folding_ranges(CompilationUnitRef unit, PositionEncoding encoding)
-    -> std::vector<protocol::FoldingRange>;
 
+/// The kind of the fold a declaration's block makes, by the declaration's
+/// kind; none for a declaration owning no block. The AST collector and the
+/// index projection share it, so a block keeps its kind when the AST
+/// takes over.
+auto declaration_fold_kind(SymbolKind kind) -> std::optional<protocol::FoldingRangeKind>;
+
+/// The lines a line-folding client folds for a declaration's `block` when
+/// its brace sits below `head` — the declaration's name, or the keyword
+/// opening the block: from the head's line, which stays visible. Nullopt
+/// when the block keeps its own lines: the brace shares the head's line,
+/// the block hides nothing but its brace line, or one of the sorted
+/// `block_directives` offsets lies between head and brace (the fold would
+/// cut across a conditional branch's).
+auto declaration_lines(llvm::StringRef content,
+                       LocalSourceRange block,
+                       std::uint32_t head,
+                       llvm::ArrayRef<std::uint32_t> block_directives)
+    -> std::optional<LocalSourceRange>;
+
+/// Wire encoding of computed folds, for the worker's AST results and the
+/// master's index projections alike. A `line_folding_only` client folds
+/// whole lines and ignores the character offsets.
 auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
-                                llvm::StringRef content,
-                                llvm::ArrayRef<std::uint32_t> line_starts,
-                                PositionEncoding encoding) -> std::vector<protocol::FoldingRange>;
+                                const PositionMap& map,
+                                bool line_folding_only) -> std::vector<protocol::FoldingRange>;
 
 auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol>;
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol>;
 
-auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
-                                  llvm::StringRef content,
-                                  llvm::ArrayRef<std::uint32_t> line_starts,
-                                  PositionEncoding encoding)
+auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols, const PositionMap& map)
     -> std::vector<protocol::DocumentSymbol>;
 
 auto inlay_hints(CompilationUnitRef unit,
@@ -411,6 +439,7 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding = PositionEn
 
 auto code_complete(CompilationParams& params,
                    const CodeCompletionOptions& options = {},
+                   const CompletionClient& client = {},
                    PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::CompletionItem>;
 
@@ -421,7 +450,7 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
 
 /// Render structured hover information with the configured markup format and
 /// convert its byte range through the caller's current line map.
-auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const LineMap& map)
+auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const PositionMap& map)
     -> protocol::Hover;
 
 auto hover(CompilationUnitRef unit,
@@ -448,9 +477,9 @@ struct TextReplacement {
 /// The kinds the actions produce: the advertised capability, and what a
 /// request's `only` filter is matched against.
 constexpr inline std::array<std::string_view, 3> code_action_kinds = {
-    protocol::CodeActionKind::quick_fix,
-    protocol::CodeActionKind::refactor_inline,
-    protocol::CodeActionKind::refactor_rewrite,
+    protocol::CodeActionKind::QuickFix,
+    protocol::CodeActionKind::RefactorInline,
+    protocol::CodeActionKind::RefactorRewrite,
 };
 
 /// One definition the index vets: dropped when any source knows a
@@ -481,13 +510,26 @@ struct DefineInHostRequest {
     std::vector<DefinitionPiece> pieces;
 };
 
+/// Where a new `#include` line goes in the main file. A module unit
+/// without a global module fragment gets one opened there.
+struct IncludeInsertion {
+    std::uint32_t offset = 0;
+    bool opens_fragment = false;
+
+    /// The text inserting `#include <header>`, the header spelled with its
+    /// quotes or brackets.
+    std::string text(llvm::StringRef header) const {
+        return std::format("{}#include {}\n", opens_fragment ? "module;\n" : "", header);
+    }
+};
+
 /// One action per header declaring `name` under `scope` ("std::" style,
 /// empty for an unqualified name), each inserting its include directive
-/// at `offset` of the main file.
+/// at `insertion` of the main file.
 struct IncludeRequest {
     std::string scope;
     std::string name;
-    std::uint32_t offset = 0;
+    IncludeInsertion insertion;
 };
 
 /// What only the project index can settle: resolved by the master at the
@@ -512,14 +554,15 @@ auto assemble_definitions(llvm::ArrayRef<DefinitionPiece> pieces,
                           llvm::function_ref<bool(std::uint64_t entity)> defined_elsewhere)
     -> std::optional<std::string>;
 
-/// Reformat the lines `edits` touch with the file's clang-format style,
-/// folding the formatting back into replacements of the original text.
-/// A style that disables formatting returns the edits unchanged.
+/// Reformat the lines `edits` touch with the clang-format style configured
+/// for the file, folding the formatting back into replacements of the
+/// original text. Without a configured style, or with one that disables
+/// formatting, the edits come back unchanged.
 auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<TextReplacement> edits)
     -> std::vector<TextReplacement>;
 
-/// `text` reformatted as a standalone snippet with the style that applies
-/// to `file`.
+/// `text` reformatted as a standalone snippet with the style configured
+/// for `file`; unchanged without one.
 auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string;
 
 /// Index projections: whole-document features computed from index rows plus
@@ -541,7 +584,9 @@ struct IndexDeclRow {
 };
 
 /// The rows of one document the projections consume, extracted from its
-/// serving shard: every occurrence, and the Decl/Def relations as decl
+/// serving shard: every occurrence, the reference rows of names nested in
+/// another's written name (the class in `~Foo`, which owns no occurrence
+/// there) as occurrences of their own, and the Decl/Def relations as decl
 /// rows.
 struct IndexRows {
     std::vector<index::Occurrence> occurrences;
@@ -568,8 +613,8 @@ auto index_lang_options(llvm::StringRef path, bool c_rows, llvm::StringRef stand
 
 /// Lexical layer (keywords, literals, comments, directives) from a raw lex
 /// of `content`, semantic kinds from `occurrences` resolved through
-/// `resolve`, Declaration/Definition modifiers from `decls`. Both row
-/// arrays must be sorted by range, as shard readers hand them out.
+/// `resolve`, Declaration/Definition modifiers from `decls`, both in any
+/// order.
 auto index_semantic_tokens(llvm::StringRef content,
                            const clang::LangOptions& lang_opts,
                            llvm::ArrayRef<index::Occurrence> occurrences,

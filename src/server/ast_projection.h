@@ -9,10 +9,12 @@
 #include "index/tu_index.h"
 #include "project/project.h"
 
-#include "kota/codec/visit/common.h"
+#include "kota/ipc/lsp/protocol.h"
 #include "llvm/ADT/DenseMap.h"
 
 namespace clice {
+
+namespace protocol = kota::ipc::protocol;
 
 /// The publishable products of the most recent compilation (materialized
 /// whole-document feature results). The data lives in the projection; the
@@ -29,7 +31,7 @@ struct CompileOutput {
     CommandSource source;
 
     /// Worker-produced raw diagnostics (unformatted); empty on failure.
-    kota::codec::RawValue diagnostics;
+    std::vector<protocol::Diagnostic> diagnostics;
 
     /// First phantom line introduced by suffix include injection —
     /// diagnostics at or past it describe text the user cannot see.
@@ -48,6 +50,11 @@ struct ASTProjection {
     /// describes the buffer is checked against the blob's stored preamble
     /// text at the point of use.
     std::optional<std::string> pch_key;
+
+    /// The preamble key whose build failed for the latest compilation,
+    /// which then compiled without one: what a save of the document
+    /// retries.
+    std::optional<std::string> failed_pch_key;
 
     /// The latest compilation's index envelope; null until a compile
     /// lands index data. NOT merged into Project.project_index — that

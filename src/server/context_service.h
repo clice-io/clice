@@ -39,8 +39,7 @@ struct ContextService {
     std::vector<ext::ContextItem> contexts(Fid path_id);
 
     /// clice/currentContext: describe the file's currently active context.
-    ext::CurrentContextResult current_context(const Session* session,
-                                              const ext::CurrentContextParams& params);
+    ext::CurrentContextResult current_context(const Session* session);
 
     /// clice/switchContext: pin a host source or CDB entry as the file's
     /// compilation context and persist the choice across sessions. When

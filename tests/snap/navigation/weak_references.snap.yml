@@ -1,0 +1,39 @@
+---
+created_at: 2026-10-01
+input_file: weak_references.cpp
+---
+helper:
+  definition:
+    - { file: "${WS}/weak_references.cpp", range: "30:4-30:10" }
+  declaration:
+    - { file: "${WS}/weak_references.cpp", range: "30:4-30:10" }
+  references:
+    - { file: "${WS}/weak_references.cpp", range: "30:4-30:10" }
+    - { file: "${WS}/weak_references.cpp", range: "33:11-33:17" }
+  callHierarchy:
+    - { name: "helper", kind: Function, file: "${WS}/weak_references.cpp", range: "30:0-30:12", selection: "30:4-30:10" }
+
+str:
+  definition:
+    - { file: "${WS}/weak_references.cpp", range: "17:16-17:19" }
+  declaration:
+    - { file: "${WS}/weak_references.cpp", range: "17:16-17:19" }
+  references:
+    - { file: "${WS}/weak_references.cpp", range: "17:16-17:19" }
+    - { file: "${WS}/weak_references.cpp", range: "22:15-22:18" }
+    - { file: "${WS}/weak_references.cpp", range: "26:45-26:48" }
+
+use:
+  definition:
+    - { file: "${WS}/weak_references.cpp", range: "2:4-2:7" }
+  declaration:
+    - { file: "${WS}/weak_references.cpp", range: "2:4-2:7" }
+  references:
+    - { file: "${WS}/weak_references.cpp", range: "2:4-2:7" }
+    - { file: "${WS}/weak_references.cpp", range: "8:11-8:14" }
+    - { file: "${WS}/weak_references.cpp", range: "12:11-12:14" }
+  callHierarchy:
+    - { name: "use", kind: Function, file: "${WS}/weak_references.cpp", range: "2:0-4:1", selection: "2:4-2:7" }
+  incomingCalls:
+    - { name: "caller", kind: Function, file: "${WS}/weak_references.cpp", range: "7:0-9:1", selection: "7:4-7:10", fromRanges: ["8:11-8:14"] }
+    - { name: "direct", kind: Function, file: "${WS}/weak_references.cpp", range: "11:0-13:1", selection: "11:4-11:10", fromRanges: ["12:11-12:14"] }

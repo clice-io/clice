@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 
+#include "kota/meta/repr.h"
 #include "clang/AST/Decl.h"
 
 namespace clice {
@@ -195,6 +196,16 @@ struct RelationKind {
         Destructor,
         Caller,
         Callee,
+        /// Keyed by a template (or a member of a class template), the
+        /// target an explicit or partial specialization of it.
+        Specialization,
+        /// Keyed by an explicit or partial specialization, the target the
+        /// template it specializes.
+        Primary,
+        /// At the include that pastes a fragment into a declaration
+        /// (`#include "Kinds.inc"` inside a switch), a name the fragment
+        /// uses: the pasting file names it too.
+        Pasted,
     };
 
     constexpr RelationKind() = default;
@@ -229,7 +240,9 @@ struct RelationKind {
                          Base,
                          Derived,
                          Constructor,
-                         Destructor);
+                         Destructor,
+                         Specialization,
+                         Primary);
     }
 
 private:
@@ -245,3 +258,18 @@ constexpr bool operator&(RelationKind lhs, RelationKind rhs) {
 }
 
 }  // namespace clice
+
+/// SymbolKind hides its enum behind constructors, which keeps it out of
+/// reflection; it serializes as that enum.
+template <>
+struct kota::meta::repr<clice::SymbolKind> {
+    using type = clice::SymbolKind::Kind;
+
+    static type to(clice::SymbolKind kind) {
+        return kind;
+    }
+
+    static clice::SymbolKind from(type kind) {
+        return kind;
+    }
+};

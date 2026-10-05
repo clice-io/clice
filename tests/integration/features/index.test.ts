@@ -89,6 +89,21 @@ test("call hierarchy incoming", async ({ client }) => {
     client.close(uri);
 });
 
+/// An item a client sends back without its data resolves at its name.
+test("call hierarchy item without data", async ({ client }) => {
+    const [uri] = await client.openAndWait("main.cpp");
+    expect(await client.waitForIndex(uri), "Index not ready after 30s").toBe(true);
+
+    const items = await client.prepareCallHierarchy(uri, 18, 4);
+    expect(items?.length).toBe(1);
+    const stripped: proto.CallHierarchyItem = { ...items![0]! };
+    delete stripped.data;
+    const incoming = await client.callHierarchyIncoming(stripped);
+    expect(incoming!.map((call) => call.from.name)).toContain("compute");
+
+    client.close(uri);
+});
+
 /// Test outgoingCalls shows compute() calls add().
 test("call hierarchy outgoing", async ({ client }) => {
     const [uri] = await client.openAndWait("main.cpp");
@@ -226,6 +241,19 @@ test("goto definition alternate", async ({ client, workspace }) => {
     expect(fromDecl.map((loc) => [fileName(loc.uri), loc.range.start.line])).toEqual([
         ["nav.cpp", 2],
     ]);
+
+    client.close(uri);
+});
+
+/// A closed file answers from the index alone: no symbol under the cursor
+/// is an empty answer, not an error.
+test("goto definition closed blank", async ({ client, workspace }) => {
+    const [uri] = await client.openAndWait("main.cpp");
+    expect(await client.waitForIndex(uri, "area"), "Index not ready after 30s").toBe(true);
+
+    // nav.cpp:1 is an empty line.
+    const locs = asLocations(await client.definitionAt(workspace.uri("nav.cpp"), 1, 0));
+    expect(locs).toEqual([]);
 
     client.close(uri);
 });

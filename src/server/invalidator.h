@@ -27,8 +27,8 @@ class PCMFamily;
 struct FileEvent {
     enum class Kind : std::uint8_t {
         /// The file's content on disk changed — open or not: the file table
-        /// saw other bytes than it last saw, whoever looked (the workspace
-        /// sweep, a didSave, a rescan, a compile's staleness check).
+        /// saw other bytes than it last saw, whoever looked (a background
+        /// tick, a didSave, a rescan, a compile's staleness check).
         DiskChanged,
         /// The file disappeared from disk (see DiskChanged).
         DiskRemoved,
@@ -166,7 +166,8 @@ struct DirtySet {
 
     /// A TU the build stopped compiling — its database still loads but no
     /// longer lists it: the rows leave the index and nothing is owed, unlike
-    /// a file that vanished from disk, whose last-known rows keep serving.
+    /// a file that vanished from disk, whose shard stays behind (queries
+    /// withhold it).
     void add_retire(Fid path_id) {
         erase_id(reindex_content_changed, path_id);
         erase_id(reindex_deps_only, path_id);
@@ -190,7 +191,7 @@ public:
     /// a surviving manifest would judge the queued reindex fresh and keep
     /// the old-command rows serving, in this session and after a restart.
     /// Follows the later-event rule above: a later removal's clear cancels
-    /// the drop, since the deleted file's last-known index keeps serving.
+    /// the drop, since the deleted file's index stays behind.
     llvm::SmallVector<Fid> drop_index;
     /// Headers whose resolved context was derived from something that
     /// changed — the host's CDB entry, a file along the include chain:

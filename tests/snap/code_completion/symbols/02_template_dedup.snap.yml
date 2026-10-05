@@ -4,3 +4,4 @@ input_file: symbols/02_template_dedup.cpp
 ---
 pos:
 - { label: "Foo", kind: Class, detail: "<typename T>", edit: "22:4-22:6" }
+- { label: "for", kind: Keyword, edit: "22:4-22:6" }

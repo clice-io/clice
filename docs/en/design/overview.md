@@ -112,7 +112,7 @@ The task-graph engine that decides what gets built, when, and shares the results
 
 ### `src/worker/` — Worker Processes
 
-- `WorkerPool`: Manages worker process lifecycles and scheduling — spawn/monitor/respawn with crash budgets and cooldown revival, stateful placement with document affinity, and stateless dispatch with priority queues and foreground-aware capacity
+- `WorkerPool`: Manages worker process lifecycles and scheduling — spawn/monitor/respawn with crash budgets and cooldown revival, attribution of every worker death to the request that caused it, a deadline on every request, stateful placement with document affinity, and stateless dispatch with priority queues and foreground-aware capacity
 - `StatefulWorker`: Holds document ASTs and serves query requests
 - Stateless workers execute one-shot tasks (PCH/PCM builds, completion, formatting, indexing runs)
 
@@ -129,7 +129,7 @@ The language server's core runtime, responsible for assembling all the layers ab
 - `EditorContext`: The editor's side of command resolution — the user's context choices and the header contexts resolved for open files — layered over the project's `CommandResolver` for editor-facing compiles only
 - `Invalidator`: The invalidation engine — folds file events (on-disk changes and removals, compilation-database reloads, worker crashes) into a deduplicated set of invalidation effects
 - `FileTracker`: Stat-polling discovery of changes that happen outside the editor (a regenerated `compile_commands.json`, `git checkout`), feeding events to the `Invalidator`: the project's database watch plus a sweep, through the file table, of the files on disk and of the places a failed include lookup looked
-- `Quarantine`: Per-document crash accounting — documents whose content keeps killing workers are isolated and recover through licensed probe attempts
+- `Quarantine`: Per-document crash records — a kind of work that crashed a worker on a document pauses for that document until it changes (spaced and bounded) or is saved
 
 **Services** — Read-side services consuming compilation and index results.
 
@@ -150,7 +150,7 @@ See [Multi-process Architecture](multi-process.md).
 
 ### `src/driver/` — Subcommands
 
-Entry points for the `clice` binary: `serve` (the LSP server), `worker`, `index` (batch indexing), `lint` (batch clang-tidy), `inspect`, `format`, `query`, and `doc`.
+Entry points for the `clice` binary: `serve` (the LSP server), `worker`, `index` (batch indexing), `lint` (batch clang-tidy), `inspect`, `format`, `query`, `refactor`, and `analyze`.
 
 ## Inter-module Relationships
 

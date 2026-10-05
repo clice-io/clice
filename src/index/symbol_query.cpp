@@ -28,7 +28,13 @@ bool is_digits(llvm::StringRef text) {
 /// Whether `text` ends in an operator's name, possibly with some of its
 /// symbol characters: a bracket there spells the operator, not arguments.
 bool ends_in_operator(llvm::StringRef text) {
-    return text.rtrim("<>=-*").ends_with("operator");
+    auto name = text.rtrim("<>=-*");
+    if(!name.consume_back("operator")) {
+        return false;
+    }
+    // `binary_operator<int>` is a name of its own, its bracket an argument
+    // list.
+    return name.empty() || !(llvm::isAlnum(name.back()) || name.back() == '_');
 }
 
 bool has_wildcard(llvm::StringRef text) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "project/cdb_watcher.h"
@@ -14,63 +15,45 @@
 
 namespace clice {
 
-/// Stat-based discovery of changes the client never tells us about:
-/// compile_commands.json edits (its CDBWatcher) and files
-/// changing on disk behind the server's back (git checkout, code
-/// generators, save hooks), looked at here.
+/// Polling of what a project is built from, beyond the files themselves
+/// (which vfs::DiskState looks at): its compilation databases (see
+/// CDBWatcher), the sources its default-command rules claim, and the git
+/// checkout the workspace lies in — every git operation that changes the
+/// worktree rewrites the index, and then every file under the workspace
+/// is due for a look.
 ///
-/// Core design property: polling only marks dirty and emits events — it
-/// never needs to be complete. A missed change means derived state stays
-/// stale for one more poll period at worst; correctness is anchored by the
-/// pull side's two-layer DepsSnapshot validation (mtime, then content hash)
-/// at compile and index time. That is what lets this implementation stay
-/// simple and coarse, and why it polls stat instead of using inotify — for
-/// clangd's reasons: portable, no fd limits, no event storms.
-///
-/// The tracker only observes; it never dispatches. Disk changes surface
-/// through the file table's change queue, database changes as the
-/// returned batches the polling loops (and the clice/internal/poll test
-/// hook) hand to dispatch(), which keeps the tracker unit-testable
-/// against plain data structures.
+/// The tracker only observes; it never dispatches. Database and source
+/// changes come back as the events the master's ticks, the sources loop
+/// (and the clice/internal/poll test hook) hand to dispatch(), which keeps
+/// the tracker unit-testable against plain data structures.
 class FileTracker {
 public:
     /// Construct after the project is loaded: its databases are baselined
     /// at their loads.
     FileTracker(Project& project, const SessionStore& store, CanonicalPath root);
 
-    /// One CDB poll tick (see CDBWatcher::tick), the open files looking
-    /// for a database; the reload's diff as one CDBChanged event.
+    /// One CDB tick (see CDBWatcher::tick), after the file table looked at
+    /// the flags, the open files looking for a database; the reload's diff
+    /// as one CDBChanged event.
     llvm::SmallVector<FileEvent> tick_cdb(bool force = false);
 
     /// See CDBWatcher::discover_around; the loads' diffs as CDBChanged
     /// events.
     llvm::SmallVector<FileEvent> discover_around(Fid path_id);
 
-    /// One workspace sweep: look at every file the dependency graph knows
-    /// or an indexed compile read — open ones included, a buffer shadows
-    /// the disk only for its own file's compile — and every place the file
-    /// table last saw empty, through the file table, which turns every look
-    /// that finds other content than it last saw into a change (see
-    /// FileTable::changes); the sweep itself keeps no state. An unchanged
-    /// file costs one stat the shared pair vouches for, a moved stat one
-    /// read, so touch-only changes stay silent. Returns the build's gain of
-    /// default-command sources as a CDBChanged event.
-    ///
-    /// Stats run synchronously in batches, yielding to the event loop
-    /// between batches; each round's duration is perf-logged.
-    /// TODO: offload stats to the thread pool (and consider a directory
-    /// listing cache for Windows, where per-file stat is expensive) if the
-    /// logged sweep timing shows the need.
-    kota::task<llvm::SmallVector<FileEvent>> tick_workspace();
+    /// A file created under a default-command rule joins the build: the
+    /// gain reported as a CDBChanged event, as a database reload reports
+    /// an added command. One deleted leaves through DiskRemoved, like any
+    /// file. The walk runs off the event loop.
+    kota::task<llvm::SmallVector<FileEvent>> tick_sources();
 
 private:
     Project& project;
     const SessionStore& store;
     CDBWatcher cdb;
 
-    /// True while a sweep is in flight (it suspends between batches);
-    /// concurrent ticks are skipped.
-    bool sweeping = false;
+    /// The checkout's HEAD and index.
+    llvm::SmallVector<std::shared_ptr<const vfs::Flag>> checkout;
 };
 
 }  // namespace clice

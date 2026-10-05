@@ -173,7 +173,8 @@ export const LogFloodRequest = new RequestType<LogFloodParams, LogFloodResult, v
 
 /// clice/internal/stats — TEST-ONLY, not a stable API. Ownership gauges
 /// for memory-lifecycle regression tests: each leak class is pinned by a
-/// deterministic counter instead of brittle RSS assertions.
+/// deterministic counter instead of brittle RSS assertions; and the counts
+/// of freshness checks, which pin what a request looks at.
 export interface StatsResult {
     pchLoadedStates: number;
     pchStateBytes: number;
@@ -185,6 +186,12 @@ export interface StatsResult {
     headerContexts: number;
     synthesizedContexts: number;
     sessions: number;
+    /// Freshness checks of files answered by a look at the disk, and from a
+    /// look not yet due.
+    checksLooked: number;
+    checksTrusted: number;
+    /// Preprocessor passes that looked for a unit's imports.
+    importScans: number;
 }
 
 export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/stats");

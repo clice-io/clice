@@ -18,8 +18,7 @@
 ///   index_stats_benchmark [OPTIONS] <compile_commands.json>
 ///
 /// Example:
-///   ./build/RelWithDebInfo/bin/index_stats_benchmark \
-///       build/RelWithDebInfo/compile_commands.json
+///   ./build/RelWithDebInfo/bin/bin/index_stats_benchmark compile_commands.json
 
 #include <algorithm>
 #include <array>
@@ -38,9 +37,9 @@
 #include "command/command.h"
 #include "compile/compilation.h"
 #include "index/tu_index.h"
-#include "support/filesystem.h"
 #include "support/format.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
 
 #include "kota/deco/deco.h"
 #include "llvm/ADT/DenseMap.h"
@@ -1169,14 +1168,14 @@ int main(int argc, const char** argv) {
                 }
             };
 
-            auto content = fs::read(job.file);
+            auto content = vfs::read(job.file, vfs::Read::Bytes);
             if(!content) {
                 stats.skipped_missing += 1;
                 finish("skip (unreadable)");
                 continue;
             }
 
-            auto params = make_params(job.argv, job.file, *content);
+            auto params = make_params(job.argv, job.file, (*content)->getBuffer());
             auto unit = compile(params);
             if(!unit.completed()) {
                 stats.skipped_compile += 1;
@@ -1225,12 +1224,12 @@ int main(int argc, const char** argv) {
     }
     auto md_path = std::format("{}/REPORT.md", *opts.out_dir);
     auto json_path = std::format("{}/stats.json", *opts.out_dir);
-    if(auto w = fs::write(md_path, md); !w) {
-        std::println(stderr, "Error: cannot write {}: {}", md_path, w.error().message());
+    if(auto error = vfs::write(md_path, md)) {
+        std::println(stderr, "Error: cannot write {}: {}", md_path, error.message());
         return 1;
     }
-    if(auto w = fs::write(json_path, json); !w) {
-        std::println(stderr, "Error: cannot write {}: {}", json_path, w.error().message());
+    if(auto error = vfs::write(json_path, json)) {
+        std::println(stderr, "Error: cannot write {}: {}", json_path, error.message());
         return 1;
     }
 

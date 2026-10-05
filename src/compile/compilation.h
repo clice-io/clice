@@ -12,8 +12,9 @@
 
 #include "compile/compilation_unit.h"
 #include "compile/dep_file.h"
-#include "support/filesystem.h"
 #include "syntax/preamble_synthesis.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
@@ -109,7 +110,8 @@ struct PCHInfo {
     /// The content used to build this PCH.
     std::string preamble;
 
-    /// All files involved in building this PCH, with consumed-content hashes.
+    /// All files involved in building this PCH, with consumed-content hashes;
+    /// filled for a build that failed on errors too.
     std::vector<DepFile> deps;
 
     /// The command arguments used to build this PCH.
@@ -139,6 +141,7 @@ struct PCMInfo : ModuleInfo {
     /// with consumed-content hashes. Contains the module source file itself:
     /// unlike the PCH key, the PCM cache key does not embed any content, so
     /// the deps snapshot is the only thing that can see the source change.
+    /// Filled for a build that failed on errors too.
     std::vector<DepFile> deps;
 };
 
@@ -166,7 +169,7 @@ struct CompilationParams {
     /// Responsible for storing the arguments.
     std::vector<const char*> arguments;
 
-    llvm::IntrusiveRefCntPtr<vfs::FileSystem> vfs = new ThreadSafeFS();
+    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = new vfs::View();
 
     /// Information about reuse PCH.
     std::pair<std::string, std::uint32_t> pch;
@@ -219,6 +222,11 @@ CompilationUnit compile(CompilationParams& params);
 
 /// Build PCH from given file path and content.
 CompilationUnit compile(CompilationParams& params, PCHInfo& out);
+
+/// How a PCH built by compile() checks its inputs when loaded: by size
+/// alone. Keys of cached PCHs include it, so a blob built under another
+/// rule is never reused.
+constexpr inline llvm::StringRef pch_input_check = "size";
 
 /// Build PCM from given file path and content.
 CompilationUnit compile(CompilationParams& params, PCMInfo& out);

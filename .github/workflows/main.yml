@@ -22,7 +22,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       vscode: ${{ steps.filter.outputs.vscode }}
       zed: ${{ steps.filter.outputs.zed }}
-      cmake: ${{ steps.filter.outputs.cmake }}
+      build: ${{ steps.filter.outputs.build }}
 
     steps:
       - uses: actions/checkout@v7
@@ -48,8 +48,13 @@ jobs:
             zed:
               - 'editors/zed/**'
               - '.github/workflows/main.yml'
-            cmake:
-              - 'CMakeLists.txt'
+            build:
+              - 'BUILD.bazel'
+              - 'MODULE.bazel'
+              - 'REPO.bazel'
+              - '.bazelrc'
+              - '.bazelversion'
+              - 'bazel/**'
               # Generated docs and the committed schema are verified against
               # the built binary, so edits to them must run native-test.
               - 'docs/public/clice-config.schema.json'
@@ -60,7 +65,6 @@ jobs:
               - 'tests/**'
               - 'tools/**'
               - 'config/**'
-              - 'cmake/**'
               - 'scripts/**'
               - 'editors/nvim/**'
               - 'editors/vscode/**'
@@ -69,9 +73,8 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - '.github/workflows/native-test.yml'
-              - '.github/workflows/cross-test.yml'
-              - '.github/workflows/cross-pair.yml'
               - '.github/workflows/editor-test.yml'
+              - '.github/workflows/compat-test.yml'
 
   lint:
     needs: changes
@@ -121,24 +124,24 @@ jobs:
 
   native-test:
     needs: changes
-    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    if: ${{ needs.changes.outputs.build == 'true' }}
     uses: ./.github/workflows/native-test.yml
-
-  cross-test:
-    needs: changes
-    if: ${{ needs.changes.outputs.cmake == 'true' }}
-    uses: ./.github/workflows/cross-test.yml
 
   editor-test:
     needs: [changes, native-test]
-    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    if: ${{ needs.changes.outputs.build == 'true' }}
     uses: ./.github/workflows/editor-test.yml
+
+  compat-test:
+    needs: [changes, native-test]
+    if: ${{ needs.changes.outputs.build == 'true' }}
+    uses: ./.github/workflows/compat-test.yml
 
   # Instant builds: repackage the test-suite binaries as installable vsix
   # artifacts so a fix can be tried the moment CI is green.
   instant-vscode:
-    needs: [changes, native-test, cross-test]
-    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    needs: [changes, native-test]
+    if: ${{ needs.changes.outputs.build == 'true' }}
     uses: ./.github/workflows/publish-vscode.yml
     with:
       source: build
@@ -171,8 +174,8 @@ jobs:
       - vscode
       - zed
       - native-test
-      - cross-test
       - editor-test
+      - compat-test
       - instant-vscode
 
     runs-on: ubuntu-latest
@@ -182,5 +185,5 @@ jobs:
         with:
           allowed-skips: >-
             lint,deploy,vscode,zed,
-            native-test,cross-test,editor-test,instant-vscode
+            native-test,editor-test,compat-test,instant-vscode
           jobs: ${{ toJSON(needs) }}

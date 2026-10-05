@@ -4,6 +4,7 @@
 #include <utility>
 #include <vector>
 
+#include "support/json.h"
 #include "support/logging.h"
 
 #include "kota/codec/json/json.h"
@@ -94,7 +95,7 @@ std::string EditorContext::serialize() const {
         data.contexts.push_back(std::move(entry));
     }
 
-    auto json = kota::codec::json::to_string(data);
+    auto json = kota::codec::json::to_string<PathJsonConfig>(data);
     if(!json) {
         LOG_WARN("Failed to serialize the contexts blob");
         return {};
@@ -167,8 +168,7 @@ bool EditorContext::holds_choice(Fid path_id) const {
         // A pinned occurrence can vanish while other inclusions of the
         // header survive (the chain stays non-empty).
         if(saved->occurrence.has_value()) {
-            auto count = project.count_occurrences(host, path_id);
-            if(count > 0 && *saved->occurrence >= count) {
+            if(*saved->occurrence >= project.count_occurrences(host, path_id)) {
                 return false;
             }
         }

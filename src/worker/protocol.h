@@ -1,6 +1,7 @@
 #pragma once
 
 #include <compare>
+#include <concepts>
 #include <cstdint>
 #include <format>
 #include <string>
@@ -17,35 +18,46 @@
 #include "kota/codec/json/json.h"
 #include "kota/ipc/lsp/protocol.h"
 #include "kota/ipc/protocol.h"
+#include "kota/meta/enum.h"
 
 namespace clice::worker {
 
 namespace protocol = kota::ipc::protocol;
 
 /// Error codes attached to master-side dispatch failures. They mark expected
-/// operational conditions — memory-pressure preemption and crash/restart
-/// windows — as opposed to real IPC breakage: callers must not classify them
-/// as anomalies (see support/anomaly.h). The crash itself is already reported
-/// as a WorkerCrash anomaly by the pool.
+/// operational conditions — memory-pressure preemption, worker deaths and
+/// restart windows — as opposed to real IPC breakage: callers must not
+/// classify them as anomalies (see support/anomaly.h). The death itself is
+/// already reported as a WorkerCrash anomaly by the pool.
+///
+/// A death fails every request in flight on the worker; the pool tells them
+/// apart by the request the dying worker named (see crash_tag), so only the
+/// request that crashed it is blamed.
 namespace dispatch_errc {
 
 /// The request was deliberately cancelled (memory-pressure preemption).
 constexpr inline protocol::integer cancelled =
     static_cast<protocol::integer>(protocol::ErrorCode::RequestCancelled);
 
-/// No live worker could take the request (crash/restart window or pool stop).
+/// No live worker could take the request; it was never dispatched.
 constexpr inline protocol::integer worker_unavailable = -33000;
 
-/// The worker process died while serving the request. The pool does not
-/// retry: it marks the slot dead and surfaces this code so the caller can
-/// decide — stateless build tasks are idempotent and safe to resend, while
-/// e.g. the indexer prefers to requeue the file instead.
+/// This request killed its worker: the dying worker named it, or it ran
+/// past the pool's deadline. The message says how the worker died.
 constexpr inline protocol::integer worker_crashed = -33001;
 
-/// The assigned worker is mid-restart after a crash: the request was never
-/// dispatched. Distinct from worker_crashed so crash accounting (document
-/// quarantine) does not blame a document for a window it merely hit.
-constexpr inline protocol::integer worker_restarting = -33002;
+/// The worker died of another request's crash: this one is blameless and
+/// safe to resend.
+constexpr inline protocol::integer worker_lost = -33003;
+
+/// The worker died naming no request — killed from outside (the OOM killer,
+/// a signal), or crashed where no request was running. Resend once; a
+/// request whose resend dies the same way is blamed.
+constexpr inline protocol::integer worker_died = -33004;
+
+/// A stateful worker no longer holds the document the query is about (its
+/// LRU evicted it): recompile and ask again.
+constexpr inline protocol::integer document_unloaded = -33005;
 
 }  // namespace dispatch_errc
 
@@ -55,34 +67,57 @@ inline bool is_operational_error(const protocol::Error& error) {
     return error.code == dispatch_errc::cancelled ||
            error.code == dispatch_errc::worker_unavailable ||
            error.code == dispatch_errc::worker_crashed ||
-           error.code == dispatch_errc::worker_restarting;
+           error.code == dispatch_errc::worker_lost || error.code == dispatch_errc::worker_died ||
+           error.code == dispatch_errc::document_unloaded;
+}
+
+/// The stderr line a dying worker writes to name the request it was
+/// running: this prefix, then the request's crash_tag.
+constexpr inline std::string_view crashed_in_marker = "clice worker crashed in: ";
+
+/// How a dying worker names a request, and how the master recognizes its
+/// own request in that line: the method, a query's kind, and the file.
+/// Requests a stateful worker runs side by side differ in one of them
+/// unless they are the same work on the same document.
+template <typename Params>
+std::string crash_tag(const Params& params) {
+    std::string tag(protocol::RequestTraits<Params>::method);
+    if constexpr(requires { params.kind; }) {
+        tag += ':';
+        tag += kota::meta::enum_name(params.kind, "Unknown");
+    }
+    tag += ' ';
+    if constexpr(requires { params.path; }) {
+        tag += params.path;
+    } else {
+        tag += params.file;
+    }
+    return tag;
 }
 
 /// Identity of the worker incarnation a crashed request died with, carried
 /// in Error::data. One process death fails every request in flight on it;
 /// per-content blame (Quarantine) dedups by this identity so a single death
 /// is counted at most once per document.
-inline protocol::Value death_identity(std::size_t index, unsigned generation, bool stateful) {
+inline kota::codec::dyn::Value death_identity(std::size_t index,
+                                              unsigned generation,
+                                              bool stateful) {
     return std::format("{}:{}:{}", stateful ? "sf" : "sl", index, generation);
 }
 
-/// The death identity attached to a worker_crashed error; empty when the
+/// The death identity attached to a worker death's error; empty when the
 /// error carries none (locally synthesized failures).
 inline std::string_view death_of(const protocol::Error& error) {
     if(error.data.has_value()) {
-        if(auto* id = std::get_if<std::string>(&*error.data)) {
-            return *id;
-        }
+        return error.data->get_string().value_or(std::string_view{});
     }
     return {};
 }
 
-/// True for errors produced by the IPC transport itself (broken pipe, closed
-/// peer) as opposed to errors returned by the remote handler. kota surfaces
-/// transport failures with the default RequestFailed code; clice worker
-/// handlers never return that code, so it identifies a dead worker link.
+/// True for a worker link that closed under a request (broken pipe, dead
+/// process), as opposed to an error the remote handler returned.
 inline bool is_transport_error(const protocol::Error& error) {
-    return error.code == static_cast<protocol::integer>(protocol::ErrorCode::RequestFailed);
+    return error.code == static_cast<protocol::integer>(protocol::ErrorCode::ConnectionClosed);
 }
 
 /// Kind of AST query dispatched to a stateful worker.
@@ -90,7 +125,6 @@ enum class QueryKind : uint8_t {
     Hover,
     SemanticTokens,
     InlayHints,
-    FoldingRange,
     DocumentSymbol,
 };
 
@@ -142,7 +176,7 @@ enum class CompileStatus : uint8_t {
     /// The parse produced a usable product — a complete AST, or a fatal
     /// error whose diagnostics describe the user's code.
     Done,
-    /// The parse was interrupted by CancelCompile (superseded round).
+    /// The parse was interrupted (superseded round).
     Cancelled,
     /// The frontend failed before parsing began: bad invocation, or a
     /// prebuilt input (PCH/PCM) clang could not read. Whether the consumed
@@ -163,8 +197,7 @@ struct CompileResult {
     bool pch_suspect = false;
 
     int version;
-    /// Diagnostics serialized as JSON (RawValue) to avoid bincode/serde annotation conflicts.
-    kota::codec::RawValue diagnostics;
+    std::vector<protocol::Diagnostic> diagnostics;
     /// Milliseconds since epoch, sampled before the compile started. Files
     /// whose mtime is past this moment may differ from what the build read.
     std::int64_t build_at = 0;
@@ -261,6 +294,8 @@ struct CompletionParams {
     /// The workspace config, carried whole — the worker holds no config
     /// state and a config change simply shows up on the next request.
     Config config;
+
+    feature::CompletionClient client;
 };
 
 /// Signature help over unsaved buffer content; same inputs as completion.
@@ -301,6 +336,8 @@ struct ArtifactBuildResult {
     /// Milliseconds since epoch, sampled before the build started. Files
     /// whose mtime is past this moment may differ from what the build read.
     std::int64_t build_at = 0;
+    /// What the build read and looked for — on failure too: a build that
+    /// failed on the user's errors fails again until one of them changes.
     std::vector<DepFile> deps;
 };
 
@@ -352,6 +389,13 @@ struct DocumentLinkParams {
     std::string path;
 };
 
+/// Request the folding ranges of an open file's AST. Unlike the links they
+/// cover the preamble too: a preamble holds only directives, whose folds
+/// come from a lexical scan of the whole file.
+struct FoldingRangeParams {
+    std::string path;
+};
+
 /// Request the code actions of an open file's AST on a byte range of its
 /// text: fully computed against the worker's AST, index requests included
 /// (see feature::CodeAction).
@@ -368,29 +412,13 @@ struct EvictedParams {
     std::string path;
 };
 
-/// Interrupt the in-flight compile of `path`, if any. Sent at the master's
-/// supersede point instead of wire-cancelling the compile request: the
-/// worker flips the compile's stop flag so clang abandons the stale parse
-/// at the next declaration, while the request still runs to a normal
-/// (incomplete) reply — the master keeps observing the real outcome, so a
-/// worker death during a superseded compile still reaches the document's
-/// quarantine accounting.
-struct CancelCompileParams {
-    std::string path;
-};
-
-/// Interrupt a stateless worker's in-flight build. Sent by the pool's
-/// cooperative cancel instead of wire-cancelling the build request: the
-/// worker flips the build's stop flag so clang abandons the parse at the
-/// next declaration, while the request still runs to a normal (cancelled)
-/// reply. The sender keeps awaiting that reply, so the slot stays busy —
-/// and the cancel-grace deadline stays armed — until the process is
-/// actually free; a wire cancel would resume the sender immediately and
-/// hand the slot out while the worker is still stuck in the old parse.
-/// Carries no build identity: the pool dispatches at most one build per
-/// worker at a time, and pipe ordering pins any follow-up build behind
-/// the cancel.
-struct CancelBuildParams {};
+/// Whether a request builds — a compile, a PCH or PCM, an indexing run:
+/// work whose time grows with the translation unit, where a query's never
+/// should.
+template <typename Params>
+constexpr inline bool is_build =
+    std::same_as<Params, CompileParams> || std::same_as<Params, BuildPCHParams> ||
+    std::same_as<Params, BuildPCMParams> || std::same_as<Params, TURunParams>;
 
 }  // namespace clice::worker
 
@@ -412,6 +440,13 @@ template <>
 struct RequestTraits<clice::worker::DocumentLinkParams> {
     using Result = std::vector<clice::feature::DocumentLink>;
     constexpr inline static std::string_view method = "clice/worker/documentLink";
+};
+
+template <>
+struct RequestTraits<clice::worker::FoldingRangeParams> {
+    /// Empty without an AST: the client then folds by its own means.
+    using Result = std::optional<std::vector<clice::feature::FoldingRange>>;
+    constexpr inline static std::string_view method = "clice/worker/foldingRange";
 };
 
 template <>
@@ -464,16 +499,6 @@ struct NotificationTraits<clice::worker::EvictParams> {
 template <>
 struct NotificationTraits<clice::worker::EvictedParams> {
     constexpr inline static std::string_view method = "clice/worker/evicted";
-};
-
-template <>
-struct NotificationTraits<clice::worker::CancelCompileParams> {
-    constexpr inline static std::string_view method = "clice/worker/cancelCompile";
-};
-
-template <>
-struct NotificationTraits<clice::worker::CancelBuildParams> {
-    constexpr inline static std::string_view method = "clice/worker/cancelBuild";
 };
 
 }  // namespace kota::ipc::protocol

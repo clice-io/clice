@@ -43,19 +43,21 @@ Distilled from real correction history — these mistakes keep recurring:
 - `src/semantic/` — Semantic analysis: symbol kinds, relations, AST visitor, template resolver
 - `src/syntax/` — Lexer, scanner, token types, dependency graph
 - `src/command/` — CLI parsing, compilation database, toolchain detection
-- `src/driver/` — CLI subcommand entry points: serve, worker, index, inspect, format, lint, query, doc
-- `src/support/` — Utilities: logging, filesystem, JSON, string helpers
+- `src/driver/` — CLI subcommand entry points: serve, worker, index, inspect, format, lint, query, refactor, analyze
+- `src/vfs/` — Disk access: reads, statuses, writes, directory walks; the file table and its freshness checks
+- `src/support/` — Utilities: logging, JSON, string helpers
 
 Beyond `src/`: `tools/` is the TypeScript harness (`@clice/tools`: LSP client, snap machinery, replay, shared protocol types), `tests/` holds all four test suites, `editors/` the vscode/zed/nvim clients. `tools/`, `tests/`, and `editors/vscode` form one npm workspace rooted at the repo top level — run `npm install` and `npm run check` from the root, never inside a package.
 
 ## Build & Test
 
-- **pixi** for environments, **CMake + Ninja** for building. Build types `Debug` and `RelWithDebInfo` (default); output in `build/[type]/`.
+- **pixi** for environments, **Bazel** for building (npm's bazelisk: `npx bazel`; `BUILD.bazel`, `MODULE.bazel`, `.bazelrc`). Build types `Debug` and `RelWithDebInfo` (default), each in its own output directory: `pixi run build [type]` puts clice at `build/[type]/bin/bin/clice`.
 - Four test suites, all must pass before any push:
   - **Unit** (`tests/unit/`): C++, project's own framework. Test names at most 4 words.
   - **Integration** (`tests/integration/`): TypeScript vitest against a real clice server over LSP.
   - **Smoke** (`tests/smoke/`): recorded LSP sessions replayed via `tools/replay.ts`.
   - **Snap** (`tests/snap/`): feature snapshot corpora, pinned from the inspect (`clice inspect`) and server (real server) paths per each fixture's `verify:` mode. A shared-snapshot mismatch between the two paths is a real bug — never `UPDATE_SNAPSHOTS` over it. Ownership rules and fixture meta live in the write-tests skill.
+- **Compat** (`tests/compat/`): real build systems and compilers build a small project; clice must parse the resulting database clean and agree with the compiler. Needs the tools installed, so it runs in CI with every build and weekly against the newest release; run it on a box when changing command handling.
 - TypeScript gate: `npm run check` at the repo root — strict tsc + ESLint across all workspace packages, zero tolerance.
 
 ## Commits, Branches, PRs

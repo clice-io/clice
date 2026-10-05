@@ -3,14 +3,16 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "project/command_resolver.h"
 #include "project/project.h"
-#include "sched/crash_budget.h"
 #include "sched/graph.h"
 #include "worker/pool.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/xxhash.h"
@@ -39,18 +41,17 @@ public:
 
     /// Re-validate on-disk PCM blobs and build the module dependencies of
     /// a request that compiles under `arguments` with `content` as the
-    /// main file and `synthesized` served from memory (the forwarder's
-    /// per-request builds — the scan must see the buffer's imports under
-    /// the request's command). Building a dependency can itself evict
-    /// another clean module's PCM under budget pressure, which reopens the
-    /// window the revalidation just closed — hence the bounded retry until
-    /// the set is stable.
+    /// main file and the resolution's synthesized context served from
+    /// memory (the forwarder's per-request builds — the scan must see the
+    /// buffer's imports under the request's command). Building a
+    /// dependency can itself evict another clean module's PCM under budget
+    /// pressure, which reopens the window the revalidation just closed —
+    /// hence the bounded retry until the set is stable.
     kota::task<bool> prepare_deps(Fid path_id,
+                                  const Resolution& resolution,
                                   llvm::ArrayRef<const char*> arguments,
                                   llvm::StringRef directory,
-                                  std::optional<llvm::StringRef> content,
-                                  const SynthesizedContext* synthesized,
-                                  bool foreground);
+                                  llvm::StringRef content);
 
     /// One pass of the on-disk revalidation: LRU eviction can remove a
     /// blob while its node is still clean, so evicted units are
@@ -80,6 +81,14 @@ public:
     /// new artifact.
     std::function<void()> on_indexing_needed;
 
+    /// Preprocessor passes direct_deps() ran.
+    std::uint64_t import_scans = 0;
+
+    /// A closed document's buffer scans no more.
+    void forget_buffer(Fid path_id) {
+        scan_memos.erase(path_id);
+    }
+
     /// A scan's module dependencies, split by what a consumer does with
     /// them: `resolved` names module units to wait on; `declared` is the
     /// full durable edge set — resolved units' nodes plus one sentinel
@@ -99,6 +108,23 @@ public:
         return {Family::PCM, (1ull << 63) | (llvm::xxh3_64bits(name) >> 1)};
     }
 
+    /// The death the module's last build caused, while the module's
+    /// content is still what crashed: every importer that finds it books
+    /// it against its own document instead of burning a worker of its own.
+    const kota::ipc::Error* crashed(Fid module);
+
+    /// An importer holding a license to retry (see server/quarantine.h)
+    /// lifts the module's refusal.
+    void forgive(Fid module) {
+        build_crashes.erase(module);
+    }
+
+    /// An importer's save retries the module's failed build (see
+    /// build_failures). Returns whether it had failed.
+    bool forget_failure(Fid module) {
+        return build_failures.erase(module);
+    }
+
     /// Whether a node is an unresolved-import sentinel.
     static bool is_unresolved(NodeId id) {
         return id.family == Family::PCM && (id.key >> 63) != 0;
@@ -109,27 +135,36 @@ public:
     /// and return them for serving-side treatment.
     llvm::SmallVector<NodeId> provider_appeared(llvm::StringRef name);
 
-    /// Scan a file for its direct module dependencies (lazy, on every
-    /// use — a re-resolve is inherent, so a CDB or import change is
-    /// always seen by the next round). Consumers declare the full edge
-    /// set and wait on the resolved subset. An engaged `content` scans
-    /// it in place of the file's on-disk text — even when empty (an open
-    /// buffer's imports count before they are saved, and an emptied
-    /// buffer has none).
-    ModuleDeps direct_deps(Fid path_id, std::optional<llvm::StringRef> content = std::nullopt);
+    /// Scan a module unit's disk text for its direct module dependencies
+    /// under the command its own build resolves (lazy, on every use — a
+    /// re-resolve is inherent, so a CDB or import change is always seen
+    /// by the next round). Consumers declare the full edge set and wait
+    /// on the resolved subset.
+    kota::task<ModuleDeps> direct_deps(Fid path_id);
 
     /// The already-resolved-command flavor: scans under exactly the
-    /// arguments the caller will compile with. The AST path uses it so a
-    /// context choice or donated header host cannot diverge between the
-    /// scan and the parse — the path_id flavor re-picks a CDB entry,
-    /// which is only right for whole-TU runs on real commands. The
-    /// header context the arguments name is served to the scan from
-    /// `synthesized`.
-    ModuleDeps direct_deps(Fid path_id,
-                           llvm::ArrayRef<const char*> arguments,
-                           llvm::StringRef directory,
-                           std::optional<llvm::StringRef> content,
-                           const SynthesizedContext* synthesized = nullptr);
+    /// arguments the caller will compile with, rendered by `resolution`.
+    /// The AST path uses it so a context choice or donated header host
+    /// cannot diverge between the scan and the parse — the path_id flavor
+    /// re-picks a CDB entry, which is only right for whole-TU runs on real
+    /// commands. The header context the arguments name is served to the
+    /// scan from memory. An engaged `content` scans it in place of the
+    /// file's on-disk text — even when empty (an open buffer's imports
+    /// count before they are saved, and an emptied buffer has none).
+    ///
+    /// The scan is a preprocessor run over the whole unit: it runs on the
+    /// thread pool, the event loop only resolves the names it found. A
+    /// unit that can import nothing pays none: its own text has no module
+    /// syntax, neither it nor the host whose command it borrows reaches an
+    /// import candidate, and a buffer's directives are the ones the
+    /// dependency scan saw. A buffer's scan is reused while its directive
+    /// stream, its arguments and the project's disk state (context_epoch)
+    /// stay the same.
+    kota::task<ModuleDeps> direct_deps(Fid path_id,
+                                       const Resolution& resolution,
+                                       llvm::ArrayRef<const char*> arguments,
+                                       llvm::StringRef directory,
+                                       std::optional<llvm::StringRef> content);
 
 private:
     /// Commit the scan's full edge set as the unit's durable edges (see
@@ -144,16 +179,57 @@ private:
         return {Family::PCM, path_id.raw};
     }
 
+    /// What a precise scan says about a unit's modules.
+    struct Imports {
+        std::vector<std::string> modules;
+        std::string module_name;
+        bool is_interface_unit = false;
+    };
+
+    /// A buffer's last precise scan and what it ran against.
+    struct ScanMemo {
+        std::uint64_t directives = 0;
+        std::uint64_t arguments = 0;
+        std::uint64_t epoch = 0;
+        Imports imports;
+    };
+
     TaskGraph& graph;
     Project& project;
     CommandResolver& commands;
     WorkerPool& pool;
 
-    /// Crash budget of the builds, keyed by the content-derived PCM key:
-    /// a module interface that keeps killing workers is refused until its
-    /// content — and therefore its key — changes. Document quarantine
-    /// cannot contain it: every importer would burn workers of its own.
-    CrashBudget build_crashes;
+    llvm::DenseMap<Fid, ScanMemo> scan_memos;
+
+    /// A module build that killed a worker: the content it was built from
+    /// and the death.
+    struct Crash {
+        std::uint64_t content = 0;
+        kota::ipc::Error error;
+    };
+
+    std::uint64_t content_hash(Fid module);
+
+    /// The modules whose build killed a worker (see crashed): refused
+    /// until an importer forgives them or their content changes. One
+    /// document's quarantine cannot contain it alone: every importer would
+    /// burn a worker of its own.
+    llvm::DenseMap<Fid, Crash> build_crashes;
+
+    /// A module build that failed on errors in the user's code: the cache
+    /// key it ran under and what it read and looked for, its own source
+    /// and the interfaces it imported included.
+    struct Failure {
+        std::string key;
+        DepsSnapshot deps;
+    };
+
+    /// The modules whose build failed (see Failure): refused until their
+    /// command or one of those files changes, an import that resolved to
+    /// nothing gains a provider, or an importer is saved. Rebuilt on unchanged inputs, every
+    /// compile and completion of every importer would pay for the failing
+    /// build first.
+    llvm::DenseMap<Fid, Failure> build_failures;
 };
 
 }  // namespace clice

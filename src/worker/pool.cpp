@@ -2,11 +2,15 @@
 
 #include <algorithm>
 #include <csignal>
+#include <cstdint>
+#include <format>
 #include <string>
+#include <utility>
 
 #include "support/anomaly.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/async/io/system.h"
 #include "kota/ipc/transport.h"
@@ -22,37 +26,37 @@ namespace {
 kota::task<> drain_stderr(kota::pipe stderr_pipe,
                           std::string prefix,
                           std::shared_ptr<StderrTail> tail) {
-    std::string buffer;
     while(true) {
-        auto result = co_await stderr_pipe.read();
-        if(!result.has_value())
+        auto read = co_await stderr_pipe.read_line();
+        if(!read.has_value() || !read.value()) {
             break;
-        auto& chunk = result.value();
-        if(chunk.empty())
-            break;
-
-        buffer += chunk;
-
-        std::size_t pos = 0;
-        while(true) {
-            auto nl = buffer.find('\n', pos);
-            if(nl == std::string::npos)
-                break;
-            auto line = buffer.substr(pos, nl - pos);
-            if(!line.empty()) {
-                LOG_WARN("{} {}", prefix, line);
-                tail->add(std::move(line));
-            }
-            pos = nl + 1;
         }
-        buffer.erase(0, pos);
+        auto& line = *read.value();
+        if(line.starts_with(worker::crashed_in_marker)) {
+            tail->crashed_in = line.substr(worker::crashed_in_marker.size());
+        }
+        if(!line.empty()) {
+            LOG_WARN("{} {}", prefix, line);
+            tail->add(std::move(line));
+        }
     }
+    tail->drained.set();
+}
 
-    if(!buffer.empty()) {
-        LOG_WARN("{} {}", prefix, buffer);
-        tail->add(std::move(buffer));
+/// How a worker died, worded for the user.
+std::string describe_exit(int exit_code, int exit_signal) {
+    kota::process::exit_status exit{.status = exit_code, .term_signal = exit_signal};
+    if(exit_signal != 0) {
+        return "killed by " + exit.to_string();
     }
-    tail->drained = true;
+#ifdef _WIN32
+    // A Windows process that crashed exits with the NTSTATUS of its
+    // exception.
+    if(static_cast<std::uint32_t>(exit_code) >= 0x8000'0000) {
+        return "terminated by " + exit.to_string();
+    }
+#endif
+    return std::format("exited with code {}", exit_code);
 }
 
 /// IO pump wrapper owning a peer reference, so the peer object outlives its
@@ -112,6 +116,10 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::s
     opts.args = {options.self_path, "worker"};
     if(stateful) {
         opts.args.push_back("--stateful");
+        if(options.max_documents) {
+            opts.args.push_back("--max-documents");
+            opts.args.push_back(std::to_string(*options.max_documents));
+        }
     }
     opts.args.push_back("--worker-name");
     opts.args.push_back(name);
@@ -141,6 +149,7 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::s
     // stdin (parent writes).
     auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(spawn.stdout_pipe),
                                                                   std::move(spawn.stdin_pipe));
+    transport->set_remote_max_payload(kota::ipc::default_max_payload);
     auto peer = std::make_shared<kota::ipc::BincodePeer>(loop, std::move(transport));
 
     auto stderr_tail = std::make_shared<StderrTail>();
@@ -155,9 +164,9 @@ void WorkerPool::install_evict_handler(WorkerProcess& worker, std::size_t index)
         [this, index, gen = worker.generation](const worker::EvictedParams& params) {
             // A buffered eviction from a dead peer can drain after the slot
             // respawned and reacquired the same path; matching by slot index
-            // alone would unseat the new owner. A same-generation ABA (a
-            // live worker's stale-copy eviction draining after a probe
-            // reassigned the path back to it) is accepted: the notification
+            // alone would unseat the new owner. A same-generation ABA (an
+            // eviction of a closed copy draining after a reopen assigned the
+            // path back to the same worker) is accepted: the notification
             // carries no ownership epoch, the window is one notification
             // drain, and the cost is one spurious invalidation-recompile —
             // not corrupted state.
@@ -193,6 +202,7 @@ bool WorkerPool::spawn_worker(bool stateful) {
     worker_tasks.spawn(monitor_worker(index, stateful));
     if(!stateful)
         on_stateless_capacity.emit();
+    capacity_returned.set();
     return true;
 }
 
@@ -216,6 +226,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
     w.preempted = false;
     w.cancel_requested_at = {};
     w.spawn_time = std::chrono::steady_clock::now();
+    w.death = std::make_shared<WorkerDeath>();
     // generation was bumped at death; crash_streak carries across restarts
     // until a healthy uptime resets it.
 
@@ -227,6 +238,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
         try_dispatch_pending();
         on_stateless_capacity.emit();
     }
+    capacity_returned.set();
 
     LOG_INFO("Worker {} restarted (crash streak {})", w.name, w.crash_streak);
     return true;
@@ -235,6 +247,30 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
 bool WorkerPool::start(const WorkerPoolOptions& opts) {
     options = opts;
     log_dir = opts.log_dir;
+
+    // Resolve auto max_stateless (0 = CPU cores).
+    if(options.max_stateless == 0)
+        options.max_stateless = kota::sys::parallelism();
+    options.max_stateless = std::max(options.max_stateless, options.stateless_count);
+
+    // A stateless worker can hold a whole TU's AST, a gigabyte and more for
+    // heavy code. More workers than memory holds only feed the memory
+    // controller's kill-and-redo cycle — or the OOM killer, which may take
+    // the whole session with it — so the memory limit (a cgroup's, when
+    // tighter) caps both the start and the ceiling.
+    constexpr std::uint64_t worker_footprint = 1536ull * 1024 * 1024;
+    auto mem = kota::sys::memory();
+    auto limit = (mem.constrained > 0 && mem.constrained < mem.total) ? mem.constrained : mem.total;
+    if(limit > 0) {
+        auto fit = static_cast<std::uint32_t>(std::max<std::uint64_t>(1, limit / worker_footprint));
+        if(fit < options.max_stateless) {
+            LOG_INFO("Capping stateless workers at {} for {} MiB of memory",
+                     fit,
+                     limit / (1024 * 1024));
+            options.max_stateless = fit;
+            options.stateless_count = std::min(options.stateless_count, fit);
+        }
+    }
 
     for(std::uint32_t i = 0; i < options.stateless_count; ++i) {
         if(!spawn_worker(false)) {
@@ -246,11 +282,6 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
             return false;
         }
     }
-
-    // Resolve auto max_stateless (0 = CPU cores).
-    if(options.max_stateless == 0)
-        options.max_stateless = kota::sys::parallelism();
-    options.max_stateless = std::max(options.max_stateless, options.stateless_count);
     if(options.min_stateless == 0)
         options.min_stateless = 1;
     // The configured floor is honored even above the startup count: idle
@@ -260,7 +291,7 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
 
     low_limit = max_low_limit();
 
-    worker_tasks.spawn(kota::with_token(monitor_loop(), stop_scope.token()));
+    worker_tasks.spawn(monitor_loop());
 
     started = true;
     LOG_INFO("WorkerPool started: {} stateless, {} stateful workers",
@@ -273,6 +304,7 @@ kota::task<> WorkerPool::stop() {
     LOG_INFO("WorkerPool stopping...");
     stop_scope.cancel();
     fail_pending_requests();
+    capacity_returned.set();
 
     for(auto& w: stateless_workers)
         if(w.peer)
@@ -291,7 +323,7 @@ kota::task<> WorkerPool::stop() {
 
     // A wedged worker that ignores SIGTERM would otherwise block the join
     // below forever; escalate after a grace period.
-    kota::task_group<> watchdog{loop};
+    kota::task_group<> watchdog;
     watchdog.spawn(kill_stragglers());
 
     co_await worker_tasks.join();
@@ -304,16 +336,19 @@ kota::task<> WorkerPool::stop() {
 kota::task<> WorkerPool::kill_stragglers() {
     co_await kota::sleep(std::chrono::milliseconds(5000), loop);
     LOG_WARN("Workers still alive 5s after SIGTERM; escalating to SIGKILL");
-    // 9 == SIGKILL by value; Windows' <csignal> does not define the macro.
     for(auto& w: stateless_workers)
         if(w.state == SlotState::Alive)
-            w.proc.kill(9);
+            w.proc.kill();
     for(auto& w: stateful_workers)
         if(w.state == SlotState::Alive)
-            w.proc.kill(9);
+            w.proc.kill();
 }
 
 std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
+    if(stop_scope.cancelled()) {
+        return SIZE_MAX;
+    }
+
     auto it = owner.find(path_id);
     if(it != owner.end()) {
         return it->second;
@@ -328,67 +363,17 @@ std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
     return selected;
 }
 
-std::size_t WorkerPool::assign_expendable(std::uint32_t path_id) {
-    auto expendable = [&](std::size_t i) {
-        if(stateful_workers[i].state != SlotState::Alive) {
-            return false;
-        }
-        for(auto& [pid, widx]: owner) {
-            if(widx == i && pid != path_id) {
-                return false;
-            }
-        }
-        return true;
-    };
-
-    // Keep the current owner when sacrificing it risks nothing.
-    if(auto it = owner.find(path_id); it != owner.end() && expendable(it->second)) {
-        return it->second;
-    }
-
-    auto take = [&](std::size_t i) {
-        remove_owner(path_id);
-        owner[path_id] = i;
-        stateful_workers[i].owned_documents += 1;
-        return i;
-    };
-
-    for(std::size_t i = 0; i < stateful_workers.size(); ++i) {
-        if(expendable(i)) {
-            return take(i);
-        }
-    }
-
-    // A single-worker pool has nothing to preserve by refusing: run the
-    // probe there — the occasional respawn beats quarantining the document
-    // until the session reopens.
-    if(stateful_workers.size() == 1 && stateful_workers[0].state == SlotState::Alive) {
-        return take(0);
-    }
-    return SIZE_MAX;
-}
-
 std::size_t WorkerPool::pick_least_loaded() {
-    // Two passes: a worker hosting an in-flight quarantine probe is a
-    // known crash risk, so new documents are pinned elsewhere while any
-    // other live worker exists — a probe crash must not take a freshly
-    // opened healthy document with it.
-    for(bool allow_suspect: {false, true}) {
-        std::size_t best = SIZE_MAX;
-        for(std::size_t i = 0; i < stateful_workers.size(); ++i) {
-            auto& w = stateful_workers[i];
-            if(w.state != SlotState::Alive)
-                continue;
-            if(!allow_suspect && w.suspect_inflight > 0)
-                continue;
-            if(best == SIZE_MAX || w.owned_documents < stateful_workers[best].owned_documents) {
-                best = i;
-            }
+    std::size_t best = SIZE_MAX;
+    for(std::size_t i = 0; i < stateful_workers.size(); i += 1) {
+        auto& w = stateful_workers[i];
+        if(w.state != SlotState::Alive)
+            continue;
+        if(best == SIZE_MAX || w.owned_documents < stateful_workers[best].owned_documents) {
+            best = i;
         }
-        if(best != SIZE_MAX)
-            return best;
     }
-    return SIZE_MAX;
+    return best;
 }
 
 void WorkerPool::remove_owner(std::uint32_t path_id) {
@@ -411,18 +396,6 @@ bool WorkerPool::remove_owner_from(std::uint32_t path_id, std::size_t worker_ind
     return true;
 }
 
-void WorkerPool::clear_owner(std::size_t worker_index) {
-    llvm::SmallVector<std::uint32_t> to_remove;
-    for(auto& [pid, widx]: owner) {
-        if(widx == worker_index) {
-            to_remove.push_back(pid);
-        }
-    }
-    for(auto pid: to_remove) {
-        remove_owner(pid);
-    }
-}
-
 void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_process) {
     auto& w = stateful ? stateful_workers[index] : stateless_workers[index];
     if(w.state != SlotState::Alive)
@@ -433,6 +406,16 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
     w.busy = false;
     w.low_priority = false;
     w.preempt_source.reset();
+    w.dispatches.clear();
+    if(stateful) {
+        for(auto& [path_id, widx]: owner) {
+            if(widx == index)
+                w.lost_documents.push_back(path_id);
+        }
+        for(auto path_id: w.lost_documents) {
+            remove_owner(path_id);
+        }
+    }
     if(w.peer) {
         w.peer->close();
         w.peer.reset();
@@ -440,12 +423,22 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
     if(kill_process) {
         // Make sure the process is really gone so monitor_worker's
         // proc.wait() is guaranteed to deliver a verdict.
-        w.proc.kill(9);
+        w.proc.kill();
     }
 }
 
 kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     auto& workers = stateful ? stateful_workers : stateless_workers;
+
+    // Every exit settles this incarnation's record, shutdown included:
+    // senders whose link broke are parked on it.
+    struct Settle {
+        std::shared_ptr<WorkerDeath> death;
+
+        ~Settle() {
+            death->settled.set();
+        }
+    } settle{workers[index].death};
 
     auto result = co_await workers[index].proc.wait();
 
@@ -497,9 +490,10 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     // grandchild holding the pipe open must not stall the respawn. The
     // slot is already dying, so a shutdown meanwhile skips its reaped pid.
     if(auto tail = workers[index].stderr_tail) {
-        for(int attempt = 0; attempt < 20 && !tail->drained; attempt += 1) {
-            co_await kota::sleep(std::chrono::milliseconds(50), loop);
-        }
+        auto drained = [](std::shared_ptr<StderrTail> tail) -> kota::task<> {
+            co_await tail->drained.wait();
+        };
+        co_await kota::with_timeout(drained(std::move(tail)), std::chrono::seconds(1), loop);
         if(stop_scope.cancelled())
             co_return;
     }
@@ -564,8 +558,8 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     // (noisy, non-portable) stack frames.
     if(!log_dir.empty()) {
         auto log_path = path::join(log_dir, w.name + ".log");
-        if(auto content = fs::read(log_path)) {
-            llvm::StringRef tail(*content);
+        if(auto content = vfs::read(log_path, vfs::Read::Bytes)) {
+            llvm::StringRef tail = (*content)->getBuffer();
             for(llvm::StringRef marker: {"CRASH STACK TRACE", "Stack dump"}) {
                 if(auto pos = tail.find(marker); pos != llvm::StringRef::npos)
                     tail = tail.substr(0, pos);
@@ -584,13 +578,20 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
         }
     }
 
+    auto& death = *w.death;
+    if(death.culprit.empty() && w.stderr_tail) {
+        death.culprit = w.stderr_tail->crashed_in;
+    }
+    if(death.cause.empty()) {
+        death.cause = describe_exit(exit_code, exit_signal);
+    }
+
     reset_streak_if_healthy(w);
-    // A crash while a suspect request (a quarantined document's probe) was
-    // in flight says something about the document, not the slot: respawn
-    // with the streak untouched, like a preemption.
-    bool suspect = w.suspect_inflight > 0;
-    w.suspect_inflight = 0;
-    if(!suspect) {
+    // A death that names its request is that request's content's doing:
+    // the caller blames the content, and the slot respawns with its streak
+    // untouched, like a preemption. Only a nameless death says something
+    // about the process itself.
+    if(death.culprit.empty()) {
         w.crash_streak += 1;
     }
 
@@ -603,13 +604,7 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     info.will_restart = w.crash_streak <= options.max_crash_streak;
 
     if(stateful) {
-        // Collect documents owned by this worker so the caller (on_crash)
-        // can mark them dirty for recompilation on the next request.
-        for(auto& [path_id, widx]: owner) {
-            if(widx == index)
-                info.lost_documents.push_back(path_id);
-        }
-        clear_owner(index);
+        info.lost_documents = std::exchange(w.lost_documents, {});
     } else {
         apply_crash_backoff();
         // The dead worker's claim was released by mark_worker_dead; a queued
@@ -629,6 +624,39 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
         on_crash(info);
 
     return info.will_restart;
+}
+
+kota::ipc::Error WorkerPool::death_error(const WorkerDeath& death,
+                                         llvm::StringRef tag,
+                                         kota::codec::dyn::Value identity) {
+    namespace errc = worker::dispatch_errc;
+    auto code = death.culprit.empty()  ? errc::worker_died
+                : death.culprit == tag ? errc::worker_crashed
+                                       : errc::worker_lost;
+    return kota::ipc::Error{code, death.cause, std::move(identity)};
+}
+
+kota::task<bool> WorkerPool::await_capacity(bool stateful) {
+    while(!stop_scope.cancelled()) {
+        auto& workers = stateful ? stateful_workers : stateless_workers;
+        auto serving = std::ranges::any_of(workers, [](const WorkerProcess& w) {
+            return w.state == SlotState::Alive && !w.retiring;
+        });
+        if(serving) {
+            co_return true;
+        }
+        auto revives = revives_slots();
+        auto returning = std::ranges::any_of(workers, [&](const WorkerProcess& w) {
+            return w.state == SlotState::Dying || w.state == SlotState::Respawning ||
+                   (revives && w.state == SlotState::Dead);
+        });
+        if(!returning) {
+            co_return false;
+        }
+        capacity_returned.reset();
+        co_await capacity_returned.wait();
+    }
+    co_return false;
 }
 
 std::chrono::milliseconds WorkerPool::backoff_delay(unsigned crash_streak) const {
@@ -672,9 +700,10 @@ kota::task<> WorkerPool::respawn_after(std::size_t index,
 void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
     auto& w = stateful ? stateful_workers[index] : stateless_workers[index];
     w.state = SlotState::Dead;
+    // If this was the last slot with a future, wake all waiters so they
+    // can return an error instead of hanging.
+    capacity_returned.set();
     if(!stateful) {
-        // If this was the last slot with a future, wake all waiters so they
-        // can return an error instead of hanging.
         try_dispatch_pending();
     }
     // Revival is a running-pool concern: unit fixtures drive slot state
@@ -827,10 +856,14 @@ std::size_t WorkerPool::pick_idle_stateless() {
 
 kota::task<> WorkerPool::monitor_loop() {
     while(true) {
-        co_await kota::sleep(std::chrono::milliseconds(3000), loop);
+        co_await kota::with_token(kota::sleep(std::chrono::milliseconds(3000), loop),
+                                  stop_scope.token());
+        if(stop_scope.cancelled())
+            co_return;
 
         tick_foreground();
         tick_cancel_grace();
+        tick_deadlines();
 
         auto mem = kota::sys::memory();
         if(mem.total == 0)
@@ -908,6 +941,36 @@ void WorkerPool::tick_cancel_grace() {
     }
 }
 
+void WorkerPool::tick_deadlines() {
+    auto now = std::chrono::steady_clock::now();
+    for(bool stateful: {false, true}) {
+        auto& workers = stateful ? stateful_workers : stateless_workers;
+        for(std::size_t i = 0; i < workers.size(); i += 1) {
+            auto& w = workers[i];
+            if(w.state != SlotState::Alive) {
+                continue;
+            }
+            auto building = std::ranges::any_of(w.dispatches, &Dispatch::build);
+            auto deadline = [&](const Dispatch* dispatch) {
+                return dispatch->build ? options.build_deadline : options.query_deadline;
+            };
+            auto overdue = std::ranges::find_if(w.dispatches, [&](const Dispatch* dispatch) {
+                return (dispatch->build || !building) &&
+                       now - dispatch->started > deadline(dispatch);
+            });
+            if(overdue == w.dispatches.end()) {
+                continue;
+            }
+            auto seconds =
+                std::chrono::duration_cast<std::chrono::seconds>(deadline(*overdue)).count();
+            LOG_WARN("Worker {} ran {} for over {}s; killing it", w.name, (*overdue)->tag, seconds);
+            w.death->culprit = (*overdue)->tag;
+            w.death->cause = std::format("killed after running for over {} seconds", seconds);
+            mark_worker_dead(i, stateful, true);
+        }
+    }
+}
+
 void WorkerPool::cancel_low_priority(std::size_t count) {
     // Newest claim first: the youngest compile has the least work to lose,
     // and a fixed scan order would keep sacrificing the same slot's file.
@@ -935,14 +998,9 @@ void WorkerPool::cancel_low_priority(std::size_t count) {
         if(cancelled >= count)
             break;
         auto& w = stateless_workers[i];
-        w.preempt_source->cancel();
-        // An Alive slot always holds a peer in production (mark_worker_dead
-        // drops the peer and the Alive state in one step); the conditional
-        // exists for fixture-built slots. Either way the source above makes
-        // the sender observe cancelled, and a slot that dies before the
+        // Cancels the request on the wire; a slot that dies before the
         // grace expires has its stamp cleared by the respawn.
-        if(w.peer)
-            w.peer->send_notification(worker::CancelBuildParams{});
+        w.preempt_source->cancel();
         w.cancel_requested_at = std::chrono::steady_clock::now();
         cancelled += 1;
     }
@@ -970,10 +1028,11 @@ void WorkerPool::tick_memory(double available_ratio) {
     // immediately, and they respawn without crash accounting. Zero, not
     // one: with any allowance left, the preemption's own dispatch kick
     // would admit a fresh compile into the very pressure being relieved.
+    // The concurrency that ran into it is no recovery target: fast
+    // recovery aims at half of it, and only additive steps probe beyond.
     if(available_ratio < 0.10) {
         if(low_limit > 0) {
-            if(w_max == 0 || low_limit > w_max)
-                w_max = low_limit;
+            w_max = std::max<std::size_t>(1, std::max(low_limit, low_busy_count()) / 2);
             low_limit = 0;
             LOG_WARN("low_limit -> 0 (severe memory pressure: {:.0f}% available)",
                      available_ratio * 100);
@@ -1083,20 +1142,24 @@ bool WorkerPool::scale_up_worker() {
     if(stateless_footprint() >= options.max_stateless)
         return false;
 
-    // A Dead slot is capacity already allocated, just waiting out its
-    // revival cooldown; under scale-up pressure revive it now instead of
-    // appending a fresh slot beside it — the cooldown revival would later
-    // fire too and grow the pool past what saturation asked for. The
-    // pending revive_slot task no-ops once the state is no longer Dead.
-    auto dead = std::ranges::find(stateless_workers, SlotState::Dead, &WorkerProcess::state);
-    if(dead != stateless_workers.end()) {
-        auto index = static_cast<std::size_t>(dead - stateless_workers.begin());
-        auto& w = *dead;
+    // A vacant slot — Dead and waiting out its revival cooldown, or Retired
+    // by an earlier scale-down — is capacity already allocated; refill it
+    // instead of appending a fresh slot beside it. Appending would grow the
+    // slot table, worker names and log files by one per retire/scale-up
+    // cycle, and for a Dead slot the cooldown revival would later fire too
+    // and grow the pool past what saturation asked for. The pending
+    // revive_slot task no-ops once the state is no longer Dead.
+    auto vacant = std::ranges::find_if(stateless_workers, [](const WorkerProcess& w) {
+        return w.state == SlotState::Dead || w.state == SlotState::Retired;
+    });
+    if(vacant != stateless_workers.end()) {
+        auto index = static_cast<std::size_t>(vacant - stateless_workers.begin());
+        auto& w = *vacant;
         w.crash_streak = 0;
         w.state = SlotState::Respawning;
         if(!respawn_worker(index, false)) {
-            // Back to Dead with a fresh cooldown revival armed, so a failed
-            // early revive does not orphan the slot.
+            // Dead with a fresh cooldown revival armed, so a failed refill
+            // does not orphan the slot.
             give_up_slot(index, false);
             LOG_WARN("scale_up: revive of {} failed", w.name);
             return false;

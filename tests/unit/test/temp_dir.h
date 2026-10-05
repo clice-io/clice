@@ -1,10 +1,12 @@
 #pragma once
 
 #include <deque>
+#include <optional>
 #include <string>
 
-#include "support/filesystem.h"
+#include "vfs/file_system.h"
 
+#include "kota/zest/zest.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
@@ -16,9 +18,9 @@ namespace clice::testing {
 /// RAII helper for a temporary directory tree.
 ///
 /// Creates a unique temporary directory on construction and removes it
-/// (recursively) on destruction.  Provides helpers for building paths,
-/// creating sub-directories, and writing files — used across multiple
-/// test suites that need real filesystem state.
+/// (recursively) on destruction, or when a failed ZASSERT ends the test.  Provides helpers for
+/// building paths, creating sub-directories, and writing files — used across multiple test suites
+/// that need real filesystem state.
 ///
 /// Also serves as a cross-platform source of absolute paths: on Windows
 /// the root includes a drive letter, so `path("x")` is absolute everywhere.
@@ -39,8 +41,10 @@ struct TempDir {
     }
 
     ~TempDir() {
-        fs::remove_all(root.str());
+        vfs::remove_all(root.str());
     }
+
+    kota::zest::FatalHook cleanup{[this] { vfs::remove_all(root.str()); }};
 
     TempDir(const TempDir&) = delete;
     TempDir& operator=(const TempDir&) = delete;
@@ -91,11 +95,17 @@ bool set_file_mtime(llvm::StringRef path, std::int64_t mtime_ns);
 
 /// A file's current mtime in nanoseconds, or -1 when it cannot be stat'ed.
 inline std::int64_t file_mtime_ns(llvm::StringRef path) {
-    llvm::sys::fs::file_status status;
-    if(llvm::sys::fs::status(path, status)) {
-        return -1;
+    auto status = vfs::status(path);
+    return status ? status->stamp.mtime_ns : -1;
+}
+
+/// A file's bytes, or nullopt when it cannot be read.
+inline std::optional<std::string> read_file(llvm::StringRef path) {
+    auto buffer = vfs::read(path, vfs::Read::Bytes);
+    if(!buffer) {
+        return std::nullopt;
     }
-    return fs::mtime_ns(status);
+    return (*buffer)->getBuffer().str();
 }
 
 }  // namespace clice::testing

@@ -9,7 +9,6 @@
 #include "kota/meta/enum.h"
 #include "kota/meta/struct.h"
 #include "kota/support/ranges.h"
-#include "kota/support/type_traits.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
@@ -36,6 +35,9 @@ struct std::formatter<llvm::StringRef> : std::formatter<std::string_view> {
         return Base::format(std::string_view(value.data(), value.size()), ctx);
     }
 };
+
+template <>
+struct std::formatter<llvm::StringLiteral> : std::formatter<llvm::StringRef> {};
 
 template <std::size_t N>
 struct std::formatter<llvm::SmallString<N>> : std::formatter<llvm::StringRef> {
@@ -179,7 +181,7 @@ std::string dump(const Object& object) {
         });
         result += "}";
         return result;
-    } else if constexpr(kota::Formattable<T>) {
+    } else if constexpr(std::formattable<T, char>) {
         return std::format("{}", object);
     } else {
         return "<unformattable>";

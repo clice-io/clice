@@ -14,16 +14,6 @@ import { expect, test } from "../fixtures.ts";
 
 const KILL_DELAY = 300;
 
-function copySaveRecompile(workspace: Workspace): void {
-    const src = path.join(DATA_DIR, "modules", "save_recompile");
-    for (const name of fs.readdirSync(src)) {
-        const from = path.join(src, name);
-        if (fs.statSync(from).isFile()) {
-            fs.copyFileSync(from, workspace.path(name));
-        }
-    }
-}
-
 /// Corrupt a blob in place, preserving file size and mtime; returns the
 /// corrupted bytes. "garbage" replaces the whole file (caught by reader
 /// validation), "middle" flips a span reached only during deserialization
@@ -72,7 +62,7 @@ async function waitResidueReleased(workspace: Workspace, deadlineMs = 20_000): P
 
 test("pch written to cache dir", async ({ session }) => {
     // After opening a file with #include, a .pch file should appear
-    // in .clice/cache/pch/ with a hex-hash filename.
+    // in .clice/cache/pch/.
     const { client, workspace } = session.tmp();
     workspace.pinCacheDir();
     workspace.write("header.h", "#pragma once\nstruct Foo { int x; };\n");
@@ -88,11 +78,8 @@ test("pch written to cache dir", async ({ session }) => {
     expect(pchFiles.length, "Expected at least one .pch file in the store").toBeGreaterThanOrEqual(
         1,
     );
-    // Filename should be a 32-char hex hash (xxh3_128bits) + .pch
-    const stem = path.basename(pchFiles[0]!, ".pch");
-    expect(stem.length, `Expected 32-char hex filename, got: ${path.basename(pchFiles[0]!)}`).toBe(
-        32,
-    );
+    // The key (a 32-char xxh3_128bits hex hash) and the build's nonce.
+    expect(path.basename(pchFiles[0]!)).toMatch(/^[0-9a-f]{32}-[0-9a-f]{16}\.pch$/);
 });
 
 test("pch reused on close reopen", async ({ session }) => {
@@ -176,7 +163,7 @@ test("pcm offline edit invalidates", async ({ session }) => {
     // the cached PCM on restart: the PCM key embeds no content, so only its
     // deps snapshot can see the change.
     const workspace = session.tmpdir();
-    copySaveRecompile(workspace);
+    workspace.copyFiles(path.join(DATA_DIR, "modules", "save_recompile"));
     workspace.pinCacheDir();
     workspace.generateCDB();
 
@@ -201,6 +188,37 @@ test("pcm offline edit invalidates", async ({ session }) => {
     await c2.initialize(workspace);
     const [midUri2] = await c2.openAndWait("mid.cppm");
     c2.assertHasErrors(midUri2, "Expected errors after offline interface edit");
+    await c2.shutdown();
+});
+
+test("pcm offline break drops it", async ({ session }) => {
+    // A module broken while the server is down fails its rebuild on
+    // restart: its importer reports the import instead of compiling
+    // against the PCM of the module's previous interface.
+    const workspace = session.tmpdir();
+    workspace.copyFiles(path.join(DATA_DIR, "modules", "save_recompile"));
+    workspace.pinCacheDir();
+    workspace.generateCDB();
+
+    const c1 = session.spawn(workspace);
+    await c1.initialize(workspace);
+    const [midUri] = await c1.openAndWait("mid.cppm");
+    c1.assertCleanCompile(midUri);
+    await c1.shutdown();
+
+    workspace.write(
+        "leaf.cppm",
+        "export module Leaf;\n\nexport int leaf() {\n    return broken_in_leaf;\n}\n",
+    );
+
+    const c2 = session.spawn(workspace);
+    await c2.initialize(workspace);
+    const [midUri2] = await c2.openAndWait("mid.cppm");
+    expect(
+        c2
+            .errors(midUri2)
+            .map((diagnostic) => `${diagnostic.range.start.line} ${String(diagnostic.code)}`),
+    ).toEqual(["1 err_module_not_found"]);
     await c2.shutdown();
 });
 
@@ -471,12 +489,6 @@ test.for(["garbage", "middle"])(
             delete process.env["CLICE_ANOMALY_NO_TRAP"];
         }
         const [uri2] = await c2.openAndWait("main.cpp");
-        if (c2.errors(uri2).length === 0) {
-            // The crash shape ends its round with a versionless empty publish
-            // after retracting the pair; the next request rebuilds it.
-            c2.diagnostics.delete(uri2);
-            await c2.waitForRecompile(uri2);
-        }
         // The specific body error, not just any error: a quarantine notice or
         // a still-standing corruption fatal must not count as recovery.
         expect(

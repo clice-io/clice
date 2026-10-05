@@ -6,6 +6,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <format>
 #include <optional>
 #include <vector>
 
@@ -119,14 +120,14 @@ auto decode_relative_tokens(const protocol::SemanticTokens& tokens) -> std::vect
     return result;
 }
 
-TEST_SUITE(semantic_tokens, Tester) {
+ZEST_SUITE(semantic_tokens, Tester) {
 
 protocol::SemanticTokens tokens;
 std::vector<DecodedToken> decoded;
 
 void run_utf8(llvm::StringRef code) {
     add_main("main.cpp", code);
-    ASSERT_TRUE(compile_with_pch());
+    ZASSERT(compile_with_pch());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 }
@@ -145,12 +146,12 @@ void EXPECT_TOKEN(llvm::StringRef name,
                   SymbolKind::Kind expected_kind,
                   std::uint32_t expected_modifiers = 0) {
     auto* token = find_by_range(name);
-    ASSERT_TRUE(token != nullptr);
-    ASSERT_EQ(token->type, static_cast<std::uint32_t>(expected_kind));
-    ASSERT_EQ(token->modifiers, expected_modifiers);
+    ZASSERT(token != nullptr);
+    ZASSERT(token->type == static_cast<std::uint32_t>(expected_kind));
+    ZASSERT(token->modifiers == expected_modifiers);
 }
 
-TEST_CASE(PreambleDefineUnderPch) {
+ZEST_CASE(PreambleDefineUnderPch) {
     // The leading `#define` sits in the preamble, so under the PCH split no
     // MacroDefine record exists in the main compile; the macro name must
     // still classify through the lexical directive fallback.
@@ -167,7 +168,7 @@ TEST_CASE(PreambleDefineUnderPch) {
     EXPECT_TOKEN("c0", SymbolKind::Comment);
 }
 
-TEST_CASE(ModuleDeclarationUnderPch) {
+ZEST_CASE(ModuleDeclarationUnderPch) {
     // The whole module preamble (global fragment included) sits under the
     // PCH split; every written module token must still classify — with a
     // leading comment block ahead of the global fragment, like a license
@@ -186,20 +187,39 @@ export int exported_value = 1;
 int private_value = 2;
 )cpp");
 
+    auto definition = SymbolModifiers::to_mask(SymbolModifiers::Definition);
     EXPECT_TOKEN("g0", SymbolKind::Keyword);
     EXPECT_TOKEN("k0", SymbolKind::Keyword);
-    EXPECT_TOKEN("n0", SymbolKind::Module);
-    EXPECT_TOKEN("n1", SymbolKind::Module);
+    EXPECT_TOKEN("n0", SymbolKind::Module, definition);
+    EXPECT_TOKEN("n1", SymbolKind::Module, definition);
     EXPECT_TOKEN("p0", SymbolKind::Keyword);
 }
 
-TEST_CASE(UTF16LengthDiffersFromUTF8) {
+ZEST_CASE(UsingFromDependentBase) {
+    // A dependent name that a template base brings in with a
+    // using-declaration names the member itself.
+    run_utf8(R"cpp(
+struct Base { void f(); };
+template <class T> struct B : Base { using Base::f; };
+template <class T> struct D : B<T> {
+    void g() {
+        this->§(member)⟦f⟧();
+        B<T>::§(qualified)⟦f⟧();
+    }
+};
+)cpp");
+
+    EXPECT_TOKEN("member", SymbolKind::Method);
+    EXPECT_TOKEN("qualified", SymbolKind::Method);
+}
+
+ZEST_CASE(UTF16LengthDiffersFromUTF8) {
     add_main("main.cpp", R"cpp(
 int main() {
 §(lit)⟦u8"你"⟧;
 }
 )cpp");
-    ASSERT_TRUE(compile_with_pch());
+    ZASSERT(compile_with_pch());
 
     auto utf8_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     auto utf16_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF16);
@@ -217,7 +237,7 @@ int main() {
             break;
         }
     }
-    ASSERT_TRUE(utf8_token.has_value());
+    ZASSERT(utf8_token);
 
     std::optional<DecodedToken> utf16_token;
     for(const auto& token: utf16) {
@@ -227,19 +247,21 @@ int main() {
             break;
         }
     }
-    ASSERT_TRUE(utf16_token.has_value());
+    ZASSERT(utf16_token);
 
-    ASSERT_TRUE(utf8_token->length > utf16_token->length);
+    ZASSERT(utf8_token->length > utf16_token->length);
 }
 
-TEST_CASE(MultiLineCommentSplit) {
-    add_main("main.cpp", R"cpp(
-int main() {
-/*ab
-cd*/
-}
-)cpp");
-    ASSERT_TRUE(compile_with_pch());
+/// A block comment over two lines splits into one piece per line, each
+/// ending before its line's terminator.
+void check_comment_split(llvm::StringRef newline) {
+    add_main("main.cpp",
+             std::format(R"cpp(int main() {{
+/*ab{}cd*/
+}}
+)cpp",
+                         newline));
+    ZASSERT(compile_with_pch());
 
     auto utf8_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     auto relative = decode_relative_tokens(utf8_tokens);
@@ -252,14 +274,22 @@ cd*/
         }
     }
 
-    ASSERT_EQ(comments.size(), 2);
-    ASSERT_EQ(comments[0].length, 5);
-    ASSERT_EQ(comments[1].line, comments[0].line + 1);
-    ASSERT_EQ(comments[1].start, 0);
-    ASSERT_EQ(comments[1].length, 4);
+    ZASSERT(comments.size() == 2);
+    ZASSERT(comments[0].length == 4);
+    ZASSERT(comments[1].line == comments[0].line + 1);
+    ZASSERT(comments[1].start == 0);
+    ZASSERT(comments[1].length == 4);
 }
 
-TEST_CASE(ModuleImport) {
+ZEST_CASE(MultiLineCommentSplit) {
+    check_comment_split("\n");
+}
+
+ZEST_CASE(CRLFCommentSplit) {
+    check_comment_split("\r\n");
+}
+
+ZEST_CASE(ModuleImport) {
     add_files("main.cpp", R"(
 #[mod.cppm]
 export module foo;
@@ -269,7 +299,7 @@ export int x = 42;
 §(kw)⟦import⟧ §(mod)⟦foo⟧;
 int y = x;
 )");
-    ASSERT_TRUE(compile_with_modules());
+    ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
@@ -277,7 +307,25 @@ int y = x;
     EXPECT_TOKEN("mod", SymbolKind::Module);
 }
 
-TEST_CASE(ImportChannelAudit) {
+ZEST_CASE(DottedModuleImport) {
+    add_files("main.cpp", R"(
+#[mod.cppm]
+export module app.core;
+export int x = 42;
+
+#[main.cpp]
+import §(m0)⟦app⟧.§(m1)⟦core⟧;
+int y = x;
+)");
+    ZASSERT(compile_with_modules());
+    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    decoded = decode_utf8_tokens(unit->main_content(), tokens);
+
+    EXPECT_TOKEN("m0", SymbolKind::Module);
+    EXPECT_TOKEN("m1", SymbolKind::Module);
+}
+
+ZEST_CASE(ImportChannelAudit) {
     add_files("main.cppm", R"(
 #[a.cppm]
 export module a;
@@ -297,16 +345,16 @@ import a;
 export import b;
 import :part;
 )");
-    ASSERT_TRUE(compile_with_modules());
+    ZASSERT(compile_with_modules());
 
     // The preprocessor callback channel must record every import form the
     // AST records: a named import, an export-import and a partition import
     // (whose full name resolves through the owning module).
     auto& imports = unit->directives()[unit->main_file()].imports;
-    ASSERT_EQ(imports.size(), 3U);
-    ASSERT_EQ(imports[0].name, "a");
-    ASSERT_EQ(imports[1].name, "b");
-    ASSERT_EQ(imports[2].name, "foo:part");
+    ZASSERT(imports.size() == 3U);
+    ZASSERT(imports[0].name == "a");
+    ZASSERT(imports[1].name == "b");
+    ZASSERT(imports[2].name == "foo:part");
 
     std::size_t ast_imports = 0;
     auto count = [&](const clang::Decl* decl, auto& self) -> void {
@@ -322,10 +370,10 @@ import :part;
     for(auto* decl: unit->context().getTranslationUnitDecl()->decls()) {
         count(decl, count);
     }
-    ASSERT_EQ(ast_imports, 3U);
+    ZASSERT(ast_imports == 3U);
 }
 
-TEST_CASE(ModulePartitionImport) {
+ZEST_CASE(ModulePartitionImport) {
     add_files("main.cppm", R"(
 #[part.cppm]
 export module foo:part;
@@ -335,7 +383,7 @@ export int x = 42;
 export module foo;
 export §(kw)⟦import⟧ :§(part)⟦part⟧;
 )");
-    ASSERT_TRUE(compile_with_modules());
+    ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
@@ -343,7 +391,7 @@ export §(kw)⟦import⟧ :§(part)⟦part⟧;
     EXPECT_TOKEN("part", SymbolKind::Module);
 }
 
-TEST_CASE(ModuleImplementationUnit) {
+ZEST_CASE(ModuleImplementationUnit) {
     add_files("main.cpp", R"(
 #[mod.cppm]
 export module foo;
@@ -353,7 +401,7 @@ export int x = 42;
 §(kw)⟦module⟧ §(mod)⟦foo⟧;
 int y = §(ref)⟦x⟧;
 )");
-    ASSERT_TRUE(compile_with_modules());
+    ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
@@ -362,7 +410,7 @@ int y = §(ref)⟦x⟧;
     EXPECT_TOKEN("ref", SymbolKind::Variable);
 }
 
-TEST_CASE(ModuleReexport) {
+ZEST_CASE(ModuleReexport) {
     add_files("main.cppm", R"(
 #[mod.cppm]
 export module foo;
@@ -372,7 +420,7 @@ export int x = 42;
 export module bar;
 export §(kw)⟦import⟧ §(mod)⟦foo⟧;
 )");
-    ASSERT_TRUE(compile_with_modules());
+    ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
@@ -380,7 +428,7 @@ export §(kw)⟦import⟧ §(mod)⟦foo⟧;
     EXPECT_TOKEN("mod", SymbolKind::Module);
 }
 
-};  // TEST_SUITE(semantic_tokens)
+};  // ZEST_SUITE(semantic_tokens)
 
 }  // namespace
 

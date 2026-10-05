@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include "feature/feature.h"
 #include "server/session.h"
 #include "support/signal.h"
 #include "vfs/file_table.h"
@@ -23,7 +24,7 @@ class ProjectServer;
 
 class LSPClient {
 public:
-    LSPClient(MasterServer& server, kota::ipc::JsonPeer& peer);
+    LSPClient(MasterServer& server, kota::ipc::JSONPeer& peer);
     ~LSPClient();
 
 private:
@@ -80,7 +81,7 @@ private:
     void forward_notify_messages();
 
     MasterServer& server;
-    kota::ipc::JsonPeer& peer;
+    kota::ipc::JSONPeer& peer;
 
     /// The client completed the initialized handshake. Until then the LSP
     /// spec forbids server→client traffic other than window/* messages, so
@@ -96,6 +97,11 @@ private:
     bool semantic_tokens_refresh = false;
     bool inlay_hint_refresh = false;
     bool folding_range_refresh = false;
+
+    bool line_folding_only = false;
+
+    /// What the client takes from a completion item.
+    feature::CompletionClient completion_client;
 
     /// Whether the client applies versioned document changes (the
     /// workspace/workspaceEdit.documentChanges capability): code action
@@ -196,7 +202,7 @@ private:
 
         /// The active work-done progress token, held across
         /// begin/report/end.
-        std::optional<kota::ipc::lsp::ProgressReporter<kota::ipc::JsonPeer>> reporter;
+        std::optional<kota::ipc::lsp::ProgressReporter<kota::ipc::JSONPeer>> reporter;
     };
 
     std::shared_ptr<IndexProgressState> index_progress = std::make_shared<IndexProgressState>();

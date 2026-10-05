@@ -108,7 +108,8 @@ public:
     /// files, we cut off the range at the end of the first file.
     auto decompose_range(clang::SourceRange range) -> std::pair<clang::FileID, LocalSourceRange>;
 
-    /// Same as `decompose_range`, but will translate range to expansion range.
+    /// Same as `decompose_range`, but will translate range to expansion range:
+    /// a range inside a macro expansion covers the whole invocation.
     auto decompose_expansion_range(clang::SourceRange range)
         -> std::pair<clang::FileID, LocalSourceRange>;
 
@@ -144,12 +145,20 @@ public:
     /// Return clang's main file ID, the file this unit was built for.
     auto main_file() -> clang::FileID;
 
+    /// Whether `fid` is the main file, or the preamble of it a consumed PCH
+    /// recorded — where the preamble's include locations point.
+    bool is_main_file(clang::FileID fid);
+
     /// Get the content of main file.
     auto main_content() -> llvm::StringRef;
 
     /// Get the byte offsets of each line start in the main file.
     /// Lazily computed and cached.
     auto line_starts() -> std::span<const std::uint32_t>;
+
+    /// Which lines of the main file hold a byte past ASCII, as
+    /// kota::ipc::lsp::non_ascii_lines() gives. Lazily computed and cached.
+    auto non_ascii_lines() -> std::span<const std::uint64_t>;
 
     /// Check if a file is a builtin file.
     bool is_builtin_file(clang::FileID fid);
@@ -158,6 +167,20 @@ public:
     /// fragment, see CompilationParams::add_synthesized): no file on disk
     /// carries its bytes, so nothing may depend on it.
     bool synthesized(clang::FileID fid);
+
+    /// Whether the compile borrows an includer context: its main file is
+    /// a header, compiled as its host sees it.
+    bool borrows_context();
+
+    /// The path of the file `fid` stands for: its own, or for a synthesized
+    /// fragment the file it was cut from, which the fragment's opening
+    /// #line marker names (the snapshot of the header, which carries none,
+    /// its own).
+    auto source_path(clang::FileID fid) -> llvm::StringRef;
+
+    /// Whether the file is the compile's own source: the main file, or
+    /// under a borrowed includer context a fragment cut from the host.
+    bool host_source(clang::FileID fid);
 
     /// Whether the file belongs to a borrowed includer context: synthesized
     /// itself, or entered through a synthesized file. Such files are the

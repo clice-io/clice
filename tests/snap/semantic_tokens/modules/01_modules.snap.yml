@@ -11,8 +11,8 @@ input_file: modules/01_modules.cpp
 - { loc: "7:0", text: "module", kind: keyword }
 - { loc: "9:0", text: "export", kind: keyword }
 - { loc: "9:7", text: "module", kind: keyword }
-- { loc: "9:14", text: "demo", kind: module }
-- { loc: "9:19", text: "core", kind: module }
+- { loc: "9:14", text: "demo", kind: module, modifiers: [definition] }
+- { loc: "9:19", text: "core", kind: module, modifiers: [definition] }
 - { loc: "11:0", text: "export", kind: keyword }
 - { loc: "11:7", text: "int", kind: primitive }
 - { loc: "11:11", text: "exported_value", kind: variable, modifiers: [definition] }

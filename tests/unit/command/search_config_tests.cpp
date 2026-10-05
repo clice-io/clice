@@ -7,7 +7,7 @@ namespace clice::testing {
 
 namespace {
 
-TEST_SUITE(ExtractSearchConfig) {
+ZEST_SUITE(ExtractSearchConfig) {
 
 /// Normalize a raw argv through the database and extract from the
 /// structured command (the only extraction path).
@@ -24,7 +24,7 @@ std::string spelled(const TempDir& tmp, llvm::StringRef relative) {
     return Spelling::absolute(tmp.path(relative)).str();
 }
 
-TEST_CASE(ReordersDirectoryGroups) {
+ZEST_CASE(ReordersDirectoryGroups) {
     // TempDir gives cross-platform absolute paths (drive letter on Windows).
     TempDir tmp;
     std::vector<const char*> args = {"clang++",
@@ -42,18 +42,56 @@ TEST_CASE(ReordersDirectoryGroups) {
     auto config = extract(args, tmp.root.str());
 
     // Expected order: [quoted | user | stdlib, clang, sysroot]
-    ASSERT_EQ(config.dirs.size(), 5u);
-    EXPECT_EQ(config.angled_start_idx, 1u);
-    EXPECT_EQ(config.system_start_idx, 2u);
+    ZASSERT(config.dirs.size() == 5u);
+    ZEXPECT(config.angled_start_idx == 1u);
+    ZEXPECT(config.system_start_idx == 2u);
 
-    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "quoted"));
-    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "user"));
-    EXPECT_EQ(config.dirs[2].path, spelled(tmp, "stdlib"));
-    EXPECT_EQ(config.dirs[3].path, spelled(tmp, "clang"));
-    EXPECT_EQ(config.dirs[4].path, spelled(tmp, "sysroot"));
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "quoted"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "user"));
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "stdlib"));
+    ZEXPECT(config.dirs[3].path == spelled(tmp, "clang"));
+    ZEXPECT(config.dirs[4].path == spelled(tmp, "sysroot"));
 }
 
-TEST_CASE(PreservesWithinGroupOrder) {
+ZEST_CASE(KeepsForcedIncludes) {
+    // In command order and as written: their lookup starts from the
+    // working directory, which extraction does not settle.
+    TempDir tmp;
+    std::vector<const char*> args = {"clang++",
+                                     "-include",
+                                     "b.h",
+                                     "-include-pch",
+                                     "p.pch",
+                                     "-I",
+                                     tmp.c_path("inc"),
+                                     "-include",
+                                     "a.h",
+                                     "main.cpp"};
+    auto config = extract(args, tmp.root.str());
+
+    ZASSERT(config.forced_includes == (std::vector<std::string>{"b.h", "a.h"}));
+}
+
+ZEST_CASE(MarksDriverDirs) {
+    // Only the driver's own flags add a toolchain directory; a user's
+    // -isystem is the user's.
+    TempDir tmp;
+    std::vector<const char*> args = {"clang++",
+                                     "-isystem",
+                                     tmp.c_path("vendored"),
+                                     "-internal-isystem",
+                                     tmp.c_path("stdlib"),
+                                     "-internal-externc-isystem",
+                                     tmp.c_path("sysroot"),
+                                     "main.cpp"};
+    auto config = extract(args, tmp.root.str());
+    ZASSERT(config.dirs.size() == 3u);
+    ZEXPECT(!config.dirs[0].driver);
+    ZEXPECT(config.dirs[1].driver);
+    ZEXPECT(config.dirs[2].driver);
+}
+
+ZEST_CASE(PreservesWithinGroupOrder) {
     TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-I",
@@ -67,16 +105,16 @@ TEST_CASE(PreservesWithinGroupOrder) {
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
 
-    ASSERT_EQ(config.dirs.size(), 4u);
-    EXPECT_EQ(config.angled_start_idx, 0u);
-    EXPECT_EQ(config.system_start_idx, 2u);
-    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "b"));
-    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "a"));
-    EXPECT_EQ(config.dirs[2].path, spelled(tmp, "s2"));
-    EXPECT_EQ(config.dirs[3].path, spelled(tmp, "s1"));
+    ZASSERT(config.dirs.size() == 4u);
+    ZEXPECT(config.angled_start_idx == 0u);
+    ZEXPECT(config.system_start_idx == 2u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "b"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "a"));
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "s2"));
+    ZEXPECT(config.dirs[3].path == spelled(tmp, "s1"));
 }
 
-TEST_CASE(DeduplicatesAngledSystem) {
+ZEST_CASE(DeduplicatesAngledSystem) {
     TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-I",
@@ -89,14 +127,14 @@ TEST_CASE(DeduplicatesAngledSystem) {
     auto config = extract(args, tmp.root.str());
 
     // /shared in both Angled and System → keep Angled copy.
-    ASSERT_EQ(config.dirs.size(), 2u);
-    EXPECT_EQ(config.angled_start_idx, 0u);
-    EXPECT_EQ(config.system_start_idx, 1u);
-    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "shared"));
-    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "only_sys"));
+    ZASSERT(config.dirs.size() == 2u);
+    ZEXPECT(config.angled_start_idx == 0u);
+    ZEXPECT(config.system_start_idx == 1u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "shared"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "only_sys"));
 }
 
-TEST_CASE(QuotedAngledSamePathKeptInBoth) {
+ZEST_CASE(QuotedAngledSamePathKeptInBoth) {
     // clang's RemoveDuplicates starts from NumQuoted, so a path in both
     // Quoted (-iquote) and Angled (-I) must be kept in both segments.
     // This matters for #include <...> lookup and #include_next correctness.
@@ -112,14 +150,14 @@ TEST_CASE(QuotedAngledSamePathKeptInBoth) {
     auto config = extract(args, tmp.root.str());
 
     // "shared" must appear in both Quoted and Angled segments.
-    ASSERT_EQ(config.dirs.size(), 3u);
-    EXPECT_EQ(config.angled_start_idx, 1u);
-    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "shared"));  // Quoted
-    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "shared"));  // Angled (not deduped)
-    EXPECT_EQ(config.dirs[2].path, spelled(tmp, "other"));
+    ZASSERT(config.dirs.size() == 3u);
+    ZEXPECT(config.angled_start_idx == 1u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "shared"));  // Quoted
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "shared"));  // Angled (not deduped)
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "other"));
 }
 
-TEST_CASE(DeduplicateAdjustsIndices) {
+ZEST_CASE(DeduplicateAdjustsIndices) {
     TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-iquote",
@@ -137,16 +175,16 @@ TEST_CASE(DeduplicateAdjustsIndices) {
 
     // Before dedup: [q | dup, a2 | dup, s] angled=1, system=3
     // dup in system removed. system_start_idx stays 3.
-    ASSERT_EQ(config.dirs.size(), 4u);
-    EXPECT_EQ(config.angled_start_idx, 1u);
-    EXPECT_EQ(config.system_start_idx, 3u);
-    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "q"));
-    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "dup"));
-    EXPECT_EQ(config.dirs[2].path, spelled(tmp, "a2"));
-    EXPECT_EQ(config.dirs[3].path, spelled(tmp, "s"));
+    ZASSERT(config.dirs.size() == 4u);
+    ZEXPECT(config.angled_start_idx == 1u);
+    ZEXPECT(config.system_start_idx == 3u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "q"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "dup"));
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "a2"));
+    ZEXPECT(config.dirs[3].path == spelled(tmp, "s"));
 }
 
-TEST_CASE(PrefixIncludeOptions) {
+ZEST_CASE(PrefixIncludeOptions) {
     TempDir tmp;
     // -iprefix sets a prefix; -iwithprefixbefore/iwithprefix append to it.
     // The trailing separator in the prefix path ensures correct concatenation.
@@ -167,16 +205,16 @@ TEST_CASE(PrefixIncludeOptions) {
     auto config = extract(args, tmp.root.str());
 
     // -iwithprefixbefore → Angled, -iwithprefix → After
-    ASSERT_EQ(config.dirs.size(), 3u);
-    EXPECT_EQ(config.angled_start_idx, 0u);
-    EXPECT_EQ(config.system_start_idx, 1u);
-    EXPECT_EQ(config.after_start_idx, 1u);
-    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "gcc/12/include"));
-    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "gcc/12/lib"));
-    EXPECT_EQ(config.dirs[2].path, spelled(tmp, "gcc/13/include"));
+    ZASSERT(config.dirs.size() == 3u);
+    ZEXPECT(config.angled_start_idx == 0u);
+    ZEXPECT(config.system_start_idx == 1u);
+    ZEXPECT(config.after_start_idx == 1u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "gcc/12/include"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "gcc/12/lib"));
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "gcc/13/include"));
 }
 
-TEST_CASE(DirafterGroup) {
+ZEST_CASE(DirafterGroup) {
     TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-I",
@@ -188,16 +226,16 @@ TEST_CASE(DirafterGroup) {
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
 
-    ASSERT_EQ(config.dirs.size(), 3u);
-    EXPECT_EQ(config.angled_start_idx, 0u);
-    EXPECT_EQ(config.system_start_idx, 1u);
-    EXPECT_EQ(config.after_start_idx, 2u);
-    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "user"));
-    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "sys"));
-    EXPECT_EQ(config.dirs[2].path, spelled(tmp, "fallback"));
+    ZASSERT(config.dirs.size() == 3u);
+    ZEXPECT(config.angled_start_idx == 0u);
+    ZEXPECT(config.system_start_idx == 1u);
+    ZEXPECT(config.after_start_idx == 2u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "user"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "sys"));
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "fallback"));
 }
 
-TEST_CASE(DirafterDeduplication) {
+ZEST_CASE(DirafterDeduplication) {
     TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-I",
@@ -209,14 +247,14 @@ TEST_CASE(DirafterDeduplication) {
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
 
-    ASSERT_EQ(config.dirs.size(), 2u);
-    EXPECT_EQ(config.angled_start_idx, 0u);
-    EXPECT_EQ(config.after_start_idx, 1u);
-    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "shared"));
-    EXPECT_EQ(config.dirs[1].path, spelled(tmp, "extra"));
+    ZASSERT(config.dirs.size() == 2u);
+    ZEXPECT(config.angled_start_idx == 0u);
+    ZEXPECT(config.after_start_idx == 1u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "shared"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "extra"));
 }
 
-TEST_CASE(LastSysrootWins) {
+ZEST_CASE(LastSysrootWins) {
     /// Like clang: the last --sysroot, unless an -isysroot names another.
     TempDir tmp;
     auto first = "--sysroot=" + tmp.path("one");
@@ -227,17 +265,17 @@ TEST_CASE(LastSysrootWins) {
                                      "-I=/inc",
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
-    ASSERT_EQ(config.dirs.size(), 1u);
-    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "two/inc"));
+    ZASSERT(config.dirs.size() == 1u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "two/inc"));
 
     auto isysroot = tmp.path("three");
     args = {"clang++", "-isysroot", isysroot.c_str(), second.c_str(), "-I=/inc", "main.cpp"};
     config = extract(args, tmp.root.str());
-    ASSERT_EQ(config.dirs.size(), 1u);
-    EXPECT_EQ(config.dirs[0].path, spelled(tmp, "three/inc"));
+    ZASSERT(config.dirs.size() == 1u);
+    ZEXPECT(config.dirs[0].path == spelled(tmp, "three/inc"));
 }
 
-};  // TEST_SUITE(ExtractSearchConfig)
+};  // ZEST_SUITE(ExtractSearchConfig)
 
 }  // namespace
 

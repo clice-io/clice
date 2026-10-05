@@ -168,7 +168,9 @@ In a header, a member can also be defined in the source file the header is compi
 
 The definition is fully qualified and joins the class's other
 definitions in that file; members already defined in some source file
-are not offered again. Templates and inline functions stay in the header.
+are not offered again. Templates, inline functions and functions other
+files cannot see stay in the header; any other function defined there
+out of the class is marked `inline`.
 
 ```snap
 tests/snap/code_action/define/11_header_host/main.cpp
@@ -188,11 +190,11 @@ tests/snap/code_action/define/12_nested_class.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Dependent return type**
 
-A dependent return type stays as written, which may need `typename` and qualification outside the class
+A return type naming the class template or one of its member types is qualified through the template's parameters
 
 ```snap
 tests/snap/code_action/define/13_dependent_return_type.cpp
@@ -270,6 +272,32 @@ tests/snap/code_action/implement/04_conversion_and_pointers.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Bases sharing a signature**
+
+One declaration overrides the pure virtual methods of every base with that signature, `noexcept` when any of them is
+
+```snap
+tests/snap/code_action/implement/05_shared_signatures.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Specifiers of the override**
+
+A C variadic parameter, `consteval` and whether the base's method is `noexcept` carry over to the override
+
+A method whose exception specification depends on the arguments of a base class template gets no declaration.
+
+```snap
+tests/snap/code_action/implement/06_specifiers.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Switch Cases
@@ -340,6 +368,35 @@ tests/snap/code_action/switch_cases/05_selection_range.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Labels depending on templates**
+
+A switch with a label depending on template parameters offers no action, since only an instantiation knows which enumerators it covers
+
+A switch in a template whose labels do not depend on its parameters is
+completed as anywhere else.
+
+```snap
+tests/snap/code_action/switch_cases/06_dependent_labels.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Sections declaring variables**
+
+Without a `default`, a switch declaring a variable at its own scope receives the missing cases before its first label, since a label after the declaration would jump past it
+
+No section falls through into cases placed there.
+
+```snap
+tests/snap/code_action/switch_cases/07_declaring_section.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Deduced Types
@@ -386,7 +443,9 @@ tests/snap/code_action/deduced_type/03_decltype.cpp
 
 **Unnameable types stay auto**
 
-Lambdas, dependent types and other types without a spelling are not expanded
+Lambdas, dependent types and types the declaration cannot name are not expanded
+
+A type cannot be named where it is local to another function, a member type the declaration has no access to, or the type of `sizeof` with no standard name for it declared yet (MSVC compatibility declares `size_t` implicitly).
 
 ```snap
 tests/snap/code_action/deduced_type/04_unnameable_types.cpp
@@ -402,6 +461,48 @@ tests/snap/code_action/deduced_type/04_unnameable_types.cpp
 
 ```snap
 tests/snap/code_action/deduced_type/05_forwarding_reference.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Names spelled for the scope**
+
+A name drops the enclosing namespaces only as far as the shorter name still finds the same type
+
+A name hidden by a declaration closer to the expansion keeps its qualifier, and one hidden even when fully qualified starts from the global scope.
+
+```snap
+tests/snap/code_action/deduced_type/06_shadowed_names.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Standard names of builtin types**
+
+The types of `sizeof`, a pointer difference and `nullptr` expand to their standard names where those are declared
+
+Without a declaration of `std::nullptr_t` in sight, the type of `nullptr` is written `decltype(nullptr)`.
+
+```snap
+tests/snap/code_action/deduced_type/07_standard_names.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Constant deduced pointers**
+
+A `const` written before an `auto` that deduced a pointer moves behind the `*`, keeping the pointer itself constant
+
+When other specifiers stand between the `const` and the `auto`, the declaration is left as written.
+
+```snap
+tests/snap/code_action/deduced_type/08_const_pointer.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -443,10 +544,34 @@ tests/snap/code_action/macro/02_nested_expansion.cpp
 
 **Directive references and empty macros**
 
-A macro named in a preprocessor condition is not an expansion to replace, while a macro expanding to nothing is deleted
+A macro named in a preprocessor condition, on any of its lines, is not an expansion to replace, while a macro expanding to nothing is deleted
 
 ```snap
 tests/snap/code_action/macro/03_directives_and_empty.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Macros running pragmas**
+
+A macro whose expansion executes a `_Pragma` operator offers no expansion, since the pragma leaves no tokens behind to write in its place
+
+```snap
+tests/snap/code_action/macro/04_pragma_operator.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Tokens stay apart**
+
+The expansion is spaced so its tokens merge neither with each other nor with the text written flush against the invocation
+
+```snap
+tests/snap/code_action/macro/05_token_boundaries.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -463,8 +588,8 @@ tests/snap/code_action/macro/03_directives_and_empty.cpp
 
 An unresolved standard library name offers the header declaring it, from the standard library mapping
 
-The directive goes after the file's last include. An unqualified name
-also tries the `std` namespace.
+The directive goes after the includes at the top of the file. An
+unqualified name also tries the `std` namespace.
 
 ```snap
 tests/snap/code_action/include/01_standard_library.cpp
@@ -507,6 +632,18 @@ An include nested in a feature condition is not where a directive that must alwa
 
 ```snap
 tests/snap/code_action/include/04_conditional_includes.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Embedded and trailing includes**
+
+An include inside `extern "C"` or a type body, or one following the code, is no place for a new directive: it joins the includes at the top of the file
+
+```snap
+tests/snap/code_action/include/05_trailing_includes.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -567,6 +704,18 @@ tests/snap/code_action/reorder/04_trailing_comments.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Definitions using what lies between**
+
+A definition stays where it is when moving it would put it before something it uses, such as a variable or macro defined between the definitions; the others are reordered around it
+
+```snap
+tests/snap/code_action/reorder/05_dependencies.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Constructors
@@ -577,7 +726,7 @@ tests/snap/code_action/reorder/04_trailing_comments.cpp
 
 **Memberwise constructor**
 
-A class receives a constructor taking every field in order, scalars by value and other types by const reference
+A class receives a constructor taking every field in order, scalars by value and copyable classes by const reference
 
 ```snap
 tests/snap/code_action/constructor/01_memberwise.cpp
@@ -637,10 +786,29 @@ tests/snap/code_action/constructor/05_base_without_default.cpp
 
 **Deleted base default constructor**
 
-A base whose default constructor is deleted, explicitly or by a reference member, blocks the memberwise constructor too
+A base whose default constructor is deleted explicitly, or implicitly by a reference member or a const member nothing initializes, blocks the memberwise constructor too
+
+A const member of a class that initializes all its own fields leaves
+the base default-constructible.
 
 ```snap
 tests/snap/code_action/constructor/06_implicitly_deleted_base.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Move-only fields**
+
+A field whose class moves but does not copy is taken by value and moved from, and an rvalue reference field binds its argument through `std::move`
+
+The file gains `#include <utility>` when nothing declares `std::move`
+before the class. A class that neither copies nor moves gets no
+constructor.
+
+```snap
+tests/snap/code_action/constructor/07_move_only_fields.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -655,7 +823,7 @@ Generated text is formatted with the project's clang-format style when one appli
 
 - A definition placed in the host source goes after the last definition of the class's members the index knows in that file, or at the end of the file when it holds none. Which source file hosts a header follows the header's compilation context.
 - Members already defined in another source file are left out of a "define missing members" action only when the project index knows that definition; with indexing disabled every undefined member is offered.
-- A dependent return type is copied as written into an out-of-line definition, where it may need `typename` and the class qualifier.
+- A return type naming a member of a dependent base class is copied as written into an out-of-line definition, where it may need `typename` and the base's qualifier.
 - Missing-include candidates come from the standard library mapping and from headers the project index has seen; a header no indexed source file includes is not suggested.
 
 ## Not Implemented

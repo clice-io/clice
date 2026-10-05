@@ -10,9 +10,9 @@
 #include "index/symbol_query.h"
 #include "server/editor_context.h"
 #include "server/features.h"
-#include "server/position.h"
-#include "support/filesystem.h"
 #include "syntax/include_resolver.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
@@ -71,7 +71,7 @@ protocol::CodeAction render(std::string title, protocol::CodeActionKind kind, Fi
 std::optional<std::string> include_spelling(CanonicalRef header,
                                             const SearchConfig& search,
                                             const Spelling& file,
-                                            DirListingCache& dir_cache) {
+                                            vfs::Scope& scope) {
     auto below = [&](CanonicalRef root) -> std::optional<llvm::StringRef> {
         if(root.empty() || !path::under(header, root) || header.size() <= root.size()) {
             return std::nullopt;
@@ -102,13 +102,8 @@ std::optional<std::string> include_spelling(CanonicalRef header,
         return candidate.name.size();
     });
     for(const auto& candidate: candidates) {
-        auto resolved = resolve_include(candidate.name,
-                                        candidate.angled,
-                                        directory,
-                                        false,
-                                        0,
-                                        search,
-                                        dir_cache);
+        auto resolved =
+            resolve_include(candidate.name, candidate.angled, directory, false, 0, search, scope);
         if(resolved && CanonicalPath(Spelling::absolute(resolved->path)) == header) {
             return candidate.angled ? std::format("<{}>", candidate.name)
                                     : std::format("\"{}\"", candidate.name);
@@ -117,13 +112,27 @@ std::optional<std::string> include_spelling(CanonicalRef header,
     return std::nullopt;
 }
 
+/// Whether an include spelling names a library's internal header, which
+/// its public headers include and its users never should: libstdc++'s
+/// and glibc's `bits/`, libc++'s `__`-prefixed directories and files.
+bool internal_header(llvm::StringRef spelling) {
+    if(!spelling.starts_with('<')) {
+        return false;
+    }
+    auto name = spelling.drop_front().drop_back();
+    return llvm::any_of(
+        llvm::make_range(llvm::sys::path::begin(name), llvm::sys::path::end(name)),
+        [](llvm::StringRef part) { return part == "bits" || part.starts_with("__"); });
+}
+
 }  // namespace
 
 kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
-    Features::code_action(std::shared_ptr<Session> session,
+    Features::code_action(Ticket ticket,
                           const protocol::Range& range,
                           llvm::ArrayRef<protocol::CodeActionKind> only,
-                          std::optional<kota::cancellation_token> token) {
+                          kota::cancellation_token token) {
+    auto& session = ticket.session;
     std::vector<protocol::CodeAction> out;
     if(llvm::none_of(feature::code_action_kinds,
                      [&](std::string_view kind) { return admits(only, kind); })) {
@@ -136,16 +145,12 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         co_return out;
     }
 
-    auto ticket = Ticket::take(session);
-    auto result = co_await dispatcher.code_actions(ticket, range, std::move(token));
-    if(!result.has_value()) {
-        co_return kota::outcome_error(std::move(result.error()));
-    }
+    auto actions = co_await dispatcher.code_actions(ticket, range, std::move(token)).or_fail();
 
     auto path_id = session->path_id;
     auto path = project.file_table.display(path_id);
     auto uri = feature::to_uri(path);
-    auto map = session->line_map();
+    auto map = session->position_map();
 
     /// The action rendered over main-file replacements, all of them or
     /// none: half an edit set would corrupt the buffer.
@@ -154,7 +159,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                     llvm::ArrayRef<feature::TextReplacement> replacements) {
         std::vector<protocol::TextEdit> edits;
         for(const auto& replacement: replacements) {
-            auto converted = feature::to_range(map, replacement.range);
+            auto converted = map.to_range(replacement.range);
             if(!converted) {
                 return;
             }
@@ -166,7 +171,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                    FileEdit{.uri = uri, .version = session->version, .edits = std::move(edits)}));
     };
     auto defined_elsewhere = [&](std::uint64_t entity) {
-        return query.first_site(entity, RelationKind::Definition).has_value();
+        return query.first_site(entity, path_id, RelationKind::Definition).has_value();
     };
 
     auto resolve_define = [&](feature::CodeAction& action, const feature::DefineRequest& request) {
@@ -214,7 +219,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                    })) {
                     return true;
                 }
-                auto definition = query.definition_text(hash);
+                auto definition = query.definition_text(hash, host);
                 if(!definition) {
                     return true;
                 }
@@ -235,16 +240,15 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             std::string content;
             if(host_session) {
                 content = host_session->text;
-            } else if(auto read = fs::read_text(host_path)) {
+            } else if(auto read = vfs::read(host_path)) {
                 content = (*read)->getBuffer().str();
             } else {
                 return;
             }
-            auto end = feature::to_position(feature::LineMap(content), content.size());
-            if(!end) {
-                return;
-            }
-            edit.range = {*end, *end};
+            auto end = *kota::ipc::lsp::to_position(content,
+                                                    static_cast<std::uint32_t>(content.size()),
+                                                    feature::PositionEncoding::UTF16);
+            edit.range = {end, end};
             edit.new_text =
                 (content.empty() || content.ends_with('\n') ? "\n" : "\n\n") + formatted;
         }
@@ -275,7 +279,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                 continue;
             }
             for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-                for(const auto& site: query.sites(located.symbol.hash, kind)) {
+                for(const auto& site: query.sites(located.symbol.hash, located.site.file, kind)) {
                     if(site.file.valid() && site.file != path_id && is_header_path(site.path) &&
                        seen.insert(project.file_table.resolve(site.file)).second) {
                         headers.push_back(project.file_table.resolve(site.file));
@@ -290,26 +294,22 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         std::vector<std::string> arguments;
         auto ref = contexts.resolve_command(path_id, directory, arguments).ref;
         auto search = project.cdb.search_config(ref);
-        DirListingCache dir_cache;
-        dir_cache.shared = &project.file_table;
-        llvm::StringRef text = session->text;
-        std::string before = request.offset == text.size() && !text.ends_with('\n') ? "\n" : "";
+        vfs::Scope scope(project.file_table.dirs);
         for(const auto& header: headers) {
-            if(auto spelling = include_spelling(header,
-                                                search,
-                                                project.file_table.spelling(path_id),
-                                                dir_cache)) {
+            auto spelling =
+                include_spelling(header, search, project.file_table.spelling(path_id), scope);
+            if(spelling && !internal_header(*spelling)) {
                 emit(std::format("Add #include {}", *spelling),
                      action.kind,
                      {
-                         {{request.offset, request.offset},
-                          std::format("{}#include {}\n", before, *spelling)}
+                         {{request.insertion.offset, request.insertion.offset},
+                          request.insertion.text(*spelling)}
                 });
             }
         }
     };
 
-    for(auto& action: result.value()) {
+    for(auto& action: actions) {
         if(!admits(only, action.kind)) {
             continue;
         }

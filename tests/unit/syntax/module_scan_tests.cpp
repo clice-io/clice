@@ -56,100 +56,100 @@ struct ModuleScanFixture {
 // scan_quick() — module declaration extraction (lexer-based)
 // =============================================================================
 
-TEST_SUITE(ModuleScan) {
+ZEST_SUITE(ModuleScan) {
 
 // Primary module interface: export module M;
-TEST_CASE(PrimaryModuleInterface) {
+ZEST_CASE(PrimaryModuleInterface) {
     auto result = scan_quick("export module mylib;");
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_TRUE(result.is_interface_unit);
-    EXPECT_FALSE(result.need_preprocess);
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.need_preprocess);
 }
 
 // Module implementation unit: module M;
-TEST_CASE(ModuleImplementationUnit) {
+ZEST_CASE(ModuleImplementationUnit) {
     auto result = scan_quick("module mylib;");
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_FALSE(result.is_interface_unit);
-    EXPECT_FALSE(result.need_preprocess);
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(!result.is_interface_unit);
+    ZEXPECT(!result.need_preprocess);
 }
 
 // Dotted module name: export module std.io;
-TEST_CASE(DottedModuleName) {
+ZEST_CASE(DottedModuleName) {
     auto result = scan_quick("export module std.io;");
-    EXPECT_EQ(result.module_name, "std.io");
-    EXPECT_TRUE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "std.io");
+    ZEXPECT(result.is_interface_unit);
 }
 
 // Deeply dotted module name: export module a.b.c.d;
-TEST_CASE(DeeplyDottedModuleName) {
+ZEST_CASE(DeeplyDottedModuleName) {
     auto result = scan_quick("export module a.b.c.d;");
-    EXPECT_EQ(result.module_name, "a.b.c.d");
-    EXPECT_TRUE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "a.b.c.d");
+    ZEXPECT(result.is_interface_unit);
 }
 
 // Module partition interface: export module M:P;
-TEST_CASE(PartitionInterface) {
+ZEST_CASE(PartitionInterface) {
     auto result = scan_quick("export module mylib:core;");
-    EXPECT_EQ(result.module_name, "mylib:core");
-    EXPECT_TRUE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "mylib:core");
+    ZEXPECT(result.is_interface_unit);
 }
 
 // Module partition implementation: module M:P;
-TEST_CASE(PartitionImplementation) {
+ZEST_CASE(PartitionImplementation) {
     auto result = scan_quick("module mylib:core;");
-    EXPECT_EQ(result.module_name, "mylib:core");
-    EXPECT_FALSE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "mylib:core");
+    ZEXPECT(!result.is_interface_unit);
 }
 
 // Dotted module name + partition: export module a.b:p;
-TEST_CASE(DottedModuleWithPartition) {
+ZEST_CASE(DottedModuleWithPartition) {
     auto result = scan_quick("export module a.b:p;");
-    EXPECT_EQ(result.module_name, "a.b:p");
-    EXPECT_TRUE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "a.b:p");
+    ZEXPECT(result.is_interface_unit);
 }
 
 // Global module fragment with includes before module declaration.
-TEST_CASE(GlobalModuleFragmentWithIncludes) {
+ZEST_CASE(GlobalModuleFragmentWithIncludes) {
     auto result = scan_quick(R"(
 module;
 #include <stdlib.h>
 #include "config.h"
 export module mylib;
 )");
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_TRUE(result.is_interface_unit);
-    ASSERT_EQ(result.includes.size(), 2u);
-    EXPECT_EQ(result.includes[0].path, "stdlib.h");
-    EXPECT_TRUE(result.includes[0].is_angled);
-    EXPECT_EQ(result.includes[1].path, "config.h");
-    EXPECT_FALSE(result.includes[1].is_angled);
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(result.is_interface_unit);
+    ZASSERT(result.includes.size() == 2u);
+    ZEXPECT(result.includes[0].path == "stdlib.h");
+    ZEXPECT(result.includes[0].is_angled);
+    ZEXPECT(result.includes[1].path == "config.h");
+    ZEXPECT(!result.includes[1].is_angled);
 }
 
 // Conditional module declaration with #ifdef.
-TEST_CASE(ConditionalModuleIfdef) {
+ZEST_CASE(ConditionalModuleIfdef) {
     auto result = scan_quick(R"(
 #ifdef USE_MODULES
 export module mylib;
 #endif
 )");
-    EXPECT_TRUE(result.module_name.empty());
-    EXPECT_TRUE(result.need_preprocess);
+    ZEXPECT(result.module_name.empty());
+    ZEXPECT(result.need_preprocess);
 }
 
 // Conditional module declaration with #if __cpp_modules.
-TEST_CASE(ConditionalModuleCppModules) {
+ZEST_CASE(ConditionalModuleCppModules) {
     auto result = scan_quick(R"(
 #if __cpp_modules >= 201907L
 export module mylib;
 #endif
 )");
-    EXPECT_TRUE(result.module_name.empty());
-    EXPECT_TRUE(result.need_preprocess);
+    ZEXPECT(result.module_name.empty());
+    ZEXPECT(result.need_preprocess);
 }
 
 // Conditional module declaration in global module fragment.
-TEST_CASE(ConditionalModuleInGMF) {
+ZEST_CASE(ConditionalModuleInGMF) {
     auto result = scan_quick(R"(
 module;
 #include <stdlib.h>
@@ -157,14 +157,14 @@ module;
 export module mylib;
 #endif
 )");
-    EXPECT_TRUE(result.module_name.empty());
-    EXPECT_TRUE(result.need_preprocess);
-    ASSERT_EQ(result.includes.size(), 1u);
-    EXPECT_EQ(result.includes[0].path, "stdlib.h");
+    ZEXPECT(result.module_name.empty());
+    ZEXPECT(result.need_preprocess);
+    ZASSERT(result.includes.size() == 1u);
+    ZEXPECT(result.includes[0].path == "stdlib.h");
 }
 
 // Module declaration NOT inside conditional (after a closed conditional block).
-TEST_CASE(ModuleAfterClosedConditional) {
+ZEST_CASE(ModuleAfterClosedConditional) {
     auto result = scan_quick(R"(
 module;
 #ifdef FOO
@@ -172,9 +172,9 @@ module;
 #endif
 export module mylib;
 )");
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_TRUE(result.is_interface_unit);
-    EXPECT_FALSE(result.need_preprocess);
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.need_preprocess);
 }
 
 // Imports are deliberately NOT collected by the quick scan: unlike the
@@ -182,47 +182,47 @@ export module mylib;
 // object-like macro), an import's tokens are macro-expanded, so
 // directive-level text is not a trustworthy source of dependency edges —
 // scan_precise() is (see ImportMacroExpandedName below).
-TEST_CASE(ImportsNotCollected) {
+ZEST_CASE(ImportsNotCollected) {
     auto result = scan_quick(R"(
 export module top;
 import base;
 export import my.nested:part;
 )");
-    EXPECT_EQ(result.module_name, "top");
-    EXPECT_TRUE(result.modules.empty());
+    ZEXPECT(result.module_name == "top");
+    ZEXPECT(result.modules.empty());
 }
 
 // Private module fragment marker should not override the real module declaration.
-TEST_CASE(PrivateModuleFragment) {
+ZEST_CASE(PrivateModuleFragment) {
     auto result = scan_quick(R"(
 export module mylib;
 export int f();
 module : private;
 int f() { return 42; }
 )");
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_TRUE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(result.is_interface_unit);
 }
 
-};  // TEST_SUITE(ModuleScan)
+};  // ZEST_SUITE(ModuleScan)
 
 // =============================================================================
 // scan_module_decl() — lightweight preprocessor fallback
 // =============================================================================
 
-TEST_SUITE(ModuleDeclFallback) {
+ZEST_SUITE(ModuleDeclFallback) {
 
-TEST_CASE(Basic) {
+ZEST_CASE(Basic) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
 )");
     auto result = f.decl();
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_TRUE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(result.is_interface_unit);
 }
 
-TEST_CASE(ConditionalWithDefine) {
+ZEST_CASE(ConditionalWithDefine) {
     // Without -DUSE_MODULES: no module declaration.
     ModuleScanFixture f1(R"(
 #[main.cppm]
@@ -230,7 +230,7 @@ TEST_CASE(ConditionalWithDefine) {
 export module mylib;
 #endif
 )");
-    EXPECT_TRUE(f1.decl().module_name.empty());
+    ZEXPECT(f1.decl().module_name.empty());
 
     // With -DUSE_MODULES: module declaration found.
     ModuleScanFixture f2(R"(
@@ -241,11 +241,11 @@ export module mylib;
 )",
                          {"-DUSE_MODULES"});
     auto result = f2.decl();
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_TRUE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(result.is_interface_unit);
 }
 
-TEST_CASE(ConditionalIfExpr) {
+ZEST_CASE(ConditionalIfExpr) {
     // Without the define: no module.
     ModuleScanFixture f1(R"(
 #[main.cppm]
@@ -253,7 +253,7 @@ TEST_CASE(ConditionalIfExpr) {
 export module mylib;
 #endif
 )");
-    EXPECT_TRUE(f1.decl().module_name.empty());
+    ZEXPECT(f1.decl().module_name.empty());
 
     // With the define: module found.
     ModuleScanFixture f2(R"(
@@ -264,11 +264,11 @@ export module mylib;
 )",
                          {"-DENABLE_MODULES=1"});
     auto result = f2.decl();
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_TRUE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(result.is_interface_unit);
 }
 
-TEST_CASE(GMFWithConditional) {
+ZEST_CASE(GMFWithConditional) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 module;
@@ -280,73 +280,73 @@ export module mylib;
 #define USE_MODULES 1
 )");
     auto result = f.decl();
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_TRUE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(result.is_interface_unit);
 }
 
-TEST_CASE(ImplementationUnit) {
+ZEST_CASE(ImplementationUnit) {
     ModuleScanFixture f(R"(
 #[main.cpp]
 module mylib;
 )");
     auto result = f.decl();
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_FALSE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(!result.is_interface_unit);
 }
 
-TEST_CASE(DottedName) {
+ZEST_CASE(DottedName) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module std.io;
 )");
     auto result = f.decl();
-    EXPECT_EQ(result.module_name, "std.io");
-    EXPECT_TRUE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "std.io");
+    ZEXPECT(result.is_interface_unit);
 }
 
-TEST_CASE(Partition) {
+ZEST_CASE(Partition) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib:core;
 )");
     auto result = f.decl();
-    EXPECT_EQ(result.module_name, "mylib:core");
-    EXPECT_TRUE(result.is_interface_unit);
+    ZEXPECT(result.module_name == "mylib:core");
+    ZEXPECT(result.is_interface_unit);
 }
 
-TEST_CASE(NoModule) {
+ZEST_CASE(NoModule) {
     ModuleScanFixture f(R"(
 #[main.cpp]
 int main() { return 0; }
 )");
     auto result = f.decl();
-    EXPECT_TRUE(result.module_name.empty());
-    EXPECT_FALSE(result.is_interface_unit);
-    EXPECT_TRUE(result.modules.empty());
+    ZEXPECT(result.module_name.empty());
+    ZEXPECT(!result.is_interface_unit);
+    ZEXPECT(result.modules.empty());
 }
 
-};  // TEST_SUITE(ModuleDeclFallback)
+};  // ZEST_SUITE(ModuleDeclFallback)
 
 // =============================================================================
 // scan_precise() — module import semantics
 // =============================================================================
 
-TEST_SUITE(ModuleImportScan) {
+ZEST_SUITE(ModuleImportScan) {
 
-TEST_CASE(NamedImport) {
+ZEST_CASE(NamedImport) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
 import other;
 )");
     auto result = f.precise();
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_TRUE(result.is_interface_unit);
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "other");
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(result.is_interface_unit);
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "other");
 }
 
-TEST_CASE(MultipleImports) {
+ZEST_CASE(MultipleImports) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
@@ -355,90 +355,90 @@ import beta;
 import gamma;
 )");
     auto result = f.precise();
-    EXPECT_EQ(result.module_name, "mylib");
-    ASSERT_EQ(result.modules.size(), 3u);
-    EXPECT_EQ(result.modules[0], "alpha");
-    EXPECT_EQ(result.modules[1], "beta");
-    EXPECT_EQ(result.modules[2], "gamma");
+    ZEXPECT(result.module_name == "mylib");
+    ZASSERT(result.modules.size() == 3u);
+    ZEXPECT(result.modules[0] == "alpha");
+    ZEXPECT(result.modules[1] == "beta");
+    ZEXPECT(result.modules[2] == "gamma");
 }
 
-TEST_CASE(DottedModuleImport) {
+ZEST_CASE(DottedModuleImport) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
 import std.io;
 )");
     auto result = f.precise();
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "std.io");
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "std.io");
 }
 
 // Partition import: clang returns the fully-qualified name "mylib:core"
 // (owning module + ':' + partition name) as a single ModuleIdPath entry.
-TEST_CASE(PartitionImport) {
+ZEST_CASE(PartitionImport) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
 import :core;
 )");
     auto result = f.precise();
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "mylib:core");
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "mylib:core");
 }
 
 // Export-import of a named module.
-TEST_CASE(ExportImport) {
+ZEST_CASE(ExportImport) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
 export import other;
 )");
     auto result = f.precise();
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "other");
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "other");
 }
 
 // Export-import of a partition.
-TEST_CASE(ExportImportPartition) {
+ZEST_CASE(ExportImportPartition) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
 export import :core;
 )");
     auto result = f.precise();
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "mylib:core");
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "mylib:core");
 }
 
 // Implementation unit importing a named module.
-TEST_CASE(ImplementationImport) {
+ZEST_CASE(ImplementationImport) {
     ModuleScanFixture f(R"(
 #[impl.cpp]
 module mylib;
 import other;
 )");
     auto result = f.precise();
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_FALSE(result.is_interface_unit);
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "other");
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(!result.is_interface_unit);
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "other");
 }
 
 // Implementation unit importing a partition of the same module.
-TEST_CASE(ImplementationPartitionImport) {
+ZEST_CASE(ImplementationPartitionImport) {
     ModuleScanFixture f(R"(
 #[impl.cpp]
 module mylib;
 import :utils;
 )");
     auto result = f.precise();
-    EXPECT_EQ(result.module_name, "mylib");
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "mylib:utils");
+    ZEXPECT(result.module_name == "mylib");
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "mylib:utils");
 }
 
 // Multiple partition imports.
-TEST_CASE(MultiplePartitionImports) {
+ZEST_CASE(MultiplePartitionImports) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
@@ -447,10 +447,10 @@ import :utils;
 import :io;
 )");
     auto result = f.precise();
-    ASSERT_EQ(result.modules.size(), 3u);
-    EXPECT_EQ(result.modules[0], "mylib:core");
-    EXPECT_EQ(result.modules[1], "mylib:utils");
-    EXPECT_EQ(result.modules[2], "mylib:io");
+    ZASSERT(result.modules.size() == 3u);
+    ZEXPECT(result.modules[0] == "mylib:core");
+    ZEXPECT(result.modules[1] == "mylib:utils");
+    ZEXPECT(result.modules[2] == "mylib:io");
 }
 
 // An import arriving entirely through an #include. Legal only for a
@@ -459,7 +459,7 @@ import :io;
 // global module fragment cannot hold imports — so plain TUs are exactly
 // why module dependency discovery needs preprocessing, never just the
 // main file's text.
-TEST_CASE(ImportFromIncludedHeader) {
+ZEST_CASE(ImportFromIncludedHeader) {
     ModuleScanFixture f(R"(
 #[main.cpp]
 #include "deps.h"
@@ -468,13 +468,13 @@ int main() { return 0; }
 import dep;
 )");
     auto result = f.precise();
-    EXPECT_TRUE(result.module_name.empty());
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "dep");
+    ZEXPECT(result.module_name.empty());
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "dep");
 }
 
 // Mixed named module imports and partition imports.
-TEST_CASE(MixedNamedAndPartitionImports) {
+ZEST_CASE(MixedNamedAndPartitionImports) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
@@ -484,11 +484,11 @@ import another.lib;
 import :utils;
 )");
     auto result = f.precise();
-    ASSERT_EQ(result.modules.size(), 4u);
-    EXPECT_EQ(result.modules[0], "other");
-    EXPECT_EQ(result.modules[1], "mylib:core");
-    EXPECT_EQ(result.modules[2], "another.lib");
-    EXPECT_EQ(result.modules[3], "mylib:utils");
+    ZASSERT(result.modules.size() == 4u);
+    ZEXPECT(result.modules[0] == "other");
+    ZEXPECT(result.modules[1] == "mylib:core");
+    ZEXPECT(result.modules[2] == "another.lib");
+    ZEXPECT(result.modules[3] == "mylib:utils");
 }
 
 // NOTE: Header unit imports (import <header>; / import "header";) are not
@@ -497,7 +497,7 @@ import :utils;
 // These would hang trying to resolve system headers.
 
 // GMF with imports.
-TEST_CASE(GMFWithImport) {
+ZEST_CASE(GMFWithImport) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 module;
@@ -508,14 +508,14 @@ import dep;
 // config
 )");
     auto result = f.precise();
-    EXPECT_EQ(result.module_name, "mylib");
-    EXPECT_TRUE(result.is_interface_unit);
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "dep");
+    ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(result.is_interface_unit);
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "dep");
 }
 
 // Mixed includes (from GMF) and imports (after module decl).
-TEST_CASE(MixedIncludesAndImports) {
+ZEST_CASE(MixedIncludesAndImports) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 module;
@@ -528,15 +528,15 @@ export int f();
 int legacy_func();
 )");
     auto result = f.precise();
-    EXPECT_EQ(result.module_name, "mylib");
-    ASSERT_GE(result.includes.size(), 1u);
-    ASSERT_EQ(result.modules.size(), 2u);
-    EXPECT_EQ(result.modules[0], "dep_a");
-    EXPECT_EQ(result.modules[1], "dep_b");
+    ZEXPECT(result.module_name == "mylib");
+    ZASSERT(result.includes.size() >= 1u);
+    ZASSERT(result.modules.size() == 2u);
+    ZEXPECT(result.modules[0] == "dep_a");
+    ZEXPECT(result.modules[1] == "dep_b");
 }
 
 // No module — plain C++ file.
-TEST_CASE(NoModule) {
+ZEST_CASE(NoModule) {
     ModuleScanFixture f(R"(
 #[main.cpp]
 #include "header.h"
@@ -545,42 +545,42 @@ int main() { return 0; }
 int x;
 )");
     auto result = f.precise();
-    EXPECT_TRUE(result.module_name.empty());
-    EXPECT_FALSE(result.is_interface_unit);
-    EXPECT_TRUE(result.modules.empty());
+    ZEXPECT(result.module_name.empty());
+    ZEXPECT(!result.is_interface_unit);
+    ZEXPECT(result.modules.empty());
 }
 
 // Partition interface unit declaring and importing another partition.
-TEST_CASE(PartitionInterfaceImportingPartition) {
+ZEST_CASE(PartitionInterfaceImportingPartition) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib:ui;
 import :core;
 )");
     auto result = f.precise();
-    EXPECT_EQ(result.module_name, "mylib:ui");
-    EXPECT_TRUE(result.is_interface_unit);
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "mylib:core");
+    ZEXPECT(result.module_name == "mylib:ui");
+    ZEXPECT(result.is_interface_unit);
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "mylib:core");
 }
 
 // Partition implementation importing another partition.
-TEST_CASE(PartitionImplImportingPartition) {
+ZEST_CASE(PartitionImplImportingPartition) {
     ModuleScanFixture f(R"(
 #[impl.cpp]
 module mylib:detail;
 import :core;
 )");
     auto result = f.precise();
-    EXPECT_EQ(result.module_name, "mylib:detail");
-    EXPECT_FALSE(result.is_interface_unit);
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "mylib:core");
+    ZEXPECT(result.module_name == "mylib:detail");
+    ZEXPECT(!result.is_interface_unit);
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "mylib:core");
 }
 
 // Conditional imports: the precise scan evaluates the condition, so only
 // the taken branch's import is a dependency edge.
-TEST_CASE(ConditionalImport) {
+ZEST_CASE(ConditionalImport) {
     ModuleScanFixture f1(R"(
 #[main.cppm]
 export module mylib;
@@ -588,7 +588,7 @@ export module mylib;
 import dep;
 #endif
 )");
-    EXPECT_TRUE(f1.precise().modules.empty());
+    ZEXPECT(f1.precise().modules.empty());
 
     ModuleScanFixture f2(R"(
 #[main.cppm]
@@ -599,15 +599,15 @@ import dep;
 )",
                          {"-DWITH_DEP"});
     auto result = f2.precise();
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "dep");
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "dep");
 }
 
 // Import target is a macro-expanded name.
 // C++20 forbids object-like macros in module DECLARATIONS (export module M;),
 // but clang's preprocessor expands macros in import declarations —
 // [cpp.import]: an import's tokens are "processed just as in normal text".
-TEST_CASE(ImportMacroExpandedName) {
+ZEST_CASE(ImportMacroExpandedName) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
@@ -615,13 +615,13 @@ export module mylib;
 import OTHER_MOD;
 )");
     auto result = f.precise();
-    EXPECT_EQ(result.module_name, "mylib");
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "other");
+    ZEXPECT(result.module_name == "mylib");
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "other");
 }
 
 // Import target from a macro defined on the command line.
-TEST_CASE(ImportMacroFromCommandLine) {
+ZEST_CASE(ImportMacroFromCommandLine) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
@@ -629,13 +629,13 @@ import DEP_MOD;
 )",
                         {"-DDEP_MOD=dependency"});
     auto result = f.precise();
-    EXPECT_EQ(result.module_name, "mylib");
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "dependency");
+    ZEXPECT(result.module_name == "mylib");
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "dependency");
 }
 
 // Import target from a macro defined in GMF header.
-TEST_CASE(ImportMacroFromGMFHeader) {
+ZEST_CASE(ImportMacroFromGMFHeader) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 module;
@@ -646,16 +646,16 @@ import MY_DEP;
 #define MY_DEP some_lib
 )");
     auto result = f.precise();
-    EXPECT_EQ(result.module_name, "mylib");
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "some_lib");
+    ZEXPECT(result.module_name == "mylib");
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "some_lib");
 }
 
 // Import target from a macro defined in a header #included AFTER the module
 // declaration (not in GMF). C++20 allows #include after module declarations —
 // the preprocessor still processes them and any macros they define are visible
 // to subsequent import declarations.
-TEST_CASE(ImportMacroFromPostDeclInclude) {
+ZEST_CASE(ImportMacroFromPostDeclInclude) {
     ModuleScanFixture f(R"(
 #[main.cppm]
 export module mylib;
@@ -665,12 +665,12 @@ import MY_IMPORT;
 #define MY_IMPORT dep
 )");
     auto result = f.precise();
-    EXPECT_EQ(result.module_name, "mylib");
-    ASSERT_EQ(result.modules.size(), 1u);
-    EXPECT_EQ(result.modules[0], "dep");
+    ZEXPECT(result.module_name == "mylib");
+    ZASSERT(result.modules.size() == 1u);
+    ZEXPECT(result.modules[0] == "dep");
 }
 
-};  // TEST_SUITE(ModuleImportScan)
+};  // ZEST_SUITE(ModuleImportScan)
 
 }  // namespace
 }  // namespace clice::testing

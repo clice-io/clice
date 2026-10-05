@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <format>
 #include <string>
 #include <vector>
@@ -6,7 +7,9 @@
 #include "feature/code_action/action.h"
 #include "semantic/display.h"
 
+#include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
@@ -15,6 +18,14 @@
 #include "clang/AST/Type.h"
 
 namespace clice::feature::action {
+
+/// Whether a switch body declares something at its own scope, which a
+/// label added after the declaration would jump past.
+static bool declares_in_scope(const clang::CompoundStmt* body) {
+    return llvm::any_of(body->body(), [](const clang::Stmt* statement) {
+        return llvm::isa<clang::DeclStmt>(statement->stripLabelLikeStatements());
+    });
+}
 
 void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
     auto unit = ctx.unit;
@@ -36,8 +47,16 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
         return;
     }
 
+    // Case values are converted to the promoted condition type; the
+    // enumerators are brought into it to compare.
     auto& context = unit.context();
-    llvm::DenseSet<std::int64_t> covered;
+    auto condition = stmt->getCond()->getType();
+    auto promoted = [&](llvm::APSInt value) {
+        value = value.extOrTrunc(context.getIntWidth(condition));
+        value.setIsUnsigned(condition->isUnsignedIntegerOrEnumerationType());
+        return value;
+    };
+    llvm::DenseSet<llvm::APSInt> covered;
     const clang::DefaultStmt* default_stmt = nullptr;
     for(const auto* current = stmt->getSwitchCaseList(); current;
         current = current->getNextSwitchCase()) {
@@ -45,17 +64,20 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
             default_stmt = default_case;
             continue;
         }
+        // A label depending on template parameters covers enumerators
+        // only an instantiation knows.
         const auto* case_stmt = llvm::cast<clang::CaseStmt>(current);
         clang::Expr::EvalResult value;
-        if(case_stmt->getRHS() || !case_stmt->getLHS()->EvaluateAsInt(value, context)) {
+        if(case_stmt->getRHS() || case_stmt->getLHS()->isValueDependent() ||
+           !case_stmt->getLHS()->EvaluateAsInt(value, context)) {
             return;
         }
-        covered.insert(value.Val.getInt().getExtValue());
+        covered.insert(promoted(value.Val.getInt()));
     }
 
     llvm::SmallVector<const clang::EnumConstantDecl*> missing;
     for(const auto* enumerator: enum_decl->enumerators()) {
-        if(covered.insert(enumerator->getInitVal().getExtValue()).second) {
+        if(covered.insert(promoted(enumerator->getInitVal())).second) {
             missing.push_back(enumerator);
         }
     }
@@ -64,19 +86,33 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
     }
 
     // The labels go before `default`, falling through into it as the
-    // missing cases already did, else before the closing brace with a
-    // `break` of their own; either way on the labels' own indentation.
+    // missing cases already did; else with a `break` of their own at the
+    // end, or at the top of the body when it declares something a label
+    // would jump past — nothing falls into them there, and no conditional
+    // directive around the first label takes them along. Either way on
+    // the labels' own indentation.
     auto content = unit.main_content();
-    auto anchor =
-        main_range(unit, default_stmt ? default_stmt->getDefaultLoc() : body->getRBracLoc());
+    auto anchor_loc = body->getRBracLoc();
+    if(default_stmt) {
+        anchor_loc = default_stmt->getKeywordLoc();
+    } else if(declares_in_scope(body)) {
+        auto brace = main_range(unit, body->getLBracLoc());
+        if(!brace) {
+            return;
+        }
+        auto tokens = unit.spelled_tokens(unit.main_file());
+        auto after = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
+            return unit.file_offset(token.location()) <= brace->begin;
+        });
+        anchor_loc = after->location();
+    }
+    auto anchor = main_range(unit, anchor_loc);
     if(!anchor) {
         return;
     }
     std::string indent;
-    if(default_stmt) {
-        indent = line_indent(content, anchor->begin).str();
-    } else if(const auto* first = stmt->getSwitchCaseList()) {
-        auto range = main_range(unit, first->getKeywordLoc());
+    if(const auto* label = stmt->getSwitchCaseList()) {
+        auto range = main_range(unit, label->getKeywordLoc());
         if(!range) {
             return;
         }
@@ -110,7 +146,7 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
         .title = std::format("Add {} missing enum case{} to switch",
                              missing.size(),
                              missing.size() == 1 ? "" : "s"),
-        .kind = protocol::CodeActionKind::refactor_rewrite,
+        .kind = protocol::CodeActionKind::RefactorRewrite,
         .edits = {{{offset, offset}, std::move(text)}},
     });
 }

@@ -1,23 +1,51 @@
 #include "server/file_tracker.h"
 
-#include <algorithm>
-#include <chrono>
+#include <optional>
+#include <string>
 #include <utility>
 
-#include "support/filesystem.h"
-#include "support/logging.h"
-#include "support/timer.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/Support/Chrono.h"
 #include "llvm/Support/FileSystem.h"
 
 namespace clice {
 
+/// The git directory of the checkout `root` lies in, if any: `.git`
+/// itself, or the directory a linked worktree's `.git` file names.
+static std::optional<std::string> git_dir(llvm::StringRef root) {
+    std::optional<std::string> found;
+    path::walk_ancestors(root, "", [&](llvm::StringRef dir) {
+        auto git = path::join(dir, ".git");
+        auto status = vfs::status(git);
+        if(!status) {
+            return true;
+        }
+        if(status->type == llvm::sys::fs::file_type::directory_file) {
+            found = git;
+        } else if(auto text = vfs::read(git)) {
+            llvm::StringRef target = (*text)->getBuffer();
+            if(target.consume_front("gitdir:")) {
+                found = Spelling(target.trim(), Spelling::absolute(dir)).str();
+            }
+        }
+        return false;
+    });
+    return found;
+}
+
 FileTracker::FileTracker(Project& project, const SessionStore& store, CanonicalPath root) :
-    project(project), store(store), cdb(project, std::move(root)) {}
+    project(project), store(store), cdb(project, root) {
+    auto git = git_dir(root);
+    if(!git) {
+        return;
+    }
+    for(auto name: {"HEAD", "index"}) {
+        checkout.push_back(project.file_table.disk.watch(
+            path::join(*git, name),
+            [&disk = project.file_table.disk, root = root.str()] { disk.expire_under(root); }));
+    }
+}
 
 /// Diff ids and event ids share the single file table.
 static void push_delta(const CDBDiff& diff, llvm::SmallVectorImpl<FileEvent>& events) {
@@ -47,57 +75,11 @@ llvm::SmallVector<FileEvent> FileTracker::discover_around(Fid path_id) {
     return events;
 }
 
-kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_workspace() {
-    constexpr std::size_t batch_size = 500;
-
-    if(sweeping) {
-        // The poll hook can land while the live loop is suspended between
-        // batches; the running sweep already covers this request.
-        co_return llvm::SmallVector<FileEvent>{};
-    }
-    sweeping = true;
-    auto guard = llvm::make_scope_exit([this] { sweeping = false; });
-
-    ScopedTimer timer;
-    // What the lexical scan saw included, what compiles actually read (the
-    // files index rows came from) — a header only a macro include reaches
-    // is invisible to the former — and every place last seen empty, where
-    // a file appearing changes what some compile would see.
-    auto files = project.dep_graph.all_files();
-    llvm::append_range(files, llvm::make_first_range(project.project_index.contributions));
-    llvm::append_range(files, project.file_table.missing_files());
-    llvm::sort(files);
-    files.erase(llvm::unique(files), files.end());
-    for(std::size_t begin = 0; begin < files.size(); begin += batch_size) {
-        if(begin != 0) {
-            // Yield one loop iteration between batches so a long sweep
-            // never starves LSP traffic.
-            co_await kota::sleep(std::chrono::milliseconds(0));
-        }
-
-        auto batch_end = std::min(begin + batch_size, files.size());
-        for(std::size_t i = begin; i < batch_end; i += 1) {
-            auto path_id = files[i];
-            llvm::sys::fs::file_status status;
-            if(llvm::sys::fs::status(project.file_table.resolve(path_id), status)) {
-                project.file_table.saw_missing(path_id);
-                continue;
-            }
-            // Reads only when the shared pair cannot vouch for the stat. A
-            // file that stats fine but cannot be read right now (e.g. an
-            // antivirus scanner briefly holding a fresh file on Windows)
-            // leaves what was seen untouched; the next tick looks again.
-            project.file_table.observe_for(path_id, status);
-        }
-    }
-
-    // A file created under a default-command rule joins the build: the
-    // same gain of a command a database reload reports as added. One
-    // deleted left through DiskRemoved, like any tracked file.
+kota::task<llvm::SmallVector<FileEvent>> FileTracker::tick_sources() {
+    auto walked =
+        co_await kota::queue([walk = project.build.source_walk()] { return walk_sources(walk); });
     llvm::SmallVector<FileEvent> events;
-    push_delta({.added = project.build.refresh_default_sources()}, events);
-
-    LOG_PERF("tracker", "phase=workspace_sweep files={} elapsed_ms={}", files.size(), timer.ms());
+    push_delta({.added = project.build.refresh_default_sources(walked)}, events);
     co_return events;
 }
 

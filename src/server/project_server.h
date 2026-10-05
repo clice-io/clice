@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,7 @@
 #include "support/signal.h"
 
 #include "kota/async/async.h"
+#include "kota/codec/dyn/dyn.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -44,12 +46,13 @@ public:
     ~ProjectServer();
 
     /// Load the configuration — clice.toml under the root, overlaid with
-    /// the client's initializationOptions (`init_options`, JSON), then
+    /// the client's initializationOptions (`init_options`), then
     /// finalized — and apply its serving mode. A cache directory belongs
     /// to one project: when the one configured is among
     /// `taken_cache_dirs`, this project falls back to its clice.toml's,
     /// then the default, then runs without one.
-    void configure(llvm::StringRef init_options, llvm::ArrayRef<CanonicalPath> taken_cache_dirs);
+    void configure(const std::optional<kota::codec::dyn::Value>& init_options,
+                   llvm::ArrayRef<CanonicalPath> taken_cache_dirs);
 
     /// Load the project from disk (see bootstrap_project), restore the
     /// editor's context choices, and start its store-lifetime services;
@@ -83,10 +86,19 @@ public:
     /// FileTracker::discover_around) so the compile finds its entry.
     void discover_around(Fid path_id);
 
+    /// After a tick looked at the flags: weigh what the looks found of the
+    /// project's databases (see FileTracker::tick_cdb) and dispatch the
+    /// reloads. Nothing while the project's polling is off.
+    void tick_databases();
+
     /// The single entry point for file events: fold the batch through the
     /// Invalidator, then execute the resulting effects against the mutable
     /// services (sessions, editor context, background indexer).
     void dispatch(llvm::ArrayRef<FileEvent> events);
+
+    /// The files every open document's compile depends on (see
+    /// ASTFamily::closure).
+    void open_closures(llvm::SmallVectorImpl<Fid>& files);
 
     /// Whether anything here derives from the file: an open document, a
     /// command, an include edge, index rows, a compile that read it or
@@ -127,10 +139,11 @@ public:
     Features features;
     Invalidator invalidator;
 
-    /// Stat-polling discovery of CDB and on-disk file changes. Created by
-    /// start() once the project is loaded (null before that and for the
-    /// rootless project); its polling loops run in bg_tasks, and the
-    /// clice/internal/poll test hook drives ticks directly.
+    /// Polling of the project's databases, default sources and checkout.
+    /// Created by start() once the project is loaded (null before that and
+    /// for the rootless project); the master's ticks and its sources loop
+    /// in bg_tasks drive it, and the clice/internal/poll test hook drives
+    /// ticks directly.
     std::unique_ptr<FileTracker> tracker;
 
     /// Problems found while loading clice.toml, kept so LSPClient can
@@ -195,11 +208,10 @@ private:
     /// disk (see cache_checkpoint_task).
     void drain_store_evictions();
 
-    /// The file tracker's polling loops: each tick hands the tracker's
-    /// event batch to dispatch(). Spawned by start() when the configured
-    /// interval is non-zero.
-    kota::task<> cdb_poll_task();
-    kota::task<> workspace_poll_task();
+    /// The file tracker's default-sources loop: each tick hands the
+    /// tracker's event batch to dispatch(). Spawned by start() unless
+    /// polling is off.
+    kota::task<> sources_poll_task();
 
     /// The project's background tasks (checkpoints, flushes, polls, the
     /// control listener); cancelled and joined in shutdown().

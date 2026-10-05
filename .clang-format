@@ -133,7 +133,7 @@ IncludeCategories:
     SortPriority: 21
 
 ForEachMacros: ["REFLECTABLE_RECORD"]
-NamespaceMacros: [TEST_SUITE]
+NamespaceMacros: [ZEST_SUITE]
 
 KeepEmptyLines:
   AtEndOfFile: false

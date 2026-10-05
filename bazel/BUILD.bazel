@@ -1,0 +1,54 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+package(default_visibility = ["//:__pkg__"])
+
+# The canonical target triples: the release assets are named after them, and
+# the version carries the one of the build.
+TRIPLES = {
+    "linux_x86_64": "x86_64-unknown-linux-gnu",
+    "linux_aarch64": "aarch64-unknown-linux-gnu",
+    "macos_x86_64": "x86_64-apple-darwin",
+    "macos_aarch64": "aarch64-apple-darwin",
+    "windows_x86_64": "x86_64-w64-mingw32",
+    "windows_aarch64": "aarch64-w64-mingw32",
+}
+
+[config_setting(
+    name = setting,
+    constraint_values = [
+        "@platforms//os:" + setting.split("_", 1)[0],
+        "@platforms//cpu:" + setting.split("_", 1)[1],
+    ],
+) for setting in TRIPLES]
+
+# Stamped from bazel/workspace_status.mjs: the one source whose compile a new
+# version reruns (src/version.h).
+genrule(
+    name = "version_cpp",
+    outs = ["version.cpp"],
+    cmd = select({
+        ":" + setting: """
+version=$$(sed -n 's/^STABLE_CLICE_VERSION //p' bazel-out/stable-status.txt)
+cat > $@ <<EOF
+#include "version.h"
+
+namespace clice {
+
+const std::string_view version = "$$version";
+const std::string_view target = "%s";
+
+}  // namespace clice
+EOF
+""" % triple
+        for setting, triple in TRIPLES.items()
+    }),
+    stamp = 1,
+)
+
+# clang-tidy's build generates this header and libclang does not ship it; it
+# has to agree with how xclang configured clang-tidy (no static analyzer).
+cc_library(
+    name = "clang_tidy_config",
+    hdrs = ["clang-tidy-config.h"],
+    includes = ["."],
+)

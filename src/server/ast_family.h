@@ -20,6 +20,7 @@
 #include "worker/pool.h"
 
 #include "kota/async/async.h"
+#include "llvm/ADT/DenseMap.h"
 
 namespace clice {
 
@@ -35,8 +36,8 @@ struct EditorContext;
 /// candidate/durable edges to the PCM and PCH nodes its rounds wait on,
 /// one round = one compile (up to two worker sends for the
 /// self-containment trial). Assembled server-side: the closure captures
-/// the session store, quarantine and publishing — state the sched layer
-/// must not see.
+/// the session store, crash quarantine and publishing — state the sched
+/// layer must not see.
 ///
 /// The family owns the whole compile lifecycle the retired Compiler ran:
 /// dependency preparation (through RoundContext::depend, the only wait
@@ -58,8 +59,7 @@ public:
               PCMFamily& pcm,
               PCHFamily& pch,
               WorkerPool& pool,
-              SessionStore& sessions,
-              kota::event_loop& loop);
+              SessionStore& sessions);
 
     /// Register the production runner. Tests that drive the facade
     /// against a synthetic runner register their own under Family::AST.
@@ -109,19 +109,21 @@ public:
     /// epoch — either way the resolved command may describe a command
     /// that no longer exists, and adopting the key would hand later
     /// incomplete-preamble edits a stale-flag PCH. This path runs no
-    /// graph round it could ask instead.
+    /// graph round it could ask instead. The inputs themselves follow
+    /// `text`, the buffer the build sends, so a request that outlives its
+    /// ticket still compiles against a PCH of its own preamble.
     kota::task<bool> prepare_stateless_inputs(const Ticket& ticket,
+                                              llvm::StringRef text,
                                               const std::string& directory,
                                               const std::vector<std::string>& arguments,
-                                              const SynthesizedContext* synthesized,
+                                              const Resolution& resolution,
                                               StatelessInputs& inputs);
 
     /// The edit path's whole supersede (didChange): the buffer moved, so
     /// the projection is no longer current and the in-flight round's
-    /// result is void. Fires the round's advisory token and interrupts
-    /// the worker's parse with a CancelCompile notification — FIFO order
-    /// puts it ahead of any replacement Compile, and the round still
-    /// observes its real reply (crash accounting depends on it).
+    /// result is void. Fires the round's advisory token and cancels its
+    /// compile on the wire, which interrupts the worker's parse; the round
+    /// still observes the real reply (crash accounting depends on it).
     void supersede(Fid path_id);
 
     /// A Lost-type invalidation (dependency changed on disk, worker
@@ -134,6 +136,10 @@ public:
     /// didClose (and didOpen replacing a live session): the document's
     /// products die with it.
     void drop(Fid path_id);
+
+    /// The files the document's compile depends on: the ones is_stale()
+    /// checks, and the inputs of the modules it imports.
+    void closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files);
 
     /// clice/switchContext: the new context is a different compilation
     /// identity. Supersede any in-flight compile and drop the state
@@ -152,23 +158,39 @@ public:
 
     /// Invoked from ensure_compiled's fast path when the pull-side
     /// staleness check finds an input of the document changed on disk. The
-    /// owner invalidates the document itself (synchronously); the changed
-    /// file's own cascade comes from the file table, whose look during the
-    /// check queued the change like any other.
+    /// owner cascades the changes the check's looks queued in the file
+    /// table, then invalidates the document itself — both synchronously:
+    /// drained on a later turn, the cascade would void the round about to
+    /// compile the new content.
     std::function<void(Fid path_id)> on_stale;
 
-    /// Publish the quarantine diagnostic as the document's current output
-    /// and mark the spell announced. `source` falls back to the previous
-    /// output's command source when the announcement has no compile of its
-    /// own (the ensure_compiled entry gate).
-    void publish_quarantined(const std::shared_ptr<Session>& session,
-                             std::optional<CommandSource> source,
-                             std::optional<std::uint32_t> line_limit);
+    /// A dispatch of `kind` killed a worker on the document's content —
+    /// `error` carries the death (worker::death_of, the cause in the
+    /// message). Records it in the session's quarantine and republishes, so
+    /// the crash note shows.
+    void record_crash(const std::shared_ptr<Session>& session,
+                      std::uint8_t kind,
+                      const kota::ipc::Error& error);
 
-    /// Clear the published quarantine diagnostic after a stateless or
-    /// query recovery lifted the quarantine: no compile ran to overwrite
-    /// the output, and the stale "file is quarantined" must not linger.
-    void publish_recovered(const std::shared_ptr<Session>& session);
+    /// Push the document's output again: its crash notes changed with no
+    /// compile to carry them. A document that never compiled gets an empty
+    /// versionless output to hang them on.
+    void republish(const std::shared_ptr<Session>& session);
+
+    /// The compile, or the preamble it consumes, crashed a worker and has
+    /// no license to try again: the document has no AST to offer.
+    static bool compile_barred(const Session& session);
+
+    /// Whether a round of the document is live: it will send a compile of
+    /// its own, so a lost worker-side AST needs no invalidation.
+    bool compiling(Fid path_id) const {
+        return graph.is_compiling(node(path_id));
+    }
+
+    /// didSave: every crashed kind of the document retries on its next
+    /// request, the artifacts it consumes included, and so do the ones
+    /// whose build failed.
+    void saved(Session& session);
 
     /// Install `output` as the document's current output and wake the
     /// push path (the didClose diagnostics retraction).
@@ -177,8 +199,8 @@ public:
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The rounds themselves land in TaskGraph::shutdown — the
     /// interruption is what keeps that landing prompt (a round's stateful
-    /// send deliberately carries no advisory token; contract 2 wants the
-    /// real reply, and CancelCompile makes it arrive early).
+    /// send carries the interrupt, not its advisory token: contract 2 wants
+    /// the real reply, and the interrupt makes it arrive early).
     kota::task<> stop();
 
 private:
@@ -194,13 +216,17 @@ private:
     /// revalidate on-disk PCM blobs, declare the Ast→PCM durable edges
     /// (scanner truth — they must survive a failed compile or fixing an
     /// import could never re-dirty this document), and wait on each
-    /// import through depend.
-    kota::task<DependResult> depend_modules(RoundContext& ctx,
-                                            Fid path_id,
-                                            llvm::StringRef directory,
-                                            const std::vector<std::string>& arguments,
-                                            llvm::StringRef text,
-                                            const SynthesizedContext* synthesized);
+    /// import through depend. False when cancelled: an import whose build
+    /// failed is left to the parse, which reports it on the import next to
+    /// the file's own diagnostics; one whose build crashed a worker also
+    /// lands in the session's quarantine, and is refused until the session
+    /// holds a license to retry it.
+    kota::task<bool> depend_modules(RoundContext& ctx,
+                                    const std::shared_ptr<Session>& session,
+                                    const Resolution& resolution,
+                                    llvm::StringRef directory,
+                                    const std::vector<std::string>& arguments,
+                                    llvm::StringRef text);
 
     /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);
@@ -225,18 +251,17 @@ private:
                      const std::vector<std::string>& arguments,
                      const SynthesizedContext* synthesized);
 
-    /// Revalidate or build the session's preamble PCH through the family
+    /// Revalidate or build the preamble PCH of `text` through the family
     /// and adopt its key under the request's license (see
-    /// prepare_stateless_inputs). This request is the dispatch owner when
-    /// its acquire spawns the round; the probe then pins every worker
-    /// death of the build on this document, held by the round so the
-    /// evidence lands even if this request goes stale meanwhile.
-    kota::task<bool> ensure_pch(const std::shared_ptr<Session>& session,
-                                std::uint64_t license_generation,
-                                std::uint64_t license_epoch,
-                                const std::string& directory,
-                                const std::vector<std::string>& arguments,
-                                const SynthesizedContext* synthesized);
+    /// prepare_stateless_inputs). Returns the key the request compiles
+    /// against, adopted or not; none when it compiles without a PCH.
+    kota::task<std::optional<std::string>> ensure_pch(const std::shared_ptr<Session>& session,
+                                                      llvm::StringRef text,
+                                                      std::uint64_t license_generation,
+                                                      std::uint64_t license_epoch,
+                                                      const std::string& directory,
+                                                      const std::vector<std::string>& arguments,
+                                                      const SynthesizedContext* synthesized);
 
     friend struct testing::ASTFamilyFixture;
 
@@ -255,13 +280,21 @@ private:
     /// Detached ensure_compiled joins from request_compile; the rounds
     /// live in the graph's task group.
     kota::task_group<> kicks;
+
+    /// The cancel of each document's in-flight compile send, which
+    /// supersede() and stop() fire to interrupt the worker's parse.
+    llvm::DenseMap<Fid, std::unique_ptr<kota::cancellation_source>> compile_interrupts;
 };
 
-/// Discriminators for Quarantine's per-kind ledgers.
+/// Discriminators for Quarantine's per-kind records; query kinds follow
+/// past Count.
 enum class EvidenceKind : std::uint8_t {
-    DocumentLink,
-    CodeAction,
+    Compile,
     PCH,
+    PCM,
+    DocumentLink,
+    FoldingRange,
+    CodeAction,
     Completion,
     SignatureHelp,
     Format,
@@ -271,5 +304,13 @@ enum class EvidenceKind : std::uint8_t {
 constexpr std::uint8_t evidence_kind(EvidenceKind kind) {
     return static_cast<std::uint8_t>(kind);
 }
+
+constexpr std::uint8_t evidence_kind(worker::QueryKind kind) {
+    return static_cast<std::uint8_t>(EvidenceKind::Count) + static_cast<std::uint8_t>(kind);
+}
+
+/// The diagnostics telling what of the document is paused by crashes, and
+/// how it comes back; appended to every publish of the document.
+void append_crash_notes(const Session& session, std::vector<protocol::Diagnostic>& diagnostics);
 
 }  // namespace clice

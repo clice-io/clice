@@ -2,13 +2,16 @@
 
 #include <format>
 
+#include "command/toolchain.h"
 #include "index/serialization.h"
-#include "support/filesystem.h"
+#include "project/build.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/meta/enum.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
 namespace clice::query {
@@ -17,19 +20,6 @@ namespace {
 
 std::string kind_name(SymbolKind kind) {
     return std::string(kota::meta::enum_name(static_cast<SymbolKind::Kind>(kind), "Unknown"));
-}
-
-std::string symbol_id(index::SymbolHash hash) {
-    return std::format("#{:016x}", hash);
-}
-
-/// The hash a `#<hex>` id names; nullopt for anything else.
-std::optional<index::SymbolHash> parse_symbol_id(llvm::StringRef id) {
-    index::SymbolHash hash = 0;
-    if(!id.consume_front("#") || id.getAsInteger(16, hash) || index::reserved_key(hash)) {
-        return std::nullopt;
-    }
-    return hash;
 }
 
 /// The 1-based lines a site spans, as the answers spell positions.
@@ -46,7 +36,7 @@ Lines lines_of(const index::Site& site) {
 /// The file a path names in the index. An error for a path that is not a
 /// file; nullopt (noted as unindexed) for one the index has no rows for.
 Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
-    if(!llvm::sys::fs::is_regular_file(path)) {
+    if(!vfs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
     // Interning only names the file; whether the index holds rows for
@@ -104,7 +94,7 @@ Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQu
             listed += std::format("{}{} ({})",
                                   listed.empty() ? "" : ", ",
                                   ctx.query.qualified_name(candidate.symbol.hash),
-                                  symbol_id(candidate.symbol.hash));
+                                  index::symbol_id(candidate.symbol.hash));
         }
         return std::unexpected(std::format("ambiguous: {} candidates, use --symbol to pick one: {}",
                                            candidates.size(),
@@ -148,7 +138,7 @@ Entry graph_entry(const index::IndexQuery::Located& located) {
         .kind = kind_name(located.symbol.kind),
         .file = std::string(located.site.path),
         .line = lines_of(located.site).start,
-        .symbol_id = symbol_id(located.symbol.hash),
+        .symbol_id = index::symbol_id(located.symbol.hash),
     };
 }
 
@@ -173,7 +163,7 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Edge> ed
 }  // namespace
 
 Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path) {
-    if(!llvm::sys::fs::is_regular_file(path)) {
+    if(!vfs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
     // The editor compiles such a header under a synthesized preamble, a
@@ -192,9 +182,13 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path
     }
     auto& files = ctx.project.file_table;
     CompileCommandResult result{.file = files.display(file)};
-    auto source = ctx.contexts.resolve_command(file, result.directory, result.arguments).source;
+    auto resolution = ctx.contexts.resolve_command(file, result.directory, result.arguments);
     result.directory = files.display(CanonicalPath(Spelling::absolute(result.directory)));
-    switch(source) {
+    auto& ref = resolution.ref;
+    if(auto resolved = ctx.project.cdb.toolchain().resolve(ref.config, ref.input); !resolved) {
+        result.toolchain_error = std::move(resolved.error());
+    }
+    switch(resolution.source) {
         case CommandSource::CDBExact: result.source = "database"; break;
         case CommandSource::IncludeGraph: result.source = "host"; break;
         case CommandSource::Default: result.source = "rule"; break;
@@ -254,7 +248,7 @@ Outcome<FileDepsResult>
     if(depth < 0) {
         return std::unexpected("depth must not be negative");
     }
-    if(!llvm::sys::fs::is_regular_file(path)) {
+    if(!vfs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
     auto& ws = ctx.project;
@@ -278,7 +272,7 @@ Outcome<FileDepsResult>
 }
 
 Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path) {
-    if(!llvm::sys::fs::is_regular_file(path)) {
+    if(!vfs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
     auto& ws = ctx.project;
@@ -287,20 +281,21 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
     if(!file) {
         return result;
     }
-    auto direct = ws.dep_graph.get_includers(*file);
     llvm::DenseSet<Fid> seen{*file};
-    for(auto includer: direct) {
-        result.direct_dependents.push_back(ws.file_table.display(includer));
-        seen.insert(includer);
-    }
-    auto hosts = ws.dep_graph.find_host_sources(*file);
-    for(auto host: hosts) {
-        if(seen.insert(host).second) {
-            result.transitive_dependents.push_back(ws.file_table.display(host));
+    for(auto dependent: llvm::concat<const Fid>(ws.dep_graph.get_includers(*file),
+                                                ws.dep_graph.get_forcing_units(*file))) {
+        if(seen.insert(dependent).second) {
+            result.direct_dependents.push_back(ws.file_table.display(dependent));
         }
     }
-    for(auto host: hosts) {
-        auto module_name = ws.dep_graph.module_of(host);
+    auto readers = ws.dep_graph.find_readers(*file);
+    for(auto reader: readers) {
+        if(seen.insert(reader).second) {
+            result.transitive_dependents.push_back(ws.file_table.display(reader));
+        }
+    }
+    for(auto reader: readers) {
+        auto module_name = ws.dep_graph.module_of(reader);
         if(!module_name.empty()) {
             result.affected_modules.push_back(module_name.str());
         }
@@ -368,7 +363,7 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
     if(!resolved) {
         return std::unexpected(resolved.error());
     }
-    auto definition = ctx.query.definition_text(resolved->symbol.hash);
+    auto definition = ctx.query.definition_text(resolved->symbol.hash, resolved->site.file);
     if(!definition) {
         return std::unexpected("definition not found");
     }
@@ -380,7 +375,7 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
         .start_line = lines.start,
         .end_line = lines.end,
         .text = std::move(definition->text),
-        .symbol_id = symbol_id(resolved->symbol.hash),
+        .symbol_id = index::symbol_id(resolved->symbol.hash),
     };
 }
 
@@ -413,7 +408,7 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
             .kind = kind_name(located.symbol.kind),
             .start_line = lines.start,
             .end_line = lines.end,
-            .symbol_id = symbol_id(located.symbol.hash),
+            .symbol_id = index::symbol_id(located.symbol.hash),
         });
     }
     return result;
@@ -427,9 +422,9 @@ Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
     DefinitionResult result{
         .name = resolved->symbol.display_name(),
         .kind = kind_name(resolved->symbol.kind),
-        .symbol_id = symbol_id(resolved->symbol.hash),
+        .symbol_id = index::symbol_id(resolved->symbol.hash),
     };
-    if(auto definition = ctx.query.definition_text(resolved->symbol.hash)) {
+    if(auto definition = ctx.query.definition_text(resolved->symbol.hash, resolved->site.file)) {
         auto lines = lines_of(definition->extent);
         result.definition = LocationEntry{
             .file = std::string(definition->extent.path),
@@ -451,9 +446,9 @@ Outcome<ReferencesResult> references(Context& ctx,
     ReferencesResult result{
         .name = resolved->symbol.display_name(),
         .kind = kind_name(resolved->symbol.kind),
-        .symbol_id = symbol_id(resolved->symbol.hash),
+        .symbol_id = index::symbol_id(resolved->symbol.hash),
     };
-    index::IndexQuery::Cursor cursor{.symbol = resolved->symbol.hash, .site = resolved->site};
+    index::IndexQuery::Cursor cursor{.symbols = {resolved->symbol.hash}, .site = resolved->site};
     for(auto& site: ctx.query.references(cursor, include_declaration)) {
         result.references.push_back({
             .file = std::string(site.path),
@@ -463,6 +458,83 @@ Outcome<ReferencesResult> references(Context& ctx,
     }
     result.total = static_cast<int>(result.references.size());
     return result;
+}
+
+bool units_pending(Project& project) {
+    return llvm::any_of(project.build.members(), [&](Fid unit) {
+        return project.build.indexed(project.file_table.resolve(unit)) &&
+               !project.project_index.tu_manifest(unit);
+    });
+}
+
+Outcome<PlannedRename> rename(Context& ctx, index::SymbolQuery locator, llvm::StringRef new_name) {
+    auto resolved = resolve_unique(ctx, std::move(locator));
+    if(!resolved) {
+        return std::unexpected(resolved.error());
+    }
+    auto target = index::rename_target(ctx.query, *resolved);
+    if(!target) {
+        return std::unexpected(target.error());
+    }
+    auto& symbol = target->symbol.symbol;
+
+    auto& config = ctx.project.config;
+    CanonicalRef root = config.workspace_root;
+    CanonicalPath cache_dir;
+    if(!config.project.cache_dir.empty()) {
+        cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
+    }
+    std::vector<std::string> sources;
+    for(auto& source: workspace_sources(root, cache_dir)) {
+        sources.push_back(source.str());
+    }
+    auto editable = [&](llvm::StringRef path) {
+        return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
+    };
+    auto read = [&](llvm::StringRef path) -> std::optional<index::SweptText> {
+        auto text = vfs::read(path);
+        if(!text) {
+            return std::nullopt;
+        }
+        return index::sweep_text((*text)->getBuffer().str(), symbol.name, new_name);
+    };
+    auto plan = index::plan_rename(ctx.query,
+                                   ctx.project.file_table,
+                                   *target,
+                                   new_name,
+                                   {.files = sources,
+                                    .editable = editable,
+                                    .read = read,
+                                    .units_pending = units_pending(ctx.project)});
+    RenameResult result{
+        .name = symbol.display_name(),
+        .kind = kind_name(symbol.kind),
+        .symbol_id = index::symbol_id(symbol.hash),
+        .new_name = new_name.str(),
+        .conflicts = plan.conflicts,
+        .warnings = plan.warnings,
+        .stale = plan.stale,
+    };
+    for(auto& edit: plan.edits) {
+        if(result.files.empty() || result.files.back().file != edit.site.path) {
+            result.files.push_back({.file = edit.site.path});
+        }
+        result.files.back().edits.push_back({
+            .line = static_cast<int>(edit.site.begin.line) + 1,
+            .column = static_cast<int>(edit.site.begin.column) + 1,
+            .heuristic = edit.heuristic,
+        });
+    }
+    for(auto& note: plan.unconfirmed) {
+        result.unconfirmed.push_back({
+            .file = note.site.path,
+            .line = static_cast<int>(note.site.begin.line) + 1,
+            .column = static_cast<int>(note.site.begin.column) + 1,
+            .reason = note.reason,
+            .text = note.line,
+        });
+    }
+    return PlannedRename{.result = std::move(result), .plan = std::move(plan)};
 }
 
 Outcome<CallGraphResult> call_graph(Context& ctx,
@@ -479,6 +551,7 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
     }
     auto graph = ctx.query.call_graph(
         resolved->symbol.hash,
+        resolved->site.file,
         {.callers = direction != "callees", .callees = direction != "callers"});
     return CallGraphResult{
         .root = graph_entry<GraphEntry>(*resolved),
@@ -501,6 +574,7 @@ Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
     }
     auto hierarchy = ctx.query.type_hierarchy(
         resolved->symbol.hash,
+        resolved->site.file,
         {.supertypes = direction != "subtypes", .subtypes = direction != "supertypes"});
     return TypeHierarchyResult{
         .root = graph_entry<GraphEntry>(*resolved),

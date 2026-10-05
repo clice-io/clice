@@ -17,8 +17,8 @@
 ///   pipeline_benchmark [OPTIONS] <compile_commands.json>
 ///
 /// Example:
-///   ./build/RelWithDebInfo/bin/pipeline_benchmark build/RelWithDebInfo/compile_commands.json
-///   ./build/RelWithDebInfo/bin/pipeline_benchmark --filter compiler.cpp --runs 5 \
+///   ./build/RelWithDebInfo/bin/bin/pipeline_benchmark compile_commands.json
+///   ./build/RelWithDebInfo/bin/bin/pipeline_benchmark --filter compiler.cpp --runs 5 \
 ///       --time-trace /tmp/traces <cdb>
 
 #include <algorithm>
@@ -33,10 +33,10 @@
 #include "compile/compilation.h"
 #include "feature/feature.h"
 #include "index/tu_index.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "support/timer.h"
 #include "syntax/scan.h"
+#include "vfs/file_system.h"
 
 #include "kota/codec/json/json.h"
 #include "kota/deco/deco.h"
@@ -147,12 +147,12 @@ FileResult profile_file(llvm::StringRef file,
 
     std::string content;
     bool ok = run_stage(runs, result.read_ms, [&] {
-        auto read = fs::read(file);
+        auto read = vfs::read(file, vfs::Read::Bytes);
         if(!read) {
             result.error = "read failed: " + read.error().message();
             return false;
         }
-        content = std::move(*read);
+        content = (*read)->getBuffer().str();
         return true;
     });
     if(!ok) {
@@ -252,15 +252,15 @@ FileResult profile_file(llvm::StringRef file,
         return result;
     }
 
-    auto pch_path = fs::createTemporaryFile("pipeline-bench", "pch");
-    auto state_path = fs::createTemporaryFile("pipeline-bench", "idx");
+    auto pch_path = vfs::temp_file("pipeline-bench", "pch");
+    auto state_path = vfs::temp_file("pipeline-bench", "idx");
     if(!pch_path || !state_path) {
         result.error = "failed to create temporary PCH files";
         return result;
     }
     auto remove_pch_files = [&] {
-        fs::remove(*pch_path);
-        fs::remove(*state_path);
+        vfs::remove(*pch_path);
+        vfs::remove(*state_path);
     };
 
     std::vector<std::uint8_t> open_conditionals;
@@ -290,8 +290,8 @@ FileResult profile_file(llvm::StringRef file,
         // The PCH is flushed to disk by the unit's destructor; the blob
         // write follows it, like the worker's on-disk ordering contract.
         unit = CompilationUnit(nullptr);
-        if(auto write = fs::write(*state_path, blob); !write) {
-            result.error = "preamble state write failed: " + write.error().message();
+        if(auto error = vfs::write(*state_path, blob)) {
+            result.error = "preamble state write failed: " + error.message();
             return false;
         }
         return true;
@@ -527,11 +527,8 @@ int main(int argc, const char** argv) {
             std::println(stderr, "Failed to serialize results");
             return 1;
         }
-        if(auto write = fs::write(*opts.json_path, *json); !write) {
-            std::println(stderr,
-                         "Failed to write {}: {}",
-                         *opts.json_path,
-                         write.error().message());
+        if(auto error = vfs::write(*opts.json_path, *json)) {
+            std::println(stderr, "Failed to write {}: {}", *opts.json_path, error.message());
             return 1;
         }
         std::println("\nResults written to {}", *opts.json_path);

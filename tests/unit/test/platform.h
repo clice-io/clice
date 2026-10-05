@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <string>
 
-#include "support/filesystem.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/FileSystem.h"
@@ -25,14 +25,10 @@ constexpr inline bool Linux = true;
 constexpr inline bool Linux = false;
 #endif
 
-#ifdef CLICE_CI_ENVIRONMENT
-constexpr inline bool CIEnvironment = true;
-#else
-constexpr inline bool CIEnvironment = false;
-#endif
-
-/// The checked-in fixture tree, tests/data of the checkout that built this
-/// binary. CLICE_TEST_DATA_DIR in the environment overrides it, the way
+/// The checked-in fixture tree, tests/data of the working directory (the
+/// repository root, where the tasks run the tests: a build that may be
+/// cached across checkouts names none of them). CLICE_TEST_DATA_DIR in the
+/// environment overrides it, the way
 /// CLICE_EXECUTABLE points the TypeScript suites at another build. Absolute
 /// and dot-free with native separators, the spelling the database loader
 /// produces for paths anchored under it.

@@ -8,6 +8,7 @@
 
 #include "feature/feature.h"
 #include "index/include_tree.h"
+#include "index/manifest.h"
 #include "index/shard.h"
 #include "index/types.h"
 
@@ -39,11 +40,12 @@ std::string build_tu_index(CompilationUnitRef unit, bool main_file_only = false)
 /// envelopes leave empty: the identity of the exact preamble text, and
 /// the PCH-derived feature state spliced into main-file results
 /// (document links, inactive regions, the open conditional stack at the
-/// bound).
+/// bound, the diagnostics as published).
 std::string build_preamble_index(CompilationUnitRef unit,
                                  llvm::ArrayRef<feature::DocumentLink> links,
                                  llvm::ArrayRef<std::uint32_t> inactive_regions,
-                                 llvm::ArrayRef<std::uint8_t> open_conditionals);
+                                 llvm::ArrayRef<std::uint8_t> open_conditionals,
+                                 llvm::StringRef diagnostics);
 
 /// Zero-copy reader over an envelope: the tree, the per-file blob hashes
 /// and the blob bytes themselves are read straight off the wire — a new
@@ -136,6 +138,14 @@ public:
     /// Look up one symbol's identity by hash.
     std::optional<SymbolIdentity> find_symbol(SymbolHash hash) const;
 
+    /// The internal-linkage symbols more than one of the TU's files names
+    /// (Symbol::reference_files), sorted by symbol, their files as indices
+    /// into `contribution_paths` — the path ids of the manifest's
+    /// contributions, in order. Nullopt when a symbol's reference files are not all
+    /// among them, or its bitmap fails to decode.
+    std::optional<std::vector<LocalFanout>>
+        local_fanout(llvm::ArrayRef<std::uint32_t> contribution_paths) const;
+
     /// Whether `text` still begins with the exact preamble this envelope
     /// was built from — the gate for serving preamble-derived state
     /// against a live buffer (the rows are offsets into that prefix).
@@ -154,6 +164,11 @@ public:
     /// Conditional stack still open at the preamble bound; empty for an
     /// ordinary envelope. Borrows the envelope.
     llvm::ArrayRef<std::uint8_t> open_conditionals() const;
+
+    /// The diagnostics the preamble's build raised, as published (a JSON
+    /// array of LSP diagnostics); empty for an ordinary envelope. Borrows
+    /// the envelope.
+    llvm::StringRef preamble_diagnostics() const;
 
 private:
     /// The verified envelope bytes (owned iff `owned` is set); accessors

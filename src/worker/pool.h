@@ -6,6 +6,9 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
+#include <type_traits>
+#include <vector>
 
 #include "support/logging.h"
 #include "support/signal.h"
@@ -54,7 +57,23 @@ struct WorkerCrashInfo {
 
     /// Stateful only: path_ids of documents owned by the crashed worker.
     /// The on_crash handler should mark these dirty for recompilation.
-    llvm::SmallVector<std::uint32_t> lost_documents;
+    std::vector<std::uint32_t> lost_documents;
+};
+
+/// How one worker incarnation died, shared with every request in flight on
+/// it. A sender whose link broke waits for the monitor to settle the record
+/// — the exit observed, the stderr drained — and only then learns whether
+/// its own request is the one that killed the worker.
+struct WorkerDeath {
+    kota::event settled;
+
+    /// The crash tag (worker::crash_tag) of the request the worker named in
+    /// its last words, or that outlived the pool's deadline; empty when
+    /// nothing names one — an outside kill, a crash outside any request.
+    std::string culprit;
+
+    /// How it died, worded for the user ("signal 11 (SIGSEGV)").
+    std::string cause;
 };
 
 /// The last lines a worker wrote to stderr, kept for its crash report:
@@ -65,9 +84,13 @@ struct StderrTail {
 
     llvm::SmallVector<std::string, capacity> lines;
 
+    /// The crash tag the dying worker wrote after worker::crashed_in_marker;
+    /// kept apart from `lines`, which a sanitizer report would roll over.
+    std::string crashed_in;
+
     /// The pipe reached EOF. The exit is observed independently of the
     /// pipe, so the crash report waits for this before reading the lines.
-    bool drained = false;
+    kota::event drained;
 
     void add(std::string line) {
         if(lines.size() == capacity) {
@@ -103,26 +126,22 @@ struct WorkerPoolOptions {
     /// burnt pool stays dark. 0 disables revival.
     std::chrono::milliseconds revive_after{30'000};
 
+    /// A request running past its deadline is taken for a hung worker: the
+    /// worker is killed and the request blamed, like a crash. A build may
+    /// take long on a big translation unit (see worker::is_build); a query
+    /// never should.
+    std::chrono::milliseconds build_deadline{std::chrono::minutes(10)};
+    std::chrono::milliseconds query_deadline{std::chrono::minutes(2)};
+
+    /// Documents a stateful worker holds before evicting; unset leaves the
+    /// worker's default.
+    std::optional<std::size_t> max_documents;
+
     /// Dynamic scaling bounds for stateless workers.
     /// min_stateless: floor — never retire below this count.
     /// max_stateless: ceiling — never spawn above this count (0 = auto = CPU cores).
     std::uint32_t min_stateless = 1;
     std::uint32_t max_stateless = 0;
-};
-
-/// How much the caller distrusts a stateful dispatch (see the class doc's
-/// responsibility contract). Every flavor of distrust exempts the slot's
-/// crash budget; they differ in routing.
-enum class Suspect : std::uint8_t {
-    /// Ordinary work.
-    No,
-    /// A quarantined document's probe compile: runs only on a worker
-    /// hosting no other document, so a crash takes nothing healthy along.
-    Isolated,
-    /// A quarantined document's recovery query: it must reach the worker
-    /// holding the AST, so it keeps owner routing; while it flies, the
-    /// worker is avoided by new-document assignment.
-    InPlace,
 };
 
 /// Multi-process scheduler for clice worker processes.
@@ -143,25 +162,26 @@ enum class Suspect : std::uint8_t {
 ///   - The pool owns PROCESSES and CAPACITY: spawn, monitor, respawn with
 ///     backoff, per-slot crash budget (streak, healthy-uptime reset),
 ///     give-up -> cooldown revival, scaling between min/max, preemption
-///     under memory pressure, scheduling (priority, affinity, probe
-///     isolation). Its guarantee: capacity is never permanently zero.
+///     under memory pressure, a deadline on every request, scheduling
+///     (priority, affinity). Its guarantee: capacity is never permanently
+///     zero.
+///   - The pool ATTRIBUTES every death. A dying worker names the request it
+///     was running (see worker/crash_report.h), or the deadline watchdog
+///     names the one it killed the worker for; each request in flight
+///     learns whether it is that one. A death that names a request is that
+///     request's content's doing and spends no slot budget; only nameless
+///     deaths — the process itself failing — count toward the streak.
 ///   - The pool NEVER retries a request. Requests do not survive a crash;
-///     slots do. Retry policy is semantic and lives with the caller: the
-///     compiler resends idempotent builds once, the indexer requeues with
-///     its own budget, a stateful compile never resends (the crash is
-///     evidence about the content — see server/quarantine.h).
+///     slots do. Retry policy is semantic and lives with the caller —
+///     deliver() is the shared form of it.
 ///   - The dispatch_errc taxonomy is the contract language. worker_crashed:
-///     the request died with its worker — the caller may blame its content
+///     this request killed its worker — the caller blames its content
 ///     (Error::data carries the dead incarnation's identity so one death is
-///     never blamed twice). worker_restarting: never dispatched, blameless.
-///     worker_unavailable: a capacity window — retryable later when
-///     revives_slots(). cancelled: deliberate preemption, requeue freely.
-///   - Suspect is the single sanctioned policy hint INTO the pool: the
-///     caller already distrusts the workload, so its crash spends no slot
-///     budget. An Isolated probe additionally runs only where it can take
-///     no healthy document with it; an InPlace recovery query keeps owner
-///     routing (the AST lives there) and is merely avoided by new-document
-///     assignment while it flies.
+///     never blamed twice, the message how it died). worker_lost: another
+///     request's crash took it along, blameless. worker_died: the death
+///     named no request. worker_unavailable: never dispatched, a capacity
+///     window — await_capacity() tells when it closes. cancelled:
+///     deliberate preemption, requeue freely.
 class WorkerPool {
 public:
     WorkerPool(kota::event_loop& loop) : loop(loop) {}
@@ -180,30 +200,22 @@ public:
     }
 
     /// Send a request to a stateful worker with path_id affinity routing.
-    /// A suspect dispatch's crash does not spend the slot's budget — the
-    /// failure says something about the document, not the slot; see
-    /// Suspect for the routing difference between its flavors.
     template <typename Params>
     RequestResult<Params> send_stateful(std::uint32_t path_id,
                                         const Params& params,
-                                        kota::ipc::request_options opts = {},
-                                        Suspect suspect = Suspect::No);
+                                        kota::ipc::request_options opts = {});
 
     /// Send a request to a stateless worker with priority-aware scheduling.
     ///
-    /// `cancel` is an advisory cancellation: when it fires, the pool sends
-    /// the cooperative CancelBuild to the assigned worker and this call
-    /// KEEPS awaiting the real reply — the slot frees only when the
-    /// process is actually idle, and crash accounting keeps observing the
-    /// real outcome. Never a wire cancel: that would resume the sender
-    /// immediately and hand the slot out while the worker is still stuck
-    /// in the old parse. A cancelled result surfaces as
-    /// dispatch_errc::cancelled.
+    /// `cancel` is an advisory cancellation: when it fires, the request is
+    /// cancelled on the wire and this call KEEPS awaiting the worker's real
+    /// answer — the slot frees only when the process is actually idle, and
+    /// crash accounting keeps observing the real outcome. A cancelled
+    /// result surfaces as dispatch_errc::cancelled.
     template <typename Params>
     RequestResult<Params> send_stateless(const Params& params,
                                          worker::Priority priority,
-                                         kota::ipc::request_options opts = {},
-                                         std::optional<kota::cancellation_token> cancel = {});
+                                         kota::cancellation_token cancel = {});
 
     /// Send a notification to the stateful worker owning path_id (if any).
     template <typename Params>
@@ -215,9 +227,15 @@ public:
 
     /// Remove path_id from ownership only if worker_index is its current
     /// owner. Returns whether it was removed — false means the eviction
-    /// came from a stale copy on a worker that lost ownership (probe
-    /// reassignment) and the current owner's state is untouched.
+    /// concerns a copy the master already let go of (the document closed,
+    /// or reopened on another worker) and the current owner's state is
+    /// untouched.
     bool remove_owner_from(std::uint32_t path_id, std::size_t worker_index);
+
+    /// Wait until a worker of the kind can take a request. False when none
+    /// ever will again: the pool is stopping, or every slot gave up with
+    /// revival off.
+    kota::task<bool> await_capacity(bool stateful);
 
     /// True when a Dead slot is not final: the running pool revives dead
     /// slots after a cooldown, so "no capacity" is a window, not a verdict.
@@ -260,9 +278,8 @@ public:
     /// Callback invoked when a stateful worker sends an EvictedParams
     /// notification, with the slot index of the evicting worker. The master
     /// translates the path to a path_id and calls remove_owner_from() so an
-    /// eviction of a stale copy — a quarantine probe moved ownership to
-    /// another worker while the old one kept its document entry — cannot
-    /// unseat the current owner.
+    /// eviction of a copy the master already let go of cannot unseat the
+    /// current owner.
     std::function<void(const std::string& path, std::size_t worker_index)> on_evicted;
 
 private:
@@ -278,11 +295,13 @@ private:
         Dying,
         /// A respawn is scheduled, possibly sleeping out a backoff delay.
         Respawning,
-        /// Intentionally scaled down; the slot stays vacant.
+        /// Intentionally scaled down; vacant until scale-up refills it.
         Retired,
-        /// Crash budget exhausted; the slot stays vacant.
+        /// Crash budget exhausted; vacant until revival or scale-up.
         Dead,
     };
+
+    struct Dispatch;
 
     struct WorkerProcess {
         kota::process proc;
@@ -320,17 +339,27 @@ private:
         /// memory pressure: respawn immediately, without crash accounting.
         bool preempted = false;
 
-        /// Consecutive fast crashes; resets after healthy uptime.
+        /// Consecutive fast crashes naming no request; resets after healthy
+        /// uptime.
         unsigned crash_streak = 0;
 
-        /// In-flight requests whose caller flagged them as suspect (a
-        /// quarantined document's probe). While non-zero, a crash does not
-        /// spend the slot's budget — see send_stateful.
-        unsigned suspect_inflight = 0;
+        /// The death record of the current incarnation, fresh at every
+        /// spawn; senders hold it across their await.
+        std::shared_ptr<WorkerDeath> death = std::make_shared<WorkerDeath>();
+
+        /// Requests in flight on the current incarnation, for the deadline
+        /// watchdog. Cleared at death.
+        std::vector<const Dispatch*> dispatches;
+
+        /// Stateful only: the documents the dead incarnation owned, taken
+        /// off the owner table the moment the death is declared — a request
+        /// routed to the corpse in the window before the crash report
+        /// would fail instead of moving on — and reported with the crash.
+        std::vector<std::uint32_t> lost_documents;
 
         std::chrono::steady_clock::time_point spawn_time{};
 
-        /// Stateless only: marks the in-flight low-priority request as
+        /// Stateless only: cancels the in-flight request, and marks it
         /// scheduler-cancelled so its sender classifies the eventual reply
         /// (cooperative stop or kill) as preemption instead of a failure.
         std::shared_ptr<kota::cancellation_source> preempt_source;
@@ -346,17 +375,66 @@ private:
         std::uint64_t claim_epoch = 0;
     };
 
+    /// A request in flight on a slot: what the deadline watchdog times and
+    /// the crash tag a death is matched against. Registered for the span of
+    /// the send; a death clears the slot's list, so an outliving frame
+    /// leaves the next incarnation's list alone.
+    struct Dispatch {
+        WorkerPool& pool;
+        std::size_t index;
+        bool stateful;
+        unsigned generation;
+        std::string tag;
+        /// See worker::is_build.
+        bool build;
+        std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
+
+        Dispatch(WorkerPool& pool, std::size_t index, bool stateful, std::string tag, bool build) :
+            pool(pool), index(index), stateful(stateful),
+            generation(pool.slot(index, stateful).generation), tag(std::move(tag)), build(build) {
+            pool.slot(index, stateful).dispatches.push_back(this);
+        }
+
+        Dispatch(const Dispatch&) = delete;
+        Dispatch& operator=(const Dispatch&) = delete;
+
+        ~Dispatch() {
+            auto& w = pool.slot(index, stateful);
+            if(w.generation == generation) {
+                std::erase(w.dispatches, this);
+            }
+        }
+    };
+
     kota::event_loop& loop;
     llvm::SmallVector<WorkerProcess> stateless_workers;
     llvm::SmallVector<WorkerProcess> stateful_workers;
+
+    WorkerProcess& slot(std::size_t index, bool stateful) {
+        return stateful ? stateful_workers[index] : stateless_workers[index];
+    }
+
+    /// Set whenever a slot (re)enters service, and at stop; await_capacity
+    /// waits on it.
+    kota::event capacity_returned;
+
+    /// The error a request that died with its worker reports: worker_crashed
+    /// when the death names this very request, worker_lost when it names
+    /// another, worker_died when it names none.
+    static kota::ipc::Error death_error(const WorkerDeath& death,
+                                        llvm::StringRef tag,
+                                        kota::codec::dyn::Value identity);
 
     // Stateful routing: each open document (path_id) is pinned to one worker.
     llvm::DenseMap<std::uint32_t, std::size_t> owner;  // path_id -> worker index
 
     /// Returns the worker owning path_id, assigning the least-loaded live
-    /// worker on first use. SIZE_MAX when no stateful worker is alive.
+    /// worker on first use. SIZE_MAX when no stateful worker is alive, or
+    /// once the pool stops: its workers are still Alive then, but their
+    /// links are closed, and a request failing on one would read as a
+    /// nameless death and be blamed. An owner is always alive: a death
+    /// takes its documents off the table.
     std::size_t assign_worker(std::uint32_t path_id);
-    void clear_owner(std::size_t worker_index);
     std::size_t pick_least_loaded();
 
     /// A coroutine waiting for a stateless worker slot. Lives on the frame of
@@ -489,9 +567,15 @@ private:
     /// cancel_grace; driven by the monitor tick.
     void tick_cancel_grace();
 
+    /// Kill workers running a request past its deadline and name that
+    /// request in the death record; driven by the monitor tick. A query is
+    /// not timed while a build runs on the same worker: the time is the
+    /// sender's, and the query may be queued behind the build.
+    void tick_deadlines();
+
     /// Cooperatively cancel up to `count` in-flight low-priority requests:
-    /// a CancelBuild notification trips the worker's stop flag, the compile
-    /// returns at the next declaration boundary, and the sender — which
+    /// the wire cancel trips the worker's stop flag, the compile returns at
+    /// the next declaration boundary, and the sender — which
     /// keeps awaiting the worker's own reply, so the slot stays busy until
     /// the process is actually free — observes dispatch_errc::cancelled.
     /// A victim that ignores the cancel past cancel_grace is killed by the
@@ -630,7 +714,7 @@ private:
     /// Never cancelled as a group — stop() joins it, so shutdown waits until
     /// every worker process actually exited and its final output (crash
     /// stacktraces, sanitizer reports) was drained to EOF.
-    kota::task_group<> worker_tasks{loop};
+    kota::task_group<> worker_tasks;
     WorkerPoolOptions options;
 
     /// Set once start() succeeded: gates background concerns (slot
@@ -658,11 +742,6 @@ private:
     /// and respawn it: the pool never stays at zero workers forever.
     kota::task<> revive_slot(std::size_t index, bool stateful);
 
-    /// A stateful worker that may be sacrificed to a suspect compile:
-    /// alive and hosting no document other than `path_id` itself, which is
-    /// reassigned to it. SIZE_MAX when every live worker hosts others.
-    std::size_t assign_expendable(std::uint32_t path_id);
-
     void install_evict_handler(WorkerProcess& worker, std::size_t index);
 
     kota::task<> monitor_worker(std::size_t index, bool stateful);
@@ -673,8 +752,7 @@ private:
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
                                                 const Params& params,
-                                                kota::ipc::request_options opts,
-                                                Suspect suspect) {
+                                                kota::ipc::request_options opts) {
     // Every stateful request is user-facing: note the activity and hold the
     // foreground window open for as long as it flies.
     note_foreground();
@@ -688,66 +766,20 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
         }
     } inflight_guard{stateful_inflight};
 
-    // An isolated probe only runs on a worker hosting no other document:
-    // its crash must never take healthy sessions with it. With no such
-    // worker available right now, the caller keeps the probe armed and
-    // tries again later instead of risking one. An in-place suspect stays
-    // with the owner — the AST it queries lives there.
-    auto idx = suspect == Suspect::Isolated ? assign_expendable(path_id) : assign_worker(path_id);
+    auto idx = assign_worker(path_id);
     if(idx == SIZE_MAX) {
-        co_return kota::outcome_error(kota::ipc::Error{
-            worker::dispatch_errc::worker_unavailable,
-            suspect == Suspect::Isolated ? "No expendable stateful worker for quarantined probe"
-                                         : "No stateful workers available"});
-    }
-
-    auto& assigned = stateful_workers[idx];
-    if(assigned.state == SlotState::Dying || assigned.state == SlotState::Respawning) {
-        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_restarting,
-                                                       "Assigned stateful worker is restarting"});
-    }
-    if(assigned.state != SlotState::Alive) {
-        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
-                                                       "Assigned stateful worker is down"});
+        co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
+                                             "No stateful workers available"});
     }
 
     // Own a peer reference across the await: the slot drops its copy the
     // moment the worker dies.
+    auto& assigned = stateful_workers[idx];
     auto peer = assigned.peer;
     auto gen = assigned.generation;
-
-    // RAII unwind: a cancellation that unwinds the frame mid-await must
-    // not leave the worker marked as hosting suspect work forever. On
-    // transport death the guard is disarmed instead — the monitor's crash
-    // accounting consumes the count — and the generation check skips
-    // incarnations already torn down elsewhere.
-    struct SuspectGuard {
-        WorkerPool& pool;
-        std::size_t idx;
-        unsigned gen;
-        bool armed;
-
-        ~SuspectGuard() {
-            if(!armed) {
-                return;
-            }
-            auto& w = pool.stateful_workers[idx];
-            if(w.generation == gen && w.suspect_inflight > 0) {
-                w.suspect_inflight -= 1;
-            }
-        }
-    };
-
-    if(suspect != Suspect::No) {
-        assigned.suspect_inflight += 1;
-    }
-    SuspectGuard suspect_guard{*this, idx, gen, suspect != Suspect::No};
+    auto death = assigned.death;
+    Dispatch dispatch(*this, idx, true, worker::crash_tag(params), worker::is_build<Params>);
     auto result = co_await peer->send_request(params, opts);
-    bool transport_dead = !result.has_value() && worker::is_transport_error(result.error());
-    if(transport_dead) {
-        suspect_guard.armed = false;
-    }
-
     if(result.has_value() || !worker::is_transport_error(result.error()))
         co_return std::move(result);
 
@@ -756,17 +788,14 @@ RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
     // monitor_worker reconciles with the real exit status.
     if(stateful_workers[idx].generation == gen)
         mark_worker_dead(idx, true, true);
-    co_return kota::outcome_error(
-        kota::ipc::Error{worker::dispatch_errc::worker_crashed,
-                         "Stateful worker died during request: " + result.error().message,
-                         worker::death_identity(idx, gen, true)});
+    co_await death->settled.wait();
+    co_await kota::fail(death_error(*death, dispatch.tag, worker::death_identity(idx, gen, true)));
 }
 
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                  worker::Priority priority,
-                                                 kota::ipc::request_options opts,
-                                                 std::optional<kota::cancellation_token> cancel) {
+                                                 kota::cancellation_token cancel) {
     // High-priority stateless work (PCH, completion builds, foreground
     // PCMs) is foreground by the priority taxonomy; while it runs or
     // queues, foreground_busy() holds the window open.
@@ -774,22 +803,22 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         note_foreground();
     auto idx = co_await acquire_stateless_slot(priority);
     if(idx == SIZE_MAX) {
-        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
-                                                       "No stateless workers available"});
+        co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
+                                             "No stateless workers available"});
     }
 
     StatelessSlot slot(*this, idx);
     auto peer = stateless_workers[idx].peer;
     auto gen = stateless_workers[idx].generation;
+    auto death = stateless_workers[idx].death;
 
     // An advisory cancellation that fired while this request queued for a
     // slot: nothing was dispatched, give the claim back untouched.
-    if(cancel && cancel->cancelled()) {
-        co_return kota::outcome_error(
+    if(cancel.cancelled()) {
+        co_await kota::fail(
             kota::ipc::Error{worker::dispatch_errc::cancelled, "Request cancelled by its round"});
     }
 
-    std::shared_ptr<kota::cancellation_source> preempt_src;
     if(priority == worker::Priority::Low) {
         // Reclaim demand that arose while this claim's sender was parked
         // (a foreground edge, a queued High) was skipped by the cancel
@@ -797,69 +826,35 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         // cancel_low_priority). Honor it here, before the request reaches
         // the wire: giving the claim back costs nothing.
         if(low_reclaim_deficit() > 0) {
-            co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::cancelled,
-                                                           "Request preempted by the scheduler"});
+            co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::cancelled,
+                                                 "Request preempted by the scheduler"});
         }
     }
-    if(priority == worker::Priority::Low || cancel) {
-        // The classification channel for scheduler-initiated cancels: the
-        // cooperative CancelBuild, the memory-preemption kill and the
-        // caller's advisory token all mark it, and the sender consults it
-        // when the reply arrives.
-        preempt_src = std::make_shared<kota::cancellation_source>();
-        stateless_workers[idx].preempt_source = preempt_src;
-    }
+    // The classification channel for scheduler-initiated cancels: the
+    // cooperative cancel, the memory-preemption kill and the caller's
+    // advisory token all mark it, and the sender consults it when the
+    // reply arrives. Firing it cancels the request on the wire, which
+    // keeps awaiting the worker's real answer.
+    auto preempt_src = std::make_shared<kota::cancellation_source>();
+    stateless_workers[idx].preempt_source = preempt_src;
 
-    // Translate an advisory-token fire into the cooperative CancelBuild
-    // while this frame keeps awaiting the real reply below. The watcher's
-    // scope token fires when this frame exits, standing it down.
-    kota::cancellation_source watch_scope;
-    if(cancel) {
-        auto watcher = [](WorkerPool& pool,
-                          std::size_t idx,
-                          unsigned gen,
-                          std::uint64_t claim,
-                          kota::cancellation_token advisory,
-                          kota::cancellation_token scope,
-                          std::shared_ptr<kota::ipc::BincodePeer> peer,
-                          std::shared_ptr<kota::cancellation_source> preempt) -> kota::task<> {
-            co_await kota::with_token(advisory.wait(), scope);
-            if(!advisory.cancelled()) {
-                co_return;  // the send finished first
-            }
-            // Guarded by generation AND claim: the worker may have died,
-            // and — when the advisory fire races the old reply on one
-            // tick — the freed slot may already carry a queued
-            // successor's claim. The worker's stop flag belongs to
-            // whatever build it armed last, so the successor's healthy
-            // build must see neither the CancelBuild nor the grace
-            // deadline: either would kill it. Fencing the send here also
-            // keeps the worker-side invariant that a CancelBuild only
-            // arrives while the master awaits that build's reply.
-            auto& w = pool.stateless_workers[idx];
-            if(w.generation != gen || w.claim_epoch != claim || w.state != SlotState::Alive ||
-               !w.busy) {
-                co_return;
-            }
-            LOG_DEBUG("Advisory cancel: sending cooperative CancelBuild");
-            peer->send_notification(worker::CancelBuildParams{});
-            preempt->cancel();
-            // Arm the grace deadline like cancel_low_priority does, or
-            // tick_cancel_grace() never reclaims a worker whose build
-            // ignores the stop flag.
-            w.cancel_requested_at = std::chrono::steady_clock::now();
-        };
-        worker_tasks.spawn(watcher(*this,
-                                   idx,
-                                   gen,
-                                   stateless_workers[idx].claim_epoch,
-                                   *cancel,
-                                   watch_scope.token(),
-                                   peer,
-                                   preempt_src));
-    }
+    // Guarded by generation: the worker may have died before this frame
+    // resumed, and its respawned successor must see no grace deadline.
+    auto relay = cancel.on_cancel([this, idx, gen, preempt_src] {
+        auto& w = stateless_workers[idx];
+        if(w.generation != gen || w.state != SlotState::Alive || preempt_src->cancelled()) {
+            return;
+        }
+        LOG_DEBUG("Advisory cancel: cancelling the request");
+        preempt_src->cancel();
+        // Arm the grace deadline like cancel_low_priority does, or
+        // tick_cancel_grace() never reclaims a worker whose build
+        // ignores the stop flag.
+        w.cancel_requested_at = std::chrono::steady_clock::now();
+    });
 
-    auto result = co_await peer->send_request(params, opts);
+    Dispatch dispatch(*this, idx, false, worker::crash_tag(params), worker::is_build<Params>);
+    auto result = co_await peer->send_request(params, {.token = preempt_src->token()});
     // The worker link broke mid-request: declare the slot dead now so a
     // caller-side retry cannot land on the same corpse before the monitor
     // observed the exit. This must precede the cancel classification — a
@@ -873,28 +868,22 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         try_dispatch_pending();
     }
 
-    // A scheduler cancel comes back as whatever the worker produced — the
-    // cooperatively stopped build's own reply, or the killed process's
-    // transport error — never as a wire cancel: the sender deliberately
-    // awaits the real reply so the slot frees only once the process is
-    // actually idle again, keeping the grace deadline armed and the next
-    // request off a still-stuck worker. Either shape must surface as
+    // A cancel comes back as whatever the worker answered — RequestCancelled,
+    // the result it had already, or the killed process's transport error:
+    // the request awaits the real answer so the slot frees only once the
+    // process is actually idle again, keeping the grace deadline armed and
+    // the next request off a still-stuck worker. Every shape must surface as
     // cancelled, so the indexer requeues instead of recording a failure.
-    if(preempt_src && preempt_src->cancelled())
-        co_return kota::outcome_error(kota::ipc::Error{worker::dispatch_errc::cancelled,
-                                                       "Request preempted by the scheduler"});
-    if(result.has_value())
-        co_return std::move(result);
-
+    if(preempt_src->cancelled())
+        co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::cancelled,
+                                             "Request preempted by the scheduler"});
     // An error returned by the worker's handler leaves the worker healthy;
     // pass it through untouched.
-    if(!transport_dead)
+    if(result.has_value() || !transport_dead)
         co_return std::move(result);
 
-    co_return kota::outcome_error(
-        kota::ipc::Error{worker::dispatch_errc::worker_crashed,
-                         "Stateless worker died during request: " + result.error().message,
-                         worker::death_identity(idx, gen, false)});
+    co_await death->settled.wait();
+    co_await kota::fail(death_error(*death, dispatch.tag, worker::death_identity(idx, gen, false)));
 }
 
 template <typename Params>
@@ -908,32 +897,49 @@ void WorkerPool::notify_stateful(std::uint32_t path_id, const Params& params) {
     assigned.peer->send_notification(params);
 }
 
-/// Send a stateless request, resending once if the worker died mid-request.
-/// The pool does not retry on its own — it marks the dead slot and surfaces
-/// worker_crashed, so the resend lands on a healthy worker. Build tasks are
-/// idempotent; one retry suffices, since a request that kills two workers in
-/// a row is a poison workload that a third attempt would not survive either.
+/// Send a request through the worker deaths that are not its own doing.
+/// `send` makes one attempt (and may fail on its own to stop early, a
+/// superseded request); deliver resends once when another request's crash
+/// took the attempt along (worker_lost) or the death named no request
+/// (worker_died), and waits out capacity windows (worker_unavailable). One
+/// resend suffices: the culprit of the first death is barred from running
+/// again by then. A request whose resend also dies naming no request is
+/// taken for the killer — an OOM kill, a stack overflow the crash report
+/// cannot run on.
 ///
-/// `on_crash` fires once per attempt that killed a worker — evidence is
-/// counted per death, not per request, so a poison build that burns two
-/// workers spends two strikes. Callers must count ONLY through it: the
-/// returned error is the retry's status, which may not be a crash.
-template <typename Params, typename OnCrash>
-RequestResult<Params> send_stateless_retrying(WorkerPool& pool,
-                                              const Params& params,
-                                              worker::Priority priority,
-                                              OnCrash on_crash,
-                                              kota::ipc::request_options opts = {},
-                                              std::optional<kota::cancellation_token> cancel = {}) {
-    auto result = co_await pool.send_stateless(params, priority, opts, cancel);
-    if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
-        on_crash(result.error());
-        result = co_await pool.send_stateless(params, priority, opts, cancel);
-        if(!result.has_value() && result.error().code == worker::dispatch_errc::worker_crashed) {
-            on_crash(result.error());
+/// `blame` fires once, when the request is found to have killed its
+/// worker: its own crash, or the second nameless death. The result is the
+/// last attempt's.
+template <typename Send, typename Blame>
+auto deliver(WorkerPool& pool, bool stateful, Send send, Blame blame)
+    -> std::invoke_result_t<Send&> {
+    namespace errc = worker::dispatch_errc;
+    bool resent = false;
+    bool nameless = false;
+    while(true) {
+        auto result = co_await send();
+        if(result.has_value()) {
+            co_return std::move(result);
         }
+        auto code = result.error().code;
+        if(code == errc::worker_unavailable) {
+            if(co_await pool.await_capacity(stateful)) {
+                continue;
+            }
+            co_return std::move(result);
+        }
+        bool died = code == errc::worker_died;
+        if(code == errc::worker_crashed || (died && nameless)) {
+            blame(result.error());
+            co_return std::move(result);
+        }
+        if((died || code == errc::worker_lost) && !resent) {
+            resent = true;
+            nameless = died;
+            continue;
+        }
+        co_return std::move(result);
     }
-    co_return std::move(result);
 }
 
 }  // namespace clice

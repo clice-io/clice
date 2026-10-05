@@ -11,7 +11,7 @@ address_use:
     - { file: "${WS}/function_pointer.cpp", range: "2:4-2:10" }
     - { file: "${WS}/function_pointer.cpp", range: "8:21-8:27" }
   callHierarchy:
-    - { name: "target", kind: Function, file: "${WS}/function_pointer.cpp", range: "2:4-2:10" }
+    - { name: "target", kind: Function, file: "${WS}/function_pointer.cpp", range: "2:0-4:1", selection: "2:4-2:10" }
 
 pointer_call:
   definition:
@@ -44,4 +44,4 @@ target_def:
     - { file: "${WS}/function_pointer.cpp", range: "2:4-2:10" }
     - { file: "${WS}/function_pointer.cpp", range: "8:21-8:27" }
   callHierarchy:
-    - { name: "target", kind: Function, file: "${WS}/function_pointer.cpp", range: "2:4-2:10" }
+    - { name: "target", kind: Function, file: "${WS}/function_pointer.cpp", range: "2:0-4:1", selection: "2:4-2:10" }

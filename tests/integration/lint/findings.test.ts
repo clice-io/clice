@@ -1,13 +1,13 @@
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import { runProcess } from "@clice/tools/client";
 import { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 function runLint(ws: Workspace, ...flags: string[]) {
-    return spawnSync(
+    return runProcess(
         cliceExecutable(),
         ["lint", ...flags, "--workspace", ws.root, "--workers", "2"],
-        { encoding: "utf8", timeout: 120_000 },
+        { timeout: 120_000 },
     );
 }
 
@@ -16,8 +16,7 @@ function findings(stdout: string): string[] {
 }
 
 function runIndexStats(ws: Workspace) {
-    return spawnSync(cliceExecutable(), ["index", "--stats", "--workspace", ws.root], {
-        encoding: "utf8",
+    return runProcess(cliceExecutable(), ["index", "--stats", "--workspace", ws.root], {
         timeout: 120_000,
     });
 }
@@ -29,7 +28,7 @@ function writeRules(ws: Workspace) {
     );
 }
 
-test("header findings merge across translation units", ({ session }) => {
+test("header findings merge across translation units", async ({ session }) => {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(".clang-tidy", 'Checks: "-*,bugprone-integer-division"\nHeaderFilterRegex: ".*"\n');
@@ -38,7 +37,7 @@ test("header findings merge across translation units", ({ session }) => {
     ws.write("b.cpp", '#include "common.h"\ndouble run_b(int a, int b) { return a / b; }\n');
     ws.writeCDB(["a.cpp", "b.cpp"]);
 
-    const run = runLint(ws);
+    const run = await runLint(ws);
     expect(run.status, `stderr: ${run.stderr}`).toBe(1);
     const lines = findings(run.stdout);
     expect(lines).toHaveLength(2);
@@ -47,7 +46,7 @@ test("header findings merge across translation units", ({ session }) => {
     expect(run.stdout).toContain("Linted 2 translation units");
 });
 
-test("notes follow their finding", ({ session }) => {
+test("notes follow their finding", async ({ session }) => {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(".clang-tidy", 'Checks: "-*,bugprone-argument-comment"\nHeaderFilterRegex: ".*"\n');
@@ -55,7 +54,7 @@ test("notes follow their finding", ({ session }) => {
     ws.write("main.cpp", '#include "common.h"\nvoid run() { call(/*disabled=*/true); }\n');
     ws.writeCDB(["main.cpp"]);
 
-    const run = runLint(ws);
+    const run = await runLint(ws);
     expect(run.status, `stderr: ${run.stderr}`).toBe(1);
     const lines = findings(run.stdout);
     expect(lines).toHaveLength(2);
@@ -65,7 +64,7 @@ test("notes follow their finding", ({ session }) => {
     expect(lines[1]).toContain(": note: ");
 });
 
-test("nolint comments count in headers", ({ session }) => {
+test("nolint comments count in headers", async ({ session }) => {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(".clang-tidy", 'Checks: "-*,modernize-use-nullptr"\nHeaderFilterRegex: ".*"\n');
@@ -76,14 +75,14 @@ test("nolint comments count in headers", ({ session }) => {
     ws.write("main.cpp", '#include "common.h"\nint main() { return 0; }\n');
     ws.writeCDB(["main.cpp"]);
 
-    const run = runLint(ws);
+    const run = await runLint(ws);
     expect(run.status, `stderr: ${run.stderr}`).toBe(1);
     const lines = findings(run.stdout);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("common.h:3:");
 });
 
-test("lint rule keeps files out", ({ session }) => {
+test("lint rule keeps files out", async ({ session }) => {
     const ws = session.tmpdir();
     writeRules(ws);
     ws.write(".clang-tidy", 'Checks: "-*,modernize-use-nullptr"\nHeaderFilterRegex: ".*"\n');
@@ -92,7 +91,7 @@ test("lint rule keeps files out", ({ session }) => {
     ws.write("main.cpp", '#include "vendor/lib.h"\nint* own() { return 0; }\n');
     ws.writeCDB(["main.cpp", "vendor/lib.cpp"]);
 
-    const run = runLint(ws);
+    const run = await runLint(ws);
     expect(run.status, `stderr: ${run.stderr}`).toBe(1);
     const lines = findings(run.stdout);
     expect(lines).toHaveLength(1);
@@ -100,7 +99,7 @@ test("lint rule keeps files out", ({ session }) => {
     expect(run.stdout).toContain("Linted 1 translation unit ");
 });
 
-test("compiler errors in excluded files still report", ({ session }) => {
+test("compiler errors in excluded files still report", async ({ session }) => {
     const ws = session.tmpdir();
     writeRules(ws);
     ws.write(".clang-tidy", 'Checks: "-*,modernize-use-nullptr"\n');
@@ -108,14 +107,14 @@ test("compiler errors in excluded files still report", ({ session }) => {
     ws.write("main.cpp", '#include "vendor/broken.h"\nint main() { return 0; }\n');
     ws.writeCDB(["main.cpp"]);
 
-    const run = runLint(ws);
+    const run = await runLint(ws);
     expect(run.status, `stderr: ${run.stderr}`).toBe(1);
     expect(
         findings(run.stdout).some((line) => line.includes("broken.h:2:") && line.includes("error")),
     ).toBe(true);
 });
 
-test("findings with different notes stay apart", ({ session }) => {
+test("findings with different notes stay apart", async ({ session }) => {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(
@@ -129,7 +128,7 @@ test("findings with different notes stay apart", ({ session }) => {
 
     // The same warning on the header's line from both units, each with
     // notes naming its own definition: two findings, not one.
-    const run = runLint(ws);
+    const run = await runLint(ws);
     expect(run.status, `stderr: ${run.stderr}`).toBe(1);
     const lines = findings(run.stdout);
     expect(
@@ -139,24 +138,27 @@ test("findings with different notes stay apart", ({ session }) => {
     expect(lines.some((line) => line.includes("b.cpp:2:") && line.includes(": note: "))).toBe(true);
 });
 
-test("relative workspace path", ({ session }) => {
+test("relative workspace path", async ({ session }) => {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(".clang-tidy", 'Checks: "-*,bugprone-integer-division"\n');
     ws.write("main.cpp", "double ratio(int a, int b) { return a / b; }\n");
     ws.writeCDB(["main.cpp"]);
 
-    const run = spawnSync(cliceExecutable(), ["lint", "--workspace", ".", "--workers", "2"], {
-        cwd: ws.root,
-        encoding: "utf8",
-        timeout: 120_000,
-    });
+    const run = await runProcess(
+        cliceExecutable(),
+        ["lint", "--workspace", ".", "--workers", "2"],
+        {
+            cwd: ws.root,
+            timeout: 120_000,
+        },
+    );
     expect(run.status, `stderr: ${run.stderr}`).toBe(1);
     expect(run.stdout).toContain("main.cpp:1:");
     expect(run.stdout).toContain("Linted 1 translation unit ");
 });
 
-test("index rule keeps excluded units out of the index", ({ session }) => {
+test("index rule keeps excluded units out of the index", async ({ session }) => {
     const ws = session.tmpdir();
     ws.write(
         "clice.toml",
@@ -167,19 +169,19 @@ test("index rule keeps excluded units out of the index", ({ session }) => {
     ws.write("main.cpp", "int* own() { return 0; }\n");
     ws.writeCDB(["main.cpp", "vendor/lib.cpp"]);
 
-    const run = runLint(ws, "--index");
+    const run = await runLint(ws, "--index");
     expect(run.status, `stderr: ${run.stderr}`).toBe(1);
     expect(findings(run.stdout)).toHaveLength(1);
     expect(run.stdout).toContain("Linted 1 translation unit ");
 
-    const stats = runIndexStats(ws);
+    const stats = await runIndexStats(ws);
     expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
     expect(stats.stdout).toContain("Translation units: 1");
 });
 
 test.skipIf(process.platform === "win32")(
     "findings name files under the workspace spelling",
-    ({ session }) => {
+    async ({ session }) => {
         const real = session.tmpdir();
         const outer = session.tmpdir();
         fs.symlinkSync(real.root, outer.path("ws"));
@@ -193,7 +195,7 @@ test.skipIf(process.platform === "win32")(
         ws.write("main.cpp", '#include "common.h"\nvoid run() { call(/*disabled=*/true); }\n');
         ws.writeCDB(["main.cpp"]);
 
-        const run = runLint(ws);
+        const run = await runLint(ws);
         expect(run.status, `stderr: ${run.stderr}`).toBe(1);
         const lines = findings(run.stdout);
         expect(lines).toHaveLength(2);
@@ -204,7 +206,7 @@ test.skipIf(process.platform === "win32")(
 
 test.skipIf(process.platform === "win32")(
     "configuration found from the database's name",
-    ({ session }) => {
+    async ({ session }) => {
         const ws = session.tmpdir();
         ws.pinCacheDir();
         ws.write(".clang-tidy", 'Checks: "-*"\n');
@@ -213,7 +215,7 @@ test.skipIf(process.platform === "win32")(
         fs.symlinkSync(ws.path("vendor/real"), ws.path("src"));
         ws.writeCDB(["src/main.cpp"]);
 
-        const run = runLint(ws);
+        const run = await runLint(ws);
         expect(run.status, `stderr: ${run.stderr}`).toBe(0);
         expect(findings(run.stdout)).toEqual([]);
     },
@@ -221,7 +223,7 @@ test.skipIf(process.platform === "win32")(
 
 test.skipIf(process.platform === "win32")(
     "header filter matches the include's spelling",
-    ({ session }) => {
+    async ({ session }) => {
         const ws = session.tmpdir();
         ws.pinCacheDir();
         ws.write(
@@ -236,10 +238,37 @@ test.skipIf(process.platform === "win32")(
         ws.write("a.cpp", '#include "common.h"\ndouble run_a() { return rate(1, 2); }\n');
         ws.writeCDB(["a.cpp"], { extraArgs: ["-Iinc"] });
 
-        const run = runLint(ws);
+        const run = await runLint(ws);
         expect(run.status, `stderr: ${run.stderr}`).toBe(1);
         const lines = findings(run.stdout);
         expect(lines).toHaveLength(1);
         expect(lines[0]).toContain("common.h:2:");
     },
 );
+
+test("crashing unit is not retried", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write(".clang-tidy", 'Checks: "-*,bugprone-integer-division"\n');
+    ws.write("poison.cpp", "int poison() { return 1; }\n");
+    ws.write("healthy.cpp", "double healthy(int a, int b) { return a / b; }\n");
+    ws.writeCDB(["poison.cpp", "healthy.cpp"]);
+    const tag = `tuRun ${ws.displayPath("poison.cpp")}`;
+
+    // A unit that crashed its worker would crash a retry too: the sweep
+    // gives up on it at once and still checks the rest.
+    const run = await runProcess(
+        cliceExecutable(),
+        ["lint", "--workspace", ws.root, "--workers", "2"],
+        {
+            timeout: 120_000,
+            env: { ...process.env, CLICE_ANOMALY_NO_TRAP: "1", CLICE_TEST_CRASH_REQUEST: tag },
+        },
+    );
+    expect(run.stderr.split(`] clice worker crashed in: clice/worker/${tag}`).length - 1).toBe(1);
+    expect(run.stderr).toContain("Lint gave up on");
+    expect(run.stderr).not.toContain("after a retry");
+    const lines = findings(run.stdout);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("healthy.cpp:1:");
+});

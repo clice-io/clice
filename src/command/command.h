@@ -251,6 +251,16 @@ struct CompilationEntry {
 /// input slot.
 void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb);
 
+/// Render one argument for the command's own driver. A cl-mode driver
+/// reads a `-` spelling as its own option where one exists (`-Wall` is
+/// `/Wall`, -Weverything) and drops the GCC-style ones it lacks, so an
+/// argument the parse unaliased out of a cl spelling (`/W3` is -Wall, `/J`
+/// -funsigned-char) is spelled through a cl alias of its option, else
+/// through `/clang:`.
+void render_driver_arg(const Arg& arg,
+                       CompilerFamily family,
+                       llvm::function_ref<void(std::string_view)> cb);
+
 /// The option-table visibility mask of a driver family: CL families see
 /// /U-, /D-style options; the rest exclude them so Unix absolute paths
 /// are not misparsed.
@@ -339,13 +349,14 @@ public:
         friend bool operator==(const LoadInput&, const LoadInput&) = default;
     };
 
-    /// What the source's current entries were built from: the database
-    /// first, then the response files (`@file`) its commands name, readable
-    /// or not — a change to one changes the commands as much as an edit of
-    /// the database itself. A source never loaded has only the database,
-    /// unread. A watcher compares the disk against these hashes, not
-    /// against a stat taken after the load, which a rewrite landing in
-    /// between would already describe.
+    /// What the source's last load read: the database first, then the
+    /// response files (`@file`) its commands name, readable or not — a
+    /// change to one changes the commands as much as an edit of the
+    /// database itself. A load that could not parse the database read it
+    /// alone, its entries staying those of the load before; a source never
+    /// loaded has only the database, unread. A watcher compares the disk
+    /// against these hashes, not against a stat taken after the load, which
+    /// a rewrite landing in between would already describe.
     llvm::ArrayRef<LoadInput> inputs(SourceID id) const;
 
     /// Whether the source's file exists on disk as last observed: set by a
@@ -461,8 +472,6 @@ public:
         return *chain;
     }
 
-#ifdef CLICE_ENABLE_TEST
-
     /// Append one command to the test source and return its entry;
     /// nullopt when normalization fails.
     std::optional<CompilationEntry> add_command(llvm::StringRef directory,
@@ -472,8 +481,6 @@ public:
     std::optional<CompilationEntry> add_command(llvm::StringRef directory,
                                                 llvm::StringRef file,
                                                 llvm::StringRef command);
-
-#endif
 
 private:
     friend class Toolchain;

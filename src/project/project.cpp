@@ -1,26 +1,17 @@
 #include "project/project.h"
 
 #include <algorithm>
-#include <chrono>
 #include <ranges>
-#include <tuple>
 
-#include "command/search_config.h"
 #include "index/serialization.h"
-#include "project/hosting.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
-#include "syntax/include_resolver.h"
-#include "syntax/preamble_synthesis.h"
-#include "syntax/scan.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Chrono.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
 
 namespace clice {
 
@@ -29,157 +20,17 @@ std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
     if(chain.size() < 2) {
         return 0;
     }
-    auto includer_path = file_table.resolve(chain[chain.size() - 2]);
-    auto target_path = file_table.resolve(target_id);
-    auto buf = fs::read_text(includer_path);
-    if(!buf) {
-        return 0;
-    }
-    auto null_resolver =
-        [](llvm::StringRef, bool, bool, llvm::StringRef) -> std::optional<std::string> {
-        return std::nullopt;
-    };
-    return count_include_occurrences((*buf)->getBuffer(),
-                                     includer_path,
-                                     target_path,
-                                     null_resolver);
+    return dep_graph.count_includes(chain[chain.size() - 2], target_id);
 }
 
 void Project::rescan_disk_file(Fid path_id) {
-    auto path = file_table.resolve(path_id);
-    dep_graph.clear_includes(path_id);
-
-    // One read serves everything a save invalidates: the shared pair (so
-    // hash comparisons elsewhere stop re-reading), the lexical scan
-    // (include edges and the module declaration), and the bytes the
-    // module-decl preprocessor fallback must consume.
-    auto observed = read_file_observed(path.data());
-    if(observed) {
-        file_table.observe(path_id, observed->obs);
-        const auto& scan =
-            file_table.scan_of(path_id, observed->obs.hash, observed->content->getBuffer());
-
-        // Search paths come from the file's effective commands, or a host's
-        // for headers without one (the header's own edits on top, as its
-        // compile applies them); the builtin fallback still resolves quote
-        // includes via the includer directory. Every command contributes
-        // its own edges, as the startup scan does.
-        Fid cmd_file = path_id;
-        CanonicalRef cmd_path = path;
-        std::optional<Lender> lender;
-        if(!build.unit(path_id)) {
-            if(auto host = default_host(*this, path_id)) {
-                cmd_file = host->file;
-                cmd_path = file_table.resolve(host->file);
-            } else if(build.commands(path_id).empty()) {
-                if(lender = command_lender(*this, path_id); lender) {
-                    cmd_path = file_table.resolve(lender->unit);
-                }
-            }
-        }
-
-        llvm::SmallVector<CommandRef, 2> refs;
-        if(lender) {
-            refs.push_back(build.resolve(path_id,
-                                         lender->config,
-                                         CommandSource::Inferred,
-                                         {cmd_path, path},
-                                         cmd_path));
-        }
-        for(auto& command: lender ? llvm::SmallVector<Candidate, 2>{} : build.commands(cmd_file)) {
-            refs.push_back(
-                build.resolve(path_id, command.config, command.source, {cmd_path, path}, cmd_path));
-        }
-        if(refs.empty()) {
-            refs.push_back(
-                build.resolve(path_id, build.builtin(path), CommandSource::Fallback, path, path));
-        }
-
-        DirListingCache dir_cache;
-        dir_cache.shared = &file_table;
-        auto spelled_dir = file_table.spelling(path_id).parent();
-        llvm::StringRef dir = spelled_dir;
-        auto entries = resolve_dir(dir, dir_cache);
-        for(auto [index, ref]: llvm::enumerate(refs)) {
-            auto search_config = cdb.search_config(ref);
-            auto resolved_config = resolve_search_config(search_config, dir_cache);
-            llvm::SmallVector<IncludeEdge> edges;
-            for(auto& include: scan.includes) {
-                auto resolved = resolve_include(include.path,
-                                                include.is_angled,
-                                                entries,
-                                                dir,
-                                                include.is_include_next,
-                                                0,
-                                                resolved_config,
-                                                dir_cache);
-                if(resolved) {
-                    edges.push_back({file_table.intern_spelled(Spelling::absolute(resolved->path)),
-                                     include.conditional});
-                }
-            }
-            dep_graph.set_includes(path_id, static_cast<std::uint32_t>(index), std::move(edges));
-        }
-
-        context_epoch += 1;
-
-        // The graph's module declaration is what import resolution reads —
-        // left stale, an interface saved mid-session could never satisfy
-        // its importers.
-        auto module_name = scan.module_name;
-        bool is_interface_unit = scan.is_interface_unit;
-        // A module declaration inside a preprocessor conditional is beyond
-        // the lexical scan (need_preprocess, name left empty): resolve it
-        // with the same scan_module_decl() fallback the startup scan uses,
-        // or this save would drop a guarded interface from both provider
-        // maps and leave its importers unresolved until a reload.
-        if(scan.need_preprocess) {
-            // Under the default selection, as the startup scan preprocesses
-            // each unit under its own first command.
-            auto& ref = refs.front();
-            auto rendered = cdb.render(ref);
-            llvm::SmallString<512> joined;
-            for(auto* arg: rendered) {
-                joined.append(arg);
-                joined.push_back('\0');
-            }
-            auto key = std::pair{observed->obs.hash, llvm::xxh3_64bits(joined)};
-            auto cached = file_table.module_decls.find(key);
-            if(cached == file_table.module_decls.end()) {
-                // The preprocessor consumes the very bytes that produced
-                // the scan; negative results memoize too.
-                auto fallback = scan_module_decl(rendered,
-                                                 cdb.config(ref.config).directory,
-                                                 observed->content->getBuffer());
-                cached = file_table.module_decls
-                             .try_emplace(key,
-                                          FileTable::ModuleDecl{fallback.module_name,
-                                                                fallback.is_interface_unit})
-                             .first;
-            }
-            if(!cached->second.name.empty()) {
-                module_name = cached->second.name;
-                is_interface_unit = cached->second.is_interface_unit;
-            }
-        }
-        // Interface units only, mirroring the startup scan: an
-        // implementation unit (`module foo;`) must never satisfy
-        // lookup_module — importers would edge to it and try to build it
-        // as an interface — nor claim a PCM node of its own.
-        if(!is_interface_unit) {
-            module_name.clear();
-        }
-        dep_graph.update_module_decl(path_id, module_name);
-        dep_graph.set_import_candidate(path_id, scan.has_import);
-        return;
-    }
-
+    rescan_dependency_graph(cdb, dep_graph, path_id);
     context_epoch += 1;
 }
 
 void Project::forget_file(Fid path_id) {
     dep_graph.update_module_decl(path_id, {});
-    dep_graph.set_import_candidate(path_id, false);
+    dep_graph.forget_scan(path_id);
     dep_graph.clear_includes(path_id);
     context_epoch += 1;
 }
@@ -217,80 +68,70 @@ Project::ProviderChanges Project::rebuild_dependency_graph() {
 
 static std::optional<Spelling> database_in(const Spelling& dir) {
     Spelling candidate("compile_commands.json", dir);
-    if(!llvm::sys::fs::exists(candidate)) {
+    if(!vfs::exists(candidate)) {
         return std::nullopt;
     }
     return candidate;
 }
 
-llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root) {
-    llvm::SmallVector<Spelling> found;
+llvm::SmallVector<Spelling> database_places(CanonicalRef workspace_root) {
+    llvm::SmallVector<Spelling> places;
     if(workspace_root.empty()) {
-        return found;
+        return places;
     }
-    Spelling root(workspace_root);
-    if(auto database = database_in(root)) {
-        found.push_back(std::move(*database));
-    }
+    places.emplace_back("compile_commands.json", Spelling(workspace_root));
 
     // Name order, so build/ and out/ side by side load in the same order on
     // every start rather than whichever the directory listing yields first.
     llvm::SmallVector<Spelling> subdirectories;
-    std::error_code ec;
-    for(llvm::sys::fs::directory_iterator it(workspace_root, ec), end; it != end && !ec;
-        it.increment(ec)) {
-        // A symlinked build directory is a build directory too.
-        if(llvm::sys::fs::is_directory(it->path())) {
-            subdirectories.push_back(Spelling::absolute(it->path()));
+    for(auto& entry: vfs::read_dir(workspace_root).value_or(std::vector<vfs::Entry>())) {
+        // A symlinked build directory is a build directory too, even
+        // before its target exists.
+        if(entry.type == llvm::sys::fs::file_type::symlink_file ||
+           entry.type == llvm::sys::fs::file_type::directory_file) {
+            subdirectories.push_back(Spelling::absolute(entry.path));
         }
     }
     std::ranges::sort(subdirectories, {}, &Spelling::str);
     for(auto& subdirectory: subdirectories) {
-        if(auto database = database_in(subdirectory)) {
-            found.push_back(std::move(*database));
-        }
+        places.emplace_back("compile_commands.json", subdirectory);
     }
+    return places;
+}
+
+llvm::SmallVector<Spelling> discover_compile_commands(CanonicalRef workspace_root) {
+    auto found = database_places(workspace_root);
+    llvm::erase_if(found, [](const Spelling& place) { return !vfs::exists(place); });
     return found;
 }
 
 llvm::SmallVector<Spelling> compile_commands_below(CanonicalRef workspace_root,
                                                    CanonicalRef cache_dir) {
     llvm::SmallVector<Spelling> found;
-    std::error_code ec;
-    for(llvm::sys::fs::recursive_directory_iterator
-            it(workspace_root, ec, /*follow_symlinks=*/false),
-        end;
-        it != end;
-        it.increment(ec)) {
-        if(ec) {
-            LOG_WARN("Cannot read a directory under {}: {}", workspace_root, ec.message());
-            ec.clear();
-            continue;
+    vfs::walk(workspace_root, [&](const vfs::Entry& entry) {
+        auto spelled = Spelling::absolute(entry.path);
+        if(entry.type == llvm::sys::fs::file_type::directory_file) {
+            return path::filename(spelled.str()) != ".git" &&
+                   workspace_root.entry(spelled) != cache_dir;
         }
-        auto entry = Spelling::absolute(it->path());
-        auto type = it->type();
-        if(type == llvm::sys::fs::file_type::directory_file) {
-            if(path::filename(entry.str()) == ".git" || workspace_root.entry(entry) == cache_dir) {
-                it.no_push();
-            }
-        } else if(path::filename(entry.str()) == "compile_commands.json") {
-            found.push_back(std::move(entry));
-        } else if(type == llvm::sys::fs::file_type::symlink_file &&
-                  llvm::sys::fs::is_directory(entry)) {
+        if(path::filename(spelled.str()) == "compile_commands.json") {
+            found.push_back(std::move(spelled));
+        } else if(entry.type == llvm::sys::fs::file_type::symlink_file &&
+                  vfs::is_directory(spelled)) {
             // Not walked into (links may cycle), but a build directory
             // symlinked elsewhere keeps its database.
-            if(auto database = database_in(entry)) {
+            if(auto database = database_in(spelled)) {
                 found.push_back(std::move(*database));
             }
         }
-    }
+        return false;
+    });
     return found;
 }
 
 static bool configured(const Spelling& dir) {
-    return llvm::any_of(config_file_names, [&](llvm::StringRef name) {
-        return llvm::sys::fs::exists(Spelling(name, dir));
-    });
+    return llvm::any_of(config_file_names,
+                        [&](llvm::StringRef name) { return vfs::exists(Spelling(name, dir)); });
 }
 
 bool defines_project(CanonicalRef dir) {
@@ -310,15 +151,19 @@ CanonicalPath project_root_above(CanonicalRef start) {
     return root;
 }
 
-llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start,
-                                                   CanonicalRef workspace_root) {
-    llvm::SmallVector<Spelling> found;
+llvm::SmallVector<Spelling> database_places_above(CanonicalRef start, CanonicalRef workspace_root) {
+    llvm::SmallVector<Spelling> places;
     path::walk_ancestors(start, workspace_root, [&](llvm::StringRef dir) {
-        if(auto database = database_in(Spelling::absolute(dir))) {
-            found.push_back(std::move(*database));
-        }
+        places.emplace_back("compile_commands.json", Spelling::absolute(dir));
         return true;
     });
+    return places;
+}
+
+llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start,
+                                                   CanonicalRef workspace_root) {
+    auto found = database_places_above(start, workspace_root);
+    llvm::erase_if(found, [](const Spelling& place) { return !vfs::exists(place); });
     return found;
 }
 
@@ -327,10 +172,11 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
                                    std::int64_t build_at) {
     // Files whose mtime falls within the guard of the build start count as
     // "possibly modified during the build".
-    auto baseline_before_ns = fs::stat_baseline_before_ns(build_at);
+    auto baseline_before_ns = vfs::stat_baseline_before_ns(build_at);
 
     DepsSnapshot snap;
     snap.reserve(deps.size());
+    vfs::StatusBatch statuses;
     for(const auto& file: deps) {
         auto& dep = snap.emplace_back();
         dep.path_id = files.intern(Spelling::absolute(file.path));
@@ -345,8 +191,8 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             continue;
         }
 
-        llvm::sys::fs::file_status status;
-        if(llvm::sys::fs::status(file.path, status)) {
+        auto status = statuses.status(file.path);
+        if(!status) {
             // A file the build read that is gone already: record the
             // absence, reappearing counts as a change. Still-missing
             // deliberately counts as unchanged — flagging it would rebuild
@@ -359,10 +205,8 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             continue;
         }
 
-        auto size = status.getSize();
-        auto mtime_ns = fs::mtime_ns(status);
         if(hash == 0) {
-            if(mtime_ns > baseline_before_ns) {
+            if(status->stamp.mtime_ns > baseline_before_ns) {
                 // The worker could not hash the consumed bytes and the file
                 // may have changed during the build — no version can name
                 // them. The dep stays version-less and reads as changed
@@ -370,14 +214,16 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
                 continue;
             }
             // The unchanged mtime proves the disk still holds the consumed
-            // bytes, so their hash can be taken from the shared pair — or
-            // one read, unless the file moved between the stat and the
+            // bytes, so their hash can be taken from the last reliable read
+            // — or one read, unless the file moved between the stat and the
             // read, which voids the proof.
-            auto obs = files.observe_for(dep.path_id, status);
-            if(!obs || obs->size != size || obs->mtime_ns != mtime_ns) {
+            auto obs = files.observe_for(dep.path_id, *status);
+            if(!obs || obs->stamp != status->stamp) {
                 continue;
             }
             hash = obs->hash;
+        } else {
+            files.disk.consumed(dep.path_id, hash);
         }
 
         dep.version = files.intern_version(dep.path_id, hash);
@@ -386,33 +232,26 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
 }
 
 bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
-    for(auto& dep: snap) {
+    auto changed = [&](const DepState& dep) {
+        // Gone at build time: reappearing is the change; still-missing
+        // stays unchanged (see the capture).
         if(dep.missing) {
-            // Gone at build time: reappearing is the change; still-missing
-            // stays unchanged (see the capture).
-            if(files.current(dep.path_id)) {
-                return true;
-            }
-            continue;
+            return files.present(dep.path_id);
         }
-
         // No version names the consumed bytes: rebuild once to converge.
         if(!dep.version.valid()) {
             return true;
         }
-
         // Missing means gone now — a change, since the build saw the file.
         // Unreadable cannot prove the disk unchanged and counts as changed
         // — conservative, retried by the rebuild's capture.
-        if(files.check_version(dep.version) != FileTable::Verdict::Fresh) {
-            return true;
-        }
-    }
-    return false;
+        return files.check_version(dep.version) != vfs::DiskState::Verdict::Fresh;
+    };
+    return std::ranges::count_if(snap, changed) != 0;
 }
 
 std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path) {
-    auto buffer = llvm::MemoryBuffer::getFile(path);
+    auto buffer = vfs::read(path, vfs::Read::Mapped);
     if(!buffer) {
         return nullptr;
     }

@@ -21,10 +21,13 @@ jobs:
 
       - uses: ./.github/actions/setup-pixi
 
+      # Bazel's default output root on Windows is too deep for Windows paths.
       - name: Build scan_benchmark
         run: |
-          pixi run cmake-config RelWithDebInfo ON -- -DCLICE_ENABLE_BENCHMARK=ON
-          cmake --build build/RelWithDebInfo --target scan_benchmark
+          if [ "$RUNNER_OS" = Windows ]; then
+            echo "startup --output_user_root=C:/b" > user.bazelrc
+          fi
+          pixi run build RelWithDebInfo -- //:bin/scan_benchmark
 
       - name: Clone LLVM
         run: git clone --depth 1 https://github.com/llvm/llvm-project.git
@@ -33,10 +36,10 @@ jobs:
         run: |
           cmake -B llvm-build -G Ninja \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DCMAKE_TOOLCHAIN_FILE="$(pwd)/cmake/toolchain.cmake" \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld;lldb;mlir;polly;flang;bolt" \
             -DLLVM_ENABLE_RUNTIMES="compiler-rt;libcxx;libcxxabi;libunwind" \
             llvm-project/llvm
 
       - name: Run benchmark
-        run: ./build/RelWithDebInfo/bin/scan_benchmark --runs 20 llvm-build/compile_commands.json
+        run: ./build/RelWithDebInfo/bin/bin/scan_benchmark --runs 20 llvm-build/compile_commands.json

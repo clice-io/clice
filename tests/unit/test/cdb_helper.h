@@ -6,8 +6,8 @@
 
 #include "test/temp_dir.h"
 #include "command/command.h"
-#include "support/filesystem.h"
 #include "syntax/dependency_graph.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"

@@ -13,9 +13,9 @@ base_def:
     - { file: "${WS}/inherited_member_access.cpp", range: "2:7-2:11" }
     - { file: "${WS}/inherited_member_access.cpp", range: "8:17-8:21" }
   typeHierarchy:
-    - { name: "Base", kind: Struct, file: "${WS}/inherited_member_access.cpp", range: "2:7-2:11" }
+    - { name: "Base", kind: Struct, file: "${WS}/inherited_member_access.cpp", range: "2:0-6:1", selection: "2:7-2:11" }
   subtypes:
-    - { name: "Derived", kind: Struct, file: "${WS}/inherited_member_access.cpp", range: "8:7-8:14" }
+    - { name: "Derived", kind: Struct, file: "${WS}/inherited_member_access.cpp", range: "8:0-8:24", selection: "8:7-8:14" }
 
 derived_def:
   definition:
@@ -26,9 +26,9 @@ derived_def:
     - { file: "${WS}/inherited_member_access.cpp", range: "8:7-8:14" }
     - { file: "${WS}/inherited_member_access.cpp", range: "10:26-10:33" }
   typeHierarchy:
-    - { name: "Derived", kind: Struct, file: "${WS}/inherited_member_access.cpp", range: "8:7-8:14" }
+    - { name: "Derived", kind: Struct, file: "${WS}/inherited_member_access.cpp", range: "8:0-8:24", selection: "8:7-8:14" }
   supertypes:
-    - { name: "Base", kind: Struct, file: "${WS}/inherited_member_access.cpp", range: "2:7-2:11" }
+    - { name: "Base", kind: Struct, file: "${WS}/inherited_member_access.cpp", range: "2:0-6:1", selection: "2:7-2:11" }
 
 inherited_use:
   definition:
@@ -39,9 +39,9 @@ inherited_use:
     - { file: "${WS}/inherited_member_access.cpp", range: "3:8-3:15" }
     - { file: "${WS}/inherited_member_access.cpp", range: "11:19-11:26" }
   callHierarchy:
-    - { name: "measure", kind: Method, file: "${WS}/inherited_member_access.cpp", range: "3:8-3:15" }
+    - { name: "measure", kind: Method, file: "${WS}/inherited_member_access.cpp", range: "3:4-5:5", selection: "3:8-3:15" }
   incomingCalls:
-    - { name: "measure_derived", kind: Function, file: "${WS}/inherited_member_access.cpp", range: "10:4-10:19", fromRanges: ["11:11-11:28"] }
+    - { name: "measure_derived", kind: Function, file: "${WS}/inherited_member_access.cpp", range: "10:0-12:1", selection: "10:4-10:19", fromRanges: ["11:19-11:26"] }
 
 method_def:
   definition:
@@ -52,6 +52,6 @@ method_def:
     - { file: "${WS}/inherited_member_access.cpp", range: "3:8-3:15" }
     - { file: "${WS}/inherited_member_access.cpp", range: "11:19-11:26" }
   callHierarchy:
-    - { name: "measure", kind: Method, file: "${WS}/inherited_member_access.cpp", range: "3:8-3:15" }
+    - { name: "measure", kind: Method, file: "${WS}/inherited_member_access.cpp", range: "3:4-5:5", selection: "3:8-3:15" }
   incomingCalls:
-    - { name: "measure_derived", kind: Function, file: "${WS}/inherited_member_access.cpp", range: "10:4-10:19", fromRanges: ["11:11-11:28"] }
+    - { name: "measure_derived", kind: Function, file: "${WS}/inherited_member_access.cpp", range: "10:0-12:1", selection: "10:4-10:19", fromRanges: ["11:19-11:26"] }

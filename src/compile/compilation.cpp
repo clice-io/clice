@@ -7,13 +7,13 @@
 #include "compile/diagnostic.h"
 #include "compile/implement.h"
 #include "semantic/decls.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 
 #include "kota/ipc/lsp/position.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/Stack.h"
@@ -81,6 +81,12 @@ std::unique_ptr<clang::CompilerInvocation>
         pp_opts.PrecompiledPreambleBytes = {bound, false};
     }
 
+    // `#pragma clang __debug crash` and its kin crash the compiler on
+    // purpose. Tests keep them as a crash a file's content decides.
+    const static bool pragma_crash =
+        llvm::sys::Process::GetEnv("CLICE_TEST_PRAGMA_CRASH").has_value();
+    pp_opts.DisablePragmaDebugCrash = !pragma_crash;
+
     // We don't want to write comment locations into PCM. They are racy and slow
     // to read back. We rely on dynamic index for the comments instead.
     pp_opts.WriteCommentListToPCH = false;
@@ -137,6 +143,14 @@ std::unique_ptr<clang::CompilerInvocation>
         lang_opts.DelayedTemplateParsing = false;
     }
 
+    // A header compiled under a source's command (`-x c++` buys a parse
+    // instead of a precompiled-header job) is still a header: no "#pragma
+    // once in main file", no unused warnings for its static functions.
+    if(auto file = front_opts.Inputs[0].getFile();
+       is_header_path(file) || is_context_header_path(file)) {
+        lang_opts.IsHeaderFile = true;
+    }
+
     return invocation;
 }
 
@@ -189,6 +203,15 @@ public:
         // explicit instantiation directive that finds it already defined.
         if(!collected.insert(decl).second) {
             return;
+        }
+
+        // A namespace-scope anonymous union reaches the consumer only as
+        // its implicit variable; the written union is the record behind it.
+        if(auto* var = llvm::dyn_cast<clang::VarDecl>(decl); var && var->isImplicit()) {
+            if(auto* record = var->getType()->getAsRecordDecl();
+               record && record->isAnonymousStructOrUnion()) {
+                unit->top_level_decls.push_back(record);
+            }
         }
 
         unit->top_level_decls.push_back(decl);
@@ -388,7 +411,7 @@ CompilationUnit compile(CompilationParams& params) {
 CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
     assert(!params.output_file.empty() && "PCH file path cannot be empty");
 
-    return run_clang(
+    auto unit = run_clang(
         params,
         std::make_unique<clang::GeneratePCHAction>(),
         [&](clang::CompilerInstance& instance) {
@@ -396,6 +419,14 @@ CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
             instance.getFrontendOpts().OutputFile = params.output_file.str();
             instance.getFrontendOpts().ProgramAction = clang::frontend::GeneratePCH;
             instance.getPreprocessorOpts().GeneratePreamble = true;
+
+            // Without recorded mtimes clang checks each input by its size
+            // alone. Freshness is the master's call, made on content: a
+            // same-bytes rewrite (`git stash pop`, a branch switch) moves
+            // only the mtime and must not get a PCH the master still
+            // vouches for rejected. The size check stays, as it guards the
+            // reader against offsets past the end of a shrunk file.
+            instance.getFrontendOpts().IncludeTimestamps = false;
 
             // We don't want to write comment locations into PCH. They are racy and slow
             // to read back. We rely on dynamic index for the comments instead.
@@ -406,15 +437,18 @@ CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
         [&](CompilationUnitRef unit) {
             out.path = params.output_file.str();
             out.preamble = unit.main_content();
-            out.deps = unit.deps();
             out.arguments = params.arguments;
         });
+    if(unit.completed() || unit.fatal_error()) {
+        out.deps = unit.deps();
+    }
+    return unit;
 }
 
 CompilationUnit compile(CompilationParams& params, PCMInfo& out) {
     assert(!params.output_file.empty() && "PCM file path cannot be empty");
 
-    return run_clang(
+    auto unit = run_clang(
         params,
         std::make_unique<clang::GenerateReducedModuleInterfaceAction>(),
         [&](clang::CompilerInstance& instance) {
@@ -427,18 +461,20 @@ CompilationUnit compile(CompilationParams& params, PCMInfo& out) {
         },
         [&](CompilationUnitRef unit) {
             out.path = params.output_file.str();
-            out.deps = unit.deps();
-            // deps() collects include targets only; the module source is a
-            // build input of its PCM all the same. Canonicalize it like
-            // every other dep — srcPath keeps the command line's raw
-            // spelling, which consumers cannot stat reliably.
-            out.deps.emplace_back(std::string(unit.file_path(unit.main_file())),
-                                  llvm::xxh3_64bits(unit.main_content()));
-
             for(auto& [name, path]: params.pcms) {
                 out.mods.emplace_back(name);
             }
         });
+    if(unit.completed() || unit.fatal_error()) {
+        out.deps = unit.deps();
+        // deps() collects include targets only; the module source is a
+        // build input of its PCM all the same. Canonicalize it like every
+        // other dep — srcPath keeps the command line's raw spelling, which
+        // consumers cannot stat reliably.
+        out.deps.emplace_back(std::string(unit.file_path(unit.main_file())),
+                              llvm::xxh3_64bits(unit.main_content()));
+    }
+    return unit;
 }
 
 CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer* consumer) {
@@ -447,11 +483,11 @@ CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer*
     auto buffer = params.buffers.find(file);
     assert(buffer != params.buffers.end() && "completion file must be remapped");
     llvm::StringRef content = buffer->second->getBuffer();
-    kota::ipc::lsp::LineMap map({content.data(), content.size()},
-                                kota::ipc::lsp::PositionEncoding::UTF8);
     auto completion_offset =
         static_cast<std::uint32_t>(std::min<std::size_t>(offset, content.size()));
-    auto position = map.to_position(completion_offset);
+    auto position = kota::ipc::lsp::to_position({content.data(), content.size()},
+                                                completion_offset,
+                                                kota::ipc::lsp::PositionEncoding::UTF8);
     assert(position && "clamped completion offset must be mappable");
 
     /// Clang completion locations are 1-based.

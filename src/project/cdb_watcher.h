@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -9,6 +10,8 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 
 namespace clice {
 
@@ -17,28 +20,28 @@ namespace clice {
 /// files their commands name. Every reload reports its per-file delta; the
 /// caller turns it into invalidation.
 ///
-/// Each tick looks at a source's inputs through the file table and
-/// compares their content with what its load read (see
-/// CompilationDatabase::inputs), never with a stat taken afterwards: a
-/// rewrite landing between the load and the first poll still reads as a
-/// change. Whether a stat can stand for the bytes is the file table's
-/// call, as for every other file.
+/// A source's inputs, and the places a database may appear, are flags the
+/// file table looks at (see vfs::DiskState::watch); a tick here only weighs
+/// what those looks found. A source's inputs are compared with what its
+/// load read (see CompilationDatabase::inputs), never with a look taken
+/// afterwards: a rewrite landing between the load and the first look still
+/// reads as a change.
 class CDBWatcher {
 public:
     /// Construct after the project is loaded: every registered source is
     /// baselined at its load.
     CDBWatcher(Project& project, CanonicalPath root);
 
-    /// One poll tick. When no rule declares a source, registers every
-    /// database discovery finds that is not watched yet, at the root and
-    /// its direct subdirectories and above every file of `open_files`
-    /// still without a command. Looks at every registered source — declared
-    /// ones that do not exist yet included, which is how a database
-    /// generated after startup is picked up — and the response files its
-    /// commands name. Once a source's inputs have held the same other
-    /// content for two consecutive ticks, reloads it. A discovered database
-    /// vanishing or returning flips its presence, and the files whose
-    /// default entry moves with it change command (see
+    /// One tick, after the file table looked at the flags. When no rule
+    /// declares a source, a database found at a watched place is registered:
+    /// the root and its direct subdirectories (listed again when the root
+    /// directory moves), and every directory from a file of `open_files`
+    /// still without a command up to the root — which is how a database
+    /// generated after startup is picked up. Declared sources are
+    /// registered whether they exist or not. Once a source's inputs have
+    /// held the same other content for two consecutive ticks, reloads it. A
+    /// discovered database vanishing or returning flips its presence, and
+    /// the files whose default entry moves with it change command (see
     /// Build::source_order); its entries keep serving meanwhile.
     ///
     /// `force` reloads unconditionally: it skips both the content gate and
@@ -71,20 +74,28 @@ private:
         /// Half-write guard: what the previous tick saw while it differed
         /// from `applied`; a tick seeing it again reloads.
         std::optional<Hashes> pending;
+        /// The source's inputs, in CompilationDatabase::inputs order. The
+        /// database is watched by the path the source names: a symlinked
+        /// one may be pointed elsewhere since its load.
+        llvm::SmallVector<std::shared_ptr<const vfs::Flag>, 0> inputs;
     };
 
     /// The hashes of the source's last load.
     Hashes loaded(SourceID id) const;
 
-    /// Look at each of the source's inputs on disk now.
-    Hashes look(SourceID id);
+    /// What the last looks found of each of the source's inputs.
+    static Hashes looked(const TrackedSource& tracked);
 
-    /// The file the source's path names now: a symlinked database may have
-    /// been pointed elsewhere since its load.
-    Fid database(SourceID id);
+    /// Watch the response files the source's last load read, besides the
+    /// database.
+    void watch_inputs(TrackedSource& tracked);
 
     /// Register `id` for watching, from its last load.
     void track(SourceID id);
+
+    /// Register and watch the databases found at the watched places,
+    /// watching the places `open_files` need from now on.
+    void discover(llvm::ArrayRef<Fid> open_files);
 
     /// Tick one source, its reload's delta merged into `delta`.
     void tick_source(TrackedSource& tracked, bool force, CDBDiff& delta);
@@ -104,6 +115,18 @@ private:
     CanonicalPath root;
 
     llvm::SmallVector<TrackedSource> sources;
+
+    /// The root directory, whose stamp moves when an entry appears or goes.
+    std::shared_ptr<const vfs::Flag> root_flag;
+    /// The root's stamp at the listing `listed` came from; nullopt while no
+    /// listing can be trusted to hold.
+    std::optional<vfs::Stamp> listed_at;
+    /// The places database_places names under the root.
+    llvm::SmallVector<Spelling> listed;
+    /// The watched places with no source registered there yet.
+    llvm::StringMap<std::shared_ptr<const vfs::Flag>> places;
+    /// The places a registered source is known to stand at.
+    llvm::StringSet<> registered;
 };
 
 }  // namespace clice

@@ -205,6 +205,27 @@ struct ProjectIndex {
     /// variant set.
     llvm::SmallVector<std::uint64_t> live_variants(Fid path_id) const;
 
+    /// The TUs that contributed rows to `file`: from `contributions` in a
+    /// writer, from the global blob's persisted copy in a reader, which
+    /// holds no manifests to derive it from.
+    void each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const;
+
+    /// The files holding rows of an internal-linkage symbol, starting from
+    /// `anchor`, a file that holds some: the anchor, and every file the
+    /// local fanout (TUManifest::local_fanout) of a TU contributing to a
+    /// file reached so far lists for the symbol. A `static` in a header is
+    /// thus reached in every unit including the header, whichever of its
+    /// files the walk starts from. Each file once.
+    void each_fanout_file(SymbolHash hash,
+                          Fid anchor,
+                          const FileTable& files,
+                          llvm::function_ref<void(Fid)> visit) const;
+
+    /// A TU's manifest: held by a writer, fetched on first use by a reader
+    /// — whose copy names its versions by persisted ids. Null when the TU
+    /// has none current.
+    const TUManifest* tu_manifest(Fid tu) const;
+
     /// Per-file row blobs keyed by project-level path_id: symbol
     /// occurrences, relations and stored content for position mapping,
     /// served zero-copy. The writer holds every persisted shard here; a
@@ -239,14 +260,19 @@ struct ProjectIndex {
     /// from it on first use. False when there is no readable global blob.
     bool open(BlobDatabase& db, FileTable& files);
 
+    /// The byte split of the base blob's symbol table and reverse include
+    /// graph; everything else in the blob (file versions, the path table,
+    /// framing) is the remainder of its serialized size.
     struct GlobalColumns {
         std::size_t names = 0;
         std::size_t args = 0;
         std::size_t bitmaps = 0;
+        /// Hash, parent, kind, flags and file per symbol.
         std::size_t fixed = 0;
+        std::size_t contributors = 0;
     };
 
-    /// The base blob's symbol columns in bytes, for `clice index --stats`.
+    /// For `clice index --stats`.
     GlobalColumns global_columns() const;
 
 private:
@@ -259,6 +285,10 @@ private:
     /// Rows serialized by the last serialize_global and not yet known to
     /// have landed; reads consult them after `changed`.
     llvm::DenseMap<SymbolHash, Symbol> written;
+
+    /// A reader's manifests, fetched on first use; nullopt remembers a
+    /// TU without a current one.
+    mutable llvm::DenseMap<Fid, std::optional<TUManifest>> fetched_manifests;
 
     /// The database shard() fetches from, when opened over one.
     BlobDatabase* db = nullptr;

@@ -8,10 +8,11 @@
 #include "command/argument_parser.h"
 #include "command/search_config.h"
 #include "project/hosting.h"
-#include "support/filesystem.h"
 #include "support/logging.h"
 #include "syntax/include_resolver.h"
 #include "syntax/preamble_synthesis.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringExtras.h"
@@ -189,7 +190,6 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
                                     context.host_command_hash != choice->command_hash ||
                                     context.host_base_hash != choice->base_hash);
             bool mode_mismatch = (context.synthesized != nullptr) != synthesize;
-            auto wave = project.file_table.wave();
             if(override_mismatch || mode_mismatch ||
                deps_changed(project.file_table, context.deps)) {
                 cache->erase(cached);
@@ -422,30 +422,29 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
         project.build.resolve(host_path_id, picked.config, picked.source, edit_paths, host_path);
 
     auto search_config = project.cdb.search_config(host_ref);
-    DirListingCache dir_cache;
-    dir_cache.shared = &project.file_table;
-    auto resolved_config = resolve_search_config(search_config, dir_cache);
+    vfs::Scope scope(project.file_table.dirs);
+    auto resolved_config = resolve_search_config(search_config, scope);
 
-    auto resolver = [&](llvm::StringRef filename,
-                        bool is_angled,
-                        bool is_include_next,
-                        llvm::StringRef includer_dir) -> std::optional<std::string> {
-        auto entries = resolve_dir(includer_dir, dir_cache);
-        auto result = resolve_include(filename,
-                                      is_angled,
-                                      entries,
+    auto resolver =
+        [&](const ScanResult::IncludeInfo& include,
+            llvm::StringRef includer_dir,
+            std::optional<unsigned> includer_found_dir) -> std::optional<ResolveResult> {
+        auto result = resolve_include(include.path,
+                                      include.is_angled,
+                                      &scope.list(includer_dir),
                                       includer_dir,
-                                      is_include_next,
-                                      0,
+                                      include.is_include_next,
+                                      includer_found_dir,
                                       resolved_config,
-                                      dir_cache);
+                                      scope);
         if(!result) {
             return std::nullopt;
         }
         // Chain files are named by the build's spelling of each, so a
         // resolution matches the next one exactly when it is that file.
         auto found = project.file_table.intern(Spelling::absolute(result->path));
-        return project.file_table.spelling(found).str();
+        result->path = project.file_table.spelling(found).str();
+        return result;
     };
 
     // Read the chain files (all but the target) from disk. The synthesized
@@ -462,7 +461,7 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
     deps.reserve(chain.size());
     for(std::size_t i = 0; i + 1 < chain.size(); ++i) {
         auto cur_path = project.file_table.resolve(chain[i]);
-        auto observed = read_file_observed(cur_path.data());
+        auto observed = vfs::read_observed(cur_path);
         if(!observed) {
             LOG_WARN("resolve_header_context: cannot read {}", cur_path);
             return std::nullopt;
@@ -482,7 +481,7 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
     // mirrors the header's disk state; re-synthesize when it changes so
     // other-occurrence expansions stay current.
     std::optional<llvm::StringRef> target_content;
-    auto target_observed = read_file_observed(target_path.data());
+    auto target_observed = vfs::read_observed(target_path);
     if(target_observed) {
         target_content = target_observed->content->getBuffer();
         project.file_table.observe(chain.back(), target_observed->obs);

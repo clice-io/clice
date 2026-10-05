@@ -1,6 +1,6 @@
 #include "command/invocation.h"
 
-#include "support/filesystem.h"
+#include "vfs/path.h"
 
 #include "llvm/Support/VirtualFileSystem.h"
 #include "clang/Driver/CreateInvocationFromArgs.h"

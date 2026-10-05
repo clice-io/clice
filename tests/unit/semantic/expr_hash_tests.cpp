@@ -123,14 +123,14 @@ struct Fidelity {
                       stmt->getStmtClassName(),
                       stmt->getBeginLoc().printToString(context.getSourceManager()));
         }
-        EXPECT_TRUE(equal);
+        ZEXPECT(equal);
     }
 
     void compare(const Expr* lhs, const Expr* rhs, bool expected) {
         check(lhs);
         check(rhs);
-        EXPECT_EQ(profile(lhs) == profile(rhs), expected);
-        EXPECT_EQ(upstream(lhs) == upstream(rhs), expected);
+        ZEXPECT((profile(lhs) == profile(rhs)) == expected);
+        ZEXPECT((upstream(lhs) == upstream(rhs)) == expected);
     }
 };
 
@@ -239,14 +239,14 @@ struct MarkedExpressions : RecursiveASTVisitor<MarkedExpressions> {
     bool VisitTypedefNameDecl(TypedefNameDecl* decl) {
         if(decl->getName().starts_with("mark_")) {
             auto* type = cast<DecltypeType>(decl->getUnderlyingType());
-            EXPECT_TRUE(expressions.try_emplace(decl->getName(), type->getUnderlyingExpr()).second);
+            ZEXPECT(expressions.try_emplace(decl->getName(), type->getUnderlyingExpr()).second);
         }
         return true;
     }
 
     bool VisitFunctionDecl(FunctionDecl* decl) {
         if(decl->getNameInfo().getAsString().starts_with("mark_")) {
-            EXPECT_TRUE(
+            ZEXPECT(
                 expressions
                     .try_emplace(decl->getName(), decl->getTrailingRequiresClause().ConstraintExpr)
                     .second);
@@ -267,13 +267,13 @@ bool has_errors(CompilationUnit& unit) {
 
 Fidelity check_marked(Tester& tester) {
     MarkedExpressions markers;
-    EXPECT_TRUE(markers.TraverseDecl(tester.unit->tu()));
-    EXPECT_FALSE(markers.expressions.empty());
+    ZEXPECT(markers.TraverseDecl(tester.unit->tu()));
+    ZEXPECT(!markers.expressions.empty());
     Fidelity fidelity{tester.unit->context()};
     for(const auto& [name, expr]: markers.expressions) {
-        EXPECT_TRUE(expr);
+        ZEXPECT(expr);
         ProfileTree tree(fidelity);
-        EXPECT_TRUE(tree.TraverseStmt(const_cast<Expr*>(expr)));
+        ZEXPECT(tree.TraverseStmt(const_cast<Expr*>(expr)));
     }
     return fidelity;
 }
@@ -283,13 +283,13 @@ void expect_kinds(const Fidelity& fidelity, llvm::ArrayRef<Stmt::StmtClass> kind
         if(!fidelity.kinds.contains(kind)) {
             LOG_ERROR("Missing handwritten statement class {}", static_cast<unsigned>(kind));
         }
-        EXPECT_TRUE(fidelity.kinds.contains(kind));
+        ZEXPECT(fidelity.kinds.contains(kind));
     }
 }
 
-TEST_SUITE(expr_hash, Tester) {
+ZEST_SUITE(expr_hash, Tester) {
 
-TEST_CASE(StandardLibraryConstraints) {
+ZEST_CASE(StandardLibraryConstraints) {
     add_main("main.cpp", R"cpp(
 #include <vector>
 #include <string>
@@ -306,17 +306,17 @@ struct Bounded {
 template<class T, int N> struct Partial;
 template<class T> struct Partial<T, sizeof(T)> {};
 )cpp");
-    ASSERT_TRUE(compile_driver("-std=c++20"));
-    ASSERT_FALSE(has_errors(*unit));
+    ZASSERT(compile_driver("-std=c++20"));
+    ZASSERT(!has_errors(*unit));
     Fidelity fidelity{unit->context()};
     ConstraintSweep sweep(fidelity);
-    ASSERT_TRUE(sweep.TraverseDecl(unit->tu()));
+    ZASSERT(sweep.TraverseDecl(unit->tu()));
     LOG_INFO("expr_hash: checked {} distinct standard-library constraint expressions",
              fidelity.checked.size());
-    EXPECT_GT(fidelity.checked.size(), 1500u);
+    ZEXPECT(fidelity.checked.size() > 1500u);
 };
 
-TEST_CASE(HandwrittenExpressions) {
+ZEST_CASE(HandwrittenExpressions) {
     add_main("main.cpp", R"cpp(
 namespace std {
 class type_info;
@@ -535,21 +535,21 @@ void statements() {
     params.arguments.insert(
         params.arguments.end(),
         {"-fenable-matrix", "-fblocks", "-ffixed-point", "-fcxx-exceptions", "-fexceptions"});
-    ASSERT_TRUE(try_compile());
-    ASSERT_FALSE(has_errors(*unit));
+    ZASSERT(try_compile());
+    ZASSERT(!has_errors(*unit));
     MarkedExpressions markers;
-    ASSERT_TRUE(markers.TraverseDecl(unit->tu()));
+    ZASSERT(markers.TraverseDecl(unit->tu()));
     Fidelity fidelity{unit->context()};
     for(const auto& [name, expr]: markers.expressions) {
-        ASSERT_TRUE(expr);
+        ZASSERT(expr);
         ProfileTree tree(fidelity);
-        ASSERT_TRUE(tree.TraverseStmt(const_cast<Expr*>(expr)));
+        ZASSERT(tree.TraverseStmt(const_cast<Expr*>(expr)));
     }
     LOG_INFO("expr_hash: checked {} handwritten markers, {} nodes, {} statement classes",
              markers.expressions.size(),
              fidelity.checked.size(),
              fidelity.kinds.size());
-    EXPECT_GT(markers.expressions.size(), 100u);
+    ZEXPECT(markers.expressions.size() > 100u);
     expect_kinds(fidelity,
                  {Stmt::AddrLabelExprClass,
                   Stmt::ArrayInitIndexExprClass,
@@ -662,7 +662,7 @@ void statements() {
                   Stmt::ParenListExprClass});
 };
 
-TEST_CASE(MicrosoftExpressions) {
+ZEST_CASE(MicrosoftExpressions) {
     add_main("main.cpp", R"cpp(
 struct _GUID { unsigned long a; unsigned short b, c; unsigned char d[8]; };
 struct __declspec(uuid("12345678-1234-1234-1234-123456789abc")) Identified {};
@@ -693,8 +693,8 @@ template<class T> void dependent() {
 }
 )cpp");
     triple = "x86_64-pc-windows-msvc";
-    ASSERT_TRUE(compile());
-    ASSERT_FALSE(has_errors(*unit));
+    ZASSERT(compile());
+    ZASSERT(!has_errors(*unit));
     auto fidelity = check_marked(*this);
     expect_kinds(fidelity,
                  {Stmt::CXXUuidofExprClass,
@@ -727,11 +727,11 @@ template<class T> void dependent() {
     auto* body = CompoundStmt::Create(context, {assembly, operand}, {}, location, location);
     auto* expression = new (context) StmtExpr(body, context.IntTy, location, location, 0);
     ProfileTree tree(fidelity);
-    ASSERT_TRUE(tree.TraverseStmt(expression));
+    ZASSERT(tree.TraverseStmt(expression));
     expect_kinds(fidelity, {Stmt::MSAsmStmtClass});
 };
 
-TEST_CASE(CoroutineExpressions) {
+ZEST_CASE(CoroutineExpressions) {
     add_main("main.cpp", R"cpp(
 #include <coroutine>
 struct Task {
@@ -755,8 +755,8 @@ using mark_coroutine = decltype([]() -> Task {
     co_return;
 });
 )cpp");
-    ASSERT_TRUE(compile_driver("-std=c++20"));
-    ASSERT_FALSE(has_errors(*unit));
+    ZASSERT(compile_driver("-std=c++20"));
+    ZASSERT(!has_errors(*unit));
     auto fidelity = check_marked(*this);
     expect_kinds(fidelity,
                  {Stmt::CoroutineBodyStmtClass,
@@ -766,7 +766,7 @@ using mark_coroutine = decltype([]() -> Task {
                   Stmt::CoyieldExprClass});
 };
 
-TEST_CASE(LanguageExtensions) {
+ZEST_CASE(LanguageExtensions) {
     Tester opencl;
     opencl.triple = "x86_64-unknown-linux-gnu";
     opencl.add_main("main.cpp", R"cpp(
@@ -775,8 +775,8 @@ using mark_addrspace = decltype(addrspace_cast<__global int*>((__generic int*)nu
 )cpp");
     opencl.prepare("-cl-std=clc++2021");
     opencl.params.arguments.insert(opencl.params.arguments.end(), {"-x", "clcpp"});
-    ASSERT_TRUE(opencl.try_compile());
-    ASSERT_FALSE(has_errors(*opencl.unit));
+    ZASSERT(opencl.try_compile());
+    ZASSERT(!has_errors(*opencl.unit));
     auto opencl_fidelity = check_marked(opencl);
     expect_kinds(opencl_fidelity, {Stmt::AsTypeExprClass, Stmt::CXXAddrspaceCastExprClass});
 
@@ -790,8 +790,8 @@ using mark_cuda_call = decltype(kernel<<<1, 1>>>());
 )cpp");
         fixture.prepare("-std=c++20");
         fixture.params.arguments.insert(fixture.params.arguments.end(), {"-x", "cuda"});
-        ASSERT_TRUE(fixture.try_compile());
-        ASSERT_FALSE(has_errors(*fixture.unit));
+        ZASSERT(fixture.try_compile());
+        ZASSERT(!has_errors(*fixture.unit));
         auto fidelity = check_marked(fixture);
         expect_kinds(fidelity, {Stmt::CUDAKernelCallExprClass});
     }
@@ -812,8 +812,8 @@ using mark_sycl_name = decltype(__builtin_sycl_unique_stable_name(int));
         fixture.triple = "spirv64-unknown-unknown";
         fixture.prepare("-std=c++20");
         fixture.params.arguments.insert(fixture.params.arguments.end(), {"-fsycl-is-device"});
-        ASSERT_TRUE(fixture.try_compile());
-        ASSERT_FALSE(has_errors(*fixture.unit));
+        ZASSERT(fixture.try_compile());
+        ZASSERT(!has_errors(*fixture.unit));
         auto fidelity = check_marked(fixture);
         expect_kinds(fidelity,
                      {Stmt::SYCLUniqueStableNameExprClass, Stmt::SYCLKernelCallStmtClass});
@@ -826,8 +826,8 @@ using mark_embed = decltype((int[]){
 #embed "data.bin"
 });
 )cpp");
-        ASSERT_TRUE(fixture.compile("-std=c++2c"));
-        ASSERT_FALSE(has_errors(*fixture.unit));
+        ZASSERT(fixture.compile("-std=c++2c"));
+        ZASSERT(!has_errors(*fixture.unit));
         auto fidelity = check_marked(fixture);
         expect_kinds(fidelity, {Stmt::EmbedExprClass});
     }
@@ -839,14 +839,14 @@ using mark_recovery = decltype([] { ordinary(1, 2); });
 )cpp");
         fixture.prepare();
         fixture.params.arguments.push_back("-frecovery-ast");
-        ASSERT_TRUE(fixture.try_compile());
-        ASSERT_TRUE(fixture.unit->context().getDiagnostics().hasErrorOccurred());
+        ZASSERT(fixture.try_compile());
+        ZASSERT(fixture.unit->context().getDiagnostics().hasErrorOccurred());
         auto fidelity = check_marked(fixture);
         expect_kinds(fidelity, {Stmt::RecoveryExprClass});
     }
 };
 
-TEST_CASE(PartialPackSubstitution) {
+ZEST_CASE(PartialPackSubstitution) {
     add_main("main.cpp", R"cpp(
 void consume(...);
 template<int... N> struct Values {
@@ -862,18 +862,18 @@ template<class... T> void indexing(T... args) {
 }
 void instantiate_index() { indexing(1, 2); }
 )cpp");
-    ASSERT_TRUE(compile("-std=c++2c"));
-    ASSERT_FALSE(has_errors(*unit));
+    ZASSERT(compile("-std=c++2c"));
+    ZASSERT(!has_errors(*unit));
     Fidelity fidelity{unit->context()};
     ProfileTree tree(fidelity);
-    ASSERT_TRUE(tree.TraverseDecl(unit->tu()));
+    ZASSERT(tree.TraverseDecl(unit->tu()));
     expect_kinds(fidelity,
                  {Stmt::SubstNonTypeTemplateParmPackExprClass,
                   Stmt::FunctionParmPackExprClass,
                   Stmt::PackIndexingExprClass});
 };
 
-TEST_CASE(EquivalencePairs) {
+ZEST_CASE(EquivalencePairs) {
     add_main("main.cpp", R"cpp(
 template<int N> void mark_nttp_a() requires (N > 0);
 template<int Renamed> void mark_nttp_b() requires (Renamed > 0);
@@ -902,24 +902,24 @@ using mark_literal = decltype(42);
 template<int N> struct Wrapped { static constexpr int value = N; };
 static_assert(Wrapped<42>::value == 42);
 )cpp");
-    ASSERT_TRUE(compile());
-    ASSERT_FALSE(has_errors(*unit));
+    ZASSERT(compile());
+    ZASSERT(!has_errors(*unit));
     MarkedExpressions markers;
-    ASSERT_TRUE(markers.TraverseDecl(unit->tu()));
+    ZASSERT(markers.TraverseDecl(unit->tu()));
     Fidelity fidelity{unit->context()};
     for(auto name: {"nttp", "param", "type", "typedef", "qualified", "fold", "parens"}) {
         auto* lhs = markers.expressions.lookup(std::format("mark_{}_a", name));
         auto* rhs = markers.expressions.lookup(std::format("mark_{}_b", name));
-        ASSERT_TRUE(lhs && rhs);
+        ZASSERT((lhs && rhs));
         fidelity.compare(lhs, rhs, llvm::StringRef(name) != "parens");
     }
     auto* fold_a = cast<CXXFoldExpr>(markers.expressions.lookup("mark_fold_a"));
     auto* fold_b = cast<CXXFoldExpr>(markers.expressions.lookup("mark_fold_b"));
-    EXPECT_FALSE(fold_a->getCallee());
-    EXPECT_TRUE(fold_b->getCallee());
+    ZEXPECT(!fold_a->getCallee());
+    ZEXPECT(fold_b->getCallee());
 
     auto* literal = const_cast<Expr*>(markers.expressions.lookup("mark_literal"));
-    ASSERT_TRUE(literal);
+    ZASSERT(literal);
     auto* constant = ConstantExpr::Create(unit->context(), literal);
     fidelity.compare(constant, literal, true);
     ClassTemplateDecl* wrapped = nullptr;
@@ -929,7 +929,7 @@ static_assert(Wrapped<42>::value == 42);
             wrapped = candidate;
         }
     }
-    ASSERT_TRUE(wrapped);
+    ZASSERT(wrapped);
     auto* specialization = *wrapped->specializations().begin();
     const SubstNonTypeTemplateParmExpr* substitution = nullptr;
     for(auto* decl: specialization->decls()) {
@@ -937,11 +937,11 @@ static_assert(Wrapped<42>::value == 42);
             substitution = dyn_cast<SubstNonTypeTemplateParmExpr>(value->getInit());
         }
     }
-    ASSERT_TRUE(substitution);
+    ZASSERT(substitution);
     fidelity.compare(substitution, substitution->getReplacement(), true);
 };
 
-};  // TEST_SUITE(expr_hash)
+};  // ZEST_SUITE(expr_hash)
 
 }  // namespace
 }  // namespace clice::testing

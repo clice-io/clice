@@ -9,32 +9,6 @@ import * as path from "node:path";
 import { anomaliesInLogFiles, waitUntil } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
-export function childPids(parentPid: number): number[] {
-    const pids: number[] = [];
-    for (const entry of fs.readdirSync("/proc")) {
-        if (!/^\d+$/.test(entry)) {
-            continue;
-        }
-        let stat: string;
-        try {
-            stat = fs.readFileSync(`/proc/${entry}/stat`, "utf8");
-        } catch {
-            continue;
-        }
-        // /proc/<pid>/stat: pid (comm) state ppid ...
-        const ppid = Number(
-            stat
-                .slice(stat.lastIndexOf(")") + 1)
-                .trim()
-                .split(/\s+/)[1],
-        );
-        if (ppid === parentPid) {
-            pids.push(Number(entry));
-        }
-    }
-    return pids;
-}
-
 test.skipIf(process.platform !== "linux")("worker crash reported", async ({ session }) => {
     const workspace = session.tmpdir();
     workspace.write("main.cpp", "int main() { return 0; }\n");
@@ -55,8 +29,7 @@ test.skipIf(process.platform !== "linux")("worker crash reported", async ({ sess
     try {
         await client.openAndWait("main.cpp");
 
-        const serverPid = client.child.pid!;
-        const workers = childPids(serverPid);
+        const workers = client.workerPids();
         expect(workers.length, "server should have spawned worker processes").toBeGreaterThan(0);
 
         // The crash handler is installed when the worker opens its log file;

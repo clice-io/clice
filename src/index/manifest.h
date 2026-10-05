@@ -21,6 +21,17 @@ struct IncludeEdge {
     std::string target;
 };
 
+/// An internal-linkage symbol more than one of a TU's files names, with
+/// those files as indices into the manifest's contributions. No
+/// project-wide table lists such a symbol: this is how a query reaches its
+/// rows in files other than the one it started from.
+struct LocalFanout {
+    std::uint64_t symbol = 0;
+    std::vector<std::uint32_t> files;
+
+    friend bool operator==(const LocalFanout&, const LocalFanout&) = default;
+};
+
 /// What one TU's indexing produced, replaced wholesale by its next reindex:
 /// the include tree over file versions (the envelope's nodes with their
 /// path ids remapped, which doubles as the TU's dependency set for
@@ -55,6 +66,9 @@ struct TUManifest {
     /// versions without bytes (content hash 0): a file appearing at one
     /// changes what the TU compiles to.
     std::vector<VersionID> absent;
+
+    /// Sorted by symbol.
+    std::vector<LocalFanout> local_fanout;
 
     friend bool operator==(const TUManifest&, const TUManifest&) = default;
 };

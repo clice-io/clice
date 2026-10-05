@@ -4,8 +4,7 @@ input_file: basic.cpp
 ---
 - { loc: "3:10", kind: Namespace, text: "demo", relations: [Definition] }
 - { loc: "5:7", kind: Struct, text: "Base", relations: [Definition] }
-- { loc: "6:12", kind: Method, text: "~", relations: [Definition] }
-- { loc: "6:13", kind: Struct, text: "Base", relations: [Reference] }
+- { loc: "6:12", kind: Method, text: "~Base", relations: [Definition] }
 - { loc: "7:16", kind: Method, text: "value", relations: [Declaration] }
 - { loc: "10:7", kind: Struct, text: "Derived", relations: [Definition] }
 - { loc: "10:17", kind: Struct, text: "Base", relations: [Reference] }
@@ -14,4 +13,4 @@ input_file: basic.cpp
 - { loc: "14:14", kind: Struct, text: "Base", relations: [Reference] }
 - { loc: "14:20", kind: Parameter, text: "b", relations: [Definition] }
 - { loc: "15:11", kind: Parameter, text: "b", relations: [Reference] }
-- { loc: "15:13", kind: Method, text: "value", relations: [Reference] }
+- { loc: "15:13", kind: Method, text: "value", relations: [Reference, Caller] }

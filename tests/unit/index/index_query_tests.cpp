@@ -1,11 +1,12 @@
+#include <format>
 #include <string>
 #include <vector>
 
+#include "test/merge_unit.h"
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
 #include "index/query.h"
-#include "index/shard.h"
 #include "index/tu_index.h"
 #include "project/command_resolver.h"
 #include "project/index_store.h"
@@ -19,15 +20,44 @@
 #include "server/session_store.h"
 #include "worker/pool.h"
 
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
-
 namespace clice::testing {
 namespace {
 
-TEST_SUITE(IndexQuery, Tester) {
+/// Open buffers reduced to their session tables, counting the tables the
+/// queries visit.
+struct CountingSessions : index::LiveSources {
+    std::vector<index::TUIndex> tables;
+    mutable std::size_t visits = 0;
+
+    bool is_open(Fid) const override {
+        return false;
+    }
+
+    std::optional<index::RowSource> claim(Fid) const override {
+        return std::nullopt;
+    }
+
+    void each_session(llvm::function_ref<bool(const index::RowSource&)>) const override {}
+
+    void each_session_index(llvm::function_ref<bool(const index::TUIndex&)> visit) const override {
+        for(auto& table: tables) {
+            visits += 1;
+            if(!visit(table)) {
+                return;
+            }
+        }
+    }
+
+    void each_preamble(llvm::function_ref<bool(const index::RowSource&)>) const override {}
+
+    void each_overlay(llvm::function_ref<bool(const index::TUIndex&)>) const override {}
+
+    std::shared_ptr<index::TUIndex> preamble_blob(Fid) const override {
+        return nullptr;
+    }
+};
+
+ZEST_SUITE(IndexQuery, Tester) {
 
 kota::event_loop loop;
 FileTable files;
@@ -35,7 +65,7 @@ Project project{files};
 SessionStore store;
 WorkerPool pool{loop};
 CommandResolver resolver{project};
-TaskGraph graph{loop};
+TaskGraph graph;
 PCMFamily pcm{graph, project, resolver, pool};
 ASTProjectionTable projections;
 IndexStore index_store{loop, project, resolver};
@@ -57,71 +87,14 @@ std::vector<index::IndexQuery::Located> locate(llvm::StringRef text) {
     return query.locate(*index::SymbolQuery::parse(text));
 }
 
-/// Mirror of the indexer's merge over in-memory sources: project symbols,
-/// per-section shard blobs, and the TU manifest with its contributions —
-/// so live-variant masks and staleness gates behave as in production.
 void merge_into_workspace() {
-    auto wire = index::build_tu_index(*unit);
-    auto view = index::TUIndex::from_bytes(wire);
-    ASSERT_TRUE(view.loaded());
-
-    auto& project_index = project.project_index;
-    llvm::SmallVector<Fid> file_ids_map;
-    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));
-    }
-    llvm::SmallVector<index::SymbolHash> added;
-    ASSERT_TRUE(project_index.merge(view, file_ids_map, &added));
-    project.project_index.search_pending.insert(added.begin(), added.end());
-    main_id = file_ids_map[view.path_count() - 1];
-
-    // The consumed-content hash per TU-local path: the section's own
-    // record where rows exist, the wire's hash otherwise — mirroring the
-    // indexer, so FileVersions match the shard generations they pin.
-    llvm::SmallVector<std::uint64_t> consumed(view.path_count(), 0);
-    for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
-        auto local_id = view.section_path(section);
-        auto global_id = file_ids_map[local_id];
-        // A section blob is already the final shard encoding: install the
-        // bytes verbatim, as the indexer's first-variant path does.
-        project.project_index.shards[global_id] = index::Shard::from_buffer(
-            llvm::MemoryBuffer::getMemBufferCopy(view.section_blob(section)));
-        consumed[local_id] = project.project_index.shards[global_id].content_hash();
-        if(llvm::sys::path::filename(view.path(local_id)) == "header.h") {
-            header_id = global_id;
-        }
-    }
-
-    llvm::SmallVector<VersionID> fv_of;
-    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        auto hash = consumed[i] != 0 ? consumed[i] : view.path_hash(i);
-        fv_of.push_back(project.file_table.intern_version(file_ids_map[i], hash));
-    }
-
-    index::TUManifest manifest;
-    manifest.tu_fv = fv_of[view.path_count() - 1];
-    for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
-        auto node = view.node(i);
-        manifest.nodes.push_back({.file = fv_of[node.file].raw,
-                                  .parent = node.parent,
-                                  .line = node.line,
-                                  .skipped = node.skipped});
-    }
-    for(std::uint32_t section = 0; section < view.section_count(); section += 1) {
-        manifest.contributions.emplace_back(fv_of[view.section_path(section)],
-                                            view.section_hash(section));
-    }
-
-    for(auto path_id:
-        project_index.apply_manifest(project.file_table, main_id, std::move(manifest))) {
-        auto it = project.project_index.shards.find(path_id);
-        if(it != project.project_index.shards.end()) {
-            it->second.set_live(project_index.live_variants(path_id));
-        }
+    merge_unit(project, *unit, main_id);
+    if(auto header = project.file_table.find(Spelling::absolute(TestVFS::path("header.h")))) {
+        header_id = *header;
     }
 }
 
-TEST_CASE(DefinitionAcrossFiles) {
+ZEST_CASE(DefinitionAcrossFiles) {
     add_file("header.h", R"(
         struct §(def)⟦§(def)Widget⟧ { int value; };
     )");
@@ -129,7 +102,7 @@ TEST_CASE(DefinitionAcrossFiles) {
         #include "header.h"
         §(use)⟦§(use)Widget⟧ instance;
     )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_into_workspace();
 
     auto hit_offset = point("use");
@@ -138,14 +111,14 @@ TEST_CASE(DefinitionAcrossFiles) {
         symbol = o.target;
         return false;
     });
-    ASSERT_TRUE(symbol != 0);
+    ZASSERT(symbol != 0);
 
-    auto site = query.first_site(symbol, RelationKind::Definition);
-    ASSERT_TRUE(site.has_value());
-    ASSERT_TRUE(site->path.ends_with("header.h"));
+    auto site = query.first_site(symbol, Fid{}, RelationKind::Definition);
+    ZASSERT(site);
+    ZASSERT(site->path.ends_with("header.h"));
 }
 
-TEST_CASE(ReferencesAcrossFiles) {
+ZEST_CASE(ReferencesAcrossFiles) {
     add_file("header.h", R"(
         int shared_fn();
     )");
@@ -153,7 +126,7 @@ TEST_CASE(ReferencesAcrossFiles) {
         #include "header.h"
         int call() { return §(use)⟦§(use)shared_fn⟧(); }
     )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
@@ -161,26 +134,167 @@ TEST_CASE(ReferencesAcrossFiles) {
         symbol = o.target;
         return false;
     });
-    ASSERT_TRUE(symbol != 0);
+    ZASSERT(symbol != 0);
 
-    auto references = query.sites(symbol, RelationKind::Reference);
-    ASSERT_FALSE(references.empty());
+    auto references = query.sites(symbol, Fid{}, RelationKind::Reference);
+    ZASSERT(!references.empty());
 }
 
-TEST_CASE(SearchSymbols) {
+ZEST_CASE(LocalReferencesClosed) {
+    add_main("main.cpp", R"(
+        int compute(int §(param)p) {
+            int §(local)q = p;
+            return §(use)q + p;
+        }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+
+    for(auto [marker, expected]: {
+            std::pair{"use",   2U},
+            std::pair{"param", 3U}
+    }) {
+        auto cursor = query.symbol_at(main_id, point(marker));
+        ZASSERT(cursor);
+        ZEXPECT(query.references(*cursor, true).size() == expected);
+    }
+}
+
+ZEST_CASE(InternalAcrossFiles) {
+    add_file("header.h", R"(
+        static int §(def)helper() { return 1; }
+        inline int via_header() { return §(header_use)helper(); }
+    )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int call() { return §(main_use)helper(); }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+
+    auto from_main = query.symbol_at(main_id, point("main_use"));
+    auto from_header = query.symbol_at(header_id, point("def", "header.h"));
+    ZASSERT(from_main);
+    ZASSERT(from_header);
+    ZASSERT(from_main->symbols == from_header->symbols);
+    ZEXPECT(query.references(*from_main, true).size() == 3U);
+    ZEXPECT(query.references(*from_header, true).size() == 3U);
+    auto located = query.resolve_at(*from_main);
+    ZASSERT(located.size() == 1U);
+    ZEXPECT(located.front().site.path.ends_with("header.h"));
+}
+
+ZEST_CASE(InternalTypeTarget) {
+    add_file("header.h", R"(
+        namespace {
+        struct Point { int x; };
+        struct Pair { Point first; int second; };
+        Pair make() { return {}; }
+        }
+    )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int read() { auto [§(var)point, count] = make(); return point.x + count; }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+
+    auto cursor = query.symbol_at(main_id, point("var"));
+    ZASSERT(cursor);
+    auto sites = query.target_sites(cursor->symbols.front(), main_id, RelationKind::TypeDefinition);
+    ZASSERT(sites.size() == 1U);
+    ZEXPECT(sites.front().path.ends_with("header.h"));
+}
+
+ZEST_CASE(InternalAcrossUnits) {
+    llvm::StringRef header = "static int helper() { return 1; }\n";
+    add_file("header.h", header);
+    add_main("a.cpp", R"(
+        #include "header.h"
+        int a() { return §(use)helper(); }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+    auto a_id = main_id;
+    auto a_use = point("use");
+
+    clear();
+    add_file("header.h", header);
+    add_main("b.cpp", R"(
+        #include "header.h"
+        int b() { return helper(); }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+
+    auto cursor = query.symbol_at(a_id, a_use);
+    ZASSERT(cursor);
+    ZEXPECT(query.references(*cursor, true).size() == 3U);
+}
+
+ZEST_CASE(OverloadSetCursor) {
+    add_main("main.cpp", R"(
+        void §(int)take(int);
+        void §(double)take(double);
+        template <class T> void call(T t) { §(use)take(t); }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+
+    auto cursor = query.symbol_at(main_id, point("use"));
+    ZASSERT(cursor);
+    ZASSERT(cursor->symbols.size() == 2U);
+    auto sites = query.definition(*cursor);
+    ZASSERT(sites.size() == 2U);
+    ZEXPECT(sites[0].range.begin == point("int"));
+    ZEXPECT(sites[1].range.begin == point("double"));
+    ZEXPECT(query.resolve_at(*cursor).size() == 2U);
+}
+
+ZEST_CASE(SearchSymbols) {
     add_main("main.cpp", R"(
         struct Searchable { int field; };
         Searchable instance;
     )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_into_workspace();
 
     auto results = search("Searchable");
-    ASSERT_FALSE(results.empty());
-    ASSERT_EQ(results.front().symbol.name, "Searchable");
+    ZASSERT(!results.empty());
+    ZASSERT(results.front().symbol.name == "Searchable");
 }
 
-TEST_CASE(QualifiedNames) {
+ZEST_CASE(UnnamedScopes) {
+    // An unnamed enum's enumerators and an anonymous union's members are
+    // named through the enclosing scope, as lookup names them.
+    add_main("main.cpp", R"(
+        namespace outer {
+            enum { §(size)⟦§(size)kSize⟧ = 4 };
+            struct Holder { union { int §(member)⟦§(member)member⟧; }; };
+            typedef struct { int §(field)⟦§(field)field⟧; } Point;
+        }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+
+    auto at = [&](llvm::StringRef name) {
+        index::SymbolHash found = 0;
+        project.project_index.shards[main_id].lookup(point(name), [&](const index::Occurrence& o) {
+            found = o.target;
+            return false;
+        });
+        return found;
+    };
+    ZASSERT(query.qualified_name(at("size")) == "outer::kSize");
+    ZASSERT(query.qualified_name(at("member")) == "outer::Holder::member");
+    // An unnamed class with a declarator or a typedef name is no anonymous
+    // scope: lookup never names its members through `outer`.
+    ZASSERT(query.qualified_name(at("field")) == "outer::(anonymous struct)::field");
+    ZASSERT(search("outer::kSize").size() == std::size_t(1));
+    ZASSERT(search("Holder::member").size() == std::size_t(1));
+}
+
+ZEST_CASE(QualifiedNames) {
     add_main("main.cpp", R"(
         namespace outer { inline namespace v2 { namespace inner {
             template <typename T> struct Widget { void §(method)⟦§(method)paint⟧(); };
@@ -191,7 +305,7 @@ TEST_CASE(QualifiedNames) {
         } }
         template <typename T> void outer::inner::Widget<T>::paint() {}
     )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_into_workspace();
 
     index::SymbolHash method = 0;
@@ -199,95 +313,95 @@ TEST_CASE(QualifiedNames) {
         method = o.target;
         return false;
     });
-    ASSERT_TRUE(method != 0);
-    ASSERT_EQ(query.qualified_name(method), "outer::inner::Widget::paint");
+    ZASSERT(method != 0);
+    ZASSERT(query.qualified_name(method) == "outer::inner::Widget::paint");
 
     auto info = query.symbol_info(method);
-    ASSERT_TRUE(info.has_value());
-    ASSERT_EQ(info->name, "paint");
-    ASSERT_EQ(query.qualified_name(info->parent), "outer::inner::Widget");
+    ZASSERT(info);
+    ZASSERT(info->name == "paint");
+    ZASSERT(query.qualified_name(info->parent) == "outer::inner::Widget");
 
     // Locating by a qualified name matches the parent chain, a bare one
     // the symbol's own name; both find the specialization by its
     // arguments.
     auto by_qualified = locate("inner::Widget<int>");
-    ASSERT_EQ(by_qualified.size(), std::size_t(1));
-    ASSERT_EQ(by_qualified.front().symbol.args, "<int>");
-    ASSERT_EQ(query.qualified_name(by_qualified.front().symbol.hash), "outer::inner::Widget<int>");
+    ZASSERT(by_qualified.size() == std::size_t(1));
+    ZASSERT(by_qualified.front().symbol.args == "<int>");
+    ZASSERT(query.qualified_name(by_qualified.front().symbol.hash) == "outer::inner::Widget<int>");
     auto by_bare = locate("Widget<int>");
-    ASSERT_EQ(by_bare.size(), std::size_t(1));
-    ASSERT_EQ(by_bare.front().symbol.hash, by_qualified.front().symbol.hash);
-    ASSERT_TRUE(locate("v2::Widget").empty());
+    ZASSERT(by_bare.size() == std::size_t(1));
+    ZASSERT(by_bare.front().symbol.hash == by_qualified.front().symbol.hash);
+    ZASSERT(locate("v2::Widget").empty());
 
     // Search matches the displayed name too, and a member of an inline
     // namespace reports the enclosing named one as its container.
     auto searched = search("Widget<int>");
-    ASSERT_EQ(searched.size(), std::size_t(1));
-    ASSERT_EQ(searched.front().symbol.hash, by_qualified.front().symbol.hash);
-    ASSERT_EQ(query.container_name(searched.front().symbol.hash), "outer::inner");
+    ZASSERT(searched.size() == std::size_t(1));
+    ZASSERT(searched.front().symbol.hash == by_qualified.front().symbol.hash);
+    ZASSERT(query.container_name(searched.front().symbol.hash) == "outer::inner");
     auto versioned = search("versioned");
-    ASSERT_EQ(versioned.size(), std::size_t(1));
-    ASSERT_EQ(query.container_name(versioned.front().symbol.hash), "outer");
-    ASSERT_EQ(query.qualified_name(versioned.front().symbol.hash), "outer::versioned");
+    ZASSERT(versioned.size() == std::size_t(1));
+    ZASSERT(query.container_name(versioned.front().symbol.hash) == "outer");
+    ZASSERT(query.qualified_name(versioned.front().symbol.hash) == "outer::versioned");
     index::SymbolHash hidden = 0;
     project.project_index.shards[main_id].lookup(point("hidden"), [&](const index::Occurrence& o) {
         hidden = o.target;
         return false;
     });
-    ASSERT_TRUE(hidden != 0);
-    ASSERT_EQ(query.qualified_name(hidden), "outer::hidden");
+    ZASSERT(hidden != 0);
+    ZASSERT(query.qualified_name(hidden) == "outer::hidden");
 
     // A scoped query keeps the results whose container lists the scope's
     // components in order; a leading `::` pins the container exactly.
-    ASSERT_EQ(search("inner::paint").size(), std::size_t(2));
-    ASSERT_EQ(search("outer::inner::paint").size(), std::size_t(2));
-    ASSERT_EQ(search("outer::paint").size(), std::size_t(2));
-    ASSERT_TRUE(search("inner::outer::paint").empty());
-    ASSERT_TRUE(search("::inner::paint").empty());
-    ASSERT_EQ(search("::outer::versioned").size(), std::size_t(1));
-    ASSERT_EQ(search("inner::*").size(), std::size_t(2));
-    ASSERT_EQ(search("inner::").size(), std::size_t(2));
-    ASSERT_EQ(search("inner::**").size(), std::size_t(4));
-    ASSERT_TRUE(search("paint kind:struct").empty());
-    ASSERT_EQ(search("pai").size(), std::size_t(2));
-    ASSERT_EQ(search(R"("paint")").size(), std::size_t(2));
-    ASSERT_EQ(search("Wid*").size(), std::size_t(2));
+    ZASSERT(search("inner::paint").size() == std::size_t(2));
+    ZASSERT(search("outer::inner::paint").size() == std::size_t(2));
+    ZASSERT(search("outer::paint").size() == std::size_t(2));
+    ZASSERT(search("inner::outer::paint").empty());
+    ZASSERT(search("::inner::paint").empty());
+    ZASSERT(search("::outer::versioned").size() == std::size_t(1));
+    ZASSERT(search("inner::*").size() == std::size_t(2));
+    ZASSERT(search("inner::").size() == std::size_t(2));
+    ZASSERT(search("inner::**").size() == std::size_t(4));
+    ZASSERT(search("paint kind:struct").empty());
+    ZASSERT(search("pai").size() == std::size_t(2));
+    ZASSERT(search(R"("paint")").size() == std::size_t(2));
+    ZASSERT(search("Wid*").size() == std::size_t(2));
 }
 
-TEST_CASE(LocalsAndCursors) {
+ZEST_CASE(LocalsAndCursors) {
     add_main("main.cpp", R"(
         struct S { int operator()() { int hidden = 0; return hidden; } };
         static void helper() {}
         void use() { helper(); }
     )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_into_workspace();
 
     // A callable's locals are no search target, whatever its kind.
-    ASSERT_TRUE(search("hidden").empty());
-    ASSERT_FALSE(search("use").empty());
+    ZASSERT(search("hidden").empty());
+    ZASSERT(!search("use").empty());
 
     // A cursor on the file's own static function resolves through the
     // serving source, which the global table knows nothing about.
     index::SymbolQuery at;
     at.position = {.path = project.file_table.resolve(main_id).str(), .line = 3, .column = 21};
     auto located = query.locate(at);
-    ASSERT_EQ(located.size(), std::size_t(1));
-    ASSERT_EQ(located.front().symbol.name, "helper");
-    ASSERT_TRUE(located.front().site.path.ends_with("main.cpp"));
+    ZASSERT(located.size() == std::size_t(1));
+    ZASSERT(located.front().symbol.name == "helper");
+    ZASSERT(located.front().site.path.ends_with("main.cpp"));
     // The line alone lists it too.
     at.position->column.reset();
     auto on_line = query.locate(at);
-    ASSERT_EQ(on_line.size(), std::size_t(1));
-    ASSERT_EQ(on_line.front().symbol.name, "helper");
+    ZASSERT(on_line.size() == std::size_t(1));
+    ZASSERT(on_line.front().symbol.name == "helper");
 }
 
-TEST_CASE(LocalSymbolName) {
+ZEST_CASE(LocalSymbolName) {
     add_main("main.cpp", R"(
         static int §(local)⟦§(local)hidden⟧() { return 1; }
         int use() { return hidden(); }
     )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
@@ -295,16 +409,16 @@ TEST_CASE(LocalSymbolName) {
         symbol = o.target;
         return false;
     });
-    ASSERT_TRUE(symbol != 0);
+    ZASSERT(symbol != 0);
 
     // TU-local names are not in the project table; the query falls back to
     // the shard's own local-name table.
     auto info = query.symbol_info(symbol);
-    ASSERT_TRUE(info.has_value());
-    ASSERT_EQ(info->name, "hidden");
+    ZASSERT(info);
+    ZASSERT(info->name == "hidden");
 }
 
-TEST_CASE(OpenSessionServedByShard) {
+ZEST_CASE(OpenSessionServedByShard) {
     add_file("header.h", R"(
         struct §(def)⟦§(def)Widget⟧ { int value; };
     )");
@@ -312,28 +426,28 @@ TEST_CASE(OpenSessionServedByShard) {
         #include "header.h"
         §(use)⟦§(use)Widget⟧ instance;
     )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_into_workspace();
 
     // Open the document with exactly the indexed content and never
     // compile it: freshness clause 4 serves it from its shard.
     auto session = store.open(main_id);
     store.apply_open(*session, unit->main_content().str(), 1);
-    ASSERT_FALSE(projections.index_current(session->path_id));
+    ZASSERT(!projections.index_current(session->path_id));
 
     auto cursor = query.symbol_at(main_id, point("use"));
-    ASSERT_TRUE(cursor.has_value());
+    ZASSERT(cursor);
     auto sites = query.definition(*cursor);
-    ASSERT_FALSE(sites.empty());
-    ASSERT_TRUE(sites.front().path.ends_with("header.h"));
+    ZASSERT(!sites.empty());
+    ZASSERT(sites.front().path.ends_with("header.h"));
 }
 
-TEST_CASE(DivergedBufferWithdrawsShard) {
+ZEST_CASE(DivergedBufferWithdrawsShard) {
     add_main("main.cpp", R"(
         int stale_fn() { return 1; }
         int use() { return §(use)⟦§(use)stale_fn⟧(); }
     )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_into_workspace();
 
     auto session = store.open(main_id);
@@ -342,11 +456,11 @@ TEST_CASE(DivergedBufferWithdrawsShard) {
 
     // The buffer no longer matches the rows' content: the shard withdraws
     // and the un-compiled session resolves nothing.
-    ASSERT_FALSE(query.serving(main_id).has_value());
-    ASSERT_FALSE(query.symbol_at(main_id, point("use")).has_value());
+    ZASSERT(!query.serving(main_id).has_value());
+    ZASSERT(!query.symbol_at(main_id, point("use")).has_value());
 }
 
-TEST_CASE(HeaderEdgesFromHostManifest) {
+ZEST_CASE(HeaderEdgesFromHostManifest) {
     add_file("inner.h", R"(
         int inner_value();
     )");
@@ -358,7 +472,7 @@ TEST_CASE(HeaderEdgesFromHostManifest) {
         #include "header.h"
         Widget instance;
     )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_into_workspace();
 
     // The header has no manifest of its own; its directive is a node of
@@ -366,23 +480,23 @@ TEST_CASE(HeaderEdgesFromHostManifest) {
     auto session = store.open(header_id);
     store.apply_open(*session, sources.all_files.lookup("header.h").content, 1);
     auto edges = query.include_edges(session->path_id);
-    ASSERT_EQ(edges.size(), std::size_t(1));
-    ASSERT_TRUE(llvm::StringRef(edges[0].target).ends_with("inner.h"));
+    ZASSERT(edges.size() == std::size_t(1));
+    ZASSERT(llvm::StringRef(edges[0].target).ends_with("inner.h"));
 
     // The TU's own manifest still answers for the TU itself.
     auto main_session = store.open(main_id);
     store.apply_open(*main_session, unit->main_content().str(), 1);
     auto main_edges = query.include_edges(main_session->path_id);
-    ASSERT_EQ(main_edges.size(), std::size_t(1));
-    ASSERT_TRUE(llvm::StringRef(main_edges[0].target).ends_with("header.h"));
+    ZASSERT(main_edges.size() == std::size_t(1));
+    ZASSERT(llvm::StringRef(main_edges[0].target).ends_with("header.h"));
 }
 
-TEST_CASE(StaleContributionSuppressed) {
+ZEST_CASE(StaleContributionSuppressed) {
     add_main("main.cpp", R"(
         int stale_fn() { return 1; }
         int use() { return §(use)⟦§(use)stale_fn⟧(); }
     )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     merge_into_workspace();
 
     index::SymbolHash symbol = 0;
@@ -390,16 +504,129 @@ TEST_CASE(StaleContributionSuppressed) {
         symbol = o.target;
         return false;
     });
-    ASSERT_FALSE(query.sites(symbol, RelationKind::Reference).empty());
+    ZASSERT(!query.sites(symbol, Fid{}, RelationKind::Reference).empty());
 
     // Rows of text the disk no longer holds point nowhere: the file's
     // contribution disappears from cross-file results until its rows
     // describe the disk again.
     project.file_table.observe(main_id, DiskObservation{.hash = 1});
-    ASSERT_TRUE(query.sites(symbol, RelationKind::Reference).empty());
+    ZASSERT(query.sites(symbol, Fid{}, RelationKind::Reference).empty());
 }
 
-};  // TEST_SUITE(IndexQuery)
+ZEST_CASE(ClassNameOverConstructor) {
+    add_main("main.cpp", R"(
+        namespace outer {
+        struct Widget {
+            Widget();
+            Widget(int);
+        };
+        }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+
+    for(auto name: {"Widget", "outer::Widget"}) {
+        auto results = locate(name);
+        ZASSERT(results.size() == 1U);
+        ZASSERT(results.front().symbol.kind == SymbolKind::Struct);
+    }
+    ZASSERT(locate("outer::Widget::Widget").size() == 2U);
+}
+
+ZEST_CASE(UndefinedBesideStaleUse) {
+    add_file("header.h", R"(
+        int external();
+    )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int use() { return external(); }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+
+    // A file using the symbol moved on; nothing defines the symbol, so the
+    // declaration still places it.
+    project.file_table.observe(main_id, DiskObservation{.hash = 1});
+    auto results = search("external");
+    ZASSERT(results.size() == 1U);
+    ZASSERT(results.front().site.path.ends_with("header.h"));
+}
+
+ZEST_CASE(DeletedDefinitionFallsBack) {
+    llvm::StringRef header = R"(
+        int removed();
+    )";
+    add_file("header.h", header);
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int removed() { return 0; }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+
+    clear();
+    add_file("header.h", header);
+    add_main("use.cpp", R"(
+        #include "header.h"
+        int use() { return removed(); }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+    auto use_id = main_id;
+
+    // The table keeps the definition the first unit reported; the rows
+    // no longer hold it, so the declaration places the symbol — a file
+    // that only used it moving on changes nothing.
+    clear();
+    add_file("header.h", header);
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int kept() { return removed(); }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+    project.file_table.observe(use_id, DiskObservation{.hash = 1});
+
+    auto results = search("removed");
+    ZASSERT(results.size() == 1U);
+    ZASSERT(results.front().site.path.ends_with("header.h"));
+}
+
+/// Open `buffers` documents, each declaring its own functions in one
+/// shared namespace.
+void open_buffers(CountingSessions& sessions, int buffers) {
+    for(int buffer = 0; buffer < buffers; buffer += 1) {
+        clear();
+        std::string text = "namespace app { namespace shared {\n";
+        for(int i = 0; i < 40; i += 1) {
+            text += std::format("int fn{}_{}();\n", buffer, i);
+        }
+        text += "} }\n";
+        add_main(std::format("main{}.cpp", buffer), text);
+        ZASSERT(compile());
+        sessions.tables.push_back(index::TUIndex::from_buffer(
+            llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit, true))));
+    }
+}
+
+ZEST_CASE(ScopedSearchScalesLinearly) {
+    auto visits_with = [&](int buffers) {
+        CountingSessions sessions;
+        open_buffers(sessions, buffers);
+        index::IndexQuery session_query{project.project_index,
+                                        project.file_table,
+                                        nullptr,
+                                        &sessions};
+        session_query.search(*index::SymbolQuery::parse("app::fn0_1"), 10);
+        return sessions.visits;
+    };
+    // Four times the open buffers: a scan of each buffer's table grows
+    // four times, a lookup through every table per candidate sixteen.
+    auto few = visits_with(2);
+    ZASSERT(visits_with(8) <= few * 4);
+}
+
+};  // ZEST_SUITE(IndexQuery)
 
 }  // namespace
 }  // namespace clice::testing

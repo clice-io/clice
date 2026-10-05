@@ -12,6 +12,9 @@ struct Arg;
 
 struct SearchDir {
     std::string path;
+    /// Added by the driver (-internal-isystem and kin) rather than written
+    /// by the user: the toolchain's own headers.
+    bool driver = false;
 };
 
 /// Header search configuration extracted from compilation arguments.
@@ -32,6 +35,11 @@ struct SearchConfig {
 
     /// Index in dirs where After (-idirafter, -iwithprefix) dirs start.
     unsigned after_start_idx = 0;
+
+    /// The files the command includes ahead of the main file (`-include`),
+    /// in order and as written: clang looks a relative one up in the
+    /// compile's working directory first, then as a quoted include.
+    std::vector<std::string> forced_includes;
 };
 
 /// Extract header search configuration from a structured command (driver

@@ -6,6 +6,8 @@
 - [x] Severity mapping (Error, Warning)
 - [x] Diagnostic ranges with source locations
 - [x] Related information (notes attached to diagnostics)
+- [x] Errors from included headers placed on the `#include` that brought them in, and errors from template instantiations on the code that requested the instantiation
+- [x] Warnings raised by directives in the preamble (`#warning`, `#pragma message`, macro redefinitions)
 - [x] File URI conversion for cross-file diagnostics
 - [ ] Pull diagnostics model (`textDocument/diagnostic`) ([clangd#2108](https://github.com/clangd/clangd/issues/2108))
 - [ ] Report all missing `#include` errors, not just the first — the parser stops on the first fatal error
@@ -30,7 +32,7 @@
   // main.cpp: calls new_func() → should NOT show "undeclared identifier"
   ```
 
-- [ ] Diagnostics for template instantiation errors in preamble headers ([clangd#137](https://github.com/clangd/clangd/issues/137))
+- [x] Diagnostics for template instantiation errors in preamble headers ([clangd#137](https://github.com/clangd/clangd/issues/137))
 
 ## Tags
 
@@ -50,9 +52,9 @@
 
 ## Diagnostic Suppression
 
-- [x] `// NOLINT` comment suppression
-- [x] `// NOLINTNEXTLINE` comment suppression
-- [x] `// NOLINTBEGIN` / `// NOLINTEND` block suppression
+- [x] `// NOLINT` comment suppression in `clice lint`
+- [x] `// NOLINTNEXTLINE` comment suppression in `clice lint`
+- [x] `// NOLINTBEGIN` / `// NOLINTEND` block suppression in `clice lint`
 - [ ] `NOLINT` for include-cleaner diagnostics ([clangd#1982](https://github.com/clangd/clangd/issues/1982))
 - [ ] Configurable severity per diagnostic category in config file ([clangd#1937](https://github.com/clangd/clangd/issues/1937))
 - [ ] Filter diagnostics by version control diff — only show warnings near changed lines ([clangd#822](https://github.com/clangd/clangd/issues/822))
@@ -64,7 +66,7 @@
 ## Header Diagnostics
 
 - [ ] Include-cleaner diagnostics for unused and missing `#include` directives
-- [ ] Suppress false `-Wunused-function` for static inline functions in headers ([clangd#1211](https://github.com/clangd/clangd/issues/1211))
+- [x] Suppress false `-Wunused-function` for static inline functions in headers ([clangd#1211](https://github.com/clangd/clangd/issues/1211))
 
   ```cpp
   // utils.h
@@ -79,7 +81,7 @@
 ## clang-tidy Integration
 
 - [ ] clang-tidy diagnostics (gated by config)
-- [x] Suppress clang-tidy warnings originating in system-header macros ([clangd#1587](https://github.com/clangd/clangd/issues/1587), [clangd#2000](https://github.com/clangd/clangd/issues/2000))
+- [x] Suppress clang-tidy warnings originating in system-header macros in `clice lint` ([clangd#1587](https://github.com/clangd/clangd/issues/1587), [clangd#2000](https://github.com/clangd/clangd/issues/2000))
 - [ ] Clang static analyzer support ([clangd#905](https://github.com/clangd/clangd/issues/905))
 - [ ] Version-specific clang-tidy documentation links ([clangd#2136](https://github.com/clangd/clangd/issues/2136))
 - [ ] Diagnostics for preprocessor directives that precede code ([clangd#2501](https://github.com/clangd/clangd/issues/2501))

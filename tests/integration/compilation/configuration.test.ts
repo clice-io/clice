@@ -2,10 +2,9 @@
 /// selection a restart activates, one index library per configuration,
 /// and the three documented example layouts under tests/data/cdb.
 
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { waitUntil, type CliceClient } from "@clice/tools/client";
+import { runProcess, waitUntil, type CliceClient } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
 import { wireKeys, type ListConfigurationsResult } from "@clice/tools/protocol";
 import type { Workspace } from "@clice/tools/workspace";
@@ -25,11 +24,7 @@ async function switchAndRestart(
 }
 
 function runClice(...args: string[]) {
-    return spawnSync(cliceExecutable(), args, {
-        encoding: "utf8",
-        timeout: 120_000,
-        maxBuffer: 64 * 1024 * 1024,
-    });
+    return runProcess(cliceExecutable(), args, { timeout: 120_000 });
 }
 
 /// The server's log once the cold-start sweep has run its round: every
@@ -217,38 +212,38 @@ test("unknown selection falls back untouched", async ({ session }) => {
     expect(JSON.parse(workspace.read(".clice/state.json"))).toEqual({ configuration: "gone" });
 });
 
-test("batch index per configuration", ({ session }) => {
+test("batch index per configuration", async ({ session }) => {
     const workspace = session.tmpdir();
     fs.cpSync(path.join(DATA_DIR, "cdb", "two_configurations"), workspace.root, {
         recursive: true,
     });
     const release = ["--workspace", workspace.root, "--configuration", "release"];
 
-    const indexed = runClice("index", ...release, "--workers", "2");
+    const indexed = await runClice("index", ...release, "--workers", "2");
     expect(indexed.status, `stderr: ${indexed.stderr}`).toBe(0);
     expect(indexed.stdout).toContain("Indexed 4 translation units in");
     expect(hasLibrary(workspace, "release")).toBe(true);
 
-    const stats = runClice("index", "--stats", ...release);
+    const stats = await runClice("index", "--stats", ...release);
     expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
     expect(stats.stdout).toContain("Configuration: release");
     expect(stats.stdout).toContain("Translation units: 4");
 
     // The default configuration's library was never written.
-    const missing = runClice("index", "--stats", "--workspace", workspace.root);
+    const missing = await runClice("index", "--stats", "--workspace", workspace.root);
     expect(missing.status).toBe(1);
     expect(missing.stderr).toContain("No index cache");
 
-    const debug = runClice("index", "--workspace", workspace.root, "--workers", "2");
+    const debug = await runClice("index", "--workspace", workspace.root, "--workers", "2");
     expect(debug.status, `stderr: ${debug.stderr}`).toBe(0);
     expect(debug.stdout).toContain("Indexed 4 translation units in");
     expect(hasLibrary(workspace, "debug")).toBe(true);
-    const both = runClice("index", "--stats", "--workspace", workspace.root);
+    const both = await runClice("index", "--stats", "--workspace", workspace.root);
     expect(both.stdout).toContain("Configuration: debug");
     expect(both.stdout).toContain("Translation units: 4");
 });
 
-test("scripted commands reject unknown names", ({ session }) => {
+test("scripted commands reject unknown names", async ({ session }) => {
     // The server falls back so an editor always starts; a batch or
     // inspection run with a misspelt name must fail, not report success
     // for another configuration.
@@ -262,29 +257,38 @@ test("scripted commands reject unknown names", ({ session }) => {
         [["index", "--stats"], 1],
         [["lint", "--workers", "2"], 2],
     ] as const) {
-        const run = runClice(...command, ...unknown);
+        const run = await runClice(...command, ...unknown);
         expect(run.status, command.join(" ")).toBe(status);
         expect(run.stderr, command.join(" ")).toContain("names no rule's configuration");
     }
     const gated = path.join(workspace.root, "gated.cpp");
-    expect(runClice("inspect", "--configuration", "nope", "hover", gated).status).toBe(1);
+    expect((await runClice("inspect", "--configuration", "nope", "hover", gated)).status).toBe(1);
     expect(
-        runClice("inspect", "--configuration", "release", "--flags", '["clang++"]', "hover", gated)
-            .status,
+        (
+            await runClice(
+                "inspect",
+                "--configuration",
+                "release",
+                "--flags",
+                '["clang++"]',
+                "hover",
+                gated,
+            )
+        ).status,
         "--flags replaces the rules the name would select among",
     ).toBe(1);
-    const inspect = (...args: string[]) => {
-        const run = runClice("inspect", ...args, "hover", gated);
+    const inspect = async (...args: string[]) => {
+        const run = await runClice("inspect", ...args, "hover", gated);
         expect(run.status, `stderr: ${run.stderr}`).toBe(0);
         const output = JSON.parse(run.stdout) as {
             files: Record<string, { diagnostics?: string[] | null }>;
         };
         return Object.values(output.files).flatMap((file) => file.diagnostics ?? []);
     };
-    expect(inspect(), "the default configuration lacks RELEASE").toEqual(
+    expect(await inspect(), "the default configuration lacks RELEASE").toEqual(
         expect.arrayContaining([expect.stringContaining("missing RELEASE")]),
     );
-    expect(inspect("--configuration", "release")).toEqual([]);
+    expect(await inspect("--configuration", "release")).toEqual([]);
 });
 
 test("untagged rules have no menu", async ({ session }) => {

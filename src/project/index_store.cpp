@@ -13,9 +13,11 @@
 #include "index/tu_index.h"
 #include "project/command_resolver.h"
 #include "project/hosting.h"
-#include "support/filesystem.h"
+#include "support/json.h"
 #include "support/logging.h"
 #include "support/timer.h"
+#include "vfs/file_system.h"
+#include "vfs/path.h"
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -167,9 +169,13 @@ CDBSnapshot build_cdb_snapshot(Project& project,
 std::string serialize_cdb_snapshot(Project& project,
                                    const llvm::DenseMap<Fid, Fid>& header_hosts,
                                    llvm::ArrayRef<Fid> standalone_debt) {
-    auto json =
-        kota::codec::json::to_string(build_cdb_snapshot(project, header_hosts, standalone_debt));
-    return json ? std::move(*json) : std::string();
+    auto json = kota::codec::json::to_string<PathJsonConfig>(
+        build_cdb_snapshot(project, header_hosts, standalone_debt));
+    if(!json) {
+        LOG_WARN("Failed to serialize the CDB snapshot: {}", json.error().to_string());
+        return {};
+    }
+    return std::move(*json);
 }
 
 /// The artifacts blob: a JSON envelope in the index database, the
@@ -187,7 +193,10 @@ struct CacheDepEntry {
 };
 
 struct CachePCHEntry {
-    std::string key;  // CacheStore key in the "pch" namespace
+    std::string key;
+    /// CacheStore key in the "pch" namespace; absent in records written
+    /// before pairs had names of their own.
+    std::optional<std::string> blob;
     std::uint32_t bound;
     std::vector<CacheDepEntry> deps;
 };
@@ -250,6 +259,7 @@ std::string IndexStore::serialize_artifacts() {
             continue;
         CachePCHEntry entry;
         entry.key = e.getKey().str();
+        entry.blob = st.blob;
         entry.bound = st.bound;
         dump_deps(st.deps, entry.deps);
         data.pch.push_back(std::move(entry));
@@ -268,7 +278,7 @@ std::string IndexStore::serialize_artifacts() {
 
     commands.dump_mode_slices(data.header_modes, intern);
 
-    auto json = kota::codec::json::to_string(data);
+    auto json = kota::codec::json::to_string<PathJsonConfig>(data);
     if(!json) {
         LOG_WARN("Failed to serialize the artifacts blob");
         return {};
@@ -313,17 +323,24 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
         if(!pch_format_ok) {
             break;
         }
-        auto pch_path = project.store->lookup("pch", entry.key);
+        if(!entry.blob) {
+            project.store->invalidate("pch", entry.key);
+            continue;
+        }
+        auto pch_path = project.store->lookup("pch", *entry.blob);
         if(!pch_path)
             continue;
         // A PCH without its pch.idx envelope is an incomplete pair
-        // (crash between the two commits): treat it as absent so the next
-        // compile rebuilds both.
-        auto index_path = project.store->lookup_aux("pch", entry.key);
-        if(!index_path)
+        // (crash between the two commits): drop it so the next compile
+        // rebuilds both.
+        auto index_path = project.store->lookup_aux("pch", *entry.blob);
+        if(!index_path) {
+            project.store->invalidate("pch", *entry.blob);
             continue;
+        }
 
         auto& st = project.pch_cache[entry.key];
+        st.blob = std::move(*entry.blob);
         st.path = *pch_path;
         st.bound = entry.bound;
         st.deps = load_deps(entry.deps);
@@ -480,6 +497,15 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         section_contributions.emplace_back(local_id, blob_hash);
     }
 
+    // The manifest's contributions follow section_contributions' order.
+    auto local_fanout =
+        view.local_fanout(llvm::to_vector(llvm::make_first_range(section_contributions)));
+    if(!local_fanout) {
+        LOG_WARN("Reject merge for {}: an internal symbol's reference files carry no rows",
+                 main_tu_path);
+        return std::nullopt;
+    }
+
     // The last gate and the first commit. A malformed reference bitmap (or
     // an out-of-range reference id) rejects the whole result for the same
     // reason a rows section that fails decode does above: everything the
@@ -496,7 +522,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     // Intern a FileVersion per file of the parse: the consumed-content hash
     // from the compiler's own buffers, shared by every TU that consumed it
     // (see file_version_stale).
-    auto baseline_before_ns = fs::stat_baseline_before_ns(view.built_at());
+    auto baseline_before_ns = vfs::stat_baseline_before_ns(view.built_at());
     llvm::SmallVector<VersionID> fv_of;
     fv_of.resize_for_overwrite(view.path_count());
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
@@ -505,16 +531,21 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         // PCM) it is the only hash naming the bytes the rows describe.
         auto hash = consumed_hashes[i] != 0 ? consumed_hashes[i] : view.path_hash(i);
 
-        fs::file_status status;
-        if(hash == 0 && !fs::status(path, status) && fs::mtime_ns(status) <= baseline_before_ns) {
-            // The worker had no buffer to hash (e.g. behind a PCM) and no
-            // rows recorded one; the unchanged mtime proves the disk still
-            // holds the consumed bytes, so take their hash from the shared
-            // pair — or one read, unless the file moved between the stat
-            // and the read, which voids the proof.
-            auto obs = project.file_table.observe_for(file_ids_map[i], status);
-            if(obs && obs->size == status.getSize() && obs->mtime_ns == fs::mtime_ns(status)) {
-                hash = obs->hash;
+        if(hash != 0) {
+            project.file_table.disk.consumed(file_ids_map[i], hash);
+        } else {
+            auto status = vfs::status(path);
+            if(status && status->stamp.mtime_ns <= baseline_before_ns) {
+                // The worker had no buffer to hash (e.g. behind a PCM) and
+                // no rows recorded one; the unchanged mtime proves the disk
+                // still holds the consumed bytes, so take their hash from
+                // the last reliable read — or one read, unless the file
+                // moved between the stat and the read, which voids the
+                // proof.
+                auto obs = project.file_table.observe_for(file_ids_map[i], *status);
+                if(obs && obs->stamp == status->stamp) {
+                    hash = obs->hash;
+                }
             }
         }
 
@@ -533,6 +564,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     for(auto [local_id, rows_hash]: section_contributions) {
         manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
     }
+    manifest.local_fanout = std::move(*local_fanout);
 
     // The places the parse's failed lookups looked: the file table watches
     // them from here on. One that holds a file by now makes the rows stale
@@ -1112,7 +1144,7 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
     }
     for(std::size_t i = 0; i < resident.size(); i += 1) {
         if(!grew && i != 0 && i % rebind_batch == 0) {
-            co_await kota::sleep(std::chrono::milliseconds(0), loop);
+            co_await kota::yield(loop);
         }
         auto path_id = resident[i];
         auto it = project.project_index.shards.find(path_id);
@@ -1574,10 +1606,8 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
     }
     CDBSnapshot persisted;
     if(!kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
-        LOG_ERROR(
-            "Index cache at {} cannot tell which commands built it (is a path not "
-            "UTF-8?); reindexing every file",
-            std::string_view(project.config.project.cache_dir));
+        LOG_ERROR("Index cache at {} cannot tell which commands built it; reindexing every file",
+                  std::string_view(project.config.project.cache_dir));
         cdb_dirty = true;
         llvm::SmallVector<Fid> units(llvm::make_first_range(project.project_index.manifests));
         for(auto unit: units) {
@@ -1766,7 +1796,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         }
         auto server_id = file_of(old.file);
         if(retired.contains(server_id) || project_index.manifests.contains(server_id) ||
-           !fs::exists(project.file_table.resolve(server_id))) {
+           !vfs::exists(project.file_table.resolve(server_id))) {
             continue;
         }
         LOG_INFO("Index owed from the last session; reindexing {}",
@@ -1804,13 +1834,12 @@ bool IndexStore::file_version_stale(VersionID fv_id) {
 
     // Missing and unreadable both read as stale — conservative, the
     // reindex re-observes.
-    bool stale = project.file_table.check_version(fv_id) != FileTable::Verdict::Fresh;
+    bool stale = project.file_table.check_version(fv_id) != vfs::DiskState::Verdict::Fresh;
     fv_verdicts[fv_id] = stale;
     return stale;
 }
 
 bool IndexStore::need_update(Fid file) {
-    auto wave = project.file_table.wave();
     auto& project_index = project.project_index;
     auto manifest_it = project_index.manifests.find(file);
     if(manifest_it == project_index.manifests.end())
@@ -1829,7 +1858,7 @@ bool IndexStore::need_update(Fid file) {
         }
     }
     return llvm::any_of(manifest.absent, [&](VersionID fv) {
-        return project.file_table.current(project.file_table.version(fv).fid).has_value();
+        return project.file_table.present(project.file_table.version(fv).fid);
     });
 }
 

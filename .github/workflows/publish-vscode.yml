@@ -6,7 +6,7 @@ name: vscode
 #   source: package  — six platform vsix embedding the release packages from
 #                      publish-clice.yml (release, nightly, and dry runs).
 #   source: build    — six platform vsix embedding the test-suite binaries
-#                      (no LTO, no strip) already built by native/cross-test,
+#                      (no strip) already built by native-test,
 #                      so a fix is installable the moment its CI run is green.
 on:
   workflow_call:
@@ -54,27 +54,21 @@ jobs:
           - vsce_target: linux-x64
             triple: x86_64-unknown-linux-gnu
             ext: tar.gz
-            build_artifact: native-build-ubuntu-24.04-RelWithDebInfo
           - vsce_target: linux-arm64
             triple: aarch64-unknown-linux-gnu
             ext: tar.gz
-            build_artifact: cross-build-aarch64-unknown-linux-gnu
           - vsce_target: darwin-arm64
             triple: aarch64-apple-darwin
             ext: tar.gz
-            build_artifact: native-build-macos-15-RelWithDebInfo
           - vsce_target: darwin-x64
             triple: x86_64-apple-darwin
             ext: tar.gz
-            build_artifact: cross-build-x86_64-apple-darwin
           - vsce_target: win32-x64
             triple: x86_64-w64-mingw32
             ext: zip
-            build_artifact: native-build-windows-2025-RelWithDebInfo
           - vsce_target: win32-arm64
             triple: aarch64-w64-mingw32
             ext: zip
-            build_artifact: cross-build-aarch64-w64-mingw32
 
     runs-on: ubuntu-latest
 
@@ -92,7 +86,7 @@ jobs:
       - name: Download server binaries
         uses: actions/download-artifact@v8
         with:
-          name: ${{ inputs.source == 'package' && format('package-clice.{0}.{1}', matrix.triple, matrix.ext) || matrix.build_artifact }}
+          name: ${{ inputs.source == 'package' && format('package-clice.{0}.{1}', matrix.triple, matrix.ext) || format('build-{0}-RelWithDebInfo', matrix.triple) }}
           path: /tmp/server
 
       # Both sources end up as editors/vscode/clice/{bin,lib/clang,...}, the
