@@ -432,10 +432,12 @@ struct Draft {
     std::set<std::string> modules;
     llvm::DenseSet<std::uint32_t> partitions;
 
-    /// Textual headers to include: the ones it names without including
-    /// them, and its own included ones, which partitions importing it may
-    /// have to repeat.
+    /// Headers that stay headers, to include: the ones it names without
+    /// including them, and those of the partitions it reaches only through
+    /// another partition.
     std::set<std::uint32_t> needed;
+
+    /// The headers that stay headers it includes itself.
     std::set<std::uint32_t> textual;
     std::set<std::uint32_t> macro_headers;
 };
