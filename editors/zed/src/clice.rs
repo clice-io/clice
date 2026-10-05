@@ -1,6 +1,10 @@
 use zed_extension_api::{
-    self as zed, Architecture, DownloadedFileType, GithubReleaseOptions, LanguageServerId,
-    LanguageServerInstallationStatus, Os, Result, Worktree, settings::LspSettings,
+    self as zed,
+    http_client::{HttpMethod, HttpRequest},
+    serde_json,
+    settings::LspSettings,
+    Architecture, DownloadedFileType, GithubRelease, GithubReleaseOptions, LanguageServerId,
+    LanguageServerInstallationStatus, Os, Result, Worktree,
 };
 
 /// The language server id. This is the `[language_servers.<id>]` key in
@@ -10,159 +14,147 @@ const SERVER_NAME: &str = "clice";
 
 const REPOSITORY: &str = "clice-io/clice";
 
-/// clice publishes pre-releases only, so that is the default channel. Selecting
-/// `stable` before the first stable release fails with an explicit message
-/// rather than silently falling back.
+/// clice publishes pre-releases only, so that is the default channel.
 const PRE_RELEASE_CHANNEL: &str = "pre-release";
 const STABLE_CHANNEL: &str = "stable";
+
+/// Archives are unpacked here and renamed to `clice-<version>` once complete,
+/// so a version directory never holds a partial installation.
+const DOWNLOAD_DIR: &str = "download";
 
 struct CliceExtension {
     cached_binary_path: Option<String>,
 }
 
+/// What a release ships for the current platform.
+struct Package {
+    /// The asset name after `clice-<version>.`.
+    asset_suffix: &'static str,
+    file_type: DownloadedFileType,
+    /// The server executable, relative to the unpacked archive.
+    binary: &'static str,
+}
+
+impl Package {
+    fn current() -> Result<Self> {
+        let (os, arch) = zed::current_platform();
+        let asset_suffix = match (os, arch) {
+            (Os::Linux, Architecture::X8664) => "x86_64-unknown-linux-gnu.tar.gz",
+            (Os::Linux, Architecture::Aarch64) => "aarch64-unknown-linux-gnu.tar.gz",
+            (Os::Mac, Architecture::X8664) => "x86_64-apple-darwin.tar.gz",
+            (Os::Mac, Architecture::Aarch64) => "aarch64-apple-darwin.tar.gz",
+            (Os::Windows, Architecture::X8664) => "x86_64-w64-mingw32.zip",
+            (Os::Windows, Architecture::Aarch64) => "aarch64-w64-mingw32.zip",
+            (os, arch) => return Err(format!("clice has no build for {os:?} on {arch:?}")),
+        };
+
+        // Archives carry a top-level `clice/` directory holding `bin/`, `lib/clang`
+        // and `clice.toml`; the server resolves its runtime files relative to the
+        // executable, so the whole tree has to stay together.
+        Ok(match os {
+            Os::Windows => Self {
+                asset_suffix,
+                file_type: DownloadedFileType::Zip,
+                binary: "clice/bin/clice.exe",
+            },
+            _ => Self {
+                asset_suffix,
+                file_type: DownloadedFileType::GzipTar,
+                binary: "clice/bin/clice",
+            },
+        })
+    }
+}
+
+fn is_file(path: &str) -> bool {
+    std::fs::metadata(path).is_ok_and(|stat| stat.is_file())
+}
+
 impl CliceExtension {
-    /// The release channel selected through `lsp.clice.settings.release_channel`.
+    /// Whether `lsp.clice.settings.release_channel` selects pre-releases.
     ///
-    /// This lives in `settings` rather than `initialization_options` because
-    /// clice never issues `workspace/configuration`, so `settings` is never
-    /// forwarded to the server and can hold extension-private values.
+    /// This lives in `settings` rather than `initialization_options` because the
+    /// extension never forwards `settings` to the server, so it can hold
+    /// extension-private values.
     ///
     /// An absent setting means [`PRE_RELEASE_CHANNEL`]. Any other value is
     /// rejected: falling back to a channel would let a typo silently pick a
     /// different one than the user asked for.
-    fn release_channel(worktree: &Worktree) -> Result<String> {
-        let configured = LspSettings::for_worktree(SERVER_NAME, worktree)
+    fn wants_pre_release(worktree: &Worktree) -> Result<bool> {
+        let channel = LspSettings::for_worktree(SERVER_NAME, worktree)
             .ok()
             .and_then(|settings| settings.settings)
-            .and_then(|settings| settings.get("release_channel").cloned())
-            .and_then(|channel| channel.as_str().map(str::to_owned));
+            .and_then(|settings| settings.get("release_channel").cloned());
 
-        match configured.as_deref() {
-            None => Ok(PRE_RELEASE_CHANNEL.to_owned()),
-            Some(PRE_RELEASE_CHANNEL) => Ok(PRE_RELEASE_CHANNEL.to_owned()),
-            Some(STABLE_CHANNEL) => Ok(STABLE_CHANNEL.to_owned()),
-            Some(unknown) => Err(format!(
-                "unknown lsp.clice.settings.release_channel {unknown:?}; \
+        let Some(channel) = channel else {
+            return Ok(true);
+        };
+        match channel.as_str() {
+            Some(PRE_RELEASE_CHANNEL) => Ok(true),
+            Some(STABLE_CHANNEL) => Ok(false),
+            _ => Err(format!(
+                "unknown lsp.clice.settings.release_channel {channel}; \
                  expected {PRE_RELEASE_CHANNEL:?} or {STABLE_CHANNEL:?}"
             )),
         }
     }
 
-    /// Resolves the server binary, preferring anything the user already has:
-    /// an explicit `lsp.clice.binary.path`, then a path resolved earlier in this
-    /// session, then `clice` on `$PATH`, and only then a download.
+    /// Resolves the server binary, preferring anything the user already has: a
+    /// path resolved earlier in this session, then `clice` on `$PATH`, and only
+    /// then a download. Zed itself handles `lsp.clice.binary.path` and does not
+    /// ask the extension when it is set.
     fn find_clice_binary(
         &mut self,
         language_server_id: &LanguageServerId,
         worktree: &Worktree,
     ) -> Result<String> {
-        let configured_path = LspSettings::for_worktree(SERVER_NAME, worktree)
-            .ok()
-            .and_then(|settings| settings.binary)
-            .and_then(|binary| binary.path);
-
-        if let Some(path) = configured_path {
-            return Ok(path);
-        }
-
         if let Some(path) = &self.cached_binary_path {
-            if std::fs::metadata(path).is_ok_and(|stat| stat.is_file()) {
+            if is_file(path) {
                 return Ok(path.clone());
             }
         }
 
-        if let Some(path) = worktree.which(SERVER_NAME) {
-            self.cached_binary_path = Some(path.clone());
-            return Ok(path);
-        }
-
-        let path = Self::download(language_server_id, worktree)?;
+        let path = match worktree.which(SERVER_NAME) {
+            Some(path) => path,
+            None => Self::install(language_server_id, worktree)?,
+        };
         self.cached_binary_path = Some(path.clone());
         Ok(path)
     }
 
-    fn download(
-        language_server_id: &LanguageServerId,
-        worktree: &Worktree,
-    ) -> Result<String> {
-        let channel = Self::release_channel(worktree)?;
-        let pre_release = channel != STABLE_CHANNEL;
+    /// Installs the newest release of the selected channel. Updating is best
+    /// effort: when it fails (offline, rate limited, or a release whose assets
+    /// are still uploading), an earlier installation keeps serving.
+    fn install(language_server_id: &LanguageServerId, worktree: &Worktree) -> Result<String> {
+        let pre_release = Self::wants_pre_release(worktree)?;
+        let package = Package::current()?;
 
         zed::set_language_server_installation_status(
             language_server_id,
             &LanguageServerInstallationStatus::CheckingForUpdate,
         );
 
-        // `latest_github_release` matches `pre_release` exactly, so a
-        // channel with no matching release is an error rather than an
-        // empty result.
-        let release = match zed::latest_github_release(
-            REPOSITORY,
-            GithubReleaseOptions {
-                require_assets: true,
-                pre_release,
-            },
-        ) {
-            Ok(release) => release,
-            Err(error) => {
-                let message = match pre_release {
-                    true => format!("failed to find a clice pre-release: {error}"),
-                    false => format!(
-                        "no stable clice release exists yet; set \
-                         \"lsp\": {{\"clice\": {{\"settings\": {{\"release_channel\": \
-                         \"{PRE_RELEASE_CHANNEL}\"}}}}}} to use a pre-release ({error})"
-                    ),
-                };
-                zed::set_language_server_installation_status(
-                    language_server_id,
-                    &LanguageServerInstallationStatus::Failed(message.clone()),
-                );
-                return Err(message);
-            }
-        };
+        let path = Self::install_latest(language_server_id, pre_release, &package)
+            .or_else(|error| Self::installed_binary(&package).ok_or(error))?;
 
-        let (os, arch) = zed::current_platform();
+        zed::set_language_server_installation_status(
+            language_server_id,
+            &LanguageServerInstallationStatus::None,
+        );
+        Ok(path)
+    }
 
-        let (suffix, file_type, executable) = match (os, arch) {
-            (Os::Linux, Architecture::X8664) => (
-                "x86_64-unknown-linux-gnu.tar.gz",
-                DownloadedFileType::GzipTar,
-                "clice",
-            ),
-            (Os::Linux, Architecture::Aarch64) => (
-                "aarch64-unknown-linux-gnu.tar.gz",
-                DownloadedFileType::GzipTar,
-                "clice",
-            ),
-            (Os::Mac, Architecture::X8664) => (
-                "x86_64-apple-darwin.tar.gz",
-                DownloadedFileType::GzipTar,
-                "clice",
-            ),
-            (Os::Mac, Architecture::Aarch64) => (
-                "aarch64-apple-darwin.tar.gz",
-                DownloadedFileType::GzipTar,
-                "clice",
-            ),
-            (Os::Windows, Architecture::X8664) => (
-                "x86_64-pc-windows-msvc.zip",
-                DownloadedFileType::Zip,
-                "clice.exe",
-            ),
-            (Os::Windows, Architecture::Aarch64) => (
-                "aarch64-pc-windows-msvc.zip",
-                DownloadedFileType::Zip,
-                "clice.exe",
-            ),
-            (os, arch) => {
-                return Err(format!("clice has no build for {os:?} on {arch:?}"));
-            }
-        };
+    fn install_latest(
+        language_server_id: &LanguageServerId,
+        pre_release: bool,
+        package: &Package,
+    ) -> Result<String> {
+        let release = Self::latest_release(pre_release)?;
 
         // `release.version` is the tag (`v0.1.2026071902`); asset names drop the
         // leading `v` (`clice-0.1.2026071902.<triple>.tar.gz`).
-        let version = release.version.trim_start_matches('v').to_owned();
-        let asset_name = format!("clice-{version}.{suffix}");
+        let version = release.version.trim_start_matches('v');
+        let asset_name = format!("clice-{version}.{}", package.asset_suffix);
 
         let asset = release
             .assets
@@ -170,17 +162,9 @@ impl CliceExtension {
             .find(|asset| asset.name == asset_name)
             .ok_or_else(|| format!("release {version} has no asset named {asset_name}"))?;
 
-        // Archives carry a top-level `clice/` directory holding `bin/`, `lib/clang`
-        // and `clice.toml`; the server resolves its runtime files relative to the
-        // executable, so the whole tree has to stay together.
-        let version_dir = format!("{SERVER_NAME}-{version}");
-        let binary_path = format!("{version_dir}/clice/bin/{executable}");
-
-        if std::path::Path::new(&binary_path).exists() {
-            zed::set_language_server_installation_status(
-                language_server_id,
-                &LanguageServerInstallationStatus::None,
-            );
+        let version_dir = format!("clice-{version}");
+        let binary_path = format!("{version_dir}/{}", package.binary);
+        if is_file(&binary_path) {
             return Ok(binary_path);
         }
 
@@ -189,37 +173,67 @@ impl CliceExtension {
             &LanguageServerInstallationStatus::Downloading,
         );
 
-        let result = zed::download_file(&asset.download_url, &version_dir, file_type)
-            .map_err(|error| format!("failed to download {asset_name}: {error}"))
-            .and_then(|()| {
-                zed::make_file_executable(&binary_path)
-                    .map_err(|error| format!("failed to make {binary_path} executable: {error}"))
-            });
+        std::fs::remove_dir_all(DOWNLOAD_DIR).ok();
+        zed::download_file(&asset.download_url, DOWNLOAD_DIR, package.file_type)
+            .map_err(|error| format!("failed to download {asset_name}: {error}"))?;
+        zed::make_file_executable(&format!("{DOWNLOAD_DIR}/{}", package.binary))
+            .map_err(|error| format!("failed to make {binary_path} executable: {error}"))?;
 
-        let status = match &result {
-            Ok(()) => LanguageServerInstallationStatus::None,
-            Err(error) => LanguageServerInstallationStatus::Failed(error.clone()),
-        };
-        zed::set_language_server_installation_status(language_server_id, &status);
-
-        result?;
-
-        Self::remove_outdated_versions(&version_dir);
+        Self::remove_installed_versions();
+        std::fs::rename(DOWNLOAD_DIR, &version_dir)
+            .map_err(|error| format!("failed to install {version_dir}: {error}"))?;
 
         Ok(binary_path)
     }
 
-    /// Drops previously downloaded versions once a newer one is installed.
-    fn remove_outdated_versions(current: &str) {
+    fn latest_release(pre_release: bool) -> Result<GithubRelease> {
+        if pre_release {
+            return zed::latest_github_release(
+                REPOSITORY,
+                GithubReleaseOptions {
+                    require_assets: true,
+                    pre_release,
+                },
+            )
+            .map_err(|error| format!("failed to find a clice pre-release: {error}"));
+        }
+
+        // `latest_github_release` scans only the first page of releases, which a
+        // month of nightlies can fill; GitHub's `latest` is the newest stable one.
+        let response = HttpRequest::builder()
+            .method(HttpMethod::Get)
+            .url(format!(
+                "https://api.github.com/repos/{REPOSITORY}/releases/latest"
+            ))
+            .build()?
+            .fetch()
+            .map_err(|error| format!("failed to find a stable clice release: {error}"))?;
+        let release: serde_json::Value =
+            serde_json::from_slice(&response.body).map_err(|error| error.to_string())?;
+        let tag = release["tag_name"]
+            .as_str()
+            .ok_or("the latest clice release has no tag")?;
+        zed::github_release_by_tag_name(REPOSITORY, tag)
+    }
+
+    /// The newest installation an earlier session left behind.
+    fn installed_binary(package: &Package) -> Option<String> {
+        std::fs::read_dir(".")
+            .ok()?
+            .flatten()
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .filter(|name| name.starts_with("clice-"))
+            .map(|name| format!("{name}/{}", package.binary))
+            .filter(|path| is_file(path))
+            .max()
+    }
+
+    fn remove_installed_versions() {
         let Ok(entries) = std::fs::read_dir(".") else {
             return;
         };
         for entry in entries.flatten() {
-            let name = entry.file_name();
-            let Some(name) = name.to_str() else {
-                continue;
-            };
-            if name.starts_with(SERVER_NAME) && name != current {
+            if entry.file_name().to_string_lossy().starts_with("clice-") {
                 std::fs::remove_dir_all(entry.path()).ok();
             }
         }
