@@ -21,8 +21,13 @@ jobs:
 
       - uses: ./.github/actions/setup-pixi
 
+      # Bazel's default output root on Windows is too deep for Windows paths.
       - name: Build scan_benchmark
-        run: pixi run build RelWithDebInfo -- //:scan_benchmark //:resource_dir
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            echo "startup --output_user_root=C:/b" > user.bazelrc
+          fi
+          pixi run build RelWithDebInfo -- //:scan_benchmark //:resource_dir
 
       - name: Clone LLVM
         run: git clone --depth 1 https://github.com/llvm/llvm-project.git
