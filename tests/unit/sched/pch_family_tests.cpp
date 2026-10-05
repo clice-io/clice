@@ -6,7 +6,7 @@
 #include "sched/families/pch.h"
 #include "server/worker_test_helpers.h"
 #include "support/anomaly.h"
-#include "support/cache_store.h"
+#include "vfs/cache_store.h"
 
 #include "kota/zest/async.h"
 

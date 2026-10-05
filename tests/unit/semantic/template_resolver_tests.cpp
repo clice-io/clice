@@ -1,6 +1,6 @@
 #include "test/test.h"
 #include "test/tester.h"
-#include "semantic/semantics.h"
+#include "compile/semantics.h"
 
 #include "clang/AST/RecursiveASTVisitor.h"
 

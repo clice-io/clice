@@ -5,9 +5,9 @@
 #include <vector>
 
 #include "compile/compilation_unit.h"
+#include "compile/semantics.h"
 #include "feature/feature.h"
 #include "semantic/display.h"
-#include "semantic/semantics.h"
 #include "semantic/symbol.h"
 
 #include "llvm/Support/Casting.h"

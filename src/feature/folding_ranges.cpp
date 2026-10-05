@@ -9,9 +9,9 @@
 #include <vector>
 
 #include "compile/compilation_unit.h"
+#include "compile/semantics.h"
 #include "feature/feature.h"
 #include "semantic/decls.h"
-#include "semantic/semantics.h"
 #include "support/text.h"
 
 #include "llvm/Support/Casting.h"

@@ -438,7 +438,7 @@ struct RequestTraits<clice::worker::QueryParams> {
 
 template <>
 struct RequestTraits<clice::worker::DocumentLinkParams> {
-    using Result = std::vector<clice::feature::DocumentLink>;
+    using Result = std::vector<clice::index::DocumentLink>;
     constexpr inline static std::string_view method = "clice/worker/documentLink";
 };
 

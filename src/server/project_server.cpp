@@ -10,8 +10,8 @@
 #include "server/control_server.h"
 #include "server/file_tracker.h"
 #include "server/master_server.h"
-#include "support/cache_store.h"
 #include "support/logging.h"
+#include "vfs/cache_store.h"
 #include "vfs/path.h"
 #include "worker/protocol.h"
 

@@ -19,8 +19,8 @@
 #endif
 
 #include "lmdb.h"
-#include "support/cache_store.h"
 #include "support/logging.h"
+#include "vfs/cache_store.h"
 #include "vfs/file_system.h"
 #include "vfs/path.h"
 

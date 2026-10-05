@@ -299,16 +299,6 @@ struct FoldingRange {
     std::optional<LocalSourceRange> lines;
 };
 
-/// A resolved document link: the argument range of an include-like
-/// directive (byte offsets in the containing file) and the absolute path
-/// of the target file. Plain data — it serializes over the worker RPC and
-/// the PCH's pch.idx envelope as-is and becomes an LSP DocumentLink only
-/// at the reply edge, where the session's line map does the conversion.
-struct DocumentLink {
-    LocalSourceRange range;
-    std::string target;
-};
-
 /// Result of scanning a unit for preprocessor-inactive regions.
 struct InactiveScan {
     /// Byte-offset ranges [begin0, end0, begin1, end1, ...] of inactive
@@ -414,7 +404,7 @@ auto inlay_hints(CompilationUnitRef unit,
 
 /// Include-directive links of the main file, in byte offsets; the
 /// reply edge converts them with the session's line map.
-auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink>;
+auto document_links(CompilationUnitRef unit) -> std::vector<index::DocumentLink>;
 
 /// Find the filename-like argument of a preprocessor directive on the line
 /// containing `offset`. The offset may point at the directive/operator or
@@ -654,13 +644,8 @@ auto index_folding_ranges(llvm::StringRef content,
 /// produce no link.
 auto index_document_links(llvm::StringRef content,
                           const clang::LangOptions& lang_opts,
-                          llvm::ArrayRef<IndexIncludeEdge> edges) -> std::vector<DocumentLink>;
-
-/// The comment block immediately preceding the line containing `offset`:
-/// contiguous //- or /*-style lines directly above it, comment markers
-/// stripped. Empty when a blank line or code intervenes. An approximation
-/// of clang's comment attachment, pinned as such by the read-only corpus.
-auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::string;
+                          llvm::ArrayRef<IndexIncludeEdge> edges)
+    -> std::vector<index::DocumentLink>;
 
 /// Assemble the read-only hover card: name, kind and what the index can
 /// prove from stored text — no Sema products (type, value, size, aka) and

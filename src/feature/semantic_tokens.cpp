@@ -5,10 +5,10 @@
 #include <vector>
 
 #include "compile/compilation_unit.h"
+#include "compile/semantics.h"
 #include "feature/feature.h"
 #include "feature/lexical_classify.h"
 #include "semantic/decls.h"
-#include "semantic/semantics.h"
 #include "semantic/symbol.h"
 #include "syntax/lexer.h"
 #include "syntax/token.h"

@@ -1,4 +1,4 @@
-#include "semantic/semantics.h"
+#include "compile/semantics.h"
 
 #include <algorithm>
 #include <cstdint>

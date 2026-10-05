@@ -38,13 +38,13 @@ Distilled from real correction history — these mistakes keep recurring:
 
 - `src/server/` — LSP server core: master server, compiler, indexer, stateful/stateless workers
 - `src/feature/` — LSP feature implementations: hover, completion, document links, semantic tokens, etc.
-- `src/compile/` — Compilation orchestration: compilation unit, directives, diagnostics
+- `src/compile/` — Compilation orchestration: compilation unit, directives, diagnostics; the per-unit semantic map (AST visitor), selection and entity identities
 - `src/index/` — Symbol indexing: TUIndex, ProjectIndex, MergedIndex, include graph
-- `src/semantic/` — Semantic analysis: symbol kinds, relations, AST visitor, template resolver
+- `src/semantic/` — Semantic analysis over the AST, below compile: symbol kinds, relations, template resolver, declaration and type helpers
 - `src/syntax/` — Lexer, scanner, token types, dependency graph
 - `src/command/` — CLI parsing, compilation database, toolchain detection
 - `src/driver/` — CLI subcommand entry points: serve, worker, index, inspect, format, lint, query, refactor, analyze
-- `src/vfs/` — Disk access: reads, statuses, writes, directory walks; the file table and its freshness checks
+- `src/vfs/` — Disk access: reads, statuses, writes, directory walks; the file table and its freshness checks; the on-disk cache store
 - `src/support/` — Utilities: logging, JSON, string helpers
 
 Beyond `src/`: `tools/` is the TypeScript harness (`@clice/tools`: LSP client, snap machinery, replay, shared protocol types), `tests/` holds all four test suites, `editors/` the vscode/zed/nvim clients. `tools/`, `tests/`, and `editors/vscode` form one npm workspace rooted at the repo top level — run `npm install` and `npm run check` from the root, never inside a package.

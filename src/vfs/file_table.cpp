@@ -109,14 +109,6 @@ VersionID FileTable::intern_version(Fid fid, std::uint64_t content_hash) {
     return it->second;
 }
 
-const ScanResult& FileTable::scan_of(Fid fid, std::uint64_t content_hash, llvm::StringRef content) {
-    auto [it, inserted] = scan_results.try_emplace({fid, content_hash});
-    if(inserted) {
-        it->second = scan_quick(content);
-    }
-    return it->second;
-}
-
 vfs::DiskState::Verdict FileTable::check_version(VersionID vid) {
     auto& version = this->version(vid);
     return disk.check(version.fid, version.content_hash);

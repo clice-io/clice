@@ -5,7 +5,10 @@
 #include <string>
 #include <vector>
 
+#include "vfs/ids.h"
+
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -123,6 +126,23 @@ struct SharedScanCache {
 /// text is not a trustworthy source of dependency edges — scan_precise()
 /// is.
 ScanResult scan_quick(llvm::StringRef content);
+
+/// The lexical scans of file versions: scan_quick is a pure function of
+/// the content, so a result is pinned by the version identity (fid,
+/// content hash) and every consumer at that version shares one lex — the
+/// startup scan feeds it, didSave rescans and CDB-reload rescans hit it
+/// when only the stat moved. Keyed by the identity pair rather than a
+/// version id so the scan (which runs before the persisted id space
+/// loads) never allocates ids. Raw results only — a module name a
+/// preprocessor run resolves is configuration output and must not enter
+/// a content-keyed slot.
+struct QuickScanCache {
+    llvm::DenseMap<std::pair<Fid, std::uint64_t>, ScanResult> results;
+
+    /// The scan of exactly these bytes, whose hash the caller proved to be
+    /// `content_hash` (a paired read), computed on first sight.
+    const ScanResult& scan_of(Fid fid, std::uint64_t content_hash, llvm::StringRef content);
+};
 
 /// Precise preprocessing-based scan: runs the real preprocessor, so
 /// conditionals are evaluated and macros expand. This is the only

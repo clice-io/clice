@@ -20,9 +20,9 @@
 #include "project/build.h"
 #include "project/hosting.h"
 #include "semantic/symbol.h"
-#include "support/cache_store.h"
 #include "syntax/dependency_graph.h"
 #include "syntax/preamble_synthesis.h"
+#include "vfs/cache_store.h"
 #include "vfs/file_table.h"
 
 #include "llvm/ADT/ArrayRef.h"

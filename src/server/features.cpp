@@ -41,9 +41,9 @@ static std::string shown(FileTable& files, llvm::StringRef identity) {
 
 /// The link whose argument covers `offset`. Link ranges are half-open;
 /// contains() would also accept end.
-const static feature::DocumentLink* link_at(llvm::ArrayRef<feature::DocumentLink> links,
-                                            std::uint32_t offset) {
-    auto it = llvm::find_if(links, [&](const feature::DocumentLink& link) {
+const static index::DocumentLink* link_at(llvm::ArrayRef<index::DocumentLink> links,
+                                          std::uint32_t offset) {
+    auto it = llvm::find_if(links, [&](const index::DocumentLink& link) {
         return offset >= link.range.begin && offset < link.range.end;
     });
     return it != links.end() ? &*it : nullptr;
@@ -282,12 +282,12 @@ feature::HoverInfo Features::module_hover_card(const index::IndexQuery::Cursor& 
     return hover;
 }
 
-std::vector<feature::DocumentLink> Features::find_preamble_links(const Session& session) {
+std::vector<index::DocumentLink> Features::find_preamble_links(const Session& session) {
     auto state = query.preamble_blob(session.path_id);
-    return state ? state->links() : std::vector<feature::DocumentLink>{};
+    return state ? state->links() : std::vector<index::DocumentLink>{};
 }
 
-std::vector<protocol::Location> Features::directive_definition(const feature::DocumentLink& link) {
+std::vector<protocol::Location> Features::directive_definition(const index::DocumentLink& link) {
     return {
         protocol::Location{
                            .uri = feature::to_uri(shown(project.file_table, link.target)),
@@ -297,7 +297,7 @@ std::vector<protocol::Location> Features::directive_definition(const feature::Do
 }
 
 std::optional<protocol::Hover> Features::directive_hover(const Session& session,
-                                                         const feature::DocumentLink& link) {
+                                                         const index::DocumentLink& link) {
     if(link.range.end > session.text.size()) {
         return std::nullopt;
     }
@@ -321,7 +321,7 @@ std::optional<protocol::Hover> Features::directive_hover(const Session& session,
     return hover;
 }
 
-kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
+kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
     Features::directive_links(const Ticket& ticket, kota::cancellation_token token) {
     auto result = co_await dispatcher.document_links(ticket, std::move(token)).or_fail();
     // The preamble is compiled into the PCH, so the worker's AST only
@@ -336,7 +336,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
     auto& session = ticket.session;
 
     // Links carry byte offsets; this reply edge converts them.
-    auto convert = [&](llvm::ArrayRef<feature::DocumentLink> raw_links,
+    auto convert = [&](llvm::ArrayRef<index::DocumentLink> raw_links,
                        std::vector<protocol::DocumentLink>& links) {
         auto map = session->position_map();
         for(const auto& link: raw_links) {

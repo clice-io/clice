@@ -46,7 +46,7 @@ Project::ProviderChanges Project::rebuild_dependency_graph() {
     // TODO: this scan runs synchronously on the event loop (same cost as
     // the startup scan); if it shows up on large projects, move it off the
     // dispatch path.
-    dep_graph = DependencyGraph();
+    dep_graph.reset();
     scan_dependency_graph(cdb, dep_graph, build.units(build.members()));
     dep_graph.build_reverse_map();
     context_epoch += 1;

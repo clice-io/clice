@@ -13,7 +13,7 @@
 #include "index/serialization.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "support/cache_store.h"
+#include "vfs/cache_store.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"

@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 
-#include "feature/feature.h"
 #include "index/include_tree.h"
 #include "index/manifest.h"
 #include "index/shard.h"
@@ -42,7 +41,7 @@ std::string build_tu_index(CompilationUnitRef unit, bool main_file_only = false)
 /// (document links, inactive regions, the open conditional stack at the
 /// bound, the diagnostics as published).
 std::string build_preamble_index(CompilationUnitRef unit,
-                                 llvm::ArrayRef<feature::DocumentLink> links,
+                                 llvm::ArrayRef<DocumentLink> links,
                                  llvm::ArrayRef<std::uint32_t> inactive_regions,
                                  llvm::ArrayRef<std::uint8_t> open_conditionals,
                                  llvm::StringRef diagnostics);
@@ -155,7 +154,7 @@ public:
 
     /// Document links of the preamble region, materialized from the
     /// envelope; empty for an ordinary one.
-    std::vector<feature::DocumentLink> links() const;
+    std::vector<DocumentLink> links() const;
 
     /// Inactive regions within the preamble (flat begin/end offset
     /// pairs); empty for an ordinary envelope. Borrows the envelope.

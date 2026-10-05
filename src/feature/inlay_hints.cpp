@@ -9,11 +9,11 @@
 #include <vector>
 
 #include "compile/compilation_unit.h"
+#include "compile/semantics.h"
 #include "feature/feature.h"
 #include "semantic/decls.h"
 #include "semantic/display.h"
 #include "semantic/resolver.h"
-#include "semantic/semantics.h"
 #include "semantic/types.h"
 
 #include "llvm/ADT/DenseSet.h"

@@ -5,11 +5,11 @@
 
 #include "test/test.h"
 #include "test/tester.h"
+#include "compile/selection.h"
 #include "feature/feature.h"
 #include "index/serialization.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
-#include "semantic/selection.h"
 #include "support/logging.h"
 
 #include "llvm/ADT/StringRef.h"

@@ -1,4 +1,4 @@
-#include "semantic/selection.h"
+#include "compile/selection.h"
 
 #include <algorithm>
 #include <optional>
@@ -7,7 +7,7 @@
 #include <utility>
 
 #include "compile/compilation_unit.h"
-#include "semantic/semantics.h"
+#include "compile/semantics.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"

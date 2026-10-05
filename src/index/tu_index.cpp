@@ -5,11 +5,11 @@
 #include <tuple>
 
 #include "compile/compilation_unit.h"
+#include "compile/semantics.h"
 #include "index/serialization.h"
 #include "index/shard.h"
 #include "semantic/decls.h"
 #include "semantic/display.h"
-#include "semantic/semantics.h"
 #include "semantic/types.h"
 #include "support/logging.h"
 #include "support/timer.h"
@@ -69,7 +69,7 @@ struct EnvelopeBlob {
     /// blobs are for readers.
     std::uint64_t preamble_hash = 0;
     std::uint32_t preamble_size = 0;
-    llvm::ArrayRef<feature::DocumentLink> links;
+    llvm::ArrayRef<DocumentLink> links;
     llvm::ArrayRef<std::uint32_t> inactive_regions;
     llvm::ArrayRef<std::uint8_t> open_conditionals;
 
@@ -87,7 +87,7 @@ struct EnvelopeBlob {
 struct PreambleExtras {
     std::uint64_t hash = 0;
     std::uint32_t size = 0;
-    llvm::ArrayRef<feature::DocumentLink> links;
+    llvm::ArrayRef<DocumentLink> links;
     llvm::ArrayRef<std::uint32_t> inactive_regions;
     llvm::ArrayRef<std::uint8_t> open_conditionals;
     llvm::StringRef diagnostics;
@@ -1187,7 +1187,7 @@ std::string build_tu_index(CompilationUnitRef unit, bool main_file_only) {
 }
 
 std::string build_preamble_index(CompilationUnitRef unit,
-                                 llvm::ArrayRef<feature::DocumentLink> links,
+                                 llvm::ArrayRef<DocumentLink> links,
                                  llvm::ArrayRef<std::uint32_t> inactive_regions,
                                  llvm::ArrayRef<std::uint8_t> open_conditionals,
                                  llvm::StringRef diagnostics) {
@@ -1492,19 +1492,19 @@ bool TUIndex::matches_prefix(llvm::StringRef text) const {
            llvm::xxh3_64bits(text.take_front(size)) == root[&EnvelopeBlob::preamble_hash];
 }
 
-std::vector<feature::DocumentLink> TUIndex::links() const {
+std::vector<DocumentLink> TUIndex::links() const {
     if(!loaded()) {
         return {};
     }
     auto entries = wire_root(data)[&EnvelopeBlob::links];
 
-    std::vector<feature::DocumentLink> links;
+    std::vector<DocumentLink> links;
     links.reserve(entries.size());
     for(std::size_t i = 0; i < entries.size(); i += 1) {
         auto entry = entries[i];
-        links.push_back(feature::DocumentLink{
-            .range = entry[&feature::DocumentLink::range],
-            .target = std::string(entry[&feature::DocumentLink::target]),
+        links.push_back(DocumentLink{
+            .range = entry[&DocumentLink::range],
+            .target = std::string(entry[&DocumentLink::target]),
         });
     }
     return links;

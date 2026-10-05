@@ -626,6 +626,66 @@ ZEST_CASE(ScopedSearchScalesLinearly) {
     ZASSERT(visits_with(8) <= few * 4);
 }
 
+ZEST_CASE(CommentBlockExtraction) {
+    llvm::StringRef content = R"cpp(int unrelated;
+
+/// Adds two numbers.
+/// Returns their sum.
+int add(int a, int b);
+
+// stale note
+
+int gap();
+
+/* Scales the
+   given input. */
+int scale(int value);
+
+int base = 1; /* setup */
+int next();
+
+/*
+Frees the buffer.
+Then clears it.
+*/
+int release();
+
+int done(); /* trailing block
+still trailing
+*/
+int after();
+)cpp";
+
+    auto add_offset = static_cast<std::uint32_t>(content.find("int add"));
+    ZASSERT(index::preceding_comment(content, add_offset) ==
+            "Adds two numbers.\nReturns their sum.");
+
+    // A blank line between the comment and the declaration breaks the
+    // attachment.
+    auto gap_offset = static_cast<std::uint32_t>(content.find("int gap"));
+    ZASSERT(index::preceding_comment(content, gap_offset) == "");
+
+    // A block comment whose closing line only ends with the marker still
+    // attaches whole.
+    auto scale_offset = static_cast<std::uint32_t>(content.find("int scale"));
+    ZASSERT(index::preceding_comment(content, scale_offset) == "Scales the\ngiven input.");
+
+    // A code line trailing a self-contained block comment is code, not
+    // documentation.
+    auto next_offset = static_cast<std::uint32_t>(content.find("int next"));
+    ZASSERT(index::preceding_comment(content, next_offset) == "");
+
+    // Interior lines of a block comment need no marker of their own.
+    auto release_offset = static_cast<std::uint32_t>(content.find("int release"));
+    ZASSERT(index::preceding_comment(content, release_offset) ==
+            "Frees the buffer.\nThen clears it.");
+
+    // A block comment opened behind code trails that code, even when it
+    // closes directly above the declaration.
+    auto after_offset = static_cast<std::uint32_t>(content.find("int after"));
+    ZASSERT(index::preceding_comment(content, after_offset) == "");
+}
+
 };  // ZEST_SUITE(IndexQuery)
 
 }  // namespace

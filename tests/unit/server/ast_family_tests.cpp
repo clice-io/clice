@@ -13,8 +13,8 @@
 #include "server/editor_context.h"
 #include "server/worker_test_helpers.h"
 #include "support/anomaly.h"
-#include "support/cache_store.h"
 #include "syntax/dependency_graph.h"
+#include "vfs/cache_store.h"
 
 namespace clice::testing {
 

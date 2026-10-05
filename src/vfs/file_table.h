@@ -6,7 +6,6 @@
 #include <optional>
 #include <utility>
 
-#include "syntax/scan.h"
 #include "vfs/dir_cache.h"
 #include "vfs/disk_state.h"
 #include "vfs/file_system.h"
@@ -180,21 +179,6 @@ struct FileTable {
     /// The version id for (fid, content hash), interning a new record on
     /// first sight.
     VersionID intern_version(Fid fid, std::uint64_t content_hash);
-
-    /// The lexical scan of a version's bytes: scan_quick is a pure
-    /// function of the content, so the result is pinned by the version
-    /// identity (fid, content hash) and every consumer at that version
-    /// shares one lex — the startup scan feeds it, didSave rescans and
-    /// CDB-reload rescans hit it when only the stat moved. Keyed by the
-    /// identity pair rather than a version id so the scan (which runs
-    /// before the persisted id space loads) never allocates ids. Raw
-    /// results only — a module name a preprocessor run resolves is
-    /// configuration output and must not enter a content-keyed slot.
-    llvm::DenseMap<std::pair<Fid, std::uint64_t>, ScanResult> scan_results;
-
-    /// The scan of exactly these bytes, whose hash the caller proved to be
-    /// `content_hash` (a paired read), computed on first sight.
-    const ScanResult& scan_of(Fid fid, std::uint64_t content_hash, llvm::StringRef content);
 
     /// Directory listings kept across operations.
     vfs::DirCache dirs;

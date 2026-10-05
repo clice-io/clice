@@ -7,9 +7,9 @@
 
 #include "command/command.h"
 #include "compile/compilation_unit.h"
+#include "compile/semantics.h"
 #include "feature/code_action/action.h"
 #include "semantic/display.h"
-#include "semantic/semantics.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"

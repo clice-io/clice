@@ -379,6 +379,16 @@ void scan_with_preprocessor(
 
 }  // namespace
 
+const ScanResult& QuickScanCache::scan_of(Fid fid,
+                                          std::uint64_t content_hash,
+                                          llvm::StringRef content) {
+    auto [it, inserted] = results.try_emplace({fid, content_hash});
+    if(inserted) {
+        it->second = scan_quick(content);
+    }
+    return it->second;
+}
+
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
                         std::optional<llvm::StringRef> content,

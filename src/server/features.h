@@ -321,19 +321,19 @@ private:
 
     /// The preamble include links of a session's active PCH; empty when
     /// there is no PCH or its preamble no longer matches the buffer.
-    std::vector<feature::DocumentLink> find_preamble_links(const Session& session);
+    std::vector<index::DocumentLink> find_preamble_links(const Session& session);
 
     /// The include-like directive links of a session's whole buffer: the
     /// PCH's cached preamble links, then the worker's AST's for the rest.
     /// Module names go through the ordinary index pipeline, not these.
-    kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
+    kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
         directive_links(const Ticket& ticket, kota::cancellation_token token);
 
     /// Go-to-definition and hover on a directive's argument, naming its
     /// target the way the user knows the file.
-    std::vector<protocol::Location> directive_definition(const feature::DocumentLink& link);
+    std::vector<protocol::Location> directive_definition(const index::DocumentLink& link);
     std::optional<protocol::Hover> directive_hover(const Session& session,
-                                                   const feature::DocumentLink& link);
+                                                   const index::DocumentLink& link);
 
     /// A project asked about a symbol, and the symbol as that project
     /// names it: an id hashing its file (a macro, a file-local name) takes

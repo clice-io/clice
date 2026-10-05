@@ -11,8 +11,8 @@
 #include <string>
 #include <vector>
 
+#include "compile/selection.h"
 #include "feature/feature.h"
-#include "semantic/selection.h"
 #include "support/text.h"
 
 #include "clang/AST/ASTTypeTraits.h"

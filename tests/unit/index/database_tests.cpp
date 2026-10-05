@@ -6,7 +6,7 @@
 #include "test/test.h"
 #include "index/database.h"
 #include "index/writer_lock.h"
-#include "support/cache_store.h"
+#include "vfs/cache_store.h"
 #include "vfs/path.h"
 
 #include "llvm/Support/FileSystem.h"

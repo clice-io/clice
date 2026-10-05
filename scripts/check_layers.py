@@ -1,23 +1,35 @@
 #!/usr/bin/env python3
 """Enforce the src/ include layering: core <- config <- {project, worker} <- sched <- server,
-and project <- analysis.
+and project <- analysis; inside core, support <- vfs <- command <- syntax <- semantic <-
+compile <- index <- feature.
 
-Each layer may include downward only. Bazel enforces it too, as it checks that every
-header a source includes belongs to the target or its dependencies; this check needs no
-build.
+Each layer may include downward only. Bazel enforces the layering between its targets too,
+as it checks that every header a source includes belongs to the target or its
+dependencies; the core directories share one target, so only this check keeps them
+acyclic, which each needs to become a module. It needs no build.
 """
 
 import re
 import sys
 from pathlib import Path
 
-CORE = ["support", "syntax", "command", "compile", "semantic", "index", "feature"]
+CORE = [
+    "support",
+    "vfs",
+    "command",
+    "syntax",
+    "semantic",
+    "compile",
+    "index",
+    "feature",
+]
 
 # Directory -> prefixes its sources must never include.
 FORBIDDEN = {
     **{
-        layer: ["config/", "project/", "worker/", "sched/", "server/", "analysis/"]
-        for layer in CORE
+        layer: [f"{above}/" for above in CORE[index + 1 :]]
+        + ["config/", "project/", "worker/", "sched/", "server/", "analysis/"]
+        for index, layer in enumerate(CORE)
     },
     "config": ["project/", "worker/", "sched/", "server/", "analysis/"],
     "project": ["worker/", "sched/", "server/", "analysis/"],
@@ -55,8 +67,8 @@ def main() -> int:
     if violations:
         print(
             f"\n{len(violations)} layering violation(s): "
-            "core <- config <- {project, worker} <- sched <- server, project <- analysis, "
-            "includes go downward only."
+            "core <- config <- {project, worker} <- sched <- server, project <- analysis; "
+            "inside core, " + " <- ".join(CORE) + "; includes go downward only."
         )
         return 1
     return 0

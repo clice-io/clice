@@ -26,7 +26,7 @@ ZEST_SUITE(PreambleIndex, Tester) {
 TempDir dir;
 std::shared_ptr<index::TUIndex> state;
 
-std::vector<feature::DocumentLink> links;
+std::vector<index::DocumentLink> links;
 std::vector<std::uint32_t> inactive;
 std::vector<std::uint8_t> conditionals;
 std::string diagnostics;

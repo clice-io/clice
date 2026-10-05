@@ -70,7 +70,7 @@ public:
     /// The main-file document links from the stateful worker holding the
     /// AST; the preamble's live in the PCH envelope (see
     /// PCHState::load_state).
-    kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
+    kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
         document_links(const Ticket& ticket, kota::cancellation_token token = {});
 
     /// The folding ranges from the stateful worker holding the AST, none

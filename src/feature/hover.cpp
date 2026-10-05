@@ -8,11 +8,11 @@
 #include <vector>
 
 #include "compile/compilation_unit.h"
+#include "compile/selection.h"
+#include "compile/semantics.h"
 #include "feature/feature.h"
 #include "semantic/decls.h"
 #include "semantic/display.h"
-#include "semantic/selection.h"
-#include "semantic/semantics.h"
 #include "semantic/symbol.h"
 #include "semantic/types.h"
 

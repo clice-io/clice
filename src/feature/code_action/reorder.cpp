@@ -6,8 +6,8 @@
 #include <vector>
 
 #include "compile/compilation_unit.h"
+#include "compile/semantics.h"
 #include "feature/code_action/action.h"
-#include "semantic/semantics.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"

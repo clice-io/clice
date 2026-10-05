@@ -249,7 +249,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     co_return std::move(result);
 }
 
-kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
+kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
     Dispatcher::document_links(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,

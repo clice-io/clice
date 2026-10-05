@@ -16,15 +16,16 @@ cc_library(
 # and project <- analysis. Each layer may include downward only; the
 # dependency graph plus the layering check in CI (`pixi run check-layers`)
 # enforce the boundary — sched and below never see an LSP or server header,
-# and a project never sees scheduling. They compile against libclang's
-# headers; the programs link its libraries.
+# and a project never sees scheduling. Inside core the directories are
+# layered in this order, which only the check enforces. They compile against
+# libclang's headers; the programs link its libraries.
 CORE = [
     "support",
     "vfs",
-    "syntax",
     "command",
-    "compile",
+    "syntax",
     "semantic",
+    "compile",
     "index",
     "feature",
 ]

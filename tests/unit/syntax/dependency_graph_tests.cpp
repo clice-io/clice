@@ -432,10 +432,10 @@ export module m1;
 
     // A warm run reproduces both: each command preprocesses its own
     // declaration again.
-    DependencyGraph graph2;
-    scan_all(cdb, graph2);
-    ZEXPECT(graph2.lookup_module("m1").size() == 1u);
-    ZEXPECT(graph2.lookup_module("m2").size() == 1u);
+    graph.reset();
+    scan_all(cdb, graph);
+    ZEXPECT(graph.lookup_module("m1").size() == 1u);
+    ZEXPECT(graph.lookup_module("m2").size() == 1u);
 }
 
 ZEST_CASE(SingleFileNoIncludes) {
@@ -954,16 +954,18 @@ int main() {}
     write_cdb(tmp, cdb, json);
 
     DependencyGraph graph;
-    auto cold = scan_all(cdb, graph);
-    ZEXPECT(graph.edge_count() >= 1u);
+    scan_all(cdb, graph);
+    auto edges = graph.edge_count();
+    auto files = graph.file_count();
+    ZEXPECT(edges >= 1u);
 
-    // A rescan against the same shared table skips the read and the lex
-    // for every unchanged file (stat-validated through the shared pairs).
-    DependencyGraph graph2;
-    auto warm = scan_all(cdb, graph2);
+    // A rebuild keeps the scans: the rescan skips the read and the lex for
+    // every unchanged file (stat-validated through the shared pairs).
+    graph.reset();
+    auto warm = scan_all(cdb, graph);
     ZEXPECT(warm.scan_cache_hits > std::size_t(0));
-    ZEXPECT(graph2.edge_count() == graph.edge_count());
-    ZEXPECT(graph2.file_count() == graph.file_count());
+    ZEXPECT(graph.edge_count() == edges);
+    ZEXPECT(graph.file_count() == files);
 }
 
 // TODO: add tests for:

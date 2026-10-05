@@ -503,4 +503,10 @@ private:
     const LiveSources* live;
 };
 
+/// The comment block immediately preceding the line containing `offset`:
+/// contiguous //- or /*-style lines directly above it, comment markers
+/// stripped. Empty when a blank line or code intervenes. An approximation
+/// of clang's comment attachment, pinned as such by the read-only corpus.
+auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::string;
+
 }  // namespace clice::index

@@ -3,8 +3,8 @@
 #include "compile/compilation.h"
 #include "compile/compilation_unit.h"
 #include "compile/diagnostic.h"
-#include "semantic/identity.h"
-#include "semantic/semantics.h"
+#include "compile/identity.h"
+#include "compile/semantics.h"
 
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"

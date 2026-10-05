@@ -189,6 +189,13 @@ public:
     /// includes, transitively.
     bool reaches_import(Fid path_id) const;
 
+    /// Forget the graph but keep its quick scans: they are content-keyed,
+    /// so a rebuild over the same files reuses every one still current.
+    void reset();
+
+    /// The quick scans the graph was built from.
+    QuickScanCache quick_scans;
+
 private:
     /// Module name -> fids (multiple candidates possible, e.g. different targets).
     llvm::StringMap<llvm::SmallVector<Fid, 2>> module_to_path;

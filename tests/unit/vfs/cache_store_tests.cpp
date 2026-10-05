@@ -8,7 +8,7 @@
 
 #include "test/temp_dir.h"
 #include "test/test.h"
-#include "support/cache_store.h"
+#include "vfs/cache_store.h"
 
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"

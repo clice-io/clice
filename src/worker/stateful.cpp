@@ -398,7 +398,7 @@ void StatefulWorker::register_handlers() {
                         -> RequestResult<worker::DocumentLinkParams> {
         return with_ast_or("DocumentLink",
                            params,
-                           std::vector<feature::DocumentLink>{},
+                           std::vector<index::DocumentLink>{},
                            [&](DocumentEntry& doc) { return feature::document_links(doc.unit); });
     });
 
