@@ -167,6 +167,32 @@ test("save retries missing context", async ({ session }) => {
     expect(await synthesized(client), "the save switches to the includer's context").toBe(1);
 });
 
+test("save before compile lands", async ({ session }) => {
+    // Saved before the edit's compile shows what it misses, the buffer is
+    // judged again all the same.
+    const { client, workspace } = session.tmp();
+    workspace.write("h.h", "#pragma once\ninline int get() { return 1; }\n");
+    workspace.write(
+        "main.cpp",
+        'struct Host { int v; };\n#include "h.h"\nint main() { return get(); }\n',
+    );
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+
+    await client.openAndWait("main.cpp");
+    const [hUri] = await client.openAndWait("h.h");
+    expect(await synthesized(client), "Initially self-contained").toBe(0);
+
+    await sleep(MTIME_GRANULARITY);
+    const newText = "#pragma once\ninline int get() { return Host{2}.v; }\n";
+    client.change(hUri, 2, newText);
+    workspace.write("h.h", newText);
+    client.save(hUri);
+    await client.waitForRecompile(hUri);
+    client.assertCleanCompile(hUri);
+    expect(await synthesized(client)).toBe(1);
+});
+
 test("dependency change retries trial", async ({ session }) => {
     // A header judged self-contained must be re-evaluated when one of its
     // own includes changes: here foo.h stops providing FOO, and only the

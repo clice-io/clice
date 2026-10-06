@@ -289,11 +289,11 @@ void ASTFamily::saved(Session& session) {
     session.quarantine->on_save();
     // Typing never re-runs the self-containment trial, yet an edit can
     // make a header lean on its includer: a save showing what an includer
-    // would provide runs it again.
+    // would provide, or saving a buffer whose compile has not landed yet,
+    // runs it again.
     if(contexts.commands.header_mode(session.path_id) == HeaderMode::SelfContained) {
-        if(auto projection = projections.projection(session.path_id);
-           projection && projection->output &&
-           missing_context_errors(projection->output->diagnostics) > 0) {
+        if(auto projection = projections.projection_at(session.path_id, session.version);
+           !projection || missing_context_errors(projection->output->diagnostics) > 0) {
             contexts.commands.forget_self_contained(session.path_id);
             session.trial_done = false;
             invalidate(session.path_id);

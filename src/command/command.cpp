@@ -1043,10 +1043,16 @@ llvm::StringRef CompilationDatabase::forced_language(ConfigID id) const {
 
 /// Whether the driver compiles C inputs as C++, as `g++` and `clang++` do
 /// under any version or target affix (`x86_64-linux-gnu-g++-13`), and
-/// `zig c++`.
+/// `zig c++` — unless a `--driver-mode=`, the last one winning, says
+/// otherwise.
 static bool cxx_driver(const CompileConfig& config) {
     if(config.subcommand) {
         return llvm::StringRef(config.subcommand) == "c++";
+    }
+    for(auto& arg: llvm::reverse(config.args)) {
+        if(arg.opt_id == option::OPT_driver_mode && arg.values.size() == 1) {
+            return llvm::StringRef(arg.values[0]) == "g++";
+        }
     }
     std::string lowered = path::filename(config.driver).lower();
     llvm::StringRef name = lowered;

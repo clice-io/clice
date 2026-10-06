@@ -246,12 +246,15 @@ ZEST_CASE(SelectorPositional) {
 };
 
 ZEST_CASE(CxxDriverCInputs) {
-    /// g++ and clang++ compile C inputs as C++; gcc does not.
+    /// g++ and clang++ compile C inputs as C++; gcc does not, and an
+    /// explicit driver mode overrides the name.
     FileTable file_table;
     CompilationDatabase database{file_table};
     database.add_command("/fake", "a.c", "/usr/bin/x86_64-linux-gnu-g++-13 -c a.c"sv);
     database.add_command("/fake", "b.h", "clang++ -c b.h"sv);
     database.add_command("/fake", "c.c", "gcc -c c.c"sv);
+    database.add_command("/fake", "d.c", "clang++ --driver-mode=gcc -c d.c"sv);
+    database.add_command("/fake", "e.c", "clang --driver-mode=g++ -c e.c"sv);
 
     auto kind = [&](llvm::StringRef file) {
         auto config = database.candidate_entries(fake(file)).front().config;
@@ -260,6 +263,8 @@ ZEST_CASE(CxxDriverCInputs) {
     ZEXPECT(kind("a.c") == "c++");
     ZEXPECT(kind("b.h") == "c++-header");
     ZEXPECT(kind("c.c") == "c");
+    ZEXPECT(kind("d.c") == "c");
+    ZEXPECT(kind("e.c") == "c++");
 };
 
 ZEST_CASE(PerFileClSelectors) {
