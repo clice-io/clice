@@ -1,7 +1,11 @@
-#include <cstddef>
+module;
 
-#include "test/test.h"
-#include "syntax/lexical_scan.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.lexical_scan;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

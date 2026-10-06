@@ -1,12 +1,11 @@
-#include "index/manifest.h"
+module;
 
-#include <cstring>
-#include <limits>
-#include <span>
+#include "modules/prelude.h"
 
-#include "index/serialization.h"
+module clice;
 
-#include "llvm/ADT/STLExtras.h"
+import :index.manifest;
+import :index.serialization;
 
 namespace clice::index {
 

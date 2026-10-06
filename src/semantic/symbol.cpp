@@ -1,7 +1,10 @@
-#include "semantic/symbol.h"
+module;
 
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :semantic.symbol;
 
 namespace clice {
 

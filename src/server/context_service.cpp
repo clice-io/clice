@@ -1,20 +1,19 @@
-#include "server/context_service.h"
+module;
 
-#include <format>
-#include <string>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "command/argument_parser.h"
-#include "feature/feature.h"
-#include "project/configuration.h"
-#include "project/hosting.h"
-#include "server/ast_family.h"
-#include "server/session_store.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Path.h"
+module clice;
+
+import :command.argument_parser;
+import :feature.feature;
+import :project.configuration;
+import :project.hosting;
+import :server.ast_family;
+import :server.context_service;
+import :server.session_store;
+import :support.logging;
 
 namespace clice {
 

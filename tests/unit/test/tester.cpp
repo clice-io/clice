@@ -1,7 +1,6 @@
-#include "test/tester.h"
+module;
 
-#include <cassert>
-#include <format>
+#include "modules/prelude.h"
 
 #ifdef _WIN32
 // See cache_store.cpp: windows.h must not spill min/max macros.
@@ -13,14 +12,15 @@
 #include <sys/stat.h>
 #endif
 
-#include "test/temp_dir.h"
-#include "support/logging.h"
-#include "syntax/scan.h"
-#include "vfs/file_system.h"
+#include "support/logging.macros.h"
 
-#ifdef _WIN32
-#include "llvm/Support/ConvertUTF.h"
-#endif
+module clice;
+
+import :support.logging;
+import :syntax.scan;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.tester;
+import :vfs.file_system;
 
 namespace clice::testing {
 

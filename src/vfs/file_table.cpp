@@ -1,10 +1,10 @@
-#include "vfs/file_table.h"
+module;
 
-#include <algorithm>
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringRef.h"
+module clice;
+
+import :vfs.file_table;
 
 namespace clice {
 
@@ -105,14 +105,6 @@ VersionID FileTable::intern_version(Fid fid, std::uint64_t content_hash) {
                                 VersionID{static_cast<std::uint32_t>(versions.size())});
     if(inserted) {
         versions.push_back(FileVersion{.fid = fid, .content_hash = content_hash});
-    }
-    return it->second;
-}
-
-const ScanResult& FileTable::scan_of(Fid fid, std::uint64_t content_hash, llvm::StringRef content) {
-    auto [it, inserted] = scan_results.try_emplace({fid, content_hash});
-    if(inserted) {
-        it->second = scan_quick(content);
     }
     return it->second;
 }

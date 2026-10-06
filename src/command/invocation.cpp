@@ -1,10 +1,11 @@
-#include "command/invocation.h"
+module;
 
-#include "vfs/path.h"
+#include "modules/prelude.h"
 
-#include "llvm/Support/VirtualFileSystem.h"
-#include "clang/Driver/CreateInvocationFromArgs.h"
-#include "clang/Frontend/CompilerInvocation.h"
+module clice;
+
+import :command.invocation;
+import :vfs.path;
 
 namespace clice {
 

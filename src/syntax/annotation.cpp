@@ -1,11 +1,13 @@
-#include "syntax/annotation.h"
+module;
 
-#include <cctype>
+#include "modules/prelude.h"
 
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
+module clice;
+
+import :support.logging;
+import :syntax.annotation;
 
 namespace clice {
 

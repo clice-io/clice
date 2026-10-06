@@ -1,5 +1,11 @@
-#include "test/test.h"
-#include "syntax/scan.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.scan;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

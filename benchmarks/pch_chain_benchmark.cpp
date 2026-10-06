@@ -15,25 +15,19 @@
 /// Usage:
 ///   pch_chain_benchmark [--runs N] [--chain-length N]
 
-#include <algorithm>
-#include <chrono>
-#include <numeric>
-#include <print>
-#include <sstream>
-#include <string>
-#include <vector>
+module;
+
+#include "modules/prelude.h"
 
 #include "stats.h"
-#include "command/argument_parser.h"
-#include "command/command.h"
-#include "compile/compilation.h"
-#include "support/logging.h"
-#include "vfs/file_system.h"
 
-#include "kota/deco/deco.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
+module clice;
+
+import :command.argument_parser;
+import :command.command;
+import :compile.compilation;
+import :support.logging;
+import :vfs.file_system;
 
 using namespace clice;
 using Clock = std::chrono::steady_clock;
@@ -909,7 +903,7 @@ int main() {
 
 }  // namespace
 
-int main(int argc, const char** argv) {
+extern "C++" int main(int argc, const char** argv) {
     auto args = kota::deco::util::argvify(argc, argv);
     auto result = kota::deco::cli::parse<BenchmarkOptions>(args);
 

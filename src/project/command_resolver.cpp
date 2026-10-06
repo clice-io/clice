@@ -1,26 +1,20 @@
-#include "project/command_resolver.h"
+module;
 
-#include <format>
-#include <optional>
-#include <string>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "command/argument_parser.h"
-#include "command/search_config.h"
-#include "project/hosting.h"
-#include "support/logging.h"
-#include "syntax/include_resolver.h"
-#include "syntax/preamble_synthesis.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :command.argument_parser;
+import :command.search_config;
+import :project.command_resolver;
+import :project.hosting;
+import :support.logging;
+import :syntax.include_resolver;
+import :syntax.preamble_synthesis;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

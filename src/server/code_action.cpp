@@ -1,22 +1,17 @@
-#include <algorithm>
-#include <format>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
+module;
 
-#include "command/command.h"
-#include "index/shard.h"
-#include "index/symbol_query.h"
-#include "server/editor_context.h"
-#include "server/features.h"
-#include "syntax/include_resolver.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Path.h"
+module clice;
+
+import :command.command;
+import :index.shard;
+import :index.symbol_query;
+import :server.editor_context;
+import :server.features;
+import :syntax.include_resolver;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

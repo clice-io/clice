@@ -6,6 +6,7 @@ load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files", "strip_prefi
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@xclang//bazel:debug_symbols.bzl", "xclang_debug_symbols")
+load("//modules:modules.bzl", "MODULE_COPTS")
 
 # What clice's own sources compile with; the libraries keep their own flags.
 COPTS = [
@@ -16,6 +17,10 @@ COPTS = [
     "-Wno-deprecated-declarations",
     "-Wno-undefined-inline",
 ]
+
+# What clice's module units compile with, with a dependency on //modules and
+# the cpp_modules feature.
+CLICE_COPTS = COPTS + MODULE_COPTS
 
 # Link optimizations in optimized builds: what the test suites run is what
 # releases ship. icf=safe (not =all) so address-taken functions keep C++
@@ -144,14 +149,14 @@ def benchmark_programs(benchmarks):
                 "benchmarks/%s.cpp" % benchmark,
                 "benchmarks/stats.h",
             ],
-            copts = COPTS,
+            copts = CLICE_COPTS,
             data = [":resource_dir"],
+            features = ["cpp_modules"],
             linkopts = LINKOPTS,
             tags = ["manual"],
             deps = [
                 ":server",
                 "//bazel:llvm",
-                "@kotatsu//:deco",
             ],
         )
 

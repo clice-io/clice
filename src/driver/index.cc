@@ -1,27 +1,22 @@
-#include <array>
-#include <bit>
-#include <chrono>
-#include <ctime>
-#include <format>
-#include <map>
-#include <ranges>
+module;
 
-#include "driver/driver.h"
-#include "index/database.h"
-#include "index/query.h"
-#include "index/serialization.h"
-#include "index/writer_lock.h"
-#include "project/configuration.h"
-#include "project/open_index.h"
-#include "project/project.h"
-#include "sched/batch.h"
-#include "server/control_client.h"
-#include "support/timer.h"
+#include "modules/prelude.h"
 
-#include "kota/meta/enum.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :driver.driver;
+import :index.database;
+import :index.query;
+import :index.serialization;
+import :index.writer_lock;
+import :project.configuration;
+import :project.open_index;
+import :project.project;
+import :sched.batch;
+import :server.control_client;
+import :support.timer;
 
 namespace clice::driver {
 

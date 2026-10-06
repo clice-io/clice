@@ -1,16 +1,21 @@
-#include "project/load.h"
+module;
 
-#include <string>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "index/database.h"
-#include "project/configuration.h"
-#include "project/project.h"
-#include "support/cache_store.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "syntax/dependency_graph.h"
-#include "vfs/path.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :index.database;
+import :project.configuration;
+import :project.load;
+import :project.project;
+import :support.logging;
+import :support.timer;
+import :syntax.dependency_graph;
+import :vfs.cache_store;
+import :vfs.path;
 
 namespace clice {
 

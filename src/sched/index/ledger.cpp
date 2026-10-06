@@ -1,6 +1,10 @@
-#include "sched/index/ledger.h"
+module;
 
-#include "llvm/ADT/STLExtras.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :sched.index.ledger;
 
 namespace clice {
 

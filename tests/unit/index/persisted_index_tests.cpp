@@ -1,13 +1,13 @@
-#include <limits>
+module;
 
-#include "test/test.h"
-#include "index/manifest.h"
-#include "index/project_index.h"
-#include "index/serialization.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/raw_ostream.h"
+module clice;
+
+import :index.manifest;
+import :index.project_index;
+import :index.serialization;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

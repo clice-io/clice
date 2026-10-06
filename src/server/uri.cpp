@@ -1,6 +1,10 @@
-#include "server/uri.h"
+module;
 
-#include "kota/ipc/lsp/uri.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :server.uri;
 
 namespace clice {
 

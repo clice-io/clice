@@ -96,19 +96,17 @@ Stateless workers execute one-shot compilation tasks using a priority-aware sche
 
 Priority is a property of the dispatch, not of the task type: the same PCH build is dispatched High when a user request is blocked on it and Low when produced by background indexing.
 
-High-priority tasks always take precedence in acquiring worker resources. Low-priority tasks are subject to a concurrency limit — the number of low-priority tasks running simultaneously has an upper bound, ensuring that workers are always available to handle high-priority requests. Background index runs additionally lower their OS process priority (via the `nice` system call), reducing their CPU impact on other system processes, including the editor itself.
+High-priority tasks always take precedence in acquiring worker resources. Low-priority tasks are subject to a concurrency limit — the number of low-priority tasks running simultaneously has an upper bound, ensuring that workers are always available to handle high-priority requests. Background index runs additionally run on a thread of lowered scheduling priority, which ends with the run, reducing their CPU impact on other system processes, including the editor itself.
 
 ### Dynamic Concurrency Control
 
 The concurrency cap for low-priority tasks is dynamically adjusted based on system state:
 
-**Foreground-aware budget**: While foreground activity is detected (user requests in flight), background work is capped at roughly 30% of the stateless workers; once the foreground goes idle, background may use full capacity. When foreground activity returns, workers are reclaimed quickly — running low-priority tasks hit cooperative cancellation checkpoints and requeue themselves, with a kill as the timeout fallback — so a burst of typing never waits behind a wall of index builds.
+**Foreground-aware budget**: With the user idle, background work keeps at most the configured number of stateless workers busy — by default half the physical cores; the pool grows past it, up to its maximum, only for interactive work that finds every worker busy. While foreground activity is detected (user requests in flight, or one within the last ten seconds), background work is capped at a single task: compiles share the processor's power budget, so every extra background compile slows the user's own. When foreground activity returns, workers are reclaimed quickly — running low-priority tasks hit cooperative cancellation checkpoints and requeue themselves, with a kill as the timeout fallback — so a burst of typing never waits behind a wall of index builds.
 
-**Memory pressure feedback**: The master process periodically (every 3 seconds) checks available system memory. When available memory drops below 20% of total, the background allowance is decremented by 1; when available memory recovers above 40%, it is incremented by 1. Under severe pressure the allowance can drop all the way to zero, pausing background work entirely; recovery then aims at half the concurrency that ran into the pressure and probes beyond it one step at a time. The memory limit — a cgroup's, when tighter than the machine's — also caps the number of stateless workers, one per 1.5 GiB, so a small container never starts more workers than it can hold.
+**Memory pressure feedback**: The master process periodically (every 3 seconds) checks available memory. Inside a memory-limited cgroup that is the limit minus the usage, with the cgroup's inactive file cache counted as available, since the kernel reclaims it on demand. Below 10% the background allowance drops to zero and the running background work is killed to free its memory; a killed run counts as lost work, which is retried a bounded number of times. Between 10% and 20% the allowance drops by one per check, but never below one, and an allowance at zero comes back to one, so background work keeps moving a file at a time. At 20% and above it grows by one per check while every allowed task is in use. The memory limit — a cgroup's, when tighter than the machine's — also caps the number of stateless workers, one per 1.5 GiB, so a small container never starts more workers than it can hold.
 
-**Crash backoff**: When a stateless worker crashes, the background allowance is multiplied by 3/4 (multiplicative decrease). Crashes typically indicate encountering code that triggers a Clang bug; continuing at high concurrency risks more workers hitting the same problem. Multiplicative decrease is more aggressive than linear decrease, reducing system load more quickly.
-
-This combined strategy — a foreground-first budget, linear adjustment for memory pressure, and multiplicative backoff for crashes — ensures graceful degradation under load rather than sudden OOM or cascading crashes.
+This combined strategy — a foreground-first budget and stepwise adjustment for memory pressure — ensures graceful degradation under load rather than sudden OOM.
 
 ## Crash Recovery
 
@@ -120,7 +118,7 @@ A worker runs several requests at once — a stateful worker compiles and answer
 
 - The request the worker named crashed it, and its document is blamed for that kind of work.
 - Every other request in flight was merely taken along. It is resent once, and its document is not blamed.
-- A death that names no request — the worker was killed from outside, by the OOM killer or a signal, or crashed where it could not report — resends every request in flight once. A request whose resend dies the same way is blamed.
+- A death that names no request — the worker was killed from outside, by the OOM killer or a signal, or crashed where it could not report — resends every request in flight once. A request that dies this way twice, the only request on its worker both times, is blamed; when several were in flight, nothing tells which one did it, and none is.
 
 ### What a Crashed Document Shows
 
@@ -152,11 +150,10 @@ A precompiled preamble or a module whose build fails on errors in the code is no
 1. The master process detects the exit, takes the dead worker's documents off the routing table at once, and launches a replacement — immediately for an occasional crash, with exponential backoff for a crash loop
 2. Requests that find no live worker of their kind wait for one to come back instead of failing, and documents keep the diagnostics they show meanwhile
 3. A stateful worker's documents recompile on their next request — the user may notice a brief delay, but no editing content is lost: the text buffer lives in the master process's Session
-4. A stateless worker's crash triggers crash backoff, lowering the concurrency cap
 
 ### Crash Budget and Revival
 
-Each worker slot has a crash budget with exponential backoff between restarts. Only deaths that name no request count against it: a crash a request caused is that request's document's doing, and the document's pause already contains it. A stretch of healthy uptime resets the budget, so occasional crashes do not accumulate into a death sentence. A slot that exhausts its budget stops being restarted — but not permanently: after a cooldown period its budget is restored and the slot can be revived on demand. The pool therefore degrades temporarily under systemic failure (fewer workers, slower background indexing) and heals itself once the trigger passes, without ever interrupting the master.
+Each worker slot has a crash budget with exponential backoff between restarts. Only deaths that name no request count against it, and of those neither a terminated session (SIGTERM, SIGINT or SIGHUP) nor a SIGKILL of an idle worker, one running no request and holding no document: a crash a request caused is that request's document's doing, and the document's pause already contains it; an idle worker the OOM killer or a user killed says nothing about whether the worker can stay up. A worker killed while running requests or holding documents does count: when several requests were in flight, or none, no request is blamed, and only the budget slows a load that keeps getting killed. A stretch of healthy uptime resets the budget, so occasional crashes do not accumulate into a death sentence. A slot that exhausts its budget stops being restarted — but not permanently: after a cooldown period its budget is restored and the slot can be revived on demand. The pool therefore degrades temporarily under systemic failure (fewer workers, slower background indexing) and heals itself once the trigger passes, without ever interrupting the master.
 
 ### Hangs and Oversized Results
 
@@ -172,6 +169,6 @@ A build (a compile, a PCH or module build, an indexing run) that runs longer tha
 
 ## Known Limitations
 
-- **No per-worker memory enforcement.** Worker memory usage is not capped or watermark-evicted; a pathological translation unit can grow a worker until the operating system's OOM killer intervenes. Workers are the OOM killer's preferred victims, so it takes a worker rather than the master, and the killed worker's requests follow the rules for a death that names no request. System-wide memory pressure only throttles background concurrency, it does not bound any single worker.
+- **No per-worker memory enforcement.** Worker memory usage is not capped or watermark-evicted; a pathological translation unit can grow a worker until the operating system's OOM killer intervenes. A worker holding a request or documents ranks just above the master for the OOM killer, so it is taken before the session is; an idle worker keeps the master's own score, since killing it would free nothing. The killed worker's requests follow the rules for a death that names no request. System-wide memory pressure only throttles background concurrency, it does not bound any single worker.
 
 - **Synchronous startup.** Loading the compilation database, warming the toolchain cache, and the initial dependency scan run to completion before the server starts answering requests, and there is no progress reporting yet — on very large projects the server can appear unresponsive for a while right after startup.

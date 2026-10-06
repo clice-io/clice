@@ -1,21 +1,15 @@
+module;
+
+#include "modules/prelude.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
-#include <algorithm>
-#include <chrono>
-#include <format>
-#include <string>
-#include <thread>
-#include <vector>
+module clice;
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "vfs/file_system.h"
-
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/Program.h"
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.file_system;
 
 namespace clice::testing {
 

@@ -1,8 +1,11 @@
-#include "test/test.h"
-#include "syntax/preamble_synthesis.h"
+module;
 
-#include "llvm/ADT/StringMap.h"
-#include "llvm/Support/Path.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.preamble_synthesis;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

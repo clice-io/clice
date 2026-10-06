@@ -1,8 +1,12 @@
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "feature/feature.h"
+module;
 
-#include "llvm/ADT/STLExtras.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :feature.feature;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 

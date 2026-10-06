@@ -1,10 +1,10 @@
-#include "sched/graph.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "llvm/ADT/DenseSet.h"
+module clice;
+
+import :sched.graph;
 
 namespace clice {
 

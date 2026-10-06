@@ -43,10 +43,10 @@ npx bazel build //:bin/clice //:bin/unit_tests
 
 The build types are configurations of `bazel/clice.bazelrc`:
 
-| Configuration             | Effect                                                     |
-| ------------------------- | ---------------------------------------------------------- |
-| `--config=RelWithDebInfo` | The default: optimized, with debug info                    |
-| `--config=Debug`          | Unoptimized, with Address Sanitizer; on Windows without it |
+| Configuration             | Effect                                  |
+| ------------------------- | --------------------------------------- |
+| `--config=RelWithDebInfo` | The default: optimized, with debug info |
+| `--config=Debug`          | Unoptimized, with Address Sanitizer     |
 
 Options after `--` reach Bazel through `pixi run build`, for example `pixi run build RelWithDebInfo -- //:package`.
 
@@ -74,6 +74,6 @@ Every [xclang](https://github.com/clice-io/xclang/releases) release publishes pr
 
 > [!IMPORTANT]
 >
-> Debug builds enable Address Sanitizer and link the ASan-instrumented libraries xclang publishes for x86_64 Linux and arm64 macOS; arm64 Linux and x86_64 macOS have none, and no Debug build. Debug builds for Windows link the release libraries, without Address Sanitizer.
+> Debug builds enable Address Sanitizer and link the ASan-instrumented libraries xclang publishes for x86_64 Linux and arm64 macOS; the other targets have none, and no Debug build: the module of the third-party libraries in `modules/` has no debug configuration for them, and a compilation of theirs without `NDEBUG` stops at its `#error`.
 
 A build of LLVM/Clang of one's own replaces the release's with `--repo_env=XCLANG_LIBCLANG_ROOT=<directory>` (`XCLANG_LIBCLANG_ASAN_ROOT` for the ASan one); it has to be built the way xclang builds it, by xclang's `scripts/toolchain.ts`; see [xclang](https://github.com/clice-io/xclang).

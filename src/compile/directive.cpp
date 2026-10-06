@@ -1,13 +1,13 @@
-#include "compile/directive.h"
+module;
 
-#include "compile/implement.h"
-#include "syntax/lexer.h"
-#include "vfs/path.h"
+#include "modules/prelude.h"
 
-#include "clang/Basic/Module.h"
-#include "clang/Lex/MacroArgs.h"
-#include "clang/Lex/MacroInfo.h"
-#include "clang/Lex/Preprocessor.h"
+module clice;
+
+import :compile.directive;
+import :compile.implement;
+import :syntax.lexer;
+import :vfs.path;
 
 namespace clice {
 

@@ -1,16 +1,12 @@
-#include "syntax/preamble_synthesis.h"
+module;
 
-#include <format>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "syntax/lexer.h"
-#include "syntax/scan.h"
+module clice;
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
+import :syntax.lexer;
+import :syntax.preamble_synthesis;
+import :syntax.scan;
 
 namespace clice {
 

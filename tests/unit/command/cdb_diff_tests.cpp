@@ -1,12 +1,15 @@
-#include <algorithm>
-#include <cstdint>
+module;
 
-#include "test/cdb_helper.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "command/argument_parser.h"
-#include "command/command.h"
-#include "vfs/path.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :command.argument_parser;
+import :command.command;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.path;
 
 namespace clice::testing {
 

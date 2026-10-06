@@ -5,7 +5,7 @@
 /// The libraries, the standard library and its module sources are stand-ins
 /// in the workspace, so no real system header is involved.
 
-import { statSync } from "node:fs";
+import { cpSync, statSync } from "node:fs";
 import { MTIME_GRANULARITY, type ProcessResult, runProcess, sleep } from "@clice/tools/client";
 import { type Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test, type SessionFactory } from "../fixtures.ts";
@@ -112,6 +112,18 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
         ),
     );
     ws.write("third/libc/cvp.h", lines("#pragma once", "int fake_vprint(int);"));
+    // Read two ways too, but declaring fake_word in both: <cwin.h> brings
+    // it wherever it is included, as <windows.h> brings DWORD.
+    ws.write(
+        "third/libc/cdual.h",
+        lines("#ifndef CDUAL_SMALL", "int fake_wide(void);", "#endif", "typedef int fake_word;"),
+    );
+    ws.write("third/libc/cwin.h", lines("#pragma once", "#include <cdual.h>"));
+    ws.write("third/libc/cwide.h", lines("#pragma once", "int fake_widen(int);"));
+    ws.write(
+        "third/libc/csmall.h",
+        lines("#pragma once", "#define CDUAL_SMALL", "#include <cdual.h>", "#undef CDUAL_SMALL"),
+    );
     ws.write("third/libc/cputs.h", lines("#pragma once", "int fake_puts(const char*);"));
     // Included again, it undefines its macro ahead of defining it anew.
     ws.write("third/libc/fassert.h", lines("#undef fassert", "#define fassert(x) ((void)(x))"));
@@ -187,14 +199,32 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
             "}",
         ),
     );
+    // A header pasting a fragment that declares fake_widen and calls it, as
+    // toml++ declares the Windows functions it calls; after <cwide.h> by
+    // path, so that one owns fake_widen.
+    ws.write(
+        "third/widen/widen.inl",
+        lines(
+            "int fake_widen(int);",
+            "inline int widen_twice(int x) { return fake_widen(x) * 2; }",
+        ),
+    );
+    ws.write("third/widen/widen.h", lines("#pragma once", '#include "widen.inl"'));
     ws.write(
         "app/direct.cpp",
-        lines("#include <cio.h>", "int direct() { return fake_stdout + FAKE_EOF; }"),
+        lines(
+            "#include <cio.h>",
+            "#include <cwin.h>",
+            '#include "../third/widen/widen.h"',
+            "int direct() { fake_word word = fake_stdout; return widen_twice(word) + FAKE_EOF; }",
+        ),
     );
     ws.write(
         "app/third.cpp",
         lines(
             "#include <cio.h>",
+            "#include <csmall.h>",
+            "#include <cwide.h>",
             "#include <fakecstdio>",
             "int third() { return fake_vprint(0); }",
         ),
@@ -282,6 +312,7 @@ function writeProgram(ws: Workspace): void {
             "struct Box { T value; };",
             "template <typename T, typename U>",
             "struct Pair { T first; U second; };",
+            "namespace inner { struct Deep {}; }",
             "int hook();",
             "}",
         ),
@@ -343,9 +374,18 @@ function writeProgram(ws: Workspace): void {
             "template <typename T,",
             "          typename U>",
             "struct Pair;",
+            "namespace inner {",
+            "struct Deep;",
+            "}",
+            "}",
+            "namespace core::inner {",
+            "struct Deep;",
             "}",
             "namespace tool {",
             "int run(const core::Text& text, core::Sink* sink, core::Box<int>* box = nullptr);",
+            "}",
+            "namespace tool::detail {",
+            "#define TOOL_DETAIL 1",
             "}",
         ),
     );
@@ -464,11 +504,17 @@ test("C library kept headers", async ({ session }) => {
     const libc = all.get("libc")!;
     // main.cpp reaches <cio.h> only through <fakecstdio>, which `import std`
     // empties, while direct.cpp includes it itself; third.cpp's own <cio.h>
-    // takes only the type of <cva.h>. fake_puts comes from std.compat.
+    // takes only the type of <cva.h>. fake_puts comes from std.compat,
+    // direct.cpp's <cwin.h> brings fake_word, and widen.h declares
+    // fake_widen itself, in a fragment it pastes.
     expect(libc.textual.map((header) => [header.include, header.because])).toEqual([
         ["<cio.h>", "fake_stdout in app/main.cpp"],
         ["<cva.h>", "fake_vprint in app/third.cpp"],
     ]);
+    // Seen at all: what direct.cpp and third.cpp include.
+    expect(libc.entries.map((header) => header.include)).toEqual(
+        expect.arrayContaining(["<cwin.h>", "<cwide.h>", "<csmall.h>"]),
+    );
     const macros = libc.macros.map((macro) => macro.name);
     expect(macros).toContain("FAKE_EOF");
     expect(macros).toContain("fake_stdout");
@@ -545,6 +591,28 @@ test("modularize writes the wrapping", async ({ session }) => {
     await sleep(MTIME_GRANULARITY);
     expect((await modularize(ws)).status).toBe(0);
     expect(statSync(ws.path("wrap/alpha.cppm")).mtimeMs).toBe(before);
+
+    // The same units without a header emptied.
+    const bare = await runClice(
+        "modularize",
+        "--workspace",
+        ws.root,
+        "--scope",
+        SCOPE,
+        "--partition",
+        ws.path("partition.json"),
+        "--std",
+        ws.path("stdmod"),
+        "--no-mirrors",
+        "--out",
+        ws.path("bare"),
+    );
+    expect(bare.status, bare.stdout).toBe(0);
+    const barePlan = (JSON.parse(bare.stdout) as { wrapping: Plan }).wrapping;
+    expect(barePlan.mirrors).toEqual([]);
+    expect(barePlan.modules.map((module) => module.mirrors)).toEqual([[], []]);
+    expect(ws.exists("bare/mirror")).toBe(false);
+    expect(ws.read("bare/beta.cppm")).toBe(ws.read("wrap/beta.cppm"));
 
     // Without beta, what the last run wrote for it goes; the rest stays.
     ws.write(
@@ -695,6 +763,7 @@ test("modularize rewrites program modules", async ({ session }) => {
             "struct Box { T value; };",
             "template <typename T, typename U>",
             "struct Pair { T first; U second; };",
+            "namespace inner { struct Deep {}; }",
             "int hook();",
             "}",
             "}",
@@ -721,6 +790,7 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(detail).toContain("\nmodule app.core:detail;\n");
     expect(detail).not.toContain("namespace {");
     expect(detail).toContain("inline int hidden() { return 1; }");
+    expect(detail).toContain('#include "cfg/late.h"');
     expect(detail.indexOf('#include "cfg/late.h"')).toBeLessThan(
         detail.indexOf("module app.core:detail;"),
     );
@@ -750,7 +820,11 @@ test("modularize rewrites program modules", async ({ session }) => {
     const tool = ws.read("app/tool/tool.cppm");
     expect(tool).toContain("export module app.tool:tool;");
     expect(tool).toContain("import app.core;");
-    expect(tool).toContain("namespace core {\n}\n");
+    expect(tool).not.toContain("namespace core {");
+    expect(tool).not.toContain("namespace inner {");
+    expect(tool).not.toContain("namespace core::inner {");
+    // A namespace holding a directive is no empty one.
+    expect(tool).toContain("namespace tool::detail {\n#define TOOL_DETAIL 1\n}");
     expect(ws.read("app/tool/tool.cpp")).toContain('#include "core/text.macros.h"');
     // The guard's macro, which tool.cpp tests, outlives the guard.
     expect(ws.read("app/core/sink.macros.h")).toBe(lines("#pragma once", "", "#define SINK_H"));
@@ -776,6 +850,173 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(runSource).toContain(
         "int main() { return tool::run(core::Text{}, nullptr) + CFG_SIZE + CFG_DEFS; }",
     );
+});
+
+test("modularize merges configurations", async ({ session }) => {
+    const ws = await writeProject(session);
+    expect((await modularize(ws)).status).toBe(0);
+    // A second configuration: alpha exports blue for red, its alias names
+    // another namespace, and one more header is emptied.
+    cpSync(ws.path("wrap"), ws.path("two"), { recursive: true });
+    const alpha = ws.read("wrap/alpha.cppm");
+    ws.write(
+        "two/alpha.cppm",
+        alpha
+            .replace("using ::alpha::red;", "using ::alpha::blue;")
+            .replace("export namespace al = ::alpha;", "export namespace al = ::alpha::wide;"),
+    );
+    ws.write("two/alpha.macros.h", ws.read("wrap/alpha.macros.h") + "#define ALPHA_WIDE_ONLY 1\n");
+    ws.write("two/mirror/alpha/alpha/wide.h", "");
+    ws.write("two/.modularize", ws.read("two/.modularize") + "mirror/alpha/alpha/wide.h\n");
+    const configurations = [
+        { name: "one", condition: "defined(ONE)", out: "wrap" },
+        { name: "two", condition: "defined(TWO)", out: "two" },
+    ];
+    ws.write("merge.json", JSON.stringify({ configurations }));
+    const merge = (file = ws.path("merge.json")) =>
+        runClice("modularize", "--merge", file, "--out", ws.path("merged"));
+
+    const run = await merge();
+    expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
+    const plan = (JSON.parse(run.stdout) as { wrapping: Plan }).wrapping;
+    expect(plan.modules.map((module) => [module.name, module.imports, module.mirrors])).toEqual([
+        ["alpha", [], ["mirror/std"]],
+        ["beta", ["alpha"], ["mirror/std", "mirror/alpha"]],
+    ]);
+    expect(plan.modules[0]!.includeRoots).toEqual([]);
+    expect(plan.stdSources).toEqual([]);
+    expect(plan.mirrors).toEqual(["mirror/std", "mirror/alpha", "mirror/beta"]);
+
+    const dispatch = (file: string) =>
+        lines(
+            "#if defined(ONE)",
+            `#include "one/${file}"`,
+            "#elif defined(TWO)",
+            `#include "two/${file}"`,
+            "#else",
+            '#error "no configuration merged matches this compilation"',
+            "#endif",
+        );
+    expect(ws.read("merged/prelude.h")).toBe("#pragma once\n\n" + dispatch("prelude.h"));
+    expect(ws.read("merged/one/prelude.h")).toBe(ws.read("wrap/prelude.h"));
+    expect(ws.read("merged/two/alpha.macros.h")).toBe(ws.read("two/alpha.macros.h"));
+    const fragment = alpha.slice("module;\n".length, alpha.indexOf("\nexport module alpha;"));
+    expect(ws.read("merged/one/alpha.fragment.h")).toBe(fragment.trim() + "\n");
+
+    const merged = ws.read("merged/alpha.cppm");
+    expect(
+        merged.startsWith(
+            "module;\n\n" + dispatch("alpha.fragment.h") + "\nexport module alpha;\n",
+        ),
+    ).toBe(true);
+    const one = lines(
+        "#if defined(ONE)",
+        "export namespace al = ::alpha;",
+        "",
+        "export namespace alpha {",
+        "using ::alpha::red;",
+        "}",
+        "#endif",
+    );
+    const two = lines(
+        "#if defined(TWO)",
+        "export namespace al = ::alpha::wide;",
+        "",
+        "export namespace alpha {",
+        "using ::alpha::blue;",
+        "}",
+        "#endif",
+    );
+    // What both export first, unconditionally, then a block per group.
+    const purview = merged.slice(merged.indexOf("\nexport module alpha;\n"));
+    expect(purview.split("#if ")).toHaveLength(3);
+    expect(purview.indexOf("using ::alpha::Color;")).toBeGreaterThan(-1);
+    expect(purview.indexOf("using ::alpha::Color;")).toBeLessThan(purview.indexOf("#if "));
+    expect(purview.endsWith(one + "\n" + two)).toBe(true);
+    const beta = ws.read("merged/beta.cppm");
+    expect(beta).toContain("\nexport module beta;\n");
+    expect(beta.slice(beta.indexOf("\nexport module beta;\n"))).not.toContain("#if");
+
+    expect(ws.read("merged/mirror/alpha/alpha/wide.h")).toBe("");
+    expect(ws.read("merged/mirror/alpha/alpha/alpha.h")).toBe("");
+
+    const bare = await runClice(
+        "modularize",
+        "--merge",
+        ws.path("merge.json"),
+        "--no-mirrors",
+        "--out",
+        ws.path("bare"),
+    );
+    expect(bare.status, bare.stdout).toBe(0);
+    expect((JSON.parse(bare.stdout) as { wrapping: Plan }).wrapping.mirrors).toEqual([]);
+    expect(ws.exists("bare/mirror")).toBe(false);
+    expect(ws.read("bare/alpha.cppm")).toBe(merged);
+
+    // A third configuration like the second: what both export is under
+    // either condition.
+    cpSync(ws.path("two"), ws.path("three"), { recursive: true });
+    const three = [...configurations, { name: "three", condition: "defined(THREE)", out: "three" }];
+    ws.write("merge3.json", JSON.stringify({ configurations: three }));
+    expect((await merge(ws.path("merge3.json"))).status).toBe(0);
+    expect(ws.read("merged/alpha.cppm")).toContain(
+        lines(
+            "#if (defined(TWO)) || (defined(THREE))",
+            "export namespace al = ::alpha::wide;",
+            "",
+            "export namespace alpha {",
+            "using ::alpha::blue;",
+            "}",
+            "#endif",
+        ),
+    );
+
+    const failure = async (run: Promise<ProcessResult>) => {
+        const result = await run;
+        expect(result.status, result.stdout).toBe(1);
+        return (JSON.parse(result.stdout) as { error: string }).error;
+    };
+    ws.write(
+        "unconditioned.json",
+        JSON.stringify({ configurations: [{ ...configurations[0], condition: "" }] }),
+    );
+    expect(await failure(merge(ws.path("unconditioned.json")))).toBe(
+        "configuration one has no condition",
+    );
+    const noStd = ws.read("three/.modularize").replace(/^mirror\/std\/.*\n/gm, "");
+    ws.write("three/.modularize", noStd);
+    expect(await failure(merge(ws.path("merge3.json")))).toBe(
+        "configurations one and three differ in emptying the standard headers",
+    );
+    const unmirrored = await runClice(
+        "modularize",
+        "--merge",
+        ws.path("merge3.json"),
+        "--no-mirrors",
+        "--out",
+        ws.path("bare3"),
+    );
+    expect(unmirrored.status, unmirrored.stdout).toBe(0);
+    ws.write("two/.modularize", ws.read("two/.modularize").replace("beta.cppm\n", ""));
+    expect(await failure(merge())).toBe("configurations one and two wrap different modules");
+    ws.write(
+        "named.json",
+        JSON.stringify({ configurations: [{ ...configurations[0], name: "mirror" }] }),
+    );
+    expect(await failure(merge(ws.path("named.json")))).toContain("not a distinct directory name");
+    expect(
+        await failure(
+            runClice(
+                "modularize",
+                "--merge",
+                ws.path("merge.json"),
+                "--partition",
+                ws.path("partition.json"),
+                "--out",
+                ws.path("merged"),
+            ),
+        ),
+    ).toContain("needs --out and no --partition");
 });
 
 test("modularize partition errors", async ({ session }) => {

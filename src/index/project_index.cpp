@@ -1,15 +1,14 @@
-#include "index/project_index.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <string>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "index/serialization.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
+module clice;
+
+import :index.project_index;
+import :index.serialization;
+import :support.logging;
 
 namespace clice::index {
 

@@ -1,13 +1,12 @@
-#include <cstdlib>
-#include <string>
-#include <string_view>
+module;
 
-#include "test/platform.h"
-#include "driver/driver.h"
-#include "support/logging.h"
+#include "modules/prelude.h"
 
-#include "kota/deco/deco.h"
-#include "kota/zest/zest.h"
+module clice;
+
+import :driver.driver;
+import :support.logging;
+import :tests.unit.test.platform;
 
 namespace {
 
@@ -26,7 +25,7 @@ struct TestOptions {
 
 }  // namespace
 
-int main(int argc, const char** argv) {
+extern "C++" int main(int argc, const char** argv) {
     auto args = kota::deco::util::argvify(argc, argv);
     auto parsed = kota::deco::cli::parse<TestOptions>(args);
 

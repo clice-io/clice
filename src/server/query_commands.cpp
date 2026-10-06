@@ -1,18 +1,15 @@
-#include "server/query_commands.h"
+module;
 
-#include <format>
+#include "modules/prelude.h"
 
-#include "command/toolchain.h"
-#include "index/serialization.h"
-#include "project/build.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+module clice;
 
-#include "kota/meta/enum.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Path.h"
+import :command.toolchain;
+import :index.serialization;
+import :project.build;
+import :server.query_commands;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::query {
 

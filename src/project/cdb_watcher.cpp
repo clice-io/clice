@@ -1,13 +1,15 @@
-#include "project/cdb_watcher.h"
+module;
 
-#include <ranges>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "support/logging.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/STLExtras.h"
+module clice;
+
+import :project.cdb_watcher;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

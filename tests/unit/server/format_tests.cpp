@@ -1,5 +1,11 @@
-#include "test/test.h"
-#include "server/format.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :server.format;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 

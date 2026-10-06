@@ -1,17 +1,14 @@
-#include <expected>
-#include <format>
-#include <string>
-#include <vector>
+module;
 
-#include "feature/feature.h"
-#include "support/logging.h"
-#include "vfs/file_system.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/SmallString.h"
-#include "llvm/Support/Error.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/VirtualFileSystem.h"
-#include "clang/Format/Format.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :feature.feature;
+import :support.logging;
+import :vfs.file_system;
 
 namespace clice::feature {
 

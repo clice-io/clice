@@ -22,14 +22,16 @@ test.skipIf(process.platform !== "linux")(
         client.assertHasErrors(uri);
         const published = client.publishedDiagnostics.length;
 
-        // Fast kills push the lone stateful worker into its respawn backoff.
+        // Fast deaths push the lone stateful worker into its respawn
+        // backoff. SIGUSR2 names no request and, unlike a kill from outside
+        // (SIGKILL), counts as the worker failing by itself.
         let kills = 0;
         let previous = 0;
         await waitUntil(
             () => {
                 const [pid] = client.workerPids("SF-");
                 if (pid !== undefined && pid !== previous) {
-                    process.kill(pid, "SIGKILL");
+                    process.kill(pid, "SIGUSR2");
                     previous = pid;
                     kills += 1;
                 }
