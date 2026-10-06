@@ -116,7 +116,11 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
         found.push_back(std::move(entering));
     }
     if(forced && found.empty()) {
-        return std::nullopt;
+        auto chain = project.dep_graph.find_include_chain(host, header);
+        if(!chain.empty()) {
+            found.push_back({.file = host, .chain = std::move(chain)});
+        }
+        return found;
     }
     if(!found.empty()) {
         // Nodes are numbered by includer, not by when the compile entered
@@ -286,7 +290,9 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
     llvm::SmallVector<Fid> hosts;
     llvm::DenseSet<Fid> seen;
     auto add = [&](Fid candidate) {
-        if(seen.insert(candidate).second && !host_commands(project, header, candidate).empty()) {
+        // A header with an entry of its own contributes to itself.
+        if(candidate != header && seen.insert(candidate).second &&
+           !host_commands(project, header, candidate).empty()) {
             hosts.push_back(candidate);
         }
     };
@@ -329,7 +335,7 @@ std::optional<Host> default_host(Project& project, Fid header) {
         }
         auto chain = project.dep_graph.find_include_chain(host, header);
         if(!chain.empty()) {
-            return Host{.file = host, .chain = std::move(chain)};
+            return Host{.file = host, .chain = std::move(chain), .lexical = true};
         }
     }
     return std::nullopt;

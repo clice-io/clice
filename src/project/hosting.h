@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "command/command.h"
@@ -24,23 +25,28 @@ struct Host {
 
     /// The line of the directive each chain file but the header enters the
     /// next one with, when the unit's include tree says where its compile
-    /// enters the header; empty for a chain the lexical scan found, whose
-    /// directives the compile may never enter.
+    /// enters the header; empty for a lexical chain.
     llvm::SmallVector<std::uint32_t> lines;
+
+    /// Whether the chain is the lexical scan's for want of an include tree
+    /// that could tell: its directives are ones the compile may never enter.
+    bool lexical = false;
 };
 
 /// An include tree over file versions a preprocess run took of a unit
 /// (Project::include_trees), beside the ones index manifests carry: rooted
-/// at the version of the unit it read, invalid when the run failed.
+/// at the version of the unit it read, invalid while no run succeeded.
 struct HostTree {
     VersionID root;
     std::vector<index::IncludeNode> nodes;
 
-    /// Project::commands_epoch and Project::context_epoch when the run
-    /// ended: a tree serves the commands it ran under, and a run is not
-    /// repeated before the disk or the commands change.
+    /// Project::commands_epoch of the run the tree came from: it serves
+    /// the commands it ran under.
     std::uint64_t commands_epoch = 0;
-    std::uint64_t context_epoch = 0;
+
+    /// Project::commands_epoch and context_epoch when the last run, failed
+    /// or not, started: one is not repeated before either moves.
+    std::pair<std::uint64_t, std::uint64_t> last_run;
 };
 
 /// Every place the compile of `host` enters `header`, in the order it
@@ -48,9 +54,9 @@ struct HostTree {
 /// a preprocess run left. Empty when the compile never enters the header.
 /// Nullopt when no tree can tell: none is known, or the unit or a file on
 /// the way changed since — for a header the tree never enters, a file of
-/// the lexical chain to it, which may have gained the include — or the
-/// compile enters it only through an include its command forces in,
-/// which no cut of the unit's text reproduces.
+/// the lexical chain to it, which may have gained the include. A compile
+/// entering the header only through an include its command forces in,
+/// which no cut of the unit's text reproduces, yields the lexical chain.
 std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header);
 
 /// How many times the compile of `host` enters `header`: by its include

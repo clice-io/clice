@@ -231,9 +231,9 @@ private:
 
     /// Preprocess `host` for its include tree (Project::include_trees), so
     /// a header context it lends follows the directives its compile really
-    /// enters. False when the run failed, which the tree records, or was
-    /// cancelled.
-    kota::task<bool> fetch_include_tree(RoundContext& ctx, Fid host);
+    /// enters. False when no tree came: the worker failed the run, which
+    /// the tree records, or never answered.
+    kota::task<bool> fetch_include_tree(Fid host);
 
     /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);

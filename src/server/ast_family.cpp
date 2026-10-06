@@ -625,22 +625,23 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
     co_return true;
 }
 
-kota::task<bool> ASTFamily::fetch_include_tree(RoundContext& ctx, Fid host) {
+kota::task<bool> ASTFamily::fetch_include_tree(Fid host) {
     auto& files = project.file_table;
     worker::IncludeTreeParams params;
     params.file = files.resolve(host).str();
     params.workspace = project.config.workspace_root.str();
     contexts.commands.resolve_command(host, params.directory, params.arguments);
-    auto result = co_await pool.send_stateless(params, worker::Priority::High, ctx.token());
-    if(!result.has_value() || !result.value().success) {
-        LOG_INFO("No include tree for {}: {}",
-                 params.file,
-                 result.has_value() ? result.value().error : result.error().message);
-        // A cancelled run is the round's: the next one asks again.
-        if(result.has_value() || result.error().code != worker::dispatch_errc::cancelled) {
-            project.include_trees[host] = {.commands_epoch = project.commands_epoch,
-                                           .context_epoch = project.context_epoch};
-        }
+    auto started = std::pair(project.commands_epoch, project.context_epoch);
+    // The tree does not depend on the header's buffer: an edit superseding
+    // the round must not cancel the run, or typing would restart it.
+    auto result = co_await pool.send_stateless(params, worker::Priority::High);
+    if(!result.has_value()) {
+        LOG_INFO("No include tree for {}: {}", params.file, result.error().message);
+        co_return false;
+    }
+    if(!result.value().success) {
+        LOG_INFO("No include tree for {}: {}", params.file, result.value().error);
+        project.include_trees[host].last_run = started;
         co_return false;
     }
     auto& tree = result.value();
@@ -659,8 +660,8 @@ kota::task<bool> ASTFamily::fetch_include_tree(RoundContext& ctx, Fid host) {
     project.include_trees[host] = {
         .root = versions.back(),
         .nodes = std::move(tree.nodes),
-        .commands_epoch = project.commands_epoch,
-        .context_epoch = project.context_epoch,
+        .commands_epoch = started.first,
+        .last_run = started,
     };
     co_return true;
 }
@@ -713,21 +714,24 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.workspace = project.config.workspace_root.str();
         auto resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
         // A context cut along the lexical chain may name directives the
-        // host's compile never enters: while no include tree can tell, and
-        // none was taken since the disk or the commands last changed, take
-        // one and resolve again — under it, another host may come first.
-        auto taken = [&](Fid host) {
-            auto it = project.include_trees.find(host);
-            return it != project.include_trees.end() &&
-                   it->second.commands_epoch == project.commands_epoch &&
-                   it->second.context_epoch == project.context_epoch;
-        };
-        while(resolution.tree_wanted.valid() && !taken(resolution.tree_wanted) &&
-              !enterings(project, resolution.tree_wanted, path_id)) {
-            if(!co_await fetch_include_tree(ctx, resolution.tree_wanted)) {
-                break;
+        // host's compile never enters: once a tree can tell — another
+        // header's run took it, the index caught up — or one is taken,
+        // unless one was since the disk or the commands last changed,
+        // resolve again: under it, another host may come first.
+        llvm::SmallVector<Fid, 2> retried;
+        while(resolution.tree_wanted.valid() &&
+              !llvm::is_contained(retried, resolution.tree_wanted)) {
+            auto host = resolution.tree_wanted;
+            retried.push_back(host);
+            if(!enterings(project, host, path_id)) {
+                auto it = project.include_trees.find(host);
+                bool ran =
+                    it != project.include_trees.end() &&
+                    it->second.last_run == std::pair(project.commands_epoch, project.context_epoch);
+                if(ran || !co_await fetch_include_tree(host)) {
+                    break;
+                }
             }
-            // Resolved without the tree, the context must not outlive it.
             contexts.drop_header_context(path_id);
             if(session->generation != gen) {
                 co_return RoundOutcome::Stale;

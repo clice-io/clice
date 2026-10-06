@@ -372,7 +372,7 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
                 }
             } else if(auto chain = project.dep_graph.find_include_chain(preferred, header_path_id);
                       !chain.empty()) {
-                host = Host{.file = preferred, .chain = std::move(chain)};
+                host = Host{.file = preferred, .chain = std::move(chain), .lexical = true};
                 occurrence = choice->occurrence;
             }
         }
@@ -395,7 +395,7 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
         host_base_hash = choice->base_hash;
     }
 
-    bool lexical = host->lines.empty();
+    bool lexical = host->lexical;
     if(!synthesize) {
         return HeaderContext{.host_path_id = host_path_id,
                              .occurrence = occurrence.value_or(0),
@@ -475,7 +475,7 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
         chain_entries.push_back({
             .path = chain_paths.back(),
             .content = chain_contents.back(),
-            .line = lexical ? 0 : host->lines[i],
+            .line = host->lines.empty() ? 0 : host->lines[i],
         });
         project.file_table.observe(chain[i], observed->obs);
         deps.push_back(
@@ -499,7 +499,7 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
     auto synthesized = synthesize_context(chain_entries,
                                           target_spelling,
                                           resolver,
-                                          lexical ? occurrence : std::nullopt,
+                                          host->lines.empty() ? occurrence : std::nullopt,
                                           target_content);
     if(!synthesized) {
         LOG_WARN("resolve_header_context: cannot match include chain for {} (host={})",
