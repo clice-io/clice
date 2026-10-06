@@ -2,11 +2,11 @@ name: test-leg
 
 # One target and build type: a build job, then the suites in jobs of their
 # own that wait for this build only, never for another leg's. A cross-built
-# leg (build_os) builds on a faster runner of the same OS, with xclang's
-# toolchain for the target, and runs its suites with only the test-run
-# environment active, as a machine with clice and a compiler of its own: the
-# clang++ its tests find is another (on Windows arm64 the runner's, targeting
-# MSVC).
+# leg (build_os) builds on a faster runner, with xclang's toolchain for the
+# target, and runs its suites with only the test-run environment active, as a
+# machine with clice and a compiler of its own: the clang++ its tests find is
+# another (on Windows the runner's, targeting MSVC). Builds run on Linux and
+# macOS runners only.
 
 on:
   workflow_call:
@@ -76,27 +76,21 @@ jobs:
           path: |
             ${{ runner.temp }}/bazel-disk
             ${{ runner.temp }}/bazel-repo
-            ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }}
+            /var/tmp/xclang-thinlto
           key: bazel-${{ inputs.target }}-${{ inputs.build_type }}-${{ github.sha }}
           restore-keys: |
             bazel-${{ inputs.target }}-${{ inputs.build_type }}-
 
-      # Bazel refuses a repository cache inside the workspace. On Windows,
-      # the default output root under the user profile pushes action paths
-      # past MAX_PATH. On main every cached output is fetched, which marks
-      # it used for the prune below; elsewhere only what is asked for. lld's
-      # ThinLTO cache (bazel/clice.bazelrc) is outside Bazel's, in the same
-      # entry.
+      # Bazel refuses a repository cache inside the workspace. On main every
+      # cached output is fetched, which marks it used for the prune below;
+      # elsewhere only what is asked for. lld's ThinLTO cache
+      # (bazel/clice.bazelrc) is outside Bazel's, in the same entry.
       - name: Bazel settings
         run: |
-          temp=$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")
           {
-            echo "common --disk_cache=$temp/bazel-disk"
-            echo "common --repository_cache=$temp/bazel-repo"
-            echo "build --profile=$temp/bazel-profile.json.gz"
-            if [ "$RUNNER_OS" = Windows ]; then
-              echo "startup --output_user_root=C:/b"
-            fi
+            echo "common --disk_cache=$RUNNER_TEMP/bazel-disk"
+            echo "common --repository_cache=$RUNNER_TEMP/bazel-repo"
+            echo "build --profile=$RUNNER_TEMP/bazel-profile.json.gz"
             if [ "$GITHUB_REF" = refs/heads/main ]; then
               echo "common --remote_download_all"
             fi
@@ -116,7 +110,7 @@ jobs:
       # artifact is the whole timeline, for Perfetto.
       - name: Critical path
         run: |
-          gzip -dc "$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")/bazel-profile.json.gz" |
+          gzip -dc "$RUNNER_TEMP/bazel-profile.json.gz" |
             jq -r '.traceEvents[] | select(.cat == "critical path component") | "\((.dur / 1e5 | floor) / 10)\t\(.name)"'
 
       - name: Upload build profile
@@ -133,7 +127,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           find "$RUNNER_TEMP/bazel-disk" -type f ! -newer "$RUNNER_TEMP/bazel-start" -delete
-          du -sh "$RUNNER_TEMP"/bazel-disk "$RUNNER_TEMP"/bazel-repo ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }} 2>/dev/null || true
+          du -sh "$RUNNER_TEMP"/bazel-disk "$RUNNER_TEMP"/bazel-repo /var/tmp/xclang-thinlto 2>/dev/null || true
 
       - name: Save Bazel caches
         if: github.ref == 'refs/heads/main'
@@ -142,7 +136,7 @@ jobs:
           path: |
             ${{ runner.temp }}/bazel-disk
             ${{ runner.temp }}/bazel-repo
-            ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }}
+            /var/tmp/xclang-thinlto
           key: bazel-${{ inputs.target }}-${{ inputs.build_type }}-${{ github.sha }}
 
       # The suite jobs below, editor-test, compat-test and the instant builds

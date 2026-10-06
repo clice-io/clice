@@ -1,33 +1,17 @@
-#include <utility>
+module;
+
+#include "modules/prelude.h"
 
 /// Parts of this file are ported from clangd's AST.cpp, Hover.cpp,
 /// InlayHints.cpp and CodeCompletionStrings.cpp (llvmorg-21.1.8), part of
 /// the LLVM project, licensed under Apache License v2.0 with LLVM
 /// Exceptions. See https://llvm.org/LICENSE.txt for license information.
 
-#include "semantic/display.h"
-#include "semantic/types.h"
-#include "support/format.h"
+module clice;
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Format.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/JSON.h"
-#include "llvm/Support/SaveAndRestore.h"
-#include "llvm/Support/ScopedPrinter.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/ASTDiagnostic.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/RawCommentList.h"
-#include "clang/AST/StmtVisitor.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Sema/CodeCompleteConsumer.h"
-#include "clang/Tooling/Syntax/Tokens.h"
+import :semantic.display;
+import :semantic.types;
+import :support.format;
 
 namespace clice::display {
 

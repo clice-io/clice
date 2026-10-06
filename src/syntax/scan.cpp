@@ -1,25 +1,13 @@
-#include "syntax/scan.h"
+module;
 
-#include <deque>
+#include "modules/prelude.h"
 
-#include "command/invocation.h"
-#include "syntax/lexer.h"
-#include "vfs/file_system.h"
+module clice;
 
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/Basic/DiagnosticOptions.h"
-#include "clang/Basic/FileEntry.h"
-#include "clang/Basic/FileManager.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/FrontendActions.h"
-#include "clang/Lex/PPCallbacks.h"
-#include "clang/Lex/Preprocessor.h"
-#include "clang/Lex/PreprocessorOptions.h"
-#include "clang/Tooling/CompilationDatabase.h"
+import :command.invocation;
+import :syntax.lexer;
+import :syntax.scan;
+import :vfs.file_system;
 
 namespace clice {
 
@@ -378,6 +366,16 @@ void scan_with_preprocessor(
 }
 
 }  // namespace
+
+const ScanResult& QuickScanCache::scan_of(Fid fid,
+                                          std::uint64_t content_hash,
+                                          llvm::StringRef content) {
+    auto [it, inserted] = results.try_emplace({fid, content_hash});
+    if(inserted) {
+        it->second = scan_quick(content);
+    }
+    return it->second;
+}
 
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,

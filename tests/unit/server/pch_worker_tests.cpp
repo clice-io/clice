@@ -1,12 +1,14 @@
-#include <algorithm>
-#include <string>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "project/project.h"
-#include "server/worker_test_helpers.h"
-#include "syntax/scan.h"
-#include "worker/protocol.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :project.project;
+import :syntax.scan;
+import :tests.unit.server.worker_test_helpers;
+import :tests.unit.test.test;
+import :worker.protocol;
 
 namespace clice::testing {
 

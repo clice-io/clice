@@ -1,8 +1,10 @@
-#include "support/fuzzy_matcher.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <utility>
+#include "modules/prelude.h"
+
+module clice;
+
+import :support.fuzzy_matcher;
 
 namespace clice {
 

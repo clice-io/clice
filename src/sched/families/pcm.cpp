@@ -1,24 +1,19 @@
-#include "sched/families/pcm.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <string>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "sched/families/build_common.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
-#include "syntax/scan.h"
-#include "vfs/file_system.h"
-#include "worker/protocol.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/VirtualFileSystem.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/Basic/Version.h"
+module clice;
+
+import :sched.families.build_common;
+import :sched.families.pcm;
+import :support.anomaly;
+import :support.logging;
+import :syntax.scan;
+import :vfs.file_system;
+import :worker.protocol;
 
 namespace clice {
 
@@ -300,9 +295,9 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             build_crashes.insert_or_assign(path_id, Crash{content, error});
         });
 
-    // A scheduler preemption (foreground reclaim, memory pressure) or an
-    // advisory cancel is no verdict on the unit: report the round stale so
-    // waiters drive a retry instead of failing their whole chain.
+    // A foreground reclaim or an advisory cancel is no verdict on the
+    // unit: report the round stale so waiters drive a retry instead of
+    // failing their whole chain.
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
         LOG_INFO("BuildPCM preempted for module {}, will retry", module_name);
         co_return RoundOutcome::Stale;

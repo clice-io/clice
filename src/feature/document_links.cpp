@@ -1,11 +1,11 @@
-#include <algorithm>
-#include <cstdint>
-#include <optional>
-#include <string>
-#include <vector>
+module;
 
-#include "feature/feature.h"
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :feature.feature;
+import :syntax.lexer;
 
 namespace clice::feature {
 
@@ -73,8 +73,8 @@ auto find_directive_argument(llvm::StringRef content,
     }
 }
 
-auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
-    std::vector<DocumentLink> links;
+auto document_links(CompilationUnitRef unit) -> std::vector<index::DocumentLink> {
+    std::vector<index::DocumentLink> links;
 
     auto main_fid = unit.main_file();
     auto directives_it = unit.directives().find(main_fid);
@@ -93,7 +93,7 @@ auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
         auto range = find_directive_argument(content, offset, lang_opts);
         if(!range)
             return;
-        links.push_back(DocumentLink{.range = *range, .target = target.str()});
+        links.push_back(index::DocumentLink{.range = *range, .target = target.str()});
     };
 
     for(const auto& include: directives.includes) {
@@ -122,7 +122,7 @@ auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
 
     // Directives are collected grouped by kind; the reply promises
     // document order.
-    std::ranges::sort(links, {}, [](const DocumentLink& link) { return link.range.begin; });
+    std::ranges::sort(links, {}, [](const index::DocumentLink& link) { return link.range.begin; });
 
     return links;
 }

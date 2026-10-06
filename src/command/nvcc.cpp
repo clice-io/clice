@@ -1,22 +1,15 @@
-#include "command/nvcc.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <optional>
-#include <ranges>
+#include "modules/prelude.h"
 
-#include "support/logging.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/Twine.h"
-#include "llvm/Support/Allocator.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Program.h"
-#include "llvm/Support/StringSaver.h"
+module clice;
+
+import :command.nvcc;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 
@@ -26,6 +19,13 @@ constexpr llvm::StringLiteral ccbin_prefix = "-ccbin=";
 constexpr llvm::StringLiteral target_directory_prefix = "--target-directory=";
 constexpr llvm::StringLiteral allow_unsupported_flag = "--allow-unsupported-compiler";
 constexpr llvm::StringLiteral gpu_arch_prefix = "-arch=";
+
+/// LLVM's EnvPathSeparator has internal linkage, which no module can export.
+#ifdef _WIN32
+constexpr char path_separator = ';';
+#else
+constexpr char path_separator = ':';
+#endif
 
 /// One GPU architecture named inside an -arch/-gencode value.
 struct ArchToken {
@@ -630,7 +630,7 @@ std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef out
 
         if(line.consume_front("PATH=")) {
             llvm::SmallVector<llvm::StringRef> dirs;
-            line.split(dirs, llvm::sys::EnvPathSeparator, -1, false);
+            line.split(dirs, path_separator, -1, false);
             for(auto dir: dirs)
                 info.search_path.emplace_back(dir);
             continue;

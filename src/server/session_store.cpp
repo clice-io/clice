@@ -1,10 +1,13 @@
-#include "server/session_store.h"
+module;
 
-#include <type_traits>
-#include <utility>
-#include <variant>
+#include "modules/prelude.h"
 
-#include "support/logging.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :server.session_store;
+import :support.logging;
 
 namespace clice {
 

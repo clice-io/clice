@@ -1,12 +1,6 @@
-#include "support/logging.h"
+module;
 
-#include <array>
-#include <cassert>
-#include <chrono>
-#include <ctime>
-#include <format>
-#include <memory>
-#include <string>
+#include "modules/prelude.h"
 
 #if defined(__linux__)
 #include <link.h>
@@ -20,14 +14,12 @@
 #endif
 
 #include "version.h"
-#include "support/log_sinks.h"
-#include "vfs/path.h"
+#include "support/logging.macros.h"
 
-#include "spdlog/sinks/ringbuffer_sink.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Format.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/Signals.h"
+module clice;
+
+import :support.log_sinks;
+import :support.logging;
 
 namespace clice::logging {
 
@@ -81,7 +73,10 @@ std::string session_log_directory(std::string_view logging_dir) {
 #endif
     char stamp[32];
     std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H-%M-%S", &local);
-    return path::join(logging_dir, std::format("{}_{}", stamp, llvm::sys::Process::getProcessId()));
+    llvm::SmallString<256> directory(logging_dir);
+    llvm::sys::path::append(directory,
+                            std::format("{}_{}", stamp, llvm::sys::Process::getProcessId()));
+    return directory.str().str();
 }
 
 bool file_logger(std::string_view name,
@@ -92,7 +87,9 @@ bool file_logger(std::string_view name,
         spdlog::error("Failed to create log directory {}: {}", std::string(dir), ec.message());
         return false;
     }
-    auto filepath = path::join(dir, std::format("{}.log", name));
+    llvm::SmallString<256> joined(dir);
+    llvm::sys::path::append(joined, std::format("{}.log", name));
+    auto filepath = joined.str().str();
     auto opened = FileSink::open(filepath);
     if(!opened) {
         spdlog::error("Failed to open log file {}: {}", filepath, opened.error().message());

@@ -1,6 +1,12 @@
-#include "test/test.h"
-#include "test/tester.h"
-#include "vfs/path.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
+import :vfs.path;
 
 namespace clice::testing {
 

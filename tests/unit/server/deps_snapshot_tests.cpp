@@ -1,12 +1,13 @@
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "project/project.h"
-#include "vfs/file_system.h"
+module;
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/xxhash.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :project.project;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.file_system;
 
 namespace clice::testing {
 namespace {

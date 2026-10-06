@@ -1,17 +1,16 @@
-#include "project/project.h"
+module;
 
-#include <algorithm>
-#include <ranges>
+#include "modules/prelude.h"
 
-#include "index/serialization.h"
-#include "support/logging.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Chrono.h"
-#include "llvm/Support/Path.h"
+module clice;
+
+import :index.serialization;
+import :project.project;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 
@@ -46,7 +45,7 @@ Project::ProviderChanges Project::rebuild_dependency_graph() {
     // TODO: this scan runs synchronously on the event loop (same cost as
     // the startup scan); if it shows up on large projects, move it off the
     // dispatch path.
-    dep_graph = DependencyGraph();
+    dep_graph.reset();
     scan_dependency_graph(cdb, dep_graph, build.units(build.members()));
     dep_graph.build_reverse_map();
     context_epoch += 1;

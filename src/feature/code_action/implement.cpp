@@ -1,18 +1,12 @@
-#include <format>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
+module;
 
-#include "compile/compilation_unit.h"
-#include "feature/code_action/action.h"
-#include "semantic/display.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/raw_ostream.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/CXXInheritance.h"
-#include "clang/AST/DeclCXX.h"
+module clice;
+
+import :compile.compilation_unit;
+import :feature.code_action.action;
+import :semantic.display;
 
 namespace clice::feature::action {
 

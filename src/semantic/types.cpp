@@ -1,18 +1,16 @@
+module;
+
+#include "modules/prelude.h"
 /// Parts of this file (deduced_type and its visitor) are ported from
 /// clangd's AST.cpp (llvmorg-21.1.8), part of the LLVM project, licensed
 /// under Apache License v2.0 with LLVM Exceptions. See
 /// https://llvm.org/LICENSE.txt for license information.
 
-#include "semantic/types.h"
+module clice;
 
-#include "semantic/decls.h"
-#include "semantic/resolver.h"
-
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/Type.h"
+import :semantic.decls;
+import :semantic.resolver;
+import :semantic.types;
 
 namespace clice::types {
 

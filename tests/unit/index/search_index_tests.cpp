@@ -1,13 +1,13 @@
-#include <string>
-#include <vector>
+module;
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "index/search_index.h"
-#include "index/symbol_query.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/MemoryBuffer.h"
+module clice;
+
+import :index.search_index;
+import :index.symbol_query;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

@@ -1,10 +1,12 @@
-#include <chrono>
-#include <cstdint>
-#include <string>
+module;
 
-#include "test/test.h"
-#include "sched/blame_budget.h"
-#include "server/quarantine.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :sched.blame_budget;
+import :server.quarantine;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 

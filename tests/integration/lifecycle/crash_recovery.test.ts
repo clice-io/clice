@@ -150,13 +150,15 @@ test.skipIf(process.platform !== "linux")(
 
         // Kill the slot on sight until the pool reports the budget as spent
         // (a fast-crash streak past max_crash_streak); respawn backoff caps
-        // at ~1s, so a few seconds of killing cover every respawn.
+        // at ~1s, so a few seconds of killing cover every respawn. SIGUSR2
+        // names no request and, unlike a kill from outside (SIGKILL),
+        // counts as the worker failing by itself.
         let kills = 0;
         await waitUntil(
             () => {
                 for (const pid of client.workerPids("SL-")) {
                     try {
-                        process.kill(pid, "SIGKILL");
+                        process.kill(pid, "SIGUSR2");
                         kills += 1;
                     } catch {
                         // Already reaped.

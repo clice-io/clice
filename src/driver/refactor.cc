@@ -1,14 +1,14 @@
-#include <string>
-#include <vector>
+module;
 
-#include "driver/driver.h"
-#include "driver/query_support.h"
-#include "project/open_index.h"
-#include "server/query_commands.h"
-#include "vfs/file_system.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/StringExtras.h"
+module clice;
+
+import :driver.driver;
+import :driver.query_support;
+import :project.open_index;
+import :server.query_commands;
+import :vfs.file_system;
 
 namespace clice::driver {
 

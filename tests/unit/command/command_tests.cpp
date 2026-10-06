@@ -1,19 +1,21 @@
+module;
+
+#include "modules/prelude.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
-#include "test/cdb_helper.h"
-#include "test/platform.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "command/argument_parser.h"
-#include "command/command.h"
-#include "project/build.h"
-#include "support/shell.h"
-#include "vfs/path.h"
+module clice;
 
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/Support/raw_ostream.h"
+import :command.argument_parser;
+import :command.command;
+import :project.build;
+import :support.shell;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.platform;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.path;
 
 namespace clice::testing {
 

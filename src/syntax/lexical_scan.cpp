@@ -1,8 +1,11 @@
-#include "syntax/lexical_scan.h"
+module;
 
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLFunctionalExtras.h"
+module clice;
+
+import :syntax.lexer;
+import :syntax.lexical_scan;
 
 namespace clice {
 

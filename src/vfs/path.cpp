@@ -1,15 +1,14 @@
-#include "vfs/path.h"
+module;
 
-#include <optional>
-
-#include "llvm/Support/FileSystem.h"
+#include "modules/prelude.h"
 
 #ifdef _WIN32
 #include "vfs/win32.h"
-
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/Support/ConvertUTF.h"
 #endif
+
+module clice;
+
+import :vfs.path;
 
 namespace clice {
 

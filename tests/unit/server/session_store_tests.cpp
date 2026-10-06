@@ -1,10 +1,11 @@
-#include <chrono>
-#include <string>
+module;
 
-#include "test/test.h"
-#include "server/session_store.h"
+#include "modules/prelude.h"
 
-#include "kota/ipc/lsp/text.h"
+module clice;
+
+import :server.session_store;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

@@ -1,6 +1,12 @@
-#include "driver/driver.h"
-#include "sched/batch.h"
-#include "support/logging.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :driver.driver;
+import :sched.batch;
+import :support.logging;
 
 namespace clice::driver {
 

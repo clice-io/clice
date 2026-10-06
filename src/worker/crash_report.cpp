@@ -1,14 +1,6 @@
-#include "worker/crash_report.h"
+module;
 
-#include <cstddef>
-#include <utility>
-
-#include "worker/protocol.h"
-
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Compiler.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/Signals.h"
+#include "modules/prelude.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -28,6 +20,11 @@
 #ifdef CLICE_ASAN
 #include <sanitizer/common_interface_defs.h>
 #endif
+
+module clice;
+
+import :worker.crash_report;
+import :worker.protocol;
 
 namespace clice {
 

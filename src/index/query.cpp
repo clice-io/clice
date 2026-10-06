@@ -1,23 +1,17 @@
-#include "index/query.h"
+module;
 
-#include <algorithm>
-#include <bit>
-#include <cassert>
-#include <string>
-#include <tuple>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "index/search_index.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "vfs/file_system.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :index.query;
+import :index.search_index;
+import :support.logging;
+import :support.text;
+import :support.timer;
+import :vfs.file_system;
 
 namespace clice::index {
 
@@ -771,7 +765,7 @@ std::optional<IndexQuery::Definition> IndexQuery::definition_text(SymbolHash has
                           found = Definition{
                               .extent = *extent,
                               .text = std::string(text->substr(range.begin, range.length())),
-                              .comment = feature::preceding_comment(*text, range.begin),
+                              .comment = preceding_comment(*text, range.begin),
                           };
                           return false;
                       });
@@ -1179,6 +1173,77 @@ std::vector<IncludeEdge> IndexQuery::include_edges(Fid file) const {
         }
     }
     return edges;
+}
+
+auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::string {
+    if(offset > content.size()) {
+        return {};
+    }
+
+    // Walk to the start of the line containing `offset`, then collect the
+    // contiguous run of comment-looking lines directly above it.
+    auto begin = line_begin(content, offset);
+    llvm::SmallVector<llvm::StringRef, 8> lines;
+    // Between a closing */ and its opener the scan is inside a block
+    // comment: interior lines need no marker of their own (`/*` above bare
+    // text above `*/`). `block_start` remembers where the block began in
+    // `lines` so one whose opener never surfaces can be dropped.
+    bool in_block = false;
+    std::size_t block_start = 0;
+    while(begin > 0) {
+        auto prev_begin = line_begin(content, begin - 1);
+        auto line = content.substr(prev_begin, begin - prev_begin).rtrim("\r\n").trim();
+        if(in_block) {
+            // An opener sharing its line with code marks a comment trailing
+            // that code, not documentation of the decl below.
+            if(line.contains("/*") && !line.starts_with("/*")) {
+                break;
+            }
+            lines.push_back(line);
+            if(line.starts_with("/*")) {
+                in_block = false;
+            }
+        } else {
+            // A trailing */ only marks a comment line when the opener is on
+            // an earlier line: `int a; /* note */` closes a comment it
+            // opened itself, and everything before the marker is code.
+            bool closes_block = line.ends_with("*/") && !line.contains("/*");
+            bool comment_like = line.starts_with("//") || line.starts_with("/*") ||
+                                line.starts_with("*") || closes_block;
+            if(!comment_like || line.empty()) {
+                break;
+            }
+            if(closes_block) {
+                in_block = true;
+                block_start = lines.size();
+            }
+            lines.push_back(line);
+        }
+        begin = prev_begin;
+    }
+    if(in_block) {
+        lines.truncate(block_start);
+    }
+
+    std::string result;
+    for(auto& line: llvm::reverse(lines)) {
+        auto text = line;
+        for(llvm::StringRef marker: {"///<", "///", "//!", "//", "/**", "/*", "*/"}) {
+            if(text.starts_with(marker)) {
+                text = text.drop_front(marker.size());
+                break;
+            }
+        }
+        if(text.starts_with("*")) {
+            text = text.drop_front(1);
+        }
+        text = text.rtrim("*/").trim();
+        if(!result.empty()) {
+            result += '\n';
+        }
+        result += text.str();
+    }
+    return llvm::StringRef(result).trim().str();
 }
 
 }  // namespace clice::index

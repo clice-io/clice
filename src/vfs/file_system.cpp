@@ -1,32 +1,19 @@
-#include "vfs/file_system.h"
+module;
 
-#include <algorithm>
-#include <chrono>
-#include <cstring>
-#include <mutex>
-#include <optional>
-#include <string>
-#include <tuple>
-
-#include "support/logging.h"
-#include "vfs/path.h"
-
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Hashing.h"
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
+#include "modules/prelude.h"
 
 #ifdef _WIN32
 #include "vfs/win32.h"
-
-#include "llvm/Support/ConvertUTF.h"
-#include "llvm/Support/WindowsError.h"
 #else
-#include <cerrno>
 #include <sys/stat.h>
 #endif
+#include "support/logging.macros.h"
+
+module clice;
+
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::vfs {
 

@@ -1,25 +1,13 @@
-#include <algorithm>
-#include <cstdint>
-#include <iterator>
-#include <map>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <utility>
-#include <vector>
+module;
 
-#include "feature/feature.h"
-#include "feature/lexical_classify.h"
-#include "index/shard.h"
-#include "support/text.h"
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/TargetParser/Triple.h"
-#include "clang/Basic/IdentifierTable.h"
-#include "clang/Basic/LangStandard.h"
+module clice;
+
+import :feature.feature;
+import :feature.lexical_classify;
+import :index.shard;
+import :syntax.lexer;
 
 namespace clice::feature {
 
@@ -603,10 +591,11 @@ auto index_folding_ranges(llvm::StringRef content,
 
 auto index_document_links(llvm::StringRef content,
                           const clang::LangOptions& lang_opts,
-                          llvm::ArrayRef<IndexIncludeEdge> edges) -> std::vector<DocumentLink> {
+                          llvm::ArrayRef<IndexIncludeEdge> edges)
+    -> std::vector<index::DocumentLink> {
     auto line_starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
 
-    std::vector<DocumentLink> links;
+    std::vector<index::DocumentLink> links;
     for(const auto& edge: edges) {
         if(edge.line == 0 || edge.line > line_starts.size()) {
             continue;
@@ -619,87 +608,17 @@ auto index_document_links(llvm::StringRef content,
         links.push_back({.range = *range, .target = edge.target});
     }
 
-    std::ranges::sort(links, [](const DocumentLink& lhs, const DocumentLink& rhs) {
+    std::ranges::sort(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
         return std::tie(lhs.range.begin, lhs.target) < std::tie(rhs.range.begin, rhs.target);
     });
     auto duplicates =
-        std::ranges::unique(links, [](const DocumentLink& lhs, const DocumentLink& rhs) {
-            return lhs.range == rhs.range && lhs.target == rhs.target;
-        });
+        std::ranges::unique(links,
+                            [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
+                                return lhs.range == rhs.range && lhs.target == rhs.target;
+                            });
     links.erase(duplicates.begin(), duplicates.end());
 
     return links;
-}
-
-auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::string {
-    if(offset > content.size()) {
-        return {};
-    }
-
-    // Walk to the start of the line containing `offset`, then collect the
-    // contiguous run of comment-looking lines directly above it.
-    auto begin = line_begin(content, offset);
-    llvm::SmallVector<llvm::StringRef, 8> lines;
-    // Between a closing */ and its opener the scan is inside a block
-    // comment: interior lines need no marker of their own (`/*` above bare
-    // text above `*/`). `block_start` remembers where the block began in
-    // `lines` so one whose opener never surfaces can be dropped.
-    bool in_block = false;
-    std::size_t block_start = 0;
-    while(begin > 0) {
-        auto prev_begin = line_begin(content, begin - 1);
-        auto line = content.substr(prev_begin, begin - prev_begin).rtrim("\r\n").trim();
-        if(in_block) {
-            // An opener sharing its line with code marks a comment trailing
-            // that code, not documentation of the decl below.
-            if(line.contains("/*") && !line.starts_with("/*")) {
-                break;
-            }
-            lines.push_back(line);
-            if(line.starts_with("/*")) {
-                in_block = false;
-            }
-        } else {
-            // A trailing */ only marks a comment line when the opener is on
-            // an earlier line: `int a; /* note */` closes a comment it
-            // opened itself, and everything before the marker is code.
-            bool closes_block = line.ends_with("*/") && !line.contains("/*");
-            bool comment_like = line.starts_with("//") || line.starts_with("/*") ||
-                                line.starts_with("*") || closes_block;
-            if(!comment_like || line.empty()) {
-                break;
-            }
-            if(closes_block) {
-                in_block = true;
-                block_start = lines.size();
-            }
-            lines.push_back(line);
-        }
-        begin = prev_begin;
-    }
-    if(in_block) {
-        lines.truncate(block_start);
-    }
-
-    std::string result;
-    for(auto& line: llvm::reverse(lines)) {
-        auto text = line;
-        for(llvm::StringRef marker: {"///<", "///", "//!", "//", "/**", "/*", "*/"}) {
-            if(text.starts_with(marker)) {
-                text = text.drop_front(marker.size());
-                break;
-            }
-        }
-        if(text.starts_with("*")) {
-            text = text.drop_front(1);
-        }
-        text = text.rtrim("*/").trim();
-        if(!result.empty()) {
-            result += '\n';
-        }
-        result += text.str();
-    }
-    return llvm::StringRef(result).trim().str();
 }
 
 auto index_hover(const index::SymbolRef& info,

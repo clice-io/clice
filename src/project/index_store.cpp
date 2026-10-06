@@ -1,34 +1,24 @@
-#include "project/index_store.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <format>
-#include <utility>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "index/database.h"
-#include "index/manifest.h"
-#include "index/serialization.h"
-#include "index/shard.h"
-#include "index/tu_index.h"
-#include "project/command_resolver.h"
-#include "project/hosting.h"
-#include "support/json.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/logging.macros.h"
 
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :index.database;
+import :index.manifest;
+import :index.serialization;
+import :index.shard;
+import :index.tu_index;
+import :project.command_resolver;
+import :project.hosting;
+import :project.index_store;
+import :support.json;
+import :support.logging;
+import :support.timer;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

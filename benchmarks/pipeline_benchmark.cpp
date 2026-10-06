@@ -21,28 +21,24 @@
 ///   ./build/RelWithDebInfo/bin/bin/pipeline_benchmark --filter compiler.cpp --runs 5 \
 ///       --time-trace /tmp/traces <cdb>
 
-#include <algorithm>
-#include <print>
-#include <ranges>
-#include <sstream>
-#include <string>
-#include <vector>
+module;
+
+#include "modules/prelude.h"
 
 #include "stats.h"
-#include "command/command.h"
-#include "compile/compilation.h"
-#include "feature/feature.h"
-#include "index/tu_index.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "syntax/scan.h"
-#include "vfs/file_system.h"
+#include "support/logging.macros.h"
 
-#include "kota/codec/json/json.h"
-#include "kota/deco/deco.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/TimeProfiler.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :command.command;
+import :compile.compilation;
+import :feature.feature;
+import :index.tu_index;
+import :support.logging;
+import :support.timer;
+import :syntax.scan;
+import :vfs.file_system;
+import :worker.serialize;
 
 using namespace clice;
 
@@ -285,7 +281,12 @@ FileResult profile_file(llvm::StringRef file,
         auto links = feature::document_links(unit);
         auto inactive = feature::inactive_regions(unit, {}, 0, result.preamble_bound);
         open_conditionals = std::move(inactive.open_stack);
-        auto blob = index::build_preamble_index(unit, links, inactive.regions, open_conditionals);
+        auto diagnostics = to_client_json(feature::diagnostics(unit), "[]");
+        auto blob = index::build_preamble_index(unit,
+                                                links,
+                                                inactive.regions,
+                                                open_conditionals,
+                                                diagnostics);
 
         // The PCH is flushed to disk by the unit's destructor; the blob
         // write follows it, like the worker's on-disk ordering contract.
@@ -411,7 +412,7 @@ void print_summary(std::vector<FileResult>& results) {
 
 }  // namespace
 
-int main(int argc, const char** argv) {
+extern "C++" int main(int argc, const char** argv) {
     auto args = kota::deco::util::argvify(argc, argv);
     auto result = kota::deco::cli::parse<BenchmarkOptions>(args);
 

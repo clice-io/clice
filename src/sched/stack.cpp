@@ -1,4 +1,10 @@
-#include "sched/stack.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :sched.stack;
 
 namespace clice {
 

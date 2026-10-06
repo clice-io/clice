@@ -1,14 +1,18 @@
-#include "project/configuration.h"
+module;
 
-#include "config/config.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "modules/prelude.h"
 
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :config.config;
+import :project.configuration;
+import :support.anomaly;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

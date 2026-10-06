@@ -1,17 +1,18 @@
-#include "sched/index/pump.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <string>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "sched/families/turun.h"
-#include "sched/graph.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "worker/pool.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/STLExtras.h"
+module clice;
+
+import :sched.families.turun;
+import :sched.graph;
+import :sched.index.pump;
+import :support.logging;
+import :support.process;
+import :support.timer;
+import :worker.pool;
 
 namespace clice {
 
@@ -496,6 +497,9 @@ kota::task<> IndexPump::run_background_indexing() {
              timer.ms());
     claim_report(
         co_await store.save(save_debt(), /*settle=*/index_queue_pos >= index_queue.size()));
+    // The round's merge buffers are freed by now; glibc would keep their
+    // pages, and the master its round's peak, for the rest of the session.
+    co_await kota::queue([] { release_free_memory(); });
 
     // The round owns the "active" gate through its save: releasing it
     // before the write await would let a next round's save overlap this

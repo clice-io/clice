@@ -1,8 +1,12 @@
-#include <cstdint>
+module;
 
-#include "driver/driver.h"
-#include "worker/stateful.h"
-#include "worker/stateless.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :driver.driver;
+import :worker.stateful;
+import :worker.stateless;
 
 namespace clice::driver {
 

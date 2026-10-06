@@ -1,12 +1,16 @@
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "test/tester.h"
-#include "index/serialization.h"
-#include "index/shard.h"
-#include "index/tu_index.h"
-#include "project/project.h"
+module;
 
-#include "llvm/Support/raw_ostream.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :index.serialization;
+import :index.shard;
+import :index.tu_index;
+import :project.project;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 
@@ -26,7 +30,7 @@ ZEST_SUITE(PreambleIndex, Tester) {
 TempDir dir;
 std::shared_ptr<index::TUIndex> state;
 
-std::vector<feature::DocumentLink> links;
+std::vector<index::DocumentLink> links;
 std::vector<std::uint32_t> inactive;
 std::vector<std::uint8_t> conditionals;
 std::string diagnostics;

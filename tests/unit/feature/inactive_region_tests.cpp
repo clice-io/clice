@@ -1,6 +1,12 @@
-#include "test/test.h"
-#include "test/tester.h"
-#include "feature/feature.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :feature.feature;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 
