@@ -99,10 +99,11 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
     auto absolute = [&](llvm::StringRef path) {
         return llvm::sys::path::is_absolute(path) ? path.str() : join_path(root, path);
     };
+    // By its name where programs include it by one, else by its path.
     auto operand = [&](const InterfaceHeader& header) {
-        return llvm::StringRef(header.include).starts_with("<")
-                   ? header.include
-                   : std::format("\"{}\"", absolute(header.file));
+        return header.include == std::format("\"{}\"", header.file)
+                   ? std::format("\"{}\"", absolute(header.file))
+                   : header.include;
     };
 
     assert(interfaces.size() == partition.modules.size());
