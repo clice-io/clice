@@ -1,0 +1,38 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load(":modules.bzl", "MODULE_COPTS", "WRAPPERS")
+
+# The third-party libraries as named modules over their headers, written by
+# `clice modularize`: each <name>.cppm includes a library's headers in its
+# global module fragment and exports what they declare. clice's sources keep
+# their includes: mirror/<name> holds an empty file for each header of the
+# library, first on their include path, and prelude.h, force-included,
+# imports the modules and replays the macros their headers define.
+
+# The emptied headers, the macro headers and the prelude.
+cc_library(
+    name = "headers",
+    textual_hdrs = glob([
+        "mirror/**",
+        "*.h",
+    ]),
+)
+
+# A reduced BMI drops the global module fragment's declarations the purview
+# never names, partial specializations among them.
+[cc_library(
+    name = name,
+    copts = MODULE_COPTS + ["-fno-modules-reduced-bmi"] +
+            ["-Imodules/mirror/" + mirror for mirror in ["std"] + imports],
+    features = ["cpp_modules"],
+    module_interfaces = [name + ".cppm"],
+    deps = [
+        ":headers",
+        "@xclang//bazel:std",
+    ] + [":" + imported for imported in imports] + libraries,
+) for name, (imports, libraries) in WRAPPERS.items()]
+
+cc_library(
+    name = "modules",
+    visibility = ["//visibility:public"],
+    deps = [":headers"] + [":" + name for name in WRAPPERS],
+)

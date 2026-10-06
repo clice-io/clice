@@ -10,6 +10,8 @@ cc_library(
     srcs = ["//bazel:version_cpp"],
     hdrs = ["src/version.h"],
     copts = COPTS,
+    features = ["cpp_modules"],
+    deps = ["//modules"],
 )
 
 # Layered libraries: core <- config <- {project, worker} <- sched <- server,
@@ -35,8 +37,10 @@ cc_library(
     srcs = glob(["src/%s/**/*.cpp" % layer for layer in CORE]),
     hdrs = glob(["src/%s/**/*.h" % layer for layer in CORE] + ["src/compile/*.inc"]),
     copts = COPTS,
+    features = ["cpp_modules"],
     deps = [
         ":version",
+        "//modules",
         "@libclang//:headers",
         "@croaring",
         "@kotatsu//:codec_flatbuffers",
@@ -57,6 +61,7 @@ cc_library(
     srcs = glob(["src/%s/**/*.cpp" % layer]),
     hdrs = glob(["src/%s/**/*.h" % layer]),
     copts = COPTS,
+    features = ["cpp_modules"],
     deps = deps,
 ) for layer, deps in [
     ("config", [":core"]),
@@ -87,6 +92,7 @@ cc_binary(
     # their own: neither program registers anything that way (zest keeps
     # its tests registered).
     features = [
+        "cpp_modules",
         "gc_sections",
         "generate_dsym_file",
     ],
@@ -115,7 +121,10 @@ cc_binary(
     ]),
     copts = COPTS + ["-Itests/unit"],
     data = [":resource_dir"],
-    features = ["gc_sections"],
+    features = [
+        "cpp_modules",
+        "gc_sections",
+    ],
     linkopts = LINKOPTS,
     local_defines = ['CLICE_TESTS_DATA_DIR=\\"tests/data\\"'],
     deps = [

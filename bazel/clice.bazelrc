@@ -7,6 +7,10 @@ common --registry=https://bcr.bazel.build/
 # detection of another is off.
 common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 common --cxxopt=-std=c++23 --host_cxxopt=-std=c++23
+# C++20 modules: the third-party libraries are modules (modules/), and so is
+# libc++'s std, which compiles like clice, without exceptions or RTTI.
+common --experimental_cpp_modules
+common --per_file_copt=.*/share/libc[+][+]/v1/std.*[.]cppm@-fno-rtti,-fno-exceptions
 common:macos --macos_minimum_os=15.0
 
 # clice builds without exceptions or RTTI, and its libraries are configured
