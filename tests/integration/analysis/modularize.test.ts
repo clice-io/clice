@@ -119,6 +119,7 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
         lines("#ifndef CDUAL_SMALL", "int fake_wide(void);", "#endif", "typedef int fake_word;"),
     );
     ws.write("third/libc/cwin.h", lines("#pragma once", "#include <cdual.h>"));
+    ws.write("third/libc/cwide.h", lines("#pragma once", "int fake_widen(int);"));
     ws.write(
         "third/libc/csmall.h",
         lines("#pragma once", "#define CDUAL_SMALL", "#include <cdual.h>", "#undef CDUAL_SMALL"),
@@ -203,7 +204,8 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
         lines(
             "#include <cio.h>",
             "#include <cwin.h>",
-            "int direct() { fake_word word = fake_stdout; return word + FAKE_EOF; }",
+            "int fake_widen(int);",
+            "int direct() { fake_word word = fake_stdout; return fake_widen(word) + FAKE_EOF; }",
         ),
     );
     ws.write(
@@ -211,6 +213,7 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
         lines(
             "#include <cio.h>",
             "#include <csmall.h>",
+            "#include <cwide.h>",
             "#include <fakecstdio>",
             "int third() { return fake_vprint(0); }",
         ),
@@ -480,8 +483,9 @@ test("C library kept headers", async ({ session }) => {
     const libc = all.get("libc")!;
     // main.cpp reaches <cio.h> only through <fakecstdio>, which `import std`
     // empties, while direct.cpp includes it itself; third.cpp's own <cio.h>
-    // takes only the type of <cva.h>. fake_puts comes from std.compat, and
-    // direct.cpp's <cwin.h> brings fake_word.
+    // takes only the type of <cva.h>. fake_puts comes from std.compat,
+    // direct.cpp's <cwin.h> brings fake_word, and direct.cpp declares
+    // fake_widen itself.
     expect(libc.textual.map((header) => [header.include, header.because])).toEqual([
         ["<cio.h>", "fake_stdout in app/main.cpp"],
         ["<cva.h>", "fake_vprint in app/third.cpp"],

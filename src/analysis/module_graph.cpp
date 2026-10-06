@@ -3130,6 +3130,17 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         }
     }
 
+    // A file declaring a function itself, or defining what it uses, needs no
+    // kept header for it: toml++ declares the Windows functions it calls.
+    llvm::DenseSet<std::pair<std::uint32_t, std::uint32_t>> self_declared;
+    for(auto& redeclaration: facts.redeclarations) {
+        auto kind = facts.entities[redeclaration.entity].kind;
+        if(!redeclaration.friend_declaration &&
+           (redeclaration.definition || kind == SymbolKind::Function)) {
+            self_declared.insert({redeclaration.entity, redeclaration.file});
+        }
+    }
+
     // Macros by name per module, for the closure of their directives.
     std::vector<llvm::StringMap<llvm::SmallVector<std::uint32_t, 1>>> macros_named(count);
     std::vector<std::set<std::uint32_t>> macros(count);
@@ -3143,7 +3154,8 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         auto user = llvm::find_if(users, [&](std::uint32_t candidate) {
             return module_of(candidate) != module &&
                    partition.kinds[module_of(candidate)] != ModuleKind::External &&
-                   (!kept || !reaches(candidate, info.owner, everywhere));
+                   (!kept || (!self_declared.contains({entity, candidate}) &&
+                              !reaches(candidate, info.owner, everywhere)));
         });
         auto outside = user != users.end();
         if(info.kind == SymbolKind::Macro) {
