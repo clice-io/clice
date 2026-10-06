@@ -1,10 +1,12 @@
-#include <algorithm>
+module;
 
-#include "compile/directive.h"
-#include "feature/feature.h"
-#include "support/text.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/SmallVector.h"
+module clice;
+
+import :compile.directive;
+import :feature.feature;
+import :support.text;
 
 namespace clice::feature {
 

@@ -16,7 +16,10 @@ COPTS = [
     "-Werror=return-type",
     "-Wno-deprecated-declarations",
     "-Wno-undefined-inline",
-] + PROGRAM_COPTS
+]
+
+# What clice's module units compile with.
+CLICE_COPTS = COPTS + PROGRAM_COPTS
 
 # Link optimizations in optimized builds: what the test suites run is what
 # releases ship. icf=safe (not =all) so address-taken functions keep C++
@@ -145,7 +148,7 @@ def benchmark_programs(benchmarks):
                 "benchmarks/%s.cpp" % benchmark,
                 "benchmarks/stats.h",
             ],
-            copts = COPTS,
+            copts = CLICE_COPTS,
             data = [":resource_dir"],
             features = ["cpp_modules"],
             linkopts = LINKOPTS,

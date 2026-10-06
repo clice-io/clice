@@ -1,11 +1,11 @@
-#include <algorithm>
-#include <cstdint>
-#include <optional>
-#include <string>
-#include <vector>
+module;
 
-#include "feature/feature.h"
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :feature.feature;
+import :syntax.lexer;
 
 namespace clice::feature {
 

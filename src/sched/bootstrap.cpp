@@ -1,8 +1,13 @@
-#include "sched/bootstrap.h"
+module;
 
-#include "project/load.h"
-#include "project/project.h"
-#include "sched/index/pump.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :project.load;
+import :project.project;
+import :sched.bootstrap;
+import :sched.index.pump;
 
 namespace clice {
 

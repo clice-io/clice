@@ -1,15 +1,11 @@
-#include "index/symbol_query.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "index/serialization.h"
+module clice;
 
-#include "kota/meta/enum.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/Path.h"
+import :index.serialization;
+import :index.symbol_query;
 
 namespace clice::index {
 

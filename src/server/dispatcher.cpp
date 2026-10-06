@@ -1,16 +1,18 @@
-#include "server/dispatcher.h"
+module;
 
-#include <type_traits>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "server/editor_context.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "worker/protocol.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
 
-#include "kota/ipc/lsp/position.h"
-#include "kota/meta/enum.h"
+module clice;
+
+import :server.dispatcher;
+import :server.editor_context;
+import :support.anomaly;
+import :support.logging;
+import :support.timer;
+import :worker.protocol;
 
 namespace clice {
 

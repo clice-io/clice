@@ -1,22 +1,16 @@
+module;
+
+#include "modules/prelude.h"
 /// Parts of this file (only_instantiation, resolve_forwarding_params,
 /// proto_type_loc and the forwarding-call analysis) are ported from
 /// clangd's AST.cpp and InlayHints.cpp (llvmorg-21.1.8), part of the LLVM
 /// project, licensed under Apache License v2.0 with LLVM Exceptions. See
 /// https://llvm.org/LICENSE.txt for license information.
 
-#include "semantic/decls.h"
+module clice;
 
-#include "semantic/unifier.h"
-
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallSet.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/Module.h"
-#include "clang/Basic/Specifiers.h"
+import :semantic.decls;
+import :semantic.unifier;
 
 namespace clice::decls {
 

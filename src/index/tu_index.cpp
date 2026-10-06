@@ -1,25 +1,21 @@
-#include "index/tu_index.h"
+module;
 
-#include <algorithm>
-#include <ranges>
-#include <tuple>
+#include "modules/prelude.h"
 
-#include "compile/compilation_unit.h"
-#include "compile/semantics.h"
-#include "index/serialization.h"
-#include "index/shard.h"
-#include "semantic/decls.h"
-#include "semantic/display.h"
-#include "semantic/types.h"
-#include "support/logging.h"
-#include "support/timer.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/Basic/SourceManager.h"
+module clice;
+
+import :compile.compilation_unit;
+import :compile.semantics;
+import :index.serialization;
+import :index.shard;
+import :index.tu_index;
+import :semantic.decls;
+import :semantic.display;
+import :semantic.types;
+import :support.logging;
+import :support.timer;
 
 namespace clice::index {
 

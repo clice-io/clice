@@ -1,35 +1,31 @@
-#include "sched/batch.h"
+module;
 
-#include <algorithm>
-#include <chrono>
-#include <csignal>
-#include <cstdlib>
-#include <format>
-#include <thread>
+#include "modules/prelude.h"
 
-#include "command/command.h"
-#include "config/config.h"
-#include "project/command_resolver.h"
-#include "project/configuration.h"
-#include "project/index_store.h"
-#include "project/project.h"
-#include "sched/bootstrap.h"
-#include "sched/index/pump.h"
-#include "sched/stack.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "vfs/cache_store.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
-#include "worker/pool.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Process.h"
 #include "llvm/Support/Program.h"
+
+module clice;
+
+import :command.command;
+import :config.config;
+import :project.command_resolver;
+import :project.configuration;
+import :project.index_store;
+import :project.project;
+import :sched.batch;
+import :sched.bootstrap;
+import :sched.index.pump;
+import :sched.stack;
+import :support.anomaly;
+import :support.logging;
+import :support.timer;
+import :vfs.cache_store;
+import :vfs.file_system;
+import :vfs.path;
+import :worker.pool;
 
 namespace clice {
 

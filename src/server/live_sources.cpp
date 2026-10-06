@@ -1,6 +1,10 @@
-#include "server/live_sources.h"
+module;
 
-#include "llvm/ADT/StringSet.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :server.live_sources;
 
 namespace clice {
 

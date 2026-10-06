@@ -1,24 +1,13 @@
-#include <algorithm>
-#include <cstdint>
-#include <iterator>
-#include <map>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <utility>
-#include <vector>
+module;
 
-#include "feature/feature.h"
-#include "feature/lexical_classify.h"
-#include "index/shard.h"
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/TargetParser/Triple.h"
-#include "clang/Basic/IdentifierTable.h"
-#include "clang/Basic/LangStandard.h"
+module clice;
+
+import :feature.feature;
+import :feature.lexical_classify;
+import :index.shard;
+import :syntax.lexer;
 
 namespace clice::feature {
 

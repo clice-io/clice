@@ -1,17 +1,15 @@
-#include <cstdlib>
-#include <print>
+module;
 
-#include "lmdb.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "index/database.h"
-#include "index/writer_lock.h"
-#include "vfs/cache_store.h"
-#include "vfs/path.h"
+#include "modules/prelude.h"
 
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/raw_ostream.h"
+module clice;
+
+import :index.database;
+import :index.writer_lock;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.cache_store;
+import :vfs.path;
 
 namespace clice::testing {
 namespace {

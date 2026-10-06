@@ -1,24 +1,14 @@
-#include "index/shard.h"
+module;
 
-#include <algorithm>
-#include <array>
-#include <bit>
-#include <cassert>
-#include <expected>
-#include <ranges>
-#include <tuple>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "index/serialization.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "kota/ipc/lsp/text.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :index.serialization;
+import :index.shard;
+import :support.logging;
 
 namespace clice::index {
 

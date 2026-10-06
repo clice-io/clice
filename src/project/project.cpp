@@ -1,17 +1,16 @@
-#include "project/project.h"
+module;
 
-#include <algorithm>
-#include <ranges>
+#include "modules/prelude.h"
 
-#include "index/serialization.h"
-#include "support/logging.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Chrono.h"
-#include "llvm/Support/Path.h"
+module clice;
+
+import :index.serialization;
+import :project.project;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

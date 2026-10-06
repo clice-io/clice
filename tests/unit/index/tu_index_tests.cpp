@@ -1,21 +1,21 @@
-#include <algorithm>
-#include <format>
-#include <optional>
-#include <set>
+module;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "compile/selection.h"
-#include "feature/feature.h"
-#include "index/serialization.h"
-#include "index/shard.h"
-#include "index/tu_index.h"
-#include "support/logging.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/thread.h"
-#include "llvm/Support/xxhash.h"
+#include "support/logging.macros.h"
+
 #include "clang/Basic/Stack.h"
+
+module clice;
+
+import :compile.selection;
+import :feature.feature;
+import :index.serialization;
+import :index.shard;
+import :index.tu_index;
+import :support.logging;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 

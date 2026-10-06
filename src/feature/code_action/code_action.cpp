@@ -1,32 +1,14 @@
-#include <array>
-#include <bitset>
-#include <format>
-#include <string>
-#include <utility>
-#include <vector>
+module;
 
-#include "command/command.h"
-#include "compile/compilation_unit.h"
-#include "compile/semantics.h"
-#include "feature/code_action/action.h"
-#include "semantic/display.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/raw_ostream.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/PrettyPrinter.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/Stmt.h"
-#include "clang/AST/TypeLoc.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Lex/Lexer.h"
+module clice;
+
+import :command.command;
+import :compile.compilation_unit;
+import :compile.semantics;
+import :feature.code_action.action;
+import :semantic.display;
 
 namespace clice::feature {
 

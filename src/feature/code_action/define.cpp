@@ -1,27 +1,12 @@
-#include <algorithm>
-#include <cassert>
-#include <format>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
+module;
 
-#include "compile/compilation_unit.h"
-#include "feature/code_action/action.h"
-#include "semantic/display.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSet.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/Type.h"
-#include "clang/AST/TypeLoc.h"
-#include "clang/Basic/TokenKinds.h"
-#include "clang/Tooling/Syntax/Tokens.h"
+module clice;
+
+import :compile.compilation_unit;
+import :feature.code_action.action;
+import :semantic.display;
 
 namespace clice::feature::action {
 

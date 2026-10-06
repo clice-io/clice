@@ -1,10 +1,10 @@
-#include "vfs/file_table.h"
+module;
 
-#include <algorithm>
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringRef.h"
+module clice;
+
+import :vfs.file_table;
 
 namespace clice {
 

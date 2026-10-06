@@ -1,18 +1,17 @@
-#include <algorithm>
-#include <format>
-#include <thread>
+module;
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "test/tester.h"
-#include "command/command.h"
-#include "command/toolchain.h"
-#include "compile/compilation.h"
-#include "syntax/scan.h"
-#include "vfs/path.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :command.command;
+import :command.toolchain;
+import :compile.compilation;
+import :syntax.scan;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
+import :vfs.path;
 
 namespace clice::testing {
 

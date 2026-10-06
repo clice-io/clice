@@ -1,45 +1,20 @@
+module;
+
+#include "modules/prelude.h"
 /// Ported from clangd's Hover.cpp (llvmorg-21.1.8), part of the LLVM
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
+module clice;
 
-#include "compile/compilation_unit.h"
-#include "compile/selection.h"
-#include "compile/semantics.h"
-#include "feature/feature.h"
-#include "semantic/decls.h"
-#include "semantic/display.h"
-#include "semantic/symbol.h"
-#include "semantic/types.h"
-
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/ScopedPrinter.h"
-#include "llvm/Support/raw_ostream.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/ASTTypeTraits.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclBase.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/OperationKinds.h"
-#include "clang/AST/RecordLayout.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Basic/Specifiers.h"
-#include "clang/Basic/TokenKinds.h"
-#include "clang/Format/Format.h"
-#include "clang/Tooling/Core/Replacement.h"
-#include "clang/Tooling/Syntax/Tokens.h"
+import :compile.compilation_unit;
+import :compile.selection;
+import :compile.semantics;
+import :feature.feature;
+import :semantic.decls;
+import :semantic.display;
+import :semantic.symbol;
+import :semantic.types;
 
 namespace clice::feature {
 

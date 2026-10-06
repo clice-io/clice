@@ -1,7 +1,11 @@
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "support/signal.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :support.signal;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

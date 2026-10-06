@@ -1,17 +1,16 @@
-#include <cstdlib>
-#include <format>
-#include <print>
+module;
+
+#include "modules/prelude.h"
 
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "vfs/cache_store.h"
+module clice;
 
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Process.h"
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.cache_store;
 
 namespace clice::testing {
 

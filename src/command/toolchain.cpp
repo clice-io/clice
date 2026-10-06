@@ -1,35 +1,20 @@
-#include "command/toolchain.h"
+module;
 
-#include <cstdlib>
-#include <expected>
-#include <format>
-#include <optional>
-#include <ranges>
-#include <string>
-#include <utility>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "command/argument_parser.h"
-#include "command/nvcc.h"
-#include "support/logging.h"
-#include "support/process.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "kota/meta/enum.h"
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
-#include "llvm/TargetParser/Host.h"
-#include "llvm/TargetParser/Triple.h"
-#include "clang/Driver/Compilation.h"
-#include "clang/Driver/Driver.h"
-#include "clang/Driver/Tool.h"
-#include "clang/Driver/ToolChain.h"
-#include "clang/Driver/Types.h"
+
+module clice;
+
+import :command.argument_parser;
+import :command.nvcc;
+import :command.toolchain;
+import :support.logging;
+import :support.process;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

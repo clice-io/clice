@@ -1,12 +1,6 @@
-#include "support/logging.h"
+module;
 
-#include <array>
-#include <cassert>
-#include <chrono>
-#include <ctime>
-#include <format>
-#include <memory>
-#include <string>
+#include "modules/prelude.h"
 
 #if defined(__linux__)
 #include <link.h>
@@ -20,15 +14,12 @@
 #endif
 
 #include "version.h"
-#include "support/log_sinks.h"
+#include "support/logging.macros.h"
 
-#include "spdlog/sinks/ringbuffer_sink.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Format.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/Signals.h"
+module clice;
+
+import :support.log_sinks;
+import :support.logging;
 
 namespace clice::logging {
 

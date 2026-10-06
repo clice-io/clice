@@ -1,11 +1,15 @@
-#include <string>
+module;
 
-#include "test/test.h"
-#include "server/master_server.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
+#include "modules/prelude.h"
 
-#include "kota/async/async.h"
+#include "support/anomaly.macros.h"
+
+module clice;
+
+import :server.master_server;
+import :support.anomaly;
+import :support.logging;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

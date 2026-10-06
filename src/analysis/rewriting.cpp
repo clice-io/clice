@@ -1,25 +1,13 @@
-#include "analysis/rewriting.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <limits>
-#include <map>
-#include <memory>
-#include <set>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "syntax/lexer.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+module clice;
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/MemoryBuffer.h"
+import :analysis.rewriting;
+import :syntax.lexer;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::analysis {
 

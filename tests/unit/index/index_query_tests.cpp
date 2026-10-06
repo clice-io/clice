@@ -1,24 +1,26 @@
-#include <format>
-#include <string>
-#include <vector>
+module;
 
-#include "test/merge_unit.h"
-#include "test/test.h"
-#include "test/tester.h"
-#include "feature/feature.h"
-#include "index/query.h"
-#include "index/tu_index.h"
-#include "project/command_resolver.h"
-#include "project/index_store.h"
-#include "sched/families/pch.h"
-#include "sched/families/pcm.h"
-#include "sched/families/turun.h"
-#include "sched/graph.h"
-#include "sched/index/pump.h"
-#include "server/ast_projection.h"
-#include "server/live_sources.h"
-#include "server/session_store.h"
-#include "worker/pool.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :feature.feature;
+import :index.query;
+import :index.tu_index;
+import :project.command_resolver;
+import :project.index_store;
+import :sched.families.pch;
+import :sched.families.pcm;
+import :sched.families.turun;
+import :sched.graph;
+import :sched.index.pump;
+import :server.ast_projection;
+import :server.live_sources;
+import :server.session_store;
+import :tests.unit.test.merge_unit;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
+import :worker.pool;
 
 namespace clice::testing {
 namespace {

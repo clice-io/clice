@@ -1,19 +1,16 @@
-#include <format>
-#include <optional>
-#include <string>
-#include <vector>
+module;
 
-#include "analysis/module_graph.h"
-#include "analysis/rewriting.h"
-#include "analysis/wrapping.h"
-#include "driver/analysis_support.h"
-#include "driver/driver.h"
-#include "driver/query_support.h"
-#include "vfs/file_system.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Path.h"
+module clice;
+
+import :analysis.module_graph;
+import :analysis.rewriting;
+import :analysis.wrapping;
+import :driver.analysis_support;
+import :driver.driver;
+import :driver.query_support;
+import :vfs.file_system;
 
 namespace clice::driver {
 

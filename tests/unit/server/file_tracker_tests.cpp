@@ -1,16 +1,17 @@
-#include <chrono>
-#include <thread>
+module;
+
+#include "modules/prelude.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
-#include "test/cdb_helper.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "server/file_tracker.h"
-#include "vfs/path.h"
+module clice;
 
-#include "llvm/Support/Process.h"
+import :server.file_tracker;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.path;
 
 namespace clice::testing {
 namespace {

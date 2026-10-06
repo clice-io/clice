@@ -1,11 +1,12 @@
-#include <algorithm>
-#include <chrono>
-#include <format>
-#include <optional>
+module;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "compile/semantics.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :compile.semantics;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 

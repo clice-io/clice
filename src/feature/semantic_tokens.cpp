@@ -1,22 +1,17 @@
-#include <cstdint>
-#include <optional>
-#include <ranges>
-#include <utility>
-#include <vector>
+module;
 
-#include "compile/compilation_unit.h"
-#include "compile/semantics.h"
-#include "feature/feature.h"
-#include "feature/lexical_classify.h"
-#include "semantic/decls.h"
-#include "semantic/symbol.h"
-#include "syntax/lexer.h"
-#include "syntax/token.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/DenseMap.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/DeclObjC.h"
-#include "clang/Basic/TokenKinds.h"
+module clice;
+
+import :compile.compilation_unit;
+import :compile.semantics;
+import :feature.feature;
+import :feature.lexical_classify;
+import :semantic.decls;
+import :semantic.symbol;
+import :syntax.lexer;
+import :syntax.token;
 
 namespace clice::feature {
 

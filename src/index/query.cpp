@@ -1,24 +1,17 @@
-#include "index/query.h"
+module;
 
-#include <algorithm>
-#include <bit>
-#include <cassert>
-#include <string>
-#include <tuple>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "index/search_index.h"
-#include "support/logging.h"
-#include "support/text.h"
-#include "support/timer.h"
-#include "vfs/file_system.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :index.query;
+import :index.search_index;
+import :support.logging;
+import :support.text;
+import :support.timer;
+import :vfs.file_system;
 
 namespace clice::index {
 

@@ -1,16 +1,15 @@
-#include <map>
-#include <set>
-#include <string>
-#include <utility>
+module;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "semantic/decls.h"
-#include "support/logging.h"
+#include "modules/prelude.h"
 
-#include "llvm/Support/Path.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/RecursiveASTVisitor.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :semantic.decls;
+import :support.logging;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 

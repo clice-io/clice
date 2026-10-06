@@ -1,26 +1,14 @@
-#include <algorithm>
-#include <cstdint>
-#include <format>
-#include <optional>
-#include <string>
-#include <string_view>
-#include <tuple>
-#include <utility>
-#include <vector>
+module;
 
-#include "compile/compilation_unit.h"
-#include "compile/semantics.h"
-#include "feature/feature.h"
-#include "semantic/decls.h"
-#include "support/text.h"
+#include "modules/prelude.h"
 
-#include "llvm/Support/Casting.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/StmtCXX.h"
+module clice;
+
+import :compile.compilation_unit;
+import :compile.semantics;
+import :feature.feature;
+import :semantic.decls;
+import :support.text;
 
 namespace clice::feature {
 

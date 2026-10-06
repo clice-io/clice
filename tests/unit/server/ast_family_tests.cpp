@@ -1,20 +1,22 @@
-#include <format>
-#include <string>
-#include <vector>
+module;
 
-#include "test/cdb_helper.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "sched/families/pch.h"
-#include "sched/families/pcm.h"
-#include "sched/graph.h"
-#include "server/ast_family.h"
-#include "server/dispatcher.h"
-#include "server/editor_context.h"
-#include "server/worker_test_helpers.h"
-#include "support/anomaly.h"
-#include "syntax/dependency_graph.h"
-#include "vfs/cache_store.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :sched.families.pch;
+import :sched.families.pcm;
+import :sched.graph;
+import :server.ast_family;
+import :server.dispatcher;
+import :server.editor_context;
+import :support.anomaly;
+import :syntax.dependency_graph;
+import :tests.unit.server.worker_test_helpers;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.cache_store;
 
 namespace clice::testing {
 

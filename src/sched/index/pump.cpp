@@ -1,17 +1,17 @@
-#include "sched/index/pump.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <string>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "sched/families/turun.h"
-#include "sched/graph.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "worker/pool.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/STLExtras.h"
+module clice;
+
+import :sched.families.turun;
+import :sched.graph;
+import :sched.index.pump;
+import :support.logging;
+import :support.timer;
+import :worker.pool;
 
 namespace clice {
 

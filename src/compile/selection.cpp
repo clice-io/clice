@@ -1,24 +1,12 @@
-#include "compile/selection.h"
+module;
 
-#include <algorithm>
-#include <optional>
-#include <ranges>
-#include <string>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "compile/compilation_unit.h"
-#include "compile/semantics.h"
+module clice;
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/raw_ostream.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/PrettyPrinter.h"
-#include "clang/AST/TypeLoc.h"
+import :compile.compilation_unit;
+import :compile.selection;
+import :compile.semantics;
 
 namespace clice {
 

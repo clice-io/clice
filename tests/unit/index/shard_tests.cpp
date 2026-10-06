@@ -1,22 +1,15 @@
-#include <algorithm>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "index/serialization.h"
-#include "index/shard.h"
-#include "index/site.h"
-#include "index/tu_index.h"
+#include "modules/prelude.h"
 
-#include "kota/ipc/lsp/text.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :index.serialization;
+import :index.shard;
+import :index.site;
+import :index.tu_index;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 namespace {

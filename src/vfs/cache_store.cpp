@@ -1,12 +1,6 @@
-#include "vfs/cache_store.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <chrono>
-#include <format>
-#include <mutex>
-#include <utility>
-#include <vector>
+#include "modules/prelude.h"
 
 #ifdef _WIN32
 // The defines keep windows.h from spilling the min/max macros (and other
@@ -16,26 +10,18 @@
 #define NOMINMAX
 #include <windows.h>
 #else
-#include <cerrno>
 #include <signal.h>
 #include <unistd.h>
 #endif
 
-#include "support/logging.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/logging.macros.h"
 
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Error.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :support.logging;
+import :vfs.cache_store;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

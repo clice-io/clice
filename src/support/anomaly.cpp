@@ -1,13 +1,11 @@
-#include "support/anomaly.h"
+module;
 
-#include <array>
-#include <atomic>
-#include <cstdlib>
-#include <mutex>
+#include "modules/prelude.h"
 
-#include "support/logging.h"
+module clice;
 
-#include "llvm/Support/Process.h"
+import :support.anomaly;
+import :support.logging;
 
 namespace clice::logging {
 

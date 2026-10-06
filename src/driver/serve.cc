@@ -1,5 +1,11 @@
-#include "driver/driver.h"
-#include "server/master_server.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :driver.driver;
+import :server.master_server;
 
 namespace clice::driver {
 

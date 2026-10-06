@@ -1,9 +1,13 @@
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "compile/compilation.h"
-#include "compile/diagnostic.h"
+module;
 
-#include "clang-tidy/ClangTidyModule.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :compile.compilation;
+import :compile.diagnostic;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

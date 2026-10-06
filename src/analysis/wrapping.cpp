@@ -1,19 +1,11 @@
-#include "analysis/wrapping.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <format>
-#include <map>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "vfs/file_system.h"
+module clice;
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/Support/Path.h"
+import :analysis.wrapping;
+import :vfs.file_system;
 
 namespace clice::analysis {
 

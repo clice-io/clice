@@ -1,25 +1,20 @@
-#include "compile/compilation.h"
+module;
 
-#include <algorithm>
+#include "modules/prelude.h"
 
-#include "command/command.h"
-#include "command/invocation.h"
-#include "compile/diagnostic.h"
-#include "compile/implement.h"
-#include "semantic/decls.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "kota/ipc/lsp/position.h"
-#include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Error.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/Stack.h"
-#include "clang/Frontend/MultiplexConsumer.h"
-#include "clang/Frontend/TextDiagnosticPrinter.h"
-#include "clang/Lex/PreprocessorOptions.h"
+
+module clice;
+
+import :command.command;
+import :command.invocation;
+import :compile.compilation;
+import :compile.diagnostic;
+import :compile.implement;
+import :semantic.decls;
+import :support.logging;
 
 namespace clice {
 

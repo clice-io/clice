@@ -1,6 +1,6 @@
-#include <csignal>
-#include <format>
-#include <string>
+module;
+
+#include "modules/prelude.h"
 
 #ifndef _WIN32
 #include <fcntl.h>
@@ -9,12 +9,11 @@
 #include <unistd.h>
 #endif
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "support/log_sinks.h"
+module clice;
 
-#include "spdlog/details/log_msg.h"
-#include "llvm/Support/FileSystem.h"
+import :support.log_sinks;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 

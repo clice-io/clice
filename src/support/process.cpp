@@ -1,9 +1,13 @@
-#include "support/process.h"
+module;
 
-#include <format>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "support/logging.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :support.logging;
+import :support.process;
 
 namespace clice {
 

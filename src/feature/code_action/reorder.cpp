@@ -1,24 +1,12 @@
-#include <algorithm>
-#include <format>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
+module;
 
-#include "compile/compilation_unit.h"
-#include "compile/semantics.h"
-#include "feature/code_action/action.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/RawCommentList.h"
-#include "clang/Lex/MacroInfo.h"
+module clice;
+
+import :compile.compilation_unit;
+import :compile.semantics;
+import :feature.code_action.action;
 
 namespace clice::feature::action {
 

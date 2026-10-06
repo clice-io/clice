@@ -1,8 +1,12 @@
-#include "test/test.h"
-#include "syntax/completion.h"
-#include "syntax/dependency_graph.h"
+module;
 
-#include "llvm/ADT/DenseMap.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.completion;
+import :syntax.dependency_graph;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

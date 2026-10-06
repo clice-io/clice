@@ -1,30 +1,16 @@
-#include "analysis/module_graph.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <functional>
-#include <limits>
-#include <map>
-#include <ranges>
-#include <set>
-#include <tuple>
+#include "modules/prelude.h"
 
-#include "command/command.h"
-#include "index/serialization.h"
-#include "project/project.h"
-#include "syntax/lexer.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+module clice;
 
-#include "kota/support/glob_pattern.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/EquivalenceClasses.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Path.h"
-#include "clang/Basic/IdentifierTable.h"
+import :analysis.module_graph;
+import :command.command;
+import :index.serialization;
+import :project.project;
+import :syntax.lexer;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::analysis {
 

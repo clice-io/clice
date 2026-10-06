@@ -1,10 +1,10 @@
-#include "syntax/lexer.h"
+module;
 
-#include <string>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "llvm/TargetParser/Triple.h"
-#include "clang/Lex/Lexer.h"
+module clice;
+
+import :syntax.lexer;
 
 namespace clice {
 

@@ -1,12 +1,12 @@
-#include <optional>
-#include <tuple>
-#include <utility>
+module;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "compile/selection.h"
+#include "modules/prelude.h"
 
-#include "clang/Lex/Lexer.h"
+module clice;
+
+import :compile.selection;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice {
 

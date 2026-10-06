@@ -1,15 +1,13 @@
-#include "syntax/completion.h"
+module;
 
-#include "syntax/dependency_graph.h"
-#include "syntax/include_resolver.h"
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-#include "clang/Basic/CharInfo.h"
+module clice;
+
+import :syntax.completion;
+import :syntax.dependency_graph;
+import :syntax.include_resolver;
+import :syntax.lexer;
 
 namespace clice {
 

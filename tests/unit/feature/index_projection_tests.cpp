@@ -1,11 +1,13 @@
-#include <algorithm>
-#include <string>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "feature/feature.h"
-#include "index/tu_index.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :feature.feature;
+import :index.tu_index;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 

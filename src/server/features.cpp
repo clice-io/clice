@@ -1,34 +1,26 @@
-#include "server/features.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "command/search_config.h"
-#include "index/rename.h"
-#include "project/hosting.h"
-#include "sched/index/pump.h"
-#include "semantic/symbol.h"
-#include "server/ast_family.h"
-#include "server/editor_context.h"
-#include "server/format.h"
-#include "server/lsp_projection.h"
-#include "server/query_commands.h"
-#include "syntax/completion.h"
-#include "syntax/include_resolver.h"
-#include "vfs/dir_cache.h"
-#include "vfs/file_system.h"
-#include "worker/protocol.h"
-#include "worker/serialize.h"
+module clice;
 
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringSet.h"
+import :command.search_config;
+import :index.rename;
+import :project.hosting;
+import :sched.index.pump;
+import :semantic.symbol;
+import :server.ast_family;
+import :server.editor_context;
+import :server.features;
+import :server.format;
+import :server.lsp_projection;
+import :server.query_commands;
+import :syntax.completion;
+import :syntax.include_resolver;
+import :vfs.dir_cache;
+import :vfs.file_system;
+import :worker.protocol;
+import :worker.serialize;
 
 namespace clice {
 

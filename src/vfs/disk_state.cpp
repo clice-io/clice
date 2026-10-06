@@ -1,14 +1,14 @@
-#include "vfs/disk_state.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "support/anomaly.h"
-#include "vfs/path.h"
+#include "support/anomaly.macros.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/ScopeExit.h"
+module clice;
+
+import :support.anomaly;
+import :vfs.disk_state;
+import :vfs.path;
 
 namespace clice::vfs {
 

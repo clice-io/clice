@@ -1,14 +1,19 @@
-#include "project/open_index.h"
+module;
 
-#include "index/database.h"
-#include "project/configuration.h"
-#include "project/index_store.h"
-#include "project/load.h"
-#include "support/logging.h"
-#include "vfs/cache_store.h"
-#include "vfs/path.h"
+#include "modules/prelude.h"
 
-#include "kota/async/async.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :index.database;
+import :project.configuration;
+import :project.index_store;
+import :project.load;
+import :project.open_index;
+import :support.logging;
+import :vfs.cache_store;
+import :vfs.path;
 
 namespace clice {
 

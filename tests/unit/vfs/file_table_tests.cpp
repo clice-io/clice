@@ -1,3 +1,6 @@
+module;
+
+#include "modules/prelude.h"
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -9,13 +12,12 @@
 #include <unistd.h>
 #endif
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "vfs/file_table.h"
-#include "vfs/path.h"
+module clice;
 
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/xxhash.h"
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.file_table;
+import :vfs.path;
 
 namespace clice::testing {
 

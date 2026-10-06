@@ -1,36 +1,14 @@
-#include "compile/semantics.h"
+module;
 
-#include <algorithm>
-#include <cstdint>
-#include <cstring>
-#include <optional>
-#include <ranges>
-#include <set>
-#include <utility>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "compile/compilation_unit.h"
-#include "semantic/decls.h"
-#include "semantic/resolver.h"
-#include "semantic/types.h"
+module clice;
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallPtrSet.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/ExprConcepts.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/Stmt.h"
-#include "clang/AST/StmtCXX.h"
-#include "clang/Basic/Module.h"
-#include "clang/Basic/OperatorKinds.h"
-#include "clang/Basic/TokenKinds.h"
-#include "clang/Lex/Lexer.h"
-#include "clang/Tooling/Syntax/Tokens.h"
+import :compile.compilation_unit;
+import :compile.semantics;
+import :semantic.decls;
+import :semantic.resolver;
+import :semantic.types;
 
 namespace clice {
 

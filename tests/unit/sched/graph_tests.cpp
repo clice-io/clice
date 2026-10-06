@@ -1,11 +1,12 @@
-#include <optional>
-#include <random>
+module;
 
-#include "test/async.h"
-#include "test/test.h"
-#include "sched/graph.h"
+#include "modules/prelude.h"
 
-#include "kota/zest/async.h"
+module clice;
+
+import :sched.graph;
+import :tests.unit.test.async;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

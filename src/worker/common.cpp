@@ -1,14 +1,18 @@
-#include "worker/common.h"
+module;
 
-#include "support/environment.h"
-#include "support/logging.h"
+#include "modules/prelude.h"
 
 #ifdef __GLIBC__
 #include <malloc.h>
 #endif
 
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/raw_ostream.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :support.environment;
+import :support.logging;
+import :worker.common;
 
 namespace clice {
 

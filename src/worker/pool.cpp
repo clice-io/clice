@@ -1,21 +1,19 @@
-#include "worker/pool.h"
+module;
 
-#include <algorithm>
-#include <csignal>
-#include <cstdint>
-#include <format>
-#include <string>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "support/anomaly.h"
-#include "support/logging.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/io/system.h"
 #include "kota/ipc/framing.h"
-#include "kota/ipc/transport.h"
-#include "llvm/ADT/StringExtras.h"
+
+module clice;
+
+import :support.anomaly;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
+import :worker.pool;
 
 namespace clice {
 

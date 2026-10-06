@@ -1,14 +1,20 @@
-#include "test/cdb_helper.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "sched/families/pcm.h"
-#include "sched/families/turun.h"
-#include "sched/graph.h"
-#include "server/ast_family.h"
-#include "server/context_service.h"
-#include "server/editor_context.h"
-#include "server/invalidator.h"
-#include "worker/pool.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :sched.families.pcm;
+import :sched.families.turun;
+import :sched.graph;
+import :server.ast_family;
+import :server.context_service;
+import :server.editor_context;
+import :server.invalidator;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :worker.pool;
 
 namespace clice::testing {
 namespace {

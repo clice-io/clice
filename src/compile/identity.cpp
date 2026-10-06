@@ -1,26 +1,14 @@
-#include "compile/identity.h"
+module;
 
-#include <utility>
+#include "modules/prelude.h"
 
-#include "semantic/decls.h"
-#include "semantic/expr_hash.h"
-#include "semantic/hasher.h"
-#include "vfs/path.h"
+module clice;
 
-#include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Allocator.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/AST/ASTConcept.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/Module.h"
+import :compile.identity;
+import :semantic.decls;
+import :semantic.expr_hash;
+import :semantic.hasher;
+import :vfs.path;
 
 namespace clice {
 

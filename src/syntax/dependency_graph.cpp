@@ -1,23 +1,17 @@
-#include "syntax/dependency_graph.h"
+module;
 
-#include <algorithm>
-#include <chrono>
+#include "modules/prelude.h"
 
-#include "command/search_config.h"
-#include "support/logging.h"
-#include "syntax/include_resolver.h"
-#include "syntax/scan.h"
-#include "vfs/file_table.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/StringSaver.h"
+module clice;
+
+import :command.search_config;
+import :support.logging;
+import :syntax.dependency_graph;
+import :syntax.include_resolver;
+import :syntax.scan;
+import :vfs.file_table;
 
 namespace clice {
 

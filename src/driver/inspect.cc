@@ -1,29 +1,27 @@
-#include <format>
-#include <map>
-#include <ranges>
+module;
 
-#include "command/command.h"
-#include "command/toolchain.h"
-#include "compile/compilation.h"
-#include "config/config.h"
-#include "driver/driver.h"
-#include "feature/feature.h"
-#include "index/shard.h"
-#include "index/tu_index.h"
-#include "project/command_resolver.h"
-#include "project/configuration.h"
-#include "project/load.h"
-#include "project/project.h"
-#include "syntax/annotation.h"
-#include "syntax/scan.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "modules/prelude.h"
 
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/SHA256.h"
-#include "llvm/Support/VirtualFileSystem.h"
-#include "clang/Driver/Types.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :command.command;
+import :command.toolchain;
+import :compile.compilation;
+import :config.config;
+import :driver.driver;
+import :feature.feature;
+import :index.shard;
+import :index.tu_index;
+import :project.command_resolver;
+import :project.configuration;
+import :project.load;
+import :project.project;
+import :syntax.annotation;
+import :syntax.scan;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::driver {
 
