@@ -36,7 +36,10 @@ CORE = [
 cc_library(
     name = "core",
     srcs = glob(["src/%s/**/*.cpp" % layer for layer in CORE]),
-    hdrs = glob(["src/%s/**/*.h" % layer for layer in CORE] + ["src/compile/*.inc"]),
+    hdrs = glob(
+        ["src/%s/**/*.h" % layer for layer in CORE] + ["src/compile/*.inc"],
+        allow_empty = True,
+    ),
     copts = CLICE_COPTS,
     features = ["cpp_modules"],
     module_interfaces = ["src/module.cppm"] + glob(["src/%s/**/*.cppm" % layer for layer in CORE]),
