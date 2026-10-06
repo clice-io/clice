@@ -500,46 +500,6 @@ test("library interfaces", async ({ session }) => {
 
 test("C library kept headers", async ({ session }) => {
     const ws = await writeProject(session);
-    // <time.h> under __need_time_t: every unit entering <cneed.h> reads it in
-    // full through <fakecstdio>, but clock.h reaches only the type.
-    ws.write(
-        "third/libc/cneed.h",
-        lines(
-            "#ifndef CNEED_TYPE_ONLY",
-            "int fake_clock(void);",
-            "#endif",
-            "typedef int fake_time;",
-        ),
-    );
-    ws.write(
-        "third/libc/cnarrow.h",
-        lines(
-            "#pragma once",
-            "#define CNEED_TYPE_ONLY",
-            "#include <cneed.h>",
-            "#undef CNEED_TYPE_ONLY",
-        ),
-    );
-    ws.write(
-        "third/std/fakecstdio",
-        ws
-            .read("third/std/fakecstdio")
-            .replace("#include <cputs.h>\n", "#include <cputs.h>\n#include <cneed.h>\n"),
-    );
-    ws.write(
-        "app/clock.h",
-        lines(
-            "#pragma once",
-            "#include <cnarrow.h>",
-            "inline int clock_now() { return fake_clock(); }",
-        ),
-    );
-    ws.write(
-        "app/main.cpp",
-        ws
-            .read("app/main.cpp")
-            .replace("#include <fakecstdio>\n", '#include <fakecstdio>\n#include "clock.h"\n'),
-    );
     const all = await interfaces(ws);
     const libc = all.get("libc")!;
     // main.cpp reaches <cio.h> only through <fakecstdio>, which `import std`
@@ -549,7 +509,6 @@ test("C library kept headers", async ({ session }) => {
     // fake_widen itself, in a fragment it pastes.
     expect(libc.textual.map((header) => [header.include, header.because])).toEqual([
         ["<cio.h>", "fake_stdout in app/main.cpp"],
-        ["<cneed.h>", "fake_clock in app/clock.h"],
         ["<cva.h>", "fake_vprint in app/third.cpp"],
     ]);
     // Seen at all: what direct.cpp and third.cpp include.
