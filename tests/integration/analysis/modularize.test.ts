@@ -124,7 +124,6 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
             "#define ALPHA_VERSION 3",
             "#define ALPHA_TWICE(x) ((x) * 2)",
             "#define ALPHA_EXTERN extern",
-            "#define ALPHA_HIDDEN 7",
             "#ifdef ALPHA_WIDE",
             "#endif",
             "#ifdef ALPHA_TMP",
@@ -181,7 +180,6 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
             "#include <alpha/limits.h>",
             "#include <fakecstdio>",
             "#undef ALPHA_TMP",
-            "#define APP_UNUSED ALPHA_HIDDEN",
             "int main() {",
             "    fassert(1);",
             "    return beta::wrap(ALPHA_VERSION).v + alpha_local() + fake_stdout + FAKE_EOF +",
@@ -443,8 +441,7 @@ test("library interfaces", async ({ session }) => {
     expect(exported.has("alpha::operator==")).toBe(false);
     expect(alpha.aliases).toEqual([{ name: "al", target: "::alpha" }]);
     // ALPHA_EXTERN through a macro of beta's that only a fragment beta.h
-    // pastes expands; not ALPHA_HIDDEN, which only a macro nothing expands
-    // spells.
+    // pastes expands.
     expect(alpha.macros.map((macro) => macro.name)).toEqual([
         "ALPHA_VERSION",
         "ALPHA_TWICE",

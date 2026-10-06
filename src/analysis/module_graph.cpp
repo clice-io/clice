@@ -3193,11 +3193,9 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     // other file's uses show (StmtVisitor.h's STMT in StmtNodes.inc); one a
     // textual header expands is used wherever that header compiles, in
     // importers.
-    auto pasted = pasted_fragments(facts);
     for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
         auto& info = facts.entities[entity];
-        if(info.kind != SymbolKind::Macro ||
-           (reverse.users[entity].empty() && pasted[info.owner].empty())) {
+        if(info.kind != SymbolKind::Macro) {
             continue;
         }
         auto module = module_of(info.owner);

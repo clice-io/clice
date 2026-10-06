@@ -709,15 +709,11 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         }
     }
 
-    // An interface partition exports its whole body.
-    for(auto& entity: facts.entities) {
-        if(entity.linkage == InternalLinkage::Static && rewriter.rewritten(entity.owner) &&
-           units[entity.owner].kind == Unit::Kind::Interface) {
-            return std::unexpected(
-                std::format("{}:{} declares {} static, which an interface partition cannot export",
-                            facts.files[entity.owner].path,
-                            entity.line,
-                            entity.name));
+    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> statics;
+    for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
+        auto& info = facts.entities[entity];
+        if(info.linkage == InternalLinkage::Static && info.line != 0) {
+            statics[info.owner].push_back(entity);
         }
     }
 
@@ -755,6 +751,25 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         Text text((*buffer)->getBuffer());
         buffers[file] = std::move(*buffer);
         auto module_unit = rewriter.rewritten(file);
+
+        // An interface partition exports its whole body. The index can take
+        // a member of an anonymous namespace for a static: the declaration
+        // has to say so.
+        if(module_unit && units[file].kind == Unit::Kind::Interface) {
+            for(auto entity: statics.lookup(file)) {
+                auto& info = facts.entities[entity];
+                if(info.line <= text.lines.size() &&
+                   llvm::any_of(text.tokens_on(info.line - 1), [&](const Token& token) {
+                       return token.text(text.content) == "static";
+                   })) {
+                    return std::unexpected(std::format(
+                        "{}:{} declares {} static, which an interface partition cannot export",
+                        facts.files[file].path,
+                        info.line,
+                        info.name));
+                }
+            }
+        }
 
         // Declarations of other modules' entities: in a module unit they
         // would declare a second entity, attached to its module. One whose
