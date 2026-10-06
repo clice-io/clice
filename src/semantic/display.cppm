@@ -4,8 +4,6 @@ module;
 
 module clice:semantic.display;
 
-namespace clang::syntax {}
-
 /// The rendering side of the AST helpers: everything that turns an AST
 /// entity into a human-facing string lives in this namespace, so that
 /// clang printing quirks are patched in exactly one place. Semantic

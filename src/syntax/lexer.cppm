@@ -6,8 +6,6 @@ module clice:syntax.lexer;
 
 import :syntax.token;
 
-namespace clang {}
-
 namespace clice {
 
 /// The options a raw lex of `language` under `standard` runs with: the

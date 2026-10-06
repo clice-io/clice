@@ -4,10 +4,6 @@ module;
 
 module clice:command.invocation;
 
-namespace clang {}  // namespace clang
-
-namespace llvm::vfs {}  // namespace llvm::vfs
-
 namespace clice {
 
 /// The clang invocation of a compilation-database command — the one

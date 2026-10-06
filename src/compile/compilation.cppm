@@ -10,8 +10,6 @@ import :syntax.preamble_synthesis;
 import :vfs.file_system;
 import :vfs.path;
 
-namespace clang {}
-
 namespace clice::tidy {
 
 /// The frozen clang-tidy configuration of one run. Plain data on purpose:

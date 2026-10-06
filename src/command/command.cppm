@@ -9,8 +9,6 @@ import :command.search_config;
 import :support.object_pool;
 import :vfs.file_table;
 
-namespace llvm {}
-
 namespace clice {
 
 class Toolchain;

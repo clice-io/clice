@@ -9,8 +9,6 @@ import :semantic.symbol;
 import :syntax.lexical_scan;
 import :syntax.token;
 
-namespace clang {}  // namespace clang
-
 namespace clice {
 
 class CompilationUnitRef;
