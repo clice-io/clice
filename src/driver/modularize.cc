@@ -103,6 +103,17 @@ llvm::SmallString<256> join_path(llvm::StringRef base, llvm::StringRef relative)
     return path;
 }
 
+/// The paths a run's manifest lists. A hand-edited one reaches nothing
+/// outside its directory.
+llvm::SmallVector<llvm::StringRef> manifest_paths(llvm::StringRef manifest) {
+    llvm::SmallVector<llvm::StringRef> paths;
+    manifest.split(paths, '\n', -1, false);
+    llvm::erase_if(paths, [](llvm::StringRef path) {
+        return path.starts_with("/") || path.contains("..");
+    });
+    return paths;
+}
+
 /// Write the files whose content changed, so a regeneration rebuilds only
 /// what it touched, and remove the files the previous run wrote that this
 /// one no longer produces: a stale empty header in a mirror would hide the
@@ -134,11 +145,8 @@ std::expected<void, std::string> write_files(llvm::StringRef out,
         }
     }
     if(auto previous = vfs::read(at(".modularize"))) {
-        llvm::SmallVector<llvm::StringRef> lines;
-        (*previous)->getBuffer().split(lines, '\n', -1, false);
-        for(auto relative: lines) {
-            // A hand-edited manifest reaches nothing outside `out`.
-            if(written.contains(relative) || relative.starts_with("/") || relative.contains("..")) {
+        for(auto relative: manifest_paths((*previous)->getBuffer())) {
+            if(written.contains(relative)) {
                 continue;
             }
             if(auto error = vfs::remove(at(relative))) {
@@ -182,9 +190,7 @@ std::expected<std::vector<analysis::Configuration>, std::string>
             .name = std::move(entry.name),
             .condition = std::move(entry.condition),
         });
-        llvm::SmallVector<llvm::StringRef> lines;
-        (*manifest)->getBuffer().split(lines, '\n', -1, false);
-        for(auto relative: lines) {
+        for(auto relative: manifest_paths((*manifest)->getBuffer())) {
             auto content = vfs::read(join_path(out, relative));
             if(!content) {
                 return std::unexpected(std::format("cannot read {}/{}: {}",
