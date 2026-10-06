@@ -7,6 +7,14 @@ clang API changes; this file covers everything around them. Every entry: what yo
 why, what we do, how to check it before spending CI time. Append to it with every
 toolchain change.
 
+## 2026-10: xclang 23.1.2.8
+
+The same LLVM; the release clice's C++20 modules need.
+
+| Symptom                                                                                                                                   | Cause                                                                                                                                  | Fix                                                                                        | Check                                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| macOS: a module unit compiles as if its dependencies' `defines` were unset (spdlog falls back to its bundled fmt, `fmt_lib` names `fmt`). | rules_cc's macOS feature list leaves the defines to Bazel's legacy feature, whose actions are not the C++20 module compiles and scans. | xclang 23.1.2.8 puts `preprocessor_defines_feature` in the macOS list (clice-io/xclang#1). | `bazel aquery 'mnemonic("CppCompile", //modules:deps)'` on macOS lists `-DSPDLOG_COMPILED_LIB`. |
+
 ## 2026-10: xclang 23.1.2.6
 
 What clice's Bazel files did around xclang's toolchain moved into xclang's
