@@ -1,14 +1,14 @@
 #pragma once
 #  define _LIBCPP_VERSION 230102
+#    define _LIBCPP_MSVCRT_LIKE
 #    define _NOEXCEPT noexcept
 #define _LIBCPP_ABI_NAMESPACE __1
 #define _LIBCPP_HAS_MUSL_LIBC 0
 #define _LIBCPP_HAS_WIDE_CHARACTERS 1
 #define _LIBCPP_LIBC_LLVM_LIBC 0
 #  define _LIBCPP_PREFERRED_OVERLOAD __attribute__((__enable_if__(true, "")))
-#    define _LIBCPP_VISIBILITY(vis) __attribute__((__visibility__(vis)))
-#  define _LIBCPP_HIDDEN _LIBCPP_VISIBILITY("hidden")
-#    define _LIBCPP_NAMESPACE_VISIBILITY __attribute__((__type_visibility__("default")))
+#  define _LIBCPP_HIDDEN
+#  define _LIBCPP_NAMESPACE_VISIBILITY
 #  define _LIBCPP_EXCLUDE_FROM_EXPLICIT_INSTANTIATION __attribute__((__exclude_from_explicit_instantiation__))
 #  define _LIBCPP_HARDENING_SIG n // "none"
 #  define _LIBCPP_ASSERTION_SEMANTIC_SIG q

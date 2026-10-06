@@ -39,14 +39,6 @@
 #define EINVAL          22              /* Invalid argument */
 #define EPIPE           32              /* Broken pipe */
 #define ERANGE          34              /* Result too large */
-#define O_WRONLY        0x0001          /* open for writing only */
-#define O_NONBLOCK      0x00000004      /* no delay */
-#define O_APPEND        0x00000008      /* set append mode */
-#define O_CREAT         0x00000200      /* create if nonexistant */
-#define O_TRUNC         0x00000400      /* truncate to zero length */
-#define AT_FDCWD        -2
-#define F_GETFL         3               /* get file status flags */
-#define F_SETFL         4               /* set file status flags */
 #define SIGINT  2       /* interrupt */
 #define SIGPIPE 13      /* write on a pipe with no one to read it */
 #define SIGTERM 15      /* software termination signal from kill */
@@ -61,7 +53,6 @@
 #define va_start(ap, param) __builtin_va_start(ap, param)
 #define va_end(ap) __builtin_va_end(ap)
 #define va_arg(ap, type) __builtin_va_arg(ap, type)
-#define NULL __null
 #define offsetof(t, d) __builtin_offsetof(t, d)
 #define _mm256_extract_epi64(X, N)   ((long long)__builtin_ia32_vec_ext_v4di((__v4di)(__m256i)(X), (int)(N)))
 #define INT_MAX   __INT_MAX__

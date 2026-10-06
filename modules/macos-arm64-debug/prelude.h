@@ -1,12 +1,9 @@
 #pragma once
 
 #include <assert.h>
-#include <fcntl.h>
 #include <strings.h>
-#include <sys/socket.h>
 #include <sys/types.h>
 #include <time.h>
-#include <unistd.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,15 +11,5 @@
 import std.compat;
 #include "std.macros.h"
 #include "libc.macros.h"
-import llvm;
-import clang;
-import simdjson;
-import kota;
-import lmdb;
-import spdlog;
-#include "llvm.macros.h"
-#include "clang.macros.h"
-#include "simdjson.macros.h"
-#include "kota.macros.h"
-#include "lmdb.macros.h"
-#include "spdlog.macros.h"
+import deps;
+#include "deps.macros.h"

@@ -1,53 +1,40 @@
 #pragma once
-#define LC_ALL_MASK			(  LC_COLLATE_MASK 					 | LC_CTYPE_MASK 					 | LC_MESSAGES_MASK 					 | LC_MONETARY_MASK 					 | LC_NUMERIC_MASK 					 | LC_TIME_MASK )
-#define LC_COLLATE_MASK			(1 << 0)
-#define LC_CTYPE_MASK			(1 << 1)
-#define LC_MESSAGES_MASK		(1 << 2)
-#define LC_MONETARY_MASK		(1 << 3)
-#define LC_NUMERIC_MASK			(1 << 4)
-#define LC_TIME_MASK			(1 << 5)
-#define	stdout	__stdoutp
-#define	stderr	__stderrp
-#define	alloca(size)	__alloca(size)
-#define	__alloca(size)	__builtin_alloca(size)
-#define	assert(e)	((void)0)
-#define OSSwapInt64(x)  __DARWIN_OSSwapInt64(x)
-#define __DARWIN_OSSwapConstInt64(x)     ((__uint64_t)((((__uint64_t)(x) & 0xff00000000000000ULL) >> 56) | 	        (((__uint64_t)(x) & 0x00ff000000000000ULL) >> 40) | 	        (((__uint64_t)(x) & 0x0000ff0000000000ULL) >> 24) | 	        (((__uint64_t)(x) & 0x000000ff00000000ULL) >>  8) | 	        (((__uint64_t)(x) & 0x00000000ff000000ULL) <<  8) | 	        (((__uint64_t)(x) & 0x0000000000ff0000ULL) << 24) | 	        (((__uint64_t)(x) & 0x000000000000ff00ULL) << 40) | 	        (((__uint64_t)(x) & 0x00000000000000ffULL) << 56)))
-#define __DARWIN_OSSwapInt64(x)     (__builtin_constant_p(x) ? __DARWIN_OSSwapConstInt64(x) : _OSSwapInt64(x))
-#define	LC_ALL		0
-#define PTHREAD_MUTEX_INITIALIZER {_PTHREAD_MUTEX_SIG_init, {0}}
-#define PTHREAD_COND_INITIALIZER {_PTHREAD_COND_SIG_init, {0}}
-#define PTHREAD_ONCE_INIT {_PTHREAD_ONCE_SIG_init, {0}}
-#define _PTHREAD_MUTEX_SIG_init		0x32AAABA7
-#define _PTHREAD_COND_SIG_init		0x3CB0B1BB
-#define _PTHREAD_ONCE_SIG_init		0x30B1BCBA
-#define INT64_C(v)   (v ## LL)
-#define UINT8_C(v)   (v)
-#define UINT64_C(v)  (v ## ULL)
-#define INT32_MAX        2147483647
-#define INT64_MAX        9223372036854775807LL
-#define UINT32_MAX        4294967295U
-#define UINT64_MAX        18446744073709551615ULL
-#define UINTPTR_MAX       18446744073709551615UL
-#define SIZE_MAX          UINTPTR_MAX
-#define SEEK_END        2       /* set file offset to EOF plus offset */
-#define __restrict
-#define errno (*__error())
-#define EPERM           1               /* Operation not permitted */
-#define ESRCH           3               /* No such process */
-#define EINTR           4               /* Interrupted system call */
-#define EINVAL          22              /* Invalid argument */
-#define EPIPE           32              /* Broken pipe */
-#define ERANGE          34              /* Result too large */
-#define SIGINT  2       /* interrupt */
-#define SIGPIPE 13      /* write on a pipe with no one to read it */
-#define SIGTERM 15      /* software termination signal from kill */
-#define SIGSTOP 17      /* sendable stop signal not from tty */
-#define SIGCONT 19      /* continue a stopped process */
-#define SIGXFSZ 25      /* exceeded file size limit */
-#define SIG_DFL         (void (*)(int))0
-#define SIG_IGN         (void (*)(int))1
-#define	_XOPEN_VERSION			600		/* [XSI] */
+#define _MT
+#  define _M_ARM64 1
+# define __MINGW_NAME_AW(func) func##A
+#define assert(_Expression) ((void)0)
+#define errno (*_errno())
+#define EINVAL 22
+#define ERANGE 34
+#define _UI64_MAX 0xffffffffffffffffull
+#define SIZE_MAX _UI64_MAX
+#define LC_ALL 0
+#define LC_COLLATE 1
+#define LC_CTYPE 2
+#define LC_MONETARY 3
+#define LC_NUMERIC 4
+#define LC_TIME 5
+#define alloca(x) __builtin_alloca((x))
+#define ERANGE 34
+#define _Ret_notnull_
+#define _Post_writable_byte_size_(s)
+#define SIGINT 2
+#define SIGTERM 15
+#define INT32_MAX 2147483647
+#define INT64_MAX 9223372036854775807LL
+#define UINT32_MAX 0xffffffffU  /* 4294967295U */
+#define UINT64_MAX 0xffffffffffffffffULL /* 18446744073709551615ULL */
+#define PTRDIFF_MAX INT64_MAX
+#define SIZE_MAX UINT64_MAX
+#define INT64_C(val) val##LL
+#define UINT8_C(val) (val)
+#define UINT64_C(val) val##ULL
+#define SEEK_END 2
+#define stderr (__acrt_iob_func(2))
+#define errno (*_errno())
+#define stdout (__acrt_iob_func(1))
+#define stderr (__acrt_iob_func(2))
+#define GetMessage __MINGW_NAME_AW(GetMessage)
 #define FLT_EVAL_METHOD __FLT_EVAL_METHOD__
 #define FLT_RADIX __FLT_RADIX__
 #define va_start(ap, param) __builtin_va_start(ap, param)

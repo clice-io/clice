@@ -1,44 +1,4 @@
 #pragma once
-#define __bswap_constant_32(x)      ((((x) & 0xff000000) >> 24) | (((x) & 0x00ff0000) >>  8) |		            (((x) & 0x0000ff00) <<  8) | (((x) & 0x000000ff) << 24))
-#   define __bswap_32(x)       (__extension__							             ({ unsigned int __v, __x = (x);					      	  if (__builtin_constant_p (__x))				      	    __v = __bswap_constant_32 (__x);				      	  else								      	    __asm__ ("bswap %0" : "=r" (__v) : "0" (__x));		      	  __v; }))
-# define __bswap_constant_64(x)      (__extension__ ((((x) & 0xff00000000000000ull) >> 56)		      		     | (((x) & 0x00ff000000000000ull) >> 40)		      		     | (((x) & 0x0000ff0000000000ull) >> 24)		      		     | (((x) & 0x000000ff00000000ull) >> 8)		      		     | (((x) & 0x00000000ff000000ull) << 8)		      		     | (((x) & 0x0000000000ff0000ull) << 24)		      		     | (((x) & 0x000000000000ff00ull) << 40)		      		     | (((x) & 0x00000000000000ffull) << 56)))
-#  define __bswap_64(x)      (__extension__							            ({ __uint64_t __v, __x = (x);					      	 if (__builtin_constant_p (__x))				      	   __v = __bswap_constant_64 (__x);				      	 else								      	   __asm__ ("bswap %q0" : "=r" (__v) : "0" (__x));		      	 __v; }))
-#define __LC_CTYPE		 0
-#define __LC_NUMERIC		 1
-#define __LC_TIME		 2
-#define __LC_COLLATE		 3
-#define __LC_MONETARY		 4
-#define __LC_MESSAGES		 5
-#define __LC_ALL		 6
-#define __LC_PAPER		 7
-#define __LC_NAME		 8
-#define __LC_ADDRESS		 9
-#define __LC_TELEPHONE		10
-#define __LC_MEASUREMENT	11
-#define __LC_IDENTIFICATION	12
-# define __PTHREAD_SPINS             0, 0
-#define	__GLIBC__	2
-#define	__GLIBC_MINOR__	17
-#define __GLIBC_PREREQ(maj, min) 	((__GLIBC__ << 16) + __GLIBC_MINOR__ >= ((maj) << 16) + (min))
-#define	LC_ALL		  __LC_ALL
-# define LC_CTYPE_MASK		(1 << __LC_CTYPE)
-# define LC_NUMERIC_MASK	(1 << __LC_NUMERIC)
-# define LC_TIME_MASK		(1 << __LC_TIME)
-# define LC_COLLATE_MASK	(1 << __LC_COLLATE)
-# define LC_MONETARY_MASK	(1 << __LC_MONETARY)
-# define LC_MESSAGES_MASK	(1 << __LC_MESSAGES)
-# define LC_PAPER_MASK		(1 << __LC_PAPER)
-# define LC_NAME_MASK		(1 << __LC_NAME)
-# define LC_ADDRESS_MASK	(1 << __LC_ADDRESS)
-# define LC_TELEPHONE_MASK	(1 << __LC_TELEPHONE)
-# define LC_MEASUREMENT_MASK	(1 << __LC_MEASUREMENT)
-# define LC_IDENTIFICATION_MASK	(1 << __LC_IDENTIFICATION)
-# define LC_ALL_MASK		(LC_CTYPE_MASK 				 | LC_NUMERIC_MASK 				 | LC_TIME_MASK 				 | LC_COLLATE_MASK 				 | LC_MONETARY_MASK 				 | LC_MESSAGES_MASK 				 | LC_PAPER_MASK 				 | LC_NAME_MASK 				 | LC_ADDRESS_MASK 				 | LC_TELEPHONE_MASK 				 | LC_MEASUREMENT_MASK 				 | LC_IDENTIFICATION_MASK 				 )
-#  define __INT64_C(c)	c ## L
-#  define __UINT64_C(c)	c ## UL
-# define UINT8_C(c)	c
-#define stdout stdout
-#define stderr stderr
 # define alloca(size)	__builtin_alloca (size)
 #define	EPERM		 1	/* Operation not permitted */
 #define	ESRCH		 3	/* No such process */
@@ -53,14 +13,6 @@
 # define __bswap_constant_64(x)      (__extension__ ((((x) & 0xff00000000000000ull) >> 56)		      		     | (((x) & 0x00ff000000000000ull) >> 40)		      		     | (((x) & 0x0000ff0000000000ull) >> 24)		      		     | (((x) & 0x000000ff00000000ull) >> 8)		      		     | (((x) & 0x00000000ff000000ull) << 8)		      		     | (((x) & 0x0000000000ff0000ull) << 24)		      		     | (((x) & 0x000000000000ff00ull) << 40)		      		     | (((x) & 0x00000000000000ffull) << 56)))
 #  define __bswap_64(x)      (__extension__							            ({ union { __extension__ __uint64_t __ll;				      		 unsigned int __l[2]; } __w, __r;			      	 if (__builtin_constant_p (x))					      	   __r.__ll = __bswap_constant_64 (x);				      	 else								      	   {								      	     __w.__ll = (x);						      	     __r.__l[0] = __bswap_32 (__w.__l[1]);			      	     __r.__l[1] = __bswap_32 (__w.__l[0]);			      	   }								      	 __r.__ll; }))
 #   define errno (*__errno_location ())
-#define O_WRONLY	     01
-# define O_CREAT	   0100	/* Not fcntl.  */
-# define O_TRUNC	  01000	/* Not fcntl.  */
-# define O_APPEND	  02000
-# define O_NONBLOCK	  04000
-#define F_GETFL		3	/* Get file status flags.  */
-#define F_SETFL		4	/* Set file status flags.  */
-# define F_SETPIPE_SZ	1031	/* Set pipe page size array.  */
 #define __LC_CTYPE		 0
 #define __LC_NUMERIC		 1
 #define __LC_TIME		 2
@@ -107,17 +59,13 @@
 #define PTHREAD_ONCE_INIT 0
 #  define __INT64_C(c)	c ## L
 #  define __UINT64_C(c)	c ## UL
-# define INT64_MIN		(-__INT64_C(9223372036854775807)-1)
 # define INT32_MAX		(2147483647)
 # define INT64_MAX		(__INT64_C(9223372036854775807))
-# define UINT16_MAX		(65535)
 # define UINT32_MAX		(4294967295U)
 # define UINT64_MAX		(__UINT64_C(18446744073709551615))
 #  define SIZE_MAX		(18446744073709551615UL)
-# define INT32_C(c)	c
 #  define INT64_C(c)	c ## L
 # define UINT8_C(c)	c
-# define UINT32_C(c)	c ## U
 #  define UINT64_C(c)	c ## UL
 #define SEEK_END	2	/* Seek from end of file.  */
 #define stdout stdout
@@ -127,7 +75,6 @@
 #define va_start(ap, param) __builtin_va_start(ap, param)
 #define va_end(ap) __builtin_va_end(ap)
 #define va_arg(ap, type) __builtin_va_arg(ap, type)
-#define NULL __null
 #define offsetof(t, d) __builtin_offsetof(t, d)
 #define vcreate_u8(__p0) __extension__ ({   uint8x8_t __ret;   uint64_t __promote = __p0;   __ret = __builtin_bit_cast(uint8x8_t, __promote);   __ret; })
 #define vextq_u8(__p0, __p1, __p2) __extension__ ({   uint8x16_t __ret;   uint8x16_t __s0 = __p0;   uint8x16_t __s1 = __p1;   __ret = __builtin_bit_cast(uint8x16_t, __builtin_neon_vextq_v(__builtin_bit_cast(int8x16_t, __s0), __builtin_bit_cast(int8x16_t, __s1), __p2, 48));   __ret; })
