@@ -129,14 +129,8 @@ struct ProjectIndex {
     /// names are copied only for symbols new to the table. `added`
     /// receives the hashes of the symbols new to the table or whose name,
     /// arguments, parent, file or flags the merge changed — what a name
-    /// search keyed on the table's rows must re-read. Returns false —
-    /// with the table untouched — when a reference bitmap fails to decode
-    /// or carries an id past the path table (the bound TUIndex::from_bytes
-    /// enforces; the zero-copy reader leaves it to this consumer): the
-    /// caller rejects the whole result, because merged bits persist while
-    /// the result's recorded versions match the disk, so lost bits would
-    /// never be rebuilt.
-    bool merge(const TUIndex& index,
+    /// search keyed on the table's rows must re-read.
+    void merge(const TUIndex& index,
                llvm::ArrayRef<Fid> file_ids_map,
                llvm::SmallVectorImpl<SymbolHash>* added = nullptr);
 

@@ -930,15 +930,16 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
     }
     if(live) {
         live->each_session_index([&](const TUIndex& state) {
-            state.iterate_symbols(
-                [&](SymbolHash hash, const SymbolIdentity& identity, llvm::StringRef) {
-                    llvm::StringRef path;
-                    if(identity.file != no_file) {
-                        path = state.path(identity.file);
-                    }
-                    consider(hash, identity, path, references_of(hash));
-                    return true;
-                });
+            state.iterate_symbols([&](SymbolHash hash,
+                                      const SymbolIdentity& identity,
+                                      llvm::ArrayRef<std::uint32_t>) {
+                llvm::StringRef path;
+                if(identity.file != no_file) {
+                    path = state.path(identity.file);
+                }
+                consider(hash, identity, path, references_of(hash));
+                return true;
+            });
             return true;
         });
     }

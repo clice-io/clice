@@ -600,58 +600,9 @@ Symbol& ProjectIndex::touch(SymbolHash hash) {
     return row;
 }
 
-bool ProjectIndex::merge(const TUIndex& index,
+void ProjectIndex::merge(const TUIndex& index,
                          llvm::ArrayRef<Fid> file_ids_map,
                          llvm::SmallVectorImpl<SymbolHash>* added) {
-    // Decode and bound every reference bitmap before touching the table:
-    // merged bits persist in the global blob while the result's recorded
-    // versions all match the disk, so a malformed image normalized to
-    // empty — or a silently dropped out-of-range id, whose relations would
-    // sit in a shard the symbol's fan-out never visits — would lose
-    // reference files with nothing ever rebuilding them. Either rejects
-    // the whole result instead — and the reject must leave no partial
-    // names or bits behind, hence the staging.
-    struct StagedSymbol {
-        SymbolHash hash;
-        SymbolIdentity identity;
-        Bitmap references;
-    };
-
-    std::vector<StagedSymbol> staged;
-    bool valid = true;
-    index.iterate_symbols(
-        [&](SymbolHash hash, const SymbolIdentity& identity, llvm::StringRef bitmap) {
-            if(identity.scope != SymbolScope::External) {
-                return true;
-            }
-            if(reserved_key(hash) || reserved_key(identity.parent)) {
-                valid = false;
-                return false;
-            }
-            Bitmap references;
-            if(!bitmap.empty()) {
-                auto decoded = read_bitmap(bitmap.data(), bitmap.size());
-                if(!decoded) {
-                    valid = false;
-                    return false;
-                }
-                references = std::move(*decoded);
-            }
-            if(!references.isEmpty() && references.maximum() >= file_ids_map.size()) {
-                valid = false;
-                return false;
-            }
-            if(identity.file != no_file && identity.file >= file_ids_map.size()) {
-                valid = false;
-                return false;
-            }
-            staged.push_back({hash, identity, std::move(references)});
-            return true;
-        });
-    if(!valid) {
-        return false;
-    }
-
     // Units may spell one symbol differently (`X<int>` against
     // `X<signed int>`, a conversion to a typedef): the shortest spelling
     // wins, then the smaller one, so the table reads the same whatever the
@@ -665,7 +616,12 @@ bool ProjectIndex::merge(const TUIndex& index,
         current = incoming.str();
         return true;
     };
-    for(auto& [hash, identity, references]: staged) {
+    index.iterate_symbols([&](SymbolHash hash,
+                              const SymbolIdentity& identity,
+                              llvm::ArrayRef<std::uint32_t> references) {
+        if(identity.scope != SymbolScope::External) {
+            return true;
+        }
         bool known = identity_of(hash).has_value();
         auto& target = touch(hash);
         bool changed_row = !known;
@@ -695,9 +651,8 @@ bool ProjectIndex::merge(const TUIndex& index,
         if(changed_row && added) {
             added->push_back(hash);
         }
-    }
-
-    return true;
+        return true;
+    });
 }
 
 void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& files) {

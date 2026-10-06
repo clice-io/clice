@@ -26,35 +26,11 @@
 
 namespace clice::index {
 
-/// Decode a serialized bitmap without trusting its bytes: bounded by the
-/// buffer, nullopt on a failed parse — croaring's C++ read wrappers abort
-/// on one, and blob bitmaps are untrusted disk/wire input. The caller
-/// chooses what a failure means: anything feeding persisted state (the
-/// project merge, blob loaders) rejects the whole input — normalized to
-/// empty, reference bits would read as fresh and stay lost forever —
-/// while the session-scoped full decode degrades to an empty bitmap,
-/// rebuilt by the next parse.
-inline std::optional<Bitmap> read_bitmap(const void* data, std::size_t size) {
-    auto* decoded =
-        roaring::api::roaring_bitmap_portable_deserialize_safe(static_cast<const char*>(data),
-                                                               size);
-    if(!decoded) {
-        return std::nullopt;
-    }
-    // deserialize_safe only bounds the reads; the bitmap it hands back can
-    // still violate internal invariants (unsorted containers), on which
-    // croaring's operations are undefined.
-    if(!roaring::api::roaring_bitmap_internal_validate(decoded, nullptr)) {
-        roaring::api::roaring_bitmap_free(decoded);
-        return std::nullopt;
-    }
-    return Bitmap(decoded);
-}
-
 /// A bitmap over a portable image in place: the container payloads stay
 /// in `data`, which must outlive the bitmap, and the bitmap is read-only
-/// (croaring aborts on a write to a frozen one). Validated like
-/// read_bitmap, plus the container offsets the image's header carries:
+/// (croaring aborts on a write to a frozen one). Validated without
+/// trusting the bytes — bounded by the buffer, croaring's internal
+/// invariants checked — plus the container offsets the image's header carries:
 /// the in-place reader follows them instead of walking the payload, so a
 /// corrupt one would send it outside the image.
 std::optional<Bitmap> view_bitmap(const void* data, std::size_t size);
@@ -90,32 +66,6 @@ inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
     }
     return hash;
 }
-
-}  // namespace clice::index
-
-namespace kota::meta {
-
-/// Roaring bitmaps travel in the portable format — the only one with a
-/// bounded deserializer. Only the session-scoped full decode goes through
-/// this repr (it has no failure channel, so a malformed image degrades to
-/// empty); the merge path and persisted blobs read raw images and reject
-/// unparseable ones.
-template <>
-struct repr<clice::Bitmap, codec::fbs::format> {
-    using type = std::vector<std::byte>;
-
-    static type to(const clice::Bitmap& bitmap) {
-        return clice::index::write_bitmap(bitmap);
-    }
-
-    static clice::Bitmap from(const type& buffer) {
-        return clice::index::read_bitmap(buffer.data(), buffer.size()).value_or(clice::Bitmap{});
-    }
-};
-
-}  // namespace kota::meta
-
-namespace clice::index {
 
 /// On-disk index blob schema version. Every persisted blob carries it as a
 /// regular field and every loader discards blobs with a different value —
@@ -335,6 +285,14 @@ inline bool monotone_ends(llvm::ArrayRef<std::uint32_t> ends, std::size_t arena_
         last = end;
     }
     return true;
+}
+
+/// Entry `i` of an "entries back to back" column pair: the arena between
+/// the previous entry's end and its own.
+template <typename Arena>
+Arena back_to_back(Arena arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t i) {
+    auto begin = i == 0 ? 0 : ends[i - 1];
+    return arena.drop_front(begin).take_front(ends[i] - begin);
 }
 
 }  // namespace clice::index

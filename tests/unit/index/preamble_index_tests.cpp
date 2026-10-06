@@ -53,14 +53,15 @@ index::SymbolHash hash_of(llvm::StringRef name,
                           std::source_location location = std::source_location::current()) {
     index::SymbolHash hash = 0;
     std::uint32_t count = 0;
-    state->iterate_symbols(
-        [&](index::SymbolHash symbol_id, const index::SymbolIdentity& symbol, llvm::StringRef) {
-            if(symbol.name == name) {
-                hash = symbol_id;
-                count += 1;
-            }
-            return true;
-        });
+    state->iterate_symbols([&](index::SymbolHash symbol_id,
+                               const index::SymbolIdentity& symbol,
+                               llvm::ArrayRef<std::uint32_t>) {
+        if(symbol.name == name) {
+            hash = symbol_id;
+            count += 1;
+        }
+        return true;
+    });
     ZEXPECT(count == 1);
     return hash;
 }

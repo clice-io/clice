@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "test/envelope_mirror.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
@@ -64,10 +65,6 @@ llvm::SmallVector<Fid> intern_paths(const index::TUIndex& view, clice::FileTable
     return ids;
 }
 
-llvm::StringRef bytes_of(const std::vector<std::uint8_t>& blob) {
-    return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
-}
-
 ZEST_CASE(MergeCollectsExternalSymbols) {
     add_file("header.h", R"(
         int external_fn();
@@ -83,7 +80,7 @@ ZEST_CASE(MergeCollectsExternalSymbols) {
     index::ProjectIndex project;
     auto view = build_view();
     ZASSERT(view.loaded());
-    ZASSERT(project.merge(view, intern_paths(view, pool)));
+    project.merge(view, intern_paths(view, pool));
 
     auto external = find_symbol(project, "external_fn");
     ZASSERT(external != 0);
@@ -108,7 +105,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     index::ProjectIndex project;
     auto view = build_view();
     ZASSERT(view.loaded());
-    ZASSERT(project.merge(view, intern_paths(view, pool)));
+    project.merge(view, intern_paths(view, pool));
 
     // A declaration-only unit places the symbol at its declaring header.
     auto hash = find_symbol(project, "shared_fn");
@@ -136,7 +133,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     std::string definer_wire = index::build_tu_index(*definer.unit);
     auto definer_view = index::TUIndex::from_bytes(definer_wire);
     ZASSERT(definer_view.loaded());
-    ZASSERT(project.merge(definer_view, intern_paths(definer_view, pool)));
+    project.merge(definer_view, intern_paths(definer_view, pool));
 
     auto defined = project.identity_of(hash);
     ZASSERT(defined);
@@ -162,7 +159,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     std::string mover_wire = index::build_tu_index(*mover.unit);
     auto mover_view = index::TUIndex::from_bytes(mover_wire);
     ZASSERT(mover_view.loaded());
-    ZASSERT(project.merge(mover_view, intern_paths(mover_view, pool)));
+    project.merge(mover_view, intern_paths(mover_view, pool));
     auto moved = pool.find(Spelling::absolute(mover_view.path(mover_view.path_count() - 1)));
     ZASSERT(moved);
     ZASSERT(project.identity_of(hash)->file == moved->raw);
@@ -171,119 +168,27 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
 ZEST_CASE(MergePicksOneSpelling) {
     // Two units spelling one specialization differently must leave the
     // same name in the table whichever merges first.
-    struct SymbolMirror {
-        std::string name;
-        std::string args;
-        std::uint64_t parent = 0;
-        std::uint8_t kind = 0;
-        std::uint8_t scope = 0;
-        std::uint16_t flags = 0;
-        std::uint32_t file = index::no_file;
-        std::vector<std::byte> reference_files;
-    };
-
-    struct EnvelopePrefixMirror {
-        std::uint32_t format_version = index::index_format_version;
-        std::int64_t built_at = 0;
-        std::vector<std::string> paths = {"/proj/main.cpp"};
-        std::vector<std::uint64_t> path_hashes;
-        std::vector<index::IncludeNode> nodes;
-        llvm::DenseMap<std::uint64_t, SymbolMirror> symbols{};
-    };
-
-    EnvelopePrefixMirror spelled_int;
-    spelled_int.symbols[42] = {.name = "X", .args = "<int>"};
-    EnvelopePrefixMirror spelled_signed;
-    spelled_signed.symbols[42] = {.name = "X", .args = "<signed int>"};
-    auto int_bytes = kota::codec::fbs::to_bytes(spelled_int);
-    auto signed_bytes = kota::codec::fbs::to_bytes(spelled_signed);
-    ZASSERT((int_bytes.has_value() && signed_bytes.has_value()));
+    EnvelopeMirror spelled_int;
+    spelled_int.paths = {"/proj/main.cpp"};
+    spelled_int.add_symbol(42, {.name = "X", .args = "<int>"});
+    EnvelopeMirror spelled_signed;
+    spelled_signed.paths = {"/proj/main.cpp"};
+    spelled_signed.add_symbol(42, {.name = "X", .args = "<signed int>"});
+    auto int_bytes = spelled_int.bytes();
+    auto signed_bytes = spelled_signed.bytes();
 
     clice::FileTable pool;
     for(auto [first, second]: {
-            std::pair{&*int_bytes,    &*signed_bytes},
-            std::pair{&*signed_bytes, &*int_bytes   }
+            std::pair{&int_bytes,    &signed_bytes},
+            std::pair{&signed_bytes, &int_bytes   }
     }) {
         index::ProjectIndex project;
-        auto first_view = index::TUIndex::from_bytes(bytes_of(*first));
-        auto second_view = index::TUIndex::from_bytes(bytes_of(*second));
-        ZASSERT(project.merge(first_view, intern_paths(first_view, pool)));
-        ZASSERT(project.merge(second_view, intern_paths(second_view, pool)));
+        auto first_view = index::TUIndex::from_bytes(*first);
+        auto second_view = index::TUIndex::from_bytes(*second);
+        project.merge(first_view, intern_paths(first_view, pool));
+        project.merge(second_view, intern_paths(second_view, pool));
         ZASSERT(project.identity_of(42)->args == "<int>");
     }
-}
-
-ZEST_CASE(MergeRejectsBadBitmap) {
-    // Field order MUST mirror the envelope layout (tu_index.cpp) up to
-    // `symbols`: the builder always writes valid bitmap images, so a
-    // malformed one has to be planted by hand.
-    struct SymbolMirror {
-        std::string name;
-        std::string args;
-        std::uint64_t parent = 0;
-        std::uint8_t kind = 0;
-        std::uint8_t scope = 0;
-        std::uint16_t flags = 0;
-        std::uint32_t file = index::no_file;
-        std::vector<std::byte> reference_files;
-    };
-
-    struct EnvelopePrefixMirror {
-        std::uint32_t format_version = 0;
-        std::int64_t built_at = 0;
-        std::vector<std::string> paths;
-        std::vector<std::uint64_t> path_hashes;
-        std::vector<index::IncludeNode> nodes;
-        llvm::DenseMap<std::uint64_t, SymbolMirror> symbols{};
-    };
-
-    EnvelopePrefixMirror mirror;
-    mirror.format_version = index::index_format_version;
-    mirror.paths = {"/proj/main.cpp"};
-    clice::Bitmap bits;
-    bits.add(0);
-    mirror.symbols[42] = {.name = "good_sym", .reference_files = index::write_bitmap(bits)};
-
-    // Control: the mirror layout matches — the view sees the symbol and a
-    // valid image merges.
-    auto valid = kota::codec::fbs::to_bytes(mirror);
-    ZASSERT(valid);
-    auto valid_view = index::TUIndex::from_bytes(bytes_of(*valid));
-    ZASSERT(valid_view.loaded());
-    clice::FileTable pool;
-    index::ProjectIndex accepting;
-    ZASSERT(accepting.merge(valid_view, intern_paths(valid_view, pool)));
-    ZASSERT(find_symbol(accepting, "good_sym") == 42u);
-
-    // One malformed image rejects the whole result: merged bits would
-    // persist behind versions that match the disk, with the lost ones
-    // never rebuilt. The symbols that decoded fine must not stay behind.
-    mirror.symbols[43] = {
-        .name = "bad_sym",
-        .reference_files = {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}},
-    };
-    auto corrupt = kota::codec::fbs::to_bytes(mirror);
-    ZASSERT(corrupt);
-    auto corrupt_view = index::TUIndex::from_bytes(bytes_of(*corrupt));
-    ZASSERT(corrupt_view.loaded());
-    index::ProjectIndex rejecting;
-    ZASSERT(!rejecting.merge(corrupt_view, intern_paths(corrupt_view, pool)));
-    ZASSERT(rejecting.symbol_count() == 0u);
-
-    // An id past the path table is the same corruption in a decodable
-    // coat: silently dropped, the symbol's relations would sit in a shard
-    // its fan-out never visits. The reader hands reference-file ids out
-    // raw, so this merge is the only gate.
-    clice::Bitmap stray;
-    stray.add(7);
-    mirror.symbols[43] = {.name = "bad_sym", .reference_files = index::write_bitmap(stray)};
-    auto out_of_range = kota::codec::fbs::to_bytes(mirror);
-    ZASSERT(out_of_range);
-    auto stray_view = index::TUIndex::from_bytes(bytes_of(*out_of_range));
-    ZASSERT(stray_view.loaded());
-    index::ProjectIndex bounding;
-    ZASSERT(!bounding.merge(stray_view, intern_paths(stray_view, pool)));
-    ZASSERT(bounding.symbol_count() == 0u);
 }
 
 ZEST_CASE(FileVersionInterning) {
@@ -377,7 +282,7 @@ ZEST_CASE(GlobalRoundTripWithRealMerge) {
     auto view = build_view();
     ZASSERT(view.loaded());
     auto file_ids_map = intern_paths(view, pool);
-    ZASSERT(project.merge(view, file_ids_map));
+    project.merge(view, file_ids_map);
 
     // A manifest referencing the main file keeps its FileVersion alive
     // through the write's garbage collection.

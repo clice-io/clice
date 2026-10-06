@@ -60,9 +60,8 @@ public:
 
     /// Wrap verified envelope bytes without owning them (the caller keeps
     /// the bytes alive). Verification gates the format version and bounds
-    /// every path id the tree and sections carry; corrupt bytes load as
-    /// an empty reader. Symbol reference-file ids are NOT validated —
-    /// iterate_symbols hands them out raw and the consumer bounds them.
+    /// every path id the tree, the symbol table and the sections carry;
+    /// corrupt bytes load as an empty reader.
     /// Section blob bytes are verified per section: structurally by
     /// shard_of on first use, or hash-checked and wrapped by
     /// shards_verify in one pass.
@@ -128,21 +127,24 @@ public:
     /// rows or nothing.
     bool shards_verify() const;
 
-    /// Visit every symbol: hash, identity, and the raw serialized
-    /// reference-files bitmap (a read_bitmap'able portable image).
-    /// Return false from the callback to stop.
+    /// Visit every symbol of the table in ascending hash order: hash,
+    /// identity, and its reference files as path ids. A function's locals
+    /// are not in the table (see find_symbol). Return false from the
+    /// callback to stop.
     void iterate_symbols(
-        llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, llvm::StringRef bitmap)>
-            callback) const;
+        llvm::function_ref<bool(SymbolHash,
+                                const SymbolIdentity&,
+                                llvm::ArrayRef<std::uint32_t> reference_files)> callback) const;
 
-    /// Look up one symbol's identity by hash.
+    /// Look up one symbol's identity by hash: in the table, else among the
+    /// sections' own symbols, which name a function's locals.
     std::optional<SymbolIdentity> find_symbol(SymbolHash hash) const;
 
     /// The internal-linkage symbols more than one of the TU's files names
     /// (Symbol::reference_files), sorted by symbol, their files as indices
     /// into `contribution_paths` — the path ids of the manifest's
-    /// contributions, in order. Nullopt when a symbol's reference files are not all
-    /// among them, or its bitmap fails to decode.
+    /// contributions, in order. Nullopt when a symbol's reference files are
+    /// not all among them.
     std::optional<std::vector<LocalFanout>>
         local_fanout(llvm::ArrayRef<std::uint32_t> contribution_paths) const;
 
@@ -171,6 +173,9 @@ public:
     llvm::StringRef preamble_diagnostics() const;
 
 private:
+    /// The reader over section `section`'s rows, wrapped on first use.
+    const Shard& section_shard(std::uint32_t section) const;
+
     /// The verified envelope bytes (owned iff `owned` is set); accessors
     /// rebuild the (pointer-sized) fbs view from them on demand.
     std::unique_ptr<llvm::MemoryBuffer> owned;

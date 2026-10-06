@@ -28,7 +28,7 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& main) {
         file_ids_map.push_back(project.file_table.intern(Spelling::absolute(view.path(i))));
     }
     llvm::SmallVector<index::SymbolHash> added;
-    ZASSERT(project_index.merge(view, file_ids_map, &added));
+    project_index.merge(view, file_ids_map, &added);
     project_index.search_pending.insert(added.begin(), added.end());
     main = file_ids_map[view.path_count() - 1];
 

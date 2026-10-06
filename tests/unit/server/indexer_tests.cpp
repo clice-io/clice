@@ -7,6 +7,7 @@
 #endif
 
 #include "test/cdb_helper.h"
+#include "test/envelope_mirror.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "command/argument_parser.h"
@@ -226,71 +227,11 @@ IndexedTU index_file(TempDir& tmp, llvm::StringRef file, std::vector<std::string
 }
 
 /// Re-encode an envelope with its consumed-content hash column dropped,
-/// as a file behind a PCM ships it. Field order MUST mirror the envelope
-/// layout (tu_index.cpp).
+/// as a file behind a PCM ships it.
 std::string strip_path_hashes(llvm::StringRef data) {
-    struct SymbolMirror {
-        std::string name;
-        std::string args;
-        std::uint64_t parent = 0;
-        std::uint8_t kind = 0;
-        std::uint8_t scope = 0;
-        std::uint16_t flags = 0;
-        std::uint32_t file = index::no_file;
-        std::vector<std::byte> reference_files;
-    };
-
-    struct SectionMirror {
-        std::uint32_t path_id = 0;
-        std::uint64_t hash = 0;
-        std::vector<std::uint8_t> blob;
-    };
-
-    struct EnvelopeMirror {
-        std::uint32_t format_version = index::index_format_version;
-        std::int64_t built_at = 0;
-        std::vector<std::string> paths;
-        std::vector<std::uint64_t> path_hashes;
-        std::vector<index::IncludeNode> nodes;
-        llvm::DenseMap<std::uint64_t, SymbolMirror> symbols{};
-        std::vector<SectionMirror> sections;
-    };
-
-    auto view = index::TUIndex::from_bytes(data);
-    EnvelopeMirror mirror;
-    mirror.built_at = view.built_at();
-    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        mirror.paths.emplace_back(view.path(i));
-    }
-    for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
-        mirror.nodes.push_back(view.node(i));
-    }
-    view.iterate_symbols(
-        [&](index::SymbolHash hash, const index::SymbolIdentity& id, llvm::StringRef bitmap) {
-            auto& symbol = mirror.symbols[hash];
-            symbol.name = std::string(id.name);
-            symbol.args = std::string(id.args);
-            symbol.parent = id.parent;
-            symbol.kind = id.kind.value();
-            symbol.scope = static_cast<std::uint8_t>(id.scope);
-            symbol.flags = static_cast<std::uint16_t>(id.flags);
-            symbol.file = id.file;
-            const auto* begin = reinterpret_cast<const std::byte*>(bitmap.data());
-            symbol.reference_files.assign(begin, begin + bitmap.size());
-            return true;
-        });
-    for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
-        auto blob = view.section_blob(i);
-        mirror.sections.push_back({view.section_path(i),
-                                   view.section_hash(i),
-                                   std::vector<std::uint8_t>(blob.begin(), blob.end())});
-    }
-
-    auto bytes = kota::codec::fbs::to_bytes(mirror);
-    if(!bytes) {
-        return {};
-    }
-    return std::string(bytes->begin(), bytes->end());
+    auto mirror = EnvelopeMirror::of(index::TUIndex::from_bytes(data));
+    mirror.path_hashes.clear();
+    return mirror.bytes();
 }
 
 /// A structurally valid blob of `text`'s content generation carrying an

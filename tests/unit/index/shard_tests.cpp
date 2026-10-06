@@ -471,14 +471,15 @@ ZEST_CASE(LocalSymbolNames) {
     // External names live in the ProjectIndex, never in the blob.
     auto external = [&] {
         index::SymbolHash result = 0;
-        tu_index.iterate_symbols(
-            [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, llvm::StringRef) {
-                if(symbol.name == "visible") {
-                    result = hash;
-                    return false;
-                }
-                return true;
-            });
+        tu_index.iterate_symbols([&](index::SymbolHash hash,
+                                     const index::SymbolIdentity& symbol,
+                                     llvm::ArrayRef<std::uint32_t>) {
+            if(symbol.name == "visible") {
+                result = hash;
+                return false;
+            }
+            return true;
+        });
         return result;
     }();
     ZASSERT(external != 0);

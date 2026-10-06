@@ -98,14 +98,15 @@ index::SymbolHash hash_of(llvm::StringRef name,
                           std::source_location location = std::source_location::current()) {
     index::SymbolHash hash = 0;
     std::uint32_t count = 0;
-    full_index.iterate_symbols(
-        [&](index::SymbolHash symbol_id, const index::SymbolIdentity& symbol, llvm::StringRef) {
-            if(symbol.name == name) {
-                hash = symbol_id;
-                count += 1;
-            }
-            return true;
-        });
+    full_index.iterate_symbols([&](index::SymbolHash symbol_id,
+                                   const index::SymbolIdentity& symbol,
+                                   llvm::ArrayRef<std::uint32_t>) {
+        if(symbol.name == name) {
+            hash = symbol_id;
+            count += 1;
+        }
+        return true;
+    });
     ZEXPECT(count == 1);
     return hash;
 }
@@ -125,7 +126,7 @@ void merge_disk_index() {
     for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
         file_ids_map.push_back(project.file_table.intern(Spelling::absolute(full_index.path(i))));
     }
-    ZASSERT(project.project_index.merge(full_index, file_ids_map));
+    project.project_index.merge(full_index, file_ids_map);
 
     for(std::uint32_t section = 0; section < full_index.section_count(); section += 1) {
         auto local_id = full_index.section_path(section);

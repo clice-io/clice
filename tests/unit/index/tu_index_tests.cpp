@@ -3,6 +3,7 @@
 #include <optional>
 #include <set>
 
+#include "test/envelope_mirror.h"
 #include "test/test.h"
 #include "test/tester.h"
 #include "feature/feature.h"
@@ -76,20 +77,43 @@ void decode_index(const std::string& envelope) {
         }
     }
 
-    view.iterate_symbols(
-        [&](index::SymbolHash hash, const index::SymbolIdentity& identity, llvm::StringRef bitmap) {
-            auto& symbol = tu_index.symbols[hash];
-            symbol.name = identity.name.str();
-            symbol.args = identity.args.str();
-            symbol.parent = identity.parent;
-            symbol.kind = identity.kind;
-            symbol.scope = identity.scope;
-            symbol.flags = identity.flags;
-            symbol.file = identity.file;
-            symbol.reference_files =
-                index::read_bitmap(bitmap.data(), bitmap.size()).value_or(Bitmap{});
-            return true;
-        });
+    auto record = [&](index::SymbolHash hash, const index::SymbolIdentity& identity) {
+        auto& symbol = tu_index.symbols[hash];
+        symbol.name = identity.name.str();
+        symbol.args = identity.args.str();
+        symbol.parent = identity.parent;
+        symbol.kind = identity.kind;
+        symbol.scope = identity.scope;
+        symbol.flags = identity.flags;
+        symbol.file = identity.file;
+        return &symbol;
+    };
+    view.iterate_symbols([&](index::SymbolHash hash,
+                             const index::SymbolIdentity& identity,
+                             llvm::ArrayRef<std::uint32_t> references) {
+        record(hash, identity)->reference_files.addMany(references.size(), references.data());
+        return true;
+    });
+    // A function's locals are named by their sections only.
+    auto record_locals = [&](const DecodedRows& rows) {
+        auto record_local = [&](index::SymbolHash hash) {
+            if(!tu_index.symbols.contains(hash)) {
+                if(auto identity = view.find_symbol(hash)) {
+                    record(hash, *identity);
+                }
+            }
+        };
+        for(auto& occurrence: rows.occurrences) {
+            record_local(occurrence.target);
+        }
+        for(auto& hash: llvm::make_first_range(rows.relations)) {
+            record_local(hash);
+        }
+    };
+    record_locals(tu_index.main_file_index);
+    for(auto& rows: llvm::make_second_range(tu_index.file_indices)) {
+        record_locals(rows);
+    }
 }
 
 /// The one symbol with this name (and specialization arguments) in the
@@ -1879,89 +1903,102 @@ ZEST_CASE(FromRejectsStaleFormatVersion) {
     ZASSERT(index::TUIndex::from_bytes(bytes_of(*current)).loaded());
 }
 
-/// Hand-built envelopes for hostile-input tests. Field order MUST mirror
-/// the envelope layout (tu_index.cpp).
-struct MirrorSection {
-    std::uint32_t path_id = 0;
-    std::uint64_t hash = 0;
-    std::vector<std::uint8_t> blob;
-};
-
-struct MirrorEnvelope {
-    std::uint32_t format_version = index::index_format_version;
-    std::int64_t built_at = 0;
-    std::vector<std::string> paths;
-    std::vector<std::uint64_t> path_hashes;
-    std::vector<index::IncludeNode> nodes;
-    index::SymbolTable symbols{};
-    std::vector<MirrorSection> sections;
-};
-
-std::string mirror_bytes(const MirrorEnvelope& envelope) {
-    auto bytes = kota::codec::fbs::to_bytes(envelope);
-    if(!bytes) {
-        return {};
-    }
-    return std::string(bytes->begin(), bytes->end());
-}
-
 ZEST_CASE(FromRejectsReservedParents) {
     // Symbol parents become DenseSet keys in a query's container walk; the
     // sentinel values must fail the envelope as a whole.
-    MirrorEnvelope honest;
+    EnvelopeMirror honest;
     honest.paths = {"/proj/main.cpp"};
-    honest.symbols[42].name = "sym";
-    honest.symbols[42].parent = 7;
-    ZASSERT(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+    honest.add_symbol(42, {.name = "sym", .parent = 7});
+    ZASSERT(index::TUIndex::from_bytes(honest.bytes()).loaded());
 
-    MirrorEnvelope hostile = honest;
-    hostile.symbols[42].parent = ~std::uint64_t(0);
-    ZASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
-    hostile.symbols[42].parent = ~std::uint64_t(0) - 1;
-    ZASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+    EnvelopeMirror hostile = honest;
+    hostile.sym_parents[0] = ~std::uint64_t(0);
+    ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    hostile.sym_parents[0] = ~std::uint64_t(0) - 1;
+    ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+}
+
+ZEST_CASE(FromRejectsBadSymbolColumns) {
+    // Merged reference files persist behind versions that match the disk,
+    // so a malformed table must fail the envelope as a whole, never merge
+    // in part.
+    EnvelopeMirror honest;
+    honest.paths = {"/proj/a.h", "/proj/main.cpp"};
+    honest.add_symbol(42, {.name = "first", .file = 0}, {0, 1});
+    honest.add_symbol(43, {.name = "second"}, {1});
+    auto bytes = honest.bytes();
+    auto view = index::TUIndex::from_bytes(bytes);
+    ZASSERT(view.loaded());
+    ZASSERT(view.find_symbol(43)->name == "second");
+
+    {
+        // Lookups binary-search the hashes.
+        auto hostile = honest;
+        std::swap(hostile.sym_hashes[0], hostile.sym_hashes[1]);
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
+    {
+        auto hostile = honest;
+        hostile.sym_references.back() = 2;
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
+    {
+        auto hostile = honest;
+        hostile.sym_files[1] = 2;
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
+    {
+        auto hostile = honest;
+        hostile.sym_name_ends[0] = 100;
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
+    {
+        auto hostile = honest;
+        hostile.sym_kinds.pop_back();
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
 }
 
 ZEST_CASE(FromRejectsOutOfRangeParents) {
     // A node's parent indexes the node table in every consumer; only
     // another node or the root sentinel is acceptable.
-    MirrorEnvelope honest;
+    EnvelopeMirror honest;
     honest.paths = {"/proj/main.cpp", "/proj/a.h"};
     honest.nodes.push_back({.file = 1, .parent = ~0u, .line = 1});
     honest.nodes.push_back({.file = 1, .parent = 0, .line = 2});
-    ZASSERT(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+    ZASSERT(index::TUIndex::from_bytes(honest.bytes()).loaded());
 
-    MirrorEnvelope hostile = honest;
+    EnvelopeMirror hostile = honest;
     hostile.nodes.back().parent = 2;
-    ZASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+    ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
 }
 
 ZEST_CASE(FromRejectsOutOfRangePathIds) {
     // Structural verification does not constrain field values, and the
     // merge pipeline dereferences every decoded path id against the path
     // table without further checks — an envelope pointing outside its own
-    // table must be rejected as a whole. Symbol reference-file ids are
-    // deliberately not gated here: ProjectIndex::merge bounds them, pinned
-    // by project_index_tests.
+    // table must be rejected as a whole (the symbol table's ids: see
+    // FromRejectsBadSymbolColumns).
 
     // Positive control first: the same shapes with in-range ids load, so
     // the rejections below come from the hostile values.
-    MirrorEnvelope honest;
+    EnvelopeMirror honest;
     honest.paths = {"/proj/main.cpp"};
     honest.nodes.push_back({.file = 0, .parent = 0, .line = 1});
     honest.sections.push_back({.path_id = 0});
-    ZASSERT(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+    ZASSERT(index::TUIndex::from_bytes(honest.bytes()).loaded());
 
     {
-        MirrorEnvelope hostile;
+        EnvelopeMirror hostile;
         hostile.paths = {"/proj/main.cpp"};
         hostile.nodes.push_back({.file = 7, .parent = 0, .line = 1});
-        ZASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
-        MirrorEnvelope hostile;
+        EnvelopeMirror hostile;
         hostile.paths = {"/proj/main.cpp"};
         hostile.sections.push_back({.path_id = 7});  // Only path id 0 exists.
-        ZASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
 }
 
@@ -1969,8 +2006,8 @@ ZEST_CASE(FromRejectsEmptyPathTable) {
     // The builder ends every path table with the main file, and
     // consumers address path_count() - 1 unchecked — an envelope with no
     // paths at all is corrupt.
-    MirrorEnvelope hostile;
-    ZASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+    EnvelopeMirror hostile;
+    ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
 }
 
 ZEST_CASE(FromRejectsUnsortedSections) {
@@ -1978,25 +2015,25 @@ ZEST_CASE(FromRejectsUnsortedSections) {
     // or out-of-order id would attribute one file's rows to another.
 
     // Positive control: the ascending shape loads.
-    MirrorEnvelope honest;
+    EnvelopeMirror honest;
     honest.paths = {"/proj/a.h", "/proj/main.cpp"};
     honest.sections.push_back({.path_id = 0});
     honest.sections.push_back({.path_id = 1});
-    ZASSERT(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+    ZASSERT(index::TUIndex::from_bytes(honest.bytes()).loaded());
 
     {
-        MirrorEnvelope hostile;
+        EnvelopeMirror hostile;
         hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
         hostile.sections.push_back({.path_id = 1});
         hostile.sections.push_back({.path_id = 0});
-        ZASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
-        MirrorEnvelope hostile;
+        EnvelopeMirror hostile;
         hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
         hostile.sections.push_back({.path_id = 1});
         hostile.sections.push_back({.path_id = 1});
-        ZASSERT(!index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
 }
 
@@ -2004,10 +2041,10 @@ ZEST_CASE(AbsentPathHashesReadZero) {
     // The hash column may be shorter than the path table on a foreign
     // envelope (structurally valid: the field reads back empty); absent
     // entries read as 0, "unavailable".
-    MirrorEnvelope envelope;
+    EnvelopeMirror envelope;
     envelope.paths = {"/proj/a.h", "/proj/main.cpp"};
     envelope.path_hashes = {7};
-    auto bytes = mirror_bytes(envelope);
+    auto bytes = envelope.bytes();
     auto view = index::TUIndex::from_bytes(bytes);
     ZASSERT(view.loaded());
     ZASSERT(view.path_hash(0) == 7u);

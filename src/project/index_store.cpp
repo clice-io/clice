@@ -506,16 +506,9 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         return std::nullopt;
     }
 
-    // The last gate and the first commit. A malformed reference bitmap (or
-    // an out-of-range reference id) rejects the whole result for the same
-    // reason a rows section that fails decode does above: everything the
-    // merge would install reads as fresh forever, with the lost bits never
-    // rebuilt.
+    // The first commit.
     llvm::SmallVector<index::SymbolHash> added;
-    if(!project_index.merge(view, file_ids_map, &added)) {
-        LOG_WARN("Reject merge for {}: symbol reference bitmap failed verification", main_tu_path);
-        return std::nullopt;
-    }
+    project_index.merge(view, file_ids_map, &added);
     project.project_index.search_pending.insert(added.begin(), added.end());
     merges_since_search_build += 1;
 
