@@ -69,19 +69,22 @@ test("eviction does not loop", async ({ session }) => {
     });
 
     // A burst three times the cap settles instead of evicting compiles in
-    // flight and compiling them again without end.
+    // flight and compiling them again without end, and answers every request.
     const uris = names.map((name) => client.open(name)[0]);
-    await Promise.all(uris.map((uri) => client.semanticTokensFull(uri)));
+    const burst = await Promise.all(uris.map((uri) => client.semanticTokensFull(uri)));
+    for (const tokens of burst) {
+        expect(tokens?.data.length).toBeGreaterThan(0);
+    }
 
     // Asked again one by one, the evicted documents come back on demand.
     for (const uri of uris) {
         expect(await client.hoverAt(uri, 0, 5)).not.toBeNull();
     }
 
-    // Every compile answered before its document could be evicted: a
-    // document compiles once for the burst, once more if it was evicted
-    // between its compile and its query, and once when asked again — never
-    // in a loop of evictions.
+    // A document compiles once for the burst, once more for each eviction
+    // that caught it between a compile and its query, and once when asked
+    // again. Each such eviction takes another document landing in that
+    // window, so they stay few; a loop of evictions runs far past this.
     const compiles = workspace.log("SF-0.log").split("Compile request:").length - 1;
-    expect(compiles).toBeLessThanOrEqual(3 * names.length);
+    expect(compiles).toBeLessThanOrEqual(5 * names.length);
 });

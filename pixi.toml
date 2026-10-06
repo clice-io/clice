@@ -199,6 +199,16 @@ CLICE_SNAP_SHARD={{ shard }} CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }
 """
 depends-on = ["install-tests"]
 
+# The Zed extension in a real Zed (tests/zed); ZED_EXECUTABLE names the Zed
+# app, and the extension builds with the system's cargo. Workspace-level so CI
+# can run it from the bare `node` env.
+[tasks.zed-e2e]
+cmd = """
+cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip2 --release && \
+ZED_EXTENSION_WASM=$PIXI_PROJECT_ROOT/editors/zed/target/wasm32-wasip2/release/zed_clice.wasm npm run zed --workspace tests
+"""
+depends-on = ["install-tests"]
+
 # Real build systems and toolchains over tests/compat/project; the tools each
 # scenario names come from the system (CI installs them, see compat-test.yml),
 # nvcc from the `cuda` environment. Workspace-level so CI can run it from
