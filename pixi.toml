@@ -270,7 +270,7 @@ depends-on = [
 platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
 [feature.node.dependencies]
-nodejs = ">=20"
+nodejs = ">=22"
 
 # The instant-build packaging strips test binaries before bundling them
 # into the vsix (an unstripped ELF carries ~700MB of DWARF).
@@ -282,6 +282,7 @@ llvm-tools = "==23.1.1"
 # through npm to the underlying script.
 build-vscode = { cwd = "editors/vscode", cmd = "npm run package --", depends-on = ["install-vscode"] }
 publish-vscode = { cwd = "editors/vscode", cmd = "npm run publish --", depends-on = ["install-vscode"] }
+publish-ovsx = { cwd = "editors/vscode", cmd = "npm run publish:ovsx --", depends-on = ["install-vscode"] }
 
 # Same root npm-workspaces install as install-tests, available in the node
 # environment (the publish pipeline installs no test feature).
