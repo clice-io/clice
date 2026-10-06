@@ -90,7 +90,7 @@ struct MergeFile {
     std::vector<Configuration> configurations;
 };
 
-llvm::SmallString<256> join(llvm::StringRef base, llvm::StringRef relative) {
+llvm::SmallString<256> join_path(llvm::StringRef base, llvm::StringRef relative) {
     llvm::SmallString<256> path(base);
     llvm::sys::path::append(path, llvm::sys::path::Style::posix, relative);
     return path;
@@ -104,7 +104,7 @@ llvm::SmallString<256> join(llvm::StringRef base, llvm::StringRef relative) {
 std::expected<void, std::string> write_files(llvm::StringRef out,
                                              llvm::ArrayRef<analysis::Wrapping::File> files) {
     auto at = [&](llvm::StringRef relative) {
-        return join(out, relative);
+        return join_path(out, relative);
     };
     llvm::StringSet<> written;
     std::string manifest;
@@ -165,8 +165,8 @@ std::expected<std::vector<analysis::Configuration>, std::string>
     for(auto& entry: file.configurations) {
         auto out = llvm::sys::path::is_absolute(entry.out)
                        ? entry.out
-                       : join(llvm::sys::path::parent_path(path), entry.out).str().str();
-        auto manifest = vfs::read(join(out, ".modularize"));
+                       : join_path(llvm::sys::path::parent_path(path), entry.out).str().str();
+        auto manifest = vfs::read(join_path(out, ".modularize"));
         if(!manifest) {
             return std::unexpected(
                 std::format("configuration {}: {} holds no modularize output", entry.name, out));
@@ -178,7 +178,7 @@ std::expected<std::vector<analysis::Configuration>, std::string>
         llvm::SmallVector<llvm::StringRef> lines;
         (*manifest)->getBuffer().split(lines, '\n', -1, false);
         for(auto relative: lines) {
-            auto content = vfs::read(join(out, relative));
+            auto content = vfs::read(join_path(out, relative));
             if(!content) {
                 return std::unexpected(std::format("cannot read {}/{}: {}",
                                                    out,
@@ -276,7 +276,7 @@ int run_modularize(const ModularizeOptions& opts) {
     Plan plan{.wrapping = std::move(wrapping->plan)};
     if(rewriting) {
         for(auto& file: rewriting->files) {
-            auto path = join(loaded->root, file.path);
+            auto path = join_path(loaded->root, file.path);
             if(auto error = vfs::create_directories(llvm::sys::path::parent_path(path))) {
                 return fail(std::format("cannot create the directory of {}: {}",
                                         path.str().str(),
@@ -287,7 +287,7 @@ int run_modularize(const ModularizeOptions& opts) {
             }
         }
         for(auto& removed: rewriting->plan.removed) {
-            auto path = join(loaded->root, removed);
+            auto path = join_path(loaded->root, removed);
             if(auto error = vfs::remove(path)) {
                 return fail(std::format("cannot remove {}: {}", path.str().str(), error.message()));
             }

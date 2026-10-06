@@ -99,18 +99,18 @@ std::string export_text(const Exports& exports) {
 }
 
 /// A module unit `wrap` wrote: its global module fragment and its exports.
-struct Unit {
+struct Wrapper {
     std::string fragment;
     Exports exports;
 };
 
-std::expected<Unit, std::string> read_unit(llvm::StringRef module, llvm::StringRef text) {
+std::expected<Wrapper, std::string> read_wrapper(llvm::StringRef module, llvm::StringRef text) {
     auto declaration = std::format("\nexport module {};\n", module.str());
     auto split = text.find(declaration);
     if(!text.starts_with("module;\n") || split == llvm::StringRef::npos) {
         return std::unexpected("no module unit modularize writes");
     }
-    Unit unit{.fragment = text.slice(8, split).trim().str() + "\n"};
+    Wrapper unit{.fragment = text.slice(8, split).trim().str() + "\n"};
     llvm::SmallVector<llvm::StringRef> lines;
     text.drop_front(split + declaration.size()).split(lines, '\n', -1, false);
     std::optional<std::string> scope;
@@ -419,7 +419,7 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
     Wrapping result;
     llvm::StringSet<> names;
     // A module's unit in each configuration, in their order.
-    llvm::StringMap<std::vector<Unit>> units;
+    llvm::StringMap<std::vector<Wrapper>> units;
     std::set<std::string> mirrors;
     for(auto [index, configuration]: llvm::enumerate(configurations)) {
         llvm::StringRef name = configuration.name;
@@ -453,7 +453,7 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
                                 name.str(),
                                 file.path));
             }
-            auto unit = read_unit(path, file.content);
+            auto unit = read_wrapper(path, file.content);
             if(!unit) {
                 return std::unexpected(
                     std::format("configuration {}: {}: {}", name.str(), file.path, unit.error()));
