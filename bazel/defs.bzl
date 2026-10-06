@@ -20,7 +20,7 @@ COPTS = [
 
 # What clice's module units compile with, with a dependency on //modules and
 # the cpp_modules feature.
-CLICE_COPTS = COPTS + [copt for copt in MODULE_COPTS if copt not in COPTS]
+CLICE_COPTS = COPTS + MODULE_COPTS
 
 # Link optimizations in optimized builds: what the test suites run is what
 # releases ship. icf=safe (not =all) so address-taken functions keep C++

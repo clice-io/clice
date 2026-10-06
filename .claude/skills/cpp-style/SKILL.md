@@ -43,10 +43,11 @@ defending against ghosts.
 
 - clice is one C++20 module, `clice`. An interface is a partition,
   `<stem>.cppm` beside its source, named by its path under `src/`
-  (`module clice:feature.hover;`, `tests.unit.*` under `tests/unit/`);
+  (`module clice:vfs.path;`, `tests.unit.*` under `tests/unit/`);
   sources are implementation units `.cpp`, entry points `.cc` (`clice.cc`,
   `src/driver/*.cc`).
-- Every module unit opens with `module;` and `#include "modules/prelude.h"`,
+- Every module unit but the primary interface (`src/module.cppm`, which
+  exports nothing) opens with `module;` and `#include "modules/prelude.h"`,
   which imports the third-party module (`modules/`) and `std.compat` and
   replays their macros; then the macro headers it uses, the module
   declaration, and one `import :<partition>;` per partition it names.

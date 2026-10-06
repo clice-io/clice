@@ -2,7 +2,7 @@
 
 ## Overview
 
-`clice modularize` turns the third-party libraries of a program into C++20 named modules without touching a source file. Each library's headers stay the source of truth: a generated module interface unit includes them in its global module fragment and exports every namespace-scope name they declare. The program keeps its `#include` directives; unless `--no-mirrors` is given, a directory first on its include path turns the wrapped headers into empty files, and a prelude it force-includes imports the modules and replays the macros their headers defined.
+`clice modularize` turns the third-party libraries of a program into C++20 named modules without touching a source file. Each library's headers stay the source of truth: a generated module interface unit includes them in its global module fragment and exports every namespace-scope name they declare. The program keeps its `#include` directives; a directory first on its include path turns the wrapped headers into empty files (unless `--no-mirrors` is given), and a prelude it force-includes imports the modules and replays the macros their headers defined.
 
 The program's own code can follow: modules the partition marks for rewriting have their files rewritten in place into module units, headers into partitions and includes into imports.
 
@@ -83,7 +83,7 @@ A wrapping holds what the headers declare and define in one build configuration:
 - `prelude.h` includes the prelude of the configuration whose condition holds.
 - `mirror/` holds the headers any configuration empties; with `--no-mirrors` there is none.
 
-The configurations have to wrap the same modules. The plan the merge prints has neither `stdSources` nor `includeRoots`, paths on each configuration's machine.
+The configurations have to wrap the same modules and, unless `--no-mirrors` is given, agree on emptying the standard headers: the mirrors apply to every configuration. The plan the merge prints has neither `stdSources` nor `includeRoots`, paths on each configuration's machine.
 
 ## Output
 

@@ -5,7 +5,8 @@ command <- syntax <- semantic <- compile <- index <- feature.
 
 Each layer may include, or import the partitions of, downward only: clice is one
 module, clice, whose partitions are named by their path under src/
-(`import :sched.graph;`), which the check verifies too. Bazel enforces the layering
+(`import :sched.graph;`), and the test helpers by theirs under the repository
+(`tests.unit.test.tester`), which the check verifies too. Bazel enforces the layering
 between its targets, as it checks that every header a source includes belongs to the
 target or its dependencies; the core directories share one target, so only this check
 keeps them acyclic, as partition imports must be. It needs no build.
@@ -77,13 +78,20 @@ def main() -> int:
                             f"{path.relative_to(src.parent)}:{number}: "
                             f"{layer}/ must not include {header}"
                         )
-    for path in sorted(src.rglob("*.cppm")):
-        name = ".".join(path.relative_to(src).with_suffix("").parts)
+    root = src.parent
+    partitions = [
+        (path, path.relative_to(src)) for path in sorted(src.rglob("*.cppm"))
+    ] + [
+        (path, path.relative_to(root))
+        for path in sorted((root / "tests" / "unit").rglob("*.cppm"))
+    ]
+    for path, named_by in partitions:
+        name = ".".join(named_by.with_suffix("").parts)
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             declared = PARTITION.match(line)
             if declared and declared.group(1) != name:
                 violations.append(
-                    f"{path.relative_to(src.parent)}:{number}: "
+                    f"{path.relative_to(root)}:{number}: "
                     f"the partition of this file is named {name}"
                 )
     for violation in violations:

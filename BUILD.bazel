@@ -14,9 +14,10 @@ cc_library(
 
 # Layered libraries: core <- config <- {project, worker} <- sched <- server,
 # project <- analysis, and {analysis, server} <- driver. Each layer may
-# include or import downward only; the dependency graph plus the layering check in CI (`pixi run check-layers`)
-# enforce the boundary — sched and below never see an LSP or server header,
-# and a project never sees scheduling. Inside core the directories are
+# include or import downward only; the dependency graph plus the layering
+# check in CI (`pixi run check-layers`) enforce the boundary — sched and
+# below never see an LSP or server header, and a project never sees
+# scheduling. Inside core the directories are
 # layered in this order, which only the check enforces. They compile against
 # libclang's headers; the programs link its libraries. All of clice is one
 # C++20 module, clice: each header is a partition (<stem>.cppm beside its

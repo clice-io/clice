@@ -109,4 +109,4 @@ The user decides whether all changes are acceptable or if adjustments are needed
 ## Notes
 
 - **Private headers**: clice includes no private clang headers, and xclang's libclang archives carry none since 23.1.2.6; one clice starts to need goes into xclang's `scripts/toolchain.ts` first.
-- **Debug builds**: ASan builds (`bazel/clice.bazelrc`'s Debug) link the ASan libclang, which xclang builds for x86_64 Linux and arm64 macOS (its `@libclang` follows `--features=asan`); Windows Debug builds link the release archive without ASan.
+- **Debug builds**: ASan builds (`bazel/clice.bazelrc`'s Debug) link the ASan libclang, which xclang builds for x86_64 Linux and arm64 macOS (its `@libclang` follows `--features=asan`); the other targets have no Debug build.
