@@ -1,4 +1,8 @@
 #include <chrono>
+#include <cstdint>
+#include <format>
+#include <optional>
+#include <string>
 #ifndef _WIN32
 #include <cerrno>
 #include <signal.h>
@@ -11,6 +15,7 @@
 #include "worker/protocol.h"
 
 #include "kota/async/async.h"
+#include "llvm/Support/MemoryBuffer.h"
 
 namespace clice::testing {
 
@@ -24,6 +29,9 @@ struct WorkerPoolFixture {
     std::vector<WorkerCrashInfo> crash_reports;
 
     WorkerPoolFixture() : pool(loop) {
+        // Unstarted, the pool keeps WorkerPoolOptions' defaults; lift the
+        // configured background ceiling so the slots a test adds bound it.
+        pool.options.stateless_count = 64;
         logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
         pool.on_crash = [this](const WorkerCrashInfo& info) {
             crash_reports.push_back(info);
@@ -143,19 +151,16 @@ struct WorkerPoolFixture {
         return pool.pick_idle_stateless();
     }
 
-    void apply_backoff() {
-        pool.apply_crash_backoff();
-    }
-
     void release_slot(std::size_t idx) {
         pool.release_stateless_slot(idx);
     }
 
-    kota::task<std::size_t> acquire_slot(worker::Priority p) {
-        return pool.acquire_stateless_slot(p);
+    kota::task<std::size_t> acquire_slot(worker::Priority p, kota::cancellation_token cancel = {}) {
+        return pool.acquire_stateless_slot(p, cancel);
     }
 
-    bool simulate_crash(std::size_t index, bool stateful, int exit_code = 0, int exit_signal = 9) {
+    /// A worker's own failure by default: SIGSEGV, not an outside kill.
+    bool simulate_crash(std::size_t index, bool stateful, int exit_code = 0, int exit_signal = 11) {
         return pool.process_crash(index, stateful, exit_code, exit_signal);
     }
 
@@ -278,6 +283,29 @@ struct WorkerPoolFixture {
         pool.tick_memory(ratio);
     }
 
+    void tick_scaling(double ratio) {
+        pool.tick_scaling(ratio);
+    }
+
+    unsigned saturated_cycles() const {
+        return pool.saturated_cycles;
+    }
+
+    void tick_oom_scores(std::uint64_t memory_limit) {
+        pool.tick_oom_scores(memory_limit);
+    }
+
+    static auto find_cgroup_memory(llvm::StringRef proc_cgroup) {
+        return WorkerPool::find_cgroup_memory(proc_cgroup);
+    }
+
+    static std::optional<std::uint64_t> cgroup_available(std::string usage,
+                                                         std::string stat,
+                                                         std::uint64_t limit) {
+        return WorkerPool::cgroup_available({std::move(usage), std::move(stat), "inactive_file"},
+                                            limit);
+    }
+
     std::chrono::milliseconds backoff_delay(unsigned streak) {
         return pool.backoff_delay(streak);
     }
@@ -317,8 +345,33 @@ struct WorkerPoolFixture {
         loop.run();
     }
 
-    void kill_worker(std::size_t idx) {
-        pool.stateless_workers[idx].proc.kill(9);
+    void kill_worker(std::size_t idx, int signal = 9) {
+        pool.stateless_workers[idx].proc.kill(signal);
+    }
+
+    /// Kill stateless worker 0 while it runs a request on `file`: a death
+    /// that spends the slot's budget on every platform, Windows included,
+    /// which can send a worker no signal of its own failures.
+    kota::task<> kill_running_worker(const std::string& file) {
+        worker::TURunParams params;
+        params.index = true;
+        params.file = file;
+        params.directory = "/tmp";
+        params.arguments = make_args(file);
+        kota::task_group<> group;
+        auto sender = [&]() -> kota::task<> {
+            [[maybe_unused]] auto result =
+                co_await pool.send_stateless(params, worker::Priority::Low);
+        };
+        // The spawn runs the sender up to its wait for the reply.
+        group.spawn(sender());
+        ZASSERT(pool.stateless_workers[0].busy);
+        kill_worker(0);
+        co_await group.join();
+    }
+
+    void set_stateless_count(std::uint32_t count) {
+        pool.options.stateless_count = count;
     }
 
     std::size_t low_limit() const {
@@ -331,14 +384,6 @@ struct WorkerPoolFixture {
 
     std::size_t max_low_limit() const {
         return pool.max_low_limit();
-    }
-
-    std::size_t w_max() const {
-        return pool.w_max;
-    }
-
-    void set_w_max(std::size_t value) {
-        pool.w_max = value;
     }
 
     std::size_t alive_count() const {
@@ -397,10 +442,6 @@ struct WorkerPoolFixture {
 
     int worker_pid(std::size_t idx) const {
         return pool.stateless_workers[idx].proc.pid();
-    }
-
-    unsigned get_backoff_cooldown() const {
-        return pool.backoff_cooldown;
     }
 
     std::size_t high_queue_size() const {
@@ -953,6 +994,19 @@ ZEST_CASE(LowCapCountsLive) {
     ZEXPECT(f.effective_low_limit() == 2u);
 }
 
+ZEST_CASE(LowCeilingIsConfigured) {
+    WorkerPoolFixture f;
+    for(int i = 0; i < 4; i += 1) {
+        f.add_stateless();
+    }
+    f.set_low_limit(8);
+    f.set_stateless_count(2);
+
+    // Workers past the configured count serve interactive work only.
+    ZEXPECT(f.max_low_limit() == 2u);
+    ZEXPECT(f.effective_low_limit() == 2u);
+}
+
 ZEST_CASE(LowCapSkipsRetiring) {
     WorkerPoolFixture f;
     f.add_stateless();
@@ -975,14 +1029,13 @@ ZEST_CASE(ForegroundCapClampsBudget) {
     f.add_stateless();
     f.add_stateless();
     f.set_low_limit(8);
-    f.set_max_stateless(10);
 
     // Idle: the full schedulable capacity, no standing reservation.
     ZEXPECT(f.pool.effective_low_limit() == 4u);
 
-    // Active: 30% of the configured capacity, not of the live slot count.
+    // Active: one background task, whatever the pool's size.
     f.pool.foreground_pulse();
-    ZEXPECT(f.pool.effective_low_limit() == 3u);
+    ZEXPECT(f.pool.effective_low_limit() == 1u);
 }
 
 ZEST_CASE(ForegroundCancelsExcess) {
@@ -992,21 +1045,20 @@ ZEST_CASE(ForegroundCancelsExcess) {
     f.add_stateless(true, true, true);
     f.add_stateless(true, true, true);
     f.set_low_limit(4);
-    f.set_max_stateless(10);
     std::vector<std::shared_ptr<kota::cancellation_source>> sources;
     for(std::size_t i = 0; i < 4; i += 1) {
         f.set_claim_epoch(i, i + 1);
         sources.push_back(f.arm_cancel_source(i));
     }
 
-    // The rising edge cancels exactly the over-cap excess (4 busy − cap 3),
+    // The rising edge cancels exactly the over-cap excess (4 busy − cap 1),
     // newest claim first, cooperatively (slots stay alive).
     f.pool.foreground_pulse();
 
-    ZEXPECT(f.cancel_asked(3));
+    ZEXPECT((f.cancel_asked(1) && f.cancel_asked(2) && f.cancel_asked(3)));
     ZEXPECT(sources[3]->cancelled());
-    ZEXPECT((!f.cancel_asked(0) && !f.cancel_asked(1) && !f.cancel_asked(2)));
-    ZEXPECT((!sources[0]->cancelled() && !sources[1]->cancelled()));
+    ZEXPECT(!f.cancel_asked(0));
+    ZEXPECT(!sources[0]->cancelled());
     ZEXPECT(f.state(3) == WorkerPoolFixture::SlotState::Alive);
 }
 
@@ -1015,14 +1067,13 @@ ZEST_CASE(ForegroundHoldExpires) {
     f.add_stateless();
     f.add_stateless();
     f.set_low_limit(8);
-    f.set_max_stateless(10);
 
     f.pool.foreground_pulse();
-    ZEXPECT(f.pool.effective_low_limit() == 3u);
+    ZEXPECT(f.pool.effective_low_limit() == 1u);
 
     // Still inside the hold window: the tick keeps the clamp.
     f.tick_foreground();
-    ZEXPECT(f.pool.effective_low_limit() == 3u);
+    ZEXPECT(f.pool.effective_low_limit() == 1u);
 
     // Rewind the last activity past the hold: the tick reopens the budget.
     f.rewind_fg_activity();
@@ -1087,18 +1138,19 @@ ZEST_CASE(DeficitSurvivesUnarmedSweep) {
         f.add_stateless(true, true, true);
     }
     f.set_low_limit(8);
-    f.set_max_stateless(10);
 
     // The rising edge finds only unarmed claims: the sweep stamps nothing,
     // but the demand survives for the arming re-check to honor.
     f.pool.foreground_pulse();
     ZEXPECT((!f.cancel_asked(0) && !f.cancel_asked(1) && !f.cancel_asked(2) && !f.cancel_asked(3)));
-    ZEXPECT(f.reclaim_deficit() == 1u);
+    ZEXPECT(f.reclaim_deficit() == 3u);
 
-    // Once a sender arms and the ask lands, the deficit is covered.
-    f.arm_cancel_source(3);
+    // Once the senders arm and the asks land, the deficit is covered.
+    for(std::size_t i = 1; i < 4; i += 1) {
+        f.arm_cancel_source(i);
+    }
     f.cancel_low(f.reclaim_deficit());
-    ZEXPECT(f.cancel_asked(3));
+    ZEXPECT((f.cancel_asked(1) && f.cancel_asked(2) && f.cancel_asked(3)));
     ZEXPECT(f.reclaim_deficit() == 0u);
 }
 
@@ -1106,7 +1158,6 @@ ZEST_CASE(DeficitCountsQueuedHigh) {
     WorkerPoolFixture f;
     f.add_stateless(true, true, true);
     f.set_low_limit(8);
-    f.set_max_stateless(10);
 
     // Within budget and no High demand: nothing owed. A queued High with
     // no idle slot owes one low even though the budget alone allows it.
@@ -1118,6 +1169,90 @@ ZEST_CASE(DeficitCountsQueuedHigh) {
     f.arm_cancel_source(0);
     f.cancel_low(1);
     ZEXPECT(f.reclaim_deficit() == 0u);
+}
+
+ZEST_CASE(QueuedLowHonorsCancel) {
+    WorkerPoolFixture f;
+    f.add_stateless();
+    f.set_low_limit(0);
+
+    kota::cancellation_source source;
+    std::size_t acquired = 0;
+    f.run([&]() -> kota::task<> {
+        kota::task_group<> group;
+        auto waiter = [&]() -> kota::task<> {
+            acquired = co_await f.acquire_slot(worker::Priority::Low, source.token());
+        };
+        group.spawn(waiter());
+        // Parked behind a zero budget, it leaves the queue once its round
+        // gives up, instead of waiting for the budget to come back.
+        ZEXPECT(f.low_queue_size() == 1u);
+        source.cancel();
+        co_await group.join();
+    });
+    ZEXPECT(acquired == SIZE_MAX);
+    ZEXPECT(f.low_queue_size() == 0u);
+    ZEXPECT(f.busy_count() == 0u);
+}
+
+ZEST_CASE(CancelAfterClaimReleases) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true);
+    f.set_low_limit(1);
+
+    kota::cancellation_source source;
+    std::size_t acquired = 0;
+    f.run([&]() -> kota::task<> {
+        kota::task_group<> group;
+        auto waiter = [&]() -> kota::task<> {
+            acquired = co_await f.acquire_slot(worker::Priority::Low, source.token());
+        };
+        group.spawn(waiter());
+        ZEXPECT(f.low_queue_size() == 1u);
+        // The freed slot is claimed for the waiter, whose round gives up
+        // before it resumes: the claim must come back.
+        f.release_slot(0);
+        ZEXPECT(f.is_busy(0));
+        source.cancel();
+        co_await group.join();
+    });
+    ZEXPECT(acquired == SIZE_MAX);
+    ZEXPECT(f.busy_count() == 0u);
+}
+
+ZEST_CASE(StarvedHighGrowsPool) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, false);
+    f.add_stateless(true, true, false);
+    f.pool.foreground_pulse();
+
+    // Interactive work waiting on a full pool asks for a worker even while
+    // the user is active: the user is the one waiting.
+    f.tick_scaling(1.0);
+    ZEXPECT(f.saturated_cycles() == 0u);
+    f.queue_high();
+    f.tick_scaling(1.0);
+    ZEXPECT(f.saturated_cycles() == 1u);
+}
+
+ZEST_CASE(LowGrowthHasCeiling) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true);
+    f.add_stateless(true, true);
+    f.set_low_limit(2);
+    f.set_stateless_count(2);
+    auto waiter = f.enqueue_waiter(worker::Priority::Low);
+
+    // Background work queued behind a full budget grows the pool only back
+    // up to the configured count, and not while the user is active.
+    f.tick_scaling(1.0);
+    ZEXPECT(f.saturated_cycles() == 0u);
+    f.set_stateless_count(3);
+    f.tick_scaling(1.0);
+    ZEXPECT(f.saturated_cycles() == 1u);
+    f.pool.foreground_pulse();
+    f.tick_scaling(1.0);
+    ZEXPECT(f.saturated_cycles() == 0u);
 }
 
 };  // ZEST_SUITE(WorkerPoolScheduling)
@@ -1312,6 +1447,41 @@ ZEST_CASE(NamedCrashKeepsBudget) {
     ZEXPECT(f.crash_streak(0, true) == 2u);
 }
 
+ZEST_CASE(IdleKillKeepsBudget) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, false);
+    f.set_max_crash_streak(3);
+
+    // A terminated session, or an idle worker the OOM killer or a user
+    // killed, says nothing about the slot: SIGHUP, SIGINT, SIGKILL and
+    // SIGTERM in a row leave the budget whole.
+    for(int signal: {1, 2, 9, 15}) {
+        ZEXPECT(f.simulate_crash(0, false, 0, signal));
+    }
+    ZEXPECT(f.crash_streak(0) == 0u);
+
+    f.simulate_crash(0, false, 0, 11);
+    ZEXPECT(f.crash_streak(0) == 1u);
+}
+
+ZEST_CASE(BusyKillSpendsBudget) {
+    WorkerPoolFixture f;
+    f.add_stateful(true);
+
+    // Killed while compiling several documents, none of which is blamed:
+    // the budget alone slows a load that keeps getting killed.
+    auto first = f.dispatch(0, true, "clice/worker/compile /a.cpp");
+    auto second = f.dispatch(0, true, "clice/worker/compile /b.cpp");
+    f.simulate_crash(0, true, 0, 9);
+    ZEXPECT(f.crash_streak(0, true) == 1u);
+
+    // So does one killed between requests while it holds documents.
+    f.add_stateful(true);
+    ZASSERT(f.assign_worker(1) == 1u);
+    f.simulate_crash(1, true, 0, 9);
+    ZEXPECT(f.crash_streak(1, true) == 1u);
+}
+
 ZEST_CASE(DeathNamesItsRequest) {
     WorkerDeath death;
     death.cause = "killed by signal 11 (SIGSEGV)";
@@ -1328,6 +1498,33 @@ ZEST_CASE(DeathNamesItsRequest) {
     death.culprit.clear();
     ZEXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp").code ==
             worker_died);
+
+    // Among several requests a nameless death accuses none of them, and a
+    // memory reclaim accuses its request of nothing either.
+    death.in_flight = 2;
+    ZEXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp").code ==
+            worker_lost);
+    death.in_flight = 1;
+    death.reclaimed = true;
+    ZEXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp").code ==
+            worker_lost);
+}
+
+ZEST_CASE(DeathCountsCompany) {
+    WorkerPoolFixture f;
+    f.add_stateful(true);
+    f.add_stateful(true);
+    auto alone = f.dispatch(0, true, "clice/worker/compile /a.cpp");
+    auto first = f.dispatch(1, true, "clice/worker/compile /b.cpp");
+    auto second = f.dispatch(1, true, "clice/worker/compile /c.cpp");
+    auto lone = f.death(0, true);
+    auto shared = f.death(1, true);
+
+    f.mark_dead(0, true);
+    f.mark_dead(1, true);
+
+    ZEXPECT(lone->in_flight == 1u);
+    ZEXPECT(shared->in_flight == 2u);
 }
 
 ZEST_CASE(DeathFreesDocuments) {
@@ -1512,42 +1709,6 @@ ZEST_CASE(StatefulCrashClearsOwnership) {
     ZEXPECT(f.stateful_owned(other_idx) == other_owned_before);
 }
 
-ZEST_CASE(AIMDBackoff) {
-    WorkerPoolFixture f;
-    f.set_low_limit(8);
-    f.apply_backoff();
-    ZEXPECT(f.low_limit() == 6u);
-    f.apply_backoff();
-    ZEXPECT(f.low_limit() == 4u);
-    f.apply_backoff();
-    ZEXPECT(f.low_limit() == 3u);
-    f.apply_backoff();
-    ZEXPECT(f.low_limit() == 2u);
-}
-
-ZEST_CASE(AIMDMinimum) {
-    WorkerPoolFixture f;
-    f.set_low_limit(1);
-    f.apply_backoff();
-    ZEXPECT(f.low_limit() == 1u);
-
-    // A zeroed budget is the memory controller's deliberate shutdown; a
-    // crash must not lift it back to 1 before recovery is observed.
-    f.set_low_limit(0);
-    f.apply_backoff();
-    ZEXPECT(f.low_limit() == 0u);
-}
-
-ZEST_CASE(CrashAppliesBackoff) {
-    WorkerPoolFixture f;
-    f.add_stateless(true, false);
-    f.set_low_limit(8);
-
-    f.simulate_crash(0, false);
-
-    ZEXPECT(f.low_limit() == 6u);
-}
-
 ZEST_CASE(IdleStatelessCrash) {
     WorkerPoolFixture f;
     f.add_stateless(true, false);
@@ -1578,35 +1739,6 @@ ZEST_CASE(RapidCrashSequence) {
     ZEXPECT(f.alive_count() == 0u);
     ZEXPECT(f.busy_count() == 0u);
     ZEXPECT(f.crash_reports.size() == 3u);
-    ZEXPECT(f.low_limit() < 8u);
-}
-
-ZEST_CASE(BackoffSetsCooldown) {
-    WorkerPoolFixture f;
-    f.set_low_limit(8);
-    ZEXPECT(f.get_backoff_cooldown() == 0u);
-    f.apply_backoff();
-    ZEXPECT(f.get_backoff_cooldown() > 0u);
-}
-
-ZEST_CASE(CrashSetsCooldown) {
-    WorkerPoolFixture f;
-    f.add_stateless(true, false);
-    f.set_low_limit(8);
-
-    f.simulate_crash(0, false);
-
-    ZEXPECT(f.low_limit() == 6u);
-    ZEXPECT(f.get_backoff_cooldown() > 0u);
-}
-
-ZEST_CASE(StatefulCrashNoCooldown) {
-    WorkerPoolFixture f;
-    f.add_stateful(true, 0);
-
-    f.simulate_crash(0, true);
-
-    ZEXPECT(f.get_backoff_cooldown() == 0u);
 }
 
 ZEST_CASE(DeadPoolReturnsError) {
@@ -1711,10 +1843,9 @@ ZEST_CASE(MaxLowLimitShrinks) {
 
     f.simulate_crash(0, false);
 
-    // Capacity dropped to 2, so the ceiling tracks it; the crash AIMD
-    // independently walked the stored allowance down to 1.
+    // Capacity dropped to 2, so the ceiling tracks it.
     ZEXPECT(f.max_low_limit() == 2u);
-    ZEXPECT(f.effective_low_limit() == 1u);
+    ZEXPECT(f.effective_low_limit() == 2u);
 }
 
 };  // ZEST_SUITE(WorkerPoolCrash)
@@ -1726,11 +1857,15 @@ ZEST_CASE(PreemptKillsLowWorkers) {
     f.add_stateless(true, true, true);   // busy low
     f.add_stateless(true, true, false);  // busy high — must survive
     f.set_low_limit(2);
+    auto death = f.death(0, false);
 
     f.preempt(2);
 
     ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
     ZEXPECT(f.preempted(0));
+    // The killed request may be what exhausted memory: its sender hears a
+    // loss that spends its retries, not a free cancel.
+    ZEXPECT(death->reclaimed);
     ZEXPECT(f.state(1) == WorkerPoolFixture::SlotState::Alive);
     ZEXPECT(f.is_busy(1));
     ZEXPECT(f.low_busy() == 0u);
@@ -1774,12 +1909,10 @@ ZEST_CASE(SevereMemoryTick) {
 
     f.tick_memory(0.05);
 
-    // Zero the allowance, kill the low work, and aim recovery at half the
-    // concurrency that ran into the pressure, not back at it. Zero, not
-    // one: any allowance left would let the preemption's own dispatch
-    // kick admit a fresh compile into the pressure being relieved.
+    // Zero the allowance and kill the low work. Zero, not one: any
+    // allowance left would let the preemption's own dispatch kick admit a
+    // fresh compile into the pressure being relieved.
     ZEXPECT(f.low_limit() == 0u);
-    ZEXPECT(f.w_max() == 1u);
     ZEXPECT(f.low_busy() == 0u);
     ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
     ZEXPECT(f.state(1) == WorkerPoolFixture::SlotState::Dying);
@@ -1794,36 +1927,115 @@ ZEST_CASE(PressureDecrementsLimit) {
 
     f.tick_memory(0.15);
     ZEXPECT(f.low_limit() == 1u);
-    ZEXPECT(f.w_max() == 2u);
-}
 
-ZEST_CASE(RecoveryClosesGap) {
-    WorkerPoolFixture f;
-    for(int i = 0; i < 9; ++i)
-        f.add_stateless();
-    f.set_low_limit(2);
-    // Simulate an earlier reduction from 8.
-    f.set_w_max(8);
-
-    f.tick_memory(0.5);
-    ZEXPECT(f.low_limit() == 5u);  // gap 6 → +3
-    f.tick_memory(0.5);
-    ZEXPECT(f.low_limit() == 6u);  // gap 3 → +1 (integer halving)
-}
-
-ZEST_CASE(CooldownSkipsDecrement) {
-    WorkerPoolFixture f;
-    f.add_stateless();
-    f.add_stateless();
-    f.add_stateless();
-    f.set_low_limit(2);
-    f.apply_backoff();  // low_limit -> 1, cooldown = 3
-
-    f.set_low_limit(2);
+    // Never below one while memory is tight but not exhausted.
     f.tick_memory(0.15);
-    // Cooldown consumed instead of a second decrement.
+    ZEXPECT(f.low_limit() == 1u);
+}
+
+ZEST_CASE(ZeroBudgetLifts) {
+    WorkerPoolFixture f;
+    f.add_stateless();
+    f.set_low_limit(1);
+
+    // A zeroed budget comes back at the first tick that is not severe, in
+    // the pressure band and above it alike.
+    f.tick_memory(0.05);
+    ZEXPECT(f.low_limit() == 0u);
+    f.tick_memory(0.15);
+    ZEXPECT(f.low_limit() == 1u);
+
+    f.tick_memory(0.05);
+    ZEXPECT(f.low_limit() == 0u);
+    f.tick_memory(0.30);
+    ZEXPECT(f.low_limit() == 1u);
+}
+
+ZEST_CASE(GrowthNeedsFullBudget) {
+    WorkerPoolFixture f;
+    f.add_stateless(true, true, true);
+    f.add_stateless();
+    f.add_stateless();
+    f.set_low_limit(2);
+
+    // One of two budgeted slots busy: the budget is not what limits the
+    // work, so it does not grow.
+    f.tick_memory(0.50);
     ZEXPECT(f.low_limit() == 2u);
-    ZEXPECT(f.get_backoff_cooldown() < 3u);
+
+    f.add_stateless(true, true, true);
+    f.tick_memory(0.50);
+    ZEXPECT(f.low_limit() == 3u);
+}
+
+ZEST_CASE(GrowthUnderForeground) {
+    WorkerPoolFixture f;
+    for(int i = 0; i < 4; i += 1) {
+        f.add_stateless();
+    }
+    f.set_low_limit(0);
+    f.pool.foreground_pulse();
+    f.add_stateless(true, true, true);
+
+    // While the user is active the budget recovers, but only one step past
+    // the foreground limit: its release admits no untested burst.
+    for(int i = 0; i < 5; i += 1) {
+        f.tick_memory(0.50);
+    }
+    ZEXPECT(f.low_limit() == 2u);
+    ZEXPECT(f.effective_low_limit() == 1u);
+}
+
+ZEST_CASE(CgroupFilesFollowLibuv) {
+    auto v2 = WorkerPoolFixture::find_cgroup_memory("0::/user.slice/clice.scope\n");
+    ZEXPECT(v2.usage == "/sys/fs/cgroup/user.slice/clice.scope/memory.current");
+    ZEXPECT(v2.stat == "/sys/fs/cgroup/user.slice/clice.scope/memory.stat");
+    ZEXPECT(v2.cache_key == "inactive_file");
+
+    // A v1 memory cgroup missing from the hierarchy, or no memory line of
+    // its own, falls back to the hierarchy's root.
+    auto v1 = WorkerPoolFixture::find_cgroup_memory(
+        "12:cpu,cpuacct:/a\n4:memory:/clice-missing\n1:name=systemd:/b\n");
+    ZEXPECT(v1.usage == "/sys/fs/cgroup/memory/memory.usage_in_bytes");
+    ZEXPECT(v1.stat == "/sys/fs/cgroup/memory/memory.stat");
+    ZEXPECT(v1.cache_key == "total_inactive_file");
+
+    auto grouped = WorkerPoolFixture::find_cgroup_memory("4:cpu,memory:/a\n");
+    ZEXPECT(grouped.usage == "/sys/fs/cgroup/memory/memory.usage_in_bytes");
+}
+
+ZEST_CASE(CacheCountsAvailable) {
+    constexpr std::uint64_t gib = 1ull << 30;
+    TempDir tmp;
+    tmp.touch("memory.current", std::to_string(3 * gib));
+    tmp.touch("memory.stat", std::format("anon {}\ninactive_file {}\n", 2 * gib, gib));
+    auto usage = tmp.path("memory.current");
+    auto stat = tmp.path("memory.stat");
+
+    // A 4 GiB limit with 3 GiB used, 1 GiB of it reclaimable cache.
+    auto available = WorkerPoolFixture::cgroup_available(usage, stat, 4 * gib);
+    ZASSERT(available.has_value());
+    ZEXPECT(*available == 2 * gib);
+
+    // Usage past the limit: the cache does not make an exhausted cgroup
+    // look healthy.
+    tmp.touch("memory.current", std::to_string(5 * gib));
+    available = WorkerPoolFixture::cgroup_available(usage, stat, 4 * gib);
+    ZASSERT(available.has_value());
+    ZEXPECT(*available == 0u);
+
+    ZEXPECT(!WorkerPoolFixture::cgroup_available("", "", 4 * gib).has_value());
+}
+
+ZEST_CASE(BudgetFollowsRetirement) {
+    WorkerPoolFixture f;
+    f.add_stateless();
+    f.add_stateless();
+    f.set_low_limit(8);
+
+    // A budget above the ceiling is brought down to it before the step.
+    f.tick_memory(0.15);
+    ZEXPECT(f.low_limit() == 1u);
 }
 
 };  // ZEST_SUITE(WorkerPoolMemory)
@@ -2006,6 +2218,9 @@ ZEST_CASE(CrashAndRestart) {
 }
 
 ZEST_CASE(DeadSlotRevives) {
+    TempDir tmp;
+    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
+
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
@@ -2014,7 +2229,7 @@ ZEST_CASE(DeadSlotRevives) {
         f.set_max_crash_streak(0);
 
         // The very first crash exceeds the zero budget: the slot dies...
-        f.kill_worker(0);
+        co_await f.kill_running_worker(tmp.path("slow.cpp"));
         for(int i = 0; i < 50 && !f.slot_dead(0); ++i) {
             co_await kota::sleep(100);
         }
@@ -2048,6 +2263,71 @@ ZEST_CASE(FloorAboveStartupKept) {
     });
     ZEXPECT(done);
 }
+
+#ifdef __linux__
+ZEST_CASE(IdleKeepsSessionScore) {
+    auto score = [](llvm::StringRef pid) {
+        auto file = llvm::MemoryBuffer::getFileAsStream("/proc/" + pid + "/oom_score_adj");
+        return file ? (*file)->getBuffer().trim().str() : std::string();
+    };
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        ZASSERT(f.start(2, 0));
+        // An idle worker ranks like the master for the OOM killer, never
+        // ahead of everything else on the machine (#773).
+        auto own = score("self");
+        ZASSERT(!own.empty());
+        ZEXPECT(score(std::to_string(f.worker_pid(0))) == own);
+        ZEXPECT(score(std::to_string(f.worker_pid(1))) == own);
+        co_await f.stop();
+        done = true;
+    });
+    ZEXPECT(done);
+}
+
+ZEST_CASE(BusyRanksAboveMaster) {
+    auto score = [](const std::string& pid) {
+        auto file = llvm::MemoryBuffer::getFileAsStream("/proc/" + pid + "/oom_score_adj");
+        int value = -2000;
+        if(file && (*file)->getBuffer().trim().getAsInteger(10, value)) {
+            value = -2000;
+        }
+        return value;
+    };
+    WorkerPoolFixture f;
+    auto worker_score = [&](std::size_t idx) {
+        return score(std::to_string(f.worker_pid(idx)));
+    };
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        ZASSERT(f.start(2, 0));
+        auto own = score("self");
+        ZASSERT(own != -2000);
+
+        // Taking on work ranks a worker above the master at once, not only
+        // from the next tick on.
+        ZASSERT(own < 1000);
+        auto idx = co_await f.acquire_slot(worker::Priority::High);
+        ZEXPECT(worker_score(idx) > own);
+
+        // Against a limit so large the master's share rounds to nothing, a
+        // worker holding work ranks just above the master; an idle one
+        // stays level with it.
+        constexpr std::uint64_t huge = 1ull << 50;
+        f.tick_oom_scores(huge);
+        ZEXPECT(worker_score(idx) == std::min(own + 2, 1000));
+        ZEXPECT(worker_score(1 - idx) == own);
+
+        // Released, it drops back at once.
+        f.release_slot(idx);
+        ZEXPECT(worker_score(idx) == own);
+        co_await f.stop();
+        done = true;
+    });
+    ZEXPECT(done);
+}
+#endif
 
 ZEST_CASE(RetiringHoldsScaleUp) {
     WorkerPoolFixture f;
@@ -2088,6 +2368,9 @@ ZEST_CASE(RevivesSlotsGate) {
 }
 
 ZEST_CASE(ScaleUpRevivesDead) {
+    TempDir tmp;
+    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
+
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
@@ -2096,7 +2379,7 @@ ZEST_CASE(ScaleUpRevivesDead) {
         f.set_revive_after(std::chrono::minutes(10));
         f.set_max_crash_streak(0);
 
-        f.kill_worker(0);
+        co_await f.kill_running_worker(tmp.path("slow.cpp"));
         for(int i = 0; i < 50 && !f.slot_dead(0); ++i) {
             co_await kota::sleep(100);
         }
@@ -2162,7 +2445,8 @@ ZEST_CASE(CrashNotification) {
         ZEXPECT(!f.crash_reports[0].stateful);
         ZEXPECT(f.crash_reports[0].exit_signal == 9);
         ZEXPECT(f.crash_reports[0].will_restart);
-        ZEXPECT(f.crash_reports[0].crash_streak == 1u);
+        // An idle worker's kill spends no crash budget.
+        ZEXPECT(f.crash_reports[0].crash_streak == 0u);
 
         co_await f.stop();
         done = true;
@@ -2203,7 +2487,7 @@ ZEST_CASE(CrashDuringRequest) {
     ZEXPECT(done);
 }
 
-ZEST_CASE(PreemptCancelsRequest) {
+ZEST_CASE(PreemptReportsLost) {
     TempDir tmp;
     tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
     auto src = tmp.path("slow.cpp");
@@ -2235,7 +2519,7 @@ ZEST_CASE(PreemptCancelsRequest) {
             co_await kota::sleep(1);
         f.preempt(1);
         co_await group.join();
-        ZEXPECT(code == worker::dispatch_errc::cancelled);
+        ZEXPECT(code == worker::dispatch_errc::worker_lost);
 
         // Preemption is not a crash: no report, and the worker comes back
         // with an untouched budget.
@@ -2247,6 +2531,48 @@ ZEST_CASE(PreemptCancelsRequest) {
         }
         ZEXPECT(f.worker_alive(0));
         ZEXPECT(f.crash_streak(0) == 0u);
+
+        co_await f.stop();
+        done = true;
+    });
+    ZEXPECT(done);
+}
+
+ZEST_CASE(ReclaimBeatsCancel) {
+    TempDir tmp;
+    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
+    auto src = tmp.path("slow.cpp");
+
+    WorkerPoolFixture f;
+    bool done = false;
+    f.run([&]() -> kota::task<> {
+        ZASSERT(f.start(2, 0));
+
+        worker::TURunParams params;
+        params.index = true;
+        params.file = src;
+        params.directory = "/tmp";
+        params.arguments = make_args(src);
+
+        kota::cancellation_source source;
+        worker::protocol::integer code = 0;
+        kota::task_group<> group;
+        auto sender = [&]() -> kota::task<> {
+            auto result =
+                co_await f.pool.send_stateless(params, worker::Priority::Low, source.token());
+            if(!result.has_value())
+                code = result.error().code;
+        };
+        group.spawn(sender());
+        while(f.low_busy() == 0)
+            co_await kota::sleep(1);
+        // A memory kill landing before the cancelled request stopped is
+        // reported as such: the request may be what exhausted memory, and a
+        // free requeue would repeat the kill.
+        source.cancel();
+        f.preempt(1);
+        co_await group.join();
+        ZEXPECT(code == worker::dispatch_errc::worker_lost);
 
         co_await f.stop();
         done = true;
@@ -2311,8 +2637,9 @@ ZEST_CASE(ScaleUpKeepsLimit) {
         ZASSERT(f.scale_up());
 
         // The new worker adds exactly one to the allowance; it must not
-        // reset the reduction back to the ceiling (which is now 4).
-        ZEXPECT(f.max_low_limit() == 4u);
+        // reset the reduction back to the ceiling, which stays the
+        // configured three: the fourth serves interactive work.
+        ZEXPECT(f.max_low_limit() == 3u);
         ZEXPECT(f.low_limit() == 2u);
 
         co_await f.stop();

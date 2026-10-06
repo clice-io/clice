@@ -47,13 +47,4 @@ inline void use_artifacts(CompilationParams& cp,
 /// through CLICE_TEST_MAX_INDEX_BYTES.
 std::size_t max_index_bytes();
 
-/// Hand freed heap back to the system. glibc keeps the pages of large freed
-/// arenas — an AST, a TU's index — so without this a worker's RSS only ever
-/// grows across documents.
-void release_free_memory();
-
-/// Make the kernel's OOM killer pick a worker before the master: a worker is
-/// restartable by design, the master holds every open session.
-void prefer_as_oom_victim();
-
 }  // namespace clice
