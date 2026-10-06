@@ -11,7 +11,7 @@ All setups assume:
 
 ### Visual Studio Code
 
-Install the [clice extension](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) from the marketplace. Marketplace builds are platform-specific and ship the clice server inside the extension, so no download or network access is needed after installation; set `clice.executable` to use your own build instead.
+Install the [clice extension](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) from the marketplace; Cursor, VSCodium, Windsurf and other VS Code forks install the same extension from [Open VSX](https://open-vsx.org/extension/clice-io/clice). Published builds are platform-specific and ship the clice server inside the extension, so no download or network access is needed after installation; set `clice.executable` to use your own build instead.
 
 ### Neovim
 

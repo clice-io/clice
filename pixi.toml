@@ -192,6 +192,16 @@ CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm run snap 
 """
 depends-on = ["install-tests"]
 
+# The Zed extension in a real Zed (tests/zed); ZED_EXECUTABLE names the Zed
+# app, and the extension builds with the system's cargo. Workspace-level so CI
+# can run it from the bare `node` env.
+[tasks.zed-e2e]
+cmd = """
+cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip2 --release && \
+ZED_EXTENSION_WASM=$PIXI_PROJECT_ROOT/editors/zed/target/wasm32-wasip2/release/zed_clice.wasm npm run zed --workspace tests
+"""
+depends-on = ["install-tests"]
+
 # Real build systems and toolchains over tests/compat/project; the tools each
 # scenario names come from the system (CI installs them, see compat-test.yml),
 # nvcc from the `cuda` environment. Workspace-level so CI can run it from
@@ -263,7 +273,7 @@ depends-on = [
 platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
 [feature.node.dependencies]
-nodejs = ">=20"
+nodejs = ">=22"
 
 # The instant-build packaging strips test binaries before bundling them
 # into the vsix (an unstripped ELF carries ~700MB of DWARF).
@@ -275,6 +285,7 @@ llvm-tools = "==23.1.1"
 # through npm to the underlying script.
 build-vscode = { cwd = "editors/vscode", cmd = "npm run package --", depends-on = ["install-vscode"] }
 publish-vscode = { cwd = "editors/vscode", cmd = "npm run publish --", depends-on = ["install-vscode"] }
+publish-ovsx = { cwd = "editors/vscode", cmd = "npm run publish:ovsx --", depends-on = ["install-vscode"] }
 
 # Same root npm-workspaces install as install-tests, available in the node
 # environment (the publish pipeline installs no test feature).

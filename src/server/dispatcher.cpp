@@ -66,7 +66,7 @@ RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
         pool,
         true,
         [&]() -> RequestResult<Params> {
-            for(bool reloaded = false;; reloaded = true) {
+            while(true) {
                 if(std::exchange(compile, true) && !co_await ast.ensure_compiled(ticket.session)) {
                     co_return unsent();
                 }
@@ -76,14 +76,18 @@ RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
                 auto result = co_await pool.send_stateful(ticket.session->path_id.raw,
                                                           params,
                                                           {.token = token});
-                if(reloaded || result.has_value() ||
+                if(result.has_value() ||
                    result.error().code != worker::dispatch_errc::document_unloaded) {
                     co_return std::move(result);
                 }
                 // The worker evicted the document behind a projection that
                 // still reads current: its eviction notice crossed a compile
                 // of the document still landing, which the master took for
-                // the one that would put it back. Compile it there again.
+                // the one that would put it back, or another document's
+                // request landed between this compile's reply and the query.
+                // Compile it there again. Each eviction takes another request
+                // landing in that window, so the retries end with the work in
+                // flight.
                 ast.invalidate(ticket.session->path_id);
             }
         },

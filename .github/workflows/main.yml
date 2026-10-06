@@ -47,6 +47,7 @@ jobs:
               - 'tools/**'
             zed:
               - 'editors/zed/**'
+              - 'tests/zed/**'
               - '.github/workflows/main.yml'
             build:
               - 'BUILD.bazel'
@@ -109,7 +110,14 @@ jobs:
   zed:
     needs: changes
     if: ${{ needs.changes.outputs.zed == 'true' }}
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
@@ -117,10 +125,41 @@ jobs:
       - uses: Swatinem/rust-cache@v2.9.1
         with:
           workspaces: editors/zed
-      - name: Build Zed extension
+      - name: Unit tests
+        working-directory: editors/zed
+        run: cargo test
+      # wasm32-wasip2 is the target Zed and its extension registry build with.
+      - name: Add the wasm target
+        run: rustup target add wasm32-wasip2
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+          activate-environment: node
+
+      # Always the latest stable Zed on purpose, like the other editor tests.
+      - name: Install Zed (Linux)
+        if: runner.os == 'Linux'
         run: |
-          rustup target add wasm32-wasip1
-          cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip1 --release
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers libvulkan1 libxkbcommon-x11-0
+          curl -fsSL https://zed.dev/install.sh | sh
+          echo "ZED_EXECUTABLE=$HOME/.local/zed.app/libexec/zed-editor" >> "$GITHUB_ENV"
+      - name: Install Zed (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/zed-setup.exe" \
+            https://zed.dev/api/releases/stable/latest/Zed-x86_64.exe
+          "$RUNNER_TEMP/zed-setup.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART //SP- //CURRENTUSER
+          echo "ZED_EXECUTABLE=$LOCALAPPDATA/Programs/Zed/Zed.exe" >> "$GITHUB_ENV"
+
+      - name: E2E test (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 20
+        run: xvfb-run -a pixi run -e node zed-e2e
+      - name: E2E test (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 20
+        run: pixi run -e node zed-e2e
 
   native-test:
     needs: changes

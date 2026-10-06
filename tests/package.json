@@ -6,6 +6,7 @@
     "test": "vitest run --config integration/vitest.config.ts",
     "snap": "vitest run --config snap/vitest.config.ts",
     "compat": "vitest run --config compat/vitest.config.ts",
+    "zed": "vitest run --config zed/vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "check": "npm run typecheck && npm run lint"

@@ -39,7 +39,7 @@ npm run package # same as pixi run build-vscode
 npm run publish # same as pixi run publish-vscode
 ```
 
-如果不使用 pixi，请自行安装 node.js >= 20（自带 npm）。该扩展是仓库 npm workspace 的一部分，因此请先在仓库根目录安装依赖，再从 `editors/vscode` 打包：
+如果不使用 pixi，请自行安装 node.js >= 22（自带 npm）。该扩展是仓库 npm workspace 的一部分，因此请先在仓库根目录安装依赖，再从 `editors/vscode` 打包：
 
 ```bash
 npm install          # at the repo root

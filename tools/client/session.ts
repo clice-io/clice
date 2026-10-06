@@ -10,6 +10,7 @@ import * as path from "node:path";
 import { CliceClient, type InitializeOptions, type StartOptions } from "./client.ts";
 import { Workspace } from "./workspace.ts";
 import { DATA_DIR, generateCDB } from "../compile_commands.ts";
+import { logFiles } from "../process_gate.ts";
 
 export function cliceExecutable(): string {
     let exe = process.env["CLICE_EXECUTABLE"];
@@ -155,6 +156,15 @@ async function acquireWorkspaceLock(name: string): Promise<() => void> {
     }
 }
 
+const LOG_TAIL_LINES = 200;
+
+function printLogTails(root: string | null): void {
+    for (const file of logFiles(root)) {
+        const lines = fs.readFileSync(file, "utf8").trimEnd().split("\n").slice(-LOG_TAIL_LINES);
+        console.log(`--- last ${lines.length} lines of ${file}\n${lines.join("\n")}`);
+    }
+}
+
 export interface Session {
     client: CliceClient;
     workspace: Workspace;
@@ -295,6 +305,13 @@ export function createSessionFactory(): SessionHandle {
                 } catch (exc) {
                     teardownErrors.push(exc);
                 }
+            }
+        }
+        // A failure only CI reproduces leaves nothing else to read once the
+        // workspace below is deleted.
+        if (failed) {
+            for (const session of opened) {
+                printLogTails(session.workspace?.root ?? null);
             }
         }
         // Directories go after every server is down: the anomaly gates
