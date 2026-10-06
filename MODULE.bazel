@@ -21,7 +21,7 @@ bazel_dep(name = "spdlog", version = "1.15.3.clice.1")
 # links, both from one xclang release: libclang's ThinLTO bitcode needs the
 # lld of the same LLVM. pixi.toml pins the same release for the tools the
 # tests and the artifact checks run.
-bazel_dep(name = "xclang", version = "23.1.2.8")
+bazel_dep(name = "xclang", version = "23.1.2.9")
 
 xclang = use_extension("@xclang//bazel:extensions.bzl", "xclang")
 use_repo(xclang, "libclang")

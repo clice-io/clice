@@ -1,7 +1,7 @@
 /// # MSVC inheritance model
 ///
 /// - status: supported
-/// - flags: ["--target=x86_64-pc-windows-msvc", "--no-default-config"]
+/// - flags: ["--target=x86_64-pc-windows-msvc"]
 ///
 /// MSVC inheritance model attributes do not alter record hover
 ///
