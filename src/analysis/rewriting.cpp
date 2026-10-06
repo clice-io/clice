@@ -81,6 +81,12 @@ struct Text {
             lines.pop_back();
         }
         std::uint32_t offset = 0;
+        // A byte order mark the lexer skips, and generated lines would leave
+        // in the middle of the file.
+        if(!lines.empty() && lines.front().starts_with("\xEF\xBB\xBF")) {
+            lines.front() = lines.front().drop_front(3);
+            offset = 3;
+        }
         for(auto line: lines) {
             starts.push_back(offset);
             offset += static_cast<std::uint32_t>(line.size()) + 1;
@@ -1054,6 +1060,10 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         std::vector<std::string> lines{"#pragma once", ""};
         for(auto used: draft.macro_headers) {
             lines.push_back(macro_include(used, defining));
+        }
+        // The guard's macro stays defined where the header was included.
+        if(!text.guard.empty()) {
+            lines.push_back(text.lines[text.guard[1]].str());
         }
         for(std::uint32_t line = 0; line < text.lines.size(); line += 1) {
             auto keyword = text.keywords[line];

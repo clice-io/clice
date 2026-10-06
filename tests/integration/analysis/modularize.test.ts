@@ -357,11 +357,14 @@ function writeProgram(ws: Workspace): void {
             "int tool::run(const core::Text& text, core::Sink* sink, core::Box<int>* box) {",
             "    return text.size() + sink->lines + CORE_TWICE(1) + (box ? box->value : 0);",
             "}",
+            "#if defined(SINK_H)",
+            "int tool_sink = 1;",
+            "#endif",
         ),
     );
     ws.write(
         "app/tool/hook.cpp",
-        lines('#include "core/text.h"', "int core::hook() { return 7; }"),
+        "\uFEFF" + lines('#include "core/text.h"', "int core::hook() { return 7; }"),
     );
     ws.write(
         "app/tool/cli.cpp",
@@ -642,7 +645,7 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(plan.importers).toEqual(["app/run.cpp"]);
     // Defining what core's text.h declares, it is attached to core.
     expect(plan.moved).toEqual(["app/tool/hook.cpp=app.core"]);
-    expect(plan.macros).toEqual(["app/core/text.macros.h"]);
+    expect(plan.macros).toEqual(["app/core/sink.macros.h", "app/core/text.macros.h"]);
     expect(plan.removed).toEqual([
         "app/core/all.h",
         "app/core/detail.h",
@@ -749,7 +752,12 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(tool).toContain("import app.core;");
     expect(tool).toContain("namespace core {\n}\n");
     expect(ws.read("app/tool/tool.cpp")).toContain('#include "core/text.macros.h"');
-    expect(ws.read("app/tool/hook.cpp")).toContain("\nmodule app.core;\n");
+    // The guard's macro, which tool.cpp tests, outlives the guard.
+    expect(ws.read("app/core/sink.macros.h")).toBe(lines("#pragma once", "", "#define SINK_H"));
+    // Its byte order mark goes rather than land below the generated lines.
+    const hook = ws.read("app/tool/hook.cpp");
+    expect(hook).toContain("\nmodule app.core;\n");
+    expect(hook).not.toContain("\uFEFF");
     // main stays attached to the global module; the one in a string is text,
     // and so are a string's blank lines.
     const cli = ws.read("app/tool/cli.cpp");
