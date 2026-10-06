@@ -352,6 +352,47 @@ struct Text {
         return found;
     }
 
+    /// The opening and closing lines of each named namespace left holding
+    /// nothing once `dropped` goes, standing on lines of their own; one
+    /// holding only such namespaces goes with them.
+    llvm::DenseSet<std::uint32_t>
+        empty_namespaces(const llvm::DenseSet<std::uint32_t>& dropped) const {
+        llvm::DenseSet<std::uint32_t> found;
+        for(auto changed = true; changed;) {
+            changed = false;
+            for(std::size_t i = 0; i < tokens.size(); i += 1) {
+                auto open = token_lines[i];
+                auto on_open = tokens_on(open);
+                if(tokens[i].text(content) != "namespace" || found.contains(open) ||
+                   &on_open.front() != &tokens[i] || on_open.size() < 3 ||
+                   on_open.back().kind != clang::tok::l_brace) {
+                    continue;
+                }
+                auto brace = i + on_open.size() - 1;
+                int depth = 0;
+                auto empty = true;
+                auto close = brace;
+                for(; close < tokens.size(); close += 1) {
+                    depth += tokens[close].kind == clang::tok::l_brace;
+                    depth -= tokens[close].kind == clang::tok::r_brace;
+                    if(depth == 0) {
+                        break;
+                    }
+                    auto line = token_lines[close];
+                    if(close != brace && !dropped.contains(line) && !found.contains(line)) {
+                        empty = false;
+                    }
+                }
+                if(close < tokens.size() && empty && tokens_on(token_lines[close]).size() == 1) {
+                    found.insert(open);
+                    found.insert(token_lines[close]);
+                    changed = true;
+                }
+            }
+        }
+        return found;
+    }
+
     /// The offset of the return type of a definition of `main` at global
     /// scope, the last one: `int main(` in a string literal is no token.
     std::optional<std::uint32_t> main_definition() const {
@@ -774,6 +815,9 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 for(auto line: text.anonymous_namespaces()) {
                     dropped.insert(line);
                 }
+            }
+            for(auto line: text.empty_namespaces(dropped)) {
+                dropped.insert(line);
             }
         }
 

@@ -750,7 +750,7 @@ test("modularize rewrites program modules", async ({ session }) => {
     const tool = ws.read("app/tool/tool.cppm");
     expect(tool).toContain("export module app.tool:tool;");
     expect(tool).toContain("import app.core;");
-    expect(tool).toContain("namespace core {\n}\n");
+    expect(tool).not.toContain("namespace core {");
     expect(ws.read("app/tool/tool.cpp")).toContain('#include "core/text.macros.h"');
     // The guard's macro, which tool.cpp tests, outlives the guard.
     expect(ws.read("app/core/sink.macros.h")).toBe(lines("#pragma once", "", "#define SINK_H"));
