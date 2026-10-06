@@ -269,6 +269,9 @@ function writeProgram(ws: Workspace): void {
             "#if CFG_FAST",
             "#define CORE_FAST 1",
             "#endif",
+            '#pragma push_macro("CFG_FAST")',
+            "#undef CFG_FAST",
+            '#pragma pop_macro("CFG_FAST")',
             "namespace core {",
             "struct Sink;",
             "struct Text {",
@@ -672,6 +675,9 @@ test("modularize rewrites program modules", async ({ session }) => {
             "#if CFG_FAST",
             "#define CORE_FAST 1",
             "#endif",
+            '#pragma push_macro("CFG_FAST")',
+            "#undef CFG_FAST",
+            '#pragma pop_macro("CFG_FAST")',
             "",
             "export module app.core:text;",
             "",
@@ -722,7 +728,7 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(text).toContain("import :all;\nimport :detail;");
     expect(text).not.toContain("import :text;");
     expect(text).toContain('#include "core/text.macros.h"');
-    // Its conditions test cfg's macros.
+    // Its conditions test cfg's macros; what it takes from them it gives back.
     expect(ws.read("app/core/text.macros.h")).toBe(
         lines(
             "#pragma once",
@@ -732,6 +738,9 @@ test("modularize rewrites program modules", async ({ session }) => {
             "#if CFG_FAST",
             "#define CORE_FAST 1",
             "#endif",
+            '#pragma push_macro("CFG_FAST")',
+            "#undef CFG_FAST",
+            '#pragma pop_macro("CFG_FAST")',
         ),
     );
     // core's Sink and Box are core's to declare, the template head with Box.

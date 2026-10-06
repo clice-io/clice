@@ -1044,8 +1044,9 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     }
 
     // A macro header replays the header's directives, the includes of the
-    // headers that stay headers among them, after the macro headers of the
-    // rewritten headers whose macros it uses: its conditions may test them.
+    // headers that stay headers among them and the pragmas saving and
+    // restoring a macro, after the macro headers of the rewritten headers
+    // whose macros it uses: its conditions may test them.
     for(auto defining: macro_headers) {
         Text text(buffers[defining]->getBuffer());
         auto& draft = drafts.at(defining);
@@ -1056,7 +1057,10 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         }
         for(std::uint32_t line = 0; line < text.lines.size(); line += 1) {
             auto keyword = text.keywords[line];
-            if(text.kinds[line] != Text::Line::Directive || keyword == "pragma" ||
+            auto& arguments = text.arguments[line];
+            auto saves_macro = !arguments.empty() && (arguments.front() == "push_macro" ||
+                                                      arguments.front() == "pop_macro");
+            if(text.kinds[line] != Text::Line::Directive || (keyword == "pragma" && !saves_macro) ||
                (takes_header_name(keyword) && !textual_lines.contains(line))) {
                 continue;
             }
