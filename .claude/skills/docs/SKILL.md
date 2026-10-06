@@ -1,6 +1,6 @@
 ---
 name: docs
-description: The clice documentation system — generated feature/config pages, the en↔zh translation contract, and the pixi commands driving them. Read BEFORE editing anything under docs/.
+description: The clice documentation system — generated feature/config pages, how clice runs the shared en↔zh translation checker, and the pixi commands driving them. Read BEFORE editing anything under docs/.
 ---
 
 # Documentation system
@@ -17,12 +17,8 @@ description: The clice documentation system — generated feature/config pages, 
   person or a model). Each zh page must stay **segment-isomorphic** to its
   en counterpart: same sequence of markdown blocks, translated text in the
   translatable blocks, code blocks and HTML comments byte-identical.
-  `check`, `report` and `record` never write these files; `review`
-  rewrites the zh pages it is given — every zh page when given none.
-- `docs/meta/translations/` — one JSON per page pair: an ordered list of
-  `{kind, en-hash, zh-hash}` pairs, each attesting "these two segments were
-  last reviewed as translations of each other". Maintained exclusively by
-  `record`; never edit by hand.
+- `docs/meta/translations/` — the hash pairs attesting each translated
+  segment. Maintained exclusively by `record`; never edit by hand.
 - Each tree has its own hand-maintained `sidebar.yaml`.
 - `docs/public/clice-config.schema.json` — committed output of
   `clice inspect --config-schema`; CI checks freshness.
@@ -40,75 +36,37 @@ description: The clice documentation system — generated feature/config pages, 
 | `pixi run record-doc-translations` | re-attest hash pairs after deliberate edits        |
 | `pixi run review-doc-translations` | model review of zh pages, segment by segment       |
 
-## Translation contract (tools/docs/translate.ts)
+## Translation contract
 
-Pages split into segments: headings, paragraphs, blockquotes, list items,
-table rows, and index.md's YAML frontmatter are translatable; everything
-else (code blocks, HTML comments including GENERATED markers) is verbatim
-and must be byte-identical across the two trees, as must any fenced code
-or HTML comment nested inside a translatable segment (a snap example
-under a generated capability's paragraph). Segment shapes must match too: heading depth,
-ordered vs. bulleted list, task-list state, table column count and
-alignment, a paragraph that is entirely bold (a capability's name), and
-the mapping/sequence skeleton of index.md's frontmatter.
-A table row and a later heading that share their text in en (a
-capability's status row and its section) must share it in zh — `check`
-fails on a pair named two ways. The inline literals of a segment — code
-spans, link and image targets (in order), issue references, frontmatter
-values other than its copy (layout, theme, icon, link, src, ...) — must
-be identical on both sides. No text is stored twice — the mapping holds
-hashes only. Old wording of a drifted segment comes from git history of
-the markdown page.
+The checker is `@clice-io/translate` from the clice-io/docs repository,
+shared by every clice-io project with a Chinese tree. Its **RULES.md at
+v1.0.0** states the contract, the commands and the editing workflow — read it
+before any edit touching translated pages:
 
-Workflow for any edit touching translated pages:
+    gh api 'repos/clice-io/docs/contents/tools/translations/RULES.md?ref=v1.0.0' -H 'Accept: application/vnd.github.raw'
 
-1. Edit the en page (or zh — the contract is symmetric: polishing one side
-   requires re-reviewing the other).
-2. `pixi run report-doc-translations` — lists every broken pair with the
-   current en and zh texts side by side.
-3. Update the counterpart page so both sides correspond again.
-4. `pixi run format` first, then `pixi run record-doc-translations` —
-   the formatter canonicalizes markdown (table padding, emphasis style,
-   CJK spacing) and changes segment hashes, so recording before it means
-   re-recording after. Record rewrites the mapping; the diff of the JSON
-   shows exactly which pairs were re-attested. Never run record without
-   having reviewed what report showed: record blesses whatever is on
-   disk.
-5. Commit markdown + mapping together; `check` must be green.
+CI runs `clice-io/docs/check-translations` in the lint workflow's docs
+job, pinned to an exact release; the pixi tasks above run that same
+release locally (`tools/docs/translations.ts` reads the pin, until the
+package is on npm and the tasks call `npx @clice-io/translate@1`). A new
+release is adopted by bumping the pin in lint.yml and the RULES.md
+references here and in the translate-docs skill. What clice adds on top:
 
-This applies to generated regions too: after `update-feature-docs` changes
-an en feature page, the zh page must receive the translated equivalent in
-the same PR — batched at the end of the branch, see below.
-
-Machine drafting: there is no separate translate mode. A new or
-restructured page is drafted by copying the en page over the zh one and
-running `review` on it (below): the review pass translates every
-segment whose Chinese is still English, with the en text beside it.
-Drafts still go through a diff read and `record`.
-
-## Chinese wording
-
-What is translated and what stays English — by position on the page and by
-term — is the translate-docs skill. Read it before translating, reviewing or
-editing any zh page; the prompts in `tools/docs/translate.ts` embed the same
-rules and change together with it.
-
-Reviewing existing Chinese pages: `pixi run review-doc-translations
-[page...]` (default: every page) feeds each translatable segment with
-its current Chinese to a model and writes the corrected Chinese back,
-one chunk of segments per call (a paired row and heading always in the
-same chunk), code blocks masked out — the model never sees a code block,
-and a reply that breaks a segment's shape, alters an inline literal, or
-names a row and its heading differently keeps the current text — and
-fails the page when any segment ends up as the English copy, kept or
-echoed back by the model, unless the mapping already attests that pair
-as verbatim (a heading that is a product name): rerun `review` on it
-until green, or `record` a segment that is verbatim on purpose. The backend is the codex CLI (GPT-6 astra) with every tool switched off, so
-the contributor-written text it reads can reach neither the host
-filesystem nor the network (`--jobs=N` parallel calls, `--effort=LEVEL`,
-`--fast` for the fast service tier). Review the diff, then `format` and
-`record`. Prefer this over handing a model whole pages: the code blocks
-would only burn its context.
+- In clice the frontmatter that translates is index.md's (the VitePress
+  home page), and the bold paragraph whose shape must survive is a
+  capability card's name; a table row paired with a later heading is a
+  capability's status row and its section.
+- The formatter of step 4 in RULES.md's workflow is `pixi run format`
+  (it canonicalizes table padding, emphasis style and CJK spacing).
+- The workflow applies to generated regions too: after
+  `update-feature-docs` changes an en feature page, the zh page must
+  receive the translated equivalent in the same PR — batched at the end of
+  the branch, see below.
+- The wording — clice's page conventions and glossary — is the
+  translate-docs skill. `review-doc-translations [page...]` passes that
+  skill to the model as the glossary; review its diff, then `format` and
+  `record`. Prefer it over handing a model whole pages: the code blocks
+  would only burn its context.
 
 ## Syncing docs at the end of a branch
 
@@ -128,7 +86,7 @@ brief is:
    nested code byte-identical) and the terminology of the surrounding
    page; delete zh segments whose en segment is gone. For whole new
    pages, or dozens of drifted pages, copy the en page over the zh one
-   and run `review` on it (machine drafting, above).
+   and run `review` on it (machine drafting, RULES.md).
 3. `pixi run format`, then `pixi run record-doc-translations`, then
    `pixi run check-doc-translations`, `check-feature-docs` and
    `check-config-docs` — all green.
@@ -140,8 +98,9 @@ brief is:
 deliberately (2026-09) as redundant maintenance burden; do not reintroduce
 them. Feature history lives in git/PRs; LLVM upgrade notes live in the
 upgrade-llvm skill's `llvm-changelog.md`. For future deliberately
-untranslated pages, the tool has an `UNTRANSLATED_PREFIXES` hook
-(currently empty): listed pages need no zh counterpart and no mapping.
+untranslated pages, the checker takes `--ignore=GLOB` (none today): a
+matching page needs no zh counterpart and no mapping; pass it to the pixi
+tasks and the action's `ignore` input alike.
 
 ## What belongs in a "Known Limitations" section
 
