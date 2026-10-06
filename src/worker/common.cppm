@@ -38,11 +38,33 @@ inline void use_artifacts(CompilationParams& cp,
     }
 }
 
-/// The largest index blob a worker reply carries. The transport refuses a
-/// frame past 64 MiB (kotatsu's limit) and the whole reply is lost with it,
-/// so a larger index is dropped at the source and the rest of the reply
-/// still lands; the margin leaves room for that rest. Tests lower it
-/// through CLICE_TEST_MAX_INDEX_BYTES.
+/// The largest index blob a worker reply carries inline. The transport
+/// refuses a frame past 64 MiB (kotatsu's limit) and the whole reply is
+/// lost with it; the margin leaves room for the rest of the reply. Tests
+/// lower it through CLICE_TEST_MAX_INDEX_BYTES.
 std::size_t max_index_bytes();
+
+/// Put a built index into `result`: inline when it fits, else written to
+/// `output_path` — the master's transfer file — with the reply saying so.
+/// Returns why the index cannot be handed over: too large with no path to
+/// write to, or the write failed.
+template <typename Result>
+std::optional<std::string> hand_over_index(std::string envelope,
+                                           llvm::StringRef output_path,
+                                           Result& result) {
+    if(envelope.size() <= max_index_bytes()) {
+        result.tu_index_data = std::move(envelope);
+        return std::nullopt;
+    }
+    if(output_path.empty()) {
+        return std::format("the index ({} MiB) is too large to send between clice processes",
+                           envelope.size() / (1024 * 1024));
+    }
+    if(auto error = vfs::write(output_path, envelope)) {
+        return std::format("writing the index to {} failed: {}", output_path, error.message());
+    }
+    result.index_in_file = true;
+    return std::nullopt;
+}
 
 }  // namespace clice

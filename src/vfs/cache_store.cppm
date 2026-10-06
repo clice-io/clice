@@ -94,7 +94,8 @@ struct CacheNamespace {
 class CacheStore {
 public:
     /// A two-phase write in progress.  The caller (or a worker process on
-    /// its behalf) writes the blob to tmp_path, then commits.  Self-cleaning:
+    /// its behalf) writes the blob to tmp_path, then commits — except a
+    /// transfer (begin_transfer), which is only read.  Self-cleaning:
     /// an entry destroyed without being committed removes its tmp file —
     /// kotatsu cancellation destroys a suspended coroutine frame without
     /// resuming it, so a manual abort after the await would never run on
@@ -198,6 +199,11 @@ public:
     /// first: committing an aux blob for a key with no live entry fails.
     PendingEntry begin_store_aux(llvm::StringRef ns, llvm::StringRef key);
 
+    /// A tmp path for handing one blob from a worker process to its caller
+    /// — a reply too large for an IPC message.  Never committed: the
+    /// caller reads the file and the entry removes it when destroyed.
+    PendingEntry begin_transfer();
+
     /// Finish a two-phase write: fsync the tmp file and atomically rename
     /// it to its final path.  Triggers LRU eviction when the namespace
     /// exceeds its budget.  Returns the final blob path.
@@ -264,6 +270,10 @@ private:
     /// The admission both begin_store entry points share; the caller holds
     /// the state lock.
     PendingEntry begin_store_locked(llvm::StringRef ns, llvm::StringRef key, bool aux);
+
+    /// A fresh path under this instance's tmp dir; the caller holds the
+    /// state lock.
+    std::string next_tmp_path(llvm::StringRef extension);
 
     std::unique_ptr<State> state;
 };

@@ -17,6 +17,7 @@ import :server.editor_context;
 import :support.anomaly;
 import :support.logging;
 import :support.timer;
+import :vfs.file_system;
 import :vfs.path;
 import :worker.protocol;
 import :worker.serialize;
@@ -820,6 +821,11 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 compile_interrupts.erase(it);
             }
         });
+        std::optional<CacheStore::PendingEntry> transfer;
+        if(project.store) {
+            transfer = project.store->begin_transfer();
+            params.index_output_path = transfer->tmp_path;
+        }
         auto result = co_await deliver(
             pool,
             true,
@@ -1000,7 +1006,18 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // compile that produced no index data (fatal error, no AST) must
         // therefore drop the previous buffer's index rather than leave it
         // posing as current: an honest gap over yesterday's offsets.
-        if(!index_data.empty()) {
+        if(result.value().index_in_file) {
+            // Copied, not mapped: the index outlives the transfer file.
+            if(auto read = vfs::read(transfer->tmp_path, vfs::Read::Bytes)) {
+                next->index =
+                    std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(std::move(*read)));
+            } else {
+                LOG_WARN("Reading the index of {} from {} failed: {}",
+                         file_path,
+                         transfer->tmp_path,
+                         read.error().message());
+            }
+        } else if(!index_data.empty()) {
             next->index = std::make_shared<index::TUIndex>(
                 index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(index_data)));
         }
