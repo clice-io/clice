@@ -1,41 +1,38 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load(":modules.bzl", "MODULE_COPTS", "WRAPPERS", "mirror_include")
+load(":modules.bzl", "LIBRARIES", "MODULE_COPTS")
 
-# The third-party libraries as named modules over their headers, written by
-# `clice modularize` once for each configuration CI builds and merged: each
-# <name>.cppm includes a library's headers in its global module fragment,
-# <configuration>/<name>.fragment.h of the configuration whose condition
-# holds, and exports what they declare. clice's headers that stay headers
-# keep their includes: mirror/<name> holds an empty file for each header of
-# the library, first on the include path, and prelude.h, which every module
-# unit of clice includes first, imports the modules and replays the macros
-# their headers define.
+# The third-party libraries as one named module over their headers, written
+# by `clice modularize` once for each configuration CI builds and merged:
+# deps.cppm includes the libraries' headers in its global module fragment,
+# <configuration>/deps.fragment.h of the configuration whose condition
+# holds, and exports what they declare. prelude.h, which every module unit
+# of clice includes first, imports it and replays the macros its headers
+# define.
 
-# The emptied headers, the fragments, the macro headers and the preludes.
+# The fragments, the macro headers and the preludes.
 cc_library(
     name = "headers",
-    textual_hdrs = glob([
-        "mirror/**",
-        "**/*.h",
-    ]),
+    textual_hdrs = glob(["**/*.h"]),
 )
 
 # A reduced BMI drops the global module fragment's declarations the purview
 # never names, partial specializations among them.
-[cc_library(
-    name = name,
-    copts = MODULE_COPTS + ["-fno-modules-reduced-bmi"] +
-            [mirror_include(library) for library in ["std"] + imports],
+cc_library(
+    name = "deps",
+    copts = MODULE_COPTS + ["-fno-modules-reduced-bmi"],
     features = ["cpp_modules"],
-    module_interfaces = [name + ".cppm"],
+    module_interfaces = ["deps.cppm"],
     deps = [
         ":headers",
         "@xclang//bazel:std",
-    ] + [":" + imported for imported in imports] + libraries,
-) for name, (imports, libraries) in WRAPPERS.items()]
+    ] + LIBRARIES,
+)
 
 cc_library(
     name = "modules",
     visibility = ["//visibility:public"],
-    deps = [":headers"] + [":" + name for name in WRAPPERS],
+    deps = [
+        ":deps",
+        ":headers",
+    ],
 )

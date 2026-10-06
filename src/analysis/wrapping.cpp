@@ -434,7 +434,7 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
     llvm::StringSet<> names;
     // A module's unit in each configuration, in their order.
     llvm::StringMap<std::vector<Wrapper>> units;
-    std::set<std::string> mirrors;
+    std::set<std::string> emptied;
     for(auto [index, configuration]: llvm::enumerate(configurations)) {
         llvm::StringRef name = configuration.name;
         if(name.empty() || name == "mirror" ||
@@ -454,7 +454,7 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
         for(auto& file: configuration.files) {
             llvm::StringRef path = file.path;
             if(path.starts_with("mirror/")) {
-                mirrors.insert(file.path);
+                emptied.insert(file.path);
                 continue;
             }
             if(path == "prelude.h" || path.ends_with(".macros.h")) {
@@ -529,7 +529,7 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
     }
 
     auto std_mirror =
-        llvm::any_of(mirrors, [](llvm::StringRef path) { return path.starts_with("mirror/std/"); });
+        llvm::any_of(emptied, [](llvm::StringRef path) { return path.starts_with("mirror/std/"); });
     if(std_mirror) {
         result.plan.mirrors.push_back("mirror/std");
     }
@@ -577,7 +577,7 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
         }
         result.files.push_back({module.source, std::move(unit)});
     }
-    for(auto& path: mirrors) {
+    for(auto& path: emptied) {
         result.files.push_back({path, ""});
     }
     result.plan.prelude = "prelude.h";
