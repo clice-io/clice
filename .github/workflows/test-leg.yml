@@ -85,7 +85,8 @@ jobs:
       # the default output root under the user profile pushes action paths
       # past MAX_PATH. On main every cached output is fetched, which marks
       # it used for the prune below; elsewhere only what is asked for. lld's
-      # ThinLTO cache (.bazelrc) is outside Bazel's, in the same entry.
+      # ThinLTO cache (bazel/clice.bazelrc) is outside Bazel's, in the same
+      # entry.
       - name: Bazel settings
         run: |
           temp=$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")

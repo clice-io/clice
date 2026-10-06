@@ -1,4 +1,72 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(default_visibility = ["//:__pkg__"])
+
+config_setting(
+    name = "opt",
+    values = {"compilation_mode": "opt"},
+)
+
+config_setting(
+    name = "opt_macos",
+    constraint_values = ["@platforms//os:macos"],
+    values = {"compilation_mode": "opt"},
+)
+
+# The LLVM and clang libraries clice links; each brings what it depends on.
+LLVM_LIBRARIES = [
+    "LLVMFrontendOpenMP",
+    "LLVMOption",
+    "LLVMSupport",
+    "LLVMTargetParser",
+    "clangAST",
+    "clangASTMatchers",
+    "clangBasic",
+    "clangDriver",
+    "clangFormat",
+    "clangFrontend",
+    "clangLex",
+    "clangOptions",
+    "clangSema",
+    "clangSerialization",
+    "clangTidy",
+    "clangTidyAbseilModule",
+    "clangTidyAlteraModule",
+    "clangTidyAndroidModule",
+    "clangTidyBoostModule",
+    "clangTidyBugproneModule",
+    "clangTidyCERTModule",
+    "clangTidyConcurrencyModule",
+    "clangTidyCppCoreGuidelinesModule",
+    "clangTidyDarwinModule",
+    "clangTidyFuchsiaModule",
+    "clangTidyGoogleModule",
+    "clangTidyLLVMLibcModule",
+    "clangTidyLLVMModule",
+    "clangTidyLinuxKernelModule",
+    "clangTidyMiscModule",
+    "clangTidyModernizeModule",
+    "clangTidyObjCModule",
+    "clangTidyOpenMPModule",
+    "clangTidyPerformanceModule",
+    "clangTidyPortabilityModule",
+    "clangTidyReadabilityModule",
+    "clangTidyUtils",
+    "clangTidyZirconModule",
+    "clangTooling",
+    "clangToolingCore",
+    "clangToolingInclusions",
+    "clangToolingInclusionsStdlib",
+    "clangToolingSyntax",
+]
+
+# libclang's ThinLTO bitcode: every link of it redoes LLVM's code
+# generation, which lld's cache (clice.bazelrc) keeps from one link to the
+# next.
+cc_library(
+    name = "llvm",
+    deps = ["@libclang//:" + lib for lib in LLVM_LIBRARIES],
+)
 
 # The canonical target triples: the release assets are named after them, and
 # the version carries the one of the build.

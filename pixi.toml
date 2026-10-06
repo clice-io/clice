@@ -107,8 +107,9 @@ scripts = ["scripts/activate_asan_macos.sh"]
 # ============================================================================== #
 #                                   BAZEL                                        #
 # ============================================================================== #
-# The programs land in build/{{ type }}/bin/bin (.bazelrc). Arguments after
-# `--` go to Bazel: more targets, such as //:package, and options.
+# The programs land in build/{{ type }}/bin/bin (bazel/clice.bazelrc).
+# Arguments after `--` go to Bazel: more targets, such as //:package, and
+# options.
 [feature.build.tasks.build]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = "npx bazel build --config={{ type }} //:dist"

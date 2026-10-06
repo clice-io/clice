@@ -41,7 +41,7 @@ Bazel is run through [bazelisk](https://github.com/bazelbuild/bazelisk), an npm 
 npx bazel build //:bin/clice //:bin/unit_tests
 ```
 
-The build types are configurations of `.bazelrc`:
+The build types are configurations of `bazel/clice.bazelrc`:
 
 | Configuration             | Effect                                                     |
 | ------------------------- | ---------------------------------------------------------- |

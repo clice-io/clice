@@ -41,7 +41,7 @@ Bazel 通过 [bazelisk](https://github.com/bazelbuild/bazelisk) 运行。bazelis
 npx bazel build //:bin/clice //:bin/unit_tests
 ```
 
-构建类型即 `.bazelrc` 中定义的配置：
+构建类型即 `bazel/clice.bazelrc` 中定义的配置：
 
 | 配置                      | 作用                                                 |
 | ------------------------- | ---------------------------------------------------- |
