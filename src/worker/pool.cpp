@@ -13,6 +13,7 @@
 #include "vfs/path.h"
 
 #include "kota/async/io/system.h"
+#include "kota/ipc/framing.h"
 #include "kota/ipc/transport.h"
 #include "llvm/ADT/StringExtras.h"
 

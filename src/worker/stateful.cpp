@@ -22,6 +22,7 @@
 
 #include "kota/async/async.h"
 #include "kota/ipc/codec/bincode.h"
+#include "kota/ipc/framing.h"
 #include "kota/ipc/peer.h"
 #include "kota/ipc/transport.h"
 #include "kota/meta/enum.h"

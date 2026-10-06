@@ -19,6 +19,7 @@
 #include "kota/codec/json/json.h"
 #include "kota/ipc/codec/bincode.h"
 #include "kota/ipc/codec/json.h"
+#include "kota/ipc/framing.h"
 #include "kota/ipc/peer.h"
 #include "kota/ipc/transport.h"
 #include "llvm/Support/Regex.h"
