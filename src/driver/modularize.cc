@@ -164,13 +164,12 @@ std::expected<std::vector<analysis::Configuration>, std::string>
     std::vector<analysis::Configuration> configurations;
     for(auto& entry: file.configurations) {
         auto out = llvm::sys::path::is_absolute(entry.out)
-                       ? llvm::SmallString<256>(entry.out)
-                       : join(llvm::sys::path::parent_path(path), entry.out);
+                       ? entry.out
+                       : join(llvm::sys::path::parent_path(path), entry.out).str().str();
         auto manifest = vfs::read(join(out, ".modularize"));
         if(!manifest) {
-            return std::unexpected(std::format("configuration {}: {} holds no modularize output",
-                                               entry.name,
-                                               out.str().str()));
+            return std::unexpected(
+                std::format("configuration {}: {} holds no modularize output", entry.name, out));
         }
         auto& configuration = configurations.emplace_back(analysis::Configuration{
             .name = std::move(entry.name),
@@ -182,7 +181,7 @@ std::expected<std::vector<analysis::Configuration>, std::string>
             auto content = vfs::read(join(out, relative));
             if(!content) {
                 return std::unexpected(std::format("cannot read {}/{}: {}",
-                                                   out.str().str(),
+                                                   out,
                                                    relative.str(),
                                                    content.error().message()));
             }
