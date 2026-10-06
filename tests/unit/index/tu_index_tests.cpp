@@ -1680,8 +1680,7 @@ ZEST_CASE(DeepExpressionChain) {
     // sanitized builds (and Windows main threads only get 1MB). 32MB is
     // an empirical bound with margin, not a derived number.
     bool compiled = false;
-    llvm::thread compile_thread(std::optional<unsigned>(4 * clang::DesiredStackSize),
-                                [&] { compiled = compile(); });
+    llvm::thread compile_thread(std::optional<unsigned>(32u << 20), [&] { compiled = compile(); });
     compile_thread.join();
     ZASSERT(compiled);
 
@@ -1690,7 +1689,7 @@ ZEST_CASE(DeepExpressionChain) {
     // reintroduced per-node recursion crashes here deterministically
     // instead of only on production workers with deeper files.
     feature::InactiveScan scan;
-    llvm::thread index_thread(std::optional<unsigned>(clang::DesiredStackSize / 4), [&] {
+    llvm::thread index_thread(std::optional<unsigned>(2u << 20), [&] {
         // Mirror the stateful worker's post-compile sequence.
         scan = feature::inactive_regions(*unit);
         decode_index(index::build_tu_index(*unit, true));

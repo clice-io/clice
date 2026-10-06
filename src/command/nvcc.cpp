@@ -22,6 +22,14 @@ constexpr llvm::StringLiteral target_directory_prefix = "--target-directory=";
 constexpr llvm::StringLiteral allow_unsupported_flag = "--allow-unsupported-compiler";
 constexpr llvm::StringLiteral gpu_arch_prefix = "-arch=";
 
+/// What separates the directories of PATH. LLVM's EnvPathSeparator has
+/// internal linkage, which no module can export.
+#ifdef _WIN32
+constexpr char path_separator = ';';
+#else
+constexpr char path_separator = ':';
+#endif
+
 /// One GPU architecture named inside an -arch/-gencode value.
 struct ArchToken {
     unsigned number = 0;
@@ -625,7 +633,7 @@ std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef out
 
         if(line.consume_front("PATH=")) {
             llvm::SmallVector<llvm::StringRef> dirs;
-            line.split(dirs, llvm::sys::EnvPathSeparator, -1, false);
+            line.split(dirs, path_separator, -1, false);
             for(auto dir: dirs)
                 info.search_path.emplace_back(dir);
             continue;
