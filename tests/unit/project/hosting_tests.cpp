@@ -433,8 +433,8 @@ ZEST_CASE(EnteringsInCompileOrder) {
 
 ZEST_CASE(ForcedIncludeFallsBack) {
     /// The compile enters the header only through a file its command
-    /// forces in, which no cut of the unit's text reproduces: the lexical
-    /// chain stands in.
+    /// forces in, which no cut of the unit's text reproduces: the tree
+    /// settles on the lexical chain.
     TreeProject p;
     llvm::StringRef main_text = "#include \"t.h\"\n";
     llvm::StringRef common_text = "#pragma once\n#include \"t.h\"\n";
@@ -455,10 +455,12 @@ ZEST_CASE(ForcedIncludeFallsBack) {
     };
     p.project.project_index.manifests[main] = std::move(manifest);
 
-    ZEXPECT(!enterings(p.project, main, t).has_value());
-    auto host = default_host(p.project, t);
-    ZASSERT(host);
-    ZEXPECT(host->chain == std::vector<Fid>{main, t});
+    auto found = enterings(p.project, main, t);
+    ZASSERT(found);
+    ZASSERT(found->size() == 1u);
+    ZEXPECT(found->front().chain == std::vector<Fid>{main, t});
+    ZEXPECT(found->front().lines.empty());
+    ZEXPECT(!found->front().lexical);
 };
 
 ZEST_CASE(ContributorHosts) {
