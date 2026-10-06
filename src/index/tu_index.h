@@ -12,6 +12,7 @@
 #include "index/shard.h"
 #include "index/types.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -24,15 +25,26 @@ class CompilationUnitRef;
 
 namespace clice::index {
 
+/// How build_tu_index shapes the envelope.
+struct TUIndexOptions {
+    /// Keep only the rows in the main file.
+    bool main_file_only = false;
+
+    /// Variant identities the receiver already stores, sorted. A section
+    /// whose hash is among them travels as the bare hash, and an external
+    /// symbol only such sections name stays out of the table: the
+    /// receiver took both in with the variant.
+    llvm::ArrayRef<std::uint64_t> known_variants;
+};
+
 /// Index one TU and encode the result as its envelope bytes: the include
 /// tree (remapped into a manifest), the TU's symbol table with
 /// per-symbol reference files (merged into the project table), and one
 /// self-contained shard blob per file that received rows (stored or
 /// merged into the file's disk shard). Rows of a header entered several
 /// times are one union blob. The envelope travels worker→server over IPC
-/// and is dismantled into the three persistent layers on arrival. With
-/// main_file_only, only rows in the main file are kept.
-std::string build_tu_index(CompilationUnitRef unit, bool main_file_only = false);
+/// and is dismantled into the three persistent layers on arrival.
+std::string build_tu_index(CompilationUnitRef unit, const TUIndexOptions& options = {});
 
 /// The preamble variant: a preamble is a TU cut off at the preamble
 /// bound, and its index is the same envelope — persisted verbatim as the
@@ -107,7 +119,8 @@ public:
 
     std::uint64_t section_hash(std::uint32_t i) const;
 
-    /// One section's shard blob bytes, borrowing the envelope.
+    /// One section's shard blob bytes, borrowing the envelope; empty for
+    /// a variant the receiver already stores (TUIndexOptions::known_variants).
     llvm::StringRef section_blob(std::uint32_t i) const;
 
     /// The section holding `path_id`'s rows, or nullopt when the file had

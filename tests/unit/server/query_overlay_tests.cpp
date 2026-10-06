@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 
+#include "test/envelope_mirror.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
@@ -87,8 +88,9 @@ void open_with_overlay(std::source_location location = std::source_location::cur
 
     auto& entry = projections.entries[path_id];
     auto projection = std::make_shared<ASTProjection>();
-    projection->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit, true))));
+    projection->index = std::make_shared<index::TUIndex>(
+        index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(
+            index::build_tu_index(*unit, {.main_file_only = true}))));
     projection->pch_key = "key";
     entry.projection = std::move(projection);
     entry.current = true;
@@ -139,21 +141,10 @@ void merge_disk_index() {
 /// row of its buffer lives behind the PCH. `loaded` is what the freshness
 /// gate keys on; an unloaded index means "compile not settled".
 index::TUIndex empty_session_index() {
-    // Field order MUST mirror the envelope layout (tu_index.cpp).
-    struct EnvelopeMirror {
-        std::uint32_t format_version = index::index_format_version;
-        std::int64_t built_at = 1;
-        std::vector<std::string> paths;
-    };
-
     EnvelopeMirror mirror;
+    mirror.built_at = 1;
     mirror.paths = {main_path};
-    auto bytes = kota::codec::fbs::to_bytes(mirror);
-    if(!bytes) {
-        return {};
-    }
-    return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(
-        llvm::StringRef(reinterpret_cast<const char*>(bytes->data()), bytes->size())));
+    return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(mirror.bytes()));
 }
 
 void install_empty_index(std::source_location location = std::source_location::current()) {

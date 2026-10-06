@@ -99,8 +99,10 @@ inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
 /// fragment into a declaration carries the fragment's uses; v24: symbols a
 /// module exports carry the Exported flag, and anonymous structs, unions
 /// and enums the AnonymousScope flag; v25: shards mark the lines ending in
-/// "\r\n", whose '\r' is no longer a column of the line).
-constexpr inline std::uint32_t index_format_version = 25;
+/// "\r\n", whose '\r' is no longer a column of the line; v26: envelopes
+/// carry their symbol table as columns, without a function's locals, and
+/// name the variants their receiver stores by hash alone).
+constexpr inline std::uint32_t index_format_version = 26;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

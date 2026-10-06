@@ -85,6 +85,11 @@ public:
     /// Get the union of included fids across all configs for a file.
     llvm::SmallVector<Fid> get_all_includes(Fid path_id) const;
 
+    /// Every file a compile of `unit` is expected to read, `unit` first:
+    /// the include edges under every configuration, transitively, and the
+    /// headers its commands force in.
+    llvm::SmallVector<Fid> include_closure(Fid unit) const;
+
     /// How many directives of `includer` include `target`, under the
     /// configuration with the most: one edge per directive.
     std::uint32_t count_includes(Fid includer, Fid target) const;

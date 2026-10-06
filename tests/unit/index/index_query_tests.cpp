@@ -604,8 +604,8 @@ void open_buffers(CountingSessions& sessions, int buffers) {
         text += "} }\n";
         add_main(std::format("main{}.cpp", buffer), text);
         ZASSERT(compile());
-        sessions.tables.push_back(index::TUIndex::from_buffer(
-            llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit, true))));
+        sessions.tables.push_back(index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(
+            index::build_tu_index(*unit, {.main_file_only = true}))));
     }
 }
 

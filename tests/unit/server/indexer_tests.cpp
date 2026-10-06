@@ -198,8 +198,12 @@ struct IndexedTU {
     std::string tu_path;  ///< The TU's canonical path inside the index.
 };
 
-/// Index a real on-disk file in-process into its envelope bytes.
-IndexedTU index_file(TempDir& tmp, llvm::StringRef file, std::vector<std::string> extra_args = {}) {
+/// Index a real on-disk file in-process into its envelope bytes, the
+/// sections of `known` variants left empty.
+IndexedTU index_file(TempDir& tmp,
+                     llvm::StringRef file,
+                     std::vector<std::string> extra_args = {},
+                     llvm::ArrayRef<std::uint64_t> known = {}) {
     std::string resource = std::string(resource_dir());
     std::vector<std::string> args =
         {"clang++", "-fsyntax-only", "-resource-dir", resource, "-c", std::string(file)};
@@ -217,7 +221,7 @@ IndexedTU index_file(TempDir& tmp, llvm::StringRef file, std::vector<std::string
         return {};
     }
     IndexedTU result;
-    result.data = index::build_tu_index(unit);
+    result.data = index::build_tu_index(unit, {.known_variants = known});
     auto view = index::TUIndex::from_bytes(result.data);
     if(!view.loaded()) {
         return {};
@@ -668,6 +672,49 @@ ZEST_CASE(SharedHeaderVariants) {
     merge(fresh.data.data(), fresh.data.size());
     ZASSERT(shard.variants().size() == std::size_t(2));
     ZASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(3));
+}
+
+ZEST_CASE(KnownVariantByHash) {
+    TempDir tmp;
+    tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 1; }\n");
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
+    tmp.touch("b.cpp", "#include \"shared.h\"\nint b() { return shared_fn(); }\n");
+    auto header = tmp.path("shared.h");
+    auto header_id = project.file_table.intern(Spelling::absolute(header));
+    auto header_section = [&](const index::TUIndex& view) {
+        for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
+            if(view.path(view.section_path(i)) == header) {
+                return i;
+            }
+        }
+        return view.section_count();
+    };
+
+    auto a = index_file(tmp, tmp.path("a.cpp"));
+    ZASSERT(!a.data.empty());
+    auto a_view = index::TUIndex::from_bytes(a.data);
+    auto variant = a_view.section_hash(header_section(a_view));
+
+    // A result naming a variant the store does not hold commits nothing:
+    // the file must run again.
+    auto early = index_file(tmp, tmp.path("b.cpp"), {}, {variant});
+    auto outdated = index_store.merge(early.data.data(), early.data.size());
+    ZASSERT(!outdated);
+    ZEXPECT(outdated.error() == IndexStore::MergeError::Outdated);
+    auto b_id = project.file_table.intern(Spelling::absolute(early.tu_path));
+    ZEXPECT(!project.project_index.manifests.contains(b_id));
+
+    // Once the store holds it, the bare hash counts as the file's
+    // contribution like the bytes would.
+    ZASSERT(merge(a.data.data(), a.data.size()));
+    auto b =
+        index_file(tmp, tmp.path("b.cpp"), {}, project.project_index.shards[header_id].variants());
+    auto b_view = index::TUIndex::from_bytes(b.data);
+    ZASSERT(b_view.section_blob(header_section(b_view)).empty());
+    ZASSERT(merge(b.data.data(), b.data.size()));
+    ZEXPECT(project.project_index.manifests.contains(b_id));
+    ZEXPECT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
+    ZEXPECT(project.project_index.contributions.lookup(header_id).size() == std::size_t(2));
 }
 
 ZEST_CASE(HeaderRegenerationReplaces) {

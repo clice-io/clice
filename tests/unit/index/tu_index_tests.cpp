@@ -1138,6 +1138,49 @@ ZEST_CASE(CrossFileHeaderIndex) {
     ZASSERT(found_in_header);
 }
 
+ZEST_CASE(KnownVariantsSkipped) {
+    add_file("header.h", R"(
+            #pragma once
+            int only_in_header(int parameter);
+            int shared();
+        )");
+    add_main("main.cpp", R"(
+            #include "header.h"
+            int user() { return shared(); }
+        )");
+    ZASSERT(compile());
+    auto full = index::build_tu_index(*unit);
+    auto full_view = index::TUIndex::from_bytes(full);
+    ZASSERT(full_view.loaded());
+    auto main_id = full_view.path_count() - 1;
+    std::uint32_t header = full_view.section_count();
+    for(std::uint32_t i = 0; i < full_view.section_count(); i += 1) {
+        if(full_view.section_path(i) != main_id) {
+            header = i;
+        }
+    }
+    ZASSERT(header < full_view.section_count());
+    std::vector<std::uint64_t> known = {full_view.section_hash(header)};
+
+    // The stored header travels as its hash alone, and so do the external
+    // symbols only it names; the main file's rows and every symbol they
+    // name still travel.
+    decode_index(index::build_tu_index(*unit, {.known_variants = known}));
+    auto& view = tu_index.view;
+    ZASSERT(view.section_hash(header) == known.front());
+    ZASSERT(view.section_blob(header).empty());
+    ZASSERT(!view.section_blob(*view.section_of(main_id)).empty());
+    std::vector<std::string> names;
+    view.iterate_symbols([&](index::SymbolHash,
+                             const index::SymbolIdentity& identity,
+                             llvm::ArrayRef<std::uint32_t>) {
+        names.emplace_back(identity.name);
+        return true;
+    });
+    std::ranges::sort(names);
+    ZASSERT(names == std::vector<std::string>{"shared", "user"});
+}
+
 ZEST_CASE(SymbolKinds) {
     build_index(R"(
             struct §(cls)MyClass {};
@@ -1556,7 +1599,7 @@ ZEST_CASE(CanonicalFile) {
 
     // A main-file-only build keeps no header rows: a symbol the main file
     // merely uses has no declaring row at all.
-    decode_index(index::build_tu_index(*unit, true));
+    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
     auto used = symbol_named("header_only").second;
     ZASSERT(!has(used, index::SymbolFlags::HasDefinition));
     ZASSERT(used.file == index::no_file);
@@ -1589,7 +1632,7 @@ int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
     }
     ZASSERT(found);
 
-    decode_index(index::build_tu_index(*unit, true));
+    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
 
     // Rows resolving into the preamble are dropped: the preamble's own
     // index covers them. Only the main file's rows remain.
@@ -1621,7 +1664,7 @@ Derived* use();
     }
     ZASSERT(found);
 
-    decode_index(index::build_tu_index(*unit, true));
+    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
 
     ZASSERT(tu_index.file_indices.empty());
     ZASSERT(!tu_index.main_file_index.occurrences.empty());
@@ -1640,7 +1683,7 @@ int x = §(1)BAZ;
 )");
     ZASSERT(compile());
 
-    decode_index(index::build_tu_index(*unit, true));
+    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
     ZASSERT(tu_index.file_indices.empty());
     ZASSERT(!tu_index.main_file_index.occurrences.empty());
 }
@@ -1717,7 +1760,7 @@ ZEST_CASE(DeepExpressionChain) {
     llvm::thread index_thread(std::optional<unsigned>(clang::DesiredStackSize / 4), [&] {
         // Mirror the stateful worker's post-compile sequence.
         scan = feature::inactive_regions(*unit);
-        decode_index(index::build_tu_index(*unit, true));
+        decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
 
         // The semantic map must also serve token classification and a
         // selection at the giant expansion's invocation on this stack:

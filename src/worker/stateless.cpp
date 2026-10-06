@@ -399,7 +399,8 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     result.success = true;
     ScopedTimer index_timer;
     if(params.index) {
-        result.tu_index_data = index::build_tu_index(unit);
+        result.tu_index_data =
+            index::build_tu_index(unit, {.known_variants = params.known_variants});
         if(result.tu_index_data.size() > max_index_bytes()) {
             return {false,
                     std::format("the index ({} MiB) is too large to send between clice processes",

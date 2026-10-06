@@ -21,6 +21,7 @@
 
 #include "kota/codec/json/json.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/StringMap.h"
@@ -370,7 +371,8 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
              project.pcm_cache.size());
 }
 
-std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, std::size_t size) {
+std::expected<IndexStore::Report, IndexStore::MergeError>
+    IndexStore::merge(const void* tu_index_data, std::size_t size) {
     // Zero-copy consumption: the wire stays serialized; a new variant's
     // blob bytes are sliced out and installed or merged without decoding
     // the envelope, and only genuinely new symbol names are materialized.
@@ -378,7 +380,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         index::TUIndex::from_bytes(llvm::StringRef(static_cast<const char*>(tu_index_data), size));
     if(!view.loaded()) {
         LOG_WARN("Ignoring TUIndex that failed verification");
-        return std::nullopt;
+        return std::unexpected(MergeError::Invalid);
     }
     auto main_local_id = view.path_count() - 1;
     llvm::StringRef main_tu_path = view.path(main_local_id);
@@ -440,7 +442,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         // one membership test is the whole check — no IO, no bytes read.
         if(shard && shard->loaded() && shard->has_variant(blob_hash)) {
             if(!record_consumed(local_id, shard->content_hash())) {
-                return std::nullopt;
+                return std::unexpected(MergeError::Invalid);
             }
             section_contributions.emplace_back(local_id, blob_hash);
             hits += 1;
@@ -456,21 +458,27 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         // with this file's rows missing or stale — reject the whole
         // result; nothing is committed yet.
         auto bytes = view.section_blob(section);
+        if(bytes.empty()) {
+            LOG_INFO("Rerun {}: the stored variant of {} it names by hash is gone",
+                     main_tu_path,
+                     project.file_table.resolve(global_id));
+            return std::unexpected(MergeError::Outdated);
+        }
         if(llvm::xxh3_64bits(bytes) != blob_hash) {
             LOG_WARN("Reject merge for {}: rows section for {} failed verification",
                      main_tu_path,
                      project.file_table.resolve(global_id));
-            return std::nullopt;
+            return std::unexpected(MergeError::Invalid);
         }
         auto fresh = index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
         if(!fresh.loaded()) {
             LOG_WARN("Reject merge for {}: rows for {} do not form a valid shard",
                      main_tu_path,
                      project.file_table.resolve(global_id));
-            return std::nullopt;
+            return std::unexpected(MergeError::Invalid);
         }
         if(!record_consumed(local_id, fresh.content_hash())) {
-            return std::nullopt;
+            return std::unexpected(MergeError::Invalid);
         }
 
         index::Shard replacement;
@@ -503,7 +511,7 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
     if(!local_fanout) {
         LOG_WARN("Reject merge for {}: an internal symbol's reference files carry no rows",
                  main_tu_path);
-        return std::nullopt;
+        return std::unexpected(MergeError::Invalid);
     }
 
     // The first commit.
@@ -619,6 +627,27 @@ std::optional<IndexStore::Report> IndexStore::merge(const void* tu_index_data, s
         project.project_index.shards.size());
 
     return report;
+}
+
+std::vector<std::uint64_t> IndexStore::known_variants(Fid tu) const {
+    auto closure = project.dep_graph.include_closure(tu);
+    llvm::DenseSet<Fid> files(closure.begin(), closure.end());
+    auto& index = project.project_index;
+    if(auto it = index.manifests.find(tu); it != index.manifests.end()) {
+        for(auto version: llvm::make_first_range(it->second.contributions)) {
+            files.insert(project.file_table.version(version).fid);
+        }
+    }
+
+    std::vector<std::uint64_t> known;
+    for(auto file: files) {
+        if(auto it = index.shards.find(file); it != index.shards.end() && it->second.loaded()) {
+            llvm::append_range(known, it->second.variants());
+        }
+    }
+    llvm::sort(known);
+    known.erase(llvm::unique(known), known.end());
+    return known;
 }
 
 IndexStore::Report IndexStore::drop_index(Fid tu_path_id) {

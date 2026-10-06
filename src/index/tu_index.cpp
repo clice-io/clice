@@ -15,6 +15,7 @@
 #include "support/timer.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/xxhash.h"
 #include "clang/AST/DeclCXX.h"
@@ -28,7 +29,8 @@ namespace {
 /// One file's rows on the wire: a self-contained single-variant shard
 /// blob (index/shard.h). `hash` is xxh3 of `blob` — the variant's
 /// identity — so the master can skip blobs it already stores without
-/// touching their bytes.
+/// touching their bytes; the blob is left empty for a variant the master
+/// said it stores.
 struct FileSection {
     std::uint32_t path_id = 0;
 
@@ -58,9 +60,10 @@ struct EnvelopeBlob {
     std::vector<IncludeNode> nodes;
 
     /// The symbols the rows name, sorted by hash, except a function's
-    /// locals: only their own file can mention one, and that file's
-    /// section names it. Names and arguments are back to back with one
-    /// end offset per row; so are the reference files, as path ids.
+    /// locals — only their own file can mention one, and that file's
+    /// section names it — and the external symbols only sections left
+    /// empty name. Names and arguments are back to back with one end
+    /// offset per row; so are the reference files, as path ids.
     std::vector<std::uint64_t> sym_hashes;
     std::string sym_names;
     std::vector<std::uint32_t> sym_name_ends;
@@ -293,8 +296,9 @@ bool is_completable(const clang::NamedDecl* decl) {
 /// relations from the resolve facts, macros from the preprocessor directives.
 class Projector {
 public:
-    Projector(CompilationUnitRef unit, bool main_file_only) :
-        unit(unit), main_file_only(main_file_only) {}
+    Projector(CompilationUnitRef unit, const TUIndexOptions& options) :
+        unit(unit), main_file_only(options.main_file_only), known_variants(options.known_variants) {
+    }
 
     /// The only gate through which rows enter `file_indices`. With
     /// main_file_only, the index covers just the main file — yet
@@ -1133,6 +1137,7 @@ public:
         }
         llvm::sort(path_ids);
         std::vector<FileSection> sections;
+        llvm::BitVector known_paths(tree.paths.size());
         for(auto path_id: path_ids) {
             auto& rows = by_path[path_id];
             if(rows.empty()) {
@@ -1142,6 +1147,11 @@ public:
             llvm::raw_string_ostream os(bytes);
             write_shard(rows, resolve, unit.file_content(path_fids[path_id]), os);
             auto hash = llvm::xxh3_64bits(bytes);
+            if(std::ranges::binary_search(known_variants, hash)) {
+                known_paths.set(path_id);
+                sections.push_back({path_id, hash, {}});
+                continue;
+            }
             sections.push_back(
                 {path_id, hash, std::vector<std::uint8_t>(bytes.begin(), bytes.end())});
         }
@@ -1154,11 +1164,19 @@ public:
         blob.path_hashes = std::move(tree.path_hashes);
         blob.nodes = std::move(tree.nodes);
         blob.absent = unit.absent();
+        auto known = [&](std::uint32_t path_id) {
+            return known_paths.test(path_id);
+        };
         llvm::SmallVector<SymbolHash> table;
         for(auto& [hash, symbol]: symbols) {
-            if(symbol.scope != SymbolScope::FileLocal) {
-                table.push_back(hash);
+            if(symbol.scope == SymbolScope::FileLocal) {
+                continue;
             }
+            if(symbol.scope == SymbolScope::External && !symbol.reference_files.isEmpty() &&
+               llvm::all_of(symbol.reference_files, known)) {
+                continue;
+            }
+            table.push_back(hash);
         }
         llvm::sort(table);
         for(auto hash: table) {
@@ -1209,6 +1227,7 @@ public:
 private:
     CompilationUnitRef unit;
     bool main_file_only;
+    llvm::ArrayRef<std::uint64_t> known_variants;
     IncludeTree tree;
     SymbolTable symbols;
     /// Build-time working state keyed by FileID — clang::FileID means
@@ -1221,8 +1240,8 @@ private:
 
 }  // namespace
 
-std::string build_tu_index(CompilationUnitRef unit, bool main_file_only) {
-    Projector projector(unit, main_file_only);
+std::string build_tu_index(CompilationUnitRef unit, const TUIndexOptions& options) {
+    Projector projector(unit, options);
     return projector.build(nullptr);
 }
 
@@ -1243,7 +1262,7 @@ std::string build_preamble_index(CompilationUnitRef unit,
         .open_conditionals = open_conditionals,
         .diagnostics = diagnostics,
     };
-    Projector projector(unit, false);
+    Projector projector(unit, {});
     return projector.build(&extras);
 }
 

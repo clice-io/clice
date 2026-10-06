@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <string>
 
@@ -132,13 +133,27 @@ public:
     /// The contexts blob, filled by load() and written by save().
     ContextsBlob contexts;
 
+    /// Why a merge committed nothing.
+    enum class MergeError : std::uint8_t {
+        /// The result failed verification: the file counts as failed, not
+        /// indexed.
+        Invalid,
+        /// A variant the result names by hash alone is stored no more — it
+        /// left after known_variants was taken: the file must run again.
+        Outdated,
+    };
+
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
     /// manifest, and write row blobs only for variants no shard stores yet
     /// — a re-index whose rows are unchanged records its contributions and
-    /// touches nothing else. Returns nullopt when the result failed
-    /// verification and nothing was committed — the caller must count the
-    /// file as failed, not indexed.
-    std::optional<Report> merge(const void* tu_index_data, std::size_t size);
+    /// touches nothing else.
+    std::expected<Report, MergeError> merge(const void* tu_index_data, std::size_t size);
+
+    /// The variant identities stored for the files `tu` is expected to
+    /// include — its scanned include closure and its last manifest's
+    /// files — sorted: what the worker indexing it may send as bare
+    /// hashes (TUIndexOptions::known_variants).
+    std::vector<std::uint64_t> known_variants(Fid tu) const;
 
     /// Drop a TU's index wholesale: manifest and contributions now (the
     /// affected shards' live masks follow), persisted blobs at the next

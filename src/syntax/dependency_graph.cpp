@@ -224,6 +224,28 @@ llvm::ArrayRef<Fid> DependencyGraph::get_includers(Fid path_id) const {
     return {};
 }
 
+llvm::SmallVector<Fid> DependencyGraph::include_closure(Fid unit) const {
+    llvm::DenseSet<Fid> seen{unit};
+    llvm::SmallVector<Fid> closure{unit};
+    auto visit = [&](Fid fid) {
+        if(seen.insert(fid).second) {
+            closure.push_back(fid);
+        }
+    };
+    for(std::size_t next = 0; next < closure.size(); next += 1) {
+        auto current = closure[next];
+        for(auto included: get_all_includes(current)) {
+            visit(included);
+        }
+        if(auto it = forced_includes.find(current); it != forced_includes.end()) {
+            for(auto header: it->second) {
+                visit(header);
+            }
+        }
+    }
+    return closure;
+}
+
 std::uint32_t DependencyGraph::count_includes(Fid includer, Fid target) const {
     std::uint32_t most = 0;
     auto it = file_configs.find(includer);
