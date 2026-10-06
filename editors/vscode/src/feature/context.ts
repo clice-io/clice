@@ -70,7 +70,6 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
     private loaded: ContextItem[] = [];
     private total = 0;
     private current: ContextItem | null = null;
-    private automatic = true;
     private uri: string | undefined;
     /// Bumped by every refresh and loadMore; a response is dropped when a
     /// newer request started while it was in flight, including reorders of
@@ -106,7 +105,7 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
     /// undefined when a newer request superseded this one and owns the UI.
     async refresh(
         editor: vscode.TextEditor | undefined,
-    ): Promise<{ current: ContextItem | null; automatic: boolean } | null | undefined> {
+    ): Promise<CurrentContextResult | null | undefined> {
         this.generation += 1;
         const generation = this.generation;
         if (!isCppEditor(editor)) {
@@ -132,9 +131,8 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
             this.total = query.total;
             this.epoch = query.epoch;
             this.current = current.context;
-            this.automatic = current.automatic;
             this.emitter.fire();
-            return { current: this.current, automatic: this.automatic };
+            return current;
         } catch {
             // Server not ready; leave the view empty.
             if (generation !== this.generation) {
@@ -174,7 +172,6 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
                 this.loaded = [];
                 this.epoch = fresh.epoch;
                 this.current = current.context;
-                this.automatic = current.automatic;
                 query = fresh;
             }
             this.loaded.push(...query.contexts);
@@ -219,6 +216,16 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
     const outline = new OutlineRefresher();
     outline.refresh();
 
+    function showStatus(editor: vscode.TextEditor | undefined, current: CurrentContextResult) {
+        // The active editor may have moved on while the request was in
+        // flight; the label must not describe a different document.
+        if (vscode.window.activeTextEditor !== editor) {
+            return;
+        }
+        status.text = statusText(current.context, current.automatic);
+        status.show();
+    }
+
     async function refresh(editor: vscode.TextEditor | undefined) {
         const result = await tree.refresh(editor);
         if (result === undefined) {
@@ -229,13 +236,7 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
             status.hide();
             return;
         }
-        // The active editor may have moved on while the request was in
-        // flight; the label must not describe a different document.
-        if (vscode.window.activeTextEditor !== editor) {
-            return;
-        }
-        status.text = statusText(result.current, result.automatic);
-        status.show();
+        showStatus(editor, result);
     }
 
     /// The context in use changed with the text unchanged.
@@ -303,7 +304,7 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
             return;
         }
         const uri = editor.document.uri.toString();
-        let automatic = true;
+        let automatic: boolean;
         try {
             const current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
                 uri,
@@ -400,8 +401,8 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
     // some C++ TU (it has compilation contexts), flip its language so the
     // whole toolchain attaches. Which files count is the server's call —
     // the query is the whole check, one cheap lookup per plain-text open.
-    // Once per file: a language change reopens the document, and one the
-    // user set to plain text stays so.
+    // A file is flipped once: a language change reopens the document, and
+    // one the user set back to plain text stays so.
     const detected = new Set<string>();
     async function detectCxxFragment(document: vscode.TextDocument) {
         const uri = document.uri.toString();
@@ -413,10 +414,10 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
             const query = await client.sendRequest<QueryContextResult>("clice/queryContext", {
                 uri,
             });
-            detected.add(uri);
             // The document may have moved on while the query was in flight:
             // closed, or re-languaged by the user.
             if (query.total > 0 && awaitingDetection()) {
+                detected.add(uri);
                 await vscode.languages.setTextDocumentLanguage(document, "cpp");
             }
         } catch {
@@ -458,25 +459,29 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         if (!isCppEditor(editor)) {
             return;
         }
+        const uri = editor.document.uri.toString();
+        let current: CurrentContextResult;
         try {
-            const current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
-                uri: editor.document.uri.toString(),
+            current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
+                uri,
             });
-            if (vscode.window.activeTextEditor === editor) {
-                status.text = statusText(current.context, current.automatic);
-                status.show();
-            }
         } catch {
             // Server not ready; the next refresh shows the context.
+            return;
         }
+        if (tree.activeUri() !== uri || current.epoch !== tree.epoch) {
+            await refresh(editor);
+            return;
+        }
+        showStatus(editor, current);
     }
 
     ext.subscriptions.push(
         status,
         outline,
         // A compile of the active file can change what it compiles under —
-        // a trial's verdict, a choice the server dropped; a save anywhere
-        // can change the listing.
+        // a trial's verdict, a choice the server dropped — and the listing
+        // with it; a save anywhere can change the listing.
         vscode.languages.onDidChangeDiagnostics((event) => {
             const editor = vscode.window.activeTextEditor;
             if (

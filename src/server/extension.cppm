@@ -50,6 +50,10 @@ struct CurrentContextResult {
 
     /// Whether no choice of the user's is in force.
     bool automatic = true;
+
+    /// The listing generation it answers under (QueryContextResult::epoch):
+    /// a listing of another epoch is out of date.
+    std::uint64_t epoch = 0;
 };
 
 /// clice/resetContext: drop the user's choice, back to the automatic one.

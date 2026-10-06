@@ -76,6 +76,12 @@ static ConfigID lent_config(Project& ws, Fid path_id, Fid host, const Candidate&
         .config;
 }
 
+/// The command the file's own entry `entry` compiles it as.
+static ConfigID own_config(Project& ws, Fid path_id, ConfigID entry) {
+    auto path = ws.file_table.resolve(path_id);
+    return ws.build.resolve(path_id, entry, CommandSource::CDBExact, path, path).config;
+}
+
 /// The listing's item for `host` lending the command `applied`: named by
 /// the host, the configuration's distinguishing flags when the host has
 /// several, and the place it enters the header at when it does at more
@@ -163,9 +169,7 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     // own command.
     auto entries = ws.build.entries(path_id);
     for(std::size_t i = 0; i < entries.size(); i += 1) {
-        auto applied =
-            ws.build.resolve(path_id, entries[i].config, CommandSource::CDBExact, path, path)
-                .config;
+        auto applied = own_config(ws, path_id, entries[i].config);
         if(seen_configs.insert(ws.cdb.entry_hash_hex(applied)).second) {
             all_items.push_back(own_item(ws, path_id, i, applied));
         }
@@ -202,17 +206,17 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
                                        commands.size() > 1,
                                        several ? std::optional(occurrence) : std::nullopt);
         };
-    auto own = [&](llvm::StringRef hash) {
-        auto entries = ws.build.entries(path_id);
-        for(std::size_t i = 0; i < entries.size(); i += 1) {
-            auto applied =
-                ws.build.resolve(path_id, entries[i].config, CommandSource::CDBExact, path, path)
-                    .config;
-            if(hash.empty() || ws.cdb.entry_hash_hex(applied) == hash) {
-                result.context = own_item(ws, path_id, i, applied);
-                return;
-            }
+    auto own = [&](llvm::StringRef hash, llvm::StringRef base) {
+        auto commands = ws.build.commands(path_id);
+        if(commands.empty()) {
+            return;
         }
+        auto entry = pick_pinned_config(ws, path_id, commands, path, path, hash, base);
+        auto index = llvm::find_if(
+                         commands,
+                         [&](const Candidate& command) { return command.config == entry.config; }) -
+                     commands.begin();
+        result.context = own_item(ws, path_id, index, own_config(ws, path_id, entry.config));
     };
 
     // The choice, else what resolve_command picks: the file's own entry,
@@ -223,9 +227,9 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
              choice->base_hash,
              choice->occurrence.value_or(0));
     } else if(choice) {
-        own(choice->command_hash);
+        own(choice->command_hash, choice->base_hash);
     } else if(!ws.build.entries(path_id).empty()) {
-        own({});
+        own({}, {});
     } else if(const auto* context = editor.header_context(path_id)) {
         lent(context->host_path_id, {}, {}, context->occurrence);
     } else if(auto host = default_host(ws, path_id)) {
@@ -235,52 +239,47 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
 }
 
 kota::task<ext::SwitchContextResult>
-    ContextService::switch_context(Fid path_id,
-                                   Session& session,
+    ContextService::switch_context(Session& session,
                                    Fid context_path_id,
                                    const ext::SwitchContextParams& params) {
     auto& ws = project;
-    auto path = ws.file_table.resolve(path_id);
+    auto path_id = session.path_id;
     ext::SwitchContextResult result;
 
-    // The base entry hash of the candidate of `entry_file` the listed hash
-    // names under the edits of `paths`: the identity that stays unique
-    // when rules collapse two applied hashes onto one value.
-    auto base_of = [&](Fid entry_file,
-                       llvm::ArrayRef<CanonicalRef> paths,
-                       llvm::StringRef hash) -> std::string {
-        auto entry_path = ws.file_table.resolve(entry_file);
-        for(auto& entry: ws.build.commands(entry_file)) {
-            auto applied =
-                ws.build.resolve(entry_file, entry.config, entry.source, paths, entry_path).config;
-            if(ws.cdb.entry_hash_hex(applied) == hash) {
+    // The base entry hash of the one of `commands` listed as `listed(entry)`
+    // under the picked hash: the identity that stays unique when rules
+    // collapse two applied hashes onto one value. The caller offered only
+    // listed items.
+    auto base_of = [&](llvm::ArrayRef<Candidate> commands, auto listed) -> std::string {
+        for(auto& entry: commands) {
+            if(ws.cdb.entry_hash_hex(listed(entry)) == *params.command_hash) {
                 return ws.cdb.entry_hash_hex(entry.config);
             }
         }
         std::unreachable();
     };
 
+    // Of the listed items only the file's own entries name the file itself,
+    // each with its command hash.
     Selection saved;
-    if(context_path_id == path_id && params.command_hash.has_value()) {
+    if(context_path_id == path_id) {
         saved.command_hash = *params.command_hash;
-        saved.base_hash = base_of(path_id, path, *params.command_hash);
+        saved.base_hash = base_of(ws.build.commands(path_id), [&](const Candidate& entry) {
+            return own_config(ws, path_id, entry.config);
+        });
     } else {
         saved.host_path_id = context_path_id;
         saved.occurrence = params.occurrence;
         if(params.command_hash.has_value()) {
-            CanonicalRef edit_paths[] = {ws.file_table.resolve(context_path_id), path};
             saved.command_hash = *params.command_hash;
-            saved.base_hash = base_of(context_path_id, edit_paths, *params.command_hash);
+            saved.base_hash =
+                base_of(host_commands(ws, path_id, context_path_id), [&](const Candidate& entry) {
+                    return lent_config(ws, path_id, context_path_id, entry);
+                });
         }
     }
 
-    editor.drop_header_context(path_id);
-    // The new context is a different compilation identity: supersede any
-    // in-flight compile and drop the state earned under the old one. It
-    // also needs its own self-containment trial — a different host can
-    // change the macro environment.
-    ast.switch_identity(session);
-    editor.commands.forget_self_contained(path_id);
+    leave_context(session);
 
     // The table entry is the active choice; persist it across sessions:
     // the ticket resolves once a write batch whose snapshot covers this
@@ -310,8 +309,12 @@ kota::task<ext::SwitchContextResult>
     co_return result;
 }
 
-void ContextService::reset_context(Session& session) {
-    editor.forget_selection(session.path_id);
+void ContextService::leave_context(Session& session) {
+    editor.drop_header_context(session.path_id);
+    // The new context is a different compilation identity: supersede any
+    // in-flight compile and drop the state earned under the old one. It
+    // also needs its own self-containment trial — a different host can
+    // change the macro environment.
     ast.switch_identity(session);
     editor.commands.forget_self_contained(session.path_id);
 }

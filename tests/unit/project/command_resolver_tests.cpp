@@ -137,6 +137,34 @@ ZEST_CASE(VerdictPersistenceMarksDirty) {
     ZASSERT(project.artifacts_dirty);
 }
 
+ZEST_CASE(SelfContainedFlipBumpsEpoch) {
+    // A self-contained header's listing merges hosts the others list one
+    // by one: entering or leaving that verdict changes the listing, and
+    // nothing else does.
+    FileTable files;
+    Project project{files};
+    CommandResolver resolver(project);
+    auto id = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto epoch = project.context_epoch;
+
+    resolver.record_header_mode(id, HeaderMode::NeedsContext);
+    ZEXPECT(project.context_epoch == epoch);
+    resolver.record_header_mode(id, HeaderMode::SelfContained);
+    ZEXPECT(project.context_epoch == epoch + 1);
+    resolver.record_header_mode(id, HeaderMode::SelfContained);
+    ZEXPECT(project.context_epoch == epoch + 1);
+    resolver.forget_self_contained(id);
+    ZEXPECT(project.context_epoch == epoch + 2);
+    resolver.forget_self_contained(id);
+    ZEXPECT(project.context_epoch == epoch + 2);
+
+    resolver.record_header_mode(id, HeaderMode::SelfContained);
+    resolver.reset_header_mode(id);
+    ZEXPECT(project.context_epoch == epoch + 4);
+    resolver.reset_header_mode(id);
+    ZEXPECT(project.context_epoch == epoch + 4);
+}
+
 ZEST_CASE(UnmatchedChainWantsTree) {
     /// The scan resolved shared.h's include under b.cpp's directories;
     /// a.cpp ranks first, but under its directories the include reaches

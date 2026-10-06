@@ -5,11 +5,9 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { ClientHandle } from "../client";
 // Shared protocol shapes — type-only, mirrors feature/context.ts.
-import type {
-    CurrentContextResult,
-    QueryContextResult,
-    SwitchContextResult,
-} from "@clice/tools/protocol" with { "resolution-mode": "import" };
+import type { CurrentContextResult, QueryContextResult } from "@clice/tools/protocol" with {
+    "resolution-mode": "import",
+};
 
 import { inactiveRuns } from "../feature/inactive";
 import { resolveExecutable } from "../setting";
@@ -325,8 +323,9 @@ suite("clice E2E", function () {
         const host = query.contexts.find((c) => c.uri.includes("main.cpp"));
         assert.ok(host, "main.cpp should be offered as a context");
 
-        // The client contract: a switch keeps the document open; the server
-        // recompiles the unchanged text and publishes its diagnostics anew.
+        // The client contract: a switch through the extension's commands
+        // keeps the document open; the server recompiles the unchanged text
+        // and publishes its diagnostics anew.
         const published = () =>
             new Promise<void>((resolve, reject) => {
                 const timer = setTimeout(() => {
@@ -343,11 +342,7 @@ suite("clice E2E", function () {
             });
 
         let republished = published();
-        const switched = await client.sendRequest<SwitchContextResult>("clice/switchContext", {
-            uri,
-            contextUri: host.uri,
-        });
-        assert.ok(switched.success, "switchContext should succeed");
+        await vscode.commands.executeCommand("clice.applyContext", host, query.epoch, uri);
         await republished;
         const current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
             uri,
@@ -360,8 +355,8 @@ suite("clice E2E", function () {
         assert.strictEqual(document.languageId, "cpp", "the switch keeps the document as it was");
 
         republished = published();
-        const reset = await client.sendRequest<SwitchContextResult>("clice/resetContext", { uri });
-        assert.ok(reset.success, "resetContext should succeed");
+        await vscode.window.showTextDocument(document);
+        await vscode.commands.executeCommand("clice.resetContext");
         await republished;
         const automatic = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
             uri,

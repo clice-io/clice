@@ -50,14 +50,14 @@ struct ContextService {
     /// ticket. Sessions without a writable database (read-only, caching
     /// disabled, open failure) apply the choice in memory and acknowledge
     /// immediately.
-    kota::task<ext::SwitchContextResult> switch_context(Fid path_id,
-                                                        Session& session,
+    kota::task<ext::SwitchContextResult> switch_context(Session& session,
                                                         Fid context_path_id,
                                                         const ext::SwitchContextParams& params);
 
-    /// clice/resetContext: drop the file's choice; the next compile picks
-    /// the context automatically.
-    void reset_context(Session& session);
+    /// Start the document over under another context: nothing it earned
+    /// under the one it leaves — the resolved header context, the compile
+    /// in flight, the self-containment verdict — carries over.
+    void leave_context(Session& session);
 
     /// clice/listConfigurations: the configuration menu with the running,
     /// persisted and default names.

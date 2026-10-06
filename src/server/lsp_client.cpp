@@ -1004,7 +1004,7 @@ void LSPClient::register_extensions() {
         [this](RequestContext& ctx, const ext::CurrentContextParams& params) -> RawResult {
             this->server.pool.foreground_pulse();
             auto [path, path_id, session, project] = resolve_uri(params.uri);
-            co_return to_raw(project->context_service.current_context(session.get()));
+            co_return to_raw(this->server.current_context(*project, session.get()));
         });
 
     peer.on_request(

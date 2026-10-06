@@ -53,6 +53,10 @@ export interface CurrentContextResult {
 
     /// Whether no choice of the user's is in force.
     automatic: boolean;
+
+    /// The listing generation it answers under (QueryContextResult.epoch):
+    /// a listing of another epoch is out of date.
+    epoch: number;
 }
 
 export const CurrentContextRequest = new RequestType<

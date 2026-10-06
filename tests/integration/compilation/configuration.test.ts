@@ -166,7 +166,9 @@ test("pins stay with their configuration", async ({ session }) => {
 
     const debug = await switchAndRestart(session, release, workspace, "debug");
     await debug.openAndWait("lib.h");
-    expect((await debug.currentContext(header)).context?.uri).toBe(other!.uri);
+    const restored = await debug.currentContext(header);
+    expect(restored.context?.uri).toBe(other!.uri);
+    expect(restored.automatic).toBe(false);
 });
 
 test("command line overrides the selection", async ({ session }) => {

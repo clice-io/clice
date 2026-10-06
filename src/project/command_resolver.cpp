@@ -78,10 +78,8 @@ HeaderMode CommandResolver::header_mode(Fid path_id) const {
 }
 
 void CommandResolver::forget_self_contained(Fid path_id) {
-    if(auto it = header_verdicts.find(path_id);
-       it != header_verdicts.end() && it->second.mode == HeaderMode::SelfContained) {
-        header_verdicts.erase(it);
-        project.context_epoch += 1;
+    if(header_mode(path_id) == HeaderMode::SelfContained) {
+        reset_header_mode(path_id);
     }
 }
 

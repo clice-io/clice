@@ -61,11 +61,12 @@ test("current context automatic", async ({ session }) => {
 
     const result = await client.currentContext(utilsUri);
     expect(Object.keys(result).sort()).toEqual(
-        [...wireKeys<CurrentContextResult>()(["automatic", "context"])].sort(),
+        [...wireKeys<CurrentContextResult>()(["automatic", "context", "epoch"])].sort(),
     );
     expect(result.automatic).toBe(true);
-    const listed = (await client.queryContext(utilsUri)).contexts;
-    expect(result.context).toEqual(listed.find((c) => c.uri.includes("main.cpp")));
+    const listed = await client.queryContext(utilsUri);
+    expect(result.context).toEqual(listed.contexts.find((c) => c.uri.includes("main.cpp")));
+    expect(result.epoch).toBe(listed.epoch);
 });
 
 /// switchContext should set the active context, currentContext should reflect it.
@@ -94,6 +95,7 @@ test("switch context and current context", async ({ session }) => {
         "After switchContext, currentContext should return the active context",
     ).not.toBeNull();
     expect(ctx!.uri).toContain("main.cpp");
+    expect(current.automatic).toBe(false);
 });
 
 /// Full flow: open, query, switch, verify hover works in header context.
@@ -225,6 +227,7 @@ test("switch between two hosts", async ({ session }) => {
     const [aUri] = await client.openAndWait("a.cpp");
     const [bUri] = await client.openAndWait("b.cpp");
     const [sharedUri] = client.open("shared.h");
+    expect((await client.currentContext(sharedUri)).context?.uri).toBe(aUri);
 
     /// switchContext only flips server state; the recompile under the new
     /// host is asynchronous (pull model), so the hover polls until it lands.
@@ -247,6 +250,14 @@ test("switch between two hosts", async ({ session }) => {
     switched = await client.switchContext(sharedUri, bUri);
     expect(switched.success).toBe(true);
     await hoverGetValueShows("float", "b.cpp");
+
+    // The reset leaves the cached b.cpp context for the one picked
+    // automatically.
+    expect((await client.resetContext(sharedUri)).success).toBe(true);
+    await hoverGetValueShows("int", "a.cpp");
+    const current = await client.currentContext(sharedUri);
+    expect(current.automatic).toBe(true);
+    expect(current.context?.uri).toBe(aUri);
 });
 
 /// A switch and its reset keep the document open: the server recompiles

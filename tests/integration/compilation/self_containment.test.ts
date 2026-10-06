@@ -88,7 +88,17 @@ test("choice persisted across sessions", async ({ session }) => {
         ctx?.uri.includes("b.cpp") ?? false,
         `Persisted context choice should be restored on didOpen, got: ${JSON.stringify(current)}`,
     ).toBe(true);
+    expect(current.automatic).toBe(false);
+
+    // A reset is persisted too.
+    expect((await c2.resetContext(sharedUri2)).success).toBe(true);
     await c2.shutdown();
+
+    const c3 = session.spawn(workspace);
+    await c3.initialize(workspace);
+    const [sharedUri3] = c3.open("shared.h");
+    expect((await c3.currentContext(sharedUri3)).automatic).toBe(true);
+    await c3.shutdown();
 });
 
 test("ordinary error no fallback", async ({ session }) => {
