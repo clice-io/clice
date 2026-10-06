@@ -1,10 +1,10 @@
-#include "server/control_client.h"
+module;
 
-#include <format>
+#include "modules/prelude.h"
 
-#include "kota/async/async.h"
-#include "kota/ipc/codec/json.h"
-#include "kota/ipc/transport.h"
+module clice;
+
+import :server.control_client;
 
 namespace clice::control {
 

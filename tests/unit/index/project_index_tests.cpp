@@ -1,24 +1,18 @@
-#include <cstddef>
-#include <cstdint>
-#include <format>
-#include <optional>
-#include <string>
-#include <vector>
+module;
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "test/tester.h"
-#include "index/database.h"
-#include "index/project_index.h"
-#include "index/serialization.h"
-#include "index/shard.h"
-#include "index/tu_index.h"
-#include "support/cache_store.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :index.database;
+import :index.project_index;
+import :index.serialization;
+import :index.shard;
+import :index.tu_index;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
+import :vfs.cache_store;
 
 namespace clice::testing {
 namespace {

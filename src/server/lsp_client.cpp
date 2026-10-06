@@ -1,36 +1,27 @@
-#include "server/lsp_client.h"
+module;
 
-#include <algorithm>
-#include <chrono>
-#include <format>
-#include <map>
-#include <string>
-#include <type_traits>
-#include <variant>
+#include "modules/prelude.h"
 
 #include "version.h"
-#include "command/argument_parser.h"
-#include "feature/feature.h"
-#include "semantic/symbol.h"
-#include "server/editor_context.h"
-#include "server/extension.h"
-#include "server/file_tracker.h"
-#include "server/format.h"
-#include "server/master_server.h"
-#include "server/uri.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
-#include "syntax/preamble_synthesis.h"
-#include "vfs/path.h"
-#include "worker/serialize.h"
+#include "support/logging.macros.h"
 
-#include "kota/codec/json/json.h"
-#include "kota/ipc/lsp/position.h"
-#include "kota/ipc/lsp/protocol.h"
-#include "kota/meta/enum.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :command.argument_parser;
+import :feature.feature;
+import :semantic.symbol;
+import :server.editor_context;
+import :server.extension;
+import :server.file_tracker;
+import :server.format;
+import :server.lsp_client;
+import :server.master_server;
+import :server.uri;
+import :support.anomaly;
+import :support.logging;
+import :syntax.preamble_synthesis;
+import :vfs.path;
+import :worker.serialize;
 
 namespace clice {
 

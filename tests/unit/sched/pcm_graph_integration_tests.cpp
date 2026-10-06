@@ -1,15 +1,19 @@
-#include "test/async.h"
-#include "test/cdb_helper.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "command/command.h"
-#include "compile/compilation.h"
-#include "sched/graph.h"
-#include "syntax/dependency_graph.h"
-#include "syntax/scan.h"
-#include "vfs/file_table.h"
+module;
 
-#include "kota/zest/async.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :command.command;
+import :compile.compilation;
+import :sched.graph;
+import :syntax.dependency_graph;
+import :syntax.scan;
+import :tests.unit.test.async;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.file_table;
 
 namespace clice::testing {
 namespace {

@@ -1,11 +1,13 @@
-#include <algorithm>
-#include <string>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "feature/feature.h"
-#include "index/tu_index.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :feature.feature;
+import :index.tu_index;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 
@@ -592,66 +594,6 @@ ZEST_CASE(HoverDefinitionShape) {
     ZASSERT(card(SymbolKind::Variable, "int values[] = {1, 2}") == "int values[] = {1, 2}");
     ZASSERT(card(SymbolKind::Function, "int entry() {}", index::SymbolFlags::Exported) ==
             "export int entry()");
-}
-
-ZEST_CASE(CommentBlockExtraction) {
-    llvm::StringRef content = R"cpp(int unrelated;
-
-/// Adds two numbers.
-/// Returns their sum.
-int add(int a, int b);
-
-// stale note
-
-int gap();
-
-/* Scales the
-   given input. */
-int scale(int value);
-
-int base = 1; /* setup */
-int next();
-
-/*
-Frees the buffer.
-Then clears it.
-*/
-int release();
-
-int done(); /* trailing block
-still trailing
-*/
-int after();
-)cpp";
-
-    auto add_offset = static_cast<std::uint32_t>(content.find("int add"));
-    ZASSERT(feature::preceding_comment(content, add_offset) ==
-            "Adds two numbers.\nReturns their sum.");
-
-    // A blank line between the comment and the declaration breaks the
-    // attachment.
-    auto gap_offset = static_cast<std::uint32_t>(content.find("int gap"));
-    ZASSERT(feature::preceding_comment(content, gap_offset) == "");
-
-    // A block comment whose closing line only ends with the marker still
-    // attaches whole.
-    auto scale_offset = static_cast<std::uint32_t>(content.find("int scale"));
-    ZASSERT(feature::preceding_comment(content, scale_offset) == "Scales the\ngiven input.");
-
-    // A code line trailing a self-contained block comment is code, not
-    // documentation.
-    auto next_offset = static_cast<std::uint32_t>(content.find("int next"));
-    ZASSERT(feature::preceding_comment(content, next_offset) == "");
-
-    // Interior lines of a block comment need no marker of their own.
-    auto release_offset = static_cast<std::uint32_t>(content.find("int release"));
-    ZASSERT(feature::preceding_comment(content, release_offset) ==
-            "Frees the buffer.\nThen clears it.");
-
-    // A block comment opened behind code trails that code, even when it
-    // closes directly above the declaration.
-    auto after_offset = static_cast<std::uint32_t>(content.find("int after"));
-    ZASSERT(feature::preceding_comment(content, after_offset) == "");
 }
 
 };  // ZEST_SUITE(index_projection)

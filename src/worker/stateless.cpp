@@ -1,46 +1,26 @@
-#include "worker/stateless.h"
+module;
 
-#include <atomic>
-#include <cstdlib>
-#include <expected>
-#include <format>
-#include <optional>
+#include "modules/prelude.h"
 
-#include "compile/compilation.h"
-#include "feature/feature.h"
-#include "index/include_tree.h"
-#include "index/tu_index.h"
-#include "support/logging.h"
-#include "vfs/file_system.h"
-#include "worker/common.h"
-#include "worker/crash_report.h"
-#include "worker/protocol.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "kota/codec/json/json.h"
-#include "kota/ipc/codec/bincode.h"
-#include "kota/ipc/codec/json.h"
-#include "kota/ipc/peer.h"
-#include "kota/ipc/transport.h"
-#include "llvm/Support/Regex.h"
+#include "kota/ipc/framing.h"
+
+module clice;
+
+import :compile.compilation;
+import :feature.feature;
+import :index.include_tree;
+import :index.tu_index;
+import :support.logging;
+import :support.process;
+import :vfs.file_system;
+import :worker.common;
+import :worker.crash_report;
+import :worker.protocol;
+import :worker.stateless;
 
 namespace clice {
-
-/// RAII guard that lowers the current process's scheduling priority and
-/// restores it on destruction.
-struct ScopedNice {
-    int saved;
-
-    explicit ScopedNice(int increment = 10) {
-        auto p = kota::sys::priority();
-        saved = p ? *p : 0;
-        kota::sys::set_priority(saved + increment);
-    }
-
-    ~ScopedNice() {
-        kota::sys::set_priority(saved);
-    }
-};
 
 using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::BincodePeer::RequestContext;
@@ -525,29 +505,59 @@ static kota::codec::RawValue handle_format(const worker::FormatParams& params) {
     return to_raw(edits);
 }
 
+/// How serve() runs a request's work.
+struct ServeOptions {
+    /// Background work: run it on a thread of its own at lowered priority,
+    /// which ends with the request. Lowering the pool thread instead would
+    /// leave every later request on it lowered (see lower_thread_priority).
+    bool lowered = false;
+};
+
+/// Run `work` on a fresh thread of lowered priority and wait for it.
+template <typename Work>
+static auto run_lowered(Work& work) {
+    std::optional<std::invoke_result_t<Work&>> result;
+    // As much stack as libuv gives its pool threads; a deep parse needs it.
+    llvm::thread thread(std::optional<unsigned>(8u << 20), [&] {
+        lower_thread_priority();
+        result.emplace(work());
+    });
+    thread.join();
+    return std::move(*result);
+}
+
 /// Register the handler of one request type, which runs on the pool
-/// thread. A cancellation (peer close, $/cancelRequest) dequeues work that
+/// thread, or on a lowered thread it joins (ServeOptions::lowered). A
+/// cancellation (peer close, $/cancelRequest) dequeues work that
 /// has not started; work already on the pool thread learns through the
 /// hook's stop flag, which doubles as CompilationParams::stop: clang polls
 /// it after every top-level declaration, so even the parse itself stops
 /// instead of running to completion for a result nobody will read.
 template <typename Params, typename Result, typename Handler>
-static void serve(kota::ipc::BincodePeer& peer, Result cancelled, Handler handler) {
-    peer.on_request(
-        [cancelled, handler](RequestContext&, const Params& params) -> RequestResult<Params> {
-            auto stop = std::make_shared<std::atomic_bool>(false);
-            co_return co_await kota::queue(
-                [&]() -> Result {
-                    if(stop->load(std::memory_order_relaxed)) {
-                        return cancelled;
-                    }
+static void serve(kota::ipc::BincodePeer& peer,
+                  Result cancelled,
+                  Handler handler,
+                  ServeOptions options = {}) {
+    peer.on_request([cancelled, handler, options](RequestContext&,
+                                                  const Params& params) -> RequestResult<Params> {
+        auto stop = std::make_shared<std::atomic_bool>(false);
+        co_return co_await kota::queue(
+            [&]() -> Result {
+                if(stop->load(std::memory_order_relaxed)) {
+                    return cancelled;
+                }
+                // The crash report reads the scope of the thread that
+                // faults, so it opens on the thread that runs the work.
+                auto work = [&] {
                     CrashScope crash_scope(worker::crash_tag(params));
-                    auto result = handler(params, stop);
-                    release_free_memory();
-                    return result;
-                },
-                [stop] { stop->store(true, std::memory_order_relaxed); });
-        });
+                    return handler(params, stop);
+                };
+                auto result = options.lowered ? run_lowered(work) : work();
+                release_free_memory();
+                return result;
+            },
+            [stop] { stop->store(true, std::memory_order_relaxed); });
+    });
 }
 
 int run_stateless_worker_mode(const std::string& worker_name, const std::string& log_dir) {
@@ -570,7 +580,6 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 
     LOG_INFO("Starting stateless worker");
     install_crash_report();
-    prefer_as_oom_victim();
 
     kota::event_loop loop;
 
@@ -586,13 +595,10 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
     const worker::ArtifactBuildResult cancelled_build{.success = false, .error = "Build cancelled"};
     serve<worker::BuildPCHParams>(peer, cancelled_build, &handle_build_pch);
     serve<worker::BuildPCMParams>(peer, cancelled_build, &handle_build_pcm);
-    serve<worker::TURunParams>(
-        peer,
-        worker::TURunResult{.success = false, .error = "Build cancelled"},
-        [](const worker::TURunParams& params, const std::shared_ptr<std::atomic_bool>& stop) {
-            ScopedNice guard;
-            return handle_turun(params, stop);
-        });
+    serve<worker::TURunParams>(peer,
+                               worker::TURunResult{.success = false, .error = "Build cancelled"},
+                               &handle_turun,
+                               {.lowered = true});
     serve<worker::IncludeTreeParams>(
         peer,
         worker::IncludeTreeResult{.success = false, .error = "Preprocessing cancelled"},

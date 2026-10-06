@@ -1,15 +1,12 @@
-#include "analysis/annotation.h"
+module;
 
-#include <format>
-#include <map>
+#include "modules/prelude.h"
 
-#include "support/process.h"
-#include "vfs/file_system.h"
+module clice;
 
-#include "kota/async/async.h"
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
+import :analysis.annotation;
+import :support.process;
+import :vfs.file_system;
 
 namespace clice::analysis {
 

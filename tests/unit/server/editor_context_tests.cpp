@@ -1,8 +1,14 @@
-#include "test/cdb_helper.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "command/argument_parser.h"
-#include "server/editor_context.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :command.argument_parser;
+import :server.editor_context;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

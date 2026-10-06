@@ -1,8 +1,11 @@
-#include <cstddef>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.lexer;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

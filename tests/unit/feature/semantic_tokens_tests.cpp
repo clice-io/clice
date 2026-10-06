@@ -1,21 +1,18 @@
+module;
+
+#include "modules/prelude.h"
 /// Primary semantic-tokens coverage lives in the snapshot corpus
 /// (tests/snap/semantic_tokens/), which pins both the standalone and the
 /// server path. This file keeps only what that corpus cannot express:
 /// preamble state under a real PCH split, module imports (which need
 /// dependency modules), and the encoder math the snapshots decode away.
 
-#include <cassert>
-#include <cstdint>
-#include <format>
-#include <optional>
-#include <vector>
+module clice;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "feature/feature.h"
-#include "semantic/symbol.h"
-
-#include "kota/meta/enum.h"
+import :feature.feature;
+import :semantic.symbol;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 

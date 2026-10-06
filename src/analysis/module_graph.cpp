@@ -1,30 +1,16 @@
-#include "analysis/module_graph.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <functional>
-#include <limits>
-#include <map>
-#include <ranges>
-#include <set>
-#include <tuple>
+#include "modules/prelude.h"
 
-#include "command/command.h"
-#include "index/serialization.h"
-#include "project/project.h"
-#include "syntax/lexer.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+module clice;
 
-#include "kota/support/glob_pattern.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/EquivalenceClasses.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Path.h"
-#include "clang/Basic/IdentifierTable.h"
+import :analysis.module_graph;
+import :command.command;
+import :index.serialization;
+import :project.project;
+import :syntax.lexer;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::analysis {
 
@@ -504,6 +490,8 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     /// for a file read differently across units.
     llvm::DenseMap<std::pair<std::uint32_t, index::SymbolHash>, llvm::SmallVector<std::uint32_t>>
         declaring_units;
+    /// (file, entity) declared by only some of the file's variants.
+    llvm::DenseSet<std::pair<std::uint32_t, index::SymbolHash>> partially_declared;
     std::vector<std::vector<std::pair<std::uint32_t, index::SymbolHash>>> use_rows(
         facts.files.size());
     /// Specialization, primary template, file.
@@ -540,7 +528,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         // count, as the dependence of some configuration.
         auto live = index.live_variants(fids[id]);
         if(live.size() > 1) {
-            llvm::DenseMap<index::SymbolHash, std::uint32_t> carried;
+            llvm::DenseMap<index::SymbolHash, std::uint32_t> carried, declaring;
             std::optional<llvm::DenseSet<index::SymbolHash>> declared;
             for(auto variant: live) {
                 shard.set_live({variant});
@@ -559,12 +547,18 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                     facts.files[id].declarations_differ = true;
                 }
                 for(auto hash: declares) {
+                    declaring[hash] += 1;
                     auto& units = declaring_units[{id, hash}];
                     units.append(contributors.lookup({id, variant}));
                 }
                 declared = std::move(declares);
             }
             shard.set_live(live);
+            for(auto& [hash, count]: declaring) {
+                if(count != live.size()) {
+                    partially_declared.insert({id, hash});
+                }
+            }
             auto& unstable = facts.files[id].unstable;
             for(auto& [hash, count]: carried) {
                 if(count != live.size()) {
@@ -1020,6 +1014,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                     units.erase(std::ranges::unique(units).begin(), units.end());
                     return std::vector<std::uint32_t>(units.begin(), units.end());
                 }(),
+            .partial = partially_declared.contains({declared_in, hash}),
             // A hidden friend has no name lookup finds; argument dependent
             // lookup reaches it through its class.
             .export_name = llvm::is_contained({SymbolKind::Function,
@@ -3004,8 +2999,9 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     // the tree nodes entered under that includer. The trees hold no node for
     // a directive clang's multiple-include optimization skips unread: a
     // header no tree enters under the includer continues by its own edges.
-    // What such a header declares is there only where the user includes it
-    // itself: the C library's <time.h> under __need_time_t lacks localtime_r.
+    // What only some of its readings declare is there only where the user
+    // includes it itself: the C library's <time.h> under __need_time_t lacks
+    // localtime_r. What every reading declares is wherever the header is.
     std::vector<std::vector<std::vector<std::uint32_t>>> children(facts.trees.size());
     /// Per scoped file, its (tree, node) pairs, ordered.
     std::vector<std::vector<std::pair<std::uint32_t, std::uint32_t>>> nodes_of(facts.files.size());
@@ -3026,8 +3022,8 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         return facts.files[file].variants > 1;
     };
     llvm::DenseMap<std::uint32_t, llvm::DenseSet<std::uint32_t>> closures;
-    auto reaches = [&](std::uint32_t user, std::uint32_t target) {
-        if(contextual(target)) {
+    auto reaches = [&](std::uint32_t user, std::uint32_t target, bool every_reading) {
+        if(contextual(target) && !every_reading) {
             return user == target || llvm::is_contained(facts.files[user].includes, target);
         }
         auto [it, inserted] = closures.try_emplace(user);
@@ -3143,6 +3139,20 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         }
     }
 
+    // A file declaring a function itself, or defining what it uses, needs no
+    // kept header for it: toml++ declares the Windows functions it calls, in
+    // a fragment its header pastes.
+    llvm::DenseSet<std::pair<std::uint32_t, std::uint32_t>> self_declared;
+    for(auto& redeclaration: facts.redeclarations) {
+        auto kind = facts.entities[redeclaration.entity].kind;
+        if(!redeclaration.friend_declaration &&
+           (redeclaration.definition || kind == SymbolKind::Function)) {
+            for(auto file: charged_files(facts, redeclaration.file)) {
+                self_declared.insert({redeclaration.entity, file});
+            }
+        }
+    }
+
     // Macros by name per module, for the closure of their directives.
     std::vector<llvm::StringMap<llvm::SmallVector<std::uint32_t, 1>>> macros_named(count);
     std::vector<std::set<std::uint32_t>> macros(count);
@@ -3154,7 +3164,8 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         auto user = llvm::find_if(users, [&](std::uint32_t candidate) {
             return module_of(candidate) != module &&
                    partition.kinds[module_of(candidate)] != ModuleKind::External &&
-                   (!kept || !reaches(candidate, info.owner));
+                   (!kept || (!self_declared.contains({entity, candidate}) &&
+                              !reaches(candidate, info.owner, !info.partial)));
         });
         auto outside = user != users.end();
         if(info.kind == SymbolKind::Macro) {
@@ -3313,13 +3324,15 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     };
     auto header_of = [&](std::uint32_t module, std::uint32_t file, std::string because) {
         auto& info = facts.files[file];
+        auto by_path = std::format("\"{}\"", info.path);
         InterfaceHeader header{.file = info.path,
-                               .include = std::format("\"{}\"", info.path),
+                               .include = by_path,
                                .because = std::move(because)};
+        llvm::StringRef own_spelling;
         for(std::size_t i = 0; i < info.includers.size(); i += 1) {
             auto includer = info.includers[i];
             llvm::StringRef spelled = info.spellings[i];
-            if(module_of(includer) == module || spelled.size() < 2) {
+            if(spelled.size() < 2) {
                 continue;
             }
             auto name = spelled.drop_front().drop_back();
@@ -3332,12 +3345,23 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                 if(beside == info.path) {
                     continue;
                 }
-            } else if(!llvm::StringRef(header.include).starts_with("<")) {
+            }
+            if(module_of(includer) == module) {
+                if(own_spelling.empty()) {
+                    own_spelling = spelled;
+                }
+                continue;
+            }
+            if(header.include == by_path ||
+               (spelled.starts_with("<") && !llvm::StringRef(header.include).starts_with("<"))) {
                 header.include = spelled;
             }
             if(!llvm::is_contained(header.names, name)) {
                 header.names.push_back(name.str());
             }
+        }
+        if(header.include == by_path && !own_spelling.empty()) {
+            header.include = own_spelling.str();
         }
         std::ranges::sort(header.names);
         return header;

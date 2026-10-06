@@ -1,13 +1,11 @@
-#include "server/invalidator.h"
+module;
 
-#include <utility>
+#include "modules/prelude.h"
 
-#include "sched/families/pcm.h"
+module clice;
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
+import :sched.families.pcm;
+import :server.invalidator;
 
 namespace clice {
 

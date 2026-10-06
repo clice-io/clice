@@ -1,6 +1,10 @@
-#include "server/quarantine.h"
+module;
 
-#include <utility>
+#include "modules/prelude.h"
+
+module clice;
+
+import :server.quarantine;
 
 namespace clice {
 

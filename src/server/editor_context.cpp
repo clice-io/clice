@@ -1,14 +1,14 @@
-#include "server/editor_context.h"
+module;
 
-#include <string>
-#include <utility>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "support/json.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/STLExtras.h"
+module clice;
+
+import :server.editor_context;
+import :support.json;
+import :support.logging;
 
 namespace clice {
 

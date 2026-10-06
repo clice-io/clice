@@ -1,13 +1,12 @@
-#include "server/file_tracker.h"
+module;
 
-#include <optional>
-#include <string>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+module clice;
 
-#include "llvm/Support/FileSystem.h"
+import :server.file_tracker;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

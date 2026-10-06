@@ -1,17 +1,17 @@
+module;
+
+#include "modules/prelude.h"
 /// Primary inlay-hint coverage lives in the snapshot corpus
 /// (tests/snap/inlay_hint/), which pins both the standalone and the server
 /// path under default options. This file keeps only the categories the
 /// corpus cannot reach: block-end and default-argument hints are off by
 /// default and only selectable through InlayHintsOptions.
 
-#include <format>
-#include <string>
+module clice;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "feature/feature.h"
-
-#include "kota/meta/enum.h"
+import :feature.feature;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 

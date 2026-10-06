@@ -1,15 +1,17 @@
+module;
+
+#include "modules/prelude.h"
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "test/tester.h"
-#include "semantic/expr_hash.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/DenseSet.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/ExprConcepts.h"
-#include "clang/AST/RecursiveASTVisitor.h"
+module clice;
+
+import :semantic.expr_hash;
+import :support.logging;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 namespace {

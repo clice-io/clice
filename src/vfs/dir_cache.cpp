@@ -1,14 +1,14 @@
-#include "vfs/dir_cache.h"
+module;
 
-#include <chrono>
-#include <optional>
+#include "modules/prelude.h"
 
-#include "support/logging.h"
-#include "vfs/file_system.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/Path.h"
+module clice;
+
+import :support.logging;
+import :vfs.dir_cache;
+import :vfs.file_system;
 
 namespace clice::vfs {
 

@@ -1,6 +1,10 @@
-#include "index/serialization.h"
+module;
 
-#include <cstring>
+#include "modules/prelude.h"
+
+module clice;
+
+import :index.serialization;
 
 namespace clice::index {
 

@@ -1,19 +1,11 @@
-#include "analysis/wrapping.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <format>
-#include <map>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "vfs/file_system.h"
+module clice;
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/Support/Path.h"
+import :analysis.wrapping;
+import :vfs.file_system;
 
 namespace clice::analysis {
 
@@ -38,6 +30,137 @@ std::expected<llvm::SmallVector<std::string>, std::string> read_lines(llvm::Stri
         result.push_back(line.trim().str());
     }
     return result;
+}
+
+/// The modules, imported ones first and by name otherwise; a cycle is the
+/// partition's to break.
+std::expected<std::vector<std::string>, std::string>
+    import_order(const llvm::StringMap<std::vector<std::string>>& imports) {
+    std::vector<std::string> order;
+    llvm::StringSet<> done;
+    std::vector<std::string> path;
+    auto visit = [&](auto& self, llvm::StringRef name) -> std::expected<void, std::string> {
+        if(done.contains(name)) {
+            return {};
+        }
+        if(llvm::is_contained(path, name)) {
+            path.push_back(name.str());
+            return std::unexpected(
+                std::format("modules import each other: {}", llvm::join(path, " -> ")));
+        }
+        path.push_back(name.str());
+        for(auto& imported: imports.at(name)) {
+            if(auto visited = self(self, imported); !visited) {
+                return visited;
+            }
+        }
+        path.pop_back();
+        done.insert(name);
+        order.push_back(name.str());
+        return {};
+    };
+    std::vector<std::string> names;
+    for(auto& entry: imports) {
+        names.push_back(entry.first().str());
+    }
+    std::ranges::sort(names);
+    for(auto& name: names) {
+        if(auto visited = visit(visit, name); !visited) {
+            return std::unexpected(visited.error());
+        }
+    }
+    return order;
+}
+
+/// What a module exports from one namespace: its aliases, then its names,
+/// as no using-declaration exports an alias.
+struct ScopeExports {
+    std::set<std::string> aliases;
+    std::set<std::string> names;
+};
+
+/// By enclosing namespace, the global one empty.
+using Exports = std::map<std::string, ScopeExports>;
+
+std::string export_text(const Exports& exports) {
+    std::string text;
+    for(auto& [scope, lines]: exports) {
+        if(!text.empty()) {
+            text += "\n";
+        }
+        auto all = llvm::concat<const std::string>(lines.aliases, lines.names);
+        if(scope.empty()) {
+            for(auto& line: all) {
+                text += std::format("export {}\n", line);
+            }
+            continue;
+        }
+        text += std::format("export namespace {} {{\n", scope);
+        for(auto& line: all) {
+            text += line + "\n";
+        }
+        text += "}\n";
+    }
+    return text;
+}
+
+/// A module unit `wrap` wrote: its global module fragment and its exports.
+struct Wrapper {
+    std::string fragment;
+    Exports exports;
+};
+
+std::expected<Wrapper, std::string> read_wrapper(llvm::StringRef module, llvm::StringRef text) {
+    auto declaration = std::format("\nexport module {};\n", module.str());
+    auto split = text.find(declaration);
+    if(split == llvm::StringRef::npos) {
+        return std::unexpected("no module unit modularize writes");
+    }
+    auto fragment = text.take_front(split);
+    if(!fragment.consume_front("module;\n")) {
+        return std::unexpected("no module unit modularize writes");
+    }
+    Wrapper wrapper{.fragment = fragment.trim().str() + "\n"};
+    llvm::SmallVector<llvm::StringRef> lines;
+    text.drop_front(split + declaration.size()).split(lines, '\n', -1, false);
+    std::optional<std::string> scope;
+    for(auto line: lines) {
+        if(scope && line == "}") {
+            scope.reset();
+            continue;
+        }
+        if(!scope) {
+            if(!line.consume_front("export ")) {
+                return std::unexpected(std::format("unexpected line: {}", line.str()));
+            }
+            if(auto opened = line;
+               opened.consume_front("namespace ") && opened.consume_back(" {")) {
+                scope = opened.str();
+                continue;
+            }
+        }
+        auto& [aliases, names] = wrapper.exports[scope.value_or("")];
+        if(line.starts_with("namespace ")) {
+            aliases.insert(line.str());
+        } else if(line.starts_with("using ")) {
+            names.insert(line.str());
+        } else {
+            return std::unexpected(std::format("unexpected line: {}", line.str()));
+        }
+    }
+    if(scope) {
+        return std::unexpected(std::format("namespace {} is not closed", *scope));
+    }
+    return wrapper;
+}
+
+void drop_mirrors(Wrapping& wrapping) {
+    std::erase_if(wrapping.files,
+                  [](auto& file) { return llvm::StringRef(file.path).starts_with("mirror/"); });
+    wrapping.plan.mirrors.clear();
+    for(auto& module: wrapping.plan.modules) {
+        module.mirrors.clear();
+    }
 }
 
 }  // namespace
@@ -95,14 +218,16 @@ std::expected<StdModules, std::string> read_std_modules(llvm::StringRef director
 std::expected<Wrapping, std::string> wrap(const Partition& partition,
                                           llvm::ArrayRef<Interface> interfaces,
                                           const std::optional<StdModules>& libcxx,
-                                          llvm::StringRef root) {
+                                          llvm::StringRef root,
+                                          bool mirrors) {
     auto absolute = [&](llvm::StringRef path) {
         return llvm::sys::path::is_absolute(path) ? path.str() : join_path(root, path);
     };
+    // By its name where programs include it by one, else by its path.
     auto operand = [&](const InterfaceHeader& header) {
-        return llvm::StringRef(header.include).starts_with("<")
-                   ? header.include
-                   : std::format("\"{}\"", absolute(header.file));
+        return header.include == std::format("\"{}\"", header.file)
+                   ? std::format("\"{}\"", absolute(header.file))
+                   : header.include;
     };
 
     assert(interfaces.size() == partition.modules.size());
@@ -155,39 +280,9 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         }
     }
 
-    // Imported modules first; a cycle is the partition's to break.
-    std::vector<std::string> order;
-    llvm::StringSet<> done;
-    std::vector<std::string> path;
-    auto visit = [&](auto& self, llvm::StringRef name) -> std::expected<void, std::string> {
-        if(done.contains(name)) {
-            return {};
-        }
-        if(llvm::is_contained(path, name)) {
-            path.push_back(name.str());
-            return std::unexpected(
-                std::format("modules import each other: {}", llvm::join(path, " -> ")));
-        }
-        path.push_back(name.str());
-        for(auto& imported: imports[name]) {
-            if(auto visited = self(self, imported); !visited) {
-                return visited;
-            }
-        }
-        path.pop_back();
-        done.insert(name);
-        order.push_back(name.str());
-        return {};
-    };
-    std::vector<std::string> names;
-    for(auto& entry: generated) {
-        names.push_back(entry.first().str());
-    }
-    std::ranges::sort(names);
-    for(auto& name: names) {
-        if(auto visited = visit(visit, name); !visited) {
-            return std::unexpected(visited.error());
-        }
+    auto order = import_order(imports);
+    if(!order) {
+        return std::unexpected(order.error());
     }
 
     std::string base;
@@ -224,7 +319,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         }
     }
 
-    for(auto& name: order) {
+    for(auto& name: *order) {
         auto& interface = *generated[name];
         auto& module = result.plan.modules.emplace_back();
         module.name = name;
@@ -288,7 +383,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
                 "#include {}\n",
                 spelled_by[include] > 1 ? std::format("\"{}\"", absolute(entry.file)) : include);
             auto names = mirrorable(entry);
-            if(names.empty()) {
+            if(names.empty() && mirrors) {
                 result.plan.warnings.push_back(
                     std::format("{}: {} is included by no name a mirror can empty",
                                 name,
@@ -303,10 +398,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         }
         std::ranges::sort(module.include_roots);
 
-        unit += std::format("\nexport module {};\n\n", name);
-        // Per enclosing namespace, its aliases then its names: no
-        // using-declaration exports an alias.
-        std::map<std::string, std::pair<std::vector<std::string>, std::vector<std::string>>> scopes;
+        Exports exports;
         auto scope_of = [](llvm::StringRef qualified) {
             auto separator = qualified.rfind("::");
             return separator == llvm::StringRef::npos
@@ -316,46 +408,208 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
         };
         for(auto& alias: interface.aliases) {
             auto [scope, alias_name] = scope_of(alias.name);
-            scopes[scope.str()].first.push_back(
+            exports[scope.str()].aliases.insert(
                 std::format("namespace {} = {};", alias_name.str(), alias.target));
         }
-        llvm::StringSet<> exported;
         for(auto& entry: interface.exports) {
-            if(exported.insert(entry.name).second) {
-                scopes[scope_of(entry.name).first.str()].second.push_back(
-                    std::format("using ::{};", entry.name));
-            }
+            exports[scope_of(entry.name).first.str()].names.insert(
+                std::format("using ::{};", entry.name));
         }
-        for(auto& [scope, lines]: scopes) {
-            std::ranges::sort(lines.first);
-            std::ranges::sort(lines.second);
-            if(scope.empty()) {
-                for(auto& line: llvm::concat<std::string>(lines.first, lines.second)) {
-                    unit += std::format("export {}\n", line);
-                }
-                unit += "\n";
-                continue;
-            }
-            unit += std::format("export namespace {} {{\n", scope);
-            for(auto& line: llvm::concat<std::string>(lines.first, lines.second)) {
-                unit += line + "\n";
-            }
-            unit += "}\n\n";
-        }
+        unit += std::format("\nexport module {};\n\n", name) + export_text(exports);
         result.files.push_back({module.source, std::move(unit)});
         result.files.push_back({std::format("{}.macros.h", name), macro_header(interface)});
         result.plan.mirrors.push_back(std::format("mirror/{}", name));
     }
 
     std::string prelude = "#pragma once\n\n" + base;
-    for(auto& name: order) {
+    for(auto& name: *order) {
         prelude += std::format("import {};\n", name);
     }
-    for(auto& name: order) {
+    for(auto& name: *order) {
         prelude += std::format("#include \"{}.macros.h\"\n", name);
     }
     result.plan.prelude = "prelude.h";
     result.files.push_back({result.plan.prelude, std::move(prelude)});
+    if(!mirrors) {
+        drop_mirrors(result);
+    }
+    return result;
+}
+
+std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configurations,
+                                           bool mirrors) {
+    if(configurations.empty()) {
+        return std::unexpected("no configuration to merge");
+    }
+    Wrapping result;
+    llvm::StringSet<> names;
+    // A module's unit in each configuration, in their order.
+    llvm::StringMap<std::vector<Wrapper>> wrappers;
+    std::set<std::string> emptied;
+    // The mirrors apply to every configuration alike.
+    std::optional<bool> std_emptied;
+    for(auto [index, configuration]: llvm::enumerate(configurations)) {
+        llvm::StringRef name = configuration.name;
+        if(name.empty() || name == "mirror" ||
+           !llvm::all_of(name, [](char c) { return llvm::isAlnum(c) || c == '_' || c == '-'; }) ||
+           !names.insert(name).second) {
+            return std::unexpected(
+                std::format("configuration {}: not a distinct directory name", configuration.name));
+        }
+        if(configuration.condition.empty()) {
+            return std::unexpected(std::format("configuration {} has no condition", name.str()));
+        }
+        auto empties_std = llvm::any_of(configuration.files, [](const Wrapping::File& file) {
+            return llvm::StringRef(file.path).starts_with("mirror/std/");
+        });
+        if(mirrors && std_emptied && *std_emptied != empties_std) {
+            return std::unexpected(
+                std::format("configurations {} and {} differ in emptying the standard headers",
+                            configurations.front().name,
+                            name.str()));
+        }
+        std_emptied = empties_std;
+        auto differs = [&] {
+            return std::unexpected(std::format("configurations {} and {} wrap different modules",
+                                               configurations.front().name,
+                                               name.str()));
+        };
+        for(auto& file: configuration.files) {
+            llvm::StringRef path = file.path;
+            if(path.starts_with("mirror/")) {
+                emptied.insert(file.path);
+                continue;
+            }
+            if(path == "prelude.h" || path.ends_with(".macros.h")) {
+                result.files.push_back({std::format("{}/{}", name.str(), file.path), file.content});
+                continue;
+            }
+            if(!path.consume_back(".cppm") || path.contains('/')) {
+                return std::unexpected(
+                    std::format("configuration {}: {} is no file modularize writes",
+                                name.str(),
+                                file.path));
+            }
+            auto wrapper = read_wrapper(path, file.content);
+            if(!wrapper) {
+                return std::unexpected(std::format("configuration {}: {}: {}",
+                                                   name.str(),
+                                                   file.path,
+                                                   wrapper.error()));
+            }
+            auto& list = wrappers[path];
+            if(list.size() != index) {
+                return differs();
+            }
+            result.files.push_back(
+                {std::format("{}/{}.fragment.h", name.str(), path.str()), wrapper->fragment});
+            list.push_back(std::move(*wrapper));
+        }
+        if(llvm::any_of(wrappers, [&](auto& entry) { return entry.second.size() != index + 1; })) {
+            return differs();
+        }
+    }
+
+    // Each configuration's file of a name, by the first condition holding.
+    auto dispatch = [&](llvm::StringRef file) {
+        std::string text;
+        for(auto [index, configuration]: llvm::enumerate(configurations)) {
+            text += std::format("#{} {}\n#include \"{}/{}\"\n",
+                                index == 0 ? "if" : "elif",
+                                configuration.condition,
+                                configuration.name,
+                                file.str());
+        }
+        return text +
+               "#else\n#error \"no configuration merged matches this compilation\"\n#endif\n";
+    };
+    auto condition = [&](llvm::ArrayRef<std::size_t> group) {
+        if(group.size() == 1) {
+            return configurations[group.front()].condition;
+        }
+        llvm::SmallVector<std::string> conditions;
+        for(auto index: group) {
+            conditions.push_back(std::format("({})", configurations[index].condition));
+        }
+        return llvm::join(conditions, " || ");
+    };
+
+    llvm::StringMap<std::vector<std::string>> imports;
+    for(auto& [module, list]: wrappers) {
+        auto& imported = imports[module];
+        for(auto& wrapper: list) {
+            llvm::SmallVector<llvm::StringRef> lines;
+            llvm::StringRef(wrapper.fragment).split(lines, '\n', -1, false);
+            for(auto line: lines) {
+                if(line.consume_front("import ") && line.consume_back(";") &&
+                   wrappers.contains(line) && !llvm::is_contained(imported, line)) {
+                    imported.push_back(line.str());
+                }
+            }
+        }
+    }
+    auto order = import_order(imports);
+    if(!order) {
+        return std::unexpected(order.error());
+    }
+
+    auto std_mirror =
+        llvm::any_of(emptied, [](llvm::StringRef path) { return path.starts_with("mirror/std/"); });
+    if(std_mirror) {
+        result.plan.mirrors.push_back("mirror/std");
+    }
+    for(auto& name: *order) {
+        auto& module = result.plan.modules.emplace_back();
+        module.name = name;
+        module.source = std::format("{}.cppm", name);
+        module.imports = imports[name];
+        if(std_mirror) {
+            module.mirrors.push_back("mirror/std");
+        }
+        for(auto& imported: module.imports) {
+            module.mirrors.push_back(std::format("mirror/{}", imported));
+        }
+        result.plan.mirrors.push_back(std::format("mirror/{}", name));
+
+        // Exported by every configuration first, then by fewer.
+        std::map<std::tuple<std::string, bool, std::string>, std::vector<std::size_t>> owners;
+        for(auto [index, wrapper]: llvm::enumerate(wrappers[name])) {
+            for(auto& [scope, lines]: wrapper.exports) {
+                for(auto& alias: lines.aliases) {
+                    owners[{scope, true, alias}].push_back(index);
+                }
+                for(auto& used: lines.names) {
+                    owners[{scope, false, used}].push_back(index);
+                }
+            }
+        }
+        std::map<std::pair<std::size_t, std::vector<std::size_t>>, Exports> groups;
+        for(auto& [key, group]: owners) {
+            auto& [scope, alias, line] = key;
+            auto& lines = groups[{configurations.size() - group.size(), group}][scope];
+            (alias ? lines.aliases : lines.names).insert(line);
+        }
+        std::string unit = "module;\n\n" + dispatch(std::format("{}.fragment.h", name)) +
+                           std::format("\nexport module {};\n", name);
+        for(auto& [key, exports]: groups) {
+            unit += "\n";
+            if(key.first == 0) {
+                unit += export_text(exports);
+            } else {
+                unit +=
+                    std::format("#if {}\n{}#endif\n", condition(key.second), export_text(exports));
+            }
+        }
+        result.files.push_back({module.source, std::move(unit)});
+    }
+    for(auto& path: emptied) {
+        result.files.push_back({path, ""});
+    }
+    result.plan.prelude = "prelude.h";
+    result.files.push_back({result.plan.prelude, "#pragma once\n\n" + dispatch("prelude.h")});
+    if(!mirrors) {
+        drop_mirrors(result);
+    }
     return result;
 }
 

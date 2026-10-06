@@ -1,9 +1,10 @@
 name: test
 
 # Every target and build type CI builds, each a leg of its own (test-leg.yml).
-# The suites split further where the runners are slow: ASan processes start
-# slowly on macOS, and the Intel macOS and arm64 Windows runners are slow
-# machines.
+# The Windows targets build on Linux, whose runners build and link them several
+# times faster. The suites split further where the runners are slow: ASan
+# processes start slowly on macOS, and the Intel macOS and arm64 Windows
+# runners are slow machines.
 
 on:
   workflow_call:
@@ -66,6 +67,7 @@ jobs:
   windows-x64:
     uses: ./.github/workflows/test-leg.yml
     with:
+      build_os: ubuntu-24.04
       os: windows-2025
       target: x86_64-w64-mingw32
       asset_name: clice.x86_64-w64-mingw32.zip
@@ -74,7 +76,7 @@ jobs:
   windows-arm64:
     uses: ./.github/workflows/test-leg.yml
     with:
-      build_os: windows-2025
+      build_os: ubuntu-24.04
       os: windows-11-arm
       target: aarch64-w64-mingw32
       asset_name: clice.aarch64-w64-mingw32.zip

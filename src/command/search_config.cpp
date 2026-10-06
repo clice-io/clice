@@ -1,13 +1,13 @@
-#include "command/search_config.h"
+module;
 
-#include "command/argument_parser.h"
-#include "command/command.h"
-#include "vfs/path.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
+module clice;
+
+import :command.argument_parser;
+import :command.command;
+import :command.search_config;
+import :vfs.path;
 
 namespace clice {
 

@@ -1,0 +1,646 @@
+module;
+
+#include "modules/prelude.h"
+
+module clice:feature.feature;
+
+import :compile.compilation;
+import :compile.compilation_unit;
+import :feature.position;
+import :index.manifest;
+import :index.types;
+import :semantic.display;
+import :semantic.symbol;
+import :support.anomaly;
+import :support.markup;
+import :vfs.path;
+
+namespace clice::index {
+
+class Shard;
+
+}
+
+namespace clice::feature {
+
+// Feature options double as their clice.toml/initializationOptions config
+// sections: `defaulted = true` lets a decode leave unmentioned fields at
+// their initializers, so those are the single source of every default and a
+// config source only ever overlays what it names.
+
+/// Render an absolute path as an LSP URI string.
+///
+/// On Windows the path is canonicalized first (lowercase drive, forward
+/// slashes): LSP clients key documents by vscode-uri's lowercase-drive
+/// form, and an uppercase-drive URI from the server never matches there.
+inline auto to_uri(llvm::StringRef file) -> std::string {
+    llvm::SmallString<256> storage;
+    file = path::canonical(file, storage);
+    auto uri = kota::ipc::lsp::URI::from_file_path(std::string_view(file.data(), file.size()));
+    assert(uri && "a URI names an absolute path");
+    return uri->str();
+}
+
+/// The main file's positions, over the line tables the unit caches.
+inline auto main_position_map(CompilationUnitRef unit, PositionEncoding encoding) -> PositionMap {
+    auto content = unit.main_content();
+    return {
+        .content = {content.data(), content.size()},
+        .lines = unit.line_starts(),
+        .non_ascii = unit.non_ascii_lines(),
+        .encoding = encoding,
+    };
+}
+
+/// Corresponds to the `[code_completion]` section in clice.toml.
+struct CodeCompletionOptions {
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Complete statements such as `if` and `for` as snippets "
+                         "with placeholders for their parts; otherwise only the "
+                         "keyword is inserted. Ignored for clients without "
+                         "snippet support.")
+    <bool> enable_keyword_snippet = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Insert function arguments as a snippet when completing "
+                         "a call. For functions this applies to individually "
+                         "listed overloads, so it requires `bundle_overloads = "
+                         "false`; function-like macros have no overload sets and "
+                         "always take the snippet. Ignored for clients without "
+                         "snippet support.")
+    <bool> enable_function_arguments_snippet = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Insert template arguments as a snippet when completing "
+                         "a class, alias or variable template. Ignored for clients "
+                         "without snippet support.")
+    <bool> enable_template_arguments_snippet = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Insert parentheses when completing a function call, "
+                         "unless the name is already followed by one; with snippet "
+                         "support the cursor lands between them.")
+    <bool> insert_paren_in_function_call = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Collapse an overload set into a single completion item.")
+    <bool> bundle_overloads = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Maximum number of completion items (not yet implemented).")
+    <std::uint32_t> limit = 0;
+};
+
+/// What the client takes from a completion item, from its completion
+/// capabilities.
+struct CompletionClient {
+    /// Insert texts may carry placeholders.
+    bool snippets = false;
+
+    /// An item may carry both an insert and a replace range; the editor
+    /// picks one by its own setting.
+    bool insert_replace = false;
+};
+
+/// Corresponds to the `[hover]` section in clice.toml.
+struct HoverOptions {
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Render the hover card as markdown; `false` produces "
+                         "plain text for clients that cannot display it.")
+    <bool> parse_comment_as_markdown = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Show the desugared form of a type, e.g. "
+                         "`vector<int>::size_type (aka unsigned long)`.")
+    <bool> show_aka = true;
+};
+
+/// Contains detailed information about a symbol. Especially useful when
+/// generating hover responses. It can be rendered as a hover panel, or
+/// embedding clients can use the structured information to provide their own
+/// UI.
+struct HoverInfo {
+    struct PassType {
+        /// How the argument is passed to the callee.
+        enum class PassMode : std::uint8_t {
+            Ref,
+            ConstRef,
+            Value,
+        };
+
+        bool operator==(const PassType&) const = default;
+
+        PassMode pass_by = PassMode::Ref;
+
+        /// True if implicit type conversion happened. This includes calls to
+        /// implicit constructor, as well as built-in type conversions. Casting
+        /// to base class is not considered conversion.
+        bool converted = false;
+    };
+
+    using PassMode = PassType::PassMode;
+
+    /// For a variable named Bar, declared in clice::feature::foo the
+    /// following fields will hold:
+    /// - namespace_scope: clice::feature::
+    /// - local_scope: foo::
+    /// - name: Bar
+    ///
+    /// Scopes might be None in cases where they don't make sense, e.g.
+    /// auto/decltype. Contains all of the enclosing namespaces, empty string
+    /// means global namespace.
+    std::optional<std::string> namespace_scope;
+
+    /// Remaining named contexts in the symbol's qualified name, empty string
+    /// means the symbol is not local.
+    std::string local_scope;
+
+    /// Name of the symbol, does not contain any "::".
+    std::string name;
+
+    /// The range of the symbol in the main file, used by the client to
+    /// highlight the hovered token.
+    std::optional<LocalSourceRange> symbol_range;
+
+    SymbolKind kind = SymbolKind::Invalid;
+
+    std::string documentation;
+
+    /// Source code containing the definition of the symbol.
+    std::string definition;
+
+    /// Access specifier for declarations inside class/struct/unions, empty
+    /// for others.
+    std::string access_specifier;
+
+    /// Printable variable type. Set only for variables.
+    std::optional<display::Type> type;
+
+    /// Set for functions and lambdas.
+    std::optional<display::Type> return_type;
+
+    /// Set for functions and lambdas with parameters.
+    std::optional<std::vector<display::Param>> parameters;
+
+    /// Set for all templates (function, class, variable).
+    std::optional<std::vector<display::Param>> template_parameters;
+
+    /// Contains the evaluated value of the symbol if available.
+    std::optional<std::string> value;
+
+    /// Contains the bit-size of fields and types where it's interesting.
+    std::optional<std::uint64_t> size;
+
+    /// Contains the offset of fields within the enclosing class.
+    std::optional<std::uint64_t> offset;
+
+    /// Contains the padding following a field within the enclosing class.
+    std::optional<std::uint64_t> padding;
+
+    /// Contains the alignment of fields and types where it's interesting.
+    std::optional<std::uint64_t> align;
+
+    /// Set when the symbol is inside a function call. Contains information
+    /// extracted from the callee definition about the argument this is
+    /// passed as.
+    std::optional<display::Param> callee_arg_info;
+
+    /// Set only if callee_arg_info is set.
+    std::optional<PassType> call_pass_type;
+
+    /// Produce a user-readable information.
+    markup::Document present() const;
+};
+
+/// Try to infer structure of a documentation comment (e.g. line breaks).
+void parse_documentation(llvm::StringRef input, markup::Document& output);
+
+/// Corresponds to the `[inlay_hints]` section in clice.toml.
+struct InlayHintsOptions {
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Master switch: `false` disables all inlay hints.")
+    <bool> enabled = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Parameter name hints at call sites, e.g. `draw(width: "
+                         "800, height: 600)`, including `&` markers for arguments "
+                         "passed by mutable reference.")
+    <bool> parameters = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Deduced type hints for `auto` variables, structured "
+                         "bindings and deduced return types.")
+    <bool> deduced_types = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Field designator hints in aggregate initialization, "
+                         "e.g. `.x=` and `.y=` in `Point{1, 2}`.")
+    <bool> designators = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "`// name` hints after the closing brace of long blocks "
+                         "(functions, types, namespaces, control flow).")
+    <bool> block_end = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Show the default arguments a call omitted, abbreviated "
+                         "when long.")
+    <bool> default_arguments = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Byte budget for rendered hint text: over-long deduced "
+                         "types fall back to a sugared spelling or are dropped, "
+                         "over-long default arguments are abbreviated. `0` means "
+                         "no limit.")
+    <std::uint32_t> type_name_limit = 32;
+};
+
+struct SignatureHelpOptions {};
+
+struct SemanticToken {
+    LocalSourceRange range;
+    SymbolKind kind = SymbolKind::Invalid;
+    std::uint32_t modifiers = 0;
+};
+
+/// A fold in byte offsets of the main file; it becomes an LSP FoldingRange
+/// only at the reply edge, which knows how the client folds.
+struct FoldingRange {
+    LocalSourceRange range;
+    std::optional<protocol::FoldingRangeKind> kind;
+    std::string collapsed_text;
+
+    /// What a client folding whole lines folds, when it differs from what
+    /// `range` implies: the line holding `begin` stays visible and the
+    /// lines after it hide through the line holding `end`.
+    std::optional<LocalSourceRange> lines;
+};
+
+/// Result of scanning a unit for preprocessor-inactive regions.
+struct InactiveScan {
+    /// Byte-offset ranges [begin0, end0, begin1, end1, ...] of inactive
+    /// branch bodies in the main file; directive lines excluded.
+    /// Sorted by begin and disjoint — nested inactive conditionals merge
+    /// into the enclosing region.
+    std::vector<std::uint32_t> regions;
+
+    /// Conditional levels still open at the end of the scanned content,
+    /// outermost first. Bit 0: the level's current branch is inactive.
+    /// Bit 1: an earlier branch of the level was already taken (decides a
+    /// later #else). Preamble/PCH builds end mid-#if when the bound cuts
+    /// inside a block; the AST compile resumes from this stack.
+    std::vector<std::uint8_t> open_stack;
+};
+
+struct DocumentSymbol {
+    std::string name;
+    std::string detail;
+    SymbolKind kind = SymbolKind::Invalid;
+    LocalSourceRange range;
+    LocalSourceRange selection_range;
+    std::vector<DocumentSymbol> children;
+};
+
+enum class HintCategory : std::uint8_t {
+    Parameter,
+    DefaultArgument,
+    Type,
+    Designator,
+    BlockEnd,
+};
+
+struct InlayHint {
+    std::uint32_t offset = 0;
+    HintCategory kind = HintCategory::Type;
+    std::string label;
+    bool padding_left = false;
+    bool padding_right = false;
+};
+
+/// Semantic tokens of the main file. Tokens inside inactive regions
+/// carry the Inactive modifier, and bare identifiers there emit as
+/// Identifier so every word of a dead region has a token to dim. The
+/// overloads without a regions argument scan the unit themselves — correct
+/// only for units compiled without a PCH; a PCH unit's preamble share
+/// needs the seeded regions the worker assembles at compile time.
+auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken>;
+auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
+    -> protocol::SemanticTokens;
+auto semantic_tokens(CompilationUnitRef unit,
+                     llvm::ArrayRef<std::uint32_t> inactive_regions,
+                     PositionEncoding encoding) -> protocol::SemanticTokens;
+
+/// Wire encoding of computed tokens against the text they describe — one
+/// encoder for the worker's AST results and the master's index
+/// projections, so both paths emit byte-identical replies.
+auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens, const PositionMap& map)
+    -> protocol::SemanticTokens;
+
+auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange>;
+
+/// The kind of the fold a declaration's block makes, by the declaration's
+/// kind; none for a declaration owning no block. The AST collector and the
+/// index projection share it, so a block keeps its kind when the AST
+/// takes over.
+auto declaration_fold_kind(SymbolKind kind) -> std::optional<protocol::FoldingRangeKind>;
+
+/// The lines a line-folding client folds for a declaration's `block` when
+/// its brace sits below `head` — the declaration's name, or the keyword
+/// opening the block: from the head's line, which stays visible. Nullopt
+/// when the block keeps its own lines: the brace shares the head's line,
+/// the block hides nothing but its brace line, or one of the sorted
+/// `block_directives` offsets lies between head and brace (the fold would
+/// cut across a conditional branch's).
+auto declaration_lines(llvm::StringRef content,
+                       LocalSourceRange block,
+                       std::uint32_t head,
+                       llvm::ArrayRef<std::uint32_t> block_directives)
+    -> std::optional<LocalSourceRange>;
+
+/// Wire encoding of computed folds, for the worker's AST results and the
+/// master's index projections alike. A `line_folding_only` client folds
+/// whole lines and ignores the character offsets.
+auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
+                                const PositionMap& map,
+                                bool line_folding_only) -> std::vector<protocol::FoldingRange>;
+
+auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol>;
+auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
+    -> std::vector<protocol::DocumentSymbol>;
+
+auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols, const PositionMap& map)
+    -> std::vector<protocol::DocumentSymbol>;
+
+auto inlay_hints(CompilationUnitRef unit,
+                 LocalSourceRange target,
+                 const InlayHintsOptions& options = {}) -> std::vector<InlayHint>;
+auto inlay_hints(CompilationUnitRef unit,
+                 LocalSourceRange target,
+                 const InlayHintsOptions& options,
+                 PositionEncoding encoding) -> std::vector<protocol::InlayHint>;
+
+/// Include-directive links of the main file, in byte offsets; the
+/// reply edge converts them with the session's line map.
+auto document_links(CompilationUnitRef unit) -> std::vector<index::DocumentLink>;
+
+/// Find the filename-like argument of a preprocessor directive on the line
+/// containing `offset`. The offset may point at the directive/operator or
+/// inside its argument.
+auto find_directive_argument(llvm::StringRef content,
+                             std::uint32_t offset,
+                             const clang::LangOptions* lang_opts)
+    -> std::optional<LocalSourceRange>;
+
+/// Scan the main file's condition directives. `open_stack` seeds the
+/// nesting state (from a preceding preamble scan) and `resume_offset` is
+/// where the scanned content starts — pending inactive levels from the
+/// seed begin there. A scan that ends with open levels closes their
+/// pending regions at `end_offset` (the content bound).
+InactiveScan inactive_regions(CompilationUnitRef unit,
+                              llvm::ArrayRef<std::uint8_t> open_stack = {},
+                              std::uint32_t resume_offset = 0,
+                              std::uint32_t end_offset = UINT32_MAX);
+
+auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
+    -> std::vector<protocol::Diagnostic>;
+
+/// A warning from clice itself about the file as a whole, on its first
+/// character.
+protocol::Diagnostic file_warning(std::string message);
+
+auto code_complete(CompilationParams& params,
+                   const CodeCompletionOptions& options = {},
+                   const CompletionClient& client = {},
+                   PositionEncoding encoding = PositionEncoding::UTF16)
+    -> std::vector<protocol::CompletionItem>;
+
+/// Get the hover information for the symbol at the given offset in the
+/// main file of the unit.
+auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOptions& options = {})
+    -> std::optional<HoverInfo>;
+
+/// Render structured hover information with the configured markup format and
+/// convert its byte range through the caller's current line map.
+auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const PositionMap& map)
+    -> protocol::Hover;
+
+auto hover(CompilationUnitRef unit,
+           std::uint32_t offset,
+           const HoverOptions& options = {},
+           PositionEncoding encoding = PositionEncoding::UTF16) -> std::optional<protocol::Hover>;
+
+auto signature_help(CompilationParams& params, const SignatureHelpOptions& options = {})
+    -> protocol::SignatureHelp;
+
+auto document_format(llvm::StringRef file,
+                     llvm::StringRef content,
+                     std::optional<LocalSourceRange> range,
+                     PositionEncoding encoding = PositionEncoding::UTF16)
+    -> std::vector<protocol::TextEdit>;
+
+/// One replacement of the main file's text, in byte offsets of the text
+/// the action was computed against.
+struct TextReplacement {
+    LocalSourceRange range;
+    std::string text;
+};
+
+/// The kinds the actions produce: the advertised capability, and what a
+/// request's `only` filter is matched against.
+constexpr inline std::array<std::string_view, 3> code_action_kinds = {
+    protocol::CodeActionKind::QuickFix,
+    protocol::CodeActionKind::RefactorInline,
+    protocol::CodeActionKind::RefactorRewrite,
+};
+
+/// One definition the index vets: dropped when any source knows a
+/// definition of its symbol — this TU proved nothing defines it here,
+/// another TU may.
+struct DefinitionPiece {
+    std::uint64_t entity = 0;
+    std::string text;
+};
+
+/// Definitions to insert into the main file once the index vetted them:
+/// the surviving pieces joined by blank lines replace `range`, wrapped in
+/// `before` and `after`, formatted by whoever assembles them.
+struct DefineRequest {
+    LocalSourceRange range;
+    std::string before;
+    std::string after;
+    std::vector<DefinitionPiece> pieces;
+};
+
+/// Definitions to insert into the file's host source once the index
+/// vetted them: after the definitions of `container`'s members there, at
+/// its end when it has none (a container of 0 goes to the end outright).
+/// The texts are fully qualified, valid at namespace scope anywhere in
+/// the host.
+struct DefineInHostRequest {
+    std::uint64_t container = 0;
+    std::vector<DefinitionPiece> pieces;
+};
+
+/// Where a new `#include` line goes in the main file. A module unit
+/// without a global module fragment gets one opened there.
+struct IncludeInsertion {
+    std::uint32_t offset = 0;
+    bool opens_fragment = false;
+
+    /// The text inserting `#include <header>`, the header spelled with its
+    /// quotes or brackets.
+    std::string text(llvm::StringRef header) const {
+        return std::format("{}#include {}\n", opens_fragment ? "module;\n" : "", header);
+    }
+};
+
+/// One action per header declaring `name` under `scope` ("std::" style,
+/// empty for an unqualified name), each inserting its include directive
+/// at `insertion` of the main file.
+struct IncludeRequest {
+    std::string scope;
+    std::string name;
+    IncludeInsertion insertion;
+};
+
+/// What only the project index can settle: resolved by the master at the
+/// reply edge; clice inspect resolves it as an empty index would.
+using IndexRequest = std::variant<DefineRequest, DefineInHostRequest, IncludeRequest>;
+
+struct CodeAction {
+    std::string title;
+    protocol::CodeActionKind kind;
+    std::vector<TextReplacement> edits;
+    std::optional<IndexRequest> index;
+};
+
+/// The code actions available on a selection of the main file. Every
+/// action is computed to completion against this AST: single-TU actions
+/// carry their edits, the ones needing the index carry their request.
+auto code_actions(CompilationUnitRef unit, LocalSourceRange selection) -> std::vector<CodeAction>;
+
+/// The pieces the index keeps, joined by blank lines; nullopt when none
+/// survives.
+auto assemble_definitions(llvm::ArrayRef<DefinitionPiece> pieces,
+                          llvm::function_ref<bool(std::uint64_t entity)> defined_elsewhere)
+    -> std::optional<std::string>;
+
+/// Reformat the lines `edits` touch with the clang-format style configured
+/// for the file, folding the formatting back into replacements of the
+/// original text. Without a configured style, or with one that disables
+/// formatting, the edits come back unchanged.
+auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<TextReplacement> edits)
+    -> std::vector<TextReplacement>;
+
+/// `text` reformatted as a standalone snippet with the style configured
+/// for `file`; unchanged without one.
+auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string;
+
+/// Index projections: whole-document features computed from index rows plus
+/// the document text, serving open files that have no AST yet (see
+/// Features' routing rules). Inputs are index vocabulary types and
+/// narrow resolvers, never index storage — the caller extracts rows from
+/// shard/ProjectIndex and hands them over. Each projection's output is an
+/// honest subset of its AST twin's: missing pieces (Sema modifiers, outline
+/// detail, statement folds, ...) are pinned by the read-only test corpus.
+
+/// One Decl/Def relation row of the document: the name-token anchor, the
+/// declaration's full extent (invalid when the index recorded none — a
+/// cross-file or invalid source range) and the symbol it belongs to.
+struct IndexDeclRow {
+    LocalSourceRange range;
+    LocalSourceRange extent;
+    index::SymbolHash symbol = 0;
+    bool definition = false;
+};
+
+/// The rows of one document the projections consume, extracted from its
+/// serving shard: every occurrence, the reference rows of names nested in
+/// another's written name (the class in `~Foo`, which owns no occurrence
+/// there) as occurrences of their own, and the Decl/Def relations as decl
+/// rows.
+struct IndexRows {
+    std::vector<index::Occurrence> occurrences;
+    std::vector<IndexDeclRow> decls;
+};
+
+auto extract_index_rows(const index::Shard& shard) -> IndexRows;
+
+using IndexIncludeEdge = index::IncludeEdge;
+
+using IndexSymbolResolver = llvm::function_ref<std::optional<index::SymbolRef>(index::SymbolHash)>;
+
+/// Language options for raw-lexing `path` without a compile command: C
+/// for .c files and when `c_rows` says the served rows were built by C
+/// parses only, C++ otherwise. A default-constructed LangOptions is C89
+/// — `class` would lex as an identifier. `standard` is the serving
+/// command's -std value when known: the rows were classified under it,
+/// and a newer standard's extra keywords (`concept` in C++17 code)
+/// would shadow them. Absent, unknown or contradicting values fall back
+/// to the driver's default standard — the dialect a -std-less command
+/// was indexed under.
+auto index_lang_options(llvm::StringRef path, bool c_rows, llvm::StringRef standard = {})
+    -> const clang::LangOptions&;
+
+/// Lexical layer (keywords, literals, comments, directives) from a raw lex
+/// of `content`, semantic kinds from `occurrences` resolved through
+/// `resolve`, Declaration/Definition modifiers from `decls`, both in any
+/// order.
+auto index_semantic_tokens(llvm::StringRef content,
+                           const clang::LangOptions& lang_opts,
+                           llvm::ArrayRef<index::Occurrence> occurrences,
+                           llvm::ArrayRef<IndexDeclRow> decls,
+                           IndexSymbolResolver resolve) -> std::vector<SemanticToken>;
+
+/// The outline's SymbolKind -> LSP mapping, exhaustive over the enum so a
+/// new kind fails to compile rather than fall into a default. The index
+/// navigation surfaces layer their own policy for the kinds whose display
+/// differs (see to_lsp::symbol_kind).
+auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind;
+
+/// Outline tree built from declaration extents by range containment;
+/// extents that merely overlap (macro-generated siblings collapse onto one
+/// invocation range) become siblings in source order. `detail` stays empty.
+auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls, IndexSymbolResolver resolve)
+    -> std::vector<DocumentSymbol>;
+
+/// Declaration folds: each definition extent folds its last balanced brace
+/// group (brace matching over a raw lex, so braces in strings, comments
+/// and directive lines do not count), keeping the name and signature
+/// visible like the AST folds do. Extents touching a conditional whose
+/// branches unbalance braces produce no fold — a raw pairing there is
+/// wrong for some preprocessing variant.
+auto index_folding_ranges(llvm::StringRef content,
+                          const clang::LangOptions& lang_opts,
+                          llvm::ArrayRef<IndexDeclRow> decls,
+                          IndexSymbolResolver resolve) -> std::vector<FoldingRange>;
+
+/// Document links from manifest include edges: each edge's argument span is
+/// located with find_directive_argument on its directive line. Lines the
+/// manifest has no edge for (guard-skipped includes, __has_include, #embed)
+/// produce no link.
+auto index_document_links(llvm::StringRef content,
+                          const clang::LangOptions& lang_opts,
+                          llvm::ArrayRef<IndexIncludeEdge> edges)
+    -> std::vector<index::DocumentLink>;
+
+/// Assemble the read-only hover card: name, kind and what the index can
+/// prove from stored text — no Sema products (type, value, size, aka) and
+/// no qualified scope (the index stores unqualified names).
+auto index_hover(const index::SymbolRef& info,
+                 llvm::StringRef definition_text,
+                 llvm::StringRef comment) -> HoverInfo;
+
+}  // namespace clice::feature

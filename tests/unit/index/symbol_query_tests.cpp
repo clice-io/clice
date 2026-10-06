@@ -1,10 +1,11 @@
-#include <string>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "index/symbol_query.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/SmallVector.h"
+module clice;
+
+import :index.symbol_query;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

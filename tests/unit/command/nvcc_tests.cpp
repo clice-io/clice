@@ -1,11 +1,15 @@
-#include <algorithm>
+module;
 
-#include "test/cdb_helper.h"
-#include "test/test.h"
-#include "command/command.h"
-#include "command/nvcc.h"
-#include "command/toolchain.h"
-#include "vfs/path.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :command.command;
+import :command.nvcc;
+import :command.toolchain;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.test;
+import :vfs.path;
 
 namespace clice::testing {
 namespace {

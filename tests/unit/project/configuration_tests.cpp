@@ -1,8 +1,14 @@
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "config/config.h"
-#include "project/configuration.h"
-#include "vfs/path.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :config.config;
+import :project.configuration;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.path;
 
 namespace clice::testing {
 

@@ -1,7 +1,6 @@
-#include "support/log_sinks.h"
+module;
 
-#include <cerrno>
-#include <format>
+#include "modules/prelude.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -16,8 +15,9 @@
 #include <unistd.h>
 #endif
 
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Process.h"
+module clice;
+
+import :support.log_sinks;
 
 namespace clice::logging {
 

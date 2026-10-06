@@ -1,15 +1,15 @@
-#include <format>
+module;
 
-#include "test/cdb_helper.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "config/config.h"
-#include "project/build.h"
-#include "vfs/path.h"
+#include "modules/prelude.h"
 
-#include "kota/codec/dyn/decode.h"
-#include "kota/codec/json/json.h"
-#include "kota/codec/toml/toml.h"
+module clice;
+
+import :config.config;
+import :project.build;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.path;
 
 namespace clice::testing {
 

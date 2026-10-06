@@ -1,13 +1,13 @@
+module;
+
+#include "modules/prelude.h"
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "semantic/expr_hash.h"
+module clice;
 
-#include <utility>
-
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/ExprConcepts.h"
+import :semantic.expr_hash;
 
 namespace clice {
 

@@ -1,13 +1,17 @@
-#include "sched/families/turun.h"
+module;
 
-#include <cassert>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "compile/compilation.h"
-#include "sched/families/pcm.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "worker/protocol.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :compile.compilation;
+import :sched.families.pcm;
+import :sched.families.turun;
+import :support.logging;
+import :support.timer;
+import :worker.protocol;
 
 namespace clice {
 

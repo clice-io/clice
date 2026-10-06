@@ -1,9 +1,14 @@
-#include <string>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
+#include "modules/prelude.h"
+
+#include "support/anomaly.macros.h"
+
+module clice;
+
+import :support.anomaly;
+import :support.logging;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

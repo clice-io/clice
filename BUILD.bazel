@@ -1,7 +1,7 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@xclang//bazel:resource_dir.bzl", "xclang_resource_dir")
-load("//bazel:defs.bzl", "COPTS", "LINKOPTS", "benchmark_programs", "release_packages")
+load("//bazel:defs.bzl", "CLICE_COPTS", "COPTS", "LINKOPTS", "benchmark_programs", "release_packages")
 
 xclang_resource_dir(name = "resource_dir")
 
@@ -13,18 +13,23 @@ cc_library(
 )
 
 # Layered libraries: core <- config <- {project, worker} <- sched <- server,
-# and project <- analysis. Each layer may include downward only; the
-# dependency graph plus the layering check in CI (`pixi run check-layers`)
-# enforce the boundary — sched and below never see an LSP or server header,
-# and a project never sees scheduling. They compile against libclang's
-# headers; the programs link its libraries.
+# project <- analysis, and {analysis, server} <- driver. Each layer may
+# include or import downward only; the dependency graph plus the layering
+# check in CI (`pixi run check-layers`) enforce the boundary — sched and
+# below never see an LSP or server header, and a project never sees
+# scheduling. Inside core the directories are
+# layered in this order, which only the check enforces. They compile against
+# libclang's headers; the programs link its libraries. All of clice is one
+# C++20 module, clice: each header is a partition (<stem>.cppm beside its
+# source) and each source an implementation unit; the primary interface,
+# src/module.cppm, exports nothing and sits in the lowest library.
 CORE = [
     "support",
     "vfs",
-    "syntax",
     "command",
-    "compile",
+    "syntax",
     "semantic",
+    "compile",
     "index",
     "feature",
 ]
@@ -32,30 +37,31 @@ CORE = [
 cc_library(
     name = "core",
     srcs = glob(["src/%s/**/*.cpp" % layer for layer in CORE]),
-    hdrs = glob(["src/%s/**/*.h" % layer for layer in CORE] + ["src/compile/*.inc"]),
-    copts = COPTS,
+    hdrs = glob(
+        ["src/%s/**/*.h" % layer for layer in CORE] + ["src/compile/*.inc"],
+        allow_empty = True,
+    ),
+    copts = CLICE_COPTS,
+    features = ["cpp_modules"],
+    module_interfaces = ["src/module.cppm"] + glob(["src/%s/**/*.cppm" % layer for layer in CORE]),
     deps = [
         ":version",
-        "@libclang//:headers",
-        "@croaring",
-        "@kotatsu//:codec_flatbuffers",
-        "@kotatsu//:codec_json",
-        "@kotatsu//:codec_toml",
-        "@kotatsu//:ipc_json",
-        "@kotatsu//:ipc_lsp",
-        "@kotatsu//:option",
-        "@kotatsu//:support",
-        "@lmdb",
-        "@simdjson",
-        "@spdlog",
+        "//modules",
     ],
 )
 
 [cc_library(
     name = layer,
-    srcs = glob(["src/%s/**/*.cpp" % layer]),
-    hdrs = glob(["src/%s/**/*.h" % layer]),
-    copts = COPTS,
+    srcs = glob(
+        [
+            "src/%s/**/*.cpp" % layer,
+            "src/%s/**/*.cc" % layer,
+        ],
+        allow_empty = True,
+    ),
+    copts = CLICE_COPTS,
+    features = ["cpp_modules"],
+    module_interfaces = glob(["src/%s/**/*.cppm" % layer]),
     deps = deps,
 ) for layer, deps in [
     ("config", [":core"]),
@@ -65,63 +71,74 @@ cc_library(
         ":project",
         ":worker",
     ]),
-    ("server", [
-        ":sched",
-        "@kotatsu//:deco",
-    ]),
+    ("server", [":sched"]),
     ("analysis", [":project"]),
+    ("driver", [
+        ":analysis",
+        ":server",
+    ]),
 ]]
+
+# The allocator of the Windows executable, no part of the module: it
+# includes the standard headers as they are.
+cc_library(
+    name = "allocator",
+    srcs = ["src/mimalloc.cc"],
+    copts = COPTS,
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = ["@mimalloc"],
+    alwayslink = True,
+)
 
 # The programs are in bin/, next to the resource directory they read.
 cc_binary(
     name = "bin/clice",
-    srcs = ["src/clice.cc"] + glob(["src/driver/*"]) + select({
-        "@platforms//os:windows": ["src/mimalloc.cc"],
-        "//conditions:default": [],
-    }),
-    copts = COPTS,
+    srcs = ["src/clice.cc"],
+    copts = CLICE_COPTS,
     data = [":resource_dir"],
     # lld's --gc-sections, which xclang leaves off for Windows, where it
     # drops the initializers of variables no one reads that are COMDATs of
     # their own: neither program registers anything that way (zest keeps
     # its tests registered).
     features = [
+        "cpp_modules",
         "gc_sections",
         "generate_dsym_file",
     ],
     linkopts = LINKOPTS,
     deps = [
-        ":analysis",
-        ":server",
+        ":driver",
         "//bazel:llvm",
-        "@kotatsu//:deco",
     ] + select({
-        "@platforms//os:windows": ["@mimalloc"],
+        "@platforms//os:windows": [":allocator"],
         "//conditions:default": [],
     }),
 )
 
+# The test helpers: partitions of clice too, which the tests import.
+cc_library(
+    name = "unit_test_support",
+    srcs = ["tests/unit/test/tester.cpp"],
+    copts = CLICE_COPTS,
+    features = ["cpp_modules"],
+    local_defines = ['CLICE_TESTS_DATA_DIR=\\"tests/data\\"'],
+    module_interfaces = glob(["tests/unit/**/*.cppm"]),
+    deps = [":driver"],
+)
+
 cc_binary(
     name = "bin/unit_tests",
-    srcs = [
-        # The log level option, as the programs take it.
-        "src/driver/driver.h",
-        "tests/unit/test/tester.cpp",
-        "tests/unit/unit_tests.cc",
-    ] + glob([
-        "tests/unit/*/*_tests.cpp",
-        "tests/unit/**/*.h",
-    ]),
-    copts = COPTS + ["-Itests/unit"],
+    srcs = ["tests/unit/unit_tests.cc"] + glob(["tests/unit/*/*_tests.cpp"]),
+    copts = CLICE_COPTS,
     data = [":resource_dir"],
-    features = ["gc_sections"],
+    features = [
+        "cpp_modules",
+        "gc_sections",
+    ],
     linkopts = LINKOPTS,
-    local_defines = ['CLICE_TESTS_DATA_DIR=\\"tests/data\\"'],
     deps = [
-        ":server",
+        ":unit_test_support",
         "//bazel:llvm",
-        "@kotatsu//:deco",
-        "@kotatsu//:zest_async",
     ],
 )
 
