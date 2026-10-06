@@ -132,6 +132,10 @@ struct Entity {
     /// unit entering its owner does.
     std::vector<std::uint32_t> units;
 
+    /// Only some readings of the file declaring it declare it: the C
+    /// library's <time.h> under __need_time_t lacks localtime_r.
+    bool partial = false;
+
     /// The name a module interface exports it by: its own at namespace
     /// scope, `ns::E` for an enumerator of an unscoped enum at namespace
     /// scope; empty for a member, a specialization or a macro.
@@ -750,9 +754,11 @@ struct InterfaceHeader {
     /// first.
     std::vector<std::string> names;
 
-    /// The directive's operand to include it by: `<name>` when some file
-    /// spells it so, else its quoted path. A system header resolves by the
-    /// search path alone: <stdio.h> by its path would #include_next itself.
+    /// The directive's operand to include it by: the name files of other
+    /// modules spell it by, an angled one first, else the name its own
+    /// module's files spell it by, else its quoted path. A system header
+    /// resolves by the search path alone: <stdio.h> by its path would
+    /// #include_next itself.
     std::string include;
 
     /// For a kept module, one name a file of another module reaches only

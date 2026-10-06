@@ -490,6 +490,8 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     /// for a file read differently across units.
     llvm::DenseMap<std::pair<std::uint32_t, index::SymbolHash>, llvm::SmallVector<std::uint32_t>>
         declaring_units;
+    /// (file, entity) declared by only some of the file's variants.
+    llvm::DenseSet<std::pair<std::uint32_t, index::SymbolHash>> partially_declared;
     std::vector<std::vector<std::pair<std::uint32_t, index::SymbolHash>>> use_rows(
         facts.files.size());
     /// Specialization, primary template, file.
@@ -526,7 +528,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         // count, as the dependence of some configuration.
         auto live = index.live_variants(fids[id]);
         if(live.size() > 1) {
-            llvm::DenseMap<index::SymbolHash, std::uint32_t> carried;
+            llvm::DenseMap<index::SymbolHash, std::uint32_t> carried, declaring;
             std::optional<llvm::DenseSet<index::SymbolHash>> declared;
             for(auto variant: live) {
                 shard.set_live({variant});
@@ -545,12 +547,18 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                     facts.files[id].declarations_differ = true;
                 }
                 for(auto hash: declares) {
+                    declaring[hash] += 1;
                     auto& units = declaring_units[{id, hash}];
                     units.append(contributors.lookup({id, variant}));
                 }
                 declared = std::move(declares);
             }
             shard.set_live(live);
+            for(auto& [hash, count]: declaring) {
+                if(count != live.size()) {
+                    partially_declared.insert({id, hash});
+                }
+            }
             auto& unstable = facts.files[id].unstable;
             for(auto& [hash, count]: carried) {
                 if(count != live.size()) {
@@ -1006,6 +1014,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                     units.erase(std::ranges::unique(units).begin(), units.end());
                     return std::vector<std::uint32_t>(units.begin(), units.end());
                 }(),
+            .partial = partially_declared.contains({declared_in, hash}),
             // A hidden friend has no name lookup finds; argument dependent
             // lookup reaches it through its class.
             .export_name = llvm::is_contained({SymbolKind::Function,
@@ -3013,8 +3022,8 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         return facts.files[file].variants > 1;
     };
     llvm::DenseMap<std::uint32_t, llvm::DenseSet<std::uint32_t>> closures;
-    auto reaches = [&](std::uint32_t user, std::uint32_t target, bool everywhere) {
-        if(contextual(target) && !everywhere) {
+    auto reaches = [&](std::uint32_t user, std::uint32_t target, bool every_reading) {
+        if(contextual(target) && !every_reading) {
             return user == target || llvm::is_contained(facts.files[user].includes, target);
         }
         auto [it, inserted] = closures.try_emplace(user);
@@ -3152,13 +3161,11 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         auto module = module_of(info.owner);
         auto kept = partition.kinds[module] == ModuleKind::Textual;
         auto& users = reverse.users[entity];
-        auto everywhere =
-            info.units.empty() || info.units.size() == facts.files[info.owner].units.size();
         auto user = llvm::find_if(users, [&](std::uint32_t candidate) {
             return module_of(candidate) != module &&
                    partition.kinds[module_of(candidate)] != ModuleKind::External &&
                    (!kept || (!self_declared.contains({entity, candidate}) &&
-                              !reaches(candidate, info.owner, everywhere)));
+                              !reaches(candidate, info.owner, !info.partial)));
         });
         auto outside = user != users.end();
         if(info.kind == SymbolKind::Macro) {
@@ -3321,8 +3328,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         InterfaceHeader header{.file = info.path,
                                .include = by_path,
                                .because = std::move(because)};
-        // The module's own name for a header no other module includes.
-        llvm::StringRef inside;
+        llvm::StringRef own_spelling;
         for(std::size_t i = 0; i < info.includers.size(); i += 1) {
             auto includer = info.includers[i];
             llvm::StringRef spelled = info.spellings[i];
@@ -3341,12 +3347,11 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                 }
             }
             if(module_of(includer) == module) {
-                if(inside.empty()) {
-                    inside = spelled;
+                if(own_spelling.empty()) {
+                    own_spelling = spelled;
                 }
                 continue;
             }
-            // By a name the include path finds, an angled one first.
             if(header.include == by_path ||
                (spelled.starts_with("<") && !llvm::StringRef(header.include).starts_with("<"))) {
                 header.include = spelled;
@@ -3355,8 +3360,8 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                 header.names.push_back(name.str());
             }
         }
-        if(header.include == by_path && !inside.empty()) {
-            header.include = inside.str();
+        if(header.include == by_path && !own_spelling.empty()) {
+            header.include = own_spelling.str();
         }
         std::ranges::sort(header.names);
         return header;

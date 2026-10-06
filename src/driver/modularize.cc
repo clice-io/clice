@@ -90,7 +90,7 @@ struct MergeFile {
     struct Configuration {
         std::string name;
         std::string condition;
-        /// Relative to the merge file.
+        /// Relative to the merge file unless absolute.
         std::string out;
     };
 

@@ -377,6 +377,9 @@ function writeProgram(ws: Workspace): void {
             "namespace tool {",
             "int run(const core::Text& text, core::Sink* sink, core::Box<int>* box = nullptr);",
             "}",
+            "namespace tool::detail {",
+            "#define TOOL_DETAIL 1",
+            "}",
         ),
     );
     ws.write(
@@ -501,6 +504,10 @@ test("C library kept headers", async ({ session }) => {
         ["<cio.h>", "fake_stdout in app/main.cpp"],
         ["<cva.h>", "fake_vprint in app/third.cpp"],
     ]);
+    // Seen at all: what direct.cpp and third.cpp include.
+    expect(libc.entries.map((header) => header.include)).toEqual(
+        expect.arrayContaining(["<cwin.h>", "<cwide.h>", "<csmall.h>"]),
+    );
     const macros = libc.macros.map((macro) => macro.name);
     expect(macros).toContain("FAKE_EOF");
     expect(macros).toContain("fake_stdout");
@@ -805,6 +812,8 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(tool).toContain("export module app.tool:tool;");
     expect(tool).toContain("import app.core;");
     expect(tool).not.toContain("namespace core {");
+    // A namespace holding a directive is no empty one.
+    expect(tool).toContain("namespace tool::detail {\n#define TOOL_DETAIL 1\n}");
     expect(ws.read("app/tool/tool.cpp")).toContain('#include "core/text.macros.h"');
     // The guard's macro, which tool.cpp tests, outlives the guard.
     expect(ws.read("app/core/sink.macros.h")).toBe(lines("#pragma once", "", "#define SINK_H"));
@@ -907,12 +916,15 @@ test("modularize merges configurations", async ({ session }) => {
         "}",
         "#endif",
     );
-    // What both export first, unconditionally.
-    expect(merged.indexOf("using ::alpha::Color;")).toBeGreaterThan(-1);
-    expect(merged.indexOf("using ::alpha::Color;")).toBeLessThan(merged.indexOf(one));
-    expect(merged.indexOf(one)).toBeLessThan(merged.indexOf(two));
+    // What both export first, unconditionally, then a block per group.
+    const purview = merged.slice(merged.indexOf("\nexport module alpha;\n"));
+    expect(purview.split("#if ")).toHaveLength(3);
+    expect(purview.indexOf("using ::alpha::Color;")).toBeGreaterThan(-1);
+    expect(purview.indexOf("using ::alpha::Color;")).toBeLessThan(purview.indexOf("#if "));
+    expect(purview.endsWith(one + "\n" + two)).toBe(true);
     const beta = ws.read("merged/beta.cppm");
-    expect(beta.slice(beta.indexOf("export module beta;"))).not.toContain("#if");
+    expect(beta).toContain("\nexport module beta;\n");
+    expect(beta.slice(beta.indexOf("\nexport module beta;\n"))).not.toContain("#if");
 
     expect(ws.read("merged/mirror/alpha/alpha/wide.h")).toBe("");
     expect(ws.read("merged/mirror/alpha/alpha/alpha.h")).toBe("");
@@ -930,11 +942,41 @@ test("modularize merges configurations", async ({ session }) => {
     expect(ws.exists("bare/mirror")).toBe(false);
     expect(ws.read("bare/alpha.cppm")).toBe(merged);
 
+    // A third configuration like the second: what both export is under
+    // either condition.
+    cpSync(ws.path("two"), ws.path("three"), { recursive: true });
+    const three = [...configurations, { name: "three", condition: "defined(THREE)", out: "three" }];
+    ws.write("merge3.json", JSON.stringify({ configurations: three }));
+    expect((await merge(ws.path("merge3.json"))).status).toBe(0);
+    expect(ws.read("merged/alpha.cppm")).toContain(
+        lines(
+            "#if (defined(TWO)) || (defined(THREE))",
+            "export namespace al = ::alpha::wide;",
+            "",
+            "export namespace alpha {",
+            "using ::alpha::blue;",
+            "}",
+            "#endif",
+        ),
+    );
+
     const failure = async (run: Promise<ProcessResult>) => {
         const result = await run;
         expect(result.status, result.stdout).toBe(1);
         return (JSON.parse(result.stdout) as { error: string }).error;
     };
+    ws.write(
+        "unconditioned.json",
+        JSON.stringify({ configurations: [{ ...configurations[0], condition: "" }] }),
+    );
+    expect(await failure(merge(ws.path("unconditioned.json")))).toBe(
+        "configuration one has no condition",
+    );
+    const noStd = ws.read("three/.modularize").replace(/^mirror\/std\/.*\n/gm, "");
+    ws.write("three/.modularize", noStd);
+    expect(await failure(merge(ws.path("merge3.json")))).toBe(
+        "configurations one and three differ in emptying the standard headers",
+    );
     ws.write("two/.modularize", ws.read("two/.modularize").replace("beta.cppm\n", ""));
     expect(await failure(merge())).toBe("configurations one and two wrap different modules");
     ws.write(

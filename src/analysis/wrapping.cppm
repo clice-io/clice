@@ -27,8 +27,8 @@ std::expected<StdModules, std::string> read_std_modules(llvm::StringRef director
 /// The wrapped modules of a partition as interface units over their
 /// headers, and what the build needs to compile the program against them:
 /// the program's sources stay as they are, a directory first on their
-/// include path empties the wrapped headers and a force-included prelude
-/// imports the modules and replays their macros.
+/// include path empties the wrapped headers unless mirrors are off, and a
+/// force-included prelude imports the modules and replays their macros.
 struct Wrapping {
     struct File {
         /// Relative to the output directory.
