@@ -100,10 +100,11 @@ struct LenderIndex {
 /// (CommandSource::Inferred), among the units the build compiles in a
 /// language the file can be part of (a `.h` matches any, a `.c` borrows
 /// C++ only from a `.c` unit compiled as C++): one in the file's
-/// directory — same stem first, then by name — with its first command; else, for a header, the unit whose command's header
-/// search directories contain it, nearest directory first, with that
-/// command; else the unit closest by path. Nullopt when the build has no
-/// such unit.
+/// directory — same stem first, then by name — with its first command;
+/// else, for a header, the unit whose command's header search
+/// directories contain it, nearest directory first, with that command;
+/// else the unit closest by path. Nullopt when the build has no such
+/// unit.
 std::optional<Lender> command_lender(Project& project, Fid file);
 
 /// The host a header compiles under when nothing is pinned: the first
