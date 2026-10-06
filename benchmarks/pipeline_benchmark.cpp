@@ -38,6 +38,7 @@ import :support.logging;
 import :support.timer;
 import :syntax.scan;
 import :vfs.file_system;
+import :worker.serialize;
 
 using namespace clice;
 
@@ -280,7 +281,12 @@ FileResult profile_file(llvm::StringRef file,
         auto links = feature::document_links(unit);
         auto inactive = feature::inactive_regions(unit, {}, 0, result.preamble_bound);
         open_conditionals = std::move(inactive.open_stack);
-        auto blob = index::build_preamble_index(unit, links, inactive.regions, open_conditionals);
+        auto diagnostics = to_client_json(feature::diagnostics(unit), "[]");
+        auto blob = index::build_preamble_index(unit,
+                                                links,
+                                                inactive.regions,
+                                                open_conditionals,
+                                                diagnostics);
 
         // The PCH is flushed to disk by the unit's destructor; the blob
         // write follows it, like the worker's on-disk ordering contract.
