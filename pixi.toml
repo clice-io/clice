@@ -137,22 +137,19 @@ cmd = "node tools/docs/config.ts update"
 depends-on = ["install-tests"]
 
 # docs/en and docs/zh are both hand-edited; docs/meta/translations holds
-# the per-segment hash pairs tying them together (tools/docs/translate.ts).
+# the per-segment hash pairs tying them together. The checker comes from
+# clice-io/docs (tools/translations, its RULES.md states the contract).
 [tasks.check-doc-translations]
-cmd = "node tools/docs/translate.ts check"
-depends-on = ["install-tests"]
+cmd = "node tools/docs/translations.ts check"
 
 [tasks.report-doc-translations]
-cmd = "node tools/docs/translate.ts report"
-depends-on = ["install-tests"]
+cmd = "node tools/docs/translations.ts report"
 
 [tasks.record-doc-translations]
-cmd = "node tools/docs/translate.ts record"
-depends-on = ["install-tests"]
+cmd = "node tools/docs/translations.ts record"
 
 [tasks.review-doc-translations]
-cmd = "node tools/docs/translate.ts review"
-depends-on = ["install-tests"]
+cmd = "node tools/docs/translations.ts review --glossary=.claude/skills/translate-docs/SKILL.md"
 
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]

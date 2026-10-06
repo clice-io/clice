@@ -2,6 +2,20 @@ module;
 
 #include "modules/prelude.h"
 
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <pthread.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "support/logging.macros.h"
 
 module clice;
@@ -34,6 +48,25 @@ kota::task<std::expected<std::string, std::string>> execute(std::vector<std::str
     }
 
     co_return capture_stdout ? std::move(captured->stdout_data) : std::move(captured->stderr_data);
+}
+
+void release_free_memory() {
+#ifdef __GLIBC__
+    malloc_trim(0);
+#endif
+}
+
+void lower_thread_priority() {
+#ifdef _WIN32
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#elif defined(__APPLE__)
+    pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+#else
+    // Linux keeps a nice value per thread. Not SCHED_IDLE: under a machine
+    // kept busy by the user's own build it starves a TU past the build
+    // deadline, which then blames the file for a hang.
+    [[maybe_unused]] auto niceness = ::nice(10);
+#endif
 }
 
 }  // namespace clice

@@ -5,7 +5,13 @@
 
 import * as path from "node:path";
 import type * as proto from "vscode-languageserver-protocol";
-import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
+import {
+    MTIME_GRANULARITY,
+    SLOW_SOURCE,
+    sleep,
+    waitUntil,
+    type CliceClient,
+} from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
@@ -398,6 +404,41 @@ test("victims are not blamed", async ({ session }) => {
     }
     expect(everNoted(client, healthyUri)).toBe(false);
     expect(notes(client, uri).length).toBe(1);
+});
+
+test.skipIf(process.platform !== "linux")("shared deaths blame nobody", async ({ session }) => {
+    const workspace = session.tmpdir();
+    const names = ["a.cpp", "b.cpp", "c.cpp"];
+    for (const name of names) {
+        workspace.write(name, SLOW_SOURCE);
+    }
+    workspace.writeCDB(names);
+    const client = session.spawn(workspace, crashing());
+    // One stateful worker compiles all three side by side.
+    await client.initialize(workspace, {
+        initializationOptions: { project: { stateful_worker_count: 1 } },
+    });
+    const compiles = () => workspace.log("SF-0.log").split("Compile request:").length - 1;
+
+    const uris = names.map((name) => client.open(name)[0]);
+    const answers = uris.map((uri) => client.hoverAt(uri, 0, 5));
+    // Killed twice, the second time while all three resends compile: the
+    // death names none of them and they shared the worker, so none is blamed.
+    for (const round of [1, 2]) {
+        await waitUntil(() => compiles() >= names.length * round, {
+            timeout: 20_000,
+            interval: 10,
+            description: `round ${round} of the compiles to start`,
+        });
+        for (const pid of client.workerPids("SF-")) {
+            process.kill(pid, "SIGKILL");
+        }
+    }
+    await Promise.all(answers);
+    for (const uri of uris) {
+        expect(everNoted(client, uri), uri).toBe(false);
+    }
+    expect(workspace.log("master.log")).toContain("[anomaly:WorkerCrash]");
 });
 
 test("reopen keeps the bar", async ({ session }) => {

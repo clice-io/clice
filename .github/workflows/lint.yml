@@ -60,11 +60,15 @@ jobs:
         with:
           environments: node
 
-      - name: Check generated docs and translations
+      - name: Check generated docs
         run: |
           pixi run -e node check-feature-docs
           pixi run -e node check-config-docs
-          pixi run -e node check-doc-translations
+
+      # Last: it sets up its own node for every later step of the job. An
+      # exact release: tools/docs/translations.ts runs this one locally.
+      - name: Check translations
+        uses: clice-io/docs/check-translations@v1.0.0
 
   typescript:
     runs-on: ubuntu-latest

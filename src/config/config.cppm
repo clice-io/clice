@@ -224,10 +224,12 @@ struct ProjectConfig {
                      schema_default = false,
                      minimum = 1,
                      description =
-                         "Initial number of stateless workers — they handle "
+                         "Number of stateless workers started — they handle "
                          "ephemeral tasks (PCH/PCM builds, completion, signature "
-                         "help); defaults to half the machine's parallelism, at "
-                         "least 2. `0` is invalid and falls back to that default.")
+                         "help, background indexing) — and the most that "
+                         "background indexing keeps busy at once; defaults to "
+                         "half the machine's physical cores, at least 2. `0` is "
+                         "invalid and falls back to that default.")
     <std::uint32_t> stateless_worker_count = default_stateless_worker_count();
 
     /// See WorkerPoolOptions.
@@ -241,9 +243,10 @@ struct ProjectConfig {
     KOTATSU_ANNOTATE(defaulted = true,
                      schema_default = false,
                      description =
-                         "Upper bound for dynamic stateless-worker scaling; `0` "
-                         "means the machine's parallelism, which is also the "
-                         "default.")
+                         "Upper bound for dynamic stateless-worker scaling, which "
+                         "only interactive work that finds every worker busy "
+                         "reaches; `0` means the machine's physical cores, which "
+                         "is also the default.")
     <std::uint32_t> max_stateless_worker_count = default_max_stateless_worker_count();
 };
 

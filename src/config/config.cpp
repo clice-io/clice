@@ -51,15 +51,24 @@ static std::optional<Spelling> setting_path(std::string value,
     return Spelling(value, anchor);
 }
 
+/// The physical cores this process may run on, clangd's default too: a
+/// hyper-thread adds little to a compile, while every worker costs a TU's
+/// memory.
+static std::uint32_t physical_parallelism() {
+    auto logical = kota::sys::parallelism();
+    auto physical = llvm::get_physical_cores();
+    return physical > 0 ? std::min(static_cast<std::uint32_t>(physical), logical) : logical;
+}
+
 std::uint32_t default_stateless_worker_count() {
     // Config is constructed on every worker request (QueryParams /
     // build params carry one); query the core count once, not per request.
-    const static std::uint32_t count = std::max(kota::sys::parallelism() / 2, 2u);
+    const static std::uint32_t count = std::max(physical_parallelism() / 2, 2u);
     return count;
 }
 
 std::uint32_t default_max_stateless_worker_count() {
-    const static std::uint32_t count = kota::sys::parallelism();
+    const static std::uint32_t count = physical_parallelism();
     return count;
 }
 

@@ -12,6 +12,7 @@ import :compile.compilation;
 import :feature.feature;
 import :index.tu_index;
 import :support.logging;
+import :support.process;
 import :worker.common;
 import :worker.crash_report;
 import :worker.protocol;
@@ -80,8 +81,15 @@ struct [[nodiscard]] PendingGuard {
     PendingGuard& operator=(PendingGuard&&) = delete;
 
     ~PendingGuard() {
-        if(doc) {
-            doc->pending -= 1;
+        if(!doc) {
+            return;
+        }
+        doc->pending -= 1;
+        // The last hold on an evicted entry frees its AST: return the memory
+        // as the eviction would have.
+        if(doc.use_count() == 1) {
+            doc.reset();
+            release_free_memory();
         }
     }
 };
@@ -422,6 +430,7 @@ void StatefulWorker::register_handlers() {
             lru_index.erase(it);
         }
         documents.erase(params.path);
+        release_free_memory();
     });
 
     // === Query (hover, definition, semantic tokens, etc.) ===
@@ -480,7 +489,6 @@ int run_stateful_worker_mode(const std::string& worker_name,
 
     LOG_INFO("Starting stateful worker");
     install_crash_report();
-    prefer_as_oom_victim();
 
     kota::event_loop loop;
 

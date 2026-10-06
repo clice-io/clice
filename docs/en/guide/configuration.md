@@ -124,7 +124,7 @@ Number of stateful workers — they hold ASTs in memory and serve queries (hover
 | ------------------------ | -------- | ------- |
 | `stateless_worker_count` | `uint32` | —       |
 
-Initial number of stateless workers — they handle ephemeral tasks (PCH/PCM builds, completion, signature help); defaults to half the machine's parallelism, at least 2. `0` is invalid and falls back to that default.
+Number of stateless workers started — they handle ephemeral tasks (PCH/PCM builds, completion, signature help, background indexing) — and the most that background indexing keeps busy at once; defaults to half the machine's physical cores, at least 2. `0` is invalid and falls back to that default.
 
 </div>
 
@@ -144,7 +144,7 @@ Lower bound for dynamic stateless-worker scaling; `0` is invalid and falls back 
 | ---------------------------- | -------- | ------- |
 | `max_stateless_worker_count` | `uint32` | —       |
 
-Upper bound for dynamic stateless-worker scaling; `0` means the machine's parallelism, which is also the default.
+Upper bound for dynamic stateless-worker scaling, which only interactive work that finds every worker busy reaches; `0` means the machine's physical cores, which is also the default.
 
 </div>
 
