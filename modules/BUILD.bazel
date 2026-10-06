@@ -1,20 +1,26 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load(":modules.bzl", "MODULE_COPTS", "WRAPPERS")
+load(":mirror.bzl", "mirror")
+load(":mirrors.bzl", "MIRRORS")
+load(":modules.bzl", "MODULE_COPTS", "WRAPPERS", "mirror_include")
 
 # The third-party libraries as named modules over their headers, written by
 # `clice modularize`: each <name>.cppm includes a library's headers in its
 # global module fragment and exports what they declare. clice's sources keep
 # their includes: mirror/<name> holds an empty file for each header of the
-# library, first on their include path, and prelude.h, force-included,
-# imports the modules and replays the macros their headers define.
+# library (mirrors.bzl lists them; Bazel creates them), first on their
+# include path, and prelude.h, force-included, imports the modules and
+# replays the macros their headers define.
+
+[mirror(
+    name = "mirror_" + library,
+    headers = headers,
+    library = library,
+) for library, headers in MIRRORS.items()]
 
 # The emptied headers, the macro headers and the prelude.
 cc_library(
     name = "headers",
-    textual_hdrs = glob([
-        "mirror/**",
-        "*.h",
-    ]),
+    textual_hdrs = glob(["*.h"]) + [":mirror_" + library for library in MIRRORS],
 )
 
 # A reduced BMI drops the global module fragment's declarations the purview
@@ -22,7 +28,7 @@ cc_library(
 [cc_library(
     name = name,
     copts = MODULE_COPTS + ["-fno-modules-reduced-bmi"] +
-            ["-Imodules/mirror/" + mirror for mirror in ["std"] + imports],
+            [mirror_include(library) for library in ["std"] + imports],
     features = ["cpp_modules"],
     module_interfaces = [name + ".cppm"],
     deps = [
