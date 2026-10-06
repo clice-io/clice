@@ -3317,10 +3317,12 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         InterfaceHeader header{.file = info.path,
                                .include = by_path,
                                .because = std::move(because)};
+        // The module's own name for a header no other module includes.
+        llvm::StringRef inside;
         for(std::size_t i = 0; i < info.includers.size(); i += 1) {
             auto includer = info.includers[i];
             llvm::StringRef spelled = info.spellings[i];
-            if(module_of(includer) == module || spelled.size() < 2) {
+            if(spelled.size() < 2) {
                 continue;
             }
             auto name = spelled.drop_front().drop_back();
@@ -3334,6 +3336,12 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                     continue;
                 }
             }
+            if(module_of(includer) == module) {
+                if(inside.empty()) {
+                    inside = spelled;
+                }
+                continue;
+            }
             // By a name the include path finds, an angled one first.
             if(header.include == by_path ||
                (spelled.starts_with("<") && !llvm::StringRef(header.include).starts_with("<"))) {
@@ -3342,6 +3350,9 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             if(!llvm::is_contained(header.names, name)) {
                 header.names.push_back(name.str());
             }
+        }
+        if(header.include == by_path && !inside.empty()) {
+            header.include = inside.str();
         }
         std::ranges::sort(header.names);
         return header;
