@@ -116,7 +116,7 @@ jobs:
       # artifact is the whole timeline, for Perfetto.
       - name: Critical path
         run: |
-          zcat "$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")/bazel-profile.json.gz" |
+          gzip -dc "$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")/bazel-profile.json.gz" |
             jq -r '.traceEvents[] | select(.cat == "critical path component") | "\((.dur / 1e5 | floor) / 10)\t\(.name)"'
 
       - name: Upload build profile
