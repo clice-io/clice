@@ -6,10 +6,10 @@ description: clice's glossary and page conventions for the Chinese (docs/zh) tre
 # Translating the clice docs into Chinese
 
 clice is a C++ language server; its zh docs follow the shared rules of
-clice-io/docs, **RULES.md at v1** — the contract, what stays verbatim by
+clice-io/docs, **RULES.md at v1.0.0** — the contract, what stays verbatim by
 position on the page, and style:
 
-    gh api 'repos/clice-io/docs/contents/tools/translations/RULES.md?ref=v1' -H 'Accept: application/vnd.github.raw'
+    gh api 'repos/clice-io/docs/contents/tools/translations/RULES.md?ref=v1.0.0' -H 'Accept: application/vnd.github.raw'
 
 Read it first. This page adds only what is clice's: the page conventions
 of its site and its glossary. `pixi run review-doc-translations` hands

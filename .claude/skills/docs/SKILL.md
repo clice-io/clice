@@ -40,16 +40,17 @@ description: The clice documentation system — generated feature/config pages, 
 
 The checker is `@clice-io/translate` from the clice-io/docs repository,
 shared by every clice-io project with a Chinese tree. Its **RULES.md at
-v1** states the contract, the commands and the editing workflow — read it
+v1.0.0** states the contract, the commands and the editing workflow — read it
 before any edit touching translated pages:
 
-    gh api 'repos/clice-io/docs/contents/tools/translations/RULES.md?ref=v1' -H 'Accept: application/vnd.github.raw'
+    gh api 'repos/clice-io/docs/contents/tools/translations/RULES.md?ref=v1.0.0' -H 'Accept: application/vnd.github.raw'
 
 CI runs `clice-io/docs/check-translations` in the lint workflow's docs
 job, pinned to an exact release; the pixi tasks above run that same
 release locally (`tools/docs/translations.ts` reads the pin, until the
 package is on npm and the tasks call `npx @clice-io/translate@1`). A new
-release is adopted by bumping the pin in lint.yml. What clice adds on top:
+release is adopted by bumping the pin in lint.yml and the RULES.md
+references here and in the translate-docs skill. What clice adds on top:
 
 - In clice the frontmatter that translates is index.md's (the VitePress
   home page), and the bold paragraph whose shape must survive is a
