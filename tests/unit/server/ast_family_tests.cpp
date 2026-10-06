@@ -1389,6 +1389,54 @@ ZEST_CASE(EvictedDocumentRecompiles) {
     ZEXPECT(done);
 }
 
+ZEST_CASE(EvictedAgainRecompiles) {
+    // The worker loses the document again between the recompile's reply and
+    // the query — another document's request landing in that window: the
+    // query compiles it there again for every eviction it meets.
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+
+    Stack stack;
+    auto a = stack.open(tmp.path("a.cpp"), "int alpha = 1;\n");
+    auto evict = [&] {
+        stack.pool.notify_stateful(a->path_id.raw, worker::EvictParams{tmp.path("a.cpp")});
+    };
+    int landings = 0;
+    auto connection = stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) {
+        landings += 1;
+        if(landings == 2) {
+            evict();
+        }
+    });
+
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        ZASSERT(stack.pool.start(opts));
+
+        ZASSERT(co_await stack.ast.ensure_compiled(a));
+        evict();
+        auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
+                                                      Ticket::take(a),
+                                                      protocol::Position{0, 5});
+        ZASSERT(result);
+        ZEXPECT(result.value().data != "null");
+        ZEXPECT(landings == 3);
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    ZEXPECT(done);
+}
+
 ZEST_CASE(AnswerClearsQueryRecord) {
     // Only an answer of the kind clears its record, and no compile runs to
     // drop the note: the answer republishes.
