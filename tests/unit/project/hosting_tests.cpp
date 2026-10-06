@@ -10,8 +10,6 @@ import :tests.unit.test.cdb_helper;
 import :tests.unit.test.temp_dir;
 import :tests.unit.test.test;
 
-#include "llvm/Support/xxhash.h"
-
 namespace clice::testing {
 
 namespace {
