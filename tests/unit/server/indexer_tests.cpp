@@ -679,12 +679,11 @@ ZEST_CASE(KnownVariantByHash) {
     tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 1; }\n");
     tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
     tmp.touch("b.cpp", "#include \"shared.h\"\nint b() { return shared_fn(); }\n");
-    auto header = tmp.path("shared.h");
-    auto header_id = project.file_table.intern(Spelling::absolute(header));
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
     auto header_section = [&](const index::TUIndex& view) {
         std::uint32_t found = view.section_count();
         for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
-            if(view.path(view.section_path(i)) == header) {
+            if(llvm::sys::path::filename(view.path(view.section_path(i))) == "shared.h") {
                 found = i;
             }
         }

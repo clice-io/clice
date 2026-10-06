@@ -13,6 +13,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -233,6 +234,13 @@ private:
     /// The roots above `path_id`, climbing from forced headers to their
     /// units when `through_forced` is set.
     llvm::SmallVector<Fid, 4> find_roots(Fid path_id, bool through_forced) const;
+
+    /// Walk the include closure of `unit` (see include_closure), adding
+    /// each file to `seen`, until `stop` holds for one; returns whether it
+    /// did.
+    bool walk_closure(Fid unit,
+                      llvm::DenseSet<Fid>& seen,
+                      llvm::function_ref<bool(Fid)> stop) const;
 };
 
 /// Detailed report from a dependency scan.

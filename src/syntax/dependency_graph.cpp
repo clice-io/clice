@@ -225,17 +225,32 @@ llvm::ArrayRef<Fid> DependencyGraph::get_includers(Fid path_id) const {
 }
 
 llvm::DenseSet<Fid> DependencyGraph::include_closure(Fid unit) const {
-    llvm::DenseSet<Fid> closure{unit};
+    llvm::DenseSet<Fid> closure;
+    walk_closure(unit, closure, [](Fid) { return false; });
+    return closure;
+}
+
+bool DependencyGraph::walk_closure(Fid unit,
+                                   llvm::DenseSet<Fid>& seen,
+                                   llvm::function_ref<bool(Fid)> stop) const {
+    seen.insert(unit);
     llvm::SmallVector<Fid, 64> queue{unit};
     auto visit = [&](Fid fid) {
-        if(closure.insert(fid).second) {
+        if(seen.insert(fid).second) {
             queue.push_back(fid);
         }
     };
     while(!queue.empty()) {
         auto current = queue.pop_back_val();
-        for(auto included: get_all_includes(current)) {
-            visit(included);
+        if(stop(current)) {
+            return true;
+        }
+        if(auto it = file_configs.find(current); it != file_configs.end()) {
+            for(auto config_id: it->second) {
+                for(auto edge: get_includes(current, config_id)) {
+                    visit(edge.fid);
+                }
+            }
         }
         if(auto it = forced_includes.find(current); it != forced_includes.end()) {
             for(auto header: it->second) {
@@ -243,7 +258,7 @@ llvm::DenseSet<Fid> DependencyGraph::include_closure(Fid unit) const {
             }
         }
     }
-    return closure;
+    return false;
 }
 
 std::uint32_t DependencyGraph::count_includes(Fid includer, Fid target) const {
@@ -325,8 +340,8 @@ bool DependencyGraph::reaches_import(Fid path_id) const {
     if(import_candidates.empty()) {
         return false;
     }
-    return llvm::any_of(include_closure(path_id),
-                        [&](Fid fid) { return import_candidates.contains(fid); });
+    llvm::DenseSet<Fid> seen;
+    return walk_closure(path_id, seen, [&](Fid fid) { return import_candidates.contains(fid); });
 }
 
 llvm::SmallVector<Fid, 4> DependencyGraph::find_roots(Fid path_id, bool through_forced) const {
