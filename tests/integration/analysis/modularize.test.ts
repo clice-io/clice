@@ -112,6 +112,17 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
         ),
     );
     ws.write("third/libc/cvp.h", lines("#pragma once", "int fake_vprint(int);"));
+    // Read two ways too, but declaring fake_word in both: <cwin.h> brings
+    // it wherever it is included, as <windows.h> brings DWORD.
+    ws.write(
+        "third/libc/cdual.h",
+        lines("#ifndef CDUAL_SMALL", "int fake_wide(void);", "#endif", "typedef int fake_word;"),
+    );
+    ws.write("third/libc/cwin.h", lines("#pragma once", "#include <cdual.h>"));
+    ws.write(
+        "third/libc/csmall.h",
+        lines("#pragma once", "#define CDUAL_SMALL", "#include <cdual.h>", "#undef CDUAL_SMALL"),
+    );
     ws.write("third/libc/cputs.h", lines("#pragma once", "int fake_puts(const char*);"));
     // Included again, it undefines its macro ahead of defining it anew.
     ws.write("third/libc/fassert.h", lines("#undef fassert", "#define fassert(x) ((void)(x))"));
@@ -189,12 +200,17 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
     );
     ws.write(
         "app/direct.cpp",
-        lines("#include <cio.h>", "int direct() { return fake_stdout + FAKE_EOF; }"),
+        lines(
+            "#include <cio.h>",
+            "#include <cwin.h>",
+            "int direct() { fake_word word = fake_stdout; return word + FAKE_EOF; }",
+        ),
     );
     ws.write(
         "app/third.cpp",
         lines(
             "#include <cio.h>",
+            "#include <csmall.h>",
             "#include <fakecstdio>",
             "int third() { return fake_vprint(0); }",
         ),
@@ -464,7 +480,8 @@ test("C library kept headers", async ({ session }) => {
     const libc = all.get("libc")!;
     // main.cpp reaches <cio.h> only through <fakecstdio>, which `import std`
     // empties, while direct.cpp includes it itself; third.cpp's own <cio.h>
-    // takes only the type of <cva.h>. fake_puts comes from std.compat.
+    // takes only the type of <cva.h>. fake_puts comes from std.compat, and
+    // direct.cpp's <cwin.h> brings fake_word.
     expect(libc.textual.map((header) => [header.include, header.because])).toEqual([
         ["<cio.h>", "fake_stdout in app/main.cpp"],
         ["<cva.h>", "fake_vprint in app/third.cpp"],

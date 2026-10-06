@@ -2990,8 +2990,9 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     // the tree nodes entered under that includer. The trees hold no node for
     // a directive clang's multiple-include optimization skips unread: a
     // header no tree enters under the includer continues by its own edges.
-    // What such a header declares is there only where the user includes it
-    // itself: the C library's <time.h> under __need_time_t lacks localtime_r.
+    // What only some of its readings declare is there only where the user
+    // includes it itself: the C library's <time.h> under __need_time_t lacks
+    // localtime_r. What every reading declares is wherever the header is.
     std::vector<std::vector<std::vector<std::uint32_t>>> children(facts.trees.size());
     /// Per scoped file, its (tree, node) pairs, ordered.
     std::vector<std::vector<std::pair<std::uint32_t, std::uint32_t>>> nodes_of(facts.files.size());
@@ -3012,8 +3013,8 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         return facts.files[file].variants > 1;
     };
     llvm::DenseMap<std::uint32_t, llvm::DenseSet<std::uint32_t>> closures;
-    auto reaches = [&](std::uint32_t user, std::uint32_t target) {
-        if(contextual(target)) {
+    auto reaches = [&](std::uint32_t user, std::uint32_t target, bool everywhere) {
+        if(contextual(target) && !everywhere) {
             return user == target || llvm::is_contained(facts.files[user].includes, target);
         }
         auto [it, inserted] = closures.try_emplace(user);
@@ -3137,10 +3138,12 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         auto module = module_of(info.owner);
         auto kept = partition.kinds[module] == ModuleKind::Textual;
         auto& users = reverse.users[entity];
+        auto everywhere =
+            info.units.empty() || info.units.size() == facts.files[info.owner].units.size();
         auto user = llvm::find_if(users, [&](std::uint32_t candidate) {
             return module_of(candidate) != module &&
                    partition.kinds[module_of(candidate)] != ModuleKind::External &&
-                   (!kept || !reaches(candidate, info.owner));
+                   (!kept || !reaches(candidate, info.owner, everywhere));
         });
         auto outside = user != users.end();
         if(info.kind == SymbolKind::Macro) {
