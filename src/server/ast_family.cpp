@@ -636,6 +636,11 @@ kota::task<bool> ASTFamily::fetch_include_tree(RoundContext& ctx, Fid host) {
         LOG_INFO("No include tree for {}: {}",
                  params.file,
                  result.has_value() ? result.value().error : result.error().message);
+        // A cancelled run is the round's: the next one asks again.
+        if(result.has_value() || result.error().code != worker::dispatch_errc::cancelled) {
+            project.include_trees[host] = {.commands_epoch = project.commands_epoch,
+                                           .context_epoch = project.context_epoch};
+        }
         co_return false;
     }
     auto& tree = result.value();
@@ -651,7 +656,12 @@ kota::task<bool> ASTFamily::fetch_include_tree(RoundContext& ctx, Fid host) {
     for(auto& node: tree.nodes) {
         node.file = versions[node.file].raw;
     }
-    project.include_trees[host] = {.root = versions.back(), .nodes = std::move(tree.nodes)};
+    project.include_trees[host] = {
+        .root = versions.back(),
+        .nodes = std::move(tree.nodes),
+        .commands_epoch = project.commands_epoch,
+        .context_epoch = project.context_epoch,
+    };
     co_return true;
 }
 
@@ -695,7 +705,6 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // prefix. The trial's diagnostics are never published.
     bool artifact_retried = false;
     std::size_t trial_misses = 0;
-    llvm::SmallVector<Fid, 2> preprocessed_hosts;
     for(int attempt = 0; attempt < 2; attempt += 1) {
         worker::CompileParams params;
         params.path = file_path;
@@ -704,25 +713,25 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.workspace = project.config.workspace_root.str();
         auto resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
         // A context cut along the lexical chain may name directives the
-        // host's compile never enters: once per host and its text, take
-        // its include tree and resolve again — under it, another host may
-        // come first.
-        auto tree_known = [&](Fid host) {
+        // host's compile never enters: while no include tree can tell, and
+        // none was taken since the disk or the commands last changed, take
+        // one and resolve again — under it, another host may come first.
+        auto taken = [&](Fid host) {
             auto it = project.include_trees.find(host);
             return it != project.include_trees.end() &&
-                   project.file_table.check_version(it->second.root) ==
-                       vfs::DiskState::Verdict::Fresh;
+                   it->second.commands_epoch == project.commands_epoch &&
+                   it->second.context_epoch == project.context_epoch;
         };
-        while(resolution.tree_wanted.valid() && !tree_known(resolution.tree_wanted) &&
-              !llvm::is_contained(preprocessed_hosts, resolution.tree_wanted)) {
-            preprocessed_hosts.push_back(resolution.tree_wanted);
+        while(resolution.tree_wanted.valid() && !taken(resolution.tree_wanted) &&
+              !enterings(project, resolution.tree_wanted, path_id)) {
             if(!co_await fetch_include_tree(ctx, resolution.tree_wanted)) {
                 break;
             }
+            // Resolved without the tree, the context must not outlive it.
+            contexts.drop_header_context(path_id);
             if(session->generation != gen) {
                 co_return RoundOutcome::Stale;
             }
-            contexts.drop_header_context(path_id);
             params.directory.clear();
             params.arguments.clear();
             resolution = contexts.resolve_command(path_id, params.directory, params.arguments);

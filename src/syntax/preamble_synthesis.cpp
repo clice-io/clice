@@ -28,7 +28,8 @@ static void append_quoted_path(std::string& out, llvm::StringRef path) {
 }
 
 /// Pick the directive to cut at: the one on `line` when the include tree
-/// names it, else among those resolving to `next_path`. An explicit
+/// names it and the directive does not name another file, else among
+/// those resolving to `next_path`. An explicit
 /// occurrence indexes them in directive order; otherwise unconditional
 /// directives win over ones inside #if blocks, so an include occurrence in
 /// an untaken branch does not shadow the real one.
@@ -38,13 +39,15 @@ static std::optional<std::size_t> find_match(llvm::StringRef content,
                                              llvm::StringRef next_path,
                                              std::uint32_t line,
                                              std::optional<std::uint32_t> occurrence) {
+    // A #line in the file moves what the tree counts lines by: a directive
+    // there naming another file leaves the choice to the names.
     if(line != 0) {
         for(std::size_t j = 0; j < includes.size(); j += 1) {
-            if(content.substr(0, includes[j].name_offset).count('\n') + 1 == line) {
+            if(content.substr(0, includes[j].name_offset).count('\n') + 1 == line &&
+               (!resolved[j] || resolved[j]->path == next_path)) {
                 return j;
             }
         }
-        return std::nullopt;
     }
     llvm::SmallVector<std::size_t> candidates;
     for(std::size_t j = 0; j < resolved.size(); j += 1) {
@@ -267,8 +270,7 @@ static std::string add_file(SynthesizedContext& context,
     context.files.push_back({
         .path = path,
         .content = std::move(fragment.text),
-        .source = source.str(),
-        .runs = std::move(fragment.runs),
+        .origin = {.source = source.str(), .runs = std::move(fragment.runs)},
     });
     return path;
 }
@@ -414,7 +416,7 @@ std::optional<SynthesizedContext>
         }
         if(splits) {
             context.open = add_file(context, chain[i - 1].path, std::move(*open));
-            context.files.back().forced = true;
+            context.files.back().origin.forced = true;
         }
         context.prefix = add_file(context, chain[i - 1].path, std::move(head));
     }
@@ -430,13 +432,14 @@ std::optional<SynthesizedContext>
     }
     if(context.snapshot) {
         auto length = static_cast<std::uint32_t>(target_content->size());
-        context.files.insert(context.files.begin(),
-                             {
-                                 .path = snapshot_path,
-                                 .content = target_content->str(),
-                                 .source = target_path.str(),
-                                 .runs = {{.offset = 0, .source_offset = 0, .length = length}},
-                             });
+        context.files.insert(
+            context.files.begin(),
+            {
+                .path = snapshot_path,
+                .content = target_content->str(),
+                .origin = {.source = target_path.str(),
+                           .runs = {{.offset = 0, .source_offset = 0, .length = length}}},
+        });
     }
     return context;
 }

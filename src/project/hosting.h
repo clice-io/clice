@@ -29,20 +29,28 @@ struct Host {
     llvm::SmallVector<std::uint32_t> lines;
 };
 
-/// An include tree over file versions, rooted at the version of the unit
-/// it was taken from: a preprocess run's (Project::include_trees), beside
-/// the ones index manifests carry.
+/// An include tree over file versions a preprocess run took of a unit
+/// (Project::include_trees), beside the ones index manifests carry: rooted
+/// at the version of the unit it read, invalid when the run failed.
 struct HostTree {
     VersionID root;
     std::vector<index::IncludeNode> nodes;
+
+    /// Project::commands_epoch and Project::context_epoch when the run
+    /// ended: a tree serves the commands it ran under, and a run is not
+    /// repeated before the disk or the commands change.
+    std::uint64_t commands_epoch = 0;
+    std::uint64_t context_epoch = 0;
 };
 
 /// Every place the compile of `host` enters `header`, in the order it
-/// does, by the unit's include tree — the one a preprocess run left, else
-/// its index manifest's. Empty when the compile never enters the header.
+/// does, by the unit's include tree — its index manifest's, else the one
+/// a preprocess run left. Empty when the compile never enters the header.
 /// Nullopt when no tree can tell: none is known, or the unit or a file on
 /// the way changed since — for a header the tree never enters, a file of
-/// the lexical chain to it, which may have gained the include.
+/// the lexical chain to it, which may have gained the include — or the
+/// compile enters it only through an include its command forces in,
+/// which no cut of the unit's text reproduces.
 std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header);
 
 /// How many times the compile of `host` enters `header`: by its include

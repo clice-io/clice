@@ -69,8 +69,8 @@ struct HeaderContext {
     /// survives a reopen.
     std::shared_ptr<const SynthesizedContext> synthesized;
 
-    /// Which include of this header in its direct includer produced the
-    /// preamble (0-based, in directive order).
+    /// Which place the host's compile enters the header produced the
+    /// preamble (0-based, in the order it does; see enterings).
     std::uint32_t occurrence = 0;
 
     /// Canonical hash of the host CDB entry used (multi-configuration

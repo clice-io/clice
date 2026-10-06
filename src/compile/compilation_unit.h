@@ -24,13 +24,6 @@ namespace clice {
 
 class Semantics;
 
-/// What a synthesized file's text was cut from (see SynthesizedFile).
-struct SynthesizedOrigin {
-    std::string source;
-    std::vector<SourceRun> runs;
-    bool forced = false;
-};
-
 enum class CompilationKind : std::uint8_t {
     /// From preprocessing the source file. Therefore directives
     /// are available but AST nodes are not.
@@ -203,6 +196,11 @@ public:
     /// compiled in its includer's context sits inside.
     bool encloses_main_file(const clang::Decl* decl);
 
+private:
+    /// What the synthesized file `fid` was cut from; null for any other.
+    const SynthesizedOrigin* origin(clang::FileID fid);
+
+public:
     /// Get the include location of the file id, i.e. where the file
     /// was introduced by `#include`.
     auto include_location(clang::FileID fid) -> clang::SourceLocation;

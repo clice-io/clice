@@ -202,15 +202,15 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
             resolution.tree_wanted = resolved.error();
             return false;
         }
-        if(resolved->synthesized && resolved->lexical) {
-            resolution.tree_wanted = resolved->host_path_id;
-        }
         if(cache) {
             ctx_ptr = &((*cache)[path_id] = std::move(*resolved));
         } else {
             local_ctx = std::move(*resolved);
             ctx_ptr = &*local_ctx;
         }
+    }
+    if(ctx_ptr->synthesized && ctx_ptr->lexical) {
+        resolution.tree_wanted = ctx_ptr->host_path_id;
     }
 
     auto host_path = project.file_table.resolve(ctx_ptr->host_path_id);

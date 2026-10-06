@@ -46,15 +46,11 @@ struct SourceRun {
     std::uint32_t length = 0;
 };
 
-/// A file a compile reads from memory instead of disk: a fragment of a
-/// header context, or the header's snapshot.
-struct SynthesizedFile {
-    std::string path;
-    std::string content;
-
-    /// The file its text was cut from, and the runs of it the text copies:
-    /// what an identity names a position in the text by, so that it agrees
-    /// with the compile of that file.
+/// What a synthesized file's text was cut from.
+struct SynthesizedOrigin {
+    /// The file, and the runs of it the text copies: what an identity
+    /// names a position in the text by, so that it agrees with the compile
+    /// of that file.
     std::string source;
     std::vector<SourceRun> runs;
 
@@ -62,6 +58,14 @@ struct SynthesizedFile {
     /// by every compile but the preamble's build (see
     /// SynthesizedContext::open).
     bool forced = false;
+};
+
+/// A file a compile reads from memory instead of disk: a fragment of a
+/// header context, or the header's snapshot.
+struct SynthesizedFile {
+    std::string path;
+    std::string content;
+    SynthesizedOrigin origin;
 };
 
 using SynthesizedFiles = std::vector<SynthesizedFile>;

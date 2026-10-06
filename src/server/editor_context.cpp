@@ -161,8 +161,11 @@ bool EditorContext::holds_choice(Fid path_id) const {
     auto path = project.file_table.resolve(path_id);
     if(saved->host_path_id.valid()) {
         auto host = saved->host_path_id;
+        if(project.build.commands(host).empty()) {
+            return false;
+        }
         auto occurrences = count_occurrences(project, host, path_id);
-        if(project.build.commands(host).empty() || occurrences == 0) {
+        if(occurrences == 0) {
             return false;
         }
         // A pinned occurrence can vanish while other inclusions of the

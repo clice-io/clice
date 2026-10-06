@@ -201,12 +201,8 @@ struct CompilationParams {
         for(auto& file: files) {
             add_remapped_file(file.path, file.content);
             // Named the way CompilationUnitRef::file_path names it.
-            synthesized[CanonicalPath(Spelling::absolute(file.path)).str()] = {
-                .source = file.source,
-                .runs = file.runs,
-                .forced = file.forced,
-            };
-            if(file.forced) {
+            synthesized[CanonicalPath(Spelling::absolute(file.path)).str()] = file.origin;
+            if(file.origin.forced) {
                 forced_includes.push_back(file.path);
             }
         }

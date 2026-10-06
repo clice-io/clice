@@ -398,6 +398,90 @@ ZEST_CASE(TreeRulesOutHost) {
     ZASSERT(host);
     ZEXPECT(host->file == b);
     ZEXPECT(host->lines.empty());
+
+    /// Once shared.h changes, the tree vouches for nothing on its way.
+    p.write("common/shared.h", "#pragma once\n#include <config.h>\nint more;\n");
+    p.project.file_table.disk.end_turn();
+    ZEXPECT(!enterings(p.project, a, config_b).has_value());
+};
+
+ZEST_CASE(EnteringsInCompileOrder) {
+    /// Node numbers follow includers, not the compile: a later directive
+    /// of the unit numbered before a nested one still comes after it.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"mid.h\"\n#define AGAIN\n#include \"list.def\"\n";
+    llvm::StringRef mid_text = "#include \"list.def\"\n";
+    auto main = p.write("main.cpp", main_text);
+    auto mid = p.write("mid.h", mid_text);
+    auto list = p.write("list.def", "X(a)\n");
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(list, "X(a)\n"), .line = 3},
+        {.file = p.version(mid, mid_text), .line = 1},
+        {.file = p.version(list, "X(a)\n"), .parent = 1, .line = 1},
+    };
+    p.project.project_index.manifests[main] = std::move(manifest);
+
+    auto found = enterings(p.project, main, list);
+    ZASSERT(found);
+    ZASSERT(found->size() == 2u);
+    ZEXPECT((*found)[0].lines == llvm::SmallVector<std::uint32_t>{1, 1});
+    ZEXPECT((*found)[1].lines == llvm::SmallVector<std::uint32_t>{3});
+};
+
+ZEST_CASE(ForcedIncludeFallsBack) {
+    /// The compile enters the header only through a file its command
+    /// forces in, which no cut of the unit's text reproduces: the lexical
+    /// chain stands in.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"t.h\"\n";
+    llvm::StringRef common_text = "#pragma once\n#include \"t.h\"\n";
+    auto main = p.write("main.cpp", main_text);
+    auto common = p.write("common.h", common_text);
+    auto t = p.write("t.h", "#pragma once\n");
+    p.project.dep_graph.set_includes(main, 0, {{t}});
+    p.project.dep_graph.set_includes(common, 0, {{t}});
+    p.project.dep_graph.add_forced_include(main, common);
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(common, common_text), .line = 300},
+        {.file = p.version(t, "#pragma once\n"), .parent = 0, .line = 2},
+        {.file = p.version(t, "#pragma once\n"), .line = 1, .skipped = true},
+    };
+    p.project.project_index.manifests[main] = std::move(manifest);
+
+    ZEXPECT(!enterings(p.project, main, t).has_value());
+    auto host = default_host(p.project, t);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{main, t});
+};
+
+ZEST_CASE(ContributorHosts) {
+    /// A unit whose indexed compile gave the header rows hosts it though
+    /// the scan reached the header under another configuration.
+    TreeProject p;
+    llvm::StringRef b_text = "#include <config.h>\n";
+    auto b = p.write("b.cpp", b_text);
+    auto config_b = p.write("config_b/config.h", "");
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(b, b_text)};
+    manifest.nodes = {
+        {.file = p.version(config_b, ""), .line = 1}
+    };
+    p.project.project_index.manifests[b] = std::move(manifest);
+    p.project.project_index.contributions[config_b][b] = 1;
+
+    auto host = default_host(p.project, config_b);
+    ZASSERT(host);
+    ZEXPECT(host->file == b);
+    ZEXPECT(host->lines == llvm::SmallVector<std::uint32_t>{1});
 };
 
 ZEST_CASE(StaleTreeFallsBack) {

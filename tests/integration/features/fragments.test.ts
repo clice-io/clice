@@ -110,7 +110,7 @@ test("unclosed host scope", async ({ session }) => {
     expect(names(await client.documentSymbols(incUri))).toEqual(["S"]);
 });
 
-test("def in header and source", async ({ session }) => {
+test("def entered twice", async ({ session }) => {
     // The header's enum enters the list first; the source's table enters
     // it again after including the header.
     const { client, workspace } = session.tmp();

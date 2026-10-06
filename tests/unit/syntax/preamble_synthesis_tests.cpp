@@ -552,7 +552,7 @@ ZEST_CASE(SnapshotOnlyWhenNamed) {
 
 ZEST_CASE(LineNamesTheCut) {
     // The include tree names the directive the compile entered the header
-    // through: the second one, though the first sits outside any #if.
+    // through: the second one, where the lexical rule would take the first.
     llvm::StringMap<std::string> mapping = {
         {"target.h", "/proj/target.h"},
     };
@@ -631,28 +631,69 @@ struct S {
 )");
     auto open = llvm::find_if(result->files, [&](auto& file) { return file.path == result->open; });
     ZASSERT(open != result->files.end());
-    ZEXPECT(open->forced);
+    ZEXPECT(open->origin.forced);
+}
+
+ZEST_CASE(SplitInIncluder) {
+    // The first chain file cut inside braces splits; the files after it
+    // nest in the part entered after the prefix.
+    llvm::StringMap<std::string> mapping = {
+        {"mid.h", "/proj/mid.h"},
+        {"in.h",  "/proj/in.h" },
+        {"t.inc", "/proj/t.inc"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", "#include \"mid.h\"\n"};
+    ChainEntry mid{"/proj/mid.h", "struct S {\n#include \"in.h\"\n};\n"};
+    ChainEntry in{"/proj/in.h", "int a;\n#include \"t.inc\"\n"};
+
+    auto result = synthesize_context({host, mid, in}, "/proj/t.inc", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, result->prefix) == R"(#line 1 "/proj/main.cpp"
+#line 1 "/proj/mid.h"
+)");
+    ZEXPECT(flatten(*result, result->open) == R"(#line 1 "/proj/mid.h"
+struct S {
+#line 1 "/proj/in.h"
+int a;
+)");
+    auto open = llvm::find_if(result->files, [&](auto& file) { return file.path == result->open; });
+    ZASSERT(open != result->files.end());
+    ZEXPECT(open->origin.source == "/proj/mid.h");
 }
 
 ZEST_CASE(RunsMapToSource) {
     // A fragment names where each copied run sits in the file it was cut
-    // from, past the marker opening it.
+    // from, past the marker opening it and around a redirected include.
     llvm::StringMap<std::string> mapping = {
         {"target.h", "/proj/target.h"},
     };
 
     ChainEntry host{"/proj/main.cpp", R"(#define HOST 1
 #include "target.h"
+#include "target.h"
+int tail;
 )"};
 
-    auto result = synthesize_context({host}, "/proj/target.h", map_resolver(mapping));
+    auto result = synthesize_context({host},
+                                     "/proj/target.h",
+                                     map_resolver(mapping),
+                                     std::uint32_t(0),
+                                     llvm::StringRef("int t;\n"));
     ZASSERT(result);
+    auto suffix =
+        llvm::find_if(result->files, [&](auto& file) { return file.path == result->suffix; });
+    ZASSERT(suffix != result->files.end());
+    ZASSERT(suffix->origin.runs.size() == 2u);
+    auto& after = suffix->origin.runs.back();
+    ZEXPECT(suffix->content.substr(after.offset, after.length) == "\nint tail;\n");
+    ZEXPECT(host.content.substr(after.source_offset, after.length) == "\nint tail;\n");
     auto prefix =
         llvm::find_if(result->files, [&](auto& file) { return file.path == result->prefix; });
     ZASSERT(prefix != result->files.end());
-    ZEXPECT(prefix->source == "/proj/main.cpp");
-    ZASSERT(prefix->runs.size() == 1u);
-    auto& run = prefix->runs.front();
+    ZEXPECT(prefix->origin.source == "/proj/main.cpp");
+    ZASSERT(prefix->origin.runs.size() == 1u);
+    auto& run = prefix->origin.runs.front();
     ZEXPECT(prefix->content.substr(run.offset, run.length) == "#define HOST 1\n");
     ZEXPECT(run.source_offset == 0u);
 }

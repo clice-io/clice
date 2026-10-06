@@ -504,7 +504,7 @@ test("includer warnings stay out", async ({ session }) => {
     expect(await synthesized(client)).toBe(1);
 });
 
-test("config header finds its includer", async ({ session }) => {
+test("config header finds includer", async ({ session }) => {
     // The scan resolved shared.h's include under b.cpp's directories;
     // a.cpp ranks first, but its compile enters another config.h.
     const { client, workspace } = session.tmp();
@@ -524,6 +524,9 @@ test("config header finds its includer", async ({ session }) => {
 
     const [configUri] = await client.openAndWait("config_b/config.h");
     client.assertCleanCompile(configUri);
+    expect((await client.queryContext(configUri)).contexts.map((context) => context.uri)).toEqual([
+        workspace.uri("b.cpp"),
+    ]);
 });
 
 test("chain the compile takes", async ({ session }) => {
@@ -537,6 +540,13 @@ test("chain the compile takes", async ({ session }) => {
     await client.initialize(workspace);
 
     const [barUri] = await client.openAndWait("bar.h");
+    client.assertCleanCompile(barUri);
+
+    // foo.h moves its include: the recorded tree no longer vouches for
+    // the chain, so the host is preprocessed again.
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("foo.h", '#pragma once\nstruct Foo {};\n\n#include "bar.h"\n');
+    await client.waitForRecompile(barUri);
     client.assertCleanCompile(barUri);
 });
 

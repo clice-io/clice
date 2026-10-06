@@ -961,7 +961,7 @@ struct §(ctx)ctx { int x; };
     /// include arrives as a fragment the compile -includes, named after
     /// the host and the offsets it was cut at — not by a #line the host's
     /// own text carries.
-    std::string marker = "#line 1 \"host.c\"\n";
+    std::string marker = "#line 2 \"host.c\"\n";
     std::string copied = "struct ctx { int x; };\n";
 
     Tester context;
@@ -972,10 +972,10 @@ struct §(ctx)ctx { int x; };
         {
          .path = prefix,
          .content = marker + copied + "#line 9 \"elsewhere.c\"\n",
-         .source = unit->file_path(unit->main_file()).str(),
-         .runs = {{.offset = static_cast<std::uint32_t>(marker.size()),
-                      .source_offset = 1,
-                      .length = static_cast<std::uint32_t>(copied.size())}},
+         .origin = {.source = unit->file_path(unit->main_file()).str(),
+                       .runs = {{.offset = static_cast<std::uint32_t>(marker.size()),
+                                 .source_offset = 1,
+                                 .length = static_cast<std::uint32_t>(copied.size())}}},
          }
     });
     context.owned_args.insert(context.owned_args.end() - 1, {"-include", prefix});

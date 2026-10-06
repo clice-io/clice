@@ -79,7 +79,7 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
                                                       llvm::ArrayRef<index::IncludeNode> nodes) {
     using Verdict = vfs::DiskState::Verdict;
     auto& files = project.file_table;
-    if(files.version(root).fid != host || files.check_version(root) != Verdict::Fresh) {
+    if(files.check_version(root) != Verdict::Fresh) {
         return std::nullopt;
     }
     auto file_of = [&](std::uint32_t node) {
@@ -90,6 +90,7 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
     };
 
     llvm::SmallVector<Host> found;
+    bool forced = false;
     for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
         if(nodes[i].skipped || file_of(i) != header) {
             continue;
@@ -97,6 +98,12 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
         llvm::SmallVector<std::uint32_t> path;
         for(auto node = i; node != index::no_node; node = nodes[node].parent) {
             path.push_back(node);
+        }
+        // A file the command forces in hangs off the unit like its own
+        // directives, at a line of the command-line buffer.
+        if(llvm::is_contained(project.dep_graph.get_forcing_units(file_of(path.back())), host)) {
+            forced = true;
+            continue;
         }
         Host entering{.file = host, .chain = {host}};
         for(auto node: llvm::reverse(path)) {
@@ -107,6 +114,9 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
             entering.lines.push_back(nodes[node].line);
         }
         found.push_back(std::move(entering));
+    }
+    if(forced && found.empty()) {
+        return std::nullopt;
     }
     if(!found.empty()) {
         // Nodes are numbered by includer, not by when the compile entered
@@ -226,14 +236,16 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
 }
 
 std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header) {
-    if(auto it = project.include_trees.find(host); it != project.include_trees.end()) {
-        if(auto found = tree_enterings(project, host, header, it->second.root, it->second.nodes)) {
+    if(auto it = project.project_index.manifests.find(host);
+       it != project.project_index.manifests.end()) {
+        if(auto found = tree_enterings(project, host, header, it->second.tu_fv, it->second.nodes)) {
             return found;
         }
     }
-    if(auto it = project.project_index.manifests.find(host);
-       it != project.project_index.manifests.end()) {
-        return tree_enterings(project, host, header, it->second.tu_fv, it->second.nodes);
+    if(auto it = project.include_trees.find(host);
+       it != project.include_trees.end() && it->second.root.valid() &&
+       it->second.commands_epoch == project.commands_epoch) {
+        return tree_enterings(project, host, header, it->second.root, it->second.nodes);
     }
     return std::nullopt;
 }
@@ -274,8 +286,7 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
     llvm::SmallVector<Fid> hosts;
     llvm::DenseSet<Fid> seen;
     auto add = [&](Fid candidate) {
-        if(candidate != header && seen.insert(candidate).second &&
-           !host_commands(project, header, candidate).empty()) {
+        if(seen.insert(candidate).second && !host_commands(project, header, candidate).empty()) {
             hosts.push_back(candidate);
         }
     };
