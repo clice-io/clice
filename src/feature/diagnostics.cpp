@@ -126,7 +126,7 @@ private:
             // remainder appended past its text: the error the buffer's end
             // raises shows where the scope opened.
             auto anchor = main.range;
-            if(unit.borrows_context() && anchor.begin == unit.main_content().size()) {
+            if(past_suffix_include(anchor.begin)) {
                 auto note = llvm::find_if(notes, in_main);
                 if(note == notes.end()) {
                     return false;
@@ -141,7 +141,7 @@ private:
             return true;
         }
 
-        bool context = unit.from_context(main.fid);
+        bool in_context = unit.from_context(main.fid);
         if(main.error_by_default) {
             std::optional<LocalSourceRange> anchor;
             std::string_view where = "In template";
@@ -150,7 +150,7 @@ private:
             });
             if(request != notes.end()) {
                 anchor = request->range;
-            } else if(context) {
+            } else if(in_context) {
                 where = "In includer context";
                 if(auto note = llvm::find_if(notes, in_main); note != notes.end()) {
                     anchor = note->range;
@@ -158,11 +158,11 @@ private:
                     anchor = LocalSourceRange{0, 0};
                 }
             } else {
+                anchor = include_range(main.fid);
+                where = "In included file";
                 // What the command line brought in (-include, -D) sits on
                 // no #include: it stays at the top of the file, like the
                 // command line's own diagnostics.
-                anchor = include_range(main.fid);
-                where = "In included file";
                 if(!anchor) {
                     anchor = LocalSourceRange{0, 0};
                     if(unit.is_builtin_file(main.fid)) {
@@ -183,7 +183,7 @@ private:
                 return true;
             }
         }
-        if(context) {
+        if(in_context) {
             return false;
         }
 
@@ -201,6 +201,17 @@ private:
 
     /// The filename of the #include in the main file that `fid` was
     /// entered through, directly or not.
+    /// Whether `offset` lies past the include of the includer's remainder
+    /// that a borrowed context appends to the main file.
+    bool past_suffix_include(std::uint32_t offset) {
+        if(!unit.borrows_context()) {
+            return false;
+        }
+        auto& includes = unit.directives()[unit.main_file()].includes;
+        return !includes.empty() && unit.synthesized(includes.back().fid) &&
+               offset > unit.file_offset(includes.back().location);
+    }
+
     std::optional<LocalSourceRange> include_range(clang::FileID fid) {
         for(auto location = unit.include_location(fid); location.isValid();
             location = unit.include_location(fid)) {

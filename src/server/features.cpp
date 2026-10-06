@@ -162,30 +162,34 @@ std::optional<index::IndexQuery::Cursor>
 /// value.
 struct CommandLang {
     CommandSource source;
-    bool c = false;
-    bool forced = false;
+    bool is_c = false;
+    bool language_forced = false;
     std::string standard;
 };
 
 static std::optional<CommandLang> command_lang(Project& project,
                                                Fid file,
                                                llvm::ArrayRef<CanonicalRef> paths,
-                                               llvm::StringRef pinned_hash,
-                                               llvm::StringRef pinned_base) {
+                                               const Selection* pin) {
     auto path = project.file_table.resolve(file);
     auto commands = project.build.commands(file);
     if(commands.empty()) {
         return std::nullopt;
     }
-    auto command =
-        pick_pinned_config(project, file, commands, paths, path, pinned_hash, pinned_base);
+    auto command = pick_pinned_config(project,
+                                      file,
+                                      commands,
+                                      paths,
+                                      path,
+                                      pin ? llvm::StringRef(pin->command_hash) : "",
+                                      pin ? llvm::StringRef(pin->base_hash) : "");
     auto ref = project.build.resolve(file, command.config, command.source, paths, path);
 
     llvm::StringRef language = ref.input.value;
     CommandLang result{
         .source = command.source,
-        .c = language == "c" || language == "c-header",
-        .forced = !project.cdb.forced_language(ref.config).empty(),
+        .is_c = language == "c" || language == "c-header",
+        .language_forced = !project.cdb.forced_language(ref.config).empty(),
     };
     for(auto& arg: project.cdb.config(ref.config).args) {
         if(arg.opt_id == option::OPT_std_EQ && arg.values.size() == 1) {
@@ -214,14 +218,11 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
     auto path = project.file_table.resolve(session.path_id);
     const auto* pin = contexts.selection(session.path_id);
     bool host_pin = pin && pin->host_path_id.valid();
-    auto own =
-        host_pin || !pin
-            ? command_lang(project, session.path_id, path, {}, {})
-            : command_lang(project, session.path_id, path, pin->command_hash, pin->base_hash);
+    auto own = command_lang(project, session.path_id, path, host_pin ? nullptr : pin);
     // A file's entry is its command; a default command yields to the host
     // a header borrows from, in resolve_command's order.
-    if(own && own->forced && own->source == CommandSource::CDBExact) {
-        return feature::index_lang_options("", own->c, own->standard);
+    if(own && own->language_forced && own->source == CommandSource::CDBExact) {
+        return feature::index_lang_options("", own->is_c, own->standard);
     }
 
     // A header's active context (the user's persisted choice, else the
@@ -229,16 +230,14 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
     // contributor union the way it does for the AST after an escalation.
     if(Fid host = host_of(session.path_id); host.valid()) {
         CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
-        auto host_lang =
-            host_pin ? command_lang(project, host, edit_paths, pin->command_hash, pin->base_hash)
-                     : command_lang(project, host, edit_paths, {}, {});
+        auto host_lang = command_lang(project, host, edit_paths, host_pin ? pin : nullptr);
         if(host_lang) {
-            return feature::index_lang_options("", host_lang->c, host_lang->standard);
+            return feature::index_lang_options("", host_lang->is_c, host_lang->standard);
         }
     }
 
-    if(own && own->forced) {
-        return feature::index_lang_options("", own->c, own->standard);
+    if(own && own->language_forced) {
+        return feature::index_lang_options("", own->is_c, own->standard);
     }
 
     auto& contributions = project.project_index.contributions;

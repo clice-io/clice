@@ -131,7 +131,8 @@ test("header save keeps verdict", async ({ session }) => {
     workspace.write("utils.h", newText);
     client.save(utilsUri);
 
-    await client.hoverAt(utilsUri, 0, 0);
+    client.change(utilsUri, 3, newText + "\n");
+    await client.waitForRecompile(utilsUri);
     client.assertCleanCompile(utilsUri);
     expect(await synthesized(client), "the save leaves the verdict alone").toBe(1);
 });
@@ -398,6 +399,40 @@ test("fatal includer error shows", async ({ session }) => {
         "In includer context: 'missing.h' file not found",
     ]);
     expect(errors[0]?.range.start).toEqual({ line: 0, character: 0 });
+});
+
+test("includer error at note", async ({ session }) => {
+    // An error in the includer's code past the include lands where the
+    // header takes part in it.
+    const { client, workspace } = session.tmp();
+    workspace.write("m.inc", "void f(int) {}\n");
+    workspace.write("main.cpp", 'struct S {\n#include "m.inc"\n};\nint main() { S{}.f(); }\n');
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+
+    const [incUri] = await client.openAndWait("m.inc");
+    const errors = client.errors(incUri);
+    expect(errors.map((diagnostic) => diagnostic.message)).toEqual([
+        "In includer context: too few arguments to function call, expected 1, have 0",
+    ]);
+    expect(errors[0]?.range.start.line).toBe(0);
+});
+
+test("C call needs host", async ({ session }) => {
+    // C99 dropped implicit declarations: a call to a function only the
+    // includer declares is a missing name.
+    const { client, workspace } = session.tmp();
+    workspace.write("util.h", "static inline int twice(void) { return helper() * 2; }\n");
+    workspace.write(
+        "main.c",
+        'int helper(void);\n#include "util.h"\nint main(void) { return twice(); }\n',
+    );
+    workspace.writeEntries([["main.c", ["-x", "c", "-std=c17"]]]);
+    await client.initialize(workspace);
+
+    const [utilUri] = await client.openAndWait("util.h");
+    client.assertCleanCompile(utilUri);
+    expect(await synthesized(client)).toBe(1);
 });
 
 test("unclosed fragment scope", async ({ session }) => {

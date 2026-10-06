@@ -81,3 +81,27 @@ test("inspect closes the fragment", async ({ session }) => {
     expect(body?.diagnostics ?? []).toEqual([]);
     expect(body?.result.map((symbol) => symbol.name)).toEqual(["field_a", "field_b", "sum"]);
 });
+
+test("tcc fragment", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("body.tcc", "public:\nint x;\n");
+    workspace.write("s.cpp", 'struct S {\n#include "body.tcc"\n};\nint main() { return S{}.x; }\n');
+    workspace.writeCDB(["s.cpp"]);
+    await client.initialize(workspace);
+
+    const [tccUri] = await client.openAndWait("body.tcc");
+    client.assertCleanCompile(tccUri);
+});
+
+test("unclosed host scope", async ({ session }) => {
+    // The fragment leaves its struct open: the includer's brace closes it,
+    // and the includer's namespace stays open to the end of the unit.
+    const { client, workspace } = session.tmp();
+    workspace.write("x.inc", "struct S {\nint a;\n");
+    workspace.write("lib.cpp", 'namespace lib {\n#include "x.inc"\n}\nint main() { return 0; }\n');
+    workspace.writeCDB(["lib.cpp"]);
+    await client.initialize(workspace);
+
+    const [incUri] = await client.openAndWait("x.inc");
+    expect(names(await client.documentSymbols(incUri))).toEqual(["S"]);
+});

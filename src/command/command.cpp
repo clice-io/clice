@@ -1067,8 +1067,7 @@ InputKind CompilationDatabase::input_kind(ConfigID id, llvm::StringRef file) {
         return {strings.save("cuda").data()};
     }
     namespace types = clang::driver::types;
-    if(auto type = types::lookupTypeForExtension(ext); type != types::TY_INVALID) {
-        // A C++ driver compiles C inputs as C++.
+    if(auto type = suffix_type(file); type != types::TY_INVALID) {
         if(cxx_driver(config(id))) {
             type = types::lookupCXXTypeForCType(type);
         }

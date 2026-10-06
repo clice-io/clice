@@ -159,7 +159,7 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
                                                Resolution& resolution) {
     // Self-containment routing: an Unknown or SelfContained header borrows
     // the host command without a prefix; NeedsContext synthesizes one.
-    // run_compile() flips Unknown to NeedsContext when the trial compile's
+    // ASTFamily::run() flips Unknown to NeedsContext when the trial compile's
     // diagnostics indicate missing includer state. A host the user chose
     // is chosen for its preprocessor state, so it always synthesizes.
     auto path = project.file_table.resolve(path_id);

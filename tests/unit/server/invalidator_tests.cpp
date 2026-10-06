@@ -192,6 +192,7 @@ ZEST_CASE(DiskChangeSparesSession) {
     auto saved = project.file_table.intern(Spelling::absolute(tmp.path("a.h")));
     auto session = store.open(saved);
     store.apply_open(*session, "int x;", 1);
+    project.file_table.disk.read(saved);
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -209,6 +210,29 @@ ZEST_CASE(DiskChangeSparesSession) {
     ZASSERT(dirty.drop_context.empty());
     ZASSERT(dirty.recheck_contexts);
     ZASSERT(dirty.reschedule_indexing);
+}
+
+ZEST_CASE(DiskChangeBesideBuffer) {
+    TempDir tmp;
+    tmp.touch("a.h", "int y;");
+
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto changed = project.file_table.intern(Spelling::absolute(tmp.path("a.h")));
+    auto session = store.open(changed);
+    store.apply_open(*session, "int x;", 1);
+    project.file_table.disk.read(changed);
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(changed));
+
+    // Bytes from elsewhere replace the buffer the verdict was scored on.
+    ZASSERT(dirty.reset_header_mode == llvm::SmallVector<Fid>{changed});
 }
 
 ZEST_CASE(CascadeSplitsOpenClosed) {

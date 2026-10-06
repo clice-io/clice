@@ -266,7 +266,11 @@ test("borrowed header stays a header", async ({ session }) => {
         "src/util.h",
         "#pragma once\n#pragma GCC system_header\nstatic inline int helper() { return 1; }\n",
     );
-    workspace.write("src/user.cpp", '#include "hdr.h"\n#include "util.h"\n');
+    workspace.write(
+        "src/mylib",
+        "#pragma once\n#pragma GCC system_header\nstatic inline int other() { return 2; }\n",
+    );
+    workspace.write("src/user.cpp", '#include "hdr.h"\n#include "util.h"\n#include "mylib"\n');
     workspace.writeCDB(["src/user.cpp"], { extraArgs: ["-Wall"] });
     await client.initialize(workspace);
 
@@ -277,6 +281,8 @@ test("borrowed header stays a header", async ({ session }) => {
     ]);
     const [util] = await client.openAndWait("src/util.h");
     expect(published(client, util)).toEqual([]);
+    const [mylib] = await client.openAndWait("src/mylib");
+    expect(published(client, mylib)).toEqual([]);
 });
 
 test("cl warning level stays", async ({ session }) => {

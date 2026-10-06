@@ -671,10 +671,6 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.workspace = project.config.workspace_root.str();
         auto resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
         auto source = resolution.source;
-        std::string unmatched_host;
-        if(resolution.unmatched_host.valid()) {
-            unmatched_host = project.file_table.display(resolution.unmatched_host);
-        }
         auto* synthesized = resolution.synthesized.get();
 
         // The line the appended suffix #include lands on — anything at or
@@ -991,7 +987,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 contexts.commands.record_header_mode(path_id, HeaderMode::NeedsContext);
                 continue;
             }
-        } else if(trial_misses > 0 &&
+        } else if(synthesized && trial_misses > 0 &&
                   missing_context_errors(result.value().diagnostics) < trial_misses) {
             // Scored on the buffer: a restart keeps it only for the same
             // text on disk. A context that misses as much (a database
@@ -1043,7 +1039,9 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                ? with_preamble(std::move(diagnostics), *preamble_state, file_path)
                                : std::move(diagnostics),
             .line_limit = suffix_line_limit,
-            .unmatched_host = std::move(unmatched_host),
+            .unmatched_host = resolution.unmatched_host.valid()
+                                  ? project.file_table.display(resolution.unmatched_host)
+                                  : std::string(),
         };
 
         auto& entry = projections.entries[path_id];

@@ -111,8 +111,9 @@ struct DirtySet {
     /// recompile only, without re-running the header trial or touching the
     /// self-containment verdict.
     llvm::SmallVector<Fid> mark_lost;
-    /// The header's content (or its preamble chain) changed: drop its
-    /// persisted self-containment verdict so the next compile re-earns it.
+    /// A header's content other than its open buffer, or its include chain,
+    /// changed: drop its self-containment verdict so the next compile
+    /// re-earns it.
     /// Executed by the command resolver, which owns the verdicts.
     llvm::SmallVector<Fid> reset_header_mode;
     /// Closed files whose own content changed: their index rows describe

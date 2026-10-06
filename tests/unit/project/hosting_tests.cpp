@@ -232,6 +232,40 @@ ZEST_CASE(LenderSibling) {
     ZEXPECT(!command_lender(project, plain).has_value());
 };
 
+ZEST_CASE(LenderCxxDriverC) {
+    /// A `.c` borrows from a `.c` unit its C++ driver compiles as C++.
+    TempDir tmp;
+    tmp.touch("lib/a.c", "");
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"lib/*.c"}, .default_command = std::string("clang++")});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+
+    auto borrower = project.file_table.intern(Spelling::absolute(tmp.path("lib/new.c")));
+    auto unit = project.file_table.intern(Spelling::absolute(tmp.path("lib/a.c")));
+    ZEXPECT(command_lender(project, borrower)->unit == unit);
+};
+
+ZEST_CASE(LenderByDirectories) {
+    /// Away from every unit's directory, a file borrows from the unit the
+    /// fewest directories off, not the one sharing the longest spelling.
+    TempDir tmp;
+    tmp.touch("a/zz.cpp", "");
+    tmp.touch("a/bc/z.cpp", "");
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"a/**"}, .default_command = std::string("clang++")});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+
+    auto borrower = project.file_table.intern(Spelling::absolute(tmp.path("a/b/new.cpp")));
+    auto parent = project.file_table.intern(Spelling::absolute(tmp.path("a/zz.cpp")));
+    ZEXPECT(command_lender(project, borrower)->unit == parent);
+};
+
 ZEST_CASE(LenderSearchDir) {
     /// A header under a command's header search directory borrows that
     /// command — the entry that searches there, not the unit's first —

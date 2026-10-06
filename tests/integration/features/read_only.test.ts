@@ -225,6 +225,29 @@ test("explicit -x beats the suffix", async ({ session }) => {
     expect(ws.pchFiles()).toEqual([]);
 });
 
+test("pinned entry picks the dialect", async ({ session }) => {
+    const ws = session.tmpdir();
+    // Under the pinned C entry the index projection lexes with the C
+    // keyword table: `class` goes unpainted.
+    ws.write("dual.c", "class Widget { public: int value; };\n");
+    ws.writeEntries([
+        ["dual.c", ["-x", "c++"]],
+        ["dual.c", ["-x", "c", "-DDIALECT_C"]],
+    ]);
+    ws.pinCacheDir();
+    const client = session.spawn(ws);
+    await client.initialize(ws, { initializationOptions: { project: { readonly: "on" } } });
+
+    const [uri] = client.open("dual.c");
+    expect(await client.waitForIndex(uri, "Widget")).toBe(true);
+    expect((await client.semanticTokensFull(uri))?.data.slice(0, 2)).toEqual([0, 0]);
+
+    const { contexts } = await client.queryContext(uri);
+    const c = contexts.find((context) => context.label.includes("DIALECT_C"))!.commandHash!;
+    expect((await client.switchContext(uri, uri, { commandHash: c })).success).toBe(true);
+    expect((await client.semanticTokensFull(uri))?.data.slice(0, 2)).toEqual([0, 6]);
+});
+
 test("readonly on builds no pch", async ({ session }) => {
     const ws = writeProject(session);
     const client = session.spawn(ws);

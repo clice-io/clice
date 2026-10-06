@@ -143,9 +143,11 @@ void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
 }
 
 void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
-    // A closed header's verdict was scored on bytes the disk no longer
-    // holds; an open one's on its buffer, which the disk leaves alone.
-    if(!store.find(path_id)) {
+    // A header's verdict was scored on the bytes it compiled: the disk's
+    // while closed, its buffer while open — which a save of that buffer
+    // leaves as they were, and a change from elsewhere does not.
+    auto session = store.find(path_id);
+    if(!session || project.file_table.disk.seen_hash(path_id) != session->hash) {
         dirty.reset_header_mode.push_back(path_id);
     }
 

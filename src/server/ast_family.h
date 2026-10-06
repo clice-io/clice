@@ -189,7 +189,8 @@ public:
 
     /// didSave: every crashed kind of the document retries on its next
     /// request, the artifacts it consumes included, and so do the ones
-    /// whose build failed.
+    /// whose build failed; a header found self-contained whose compile
+    /// misses names re-runs its self-containment trial.
     void saved(Session& session);
 
     /// Install `output` as the document's current output and wake the

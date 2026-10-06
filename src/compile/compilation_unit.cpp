@@ -277,8 +277,10 @@ bool CompilationUnitRef::from_context(clang::FileID fid) {
 bool CompilationUnitRef::encloses_main_file(const clang::Decl* decl) {
     auto& SM = self->SM();
     auto start = SM.getLocForStartOfFile(main_file());
+    // A scope left open at the end of the unit has no end.
+    auto end = expansion_location(decl->getEndLoc());
     return SM.isBeforeInTranslationUnit(expansion_location(decl->getBeginLoc()), start) &&
-           SM.isBeforeInTranslationUnit(start, expansion_location(decl->getEndLoc()));
+           (end.isInvalid() || SM.isBeforeInTranslationUnit(start, end));
 }
 
 auto CompilationUnitRef::presumed_location(clang::SourceLocation location) -> clang::PresumedLoc {
