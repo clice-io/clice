@@ -5,8 +5,6 @@ module;
 #include <unistd.h>
 #endif
 
-#include "llvm/Support/Program.h"
-
 module clice;
 
 import :tests.unit.test.temp_dir;

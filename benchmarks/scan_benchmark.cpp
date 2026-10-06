@@ -10,26 +10,18 @@
 ///   ./build/RelWithDebInfo/bin/bin/scan_benchmark --log-level info --export graph.json \
 ///       /home/ykiko/C++/clice/.llvm/build-debug/compile_commands.json
 
-#include <algorithm>
-#include <chrono>
-#include <cstdlib>
-#include <fstream>
-#include <map>
-#include <numeric>
-#include <print>
-#include <set>
-#include <thread>
+module;
 
-#include "command/command.h"
-#include "config/config.h"
-#include "project/build.h"
-#include "support/logging.h"
-#include "syntax/dependency_graph.h"
-#include "vfs/file_table.h"
+#include "modules/prelude.h"
 
-#include "kota/codec/json/json.h"
-#include "kota/deco/deco.h"
-#include "llvm/Support/FileSystem.h"
+module clice;
+
+import :command.command;
+import :config.config;
+import :project.build;
+import :support.logging;
+import :syntax.dependency_graph;
+import :vfs.file_table;
 
 using namespace clice;
 
@@ -218,7 +210,7 @@ void print_report(const ScanReport& report) {
     std::println("===============================================================");
 }
 
-int main(int argc, const char** argv) {
+extern "C++" int main(int argc, const char** argv) {
     auto args = kota::deco::util::argvify(argc, argv);
     auto result = kota::deco::cli::parse<BenchmarkOptions>(args);
 

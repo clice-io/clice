@@ -4,8 +4,6 @@ module;
 
 #include "support/logging.macros.h"
 
-#include "clang/Basic/Stack.h"
-
 module clice;
 
 import :compile.selection;

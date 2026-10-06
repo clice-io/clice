@@ -5,8 +5,6 @@ module;
 #include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
 
-#include "llvm/Support/Program.h"
-
 module clice;
 
 import :command.command;

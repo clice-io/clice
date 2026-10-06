@@ -4,8 +4,6 @@ module;
 
 #include "support/logging.macros.h"
 
-#include "llvm/Support/Program.h"
-
 module clice;
 
 import :command.argument_parser;
