@@ -30,41 +30,69 @@ jobs:
         with:
           ref: main
           persist-credentials: false
+      # Windows boxes run what a Linux box cross-builds, as CI's Windows test
+      # jobs do: the test-run environment alone, no build.
       - uses: ./.github/actions/setup-pixi
         with:
-          environments: default test-run
-          activate-environment: default
+          environments: ${{ startsWith(inputs.os, 'windows') && 'test-run' || 'default test-run' }}
+          activate-environment: ${{ startsWith(inputs.os, 'windows') && 'test-run' || 'default' }}
       # Restore only; main's CI saves. A box has no build type: RelWithDebInfo,
-      # what CI ships. The paths are native-test.yml's, which the entry's
-      # version is made of; lld's ThinLTO cache keeps links of libclang's
-      # bitcode to seconds.
+      # what CI ships. The paths are test-leg.yml's, which the entry's version
+      # is made of; lld's ThinLTO cache keeps links of libclang's bitcode to
+      # seconds.
       - name: Restore Bazel caches
+        if: ${{ !startsWith(inputs.os, 'windows') }}
         uses: actions/cache/restore@v6
         with:
           path: |
             ${{ runner.temp }}/bazel-disk
             ${{ runner.temp }}/bazel-repo
-            ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }}
-          key: bazel-${{ fromJSON('{"linux":"x86_64-unknown-linux-gnu","linux-arm":"aarch64-unknown-linux-gnu","macos":"aarch64-apple-darwin","macos-intel":"x86_64-apple-darwin","windows":"x86_64-w64-mingw32","windows-arm":"aarch64-w64-mingw32"}')[inputs.os] }}-RelWithDebInfo-
+            /var/tmp/xclang-thinlto
+          key: bazel-${{ fromJSON('{"linux":"x86_64-unknown-linux-gnu","linux-arm":"aarch64-unknown-linux-gnu","macos":"aarch64-apple-darwin","macos-intel":"x86_64-apple-darwin"}')[inputs.os] }}-RelWithDebInfo-
           restore-keys: |
-            bazel-${{ fromJSON('{"linux":"x86_64-unknown-linux-gnu","linux-arm":"aarch64-unknown-linux-gnu","macos":"aarch64-apple-darwin","macos-intel":"x86_64-apple-darwin","windows":"x86_64-w64-mingw32","windows-arm":"aarch64-w64-mingw32"}')[inputs.os] }}-RelWithDebInfo-
-      # As native-test.yml's, so a box builds where and how CI does.
+            bazel-${{ fromJSON('{"linux":"x86_64-unknown-linux-gnu","linux-arm":"aarch64-unknown-linux-gnu","macos":"aarch64-apple-darwin","macos-intel":"x86_64-apple-darwin"}')[inputs.os] }}-RelWithDebInfo-
+      # The Windows x64 build CI makes on Linux, over the same directories: the
+      # caches are content-addressed, so the two merge.
+      - name: Restore the Windows Bazel caches
+        if: ${{ inputs.os == 'linux' }}
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ runner.temp }}/bazel-disk
+            ${{ runner.temp }}/bazel-repo
+            /var/tmp/xclang-thinlto
+          key: bazel-x86_64-w64-mingw32-RelWithDebInfo-
+          restore-keys: |
+            bazel-x86_64-w64-mingw32-RelWithDebInfo-
+      # As test-leg.yml's, so a box builds where and how CI does.
       - name: Bazel settings
+        if: ${{ !startsWith(inputs.os, 'windows') }}
         shell: bash
         run: |
-          temp=$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")
           {
-            echo "common --disk_cache=$temp/bazel-disk"
-            echo "common --repository_cache=$temp/bazel-repo"
-            if [ "$RUNNER_OS" = Windows ]; then
-              echo "startup --output_user_root=C:/b"
-            fi
+            echo "common --disk_cache=$RUNNER_TEMP/bazel-disk"
+            echo "common --repository_cache=$RUNNER_TEMP/bazel-repo"
           } > user.bazelrc
           mkdir -p ~/.box
           cat > ~/.box/notes <<'NOTES'
           Build as CI does, so its Bazel cache hits: pixi run build RelWithDebInfo
           (user.bazelrc in ~/src points Bazel at the cache CI's main run saved);
-          the programs land in build/RelWithDebInfo/bin/bin.
+          the programs land in build/RelWithDebInfo/bin/bin. Windows programs
+          build on a linux box, also from CI's cache, with
+          -- --platforms=@xclang//platforms:x86_64-w64-mingw32 after the type.
+          NOTES
+      - name: Notes
+        if: ${{ startsWith(inputs.os, 'windows') }}
+        shell: bash
+        run: |
+          mkdir -p ~/.box
+          cat > ~/.box/notes <<'NOTES'
+          This box builds nothing: build the Windows programs on a linux box
+          (pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:x86_64-w64-mingw32,
+          aarch64-w64-mingw32 for windows-arm), bring them over with
+          box cp <linux> <this> build/RelWithDebInfo/bin/bin build/RelWithDebInfo/bin/lib build/RelWithDebInfo/bin/clice.gsym --exclude '*.runfiles'
+          and run the suites with the test-run environment, as CI does:
+          pixi run -e test-run unit-test RelWithDebInfo.
           NOTES
       - uses: 16bit-ykiko/agent-box@a0fc879b1b1aa0ba8922018c82479a5ca7953c12
         with:
