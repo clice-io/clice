@@ -1,16 +1,13 @@
 /// Runs the translation checker, @clice-io/translate from clice-io/docs,
-/// at the commit the CI docs check runs — the one the moving v1 tag names:
-/// a sparse checkout of it under .cache/, dependencies installed once.
-/// Stands in until the package is on npm and the pixi tasks call
-/// `npx @clice-io/translate@1` directly.
+/// at the release the lint workflow's docs job pins, so a local run and CI
+/// run the same checker: a sparse checkout of it under .cache/ with its
+/// dependencies installed. Stands in until the package is on npm and the
+/// pixi tasks call `npx @clice-io/translate@1` directly.
 
 import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT } from "../compile_commands.ts";
-
-const REMOTE = "https://github.com/clice-io/docs.git";
-const TAG = "v1";
 
 function fail(message: string): never {
     console.error(message);
@@ -24,58 +21,43 @@ function run(command: string, args: string[], options: SpawnSyncOptions = {}): v
     }
 }
 
-/// The commit TAG names; an annotated tag lists twice, the peeled line
-/// (`^{}`) naming the commit.
-function taggedCommit(): string {
-    const result = spawnSync(
-        "git",
-        ["ls-remote", REMOTE, `refs/tags/${TAG}`, `refs/tags/${TAG}^{}`],
-        { encoding: "utf8" },
-    );
-    if (result.status !== 0) {
-        fail(`cannot list ${TAG} of ${REMOTE}: ${result.stderr.trim()}`);
-    }
-    const refs = result.stdout
-        .trim()
-        .split("\n")
-        .map((line) => line.split("\t"));
-    const commit = (refs.find(([, ref]) => ref?.endsWith("^{}")) ?? refs.at(0))?.at(0);
-    return commit === undefined || commit === "" ? fail(`${REMOTE} has no tag ${TAG}`) : commit;
-}
+const workflow = fs.readFileSync(path.join(REPO_ROOT, ".github/workflows/lint.yml"), "utf8");
+const release =
+    /uses: clice-io\/docs\/check-translations@(\S+)/.exec(workflow)?.[1] ??
+    fail("lint.yml does not run clice-io/docs/check-translations");
+const checkout = path.join(REPO_ROOT, ".cache", `clice-docs-${release}`);
 
-const commit = taggedCommit();
-const cache = path.join(REPO_ROOT, ".cache");
-const checkout = path.join(cache, `clice-docs-${commit}`);
-const tool = path.join(checkout, "tools", "translations");
-// Written once `npm ci` succeeded; a checkout without it is incomplete.
-const installed = path.join(checkout, ".installed");
-
-if (!fs.existsSync(installed)) {
-    fs.mkdirSync(cache, { recursive: true });
-    for (const entry of fs.readdirSync(cache, { withFileTypes: true })) {
-        if (entry.name.startsWith("clice-docs-")) {
-            fs.rmSync(path.join(cache, entry.name), { recursive: true, force: true });
-        }
-    }
-    fs.mkdirSync(checkout, { recursive: true });
+if (!fs.existsSync(checkout)) {
+    // Built aside and renamed into place, so a checkout that exists is
+    // complete even when an install was interrupted or raced by another.
+    const staging = `${checkout}.${process.pid}`;
+    fs.rmSync(staging, { recursive: true, force: true });
+    fs.mkdirSync(staging, { recursive: true });
     const git = (...args: string[]) => {
-        run("git", args, { cwd: checkout });
+        run("git", args, { cwd: staging });
     };
     git("init", "--quiet");
-    git("remote", "add", "origin", REMOTE);
+    git("remote", "add", "origin", "https://github.com/clice-io/docs.git");
     git("sparse-checkout", "set", "tools/translations");
-    git("fetch", "--quiet", "--depth=1", "--filter=blob:none", "origin", commit);
+    git("fetch", "--quiet", "--depth=1", "--filter=blob:none", "origin", release);
     git("checkout", "--quiet", "FETCH_HEAD");
     // A command line rather than arguments: npm is a .cmd shim on Windows,
     // which only a shell starts.
     run("npm ci --omit=dev --ignore-scripts --no-audit --no-fund --silent", [], {
-        cwd: tool,
+        cwd: path.join(staging, "tools", "translations"),
         shell: true,
     });
-    fs.writeFileSync(installed, "");
+    try {
+        fs.renameSync(staging, checkout);
+    } catch (error) {
+        if (!fs.existsSync(checkout)) {
+            throw error;
+        }
+        fs.rmSync(staging, { recursive: true, force: true });
+    }
 }
 
-const cli = path.join(tool, "src", "cli.ts");
+const cli = path.join(checkout, "tools", "translations", "src", "cli.ts");
 const result = spawnSync(process.execPath, [cli, ...process.argv.slice(2)], {
     cwd: REPO_ROOT,
     stdio: "inherit",
