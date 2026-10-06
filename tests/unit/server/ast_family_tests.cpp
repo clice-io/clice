@@ -1399,7 +1399,9 @@ ZEST_CASE(EvictedAgainRecompiles) {
     Stack stack;
     auto a = stack.open(tmp.path("a.cpp"), "int alpha = 1;\n");
     auto evict = [&] {
-        stack.pool.notify_stateful(a->path_id.raw, worker::EvictParams{tmp.path("a.cpp")});
+        stack.pool.notify_stateful(
+            a->path_id.raw,
+            worker::EvictParams{std::string(stack.project.file_table.resolve(a->path_id))});
     };
     int landings = 0;
     auto connection = stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) {
