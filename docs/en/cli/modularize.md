@@ -6,7 +6,7 @@
 
 The program's own code can follow: modules the partition marks for rewriting have their files rewritten in place into module units, headers into partitions and includes into imports.
 
-**Usage**: `clice modularize --partition <file> --out <dir> [--std <dir>] [--scope <glob,...>] [--workspace <dir>] [--configuration <tag>]`
+**Usage**: `clice modularize --partition <file> --out <dir> [--std <dir>] [--no-mirrors] [--scope <glob,...>] [--workspace <dir>] [--configuration <tag>]`
 
 Every fact comes from the persisted index, as [`clice analyze modules --view interface`](./analyze.md#modules) reports it: run `clice index` first. The command writes files and prints what the build needs; it never edits a build file.
 
@@ -57,7 +57,7 @@ Which modules to rewrite and how coarse they are is the partition's choice: one 
 
 A wrapping holds what the headers declare and define in one build configuration: the platform's C library, the macros a library's configuration header sets, the names a library declares for one target alone. A program built for several platforms or configurations runs modularize once for each, on an index of that configuration and into a directory of its own, then merges the results.
 
-**Usage**: `clice modularize --merge <file> --out <dir>`
+**Usage**: `clice modularize --merge <file> --out <dir> [--no-mirrors]`
 
 ```json
 {
@@ -92,6 +92,8 @@ Under `--out`:
 - `<module>.cppm` per wrapped module, and `<module>.macros.h` with the macros its importers need, in definition order.
 - `mirror/<module>/`: an empty file for each header files of other modules include, by the name they include it with; `mirror/std/` for the standard headers.
 - `prelude.h`: the C library headers still needed, `import std.compat;`, every import, every macro header.
+
+With `--no-mirrors`, no header is emptied: a file that still includes a wrapped header, a header that stays a header or the global module fragment of another wrapped module, parses it again beside the import. Clang merges the two, except where one module's fragment includes the headers of a module it imports. One module for every library leaves only the program's headers that stay headers to include wrapped ones.
 
 Files whose content did not change keep their timestamps. The files a previous run wrote that this one no longer produces are removed; `--out/.modularize` lists what a run wrote, and nothing else under `--out` is touched.
 

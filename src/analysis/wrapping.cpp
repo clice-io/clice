@@ -143,6 +143,15 @@ std::expected<Wrapper, std::string> read_wrapper(llvm::StringRef module, llvm::S
     return unit;
 }
 
+void drop_mirrors(Wrapping& wrapping) {
+    std::erase_if(wrapping.files,
+                  [](auto& file) { return llvm::StringRef(file.path).starts_with("mirror/"); });
+    wrapping.plan.mirrors.clear();
+    for(auto& module: wrapping.plan.modules) {
+        module.mirrors.clear();
+    }
+}
+
 }  // namespace
 
 std::expected<StdModules, std::string> read_std_modules(llvm::StringRef directory) {
@@ -198,7 +207,8 @@ std::expected<StdModules, std::string> read_std_modules(llvm::StringRef director
 std::expected<Wrapping, std::string> wrap(const Partition& partition,
                                           llvm::ArrayRef<Interface> interfaces,
                                           const std::optional<StdModules>& libcxx,
-                                          llvm::StringRef root) {
+                                          llvm::StringRef root,
+                                          bool mirrors) {
     auto absolute = [&](llvm::StringRef path) {
         return llvm::sys::path::is_absolute(path) ? path.str() : join_path(root, path);
     };
@@ -362,7 +372,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
                 "#include {}\n",
                 spelled_by[include] > 1 ? std::format("\"{}\"", absolute(entry.file)) : include);
             auto names = mirrorable(entry);
-            if(names.empty()) {
+            if(names.empty() && mirrors) {
                 result.plan.warnings.push_back(
                     std::format("{}: {} is included by no name a mirror can empty",
                                 name,
@@ -409,10 +419,14 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
     }
     result.plan.prelude = "prelude.h";
     result.files.push_back({result.plan.prelude, std::move(prelude)});
+    if(!mirrors) {
+        drop_mirrors(result);
+    }
     return result;
 }
 
-std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configurations) {
+std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configurations,
+                                           bool mirrors) {
     if(configurations.empty()) {
         return std::unexpected("no configuration to merge");
     }
@@ -568,6 +582,9 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
     }
     result.plan.prelude = "prelude.h";
     result.files.push_back({result.plan.prelude, "#pragma once\n\n" + dispatch("prelude.h")});
+    if(!mirrors) {
+        drop_mirrors(result);
+    }
     return result;
 }
 

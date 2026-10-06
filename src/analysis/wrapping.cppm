@@ -82,10 +82,13 @@ struct Wrapping {
 /// partition's external module `std` is libc++'s, imported as std.compat,
 /// and the modules it keeps headers contribute their includes and macros
 /// ahead of every import. `root` absolutizes the workspace-relative paths.
+/// Without `mirrors`, no header is emptied: what still includes a wrapped
+/// header parses it beside the import.
 std::expected<Wrapping, std::string> wrap(const Partition& partition,
                                           llvm::ArrayRef<Interface> interfaces,
                                           const std::optional<StdModules>& libcxx,
-                                          llvm::StringRef root);
+                                          llvm::StringRef root,
+                                          bool mirrors);
 
 /// The wrapping of one build configuration, as `wrap` wrote it.
 struct Configuration {
@@ -102,8 +105,9 @@ struct Configuration {
 /// directory; each module unit and the prelude pick them by its condition.
 /// A module unit exports what every configuration exports, the rest under
 /// the conditions of the configurations exporting it; the mirrors hold the
-/// headers any configuration empties. The plan carries no paths the
-/// configurations found on their machines.
-std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configurations);
+/// headers any configuration empties, none without `mirrors`. The plan
+/// carries no paths the configurations found on their machines.
+std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configurations,
+                                           bool mirrors);
 
 }  // namespace clice::analysis

@@ -546,6 +546,28 @@ test("modularize writes the wrapping", async ({ session }) => {
     expect((await modularize(ws)).status).toBe(0);
     expect(statSync(ws.path("wrap/alpha.cppm")).mtimeMs).toBe(before);
 
+    // The same units without a header emptied.
+    const bare = await runClice(
+        "modularize",
+        "--workspace",
+        ws.root,
+        "--scope",
+        SCOPE,
+        "--partition",
+        ws.path("partition.json"),
+        "--std",
+        ws.path("stdmod"),
+        "--no-mirrors",
+        "--out",
+        ws.path("bare"),
+    );
+    expect(bare.status, bare.stdout).toBe(0);
+    const barePlan = (JSON.parse(bare.stdout) as { wrapping: Plan }).wrapping;
+    expect(barePlan.mirrors).toEqual([]);
+    expect(barePlan.modules.map((module) => module.mirrors)).toEqual([[], []]);
+    expect(ws.exists("bare/mirror")).toBe(false);
+    expect(ws.read("bare/beta.cppm")).toBe(ws.read("wrap/beta.cppm"));
+
     // Without beta, what the last run wrote for it goes; the rest stays.
     ws.write(
         "alpha.json",
@@ -862,6 +884,19 @@ test("modularize merges configurations", async ({ session }) => {
 
     expect(ws.read("merged/mirror/alpha/alpha/wide.h")).toBe("");
     expect(ws.read("merged/mirror/alpha/alpha/alpha.h")).toBe("");
+
+    const bare = await runClice(
+        "modularize",
+        "--merge",
+        ws.path("merge.json"),
+        "--no-mirrors",
+        "--out",
+        ws.path("bare"),
+    );
+    expect(bare.status, bare.stdout).toBe(0);
+    expect((JSON.parse(bare.stdout) as { wrapping: Plan }).wrapping.mirrors).toEqual([]);
+    expect(ws.exists("bare/mirror")).toBe(false);
+    expect(ws.read("bare/alpha.cppm")).toBe(merged);
 
     const failure = async (run: Promise<ProcessResult>) => {
         const result = await run;

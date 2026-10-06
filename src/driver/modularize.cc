@@ -76,6 +76,13 @@ struct ModularizeOptions {
            required = false)
     <std::string> merge;
 
+    DecoFlag(names = {"--no-mirrors"},
+             help =
+                 "Write no mirrors: what still includes a wrapped header parses it beside "
+                 "the import",
+             required = false)
+    no_mirrors;
+
     LogLevelOption log{.log_level = LogLevel::Warn};
 };
 
@@ -205,7 +212,7 @@ int run_modularize(const ModularizeOptions& opts) {
         if(!configurations) {
             return fail(configurations.error());
         }
-        auto merged = analysis::merge(*configurations);
+        auto merged = analysis::merge(*configurations, !opts.no_mirrors);
         if(!merged) {
             return fail(merged.error());
         }
@@ -246,7 +253,8 @@ int run_modularize(const ModularizeOptions& opts) {
     if(!interfaces) {
         return fail(interfaces.error());
     }
-    auto wrapping = analysis::wrap(*partition, *interfaces, *libcxx, loaded->root);
+    auto wrapping =
+        analysis::wrap(*partition, *interfaces, *libcxx, loaded->root, !opts.no_mirrors);
     if(!wrapping) {
         return fail(wrapping.error());
     }
