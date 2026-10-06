@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO_ROOT } from "../compile_commands.ts";
 
-const RELEASE = "8038e6acbd499dc2376392ca610faca66b2deddf";
+const RELEASE = "v1.0.0";
 
 const checkout = path.join(REPO_ROOT, ".cache", `clice-docs-${RELEASE}`);
 const tool = path.join(checkout, "tools", "translations");

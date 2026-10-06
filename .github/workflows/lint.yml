@@ -67,7 +67,7 @@ jobs:
 
       # Last: it sets up its own node for every later step of the job.
       - name: Check translations
-        uses: clice-io/docs/check-translations@8038e6acbd499dc2376392ca610faca66b2deddf
+        uses: clice-io/docs/check-translations@v1
 
   typescript:
     runs-on: ubuntu-latest
