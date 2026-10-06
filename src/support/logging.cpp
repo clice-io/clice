@@ -24,7 +24,6 @@
 #include "vfs/path.h"
 
 #include "spdlog/sinks/ringbuffer_sink.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Process.h"
@@ -161,32 +160,65 @@ uintptr_t main_executable_base() {
 }
 
 #if defined(_WIN32)
+static void print_frame(llvm::raw_ostream& os, DWORD64 pc) {
+    os << llvm::format("0x%016llX", static_cast<unsigned long long>(pc));
+    HMODULE module = nullptr;
+    std::array<char, MAX_PATH> path;
+    if(GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          reinterpret_cast<LPCSTR>(pc),
+                          &module) &&
+       GetModuleFileNameA(module, path.data(), path.size()) != 0) {
+        auto base = reinterpret_cast<DWORD64>(module);
+        os << llvm::format(", %s(0x%016llX) + 0x%llX byte(s)\n",
+                           path.data(),
+                           static_cast<unsigned long long>(base),
+                           static_cast<unsigned long long>(pc - base));
+    } else {
+        os << " <unknown module>\n";
+    }
+}
+
 /// LLVM's walk (dbghelp's StackWalk64) stops on arm64 at the exception
 /// dispatcher's return address, which the system DLL signed with pointer
-/// authentication, short of the crashing frames; ntdll's unwinder strips the
-/// signatures. The frames print as LLVM's do without a symbolizer, the
-/// format scripts/symbolize.py reads.
+/// authentication, and RtlCaptureStackBackTrace follows the frame pointer
+/// chain, which ends there too; ntdll's unwinder follows the unwind data,
+/// strips the signatures and goes through the dispatcher to the crashing
+/// frames. The frames print as LLVM's do without a symbolizer, the format
+/// scripts/symbolize.py reads.
 static void print_stack_trace(llvm::raw_ostream& os) {
-    std::array<void*, 256> frames;
-    auto count = RtlCaptureStackBackTrace(0, frames.size(), frames.data(), nullptr);
-    for(auto* frame: llvm::ArrayRef(frames.data(), count)) {
-        auto address = reinterpret_cast<uintptr_t>(frame);
-        os << llvm::format("0x%016llX", static_cast<unsigned long long>(address));
-        HMODULE module = nullptr;
-        std::array<char, MAX_PATH> path;
-        if(GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                                  GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                              static_cast<LPCSTR>(frame),
-                              &module) &&
-           GetModuleFileNameA(module, path.data(), path.size()) != 0) {
-            auto base = reinterpret_cast<uintptr_t>(module);
-            os << llvm::format(", %s(0x%016llX) + 0x%llX byte(s)\n",
-                               path.data(),
-                               static_cast<unsigned long long>(base),
-                               static_cast<unsigned long long>(address - base));
-        } else {
-            os << " <unknown module>\n";
+    CONTEXT context;
+    RtlCaptureContext(&context);
+#if defined(__aarch64__)
+    auto& pc = context.Pc;
+#else
+    auto& pc = context.Rip;
+#endif
+    for(int depth = 0; depth < 256 && pc != 0; depth += 1) {
+        print_frame(os, pc);
+        DWORD64 image_base = 0;
+        auto* function = RtlLookupFunctionEntry(pc, &image_base, nullptr);
+        if(!function) {
+            // A leaf function, which returns through the link register on
+            // arm64 and through the address on top of the stack on x64.
+#if defined(__aarch64__)
+            pc = context.Lr;
+#else
+            pc = *reinterpret_cast<DWORD64*>(context.Rsp);
+            context.Rsp += 8;
+#endif
+            continue;
         }
+        void* handler_data = nullptr;
+        DWORD64 establisher_frame = 0;
+        RtlVirtualUnwind(UNW_FLAG_NHANDLER,
+                         image_base,
+                         pc,
+                         function,
+                         &context,
+                         &handler_data,
+                         &establisher_frame,
+                         nullptr);
     }
 }
 #endif
