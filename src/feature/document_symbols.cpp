@@ -1,19 +1,14 @@
-#include <algorithm>
-#include <memory>
-#include <string>
-#include <utility>
-#include <vector>
+module;
 
-#include "compile/compilation_unit.h"
-#include "feature/feature.h"
-#include "semantic/display.h"
-#include "semantic/semantics.h"
-#include "semantic/symbol.h"
+#include "modules/prelude.h"
 
-#include "llvm/Support/Casting.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/PrettyPrinter.h"
+module clice;
+
+import :compile.compilation_unit;
+import :compile.semantics;
+import :feature.feature;
+import :semantic.display;
+import :semantic.symbol;
 
 namespace clice::feature {
 

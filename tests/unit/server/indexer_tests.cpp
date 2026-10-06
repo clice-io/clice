@@ -1,41 +1,36 @@
-#include <expected>
-#include <format>
-#include <limits>
-#include <memory>
+module;
+
+#include "modules/prelude.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
-#include "test/cdb_helper.h"
-#include "test/envelope_mirror.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "command/argument_parser.h"
-#include "compile/compilation.h"
-#include "config/config.h"
-#include "index/database.h"
-#include "index/manifest.h"
-#include "index/serialization.h"
-#include "index/shard.h"
-#include "index/tu_index.h"
-#include "project/command_resolver.h"
-#include "project/index_store.h"
-#include "project/project.h"
-#include "sched/families/pcm.h"
-#include "sched/families/turun.h"
-#include "sched/graph.h"
-#include "sched/index/pump.h"
-#include "server/editor_context.h"
-#include "server/worker_test_helpers.h"
-#include "support/cache_store.h"
-#include "syntax/dependency_graph.h"
-#include "worker/pool.h"
+module clice;
 
-#include "kota/ipc/lsp/text.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
+import :command.argument_parser;
+import :compile.compilation;
+import :config.config;
+import :index.database;
+import :index.manifest;
+import :index.serialization;
+import :index.shard;
+import :index.tu_index;
+import :project.command_resolver;
+import :project.index_store;
+import :project.project;
+import :sched.families.pcm;
+import :sched.families.turun;
+import :sched.graph;
+import :sched.index.pump;
+import :server.editor_context;
+import :syntax.dependency_graph;
+import :tests.unit.server.worker_test_helpers;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.envelope_mirror;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.cache_store;
+import :worker.pool;
 
 namespace clice::testing {
 

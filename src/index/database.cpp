@@ -1,12 +1,6 @@
-#include "index/database.h"
+module;
 
-#include <atomic>
-#include <cassert>
-#include <chrono>
-#include <cstring>
-#include <format>
-#include <thread>
-#include <type_traits>
+#include "modules/prelude.h"
 
 #ifdef __linux__
 #include <sys/vfs.h>
@@ -18,24 +12,19 @@
 #include <unistd.h>
 #endif
 
-#include "lmdb.h"
-#include "support/cache_store.h"
-#include "support/logging.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
-
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/xxhash.h"
-
 #ifdef _WIN32
 #include <io.h>
 #include <windows.h>
 #endif
+#include "support/logging.macros.h"
+
+module clice;
+
+import :index.database;
+import :support.logging;
+import :vfs.cache_store;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::index {
 

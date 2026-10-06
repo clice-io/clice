@@ -1,7 +1,13 @@
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "command/command.h"
-#include "command/search_config.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :command.command;
+import :command.search_config;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 

@@ -1,29 +1,23 @@
-#include "worker/stateless.h"
+module;
 
-#include <atomic>
-#include <cstdlib>
-#include <expected>
-#include <format>
-#include <optional>
+#include "modules/prelude.h"
 
-#include "compile/compilation.h"
-#include "feature/feature.h"
-#include "index/tu_index.h"
-#include "support/logging.h"
-#include "support/process.h"
-#include "vfs/file_system.h"
-#include "worker/common.h"
-#include "worker/crash_report.h"
-#include "worker/protocol.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "kota/codec/json/json.h"
-#include "kota/ipc/codec/bincode.h"
-#include "kota/ipc/codec/json.h"
-#include "kota/ipc/peer.h"
-#include "kota/ipc/transport.h"
-#include "llvm/Support/Regex.h"
-#include "llvm/Support/thread.h"
+#include "kota/ipc/framing.h"
+
+module clice;
+
+import :compile.compilation;
+import :feature.feature;
+import :index.tu_index;
+import :support.logging;
+import :support.process;
+import :vfs.file_system;
+import :worker.common;
+import :worker.crash_report;
+import :worker.protocol;
+import :worker.stateless;
 
 namespace clice {
 

@@ -1,9 +1,6 @@
-#include "support/process.h"
+module;
 
-#include <format>
-#include <utility>
-
-#include "support/logging.h"
+#include "modules/prelude.h"
 
 #ifdef __GLIBC__
 #include <malloc.h>
@@ -18,6 +15,13 @@
 #else
 #include <unistd.h>
 #endif
+
+#include "support/logging.macros.h"
+
+module clice;
+
+import :support.logging;
+import :support.process;
 
 namespace clice {
 

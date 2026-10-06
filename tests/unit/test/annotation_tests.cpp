@@ -1,7 +1,11 @@
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "syntax/annotation.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.annotation;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

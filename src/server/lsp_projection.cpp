@@ -1,12 +1,11 @@
-#include "server/lsp_projection.h"
+module;
 
-#include <format>
-#include <string>
-#include <variant>
+#include "modules/prelude.h"
 
-#include "feature/feature.h"
+module clice;
 
-#include "llvm/ADT/StringRef.h"
+import :feature.feature;
+import :server.lsp_projection;
 
 namespace clice::to_lsp {
 

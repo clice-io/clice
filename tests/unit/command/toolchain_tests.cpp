@@ -1,12 +1,14 @@
-#include <algorithm>
-#include <chrono>
-#include <optional>
+module;
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "command/argument_parser.h"
-#include "command/command.h"
-#include "command/toolchain.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :command.argument_parser;
+import :command.command;
+import :command.toolchain;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

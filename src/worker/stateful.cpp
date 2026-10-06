@@ -1,33 +1,22 @@
-#include "worker/stateful.h"
+module;
 
-#include <algorithm>
-#include <atomic>
-#include <cstdint>
-#include <format>
-#include <iterator>
-#include <list>
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "compile/compilation.h"
-#include "feature/feature.h"
-#include "index/tu_index.h"
-#include "support/logging.h"
-#include "support/process.h"
-#include "worker/common.h"
-#include "worker/crash_report.h"
-#include "worker/protocol.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "kota/ipc/codec/bincode.h"
-#include "kota/ipc/peer.h"
-#include "kota/ipc/transport.h"
-#include "kota/meta/enum.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/Support/raw_ostream.h"
+#include "kota/ipc/framing.h"
+
+module clice;
+
+import :compile.compilation;
+import :feature.feature;
+import :index.tu_index;
+import :support.logging;
+import :support.process;
+import :worker.common;
+import :worker.crash_report;
+import :worker.protocol;
+import :worker.stateful;
 
 namespace clice {
 
@@ -406,7 +395,7 @@ void StatefulWorker::register_handlers() {
                         -> RequestResult<worker::DocumentLinkParams> {
         return with_ast_or("DocumentLink",
                            params,
-                           std::vector<feature::DocumentLink>{},
+                           std::vector<index::DocumentLink>{},
                            [&](DocumentEntry& doc) { return feature::document_links(doc.unit); });
     });
 

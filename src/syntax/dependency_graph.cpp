@@ -1,23 +1,17 @@
-#include "syntax/dependency_graph.h"
+module;
 
-#include <algorithm>
-#include <chrono>
+#include "modules/prelude.h"
 
-#include "command/search_config.h"
-#include "support/logging.h"
-#include "syntax/include_resolver.h"
-#include "syntax/scan.h"
-#include "vfs/file_table.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/StringSaver.h"
+module clice;
+
+import :command.search_config;
+import :support.logging;
+import :syntax.dependency_graph;
+import :syntax.include_resolver;
+import :syntax.scan;
+import :vfs.file_table;
 
 namespace clice {
 
@@ -344,6 +338,12 @@ bool DependencyGraph::reaches_import(Fid path_id) const {
     return walk_closure(path_id, seen, [&](Fid fid) { return import_candidates.contains(fid); });
 }
 
+void DependencyGraph::reset() {
+    auto kept = std::move(quick_scans);
+    *this = DependencyGraph();
+    quick_scans = std::move(kept);
+}
+
 llvm::SmallVector<Fid, 4> DependencyGraph::find_roots(Fid path_id, bool through_forced) const {
     llvm::SmallVector<Fid, 4> result;
     llvm::DenseSet<Fid> visited;
@@ -652,8 +652,9 @@ struct FileScanner {
                 // two.
                 if(observed->obs.hash != hash) {
                     files.observe(path_id, observed->obs);
-                    scan =
-                        files.scan_of(path_id, observed->obs.hash, observed->content->getBuffer());
+                    scan = graph.quick_scans.scan_of(path_id,
+                                                     observed->obs.hash,
+                                                     observed->content->getBuffer());
                 }
                 auto& group = graph.group(context.group);
                 auto rendered =
@@ -802,8 +803,8 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         if(!hash) {
             return false;
         }
-        auto it = file_table.scan_results.find({path_id, *hash});
-        if(it == file_table.scan_results.end()) {
+        auto it = graph.quick_scans.results.find({path_id, *hash});
+        if(it == graph.quick_scans.results.end()) {
             return false;
         }
         pending_warm.push_back({
@@ -841,7 +842,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             for(auto& r: scanned) {
                 if(!r.read_failed) {
                     file_table.observe(r.path_id, r.obs);
-                    file_table.scan_results.try_emplace({r.path_id, r.obs.hash}, r.scan_result);
+                    graph.quick_scans.results.try_emplace({r.path_id, r.obs.hash}, r.scan_result);
                 }
                 scan_results.push_back(std::move(r));
             }
@@ -886,7 +887,8 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 for(auto& r: scanned) {
                     if(!r.read_failed) {
                         file_table.observe(r.path_id, r.obs);
-                        file_table.scan_results.try_emplace({r.path_id, r.obs.hash}, r.scan_result);
+                        graph.quick_scans.results.try_emplace({r.path_id, r.obs.hash},
+                                                              r.scan_result);
                     }
                     scan_results.push_back(std::move(r));
                 }
@@ -1011,7 +1013,8 @@ void rescan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph, F
             return;
         }
         files.observe(fid, observed->obs);
-        auto result = files.scan_of(fid, observed->obs.hash, observed->content->getBuffer());
+        auto result =
+            graph.quick_scans.scan_of(fid, observed->obs.hash, observed->content->getBuffer());
         // A unit provides what its commands declare, as on the full scan;
         // a name it keeps declaring keeps its place among the providers.
         bool unit = false;

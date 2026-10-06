@@ -1,7 +1,13 @@
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "syntax/include_resolver.h"
-#include "syntax/scan.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.include_resolver;
+import :syntax.scan;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

@@ -1,14 +1,17 @@
-#include "sched/families/pch.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <random>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "sched/families/build_common.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
-#include "worker/protocol.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :sched.families.build_common;
+import :sched.families.pch;
+import :support.anomaly;
+import :support.logging;
+import :worker.protocol;
 
 namespace clice {
 

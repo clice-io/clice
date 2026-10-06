@@ -1,21 +1,13 @@
-#include "project/build.h"
+module;
 
-#include <cassert>
-#include <format>
+#include "modules/prelude.h"
 
-#include "project/configuration.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+module clice;
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/Driver/Types.h"
+import :project.build;
+import :project.configuration;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

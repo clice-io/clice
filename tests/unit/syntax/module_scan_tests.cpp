@@ -1,8 +1,12 @@
-#include <cassert>
+module;
 
-#include "test/test.h"
-#include "syntax/annotation.h"
-#include "syntax/scan.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.annotation;
+import :syntax.scan;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

@@ -1,15 +1,15 @@
+module;
+
+#include "modules/prelude.h"
 /// Ported from clangd's unittests/HoverTests.cpp (llvmorg-21.1.8), part of the LLVM
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
-#include <functional>
-#include <optional>
+module clice;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "feature/feature.h"
-
-#include "kota/meta/enum.h"
+import :feature.feature;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 

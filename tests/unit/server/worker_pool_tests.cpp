@@ -1,21 +1,17 @@
-#include <chrono>
-#include <cstdint>
-#include <format>
-#include <optional>
-#include <string>
+module;
+
+#include "modules/prelude.h"
 #ifndef _WIN32
-#include <cerrno>
 #include <signal.h>
 #endif
 
-#include "test/test.h"
-#include "server/worker_test_helpers.h"
-#include "support/anomaly.h"
-#include "worker/pool.h"
-#include "worker/protocol.h"
+module clice;
 
-#include "kota/async/async.h"
-#include "llvm/Support/MemoryBuffer.h"
+import :support.anomaly;
+import :tests.unit.server.worker_test_helpers;
+import :tests.unit.test.test;
+import :worker.pool;
+import :worker.protocol;
 
 namespace clice::testing {
 

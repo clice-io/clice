@@ -1,21 +1,12 @@
-#include "index/rename.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <map>
-#include <ranges>
-#include <set>
-#include <tuple>
+#include "modules/prelude.h"
 
-#include "index/symbol_query.h"
-#include "syntax/lexer.h"
+module clice;
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/StringSet.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Basic/IdentifierTable.h"
-#include "clang/Basic/LangStandard.h"
+import :index.rename;
+import :index.symbol_query;
+import :syntax.lexer;
 
 namespace clice::index {
 

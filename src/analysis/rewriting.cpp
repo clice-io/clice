@@ -1,25 +1,13 @@
-#include "analysis/rewriting.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <limits>
-#include <map>
-#include <memory>
-#include <set>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "syntax/lexer.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+module clice;
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/MemoryBuffer.h"
+import :analysis.rewriting;
+import :syntax.lexer;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::analysis {
 
@@ -338,6 +326,19 @@ struct Text {
         return std::pair{first, line};
     }
 
+    /// The token closing the brace `open` opens.
+    std::optional<std::size_t> closing_brace(std::size_t open) const {
+        int depth = 0;
+        for(auto close = open; close < tokens.size(); close += 1) {
+            depth += tokens[close].kind == clang::tok::l_brace;
+            depth -= tokens[close].kind == clang::tok::r_brace;
+            if(depth == 0) {
+                return close;
+            }
+        }
+        return std::nullopt;
+    }
+
     /// The opening and closing lines of each anonymous namespace standing on
     /// lines of their own.
     llvm::DenseSet<std::uint32_t> anonymous_namespaces() const {
@@ -348,17 +349,46 @@ struct Text {
                tokens[i + 1].kind != clang::tok::l_brace || tokens_on(line).size() != 2) {
                 continue;
             }
-            int depth = 0;
-            for(auto close = i + 1; close < tokens.size(); close += 1) {
-                depth += tokens[close].kind == clang::tok::l_brace;
-                depth -= tokens[close].kind == clang::tok::r_brace;
-                if(depth == 0) {
-                    if(tokens_on(token_lines[close]).size() == 1) {
-                        found.insert(line);
-                        found.insert(token_lines[close]);
-                    }
-                    break;
-                }
+            if(auto close = closing_brace(i + 1);
+               close && tokens_on(token_lines[*close]).size() == 1) {
+                found.insert(line);
+                found.insert(token_lines[*close]);
+            }
+        }
+        return found;
+    }
+
+    /// The opening and closing lines of each named namespace left holding
+    /// nothing once `dropped` goes, standing on lines of their own; one
+    /// holding only such namespaces goes with them, one holding a directive
+    /// stays.
+    llvm::DenseSet<std::uint32_t>
+        empty_namespaces(const llvm::DenseSet<std::uint32_t>& dropped) const {
+        llvm::DenseSet<std::uint32_t> found;
+        // From the last opening, so the namespaces inside one come first.
+        for(auto i = tokens.size(); i > 0;) {
+            i -= 1;
+            auto open = token_lines[i];
+            auto on_open = tokens_on(open);
+            if(&on_open.front() != &tokens[i] || on_open.front().text(content) != "namespace" ||
+               on_open.size() < 3 || on_open.back().kind != clang::tok::l_brace ||
+               !llvm::all_of(on_open.drop_front().drop_back(), [](const auto& token) {
+                   return token.is_identifier() || token.kind == clang::tok::coloncolon;
+               })) {
+                continue;
+            }
+            auto close = closing_brace(i + on_open.size() - 1);
+            if(!close || tokens_on(token_lines[*close]).size() != 1) {
+                continue;
+            }
+            auto empty = true;
+            for(auto line = open + 1; empty && line < token_lines[*close]; line += 1) {
+                empty =
+                    kinds[line] == Line::Blank || dropped.contains(line) || found.contains(line);
+            }
+            if(empty) {
+                found.insert(open);
+                found.insert(token_lines[*close]);
             }
         }
         return found;
@@ -786,6 +816,9 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 for(auto line: text.anonymous_namespaces()) {
                     dropped.insert(line);
                 }
+            }
+            for(auto line: text.empty_namespaces(dropped)) {
+                dropped.insert(line);
             }
         }
 

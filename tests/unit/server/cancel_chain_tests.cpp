@@ -1,12 +1,13 @@
-#include <chrono>
-#include <format>
+module;
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "server/worker_test_helpers.h"
-#include "worker/protocol.h"
+#include "modules/prelude.h"
 
-#include "kota/async/async.h"
+module clice;
+
+import :tests.unit.server.worker_test_helpers;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :worker.protocol;
 
 namespace clice::testing {
 namespace {

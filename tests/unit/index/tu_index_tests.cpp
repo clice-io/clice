@@ -1,22 +1,20 @@
-#include <algorithm>
-#include <format>
-#include <optional>
-#include <set>
+module;
 
-#include "test/envelope_mirror.h"
-#include "test/test.h"
-#include "test/tester.h"
-#include "feature/feature.h"
-#include "index/serialization.h"
-#include "index/shard.h"
-#include "index/tu_index.h"
-#include "semantic/selection.h"
-#include "support/logging.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/thread.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/Basic/Stack.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :compile.selection;
+import :feature.feature;
+import :index.serialization;
+import :index.shard;
+import :index.tu_index;
+import :support.logging;
+import :tests.unit.test.envelope_mirror;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 
@@ -1754,8 +1752,7 @@ ZEST_CASE(DeepExpressionChain) {
     // sanitized builds (and Windows main threads only get 1MB). 32MB is
     // an empirical bound with margin, not a derived number.
     bool compiled = false;
-    llvm::thread compile_thread(std::optional<unsigned>(4 * clang::DesiredStackSize),
-                                [&] { compiled = compile(); });
+    llvm::thread compile_thread(std::optional<unsigned>(32u << 20), [&] { compiled = compile(); });
     compile_thread.join();
     ZASSERT(compiled);
 
@@ -1764,7 +1761,7 @@ ZEST_CASE(DeepExpressionChain) {
     // reintroduced per-node recursion crashes here deterministically
     // instead of only on production workers with deeper files.
     feature::InactiveScan scan;
-    llvm::thread index_thread(std::optional<unsigned>(clang::DesiredStackSize / 4), [&] {
+    llvm::thread index_thread(std::optional<unsigned>(2u << 20), [&] {
         // Mirror the stateful worker's post-compile sequence.
         scan = feature::inactive_regions(*unit);
         decode_index(index::build_tu_index(*unit, {.main_file_only = true}));

@@ -20,36 +20,18 @@
 /// Example:
 ///   ./build/RelWithDebInfo/bin/bin/index_stats_benchmark compile_commands.json
 
-#include <algorithm>
-#include <array>
-#include <atomic>
-#include <cstdint>
-#include <mutex>
-#include <print>
-#include <ranges>
-#include <set>
-#include <sstream>
-#include <string>
-#include <thread>
-#include <unordered_map>
-#include <vector>
+module;
 
-#include "command/command.h"
-#include "compile/compilation.h"
-#include "index/tu_index.h"
-#include "support/format.h"
-#include "support/logging.h"
-#include "vfs/file_system.h"
+#include "modules/prelude.h"
 
-#include "kota/deco/deco.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :command.command;
+import :compile.compilation;
+import :index.tu_index;
+import :support.format;
+import :support.logging;
+import :vfs.file_system;
 
 using namespace clice;
 
@@ -1046,7 +1028,7 @@ std::string format_stats_json(const Stats& stats, const Report& r, llvm::StringR
 
 }  // namespace
 
-int main(int argc, const char** argv) {
+extern "C++" int main(int argc, const char** argv) {
     auto args = kota::deco::util::argvify(argc, argv);
     auto result = kota::deco::cli::parse<BenchmarkOptions>(args);
     if(!result.has_value()) {

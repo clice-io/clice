@@ -1,11 +1,11 @@
-#include <cstddef>
-#include <cstdint>
-#include <optional>
-#include <utility>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "index/serialization.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :index.serialization;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

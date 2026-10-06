@@ -1,20 +1,12 @@
-#include <algorithm>
-#include <array>
-#include <format>
-#include <string>
-#include <vector>
+module;
 
-#include "compile/compilation_unit.h"
-#include "feature/code_action/action.h"
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/Basic/DiagnosticSema.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Basic/TokenKinds.h"
-#include "clang/Tooling/Inclusions/StandardLibrary.h"
+module clice;
+
+import :compile.compilation_unit;
+import :feature.code_action.action;
+import :syntax.lexer;
 
 namespace clice::feature::action {
 

@@ -1,20 +1,14 @@
-#include "index/search_index.h"
+module;
 
-#include <algorithm>
-#include <cmath>
-#include <functional>
-#include <numeric>
-#include <string_view>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "index/serialization.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "kota/meta/enum.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/raw_ostream.h"
+module clice;
+
+import :index.search_index;
+import :index.serialization;
+import :support.logging;
 
 namespace clice::index {
 

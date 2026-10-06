@@ -1,30 +1,18 @@
-#include "command/command.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <deque>
-#include <format>
-#include <ranges>
-#include <string_view>
-#include <tuple>
+#include "modules/prelude.h"
 
-#include "simdjson.h"
-#include "command/nvcc.h"
-#include "command/search_config.h"
-#include "command/toolchain.h"
-#include "support/logging.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/ConvertUTF.h"
-#include "llvm/Support/StringSaver.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/Driver/Types.h"
+module clice;
+
+import :command.command;
+import :command.nvcc;
+import :command.search_config;
+import :command.toolchain;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

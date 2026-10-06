@@ -1,8 +1,12 @@
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "feature/feature.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :feature.feature;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 
@@ -10,7 +14,7 @@ namespace {
 
 ZEST_SUITE(document_link, Tester) {
 
-std::vector<feature::DocumentLink> links;
+std::vector<index::DocumentLink> links;
 
 void run(llvm::StringRef source, llvm::StringRef standard = "-std=c++17") {
     add_files("main.cpp", source);

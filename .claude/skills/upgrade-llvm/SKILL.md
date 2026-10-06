@@ -54,8 +54,9 @@ Strategy:
 3. Update test expectations (AST structure changes affect test output)
 4. Ensure `pixi run unit-test RelWithDebInfo` passes
 5. Port `clang/lib/AST/StmtProfile.cpp` changes into `src/semantic/expr_hash.cpp` (a trimmed copy of `StmtProfiler` with clice's own leaves): do not diff the files — list the upstream commits with `git log llvmorg-<old>..llvmorg-<new> -- clang/lib/AST/StmtProfile.cpp`, and hand an agent that list with the instruction to apply each commit's C and C++ visitor changes to the port; `unit_tests --test-filter=expr_hash` (the bit-for-bit fidelity test against `Stmt::Profile`) must be green afterwards
-6. Bump `index_format_version` in `src/index/serialization.h`: entity hashes (`src/semantic/identity.cpp`) follow clang's canonicalization rules, so they can change silently across versions and an old index would otherwise keep serving stale symbols
-7. A library clice starts using directly is added to `LLVM_LIBRARIES` in `BUILD.bazel`; xclang's libclang archives carry every LLVM and clang library, so nothing else changes
+6. Bump `index_format_version` in `src/index/serialization.cppm`: entity hashes (`src/compile/identity.cpp`) follow clang's canonicalization rules, so they can change silently across versions and an old index would otherwise keep serving stale symbols
+7. A library clice starts using directly is added to `LLVM_LIBRARIES` in `bazel/BUILD.bazel`; xclang's libclang archives carry every LLVM and clang library, so nothing else changes
+8. `modules/` wraps libclang's headers as they were when it was generated: regenerate it with `clice modularize` for every configuration (`modules/BUILD.bazel`), or new declarations stay unexported and removed ones break the module
 
 When a fix is not obvious, read the LLVM source code to understand the new API. If `../llvm-project` exists locally, use it. Otherwise, look up the upstream commit/PR on GitHub.
 
@@ -108,4 +109,4 @@ The user decides whether all changes are acceptable or if adjustments are needed
 ## Notes
 
 - **Private headers**: clice includes no private clang headers, and xclang's libclang archives carry none since 23.1.2.6; one clice starts to need goes into xclang's `scripts/toolchain.ts` first.
-- **Debug builds**: ASan builds (`bazel/clice.bazelrc`'s Debug) link the ASan libclang, which xclang builds for x86_64 Linux and arm64 macOS (its `@libclang` follows `--features=asan`); Windows Debug builds link the release archive without ASan.
+- **Debug builds**: ASan builds (`bazel/clice.bazelrc`'s Debug) link the ASan libclang, which xclang builds for x86_64 Linux and arm64 macOS (its `@libclang` follows `--features=asan`); the other targets have no Debug build.

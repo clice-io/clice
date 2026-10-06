@@ -1,9 +1,10 @@
-#include <utility>
+module;
 
-#include "feature/feature.h"
+#include "modules/prelude.h"
 
-#include "clang/Sema/CodeCompleteConsumer.h"
-#include "clang/Sema/Sema.h"
+module clice;
+
+import :feature.feature;
 
 namespace clice::feature {
 

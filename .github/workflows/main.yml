@@ -33,7 +33,7 @@ jobs:
         with:
           filters: |
             format:
-              - '**/*.{h,c,cpp,hpp,ts,js,lua,md,yml,yaml}'
+              - '**/*.{h,c,cc,cpp,cppm,hpp,ts,js,lua,md,yml,yaml}'
             docs:
               - 'docs/**'
               # The site renders the feature pages' snap fences from the
@@ -62,6 +62,8 @@ jobs:
               - 'docs/en/guide/configuration.md'
               - 'docs/en/features/**'
               - 'src/**'
+              - 'modules/**'
+              - 'benchmarks/**'
               - 'include/**'
               - 'tests/**'
               - 'tools/**'

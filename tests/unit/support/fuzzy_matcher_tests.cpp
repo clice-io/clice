@@ -1,12 +1,11 @@
-#include <initializer_list>
-#include <string>
+module;
 
-#include "test/test.h"
-#include "support/fuzzy_matcher.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
+module clice;
+
+import :support.fuzzy_matcher;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

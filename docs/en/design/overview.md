@@ -20,14 +20,14 @@ clice is a brand-new C++ language server, redesigned from the architecture level
 
 General-purpose utilities and infrastructure shared by all other modules.
 
-- `CacheStore`: The on-disk artifact store for file-shaped build products (PCH/PCM and friends) — atomic pair commits, namespace quotas, LRU eviction, and crash recovery
 - `FuzzyMatcher`: Token-aware fuzzy matching for code completion and symbol search
 - Markup / Doxygen: Parsing and formatting of documentation comments
 - Logging, filesystem abstractions, string utilities, etc.
 
 ### `src/vfs/` — File Identity and Versions
 
-- `FileTable`: Internalizes file paths as stable `Fid` identifiers used throughout the system, and owns the shared per-file facts derived from them — the last observation of each file on disk, content versions, scan results, directory listings. A file has one `Fid` however a path spells it: it is identified by the name the operating system gives it (through symlinks, and on Windows through letter case, junctions and subst drives), and shown to the user under the name the user knows it by — the open document's, else its own path under the workspace folder the user opened, never the spelling an include lookup reached it by. The two-layer freshness check (stat fast path, then content hash) lives here once and is shared by every consumer: PCH validation, index staleness, and disk polling. Every look that finds other content than the last one is reported as a change, whoever looked.
+- `FileTable`: Internalizes file paths as stable `Fid` identifiers used throughout the system, and owns the shared per-file facts derived from them — the last observation of each file on disk, content versions, directory listings. A file has one `Fid` however a path spells it: it is identified by the name the operating system gives it (through symlinks, and on Windows through letter case, junctions and subst drives), and shown to the user under the name the user knows it by — the open document's, else its own path under the workspace folder the user opened, never the spelling an include lookup reached it by. The two-layer freshness check (stat fast path, then content hash) lives here once and is shared by every consumer: PCH validation, index staleness, and disk polling. Every look that finds other content than the last one is reported as a change, whoever looked.
+- `CacheStore`: The on-disk artifact store for file-shaped build products (PCH/PCM and friends) — atomic pair commits, namespace quotas, LRU eviction, and crash recovery
 
 ### `src/config/` — Configuration
 
@@ -47,8 +47,9 @@ See [Compilation Command Resolution](command-resolve.md).
 
 Wraps the Clang compiler, abstracting Clang APIs into safe, unified compilation interfaces. This layer is purely a compilation abstraction with no server logic.
 
-- `CompilationUnit` / `CompilationUnitRef`: RAII wrappers around the Clang AST context. `CompilationUnitRef` provides a unified read-only view for accessing source location mappings, preprocessor directives, AST nodes, and more. This is the primary input for `src/feature/` and `src/semantic/`.
+- `CompilationUnit` / `CompilationUnitRef`: RAII wrappers around the Clang AST context. `CompilationUnitRef` provides a unified read-only view for accessing source location mappings, preprocessor directives, AST nodes, and more. This is the primary input for `src/feature/` and `src/index/`.
 - `CompilationParams`: Describes the complete configuration for a single compilation, including compilation type (Preamble / Content / Completion / Indexing, etc.), file remapping, PCH/PCM reuse, etc.
+- `Semantics`: The unified semantic map — a single AST traversal per compilation records every interesting node and its token ownership; selection, feature projections, and index production are pure queries over the map rather than separate AST walks
 - Diagnostic and clang-tidy collection during compilation.
 
 ### `src/syntax/` — Lightweight Syntax Processing
@@ -65,9 +66,8 @@ See [Dependency Scanning](dependency-scanning.md).
 
 ### `src/semantic/` — Semantic Analysis
 
-Semantic analysis capabilities beyond Clang's native APIs. Takes a `CompilationUnitRef` and extracts higher-level semantic information.
+Semantic analysis capabilities beyond Clang's native APIs, over the AST itself: the compilation layer builds on them.
 
-- `Semantics`: The unified semantic map — a single AST traversal per compilation records every interesting node and its token ownership; selection, feature projections, and index production are pure queries over the map rather than separate AST walks
 - `TemplateResolver`: Resolves dependent names through pseudo-instantiation, enabling semantic analysis to see through template contexts. See [Template Resolver](template-resolver.md).
 - `SymbolKind` / `RelationKind`: Fine-grained symbol kinds and relation types
 

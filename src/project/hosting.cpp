@@ -1,14 +1,12 @@
-#include "project/hosting.h"
+module;
 
-#include <algorithm>
-#include <tuple>
+#include "modules/prelude.h"
 
-#include "project/project.h"
-#include "vfs/path.h"
+module clice;
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Path.h"
-#include "clang/Driver/Types.h"
+import :project.hosting;
+import :project.project;
+import :vfs.path;
 
 namespace clice {
 

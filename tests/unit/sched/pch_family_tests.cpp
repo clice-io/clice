@@ -1,14 +1,15 @@
-#include <optional>
-#include <string>
+module;
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "sched/families/pch.h"
-#include "server/worker_test_helpers.h"
-#include "support/anomaly.h"
-#include "support/cache_store.h"
+#include "modules/prelude.h"
 
-#include "kota/zest/async.h"
+module clice;
+
+import :sched.families.pch;
+import :support.anomaly;
+import :tests.unit.server.worker_test_helpers;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.cache_store;
 
 namespace clice::testing {
 namespace {

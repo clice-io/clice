@@ -1,18 +1,14 @@
-#include "semantic/resolver.h"
+module;
 
-#include <cstdint>
-#include <optional>
-#include <ranges>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "semantic/unifier.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/SmallPtrSet.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/RecursiveASTVisitor.h"
+module clice;
+
+import :semantic.resolver;
+import :semantic.unifier;
+import :support.logging;
 
 /// Template Resolver — pseudo-instantiation of dependent C++ types.
 ///

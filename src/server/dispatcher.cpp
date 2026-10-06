@@ -1,16 +1,18 @@
-#include "server/dispatcher.h"
+module;
 
-#include <type_traits>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "server/editor_context.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "worker/protocol.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
 
-#include "kota/ipc/lsp/position.h"
-#include "kota/meta/enum.h"
+module clice;
+
+import :server.dispatcher;
+import :server.editor_context;
+import :support.anomaly;
+import :support.logging;
+import :support.timer;
+import :worker.protocol;
 
 namespace clice {
 
@@ -249,7 +251,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     co_return std::move(result);
 }
 
-kota::task<std::vector<feature::DocumentLink>, kota::ipc::Error>
+kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
     Dispatcher::document_links(const Ticket& ticket, kota::cancellation_token token) {
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,

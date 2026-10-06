@@ -1,34 +1,25 @@
-#include "server/ast_family.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <ranges>
-#include <string>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "command/argument_parser.h"
-#include "feature/feature.h"
-#include "index/tu_index.h"
-#include "sched/families/build_common.h"
-#include "server/context_service.h"
-#include "server/editor_context.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "vfs/path.h"
-#include "worker/protocol.h"
-#include "worker/serialize.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
 
-#include "kota/codec/json/json.h"
-#include "kota/ipc/codec/json.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
-#include "clang/Basic/Version.h"
+module clice;
+
+import :command.argument_parser;
+import :feature.feature;
+import :index.tu_index;
+import :sched.families.build_common;
+import :server.ast_family;
+import :server.context_service;
+import :server.editor_context;
+import :support.anomaly;
+import :support.logging;
+import :support.timer;
+import :vfs.path;
+import :worker.protocol;
+import :worker.serialize;
 
 namespace clice {
 

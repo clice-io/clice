@@ -1,13 +1,12 @@
-#include "server/format.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <ranges>
-#include <string>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "compile/diagnostic.h"
-#include "feature/feature.h"
+module clice;
+
+import :compile.diagnostic;
+import :feature.feature;
+import :server.format;
 
 namespace clice {
 

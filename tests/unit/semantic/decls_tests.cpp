@@ -1,7 +1,11 @@
-#include "test/tester.h"
-#include "semantic/decls.h"
+module;
 
-#include "clang/AST/DeclTemplate.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :semantic.decls;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 

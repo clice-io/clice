@@ -1,16 +1,16 @@
-#include "index/writer_lock.h"
+module;
 
-#include <format>
+#include "modules/prelude.h"
 
 #include "version.h"
-#include "support/logging.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/logging.macros.h"
 
-#include "kota/codec/json/json.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/raw_ostream.h"
+module clice;
+
+import :index.writer_lock;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::index {
 
