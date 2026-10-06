@@ -1,21 +1,20 @@
 module;
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <emmintrin.h>
-import std.compat;
-#include "std.macros.h"
-#include "libc.macros.h"
-
-#include "lmdb.h"
+#if defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)
+#include "linux-x64/lmdb.fragment.h"
+#elif defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)
+#include "linux-x64-debug/lmdb.fragment.h"
+#elif defined(__linux__) && defined(__aarch64__)
+#include "linux-arm64/lmdb.fragment.h"
+#elif defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)
+#include "macos-arm64/lmdb.fragment.h"
+#elif defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)
+#include "macos-arm64-debug/lmdb.fragment.h"
+#elif defined(__APPLE__) && defined(__x86_64__)
+#include "macos-x64/lmdb.fragment.h"
+#else
+#error "no configuration merged matches this compilation"
+#endif
 
 export module lmdb;
 
@@ -108,4 +107,3 @@ export using ::mdb_txn_id;
 export using ::mdb_txn_renew;
 export using ::mdb_txn_reset;
 export using ::mdb_version;
-

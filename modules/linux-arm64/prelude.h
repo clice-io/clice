@@ -1,0 +1,27 @@
+#pragma once
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <arm_neon.h>
+import std.compat;
+#include "std.macros.h"
+#include "libc.macros.h"
+import llvm;
+import clang;
+import simdjson;
+import kota;
+import lmdb;
+import spdlog;
+#include "llvm.macros.h"
+#include "clang.macros.h"
+#include "simdjson.macros.h"
+#include "kota.macros.h"
+#include "lmdb.macros.h"
+#include "spdlog.macros.h"

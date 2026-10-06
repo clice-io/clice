@@ -1,26 +1,23 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load(":mirror.bzl", "mirror")
-load(":mirrors.bzl", "MIRRORS")
 load(":modules.bzl", "MODULE_COPTS", "WRAPPERS", "mirror_include")
 
 # The third-party libraries as named modules over their headers, written by
-# `clice modularize`: each <name>.cppm includes a library's headers in its
-# global module fragment and exports what they declare. clice's sources keep
-# their includes: mirror/<name> holds an empty file for each header of the
-# library (mirrors.bzl lists them; Bazel creates them), first on their
-# include path, and prelude.h, force-included, imports the modules and
-# replays the macros their headers define.
+# `clice modularize` once for each configuration CI builds and merged: each
+# <name>.cppm includes a library's headers in its global module fragment,
+# <configuration>/<name>.fragment.h of the configuration whose condition
+# holds, and exports what they declare. clice's headers that stay headers
+# keep their includes: mirror/<name> holds an empty file for each header of
+# the library, first on the include path, and prelude.h, which every module
+# unit of clice includes first, imports the modules and replays the macros
+# their headers define.
 
-[mirror(
-    name = "mirror_" + library,
-    headers = headers,
-    library = library,
-) for library, headers in MIRRORS.items()]
-
-# The emptied headers, the macro headers and the prelude.
+# The emptied headers, the fragments, the macro headers and the preludes.
 cc_library(
     name = "headers",
-    textual_hdrs = glob(["*.h"]) + [":mirror_" + library for library in MIRRORS],
+    textual_hdrs = glob([
+        "mirror/**",
+        "**/*.h",
+    ]),
 )
 
 # A reduced BMI drops the global module fragment's declarations the purview

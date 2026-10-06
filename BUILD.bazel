@@ -101,13 +101,20 @@ cc_library(
     ]),
 ]]
 
+# The allocator of the Windows executable, no part of the module: it
+# includes the standard headers as they are.
+cc_library(
+    name = "allocator",
+    srcs = ["src/mimalloc.cc"],
+    copts = COPTS,
+    deps = ["@mimalloc"],
+    alwayslink = True,
+)
+
 # The programs are in bin/, next to the resource directory they read.
 cc_binary(
     name = "bin/clice",
-    srcs = ["src/clice.cc"] + select({
-        "@platforms//os:windows": ["src/mimalloc.cc"],
-        "//conditions:default": [],
-    }),
+    srcs = ["src/clice.cc"],
     copts = CLICE_COPTS,
     data = [":resource_dir"],
     # lld's --gc-sections, which xclang leaves off for Windows, where it
@@ -124,7 +131,7 @@ cc_binary(
         ":driver",
         "//bazel:llvm",
     ] + select({
-        "@platforms//os:windows": ["@mimalloc"],
+        "@platforms//os:windows": [":allocator"],
         "//conditions:default": [],
     }),
 )

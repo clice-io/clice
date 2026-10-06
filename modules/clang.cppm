@@ -1,111 +1,20 @@
 module;
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <emmintrin.h>
-import std.compat;
-#include "std.macros.h"
-#include "libc.macros.h"
-import llvm;
-#include "llvm.macros.h"
-#include "llvm/Frontend/OpenMP/OMP.h"
-#include "llvm/Frontend/OpenMP/OMPConstants.h"
-#include "llvm/Support/Program.h"
-#include "llvm/Support/SwapByteOrder.h"
-
-#include "clang-tidy/ClangTidyCheck.h"
-#include "clang-tidy/ClangTidyDiagnosticConsumer.h"
-#include "clang-tidy/ClangTidyModule.h"
-#include "clang-tidy/ClangTidyOptions.h"
-#include "clang-tidy/utils/DesignatedInitializers.h"
-#include "clang/AST/APValue.h"
-#include "clang/AST/ASTConcept.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/ASTDiagnostic.h"
-#include "clang/AST/ASTTypeTraits.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/CXXInheritance.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclBase.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclFriend.h"
-#include "clang/AST/DeclObjC.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/DeclarationName.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/ExprConcepts.h"
-#include "clang/AST/NestedNameSpecifier.h"
-#include "clang/AST/OperationKinds.h"
-#include "clang/AST/PrettyPrinter.h"
-#include "clang/AST/RawCommentList.h"
-#include "clang/AST/RecordLayout.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/Stmt.h"
-#include "clang/AST/StmtCXX.h"
-#include "clang/AST/StmtVisitor.h"
-#include "clang/AST/TemplateBase.h"
-#include "clang/AST/TemplateName.h"
-#include "clang/AST/Type.h"
-#include "clang/AST/TypeLoc.h"
-#include "clang/Basic/AllDiagnostics.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Basic/Diagnostic.h"
-#include "clang/Basic/DiagnosticIDs.h"
-#include "clang/Basic/DiagnosticLex.h"
-#include "clang/Basic/DiagnosticOptions.h"
-#include "clang/Basic/DiagnosticSema.h"
-#include "clang/Basic/FileEntry.h"
-#include "clang/Basic/FileManager.h"
-#include "clang/Basic/IdentifierTable.h"
-#include "clang/Basic/LangOptions.h"
-#include "clang/Basic/LangStandard.h"
-#include "clang/Basic/Module.h"
-#include "clang/Basic/OperatorKinds.h"
-#include "clang/Basic/SourceLocation.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Basic/Specifiers.h"
-#include "clang/Basic/TokenKinds.h"
-#include "clang/Basic/Version.h"
-#include "clang/Driver/Compilation.h"
-#include "clang/Driver/CreateInvocationFromArgs.h"
-#include "clang/Driver/Driver.h"
-#include "clang/Driver/Tool.h"
-#include "clang/Driver/ToolChain.h"
-#include "clang/Driver/Types.h"
-#include "clang/Format/Format.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/CompilerInvocation.h"
-#include "clang/Frontend/FrontendActions.h"
-#include "clang/Frontend/MultiplexConsumer.h"
-#include "clang/Frontend/TextDiagnosticPrinter.h"
-#include "clang/Lex/DependencyDirectivesScanner.h"
-#include "clang/Lex/Lexer.h"
-#include "clang/Lex/MacroArgs.h"
-#include "clang/Lex/MacroInfo.h"
-#include "clang/Lex/PPCallbacks.h"
-#include "clang/Lex/Preprocessor.h"
-#include "clang/Lex/PreprocessorOptions.h"
-#include "clang/Lex/Token.h"
-#include "clang/Options/OptionUtils.h"
-#include "clang/Sema/CodeCompleteConsumer.h"
-#include "clang/Sema/DeclSpec.h"
-#include "clang/Sema/Designator.h"
-#include "clang/Sema/HeuristicResolver.h"
-#include "clang/Sema/Sema.h"
-#include "clang/Sema/SemaCodeCompletion.h"
-#include "clang/Tooling/CompilationDatabase.h"
-#include "clang/Tooling/Core/Replacement.h"
-#include "clang/Tooling/Inclusions/StandardLibrary.h"
-#include "clang/Tooling/Syntax/Tokens.h"
+#if defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)
+#include "linux-x64/clang.fragment.h"
+#elif defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)
+#include "linux-x64-debug/clang.fragment.h"
+#elif defined(__linux__) && defined(__aarch64__)
+#include "linux-arm64/clang.fragment.h"
+#elif defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)
+#include "macos-arm64/clang.fragment.h"
+#elif defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)
+#include "macos-arm64-debug/clang.fragment.h"
+#elif defined(__APPLE__) && defined(__x86_64__)
+#include "macos-x64/clang.fragment.h"
+#else
+#error "no configuration merged matches this compilation"
+#endif
 
 export module clang;
 
@@ -1108,8 +1017,6 @@ export using ::CX_SC_Static;
 export using ::CX_StorageClass;
 export using ::IndexerCallbacks;
 export using ::RedeclarationKind;
-export using ::_CXChildVisitResult;
-export using ::_CXCursorAndRangeVisitorBlock;
 export using ::clang_CXCursorSet_contains;
 export using ::clang_CXCursorSet_insert;
 export using ::clang_CXIndex_getGlobalOptions;
@@ -22063,3 +21970,7 @@ using ::llvm::ScalableVecTyKey;
 using ::llvm::TextEncodingConverter;
 }
 
+#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__))
+export using ::_CXChildVisitResult;
+export using ::_CXCursorAndRangeVisitorBlock;
+#endif

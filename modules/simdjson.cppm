@@ -1,21 +1,20 @@
 module;
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <emmintrin.h>
-import std.compat;
-#include "std.macros.h"
-#include "libc.macros.h"
-
-#include "simdjson.h"
+#if defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)
+#include "linux-x64/simdjson.fragment.h"
+#elif defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)
+#include "linux-x64-debug/simdjson.fragment.h"
+#elif defined(__linux__) && defined(__aarch64__)
+#include "linux-arm64/simdjson.fragment.h"
+#elif defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)
+#include "macos-arm64/simdjson.fragment.h"
+#elif defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)
+#include "macos-arm64-debug/simdjson.fragment.h"
+#elif defined(__APPLE__) && defined(__x86_64__)
+#include "macos-x64/simdjson.fragment.h"
+#else
+#error "no configuration merged matches this compilation"
+#endif
 
 export module simdjson;
 
@@ -23,9 +22,6 @@ export using ::operator ""_padded;
 export using ::size_t;
 
 export namespace simdjson {
-namespace builder = ::simdjson::fallback::builder;
-namespace builtin = ::simdjson::fallback;
-namespace ondemand = ::simdjson::fallback::ondemand;
 using ::simdjson::BIGINT_ERROR;
 using ::simdjson::CAPACITY;
 using ::simdjson::DEPTH_ERROR;
@@ -155,7 +151,68 @@ using ::simdjson::dom::key_value_pair;
 using ::simdjson::dom::object;
 using ::simdjson::dom::operator<<;
 using ::simdjson::dom::parser;
+}
+
+export namespace simdjson::internal {
+using ::simdjson::internal::ALTIVEC;
+using ::simdjson::internal::AVX2;
+using ::simdjson::internal::AVX512BW;
+using ::simdjson::internal::AVX512CD;
+using ::simdjson::internal::AVX512DQ;
+using ::simdjson::internal::AVX512ER;
+using ::simdjson::internal::AVX512F;
+using ::simdjson::internal::AVX512IFMA;
+using ::simdjson::internal::AVX512PF;
+using ::simdjson::internal::AVX512VBMI2;
+using ::simdjson::internal::AVX512VL;
+using ::simdjson::internal::BMI1;
+using ::simdjson::internal::BMI2;
+using ::simdjson::internal::BitsSetTable256mul2;
+using ::simdjson::internal::DEFAULT;
+using ::simdjson::internal::LASX;
+using ::simdjson::internal::LSX;
+using ::simdjson::internal::NEON;
+using ::simdjson::internal::PCLMULQDQ;
+using ::simdjson::internal::SSE42;
+using ::simdjson::internal::allocate_padded_buffer;
+using ::simdjson::internal::atomic_ptr;
+using ::simdjson::internal::available_implementation_list;
+using ::simdjson::internal::base_formatter;
+using ::simdjson::internal::digit_to_val32;
+using ::simdjson::internal::dom_parser_implementation;
+using ::simdjson::internal::error_code_info;
+using ::simdjson::internal::error_codes;
+using ::simdjson::internal::escape_json_string;
+using ::simdjson::internal::from_chars;
+using ::simdjson::internal::instruction_set;
+using ::simdjson::internal::mini_formatter;
+using ::simdjson::internal::operator<<;
+using ::simdjson::internal::power_of_five_128;
+using ::simdjson::internal::power_of_ten;
+using ::simdjson::internal::pretty_formatter;
+using ::simdjson::internal::pshufb_combine_table;
+using ::simdjson::internal::simdjson_result_base;
+using ::simdjson::internal::string_builder;
+using ::simdjson::internal::structural_or_whitespace;
+using ::simdjson::internal::structural_or_whitespace_negated;
+using ::simdjson::internal::tape_ref;
+using ::simdjson::internal::tape_type;
+using ::simdjson::internal::thintable_epi8;
+using ::simdjson::internal::to_chars;
+using ::simdjson::internal::value128;
+}
+
+#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__))
+export namespace simdjson::dom {
 using ::simdjson::dom::stage1_worker;
+}
+#endif
+
+#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__))
+export namespace simdjson {
+namespace builder = ::simdjson::fallback::builder;
+namespace builtin = ::simdjson::fallback;
+namespace ondemand = ::simdjson::fallback::ondemand;
 }
 
 export namespace simdjson::fallback {
@@ -220,53 +277,80 @@ using ::simdjson::fallback::ondemand::value_iterator;
 export namespace simdjson::fallback::ondemand::logger {
 using ::simdjson::fallback::ondemand::logger::log_level;
 }
+#endif
 
-export namespace simdjson::internal {
-using ::simdjson::internal::ALTIVEC;
-using ::simdjson::internal::AVX2;
-using ::simdjson::internal::AVX512BW;
-using ::simdjson::internal::AVX512CD;
-using ::simdjson::internal::AVX512DQ;
-using ::simdjson::internal::AVX512ER;
-using ::simdjson::internal::AVX512F;
-using ::simdjson::internal::AVX512IFMA;
-using ::simdjson::internal::AVX512PF;
-using ::simdjson::internal::AVX512VBMI2;
-using ::simdjson::internal::AVX512VL;
-using ::simdjson::internal::BMI1;
-using ::simdjson::internal::BMI2;
-using ::simdjson::internal::BitsSetTable256mul2;
-using ::simdjson::internal::DEFAULT;
-using ::simdjson::internal::LASX;
-using ::simdjson::internal::LSX;
-using ::simdjson::internal::NEON;
-using ::simdjson::internal::PCLMULQDQ;
-using ::simdjson::internal::SSE42;
-using ::simdjson::internal::allocate_padded_buffer;
-using ::simdjson::internal::atomic_ptr;
-using ::simdjson::internal::available_implementation_list;
-using ::simdjson::internal::base_formatter;
-using ::simdjson::internal::digit_to_val32;
-using ::simdjson::internal::dom_parser_implementation;
-using ::simdjson::internal::error_code_info;
-using ::simdjson::internal::error_codes;
-using ::simdjson::internal::escape_json_string;
-using ::simdjson::internal::from_chars;
-using ::simdjson::internal::instruction_set;
-using ::simdjson::internal::mini_formatter;
-using ::simdjson::internal::operator<<;
-using ::simdjson::internal::power_of_five_128;
-using ::simdjson::internal::power_of_ten;
-using ::simdjson::internal::pretty_formatter;
-using ::simdjson::internal::pshufb_combine_table;
-using ::simdjson::internal::simdjson_result_base;
-using ::simdjson::internal::string_builder;
-using ::simdjson::internal::structural_or_whitespace;
-using ::simdjson::internal::structural_or_whitespace_negated;
-using ::simdjson::internal::tape_ref;
-using ::simdjson::internal::tape_type;
-using ::simdjson::internal::thintable_epi8;
-using ::simdjson::internal::to_chars;
-using ::simdjson::internal::value128;
+#if (defined(__linux__) && defined(__aarch64__)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG))
+export namespace simdjson {
+namespace builder = ::simdjson::arm64::builder;
+namespace builtin = ::simdjson::arm64;
+namespace ondemand = ::simdjson::arm64::ondemand;
 }
 
+export namespace simdjson::arm64 {
+using ::simdjson::arm64::dom_parser_implementation;
+using ::simdjson::arm64::implementation;
+using ::simdjson::arm64::implementation_simdjson_result_base;
+using ::simdjson::arm64::number_type;
+using ::simdjson::arm64::open_container;
+using ::simdjson::arm64::operator<<;
+}
+
+export namespace simdjson::arm64::builder {
+using ::simdjson::arm64::builder::escape_json_char;
+using ::simdjson::arm64::builder::fast_needs_escaping;
+using ::simdjson::arm64::builder::find_next_json_quotable_character;
+using ::simdjson::arm64::builder::simple_needs_escaping;
+using ::simdjson::arm64::builder::string_builder;
+using ::simdjson::arm64::builder::write_string_escaped;
+}
+
+export namespace simdjson::arm64::builder::internal {
+using ::simdjson::arm64::builder::internal::digit_count;
+using ::simdjson::arm64::builder::internal::fast_digit_count_32;
+using ::simdjson::arm64::builder::internal::fast_digit_count_64;
+using ::simdjson::arm64::builder::internal::int_log2;
+}
+
+export namespace simdjson::arm64::numberparsing {
+using ::simdjson::arm64::numberparsing::full_multiplication;
+using ::simdjson::arm64::numberparsing::parse_number;
+using ::simdjson::arm64::numberparsing::write_float;
+}
+
+export namespace simdjson::arm64::ondemand {
+using ::simdjson::arm64::ondemand::array;
+using ::simdjson::arm64::ondemand::array_iterator;
+using ::simdjson::arm64::ondemand::depth_t;
+using ::simdjson::arm64::ondemand::document;
+using ::simdjson::arm64::ondemand::document_reference;
+using ::simdjson::arm64::ondemand::document_stream;
+using ::simdjson::arm64::ondemand::field;
+using ::simdjson::arm64::ondemand::is_pointer_well_formed;
+using ::simdjson::arm64::ondemand::json_iterator;
+using ::simdjson::arm64::ondemand::json_type;
+using ::simdjson::arm64::ondemand::number;
+using ::simdjson::arm64::ondemand::number_type;
+using ::simdjson::arm64::ondemand::object;
+using ::simdjson::arm64::ondemand::object_iterator;
+using ::simdjson::arm64::ondemand::operator!=;
+using ::simdjson::arm64::ondemand::operator<<;
+using ::simdjson::arm64::ondemand::operator==;
+using ::simdjson::arm64::ondemand::parser;
+using ::simdjson::arm64::ondemand::raw_json_string;
+using ::simdjson::arm64::ondemand::release_parser;
+using ::simdjson::arm64::ondemand::token_iterator;
+using ::simdjson::arm64::ondemand::token_position;
+using ::simdjson::arm64::ondemand::value;
+using ::simdjson::arm64::ondemand::value_iterator;
+}
+
+export namespace simdjson::arm64::ondemand::logger {
+using ::simdjson::arm64::ondemand::logger::log_level;
+}
+#endif
+
+#if (defined(__linux__) && defined(__aarch64__)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG))
+export namespace simdjson::arm64::ondemand {
+using ::simdjson::arm64::ondemand::stage1_worker;
+}
+#endif

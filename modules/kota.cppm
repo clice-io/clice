@@ -1,57 +1,20 @@
 module;
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <emmintrin.h>
-import std.compat;
-#include "std.macros.h"
-#include "libc.macros.h"
-import simdjson;
-#include "simdjson.macros.h"
-#define ROARING_EXCEPTIONS 0
-#define ROARING_TERMINATE(message) std::abort()
-
-#include "roaring/roaring.hh"
-#include "kota/async/async.h"
-#include "kota/async/io/system.h"
-#include "kota/codec/bincode/bincode.h"
-#include "kota/codec/dyn/decode.h"
-#include "kota/codec/dyn/dyn.h"
-#include "kota/codec/fbs/fbs.h"
-#include "kota/codec/json/json.h"
-#include "kota/codec/json/schema.h"
-#include "kota/codec/macro.h"
-#include "kota/codec/toml/toml.h"
-#include "kota/codec/visit/config.h"
-#include "kota/deco/deco.h"
-#include <kota/deco/option.h>
-#include "kota/ipc/codec/bincode.h"
-#include "kota/ipc/codec/json.h"
-#include "kota/ipc/lsp/position.h"
-#include "kota/ipc/lsp/progress.h"
-#include "kota/ipc/lsp/protocol.h"
-#include "kota/ipc/lsp/text.h"
-#include "kota/ipc/lsp/uri.h"
-#include "kota/ipc/peer.h"
-#include "kota/ipc/protocol.h"
-#include "kota/ipc/recording_transport.h"
-#include "kota/ipc/transport.h"
-#include "kota/meta/annotation.h"
-#include "kota/meta/enum.h"
-#include "kota/meta/repr.h"
-#include "kota/meta/struct.h"
-#include "kota/support/glob_pattern.h"
-#include "kota/support/ranges.h"
-#include "kota/zest/async.h"
-#include "kota/zest/zest.h"
+#if defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)
+#include "linux-x64/kota.fragment.h"
+#elif defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)
+#include "linux-x64-debug/kota.fragment.h"
+#elif defined(__linux__) && defined(__aarch64__)
+#include "linux-arm64/kota.fragment.h"
+#elif defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)
+#include "macos-arm64/kota.fragment.h"
+#elif defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)
+#include "macos-arm64-debug/kota.fragment.h"
+#elif defined(__APPLE__) && defined(__x86_64__)
+#include "macos-x64/kota.fragment.h"
+#else
+#error "no configuration merged matches this compilation"
+#endif
 
 export module kota;
 
@@ -2353,8 +2316,6 @@ using ::roaring::internal::BITSET_UNKNOWN_CARDINALITY;
 using ::roaring::internal::DEFAULT_MAX_SIZE;
 using ::roaring::internal::FROZEN_COOKIE;
 using ::roaring::internal::NO_OFFSET_THRESHOLD;
-using ::roaring::internal::ROARING_SUPPORTS_AVX2;
-using ::roaring::internal::ROARING_SUPPORTS_AVX512;
 using ::roaring::internal::RUN_DEFAULT_INIT_SIZE;
 using ::roaring::internal::SERIAL_COOKIE;
 using ::roaring::internal::SERIAL_COOKIE_NO_RUNCONTAINER;
@@ -2432,8 +2393,6 @@ using ::roaring::internal::array_run_container_ixor;
 using ::roaring::internal::array_run_container_lazy_xor;
 using ::roaring::internal::array_run_container_union;
 using ::roaring::internal::array_run_container_xor;
-using ::roaring::internal::avx512_array_container_to_uint32_array;
-using ::roaring::internal::avx512_union_uint16;
 using ::roaring::internal::binarySearch;
 using ::roaring::internal::bitset_array_container_andnot;
 using ::roaring::internal::bitset_array_container_iandnot;
@@ -2543,7 +2502,6 @@ using ::roaring::internal::convert_run_optimize;
 using ::roaring::internal::convert_run_to_efficient_container;
 using ::roaring::internal::convert_run_to_efficient_container_and_free;
 using ::roaring::internal::convert_to_bitset_or_array_container;
-using ::roaring::internal::croaring_hardware_support;
 using ::roaring::internal::difference_uint16;
 using ::roaring::internal::difference_vector16;
 using ::roaring::internal::extend_array;
@@ -2894,3 +2852,12 @@ using ::toml::impl::value_variadic_ctor_allowed;
 using ::toml::impl::wrap_node;
 }
 
+#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__))
+export namespace roaring::internal {
+using ::roaring::internal::ROARING_SUPPORTS_AVX2;
+using ::roaring::internal::ROARING_SUPPORTS_AVX512;
+using ::roaring::internal::avx512_array_container_to_uint32_array;
+using ::roaring::internal::avx512_union_uint16;
+using ::roaring::internal::croaring_hardware_support;
+}
+#endif

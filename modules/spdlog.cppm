@@ -1,24 +1,20 @@
 module;
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <emmintrin.h>
-import std.compat;
-#include "std.macros.h"
-#include "libc.macros.h"
-
-#include "spdlog/details/log_msg.h"
-#include "spdlog/sinks/base_sink.h"
-#include "spdlog/sinks/ringbuffer_sink.h"
-#include "spdlog/spdlog.h"
+#if defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)
+#include "linux-x64/spdlog.fragment.h"
+#elif defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)
+#include "linux-x64-debug/spdlog.fragment.h"
+#elif defined(__linux__) && defined(__aarch64__)
+#include "linux-arm64/spdlog.fragment.h"
+#elif defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)
+#include "macos-arm64/spdlog.fragment.h"
+#elif defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)
+#include "macos-arm64-debug/spdlog.fragment.h"
+#elif defined(__APPLE__) && defined(__x86_64__)
+#include "macos-x64/spdlog.fragment.h"
+#else
+#error "no configuration merged matches this compilation"
+#endif
 
 export module spdlog;
 
@@ -118,4 +114,3 @@ using ::spdlog::sinks::ringbuffer_sink_mt;
 using ::spdlog::sinks::ringbuffer_sink_st;
 using ::spdlog::sinks::sink;
 }
-

@@ -35,7 +35,7 @@ WRAPPERS = {
 
 def mirror_include(library):
     """The include flag putting a library's emptied headers first."""
-    return "-I$(GENDIR)/modules/mirror/" + library
+    return "-Imodules/mirror/" + library
 
 # What a target compiling clice's module units adds, with a dependency on
 # //modules and the cpp_modules feature: the wrapped headers emptied for the

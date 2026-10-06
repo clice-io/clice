@@ -1,28 +1,17 @@
 #pragma once
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <emmintrin.h>
-import std.compat;
-#include "std.macros.h"
-#include "libc.macros.h"
-import llvm;
-import clang;
-import simdjson;
-import kota;
-import lmdb;
-import spdlog;
-#include "llvm.macros.h"
-#include "clang.macros.h"
-#include "simdjson.macros.h"
-#include "kota.macros.h"
-#include "lmdb.macros.h"
-#include "spdlog.macros.h"
+#if defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)
+#include "linux-x64/prelude.h"
+#elif defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)
+#include "linux-x64-debug/prelude.h"
+#elif defined(__linux__) && defined(__aarch64__)
+#include "linux-arm64/prelude.h"
+#elif defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)
+#include "macos-arm64/prelude.h"
+#elif defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)
+#include "macos-arm64-debug/prelude.h"
+#elif defined(__APPLE__) && defined(__x86_64__)
+#include "macos-x64/prelude.h"
+#else
+#error "no configuration merged matches this compilation"
+#endif
