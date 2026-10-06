@@ -349,6 +349,27 @@ struct WorkerPoolFixture {
         pool.stateless_workers[idx].proc.kill(signal);
     }
 
+    /// Kill stateless worker 0 while it runs a request on `file`: a death
+    /// that spends the slot's budget on every platform, Windows included,
+    /// which can send a worker no signal of its own failures.
+    kota::task<> kill_running_worker(const std::string& file) {
+        worker::TURunParams params;
+        params.index = true;
+        params.file = file;
+        params.directory = "/tmp";
+        params.arguments = make_args(file);
+        kota::task_group<> group;
+        auto sender = [&]() -> kota::task<> {
+            [[maybe_unused]] auto result =
+                co_await pool.send_stateless(params, worker::Priority::Low);
+        };
+        group.spawn(sender());
+        while(!pool.stateless_workers[0].busy)
+            co_await kota::sleep(1);
+        kill_worker(0);
+        co_await group.join();
+    }
+
     void set_stateless_count(std::uint32_t count) {
         pool.options.stateless_count = count;
     }
@@ -2191,6 +2212,9 @@ ZEST_CASE(CrashAndRestart) {
 }
 
 ZEST_CASE(DeadSlotRevives) {
+    TempDir tmp;
+    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
+
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
@@ -2199,9 +2223,7 @@ ZEST_CASE(DeadSlotRevives) {
         f.set_max_crash_streak(0);
 
         // The very first crash exceeds the zero budget: the slot dies...
-        // SIGSEGV, a failure of the worker's own; an outside kill would
-        // spend no budget.
-        f.kill_worker(0, 11);
+        co_await f.kill_running_worker(tmp.path("slow.cpp"));
         for(int i = 0; i < 50 && !f.slot_dead(0); ++i) {
             co_await kota::sleep(100);
         }
@@ -2277,11 +2299,16 @@ ZEST_CASE(BusyRanksAboveMaster) {
         auto own = score("self");
         ZASSERT(own != -2000);
 
+        // Taking on work ranks a worker above the master at once, not only
+        // from the next tick on.
+        ZASSERT(own < 1000);
+        auto idx = co_await f.acquire_slot(worker::Priority::High);
+        ZEXPECT(worker_score(idx) > own);
+
         // Against a limit so large the master's share rounds to nothing, a
         // worker holding work ranks just above the master; an idle one
         // stays level with it.
         constexpr std::uint64_t huge = 1ull << 50;
-        auto idx = co_await f.acquire_slot(worker::Priority::High);
         f.tick_oom_scores(huge);
         ZEXPECT(worker_score(idx) == std::min(own + 2, 1000));
         ZEXPECT(worker_score(1 - idx) == own);
@@ -2335,6 +2362,9 @@ ZEST_CASE(RevivesSlotsGate) {
 }
 
 ZEST_CASE(ScaleUpRevivesDead) {
+    TempDir tmp;
+    tmp.touch("slow.cpp", "#include <vector>\n#include <string>\nint x = 1;\n");
+
     WorkerPoolFixture f;
     bool done = false;
     f.run([&]() -> kota::task<> {
@@ -2343,8 +2373,7 @@ ZEST_CASE(ScaleUpRevivesDead) {
         f.set_revive_after(std::chrono::minutes(10));
         f.set_max_crash_streak(0);
 
-        // SIGSEGV: a failure of the worker's own, which spends its budget.
-        f.kill_worker(0, 11);
+        co_await f.kill_running_worker(tmp.path("slow.cpp"));
         for(int i = 0; i < 50 && !f.slot_dead(0); ++i) {
             co_await kota::sleep(100);
         }

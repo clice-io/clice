@@ -678,6 +678,11 @@ private:
     /// which frees nothing — is never the killer's first choice.
     void tick_oom_scores(std::uint64_t memory_limit);
 
+    /// Write a worker's OOM score: oom_holding when it holds work, else
+    /// the master's. Taking on work raises it at once, since a compile can
+    /// exhaust memory before the next tick.
+    void set_oom_score(const WorkerProcess& w, bool holds);
+
     /// Scales the stateless pool up/down from saturation/idle streaks.
     void tick_scaling(double available_ratio);
 
@@ -752,6 +757,10 @@ private:
     /// The master's own oom_score_adj, which workers inherit; unset where
     /// there is none to adjust (not Linux).
     std::optional<int> oom_base;
+
+    /// The score of a worker holding work, just above the master as the
+    /// last tick measured it; the highest until the first tick.
+    int oom_holding = 1000;
 
     /// The usage counter and memory.stat libuv measures a memory cgroup by,
     /// with the memory.stat key of the cgroup's inactive file cache

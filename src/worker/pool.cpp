@@ -372,6 +372,7 @@ std::size_t WorkerPool::assign_worker(std::uint32_t path_id) {
         return SIZE_MAX;
     owner[path_id] = selected;
     stateful_workers[selected].owned_documents += 1;
+    set_oom_score(stateful_workers[selected], true);
     return selected;
 }
 
@@ -757,6 +758,7 @@ std::size_t WorkerPool::claim_stateless(std::size_t index, worker::Priority prio
     w.low_priority = priority == worker::Priority::Low;
     next_claim_epoch += 1;
     w.claim_epoch = next_claim_epoch;
+    set_oom_score(w, true);
     return index;
 }
 
@@ -967,38 +969,37 @@ void WorkerPool::tick_oom_scores(std::uint64_t memory_limit) {
     if(!oom_base) {
         return;
     }
-    auto master = kota::sys::resident_memory();
-    if(!master) {
-        return;
+    if(auto master = kota::sys::resident_memory()) {
+        // The kernel ranks rss + adj * pages / 1000 over at least
+        // `memory_limit` worth of pages, so this much adj outweighs the
+        // master's whole RSS without lifting the worker over anything bigger.
+        auto above_master = static_cast<int>(1000 * *master / memory_limit) + 2;
+        oom_holding = std::min(*oom_base + above_master, 1000);
     }
-    // The kernel ranks rss + adj * pages / 1000 over at least
-    // `memory_limit` worth of pages, so this much adj outweighs the
-    // master's whole RSS without lifting the worker over anything bigger.
-    auto above_master = static_cast<int>(1000 * *master / memory_limit) + 2;
-    auto holding = std::min(*oom_base + above_master, 1000);
-    auto rank = [&](const WorkerProcess& w, bool holds) {
-        if(w.state != SlotState::Alive) {
-            return;
-        }
-        std::error_code ec;
-        llvm::raw_fd_ostream adj(std::format("/proc/{}/oom_score_adj", w.proc.pid()),
-                                 ec,
-                                 llvm::sys::fs::OF_None);
-        if(ec) {
-            return;
-        }
-        adj << (holds ? holding : *oom_base);
-        adj.close();
-        // An exited worker awaiting its reaping refuses the write; the
-        // monitor is about to replace it.
-        adj.clear_error();
-    };
     for(auto& w: stateless_workers) {
-        rank(w, w.busy);
+        set_oom_score(w, w.busy);
     }
     for(auto& w: stateful_workers) {
-        rank(w, w.owned_documents > 0);
+        set_oom_score(w, w.owned_documents > 0);
     }
+}
+
+void WorkerPool::set_oom_score(const WorkerProcess& w, bool holds) {
+    if(!oom_base || w.state != SlotState::Alive) {
+        return;
+    }
+    std::error_code ec;
+    llvm::raw_fd_ostream adj(std::format("/proc/{}/oom_score_adj", w.proc.pid()),
+                             ec,
+                             llvm::sys::fs::OF_None);
+    if(ec) {
+        return;
+    }
+    adj << (holds ? oom_holding : *oom_base);
+    adj.close();
+    // An exited worker awaiting its reaping refuses the write; the monitor
+    // is about to replace it.
+    adj.clear_error();
 }
 
 void WorkerPool::note_foreground() {
