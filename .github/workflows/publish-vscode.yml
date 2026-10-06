@@ -6,7 +6,7 @@ name: vscode
 #   source: package  — six platform vsix embedding the release packages from
 #                      publish-clice.yml (release, nightly, and dry runs).
 #   source: build    — six platform vsix embedding the test-suite binaries
-#                      (no strip) already built by native-test,
+#                      (no strip) already built by the test legs,
 #                      so a fix is installable the moment its CI run is green.
 on:
   workflow_call:

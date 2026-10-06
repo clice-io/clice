@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Symbolize a clice crash log against a release's symbol package.
+"""Symbolize a clice crash log against a released symbol file.
 
 Release binaries are stripped PIE executables, so the frame addresses in a
 crash log are ASLR-shifted. The crash handler records the executable's load
@@ -7,20 +7,18 @@ address ("main executable base: 0x..."); this script subtracts it and feeds
 the resulting file offsets to llvm-symbolizer.
 
 Usage:
-    python symbolize.py crash.log --symbols clice
+    python symbolize.py crash.log --symbols clice.gsym
 
 Windows frames name the module, its load address and the offset in it
 ("0x..., C:\\...\\clice.exe(0x...) + 0x... byte(s)"); the offset is added to
 the executable's preferred image base (--image-base), which the addresses in
 its symbols count from.
 
-Accepts the unstripped binary of the symbol package, or any full DWARF file
-(resolved with llvm-symbolizer), or the GSYM file older releases shipped
-(resolved with llvm-gsymutil). The macOS binary names functions only: its
-line tables stay in the object files of the build. For a macOS dSYM pass the
-inner DWARF file (clice.dSYM/Contents/Resources/DWARF/clice), not the bundle
-directory. GSYM output keeps names mangled; pipe through llvm-cxxfilt to
-demangle.
+Accepts either the released GSYM symbol file (resolved with llvm-gsymutil) or
+a full DWARF file / unstripped binary (resolved with llvm-symbolizer). For a
+macOS dSYM pass the inner DWARF file (clice.dSYM/Contents/Resources/DWARF/clice),
+not the bundle directory. GSYM output keeps names mangled; pipe through
+llvm-cxxfilt to demangle.
 """
 
 import argparse
@@ -50,7 +48,7 @@ def main() -> int:
     parser.add_argument(
         "--symbols",
         required=True,
-        help="symbol file (the unstripped clice / clice.gsym / dSYM inner DWARF)",
+        help="symbol file (clice.gsym / an unstripped clice / dSYM inner DWARF)",
     )
     parser.add_argument(
         "--module",

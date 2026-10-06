@@ -77,7 +77,7 @@ logs to releases by the commit hash; the release notes state the hash.
 ## Plumbing changes
 
 There is no separate dry run: packaging runs on every CI build (the
-packaged legs of native-test build `//:package` and `//:symbols`) and the vsix
+packaged legs of `test.yml` build `//:package` and `//:symbols`) and the vsix
 path runs as `instant-vscode`, so release plumbing is exercised by every
 code-touching PR. Only the promote/upload glue (`publish-clice.yml`,
 nightly orchestration) is release-time-only.
@@ -88,15 +88,14 @@ Ask the user for the log (worker `.log` from the session log directory —
 printed at startup in the editor's clice output panel, by default
 `~/.cache/clice/<workspace>-<hash>/logs/<session>/`, falling back to the
 workspace `.clice/logs/` when no home directory is available). The crash section starts with `clice <version> <target>` —
-download that release's `*.symbols.tar.xz` (`.zip` for Windows: the
-unstripped binary, full DWARF on Linux and Windows, function names only on
-macOS) and run:
+download that release's `*.symbols.tar.xz` (`.zip` for Windows; GSYM) and run:
 
 ```bash
-python scripts/symbolize.py crash.log --symbols clice
+python scripts/symbolize.py crash.log --symbols clice.gsym
 ```
 
-Releases before the Bazel build shipped `clice.gsym` there, which the script
-takes as well. If the log predates the version line or the release was
-pruned, symbolization is not possible — ask the user to reproduce on a
-current nightly.
+For core-dump-level debugging, fetch the full DWARF from the `debug-info-*`
+artifact of the main CI run that built the release (90-day retention; find
+it via the commit hash in the release notes). If the log predates the
+version line or the release was pruned, symbolization is not possible — ask
+the user to reproduce on a current nightly.

@@ -1,5 +1,3 @@
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-
 package(default_visibility = ["//:__pkg__"])
 
 # The canonical target triples: the release assets are named after them, and
@@ -43,12 +41,4 @@ EOF
         for setting, triple in TRIPLES.items()
     }),
     stamp = 1,
-)
-
-# clang-tidy's build generates this header and libclang does not ship it; it
-# has to agree with how xclang configured clang-tidy (no static analyzer).
-cc_library(
-    name = "clang_tidy_config",
-    hdrs = ["clang-tidy-config.h"],
-    includes = ["."],
 )

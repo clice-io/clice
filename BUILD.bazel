@@ -1,10 +1,10 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("@bazel_skylib//rules:native_binary.bzl", "native_binary")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files", "strip_prefix")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
-load("//bazel:resource_dir.bzl", "resource_dir")
+load("@xclang//bazel:debug_symbols.bzl", "xclang_debug_symbols")
+load("@xclang//bazel:resource_dir.bzl", "xclang_resource_dir")
 
 # What clice's own sources compile with; the libraries keep their own flags.
 COPTS = [
@@ -18,18 +18,9 @@ COPTS = [
 
 # Link optimizations in optimized builds: what the test suites run is what
 # releases ship. icf=safe (not =all) so address-taken functions keep C++
-# pointer identity. macOS programs keep their debug info in the object files,
-# which the debug map names: --keep-icf-stabs keeps the ICF-folded functions
-# in it, and -oso_prefix the paths relative to the execution root, where the
-# objects stay; the sandbox an action links in is gone after it.
+# pointer identity.
 LINKOPTS = select({
-    "@platforms//os:macos": ["-Wl,-oso_prefix,."],
-    "//conditions:default": [],
-}) + select({
-    ":opt_macos": [
-        "-Wl,--icf=safe",
-        "-Wl,--keep-icf-stabs",
-    ],
+    ":opt_macos": ["-Wl,--icf=safe"],
     ":opt": [
         "-Wl,--icf=safe",
         "-Wl,-O2",
@@ -46,20 +37,6 @@ config_setting(
     name = "opt_macos",
     constraint_values = ["@platforms//os:macos"],
     values = {"compilation_mode": "opt"},
-)
-
-# ASan builds (.bazelrc's Debug) link libclang's ASan build, which xclang has
-# for Linux x64 and macOS arm64.
-config_setting(
-    name = "asan_linux",
-    constraint_values = ["@platforms//os:linux"],
-    values = {"features": "asan"},
-)
-
-config_setting(
-    name = "asan_macos",
-    constraint_values = ["@platforms//os:macos"],
-    values = {"features": "asan"},
 )
 
 # The LLVM and clang libraries clice links; each brings what it depends on.
@@ -109,34 +86,14 @@ LLVM_LIBRARIES = [
     "clangToolingSyntax",
 ]
 
-alias(
-    name = "libclang",
-    actual = select({
-        ":asan_linux": "@libclang_asan//:headers",
-        ":asan_macos": "@libclang_asan//:headers",
-        "//conditions:default": "@libclang//:headers",
-    }),
-)
-
-# libclang's ThinLTO bitcode: every link of it redoes LLVM's code generation,
-# which lld's cache (.bazelrc) keeps from one link to the next.
+# libclang's ThinLTO bitcode: every link of it redoes LLVM's code
+# generation, which lld's cache (.bazelrc) keeps from one link to the next.
 cc_library(
     name = "llvm",
-    deps = select({
-        ":asan_linux": ["@libclang_asan//:" + lib for lib in LLVM_LIBRARIES],
-        ":asan_macos": ["@libclang_asan//:" + lib for lib in LLVM_LIBRARIES],
-        "//conditions:default": ["@libclang//:" + lib for lib in LLVM_LIBRARIES],
-    }),
+    deps = ["@libclang//:" + lib for lib in LLVM_LIBRARIES],
 )
 
-resource_dir(
-    name = "resource_dir",
-    srcs = select({
-        ":asan_linux": ["@libclang_asan//:resource_dir"],
-        ":asan_macos": ["@libclang_asan//:resource_dir"],
-        "//conditions:default": ["@libclang//:resource_dir"],
-    }),
-)
+xclang_resource_dir(name = "resource_dir")
 
 cc_library(
     name = "version",
@@ -150,7 +107,7 @@ cc_library(
 # dependency graph plus the layering check in CI (`pixi run check-layers`)
 # enforce the boundary — sched and below never see an LSP or server header,
 # and a project never sees scheduling. They compile against libclang's
-# headers; the programs choose which build of it they link.
+# headers; the programs link its libraries.
 CORE = [
     "support",
     "vfs",
@@ -167,18 +124,9 @@ cc_library(
     srcs = glob(["src/%s/**/*.cpp" % layer for layer in CORE]),
     hdrs = glob(["src/%s/**/*.h" % layer for layer in CORE] + ["src/compile/*.inc"]),
     copts = COPTS,
-    defines = ["CLANG_BUILD_STATIC=1"],
-    linkopts = select({
-        "@platforms//os:windows": [
-            "-lversion",
-            "-lntdll",
-        ],
-        "//conditions:default": [],
-    }),
     deps = [
-        ":libclang",
         ":version",
-        "//bazel:clang_tidy_config",
+        "@libclang//:headers",
         "@croaring",
         "@kotatsu//:codec_flatbuffers",
         "@kotatsu//:codec_json",
@@ -224,9 +172,13 @@ cc_binary(
     copts = COPTS,
     data = [":resource_dir"],
     # lld's --gc-sections, which xclang leaves off for Windows, where it
-    # drops the static initializers of COMDAT sections: clice has none to
-    # lose, unlike unit_tests, whose test registrations are such.
-    features = ["gc_sections"],
+    # drops the initializers of variables no one reads that are COMDATs of
+    # their own: neither program registers anything that way (zest keeps
+    # its tests registered).
+    features = [
+        "gc_sections",
+        "generate_dsym_file",
+    ],
     linkopts = LINKOPTS,
     deps = [
         ":analysis",
@@ -252,6 +204,7 @@ cc_binary(
     ]),
     copts = COPTS + ["-Itests/unit"],
     data = [":resource_dir"],
+    features = ["gc_sections"],
     linkopts = LINKOPTS,
     local_defines = ['CLICE_TESTS_DATA_DIR=\\"tests/data\\"'],
     deps = [
@@ -271,8 +224,8 @@ filegroup(
 )
 
 # The release archive, clice/{bin/clice, lib/clang, clice.toml, LICENSE}, and
-# the symbol package, the unstripped clice for scripts/symbolize.py: the
-# programs of these builds are the ones the test suites run.
+# the symbol package, clice.gsym for scripts/symbolize.py: the programs of
+# these builds are the ones the test suites run.
 pkg_files(
     name = "package_bin",
     srcs = [":bin/clice.stripped"],
@@ -329,11 +282,29 @@ alias(
     }),
 )
 
+# The GSYM, and the dSYM it comes from on macOS. --merged-functions keeps the
+# names of the functions ICF folded; one thread makes the file the same
+# bytes every time.
+xclang_debug_symbols(
+    name = "debug_symbols",
+    binary = ":bin/clice",
+    gsymutil_args = [
+        "--merged-functions",
+        "--num-threads=1",
+    ],
+    tags = ["manual"],
+)
+
+filegroup(
+    name = "gsym",
+    srcs = [":debug_symbols"],
+    output_group = "gsym",
+    tags = ["manual"],
+)
+
 pkg_tar(
     name = "symbols_tar",
-    srcs = [":bin/clice"],
-    # xz's default level takes minutes on the binary, for 7% less.
-    compression_level = 1,
+    srcs = [":gsym"],
     extension = "tar.xz",
     package_file_name = "clice-symbol.tar.xz",
     tags = ["manual"],
@@ -341,7 +312,7 @@ pkg_tar(
 
 pkg_zip(
     name = "symbols_zip",
-    srcs = [":bin/clice"],
+    srcs = [":gsym"],
     package_file_name = "clice-symbol.zip",
     tags = ["manual"],
 )
@@ -352,26 +323,6 @@ alias(
         "@platforms//os:windows": ":symbols_zip",
         "//conditions:default": ":symbols_tar",
     }),
-)
-
-# `bazel run //:compile_commands` writes compile_commands.json for clice's own
-# sources. The commands are relative to the execution root, whose links to
-# the external repositories are those of the last build: building //:dist
-# along keeps them all there, and the generated sources too.
-native_binary(
-    name = "compile_commands",
-    src = select({
-        "//bazel:linux_x86_64": "@bazel_compile_commands_linux_amd64//:usr/bin/bazel-compile-commands",
-        "//bazel:linux_aarch64": "@bazel_compile_commands_linux_arm64//:usr/bin/bazel-compile-commands",
-        "@platforms//os:macos": "@bazel_compile_commands_macos_universal//:usr/bin/bazel-compile-commands",
-        "@platforms//os:windows": "@bazel_compile_commands_windows_amd64//:bazel-compile-commands/bin/bazel-compile-commands.exe",
-    }),
-    args = [
-        "//:dist",
-        "//:benchmarks",
-    ],
-    data = [":dist"],
-    tags = ["manual"],
 )
 
 BENCHMARKS = [

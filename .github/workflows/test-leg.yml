@@ -1,0 +1,300 @@
+name: test-leg
+
+# One target and build type: a build job, then the suites in jobs of their
+# own that wait for this build only, never for another leg's. A cross-built
+# leg (build_os) builds on a faster runner of the same OS, with xclang's
+# toolchain for the target, and runs its suites with only the test-run
+# environment active, as a machine with clice and a compiler of its own: the
+# clang++ its tests find is another (on Windows arm64 the runner's, targeting
+# MSVC).
+
+on:
+  workflow_call:
+    inputs:
+      # The runner the suites run on, and the build unless build_os is set.
+      os:
+        required: true
+        type: string
+      build_os:
+        type: string
+        default: ""
+      target:
+        required: true
+        type: string
+      build_type:
+        type: string
+        default: RelWithDebInfo
+      # Marks the builds that get packaged into release artifacts once the
+      # run is green.
+      asset_name:
+        type: string
+        default: ""
+      # The shard numbers 1..n of a suite split over n runners, as a JSON
+      # array.
+      integration_shards:
+        type: string
+        default: "[1, 2]"
+      snap_shards:
+        type: string
+        default: "[1]"
+      editor:
+        type: boolean
+        default: false
+      compat:
+        type: boolean
+        default: false
+
+defaults:
+  run:
+    shell: bash
+
+# A native leg's suites run with the build's environment active, as they do
+# on a developer's machine; a cross-built leg's with test-run alone.
+env:
+  TEST_ENVIRONMENTS: ${{ inputs.build_os && 'test-run' || 'default test-run' }}
+  TEST_ACTIVATE: ${{ inputs.build_os && 'true' || 'default' }}
+
+jobs:
+  build:
+    runs-on: ${{ inputs.build_os || inputs.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+
+      # Pull requests only restore: every push saving its own copy churns
+      # the repository's 50 GB cache pool faster than the next run can reuse
+      # it. Saved from main below, once per merge. Every input of an action,
+      # the toolchain's files among them, is in its key, so nothing else
+      # needs to be in the cache's.
+      - name: Restore Bazel caches
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ runner.temp }}/bazel-disk
+            ${{ runner.temp }}/bazel-repo
+            ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }}
+          key: bazel-${{ inputs.target }}-${{ inputs.build_type }}-${{ github.sha }}
+          restore-keys: |
+            bazel-${{ inputs.target }}-${{ inputs.build_type }}-
+
+      # Bazel refuses a repository cache inside the workspace. On Windows,
+      # the default output root under the user profile pushes action paths
+      # past MAX_PATH. On main every cached output is fetched, which marks
+      # it used for the prune below; elsewhere only what is asked for. lld's
+      # ThinLTO cache (.bazelrc) is outside Bazel's, in the same entry.
+      - name: Bazel settings
+        run: |
+          temp=$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")
+          {
+            echo "common --disk_cache=$temp/bazel-disk"
+            echo "common --repository_cache=$temp/bazel-repo"
+            if [ "$RUNNER_OS" = Windows ]; then
+              echo "startup --output_user_root=C:/b"
+            fi
+            if [ "$GITHUB_REF" = refs/heads/main ]; then
+              echo "common --remote_download_all"
+            fi
+          } > user.bazelrc
+          touch "$RUNNER_TEMP/bazel-start"
+
+      # The packaged legs build the release archives along: the programs in
+      # them are the ones the suites run.
+      - name: Build
+        run: >-
+          pixi run -e default build ${{ inputs.build_type }} --
+          ${{ inputs.build_os && format('--platforms=@xclang//platforms:{0}', inputs.target) || '' }}
+          ${{ inputs.asset_name && '//:package //:symbols' || '' }}
+
+      # Bazel refreshes an entry's mtime when it reads it, so what this run
+      # did not touch is what the current tree no longer needs.
+      - name: Prune the disk cache
+        if: github.ref == 'refs/heads/main'
+        run: |
+          find "$RUNNER_TEMP/bazel-disk" -type f ! -newer "$RUNNER_TEMP/bazel-start" -delete
+          du -sh "$RUNNER_TEMP"/bazel-disk "$RUNNER_TEMP"/bazel-repo ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }} 2>/dev/null || true
+
+      - name: Save Bazel caches
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ runner.temp }}/bazel-disk
+            ${{ runner.temp }}/bazel-repo
+            ${{ runner.os == 'Windows' && 'C:/xclang-thinlto' || '/var/tmp/xclang-thinlto' }}
+          key: bazel-${{ inputs.target }}-${{ inputs.build_type }}-${{ github.sha }}
+
+      # The suite jobs below, editor-test, compat-test and the instant builds
+      # take the programs from build/<type>/bin, which this artifact holds.
+      # A failed shard can be rerun alone while it lives.
+      - name: Upload binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-${{ inputs.target }}-${{ inputs.build_type }}
+          include-hidden-files: true
+          path: |
+            build/${{ inputs.build_type }}/bin/bin/
+            build/${{ inputs.build_type }}/bin/lib/
+            build/${{ inputs.build_type }}/bin/clice.gsym
+            !build/${{ inputs.build_type }}/bin/bin/*.runfiles
+            !build/${{ inputs.build_type }}/bin/bin/bin/*.dSYM
+          if-no-files-found: error
+          retention-days: 3
+
+      # The committed config schema must match the binary that just built
+      # (the dump needs clice itself). One leg suffices — the output is
+      # machine-independent by construction. The pure-node doc checks
+      # (feature/config/translation) run in the lint workflow instead.
+      - name: Config schema check
+        if: ${{ inputs.target == 'x86_64-unknown-linux-gnu' && inputs.build_type == 'RelWithDebInfo' }}
+        run: |
+          build/RelWithDebInfo/bin/bin/clice inspect --config-schema > docs/public/clice-config.schema.json
+          git diff --exit-code -- docs/public/clice-config.schema.json
+
+      - name: Check artifact dependencies
+        if: ${{ inputs.asset_name }}
+        run: pixi run -e default -- python scripts/check_artifact_deps.py build/${{ inputs.build_type }}/bin/bin/clice.stripped
+
+      # These artifacts are what releases promote — there is no separate
+      # release build — once the whole run is green.
+      - name: Upload package artifacts
+        if: ${{ inputs.asset_name }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ inputs.asset_name }}
+          path: |
+            build/${{ inputs.build_type }}/bin/clice.tar.gz
+            build/${{ inputs.build_type }}/bin/clice.zip
+            build/${{ inputs.build_type }}/bin/clice-symbol.tar.xz
+            build/${{ inputs.build_type }}/bin/clice-symbol.zip
+          if-no-files-found: error
+          # 30 days bounds how old a commit a stable tag can still promote.
+          retention-days: 30
+
+      - name: Upload full debug info
+        if: ${{ inputs.asset_name }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug-info-${{ inputs.target }}
+          path: |
+            build/${{ inputs.build_type }}/bin/bin/clice
+            build/${{ inputs.build_type }}/bin/bin/clice.exe
+            build/${{ inputs.build_type }}/bin/bin/bin/clice.dSYM
+          if-no-files-found: error
+          retention-days: 90
+
+  unit:
+    needs: build
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/download-programs
+        with:
+          target: ${{ inputs.target }}
+          build_type: ${{ inputs.build_type }}
+          environments: ${{ env.TEST_ENVIRONMENTS }}
+          activate-environment: ${{ env.TEST_ACTIVATE }}
+
+      # Process start-up is the fixed cost every test-suite process pays
+      # (inspect runs, servers, workers); the two build types differ in
+      # linkage and sanitizers, so both are timed.
+      - name: Process startup cost
+        run: |
+          for _ in 1 2; do time build/${{ inputs.build_type }}/bin/bin/clice${{ runner.os == 'Windows' && '.exe' || '' }} --version; done
+
+      - name: Unit tests
+        timeout-minutes: 10
+        run: pixi run -e test-run unit-test ${{ inputs.build_type }}
+
+  smoke:
+    needs: build
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/download-programs
+        with:
+          target: ${{ inputs.target }}
+          build_type: ${{ inputs.build_type }}
+          environments: ${{ env.TEST_ENVIRONMENTS }}
+          activate-environment: ${{ env.TEST_ACTIVATE }}
+
+      - name: Smoke tests
+        timeout-minutes: 5
+        run: pixi run -e test-run smoke-test ${{ inputs.build_type }}
+
+  integration:
+    needs: build
+    name: integration ${{ matrix.shard }}/${{ strategy.job-total }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(inputs.integration_shards) }}
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/download-programs
+        with:
+          target: ${{ inputs.target }}
+          build_type: ${{ inputs.build_type }}
+          environments: ${{ env.TEST_ENVIRONMENTS }}
+          activate-environment: ${{ env.TEST_ACTIVATE }}
+
+      - name: Integration tests
+        timeout-minutes: 30
+        run: pixi run -e test-run integration-test ${{ inputs.build_type }} ${{ matrix.shard }}/${{ strategy.job-total }}
+
+  snap:
+    needs: build
+    name: snap ${{ matrix.shard }}/${{ strategy.job-total }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(inputs.snap_shards) }}
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/download-programs
+        with:
+          target: ${{ inputs.target }}
+          build_type: ${{ inputs.build_type }}
+          environments: ${{ env.TEST_ENVIRONMENTS }}
+          activate-environment: ${{ env.TEST_ACTIVATE }}
+
+      - name: Snap tests
+        timeout-minutes: 20
+        run: pixi run -e test-run snap-test ${{ inputs.build_type }} ${{ matrix.shard }}/${{ strategy.job-total }}
+
+  editor:
+    needs: build
+    if: ${{ inputs.editor }}
+    uses: ./.github/workflows/editor-test.yml
+    with:
+      os: ${{ inputs.os }}
+      target: ${{ inputs.target }}
+
+  compat:
+    needs: build
+    if: ${{ inputs.compat }}
+    uses: ./.github/workflows/compat-test.yml
+    with:
+      os: ${{ inputs.os }}
+      target: ${{ inputs.target }}

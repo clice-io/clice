@@ -171,6 +171,9 @@ export interface Session {
 }
 
 export interface SessionOptions extends InitializeOptions, StartOptions {
+    /// The program to run instead of cliceExecutable(), such as a release
+    /// build of it.
+    executable?: string | undefined;
     /// Anomalies are internal clice bugs — every test session must end
     /// without one. Tests that intentionally trigger anomalies opt out here
     /// and assert on them explicitly.
@@ -234,7 +237,7 @@ export function createSessionFactory(): SessionHandle {
         workspace: Workspace | null,
         options: SessionOptions = {},
     ): CliceClient => {
-        const client = CliceClient.start(cliceExecutable(), {
+        const client = CliceClient.start(options.executable ?? cliceExecutable(), {
             drainStderr: options.drainStderr,
             args: options.args,
             env: options.env,
@@ -251,13 +254,14 @@ export function createSessionFactory(): SessionHandle {
         const workspace = new Workspace(path.join(DATA_DIR, name));
         releases.push(await acquireWorkspaceLock(name));
         prepareWorkspace(workspace);
+        const executable = options.executable ?? cliceExecutable();
         const client =
             options.socketPort !== undefined
-                ? await CliceClient.startSocket(cliceExecutable(), options.socketPort, {
+                ? await CliceClient.startSocket(executable, options.socketPort, {
                       args: options.args,
                       env: options.env,
                   })
-                : CliceClient.start(cliceExecutable(), {
+                : CliceClient.start(executable, {
                       drainStderr: options.drainStderr,
                       args: options.args,
                       env: options.env,

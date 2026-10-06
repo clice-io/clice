@@ -33,9 +33,10 @@ official vscode-languageserver-protocol stack. Equivalent to:
 
 ```bash
 cd tests
-npm run check   # typecheck (tsc strict) + lint (ESLint)
 CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm test
 ```
+
+A change to the TypeScript also passes `npm run check` at the repository root: strict tsc and ESLint over every package.
 
 Useful variants:
 

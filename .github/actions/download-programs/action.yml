@@ -1,0 +1,33 @@
+name: "Download programs"
+description: "pixi and a leg's programs, from its build-<target>-<type> artifact, in build/<type>/bin"
+
+inputs:
+  target:
+    required: true
+  build_type:
+    required: true
+  environments:
+    description: "The pixi environments to install (space-separated)"
+    required: true
+  activate-environment:
+    description: "Which environment to activate (set to env name, or 'true' for single-env installs)"
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: ./.github/actions/setup-pixi
+      with:
+        environments: ${{ inputs.environments }}
+        activate-environment: ${{ inputs.activate-environment }}
+
+    - name: Download binaries
+      uses: actions/download-artifact@v8
+      with:
+        name: build-${{ inputs.target }}-${{ inputs.build_type }}
+        path: build/${{ inputs.build_type }}/bin/
+
+    - name: Make binaries executable
+      if: runner.os != 'Windows'
+      shell: bash
+      run: chmod +x build/${{ inputs.build_type }}/bin/bin/*

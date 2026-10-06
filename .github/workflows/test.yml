@@ -1,0 +1,81 @@
+name: test
+
+# Every target and build type CI builds, each a leg of its own (test-leg.yml).
+# The suites split further where the runners are slow: ASan processes start
+# slowly on macOS, and the Intel macOS and arm64 Windows runners are slow
+# machines.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x64:
+    uses: ./.github/workflows/test-leg.yml
+    with:
+      os: ubuntu-24.04
+      target: x86_64-unknown-linux-gnu
+      asset_name: clice.x86_64-unknown-linux-gnu.tar.gz
+      editor: true
+      compat: true
+
+  linux-x64-debug:
+    uses: ./.github/workflows/test-leg.yml
+    with:
+      os: ubuntu-24.04
+      target: x86_64-unknown-linux-gnu
+      build_type: Debug
+
+  linux-arm64:
+    uses: ./.github/workflows/test-leg.yml
+    with:
+      build_os: ubuntu-24.04
+      os: ubuntu-24.04-arm
+      target: aarch64-unknown-linux-gnu
+      asset_name: clice.aarch64-unknown-linux-gnu.tar.gz
+
+  macos-arm64:
+    uses: ./.github/workflows/test-leg.yml
+    with:
+      os: macos-15
+      target: aarch64-apple-darwin
+      asset_name: clice.aarch64-apple-darwin.tar.gz
+      editor: true
+      compat: true
+
+  macos-arm64-debug:
+    uses: ./.github/workflows/test-leg.yml
+    with:
+      os: macos-15
+      target: aarch64-apple-darwin
+      build_type: Debug
+      integration_shards: "[1, 2, 3, 4]"
+      snap_shards: "[1, 2, 3, 4]"
+
+  macos-x64:
+    uses: ./.github/workflows/test-leg.yml
+    with:
+      build_os: macos-15
+      os: macos-15-intel
+      target: x86_64-apple-darwin
+      asset_name: clice.x86_64-apple-darwin.tar.gz
+      snap_shards: "[1, 2]"
+
+  windows-x64:
+    uses: ./.github/workflows/test-leg.yml
+    with:
+      os: windows-2025
+      target: x86_64-w64-mingw32
+      asset_name: clice.x86_64-w64-mingw32.zip
+      compat: true
+
+  windows-arm64:
+    uses: ./.github/workflows/test-leg.yml
+    with:
+      build_os: windows-2025
+      os: windows-11-arm
+      target: aarch64-w64-mingw32
+      asset_name: clice.aarch64-w64-mingw32.zip
+      snap_shards: "[1, 2]"
