@@ -199,13 +199,24 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
             "}",
         ),
     );
+    // A header pasting a fragment that declares fake_widen and calls it, as
+    // toml++ declares the Windows functions it calls; after <cwide.h> by
+    // path, so that one owns fake_widen.
+    ws.write(
+        "third/widen/widen.inl",
+        lines(
+            "int fake_widen(int);",
+            "inline int widen_twice(int x) { return fake_widen(x) * 2; }",
+        ),
+    );
+    ws.write("third/widen/widen.h", lines("#pragma once", '#include "widen.inl"'));
     ws.write(
         "app/direct.cpp",
         lines(
             "#include <cio.h>",
             "#include <cwin.h>",
-            "int fake_widen(int);",
-            "int direct() { fake_word word = fake_stdout; return fake_widen(word) + FAKE_EOF; }",
+            '#include "../third/widen/widen.h"',
+            "int direct() { fake_word word = fake_stdout; return widen_twice(word) + FAKE_EOF; }",
         ),
     );
     ws.write(
@@ -484,8 +495,8 @@ test("C library kept headers", async ({ session }) => {
     // main.cpp reaches <cio.h> only through <fakecstdio>, which `import std`
     // empties, while direct.cpp includes it itself; third.cpp's own <cio.h>
     // takes only the type of <cva.h>. fake_puts comes from std.compat,
-    // direct.cpp's <cwin.h> brings fake_word, and direct.cpp declares
-    // fake_widen itself.
+    // direct.cpp's <cwin.h> brings fake_word, and widen.h declares
+    // fake_widen itself, in a fragment it pastes.
     expect(libc.textual.map((header) => [header.include, header.because])).toEqual([
         ["<cio.h>", "fake_stdout in app/main.cpp"],
         ["<cva.h>", "fake_vprint in app/third.cpp"],

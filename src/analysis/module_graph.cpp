@@ -3131,13 +3131,16 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     }
 
     // A file declaring a function itself, or defining what it uses, needs no
-    // kept header for it: toml++ declares the Windows functions it calls.
+    // kept header for it: toml++ declares the Windows functions it calls, in
+    // a fragment its header pastes.
     llvm::DenseSet<std::pair<std::uint32_t, std::uint32_t>> self_declared;
     for(auto& redeclaration: facts.redeclarations) {
         auto kind = facts.entities[redeclaration.entity].kind;
         if(!redeclaration.friend_declaration &&
            (redeclaration.definition || kind == SymbolKind::Function)) {
-            self_declared.insert({redeclaration.entity, redeclaration.file});
+            for(auto file: charged_files(facts, redeclaration.file)) {
+                self_declared.insert({redeclaration.entity, file});
+            }
         }
     }
 
