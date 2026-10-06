@@ -3313,8 +3313,9 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     };
     auto header_of = [&](std::uint32_t module, std::uint32_t file, std::string because) {
         auto& info = facts.files[file];
+        auto by_path = std::format("\"{}\"", info.path);
         InterfaceHeader header{.file = info.path,
-                               .include = std::format("\"{}\"", info.path),
+                               .include = by_path,
                                .because = std::move(because)};
         for(std::size_t i = 0; i < info.includers.size(); i += 1) {
             auto includer = info.includers[i];
@@ -3332,7 +3333,10 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
                 if(beside == info.path) {
                     continue;
                 }
-            } else if(!llvm::StringRef(header.include).starts_with("<")) {
+            }
+            // By a name the include path finds, an angled one first.
+            if(header.include == by_path ||
+               (spelled.starts_with("<") && !llvm::StringRef(header.include).starts_with("<"))) {
                 header.include = spelled;
             }
             if(!llvm::is_contained(header.names, name)) {
