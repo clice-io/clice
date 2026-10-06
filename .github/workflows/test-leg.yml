@@ -92,6 +92,7 @@ jobs:
           {
             echo "common --disk_cache=$temp/bazel-disk"
             echo "common --repository_cache=$temp/bazel-repo"
+            echo "build --profile=$temp/bazel-profile.json.gz"
             if [ "$RUNNER_OS" = Windows ]; then
               echo "startup --output_user_root=C:/b"
             fi
@@ -108,6 +109,22 @@ jobs:
           pixi run -e default build ${{ inputs.build_type }} --
           ${{ inputs.build_os && format('--platforms=@xclang//platforms:{0}', inputs.target) || '' }}
           ${{ inputs.asset_name && '//:package //:symbols' || '' }}
+
+      # Where the build's time went: each action on its critical path
+      # (compiles, links, the dSYM, the GSYM, the archives), in seconds. The
+      # artifact is the whole timeline, for Perfetto.
+      - name: Critical path
+        run: |
+          zcat "$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")/bazel-profile.json.gz" |
+            jq -r '.traceEvents[] | select(.cat == "critical path component") | "\((.dur / 1e5 | floor) / 10)\t\(.name)"'
+
+      - name: Upload build profile
+        uses: actions/upload-artifact@v7
+        with:
+          name: bazel-profile-${{ inputs.target }}-${{ inputs.build_type }}
+          path: ${{ runner.temp }}/bazel-profile.json.gz
+          if-no-files-found: error
+          retention-days: 7
 
       # Bazel refreshes an entry's mtime when it reads it, so what this run
       # did not touch is what the current tree no longer needs.
