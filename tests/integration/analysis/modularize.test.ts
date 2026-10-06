@@ -210,7 +210,6 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
             "app/tool/hook.cpp",
             "app/tool/cli.cpp",
             "app/run.cpp",
-            "app/loop/loop.cpp",
         );
     }
     ws.writeEntries(sources.map((source): [string, string[]] => [source, includes]));
@@ -258,7 +257,7 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
 /// tool's hook.cpp defines, and includes cfg's config.h, which stays a
 /// header; detail.h is core's alone, all.h an umbrella over it, sink.h
 /// guarded. tool.h forward-declares core's Sink and Box, and tool.cpp
-/// expands core's CORE_TWICE. loop's two headers include each other.
+/// expands core's CORE_TWICE.
 function writeProgram(ws: Workspace): void {
     ws.write(
         "app/core/text.h",
@@ -286,13 +285,7 @@ function writeProgram(ws: Workspace): void {
     );
     ws.write(
         "app/cfg/config.h",
-        lines(
-            "#pragma once",
-            '#include "defs.h"',
-            "#define CFG_FAST 1",
-            "#define CFG_SIZE 64",
-            "int cfg_value();",
-        ),
+        lines("#pragma once", '#include "defs.h"', "#define CFG_FAST 1", "#define CFG_SIZE 64"),
     );
     ws.write("app/cfg/defs.h", lines("#pragma once", "#define CFG_DEFS 2"));
     ws.write(
@@ -333,7 +326,6 @@ function writeProgram(ws: Workspace): void {
             '#include "core/all.h"',
             '#include "core/detail.h"',
             "int core::Text::size() const { return detail() + CORE_TWICE(thing.v); }",
-            "int cfg_value() { return 1; }",
         ),
     );
     ws.write(
@@ -378,9 +370,6 @@ function writeProgram(ws: Workspace): void {
             "}",
         ),
     );
-    ws.write("app/loop/a.h", lines("#pragma once", '#include "loop/b.h"', "int loop_a();"));
-    ws.write("app/loop/b.h", lines("#pragma once", '#include "loop/a.h"', "int loop_b();"));
-    ws.write("app/loop/loop.cpp", lines('#include "loop/a.h"', "int loop() { return 0; }"));
     ws.write(
         "app/run.cpp",
         lines(
@@ -619,14 +608,6 @@ test("modularize rewrites program modules", async ({ session }) => {
         ]),
     ).toBe("app/core/sink.h would overwrite app/core/sink.cppm");
     ws.rm("app/core/sink.cppm");
-    expect(await rejected([{ name: "app.loop", files: ["app/loop/**"], rewrite: true }])).toBe(
-        "headers include each other: app/loop/a.h -> app/loop/b.h -> app/loop/a.h",
-    );
-    expect(
-        await rejected([{ name: "alpha", files: ["third/alpha/alpha/local.h"], rewrite: true }]),
-    ).toBe(
-        "third/alpha/alpha/local.h:2 declares alpha_local static, which an interface partition cannot export",
-    );
 
     const run = await modularize(ws, ws.path("program.json"));
     expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
@@ -663,10 +644,9 @@ test("modularize rewrites program modules", async ({ session }) => {
         "app/tool/tool.h",
     ]);
     // A header that stays a header moves out of the purview, unless a condition
-    // holds it there; what one declares no module unit can define.
+    // holds it there.
     expect(plan.warnings).toEqual([
         "app/core/detail.h:10 includes app/cfg/extra.h under a condition in the module purview",
-        "app/core/text.cpp:5 defines cfg_value, which app/cfg/config.h declares",
     ]);
     expect(ws.exists("app/core/text.h")).toBe(false);
 

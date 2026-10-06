@@ -641,22 +641,6 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         partition.module_of[file] = *modules.begin();
         plan.moved.push_back(std::format("{}={}", path, partition.modules[*modules.begin()]));
     }
-    // What a header of the program that stays a header declares belongs to
-    // the global module, where no module unit can define it.
-    for(auto& redeclaration: facts.redeclarations) {
-        auto& entity = facts.entities[redeclaration.entity];
-        auto owner = partition.module_of[entity.owner];
-        auto& file = facts.files[redeclaration.file];
-        if(redeclaration.definition && file.source && !facts.files[entity.owner].source &&
-           !partition.primaries[partition.module_of[redeclaration.file]].empty() &&
-           partition.kinds[owner] == ModuleKind::Program && partition.primaries[owner].empty()) {
-            plan.warnings.push_back(std::format("{}:{} defines {}, which {} declares",
-                                                file.path,
-                                                redeclaration.line,
-                                                entity.name,
-                                                facts.files[entity.owner].path));
-        }
-    }
 
     Annotations annotations;
     auto units = Report{.facts = facts, .partition = partition, .annotations = annotations}.units();
@@ -709,14 +693,6 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         }
     }
 
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> statics;
-    for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
-        auto& info = facts.entities[entity];
-        if(info.linkage == InternalLinkage::Static && info.line != 0) {
-            statics[info.owner].push_back(entity);
-        }
-    }
-
     std::vector<std::uint32_t> files;
     for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
         auto& info = facts.files[file];
@@ -751,25 +727,6 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         Text text((*buffer)->getBuffer());
         buffers[file] = std::move(*buffer);
         auto module_unit = rewriter.rewritten(file);
-
-        // An interface partition exports its whole body. The index can take
-        // a member of an anonymous namespace for a static: the declaration
-        // has to say so.
-        if(module_unit && units[file].kind == Unit::Kind::Interface) {
-            for(auto entity: statics.lookup(file)) {
-                auto& info = facts.entities[entity];
-                if(info.line <= text.lines.size() &&
-                   llvm::any_of(text.tokens_on(info.line - 1), [&](const Token& token) {
-                       return token.text(text.content) == "static";
-                   })) {
-                    return std::unexpected(std::format(
-                        "{}:{} declares {} static, which an interface partition cannot export",
-                        facts.files[file].path,
-                        info.line,
-                        info.name));
-                }
-            }
-        }
 
         // Declarations of other modules' entities: in a module unit they
         // would declare a second entity, attached to its module. One whose
@@ -901,38 +858,6 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             }
         }
         draft.partitions.erase(file);
-    }
-
-    // Partitions importing each other have no order to compile in.
-    llvm::DenseSet<std::uint32_t> ordered;
-    std::vector<std::uint32_t> chain;
-    auto order = [&](auto& self, std::uint32_t file) -> std::optional<std::string> {
-        if(ordered.contains(file)) {
-            return std::nullopt;
-        }
-        if(auto cycle = llvm::find(chain, file); cycle != chain.end()) {
-            std::vector<std::string> paths;
-            for(auto member: llvm::make_range(cycle, chain.end())) {
-                paths.push_back(facts.files[member].path);
-            }
-            std::ranges::rotate(paths, std::ranges::min_element(paths));
-            paths.push_back(paths.front());
-            return std::format("headers include each other: {}", llvm::join(paths, " -> "));
-        }
-        chain.push_back(file);
-        for(auto imported: drafts.at(file).partitions) {
-            if(auto cycle = self(self, imported)) {
-                return cycle;
-            }
-        }
-        chain.pop_back();
-        ordered.insert(file);
-        return std::nullopt;
-    };
-    for(auto& entry: drafts) {
-        if(auto cycle = order(order, entry.first)) {
-            return std::unexpected(*cycle);
-        }
     }
 
     // Clang takes no declaration in the global module fragment of an
