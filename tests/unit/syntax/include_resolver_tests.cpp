@@ -122,6 +122,27 @@ ZEST_CASE(ResolveAngledIncludeFromSearchDirs) {
     ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("include/sys/types.h")));
 }
 
+ZEST_CASE(ResolveSkipsDirectories) {
+    // `-Isrc` with a src/memory/ directory: <memory> is the standard
+    // library's file further down the search path, not the directory.
+    TempDir tmp;
+    tmp.touch("src/memory/x.h");
+    tmp.touch("std/memory");
+
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("src")});
+    config.dirs.push_back({tmp.path("std")});
+    config.angled_start_idx = 0;
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+
+    auto result = resolve_include("memory", true, "", false, 0, config, scope);
+
+    ZASSERT(result);
+    ZEXPECT(llvm::sys::fs::equivalent(result->path, tmp.path("std/memory")));
+}
+
 ZEST_CASE(ResolveAngledSkipsQuotedDirs) {
     TempDir tmp;
     tmp.touch("quoted/header.h", "// quoted");

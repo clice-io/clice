@@ -38,12 +38,13 @@ clang::driver::types::ID suffix_type(llvm::StringRef path) {
 bool is_header_path(llvm::StringRef path) {
     namespace types = clang::driver::types;
     auto type = suffix_type(path);
-    return type == types::TY_CHeader || type == types::TY_CXXHeader;
+    return type == types::TY_INVALID || types::onlyPrecompileType(type);
 }
 
 bool is_context_header_path(llvm::StringRef path) {
     return path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
-           path.ends_with(".tpp") || path.ends_with(".ipp");
+           path.ends_with(".tpp") || path.ends_with(".ipp") || path.ends_with(".tcc") ||
+           path.ends_with(".txx");
 }
 
 namespace {
@@ -1040,6 +1041,19 @@ llvm::StringRef CompilationDatabase::forced_language(ConfigID id) const {
     return language_state_at_slot(config(id).args);
 }
 
+/// Whether the driver compiles C inputs as C++, as `g++` and `clang++` do
+/// under any version or target affix (`x86_64-linux-gnu-g++-13`), and
+/// `zig c++`.
+static bool cxx_driver(const CompileConfig& config) {
+    if(config.subcommand) {
+        return llvm::StringRef(config.subcommand) == "c++";
+    }
+    std::string lowered = path::filename(config.driver).lower();
+    llvm::StringRef name = lowered;
+    name.consume_back(".exe");
+    return name.rtrim("0123456789.-").ends_with("++");
+}
+
 InputKind CompilationDatabase::input_kind(ConfigID id, llvm::StringRef file) {
     auto state = language_state_at_slot(config(id).args);
     if(!state.empty()) {
@@ -1052,8 +1066,13 @@ InputKind CompilationDatabase::input_kind(ConfigID id, llvm::StringRef file) {
     if(ext == "cuh") {
         return {strings.save("cuda").data()};
     }
-    if(auto lang = driver_language_for_extension(ext); !lang.empty()) {
-        return {strings.save(lang).data()};
+    namespace types = clang::driver::types;
+    if(auto type = types::lookupTypeForExtension(ext); type != types::TY_INVALID) {
+        // A C++ driver compiles C inputs as C++.
+        if(cxx_driver(config(id))) {
+            type = types::lookupCXXTypeForCType(type);
+        }
+        return {strings.save(types::getTypeName(type)).data()};
     }
     /// No mapping: the raw extension keys the probe (the driver sees a
     /// temp file with the same extension, exactly as confused as it would

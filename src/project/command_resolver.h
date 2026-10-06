@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <expected>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,6 +48,17 @@ struct CommandRequest {
     llvm::DenseMap<Fid, HeaderContext>* header_contexts = nullptr;
 };
 
+/// Pick the candidate matching a pinned command (multi-configuration files
+/// and hosts), defaulting to the build's first command. `paths` are the
+/// files whose edits the published hash was computed with.
+Candidate pick_pinned_config(Project& project,
+                             Fid file,
+                             llvm::ArrayRef<Candidate> candidates,
+                             llvm::ArrayRef<CanonicalRef> paths,
+                             llvm::StringRef language_path,
+                             llvm::StringRef pinned_hash,
+                             llvm::StringRef pinned_base);
+
 /// How a file's command was resolved.
 struct Resolution {
     CommandSource source = CommandSource::Fallback;
@@ -63,6 +75,10 @@ struct Resolution {
     /// which exists only in memory: every compile under them must be
     /// served its files. Null when nothing was synthesized.
     std::shared_ptr<const SynthesizedContext> synthesized;
+
+    /// The host whose includer context the header needed but whose include
+    /// chain the synthesis could not follow: the command fell back past it.
+    Fid unmatched_host;
 };
 
 /// Composes a file's final compile command from the project on disk.
@@ -136,7 +152,8 @@ private:
     };
 
     /// Self-containment verdicts for headers, persisted in the artifacts
-    /// blob. Reset when the header itself is saved.
+    /// blob. Reset when a closed header or a file along its include chain
+    /// changes on disk.
     llvm::DenseMap<Fid, HeaderVerdict> header_verdicts;
 
     /// Fill compile arguments for a header from a host source's command found
@@ -149,9 +166,13 @@ private:
                                   const CommandRequest& request,
                                   Resolution& resolution);
 
-    std::optional<HeaderContext> resolve_header_context(Fid header_path_id,
-                                                        const Selection* choice,
-                                                        bool synthesize);
+    /// The header's context under the pinned host while it still includes
+    /// the header, else the default host. Fails with the host whose include
+    /// chain the synthesis cannot follow under its command — invalid when
+    /// no unit includes the header at all.
+    std::expected<HeaderContext, Fid> resolve_header_context(Fid header_path_id,
+                                                             const Selection* choice,
+                                                             bool synthesize);
 
     /// What dump_mode_slices would emit for this file (0 = nothing) — the
     /// before/after probe record and reset compare to mark the artifacts

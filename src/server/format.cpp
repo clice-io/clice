@@ -44,6 +44,17 @@ static protocol::Diagnostic make_inferred_command_diagnostic(CommandSource sourc
     return diagnostic;
 }
 
+/// File-top warning naming the host whose includer context the header
+/// needed but could not get: the diagnostics below miss what it provides.
+static protocol::Diagnostic make_unmatched_context_diagnostic(llvm::StringRef host) {
+    auto diagnostic = feature::file_warning(std::format(
+        "This header needs the context of its includer, but the include chain from {} could not "
+        "be followed under that file's compile command, so it compiled without it.",
+        host));
+    diagnostic.code = "unmatched-includer-context";
+    return diagnostic;
+}
+
 std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output) {
     auto diagnostics = output.diagnostics;
 
@@ -61,6 +72,10 @@ std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output
     if(output.source != CommandSource::CDBExact && output.source != CommandSource::Default &&
        std::ranges::any_of(diagnostics, is_file_not_found)) {
         diagnostics.insert(diagnostics.begin(), make_inferred_command_diagnostic(output.source));
+    }
+    if(!output.unmatched_host.empty()) {
+        diagnostics.insert(diagnostics.begin(),
+                           make_unmatched_context_diagnostic(output.unmatched_host));
     }
 
     return diagnostics;

@@ -39,6 +39,10 @@ struct Listing {
     /// a name the listing holds under another spelling is confirmed with
     /// one stat, as is any non-ASCII name the listing lacks.
     bool contains(llvm::StringRef name) const;
+
+    /// Whether `name` opens an entry other than a directory: what an
+    /// #include can name. Matched like contains().
+    bool contains_file(llvm::StringRef name) const;
 };
 
 /// List `dir`: the pre/post-stat pairing discipline of file reads, on the

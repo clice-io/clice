@@ -101,6 +101,32 @@ ZEST_CASE(ProximityWithinSource) {
     ZEXPECT(ranked[4] == elsewhere);
 };
 
+ZEST_CASE(ProximityByDirectories) {
+    /// Closeness counts whole directories: `a/b/x.h` is as near the units
+    /// of `a/` as `a/bc/` is, and those go no deeper.
+    TempDir tmp;
+    tmp.touch("a/b/x.h", "");
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"a/**"}, .default_command = std::string("clang++")});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("a/b/x.h")));
+    auto parent = project.file_table.intern(Spelling::absolute(tmp.path("a/zz.cpp")));
+    auto cousin = project.file_table.intern(Spelling::absolute(tmp.path("a/bc/z.cpp")));
+    for(auto host: {parent, cousin}) {
+        project.dep_graph.set_includes(host, 0, {{header}});
+    }
+    project.dep_graph.build_reverse_map();
+
+    auto ranked = ranked_hosts(project, header);
+    ZASSERT(ranked.size() == 2u);
+    ZEXPECT(ranked[0] == parent);
+    ZEXPECT(ranked[1] == cousin);
+};
+
 ZEST_CASE(HostsMatchLanguage) {
     /// A C unit never hosts a C++ header; an ambiguous `.h` takes any host.
     TempDir tmp;

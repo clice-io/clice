@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -18,11 +19,14 @@ struct SessionStore;
 
 namespace protocol = kota::ipc::protocol;
 
-/// Diagnostic codes that strictly indicate a missing includer context (as
-/// opposed to ordinary in-progress typing errors). Deliberately narrow:
-/// a false positive costs a pointless prefix synthesis, a false negative
-/// just leaves the header in trial mode.
-bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics);
+/// How many errors name what an includer would have provided: an
+/// undeclared name, a missing member or template of a namespace, a call to
+/// an undeclared C function, an #error guarding against a standalone
+/// compile, a conditional the includer closes. A typo raises the same
+/// ones; the self-containment trial runs when a header opens or its
+/// inputs change, never per edit, so one costs at most a compile under
+/// the includer's context.
+std::size_t missing_context_errors(llvm::ArrayRef<protocol::Diagnostic> diagnostics);
 
 /// The editor-facing context protocol (clice/queryContext, currentContext,
 /// switchContext) and session-coupled maintenance of context choices. The

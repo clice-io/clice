@@ -564,6 +564,12 @@ void run_feature(FileEntry& entry,
     auto prepare = [&](CompilationParams& params) {
         apply_command(params, command);
         for(const auto& sibling: sources) {
+            if(sibling.abs == file.abs && command.synthesized) {
+                std::string text = sibling.source.content;
+                command.synthesized->append_suffix_include(text);
+                params.add_remapped_file(sibling.abs, text);
+                continue;
+            }
             params.add_remapped_file(sibling.abs, sibling.source.content);
         }
         for(const auto& pcm: pcms) {

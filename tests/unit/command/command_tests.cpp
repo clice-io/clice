@@ -245,6 +245,23 @@ ZEST_CASE(SelectorPositional) {
     ZEXPECT(llvm::StringRef(database.input_kind(reset, "b.c").value) == "c");
 };
 
+ZEST_CASE(CxxDriverCInputs) {
+    /// g++ and clang++ compile C inputs as C++; gcc does not.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake", "a.c", "/usr/bin/x86_64-linux-gnu-g++-13 -c a.c"sv);
+    database.add_command("/fake", "b.h", "clang++ -c b.h"sv);
+    database.add_command("/fake", "c.c", "gcc -c c.c"sv);
+
+    auto kind = [&](llvm::StringRef file) {
+        auto config = database.candidate_entries(fake(file)).front().config;
+        return llvm::StringRef(database.input_kind(config, file).value);
+    };
+    ZEXPECT(kind("a.c") == "c++");
+    ZEXPECT(kind("b.h") == "c++-header");
+    ZEXPECT(kind("c.c") == "c");
+};
+
 ZEST_CASE(PerFileClSelectors) {
     /// /Tc<file> and /Tp<file> pair a selector with one input: the entry's
     /// own selector rewrites to the equivalent global form, the other

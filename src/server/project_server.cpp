@@ -398,12 +398,6 @@ void ProjectServer::tick_databases() {
 void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     auto dirty = invalidator.apply(events);
 
-    for(auto path_id: dirty.reset_trial) {
-        if(auto session = sessions.find(path_id)) {
-            session->trial_done = false;
-        }
-    }
-
     for(auto path_id: dirty.reset_header_mode) {
         commands.reset_header_mode(path_id);
     }

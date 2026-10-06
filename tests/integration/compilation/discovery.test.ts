@@ -149,7 +149,7 @@ test("nearby unit lends its command", async ({ session }) => {
     const entries = (feature: boolean): [string, string[]][] => [
         ["zsrc/lib.cpp", feature ? ["-DFEATURE", "-Iinclude"] : ["-Iinclude"]],
         ["include/near.cpp", []],
-        ["tools/tool.c", ["-DTOOL"]],
+        ["tools/tool.c", ["-x", "c", "-std=c17", "-DTOOL"]],
     ];
     workspace.writeEntries(entries(true));
     await client.initialize(workspace);
@@ -280,7 +280,7 @@ test("header hosts match the language", async ({ session }) => {
     );
     workspace.write("shared/types.hpp", "#pragma once\n" + gated("CXX"));
     workspace.write("shared/plain.h", "#pragma once\n");
-    workspace.writeEntries([["c/impl.c", ["-DFROM_C"]]]);
+    workspace.writeEntries([["c/impl.c", ["-x", "c", "-std=c17", "-DFROM_C"]]]);
     await client.initialize(workspace);
 
     const [header] = await client.openAndWait("shared/types.hpp");

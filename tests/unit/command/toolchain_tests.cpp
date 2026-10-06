@@ -130,13 +130,17 @@ ZEST_CASE(KeyTracksSemantics) {
                         {"clang++", "-std=c++23", "--target=aarch64-linux-gnu", "/tmp/c.cpp"});
     ZEXPECT(f.key(base) != f.key(target));
 
-    /// The language dimension: an -x selector and a C extension both
-    /// change the key.
+    /// The language dimension: an -x selector and an extension of another
+    /// language both change the key; a C++ driver compiles a C file as
+    /// C++ and shares it.
     auto lang = f.add("/fake", "/tmp/d.cpp", {"clang++", "-std=c++23", "-x", "c", "/tmp/d.cpp"});
     ZEXPECT(f.key(base) != f.key(lang));
 
-    auto ext = f.add("/fake", "/tmp/e.c", {"clang++", "-std=c++23", "/tmp/e.c"});
+    auto ext = f.add("/fake", "/tmp/e.m", {"clang++", "-std=c++23", "/tmp/e.m"});
     ZEXPECT(f.key(base) != f.key(ext));
+
+    auto c_file = f.add("/fake", "/tmp/f.c", {"clang++", "-std=c++23", "/tmp/f.c"});
+    ZEXPECT(f.key(base) == f.key(c_file));
 
     // Any non-user-content flag affects the key, not just toolchain options.
     auto semantic =

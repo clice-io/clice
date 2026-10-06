@@ -32,7 +32,7 @@ bool check_in_dir(llvm::StringRef dir_path,
     scope.stats.lookups += 1;
 
     if(is_simple) {
-        return listing->contains(filename);
+        return listing->contains_file(filename);
     }
 
     // Quick rejection: check if first path component exists in pre-resolved
@@ -54,7 +54,7 @@ bool check_in_dir(llvm::StringRef dir_path,
     llvm::sys::path::append(full, filename);
     auto parent = llvm::sys::path::parent_path(full);
     auto name = llvm::sys::path::filename(full);
-    return scope.list(parent).contains(name);
+    return scope.list(parent).contains_file(name);
 }
 
 }  // namespace

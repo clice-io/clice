@@ -111,12 +111,29 @@ private:
     /// to the #include that brought its file in, else to the top of the
     /// file — prefixed with where it happened and pointing back at it, only
     /// the first of the errors landing on one spot kept; any other to its
-    /// first note in the main file. Nothing else concerns the main file.
+    /// first note in the main file. A borrowed includer context is the
+    /// host's code: an error raised there moves to where the main file
+    /// takes part in it, a note, and a fatal one, which silences everything
+    /// after it, to the top. Nothing else concerns the main file.
     bool place(const Diagnostic& main,
                llvm::ArrayRef<Diagnostic> notes,
                protocol::Diagnostic& diagnostic) {
+        auto in_main = [&](const Diagnostic& note) {
+            return note.fid == unit.main_file();
+        };
         if(main.fid == unit.main_file()) {
-            auto range = map.to_range(main.range);
+            // A scope the main file leaves open swallows the includer's
+            // remainder appended past its text: the error the buffer's end
+            // raises shows where the scope opened.
+            auto anchor = main.range;
+            if(unit.borrows_context() && anchor.begin == unit.main_content().size()) {
+                auto note = llvm::find_if(notes, in_main);
+                if(note == notes.end()) {
+                    return false;
+                }
+                anchor = note->range;
+            }
+            auto range = map.to_range(anchor);
             if(!range) {
                 return false;
             }
@@ -124,9 +141,7 @@ private:
             return true;
         }
 
-        auto in_main = [&](const Diagnostic& note) {
-            return note.fid == unit.main_file();
-        };
+        bool context = unit.from_context(main.fid);
         if(main.error_by_default) {
             std::optional<LocalSourceRange> anchor;
             std::string_view where = "In template";
@@ -135,18 +150,24 @@ private:
             });
             if(request != notes.end()) {
                 anchor = request->range;
+            } else if(context) {
+                where = "In includer context";
+                if(auto note = llvm::find_if(notes, in_main); note != notes.end()) {
+                    anchor = note->range;
+                } else if(main.id.level == DiagnosticLevel::Fatal) {
+                    anchor = LocalSourceRange{0, 0};
+                }
             } else {
+                // What the command line brought in (-include, -D) sits on
+                // no #include: it stays at the top of the file, like the
+                // command line's own diagnostics.
                 anchor = include_range(main.fid);
                 where = "In included file";
-            }
-            // What the command line brought in (-include, -D) sits on no
-            // #include: it stays at the top of the file, like the command
-            // line's own diagnostics. A header context's borrowed prefix is
-            // the host's, not the header's.
-            if(!anchor && !unit.from_context(main.fid)) {
-                anchor = LocalSourceRange{0, 0};
-                if(unit.is_builtin_file(main.fid)) {
-                    where = {};
+                if(!anchor) {
+                    anchor = LocalSourceRange{0, 0};
+                    if(unit.is_builtin_file(main.fid)) {
+                        where = {};
+                    }
                 }
             }
             if(anchor) {
@@ -161,6 +182,9 @@ private:
                 add_related(diagnostic, main.fid, main.range, "error occurred here");
                 return true;
             }
+        }
+        if(context) {
+            return false;
         }
 
         auto note = llvm::find_if(notes, in_main);

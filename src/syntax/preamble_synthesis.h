@@ -58,8 +58,13 @@ struct SynthesizedContext {
     std::string suffix;
 
     /// Every synthesized file: the fragments, and the header's snapshot
-    /// when one was given.
+    /// when one names it.
     SynthesizedFiles files;
+
+    /// Whether a fragment names the header's snapshot: a chain file
+    /// includes the header besides the cut, so the context embeds the
+    /// header's disk content.
+    bool snapshot = false;
 
     /// Append the suffix as one trailing #include line: the suffix content
     /// lives in its own synthesized file so features never see it, while

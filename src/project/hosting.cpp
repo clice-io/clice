@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <tuple>
+#include <utility>
 
 #include "project/project.h"
 #include "vfs/path.h"
@@ -15,13 +16,6 @@ namespace clice {
 namespace {
 
 namespace types = clang::driver::types;
-
-/// Whether the suffix names a header — or nothing clang knows, which a
-/// file under a header search directory usually is (`.inc`, `.ipp`).
-bool header_suffix(llvm::StringRef path) {
-    auto type = suffix_type(path);
-    return type == types::TY_INVALID || types::onlyPrecompileType(type);
-}
 
 /// The language a command compiles its unit as — a `-x` in the entry or
 /// a rule's append included, else the unit's suffix.
@@ -54,13 +48,23 @@ bool compatible(llvm::StringRef path, types::ID language) {
     return file == language;
 }
 
-std::size_t shared_prefix(llvm::StringRef a, llvm::StringRef b) {
-    std::size_t common = 0;
-    auto n = std::min(a.size(), b.size());
-    while(common < n && a[common] == b[common]) {
-        common += 1;
+/// How far `other` sits from `path` in the directory tree: how much of
+/// `path` lies past the directories the two share, then how many
+/// directories deeper `other` goes below them.
+std::pair<std::size_t, std::size_t> distance(llvm::StringRef path, llvm::StringRef other) {
+    std::size_t shared = 0;
+    auto n = std::min(path.size(), other.size());
+    while(shared < n && path[shared] == other[shared]) {
+        shared += 1;
     }
-    return common;
+    auto separator = [](char c) {
+        return path::is_separator(c);
+    };
+    while(shared > 0 && !separator(path[shared - 1])) {
+        shared -= 1;
+    }
+    return {path.size() - shared,
+            static_cast<std::size_t>(llvm::count_if(other.substr(shared), separator))};
 }
 
 const LenderIndex& lender_index(Project& project) {
@@ -101,7 +105,7 @@ const LenderIndex& lender_index(Project& project) {
 std::optional<Lender> command_lender(Project& project, Fid file) {
     auto& files = project.file_table;
     auto path = files.resolve(file);
-    bool header = header_suffix(path);
+    bool header = is_header_path(path);
     auto dir = path::parent_path(path);
     auto stem = path::stem(path);
     auto& index = lender_index(project);
@@ -153,9 +157,9 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
         }
     }
 
-    // The closest unit by path: the longest shared prefix, then by name.
+    // The closest unit in the directory tree, then by name.
     return *std::ranges::min_element(units, {}, [&](const Lender& lender) {
-        return std::tuple(path.size() - shared_prefix(unit_path(lender), path), unit_path(lender));
+        return std::tuple(distance(path, unit_path(lender)), unit_path(lender));
     });
 }
 
@@ -184,7 +188,8 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
         }
     }
 
-    auto score = [&](Fid host) -> std::tuple<std::size_t, int, int, std::size_t> {
+    auto score =
+        [&](Fid host) -> std::tuple<std::size_t, int, int, std::pair<std::size_t, std::size_t>> {
         auto host_path = files.resolve(host);
         // A host compiled from a database the header's rules name comes
         // first; one living on a default command comes after every
@@ -195,12 +200,7 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
         }
         int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
         int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
-        // Longer shared prefix means "closer" in the tree; measured against
-        // the header's own length so every candidate shares one baseline.
-        return {source_rank,
-                stem_match,
-                same_dir,
-                header_path.size() - shared_prefix(host_path, header_path)};
+        return {source_rank, stem_match, same_dir, distance(header_path, host_path)};
     };
     std::ranges::sort(hosts, [&](Fid a, Fid b) {
         auto sa = score(a), sb = score(b);

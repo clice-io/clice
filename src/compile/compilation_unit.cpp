@@ -274,6 +274,13 @@ bool CompilationUnitRef::from_context(clang::FileID fid) {
     return result;
 }
 
+bool CompilationUnitRef::encloses_main_file(const clang::Decl* decl) {
+    auto& SM = self->SM();
+    auto start = SM.getLocForStartOfFile(main_file());
+    return SM.isBeforeInTranslationUnit(expansion_location(decl->getBeginLoc()), start) &&
+           SM.isBeforeInTranslationUnit(start, expansion_location(decl->getEndLoc()));
+}
+
 auto CompilationUnitRef::presumed_location(clang::SourceLocation location) -> clang::PresumedLoc {
     return self->SM().getPresumedLoc(location, false);
 }

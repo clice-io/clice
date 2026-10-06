@@ -36,6 +36,10 @@ struct CompileOutput {
     /// First phantom line introduced by suffix include injection —
     /// diagnostics at or past it describe text the user cannot see.
     std::optional<std::uint32_t> line_limit;
+
+    /// The host whose includer context the compile needed but could not
+    /// rebuild (Resolution::unmatched_host), as shown; empty otherwise.
+    std::string unmatched_host;
 };
 
 /// One open document's compilation products, owned by the AST family and

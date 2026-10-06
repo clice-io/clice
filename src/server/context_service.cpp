@@ -18,23 +18,33 @@
 
 namespace clice {
 
-bool indicates_missing_context(llvm::ArrayRef<protocol::Diagnostic> diagnostics) {
+std::size_t missing_context_errors(llvm::ArrayRef<protocol::Diagnostic> diagnostics) {
     constexpr static llvm::StringRef codes[] = {
         "err_unknown_typename",
+        "err_unknown_typename_suggest",
         "err_undeclared_var_use",
         "err_undeclared_var_use_suggest",
+        "err_undeclared_use",
+        "err_undeclared_use_suggest",
+        "err_no_member",
+        "err_no_member_suggest",
+        "err_no_member_template",
+        "err_no_member_template_suggest",
+        "err_no_template",
+        "err_no_template_suggest",
+        "err_typename_nested_not_found",
+        "err_unknown_nested_typename_suggest",
+        "ext_implicit_function_decl_c99",
+        "err_pp_hash_error",
         "err_pp_unterminated_conditional",
     };
-    for(auto& diag: diagnostics) {
+    return llvm::count_if(diagnostics, [&](const protocol::Diagnostic& diag) {
         if(diag.severity != protocol::DiagnosticSeverity::Error || !diag.code.has_value()) {
-            continue;
+            return false;
         }
         auto* code = std::get_if<std::string>(&*diag.code);
-        if(code && llvm::is_contained(codes, *code)) {
-            return true;
-        }
-    }
-    return false;
+        return code && llvm::is_contained(codes, *code);
+    });
 }
 
 /// Human-readable summary of the distinguishing flags of a command.
