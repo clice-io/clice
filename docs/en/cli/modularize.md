@@ -2,7 +2,7 @@
 
 ## Overview
 
-`clice modularize` turns the third-party libraries of a program into C++20 named modules without touching a source file. Each library's headers stay the source of truth: a generated module interface unit includes them in its global module fragment and exports every namespace-scope name they declare. The program keeps its `#include` directives; a directory first on its include path turns the wrapped headers into empty files, and a prelude it force-includes imports the modules and replays the macros their headers defined.
+`clice modularize` turns the third-party libraries of a program into C++20 named modules without touching a source file. Each library's headers stay the source of truth: a generated module interface unit includes them in its global module fragment and exports every namespace-scope name they declare. The program keeps its `#include` directives; unless `--no-mirrors` is given, a directory first on its include path turns the wrapped headers into empty files, and a prelude it force-includes imports the modules and replays the macros their headers defined.
 
 The program's own code can follow: modules the partition marks for rewriting have their files rewritten in place into module units, headers into partitions and includes into imports.
 
@@ -76,12 +76,12 @@ A wrapping holds what the headers declare and define in one build configuration:
 }
 ```
 
-`out` is the `--out` of the configuration's run, relative to the merge file. A condition holds in the compilations of its configuration alone. Under the merged `--out`:
+`out` is the `--out` of the configuration's run, relative to the merge file unless absolute. A condition holds in the compilations of its configuration alone. Under the merged `--out`:
 
 - `<name>/` per configuration: its prelude, its macro headers, and `<module>.fragment.h`, the global module fragment of its unit for each module.
-- `<module>.cppm` includes the fragment of the configuration whose condition holds and exports what every configuration exports; what only some configurations export follows under `#if` their conditions. A compilation no condition matches stops at an `#error`.
+- `<module>.cppm` includes the fragment of the configuration whose condition holds and exports what every configuration exports; what only some configurations export follows under an `#if` of their conditions. A compilation no condition matches stops at an `#error`.
 - `prelude.h` includes the prelude of the configuration whose condition holds.
-- `mirror/` holds the headers any configuration empties.
+- `mirror/` holds the headers any configuration empties; with `--no-mirrors` there is none.
 
 The configurations have to wrap the same modules. The plan the merge prints has neither `stdSources` nor `includeRoots`, paths on each configuration's machine.
 
@@ -93,7 +93,7 @@ Under `--out`:
 - `mirror/<module>/`: an empty file for each header files of other modules include, by the name they include it with; `mirror/std/` for the standard headers.
 - `prelude.h`: the C library headers still needed, `import std.compat;`, every import, every macro header.
 
-With `--no-mirrors`, no header is emptied: a file that still includes a wrapped header, a header that stays a header or the global module fragment of another wrapped module, parses it again beside the import. Clang merges the two, except where one module's fragment includes the headers of a module it imports. One module for every library leaves only the program's headers that stay headers to include wrapped ones.
+With `--no-mirrors`, no header is emptied: a file that still includes a wrapped header — a header that stays a header, or the global module fragment of another wrapped module — parses it again beside the import. Clang merges the two, except where one module's fragment includes the headers of a module it imports. A single module wrapping every library leaves only the program's headers that stay headers to include wrapped ones.
 
 Files whose content did not change keep their timestamps. The files a previous run wrote that this one no longer produces are removed; `--out/.modularize` lists what a run wrote, and nothing else under `--out` is touched.
 
@@ -145,7 +145,7 @@ The build compiles `stdSources` and each module in order, each with its library'
 - Module units must be built with full BMIs (`-fno-modules-reduced-bmi` on clang): a reduced BMI drops the global module fragment's declarations the purview never names, partial specializations among them.
 - A header holding an internal-linkage entity the program names stays textual: no module can export it. The prelude does not include such a header; a program file that reached it only through the library's emptied headers includes it itself.
 - A header other files include by a name relative to their own directory (`"../foo.h"`) cannot be emptied; modularize warns about it.
-- Every translation unit using a wrapped library has to see it through the module; mixing textual includes of the same headers with the import breaks on redeclarations clang cannot merge.
+- Without mirrors, a module whose global module fragment includes the headers of a module it imports breaks on redeclarations clang cannot merge; wrap such libraries as one module.
 - Every program compilation imports every module and replays every macro header, whichever libraries it included before.
 - The standard library module is libc++'s.
 - Only the files the index holds are rewritten: a source no compilation of the indexed configuration enters, as another platform's, keeps its includes.
