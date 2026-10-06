@@ -128,8 +128,8 @@ struct Entity {
 
     /// The units seeing its declaration, when the file declaring it reads
     /// differently across units (a header pasted once per implementation,
-    /// a C header declaring into a namespace under C++); empty when every
-    /// unit entering its owner does.
+    /// a C header declaring into a namespace under C++); empty when that
+    /// file has one reading.
     std::vector<std::uint32_t> units;
 
     /// Only some readings of the file declaring it declare it: the C

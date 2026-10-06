@@ -312,6 +312,7 @@ function writeProgram(ws: Workspace): void {
             "struct Box { T value; };",
             "template <typename T, typename U>",
             "struct Pair { T first; U second; };",
+            "namespace inner { struct Deep {}; }",
             "int hook();",
             "}",
         ),
@@ -373,6 +374,12 @@ function writeProgram(ws: Workspace): void {
             "template <typename T,",
             "          typename U>",
             "struct Pair;",
+            "namespace inner {",
+            "struct Deep;",
+            "}",
+            "}",
+            "namespace core::inner {",
+            "struct Deep;",
             "}",
             "namespace tool {",
             "int run(const core::Text& text, core::Sink* sink, core::Box<int>* box = nullptr);",
@@ -493,6 +500,46 @@ test("library interfaces", async ({ session }) => {
 
 test("C library kept headers", async ({ session }) => {
     const ws = await writeProject(session);
+    // <time.h> under __need_time_t: every unit entering <cneed.h> reads it in
+    // full through <fakecstdio>, but clock.h reaches only the type.
+    ws.write(
+        "third/libc/cneed.h",
+        lines(
+            "#ifndef CNEED_TYPE_ONLY",
+            "int fake_clock(void);",
+            "#endif",
+            "typedef int fake_time;",
+        ),
+    );
+    ws.write(
+        "third/libc/cnarrow.h",
+        lines(
+            "#pragma once",
+            "#define CNEED_TYPE_ONLY",
+            "#include <cneed.h>",
+            "#undef CNEED_TYPE_ONLY",
+        ),
+    );
+    ws.write(
+        "third/std/fakecstdio",
+        ws
+            .read("third/std/fakecstdio")
+            .replace("#include <cputs.h>\n", "#include <cputs.h>\n#include <cneed.h>\n"),
+    );
+    ws.write(
+        "app/clock.h",
+        lines(
+            "#pragma once",
+            "#include <cnarrow.h>",
+            "inline int clock_now() { return fake_clock(); }",
+        ),
+    );
+    ws.write(
+        "app/main.cpp",
+        ws
+            .read("app/main.cpp")
+            .replace("#include <fakecstdio>\n", '#include <fakecstdio>\n#include "clock.h"\n'),
+    );
     const all = await interfaces(ws);
     const libc = all.get("libc")!;
     // main.cpp reaches <cio.h> only through <fakecstdio>, which `import std`
@@ -502,6 +549,7 @@ test("C library kept headers", async ({ session }) => {
     // fake_widen itself, in a fragment it pastes.
     expect(libc.textual.map((header) => [header.include, header.because])).toEqual([
         ["<cio.h>", "fake_stdout in app/main.cpp"],
+        ["<cneed.h>", "fake_clock in app/clock.h"],
         ["<cva.h>", "fake_vprint in app/third.cpp"],
     ]);
     // Seen at all: what direct.cpp and third.cpp include.
@@ -756,6 +804,7 @@ test("modularize rewrites program modules", async ({ session }) => {
             "struct Box { T value; };",
             "template <typename T, typename U>",
             "struct Pair { T first; U second; };",
+            "namespace inner { struct Deep {}; }",
             "int hook();",
             "}",
             "}",
@@ -782,6 +831,7 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(detail).toContain("\nmodule app.core:detail;\n");
     expect(detail).not.toContain("namespace {");
     expect(detail).toContain("inline int hidden() { return 1; }");
+    expect(detail).toContain('#include "cfg/late.h"');
     expect(detail.indexOf('#include "cfg/late.h"')).toBeLessThan(
         detail.indexOf("module app.core:detail;"),
     );
@@ -812,6 +862,8 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(tool).toContain("export module app.tool:tool;");
     expect(tool).toContain("import app.core;");
     expect(tool).not.toContain("namespace core {");
+    expect(tool).not.toContain("namespace inner {");
+    expect(tool).not.toContain("namespace core::inner {");
     // A namespace holding a directive is no empty one.
     expect(tool).toContain("namespace tool::detail {\n#define TOOL_DETAIL 1\n}");
     expect(ws.read("app/tool/tool.cpp")).toContain('#include "core/text.macros.h"');
@@ -977,6 +1029,15 @@ test("modularize merges configurations", async ({ session }) => {
     expect(await failure(merge(ws.path("merge3.json")))).toBe(
         "configurations one and three differ in emptying the standard headers",
     );
+    const unmirrored = await runClice(
+        "modularize",
+        "--merge",
+        ws.path("merge3.json"),
+        "--no-mirrors",
+        "--out",
+        ws.path("bare3"),
+    );
+    expect(unmirrored.status, unmirrored.stdout).toBe(0);
     ws.write("two/.modularize", ws.read("two/.modularize").replace("beta.cppm\n", ""));
     expect(await failure(merge())).toBe("configurations one and two wrap different modules");
     ws.write(
