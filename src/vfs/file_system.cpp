@@ -4,9 +4,6 @@ module;
 
 #ifdef _WIN32
 #include "vfs/win32.h"
-
-#include "llvm/Support/ConvertUTF.h"
-#include "llvm/Support/WindowsError.h"
 #else
 #include <sys/stat.h>
 #endif

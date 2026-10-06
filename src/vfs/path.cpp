@@ -4,9 +4,6 @@ module;
 
 #ifdef _WIN32
 #include "vfs/win32.h"
-
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/Support/ConvertUTF.h"
 #endif
 
 module clice;

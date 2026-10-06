@@ -2,15 +2,12 @@
 
 #ifdef _WIN32
 
-#include <system_error>
+// Included after modules/prelude.h, which imports std and LLVM: their
+// headers here would be parsed again beside the modules.
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
-
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Twine.h"
 
 namespace llvm::sys::windows {
 
