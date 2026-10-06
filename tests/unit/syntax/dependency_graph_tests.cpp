@@ -308,6 +308,23 @@ ZEST_CASE(ReadersClimbForcedIncludes) {
     ZASSERT(graph.find_readers(Fid{10}) == (llvm::SmallVector<Fid, 4>{Fid{1}}));
 }
 
+ZEST_CASE(ClosureFollowsForcedIncludes) {
+    // Unit 1 includes 10 under one configuration and 11 under another,
+    // 10 includes 12, and a forced header 20 includes 30.
+    clice::DependencyGraph graph;
+    graph.set_includes(Fid{1}, 0, {{Fid{10}}});
+    graph.set_includes(Fid{1}, 1, {{Fid{11}}});
+    graph.set_includes(Fid{10}, 0, {{Fid{12}}});
+    graph.set_includes(Fid{20}, 0, {{Fid{30}}});
+    graph.add_forced_include(Fid{1}, Fid{20});
+
+    auto closure = graph.include_closure(Fid{1});
+    llvm::SmallVector<Fid> files(closure.begin(), closure.end());
+    llvm::sort(files);
+    ZEXPECT(files == (llvm::SmallVector<Fid>{Fid{1}, Fid{10}, Fid{11}, Fid{12}, Fid{20}, Fid{30}}));
+    ZEXPECT(graph.include_closure(Fid{12}).size() == 1u);
+}
+
 ZEST_CASE(CountsDuplicateIncludes) {
     // One edge per directive, under the configuration with the most.
     clice::DependencyGraph graph;

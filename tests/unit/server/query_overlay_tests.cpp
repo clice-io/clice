@@ -7,7 +7,6 @@
 #include "test/test.h"
 #include "test/tester.h"
 #include "index/query.h"
-#include "index/serialization.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "project/command_resolver.h"

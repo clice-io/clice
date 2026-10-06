@@ -79,7 +79,7 @@ public:
     /// Every open buffer whose file index serves it (clause 3), as its rows.
     virtual void each_session(llvm::function_ref<bool(const RowSource&)> visit) const = 0;
 
-    /// The same buffers' index envelopes: their symbol tables know every
+    /// The same buffers' index envelopes, which name (find_symbol) every
     /// symbol of the unsaved text.
     virtual void each_session_index(llvm::function_ref<bool(const TUIndex&)> visit) const = 0;
 

@@ -59,11 +59,11 @@ struct EnvelopeBlob {
     std::vector<std::uint64_t> path_hashes;
     std::vector<IncludeNode> nodes;
 
-    /// The symbols the rows name, sorted by hash, except a function's
-    /// locals — only their own file can mention one, and that file's
-    /// section names it — and the external symbols only sections left
-    /// empty name. Names and arguments are back to back with one end
-    /// offset per row; so are the reference files, as path ids.
+    /// The symbols the rows name, sorted by hash, except the file-local
+    /// ones (a function's locals, a template's parameters) — only their
+    /// own file can mention one, and that file's section names it — and
+    /// the external symbols only sections left empty name. Names and arguments are back to back
+    /// with one end offset per row; so are the reference files, as path ids.
     std::vector<std::uint64_t> sym_hashes;
     std::string sym_names;
     std::vector<std::uint32_t> sym_name_ends;
@@ -1164,16 +1164,14 @@ public:
         blob.path_hashes = std::move(tree.path_hashes);
         blob.nodes = std::move(tree.nodes);
         blob.absent = unit.absent();
-        auto known = [&](std::uint32_t path_id) {
-            return known_paths.test(path_id);
-        };
         llvm::SmallVector<SymbolHash> table;
         for(auto& [hash, symbol]: symbols) {
             if(symbol.scope == SymbolScope::FileLocal) {
                 continue;
             }
             if(symbol.scope == SymbolScope::External && !symbol.reference_files.isEmpty() &&
-               llvm::all_of(symbol.reference_files, known)) {
+               llvm::all_of(symbol.reference_files,
+                            [&](std::uint32_t path_id) { return known_paths.test(path_id); })) {
                 continue;
             }
             table.push_back(hash);

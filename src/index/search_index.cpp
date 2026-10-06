@@ -590,19 +590,12 @@ struct SearchIndex::View {
         return static_cast<std::uint32_t>(hashes.size());
     }
 
-    static llvm::StringRef slice(llvm::StringRef arena,
-                                 llvm::ArrayRef<std::uint32_t> ends,
-                                 std::uint32_t i) {
-        auto begin = i == 0 ? 0 : ends[i - 1];
-        return arena.slice(begin, ends[i]);
-    }
-
     llvm::StringRef name(std::uint32_t doc) const {
-        return slice(names, name_ends, doc);
+        return back_to_back(names, name_ends, doc);
     }
 
     llvm::StringRef arguments(std::uint32_t doc) const {
-        return slice(args, args_ends, doc);
+        return back_to_back(args, args_ends, doc);
     }
 
     /// A posting image viewed in place; a malformed one reads as empty
@@ -610,8 +603,8 @@ struct SearchIndex::View {
     Bitmap decode(llvm::ArrayRef<std::uint8_t> arena,
                   llvm::ArrayRef<std::uint32_t> ends,
                   std::uint32_t i) const {
-        auto begin = i == 0 ? 0 : ends[i - 1];
-        auto decoded = view_bitmap(arena.data() + begin, ends[i] - begin);
+        auto image = back_to_back(arena, ends, i);
+        auto decoded = view_bitmap(image.data(), image.size());
         if(!decoded || (!decoded->isEmpty() && decoded->maximum() >= count())) {
             if(!damaged) {
                 LOG_WARN("A search index posting list does not decode; the index is rebuilt");

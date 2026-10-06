@@ -1,3 +1,4 @@
+#include "test/envelope_mirror.h"
 #include "test/temp_dir.h"
 #include "test/test.h"
 #include "test/tester.h"
@@ -12,14 +13,14 @@ namespace clice::testing {
 
 namespace {
 
-/// The envelope's leading slots (the layout in tu_index.cpp): the version,
-/// then the minimal path table verification demands — every other field
-/// reads back absent, which is structurally valid.
-struct VersionAndPaths {
-    std::uint32_t format_version = 0;
-    std::int64_t built_at = 0;
-    std::vector<std::string> paths = {"/proj/main.cpp"};
-};
+/// An envelope holding only the minimal path table verification demands,
+/// under `version`.
+std::string envelope_of_version(std::uint32_t version) {
+    EnvelopeMirror mirror;
+    mirror.format_version = version;
+    mirror.paths = {"/proj/main.cpp"};
+    return mirror.bytes();
+}
 
 ZEST_SUITE(PreambleIndex, Tester) {
 
@@ -259,11 +260,7 @@ ZEST_CASE(RejectVersionMismatch) {
     // load as missing, so the PCH pair rebuilds instead of serving a stale
     // layout.
     for(auto version: {0u, index::index_format_version - 1}) {
-        auto blob = kota::codec::fbs::to_bytes(VersionAndPaths{.format_version = version});
-        ZASSERT(blob);
-
-        dir.touch("stale.pch.idx",
-                  llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
+        dir.touch("stale.pch.idx", envelope_of_version(version));
         ZEXPECT(load_pch_envelope(dir.path("stale.pch.idx")) == nullptr);
     }
 }
@@ -272,12 +269,7 @@ ZEST_CASE(AcceptCurrentVersionBlob) {
     // Positive control for RejectVersionMismatch: the same blob carrying the
     // CURRENT version loads — the rejection comes from the version's value,
     // not from the blob's shape.
-    auto blob =
-        kota::codec::fbs::to_bytes(VersionAndPaths{.format_version = index::index_format_version});
-    ZASSERT(blob);
-
-    dir.touch("current.pch.idx",
-              llvm::StringRef(reinterpret_cast<const char*>(blob->data()), blob->size()));
+    dir.touch("current.pch.idx", envelope_of_version(index::index_format_version));
     ZEXPECT(load_pch_envelope(dir.path("current.pch.idx")) != nullptr);
 }
 

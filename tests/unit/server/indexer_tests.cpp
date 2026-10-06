@@ -682,12 +682,14 @@ ZEST_CASE(KnownVariantByHash) {
     auto header = tmp.path("shared.h");
     auto header_id = project.file_table.intern(Spelling::absolute(header));
     auto header_section = [&](const index::TUIndex& view) {
+        std::uint32_t found = view.section_count();
         for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
             if(view.path(view.section_path(i)) == header) {
-                return i;
+                found = i;
             }
         }
-        return view.section_count();
+        ZASSERT(found < view.section_count());
+        return found;
     };
 
     auto a = index_file(tmp, tmp.path("a.cpp"));
@@ -715,6 +717,26 @@ ZEST_CASE(KnownVariantByHash) {
     ZEXPECT(project.project_index.manifests.contains(b_id));
     ZEXPECT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
     ZEXPECT(project.project_index.contributions.lookup(header_id).size() == std::size_t(2));
+}
+
+ZEST_CASE(KnownVariantsFromManifest) {
+    // Without a scanned include graph, the files a TU's last manifest names
+    // still offer their stored variants.
+    TempDir tmp;
+    tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 1; }\n");
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
+    auto a = index_file(tmp, tmp.path("a.cpp"));
+    ZASSERT(merge(a.data.data(), a.data.size()));
+
+    auto a_id = project.file_table.intern(Spelling::absolute(a.tu_path));
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
+    std::vector<std::uint64_t> expected = project.project_index.shards[header_id].variants();
+    llvm::append_range(expected, project.project_index.shards[a_id].variants());
+    llvm::sort(expected);
+    ZEXPECT(index_store.known_variants(a_id) == expected);
+
+    auto other = project.file_table.intern(Spelling::absolute(tmp.path("other.cpp")));
+    ZEXPECT(index_store.known_variants(other).empty());
 }
 
 ZEST_CASE(HeaderRegenerationReplaces) {
@@ -3580,6 +3602,66 @@ ZEST_CASE(ModuleLintScanParity) {
 }
 
 };  // ZEST_SUITE(TURunLint)
+
+ZEST_SUITE(TURunIndex) {
+
+ZEST_CASE(OutdatedRerunsInFull) {
+    // Two headers with the same bytes share one variant identity. Only
+    // x1.h stores it, so b.cpp's x2.h section matches a known hash while
+    // its own file stores nothing: that result must not land, and the
+    // rerun sends every section.
+    TempDir tmp;
+    tmp.touch("x1.h", "#pragma once\nint f();\n");
+    tmp.touch("x2.h", "#pragma once\nint f();\n");
+    tmp.touch("a.cpp", "#include \"x1.h\"\nint a() { return f(); }\n");
+    tmp.touch("b.cpp", "#include \"x1.h\"\n#include \"x2.h\"\nint b() { return f(); }\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("a.cpp"), {}},
+                  {tmp.root, tmp.path("b.cpp"), {}},
+    }));
+    scan_all(f.project.cdb, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto a = index_file(tmp, tmp.path("a.cpp"));
+    ZASSERT(f.merge(a.data.data(), a.data.size()));
+    auto x2_id = f.project.file_table.intern(Spelling::absolute(tmp.path("x2.h")));
+    ZASSERT(!f.project.project_index.shards.contains(x2_id));
+
+    auto b_id = f.project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
+    std::vector<TURunFamily::Verdict> verdicts;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        for(int run = 0; run < 2; run += 1) {
+            TURunFamily::Plan plan;
+            plan.index = true;
+            verdicts.push_back((co_await f.turun.run(b_id, std::move(plan), {})).verdict);
+        }
+
+        co_await f.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    using enum TURunFamily::Verdict;
+    ZEXPECT(verdicts == (std::vector<TURunFamily::Verdict>{Preempted, Completed}));
+    ZEXPECT(f.project.project_index.shards.contains(x2_id));
+}
+
+};  // ZEST_SUITE(TURunIndex)
 
 }  // namespace
 }  // namespace clice::testing

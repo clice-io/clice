@@ -84,11 +84,6 @@ struct GlobalBlob {
 
 using BlobView = kota::codec::fbs::table_view<GlobalBlob>;
 
-llvm::StringRef slice(llvm::StringRef arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t i) {
-    auto begin = i == 0 ? 0 : ends[i - 1];
-    return arena.slice(begin, ends[i]);
-}
-
 }  // namespace
 
 /// The bound global blob: its columns, and its path table mapped to the
@@ -145,23 +140,15 @@ struct ProjectIndex::Base {
     }
 
     llvm::StringRef name(std::uint32_t doc) const {
-        return slice(names, name_ends, doc);
+        return back_to_back(names, name_ends, doc);
     }
 
     llvm::StringRef arguments(std::uint32_t doc) const {
-        return slice(args, args_ends, doc);
-    }
-
-    /// The `i`th of the images stored back to back in `arena`.
-    static llvm::ArrayRef<std::uint8_t> image(llvm::ArrayRef<std::uint8_t> arena,
-                                              llvm::ArrayRef<std::uint32_t> ends,
-                                              std::uint32_t i) {
-        auto begin = i == 0 ? 0 : ends[i - 1];
-        return arena.slice(begin, ends[i] - begin);
+        return back_to_back(args, args_ends, doc);
     }
 
     llvm::ArrayRef<std::uint8_t> image(std::uint32_t doc) const {
-        return image(bitmaps, bitmap_ends, doc);
+        return back_to_back(bitmaps, bitmap_ends, doc);
     }
 
     std::optional<Bitmap> bitmap(std::uint32_t doc) const {
@@ -181,7 +168,7 @@ struct ProjectIndex::Base {
         if(it == contributed_index.end()) {
             return std::nullopt;
         }
-        auto bytes = image(contributors, contributor_ends, it->second);
+        auto bytes = back_to_back(contributors, contributor_ends, it->second);
         return view_bitmap(bytes.data(), bytes.size());
     }
 
@@ -606,7 +593,10 @@ void ProjectIndex::merge(const TUIndex& index,
     // Units may spell one symbol differently (`X<int>` against
     // `X<signed int>`, a conversion to a typedef): the shortest spelling
     // wins, then the smaller one, so the table reads the same whatever the
-    // merge order.
+    // merge order — among the units that send the symbol. A unit whose
+    // every file holding its rows is a variant the store had sends none
+    // of it (TUIndexOptions::known_variants), so its spelling, and flags
+    // that vary by unit (SystemHeader, Deprecated), are not offered.
     auto prefer = [](std::string& current, llvm::StringRef incoming) {
         if(incoming.empty() ||
            (!current.empty() && (incoming.size() > current.size() ||

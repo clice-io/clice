@@ -74,10 +74,15 @@ ZEST_CASE(ViewRejectsMalformed) {
     truncated.pop_back();
     ZEXPECT(!view_of(truncated).has_value());
 
-    // The in-place reader follows the payload offset, so a corrupt one
-    // fails it.
+    // The bounded reader walks the payload and ignores the offset, so
+    // the image stays valid to it; the in-place reader follows the offset.
     auto skewed = image;
     skewed[12] = std::byte{0xff};
+    auto* walked = roaring::api::roaring_bitmap_portable_deserialize_safe(
+        reinterpret_cast<const char*>(skewed.data()),
+        skewed.size());
+    ZEXPECT(walked != nullptr);
+    roaring::api::roaring_bitmap_free(walked);
     ZEXPECT(!view_of(skewed).has_value());
     auto rewound = image;
     rewound[12] = std::byte{0};

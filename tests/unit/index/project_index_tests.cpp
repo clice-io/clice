@@ -11,7 +11,6 @@
 #include "test/tester.h"
 #include "index/database.h"
 #include "index/project_index.h"
-#include "index/serialization.h"
 #include "index/shard.h"
 #include "index/tu_index.h"
 #include "support/cache_store.h"

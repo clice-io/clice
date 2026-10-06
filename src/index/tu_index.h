@@ -141,16 +141,18 @@ public:
     bool shards_verify() const;
 
     /// Visit every symbol of the table in ascending hash order: hash,
-    /// identity, and its reference files as path ids. A function's locals
-    /// are not in the table (see find_symbol). Return false from the
-    /// callback to stop.
+    /// identity, and its reference files as path ids. The table leaves out
+    /// file-local symbols (see find_symbol) and the external symbols only
+    /// sections left empty name (TUIndexOptions::known_variants). Return
+    /// false from the callback to stop.
     void iterate_symbols(
         llvm::function_ref<bool(SymbolHash,
                                 const SymbolIdentity&,
                                 llvm::ArrayRef<std::uint32_t> reference_files)> callback) const;
 
     /// Look up one symbol's identity by hash: in the table, else among the
-    /// sections' own symbols, which name a function's locals.
+    /// sections' own symbols, which name the file-local ones (a
+    /// function's locals, a template's parameters).
     std::optional<SymbolIdentity> find_symbol(SymbolHash hash) const;
 
     /// The internal-linkage symbols more than one of the TU's files names

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "test/test.h"
 #include "index/include_tree.h"
 #include "index/serialization.h"
 #include "index/tu_index.h"
@@ -60,7 +61,7 @@ struct EnvelopeMirror {
         sym_reference_ends.push_back(static_cast<std::uint32_t>(sym_references.size()));
     }
 
-    /// Every field of a loaded envelope.
+    /// A loaded envelope's fields through the sections.
     static EnvelopeMirror of(const index::TUIndex& view) {
         EnvelopeMirror mirror;
         mirror.built_at = view.built_at();
@@ -88,9 +89,7 @@ struct EnvelopeMirror {
 
     std::string bytes() const {
         auto encoded = kota::codec::fbs::to_bytes(*this);
-        if(!encoded) {
-            return {};
-        }
+        ZASSERT(encoded);
         return std::string(encoded->begin(), encoded->end());
     }
 };

@@ -160,7 +160,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     }
 
     project.fill_pcm_deps(params.pcms, path_id);
-    if(plan.index) {
+    if(plan.index && !send_in_full.erase(path_id)) {
         params.known_variants = store.known_variants(path_id);
     }
 
@@ -192,12 +192,13 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             }
             ScopedTimer merge_timer;
             auto report = store.merge(value.tu_index_data.data(), value.tu_index_data.size());
-            if(!report && report.error() == IndexStore::MergeError::Outdated) {
-                landed[path_id] = {.verdict = Verdict::Preempted,
-                                   .error = "a variant the result named by hash left the index"};
-                co_return RoundOutcome::Stale;
-            }
             if(!report) {
+                if(report.error() == IndexStore::MergeError::Outdated) {
+                    send_in_full.insert(path_id);
+                    landed[path_id] = {.verdict = Verdict::Preempted,
+                                       .error = "a variant the result named by hash is not stored"};
+                    co_return RoundOutcome::Stale;
+                }
                 // Rejected wholesale: the file's rows are missing or stale,
                 // which is a failure, not a completed index.
                 landed[path_id] = {.verdict = Verdict::Failed,

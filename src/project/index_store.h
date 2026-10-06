@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
-#include <optional>
 #include <string>
 
 #include "project/project.h"
@@ -138,8 +137,9 @@ public:
         /// The result failed verification: the file counts as failed, not
         /// indexed.
         Invalid,
-        /// A variant the result names by hash alone is stored no more — it
-        /// left after known_variants was taken: the file must run again.
+        /// A variant the result names by hash alone is not stored for its
+        /// file — it left after known_variants was taken, or a file with the
+        /// same bytes holds it: the file must run again.
         Outdated,
     };
 

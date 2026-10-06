@@ -99,6 +99,7 @@ void decode_index(const std::string& envelope) {
         auto record_local = [&](index::SymbolHash hash) {
             if(!tu_index.symbols.contains(hash)) {
                 if(auto identity = view.find_symbol(hash)) {
+                    ZEXPECT(identity->scope == index::SymbolScope::FileLocal);
                     record(hash, *identity);
                 }
             }
@@ -1142,6 +1143,7 @@ ZEST_CASE(KnownVariantsSkipped) {
     add_file("header.h", R"(
             #pragma once
             int only_in_header(int parameter);
+            static int internal();
             int shared();
         )");
     add_main("main.cpp", R"(
@@ -1161,24 +1163,29 @@ ZEST_CASE(KnownVariantsSkipped) {
     }
     ZASSERT(header < full_view.section_count());
     std::vector<std::uint64_t> known = {full_view.section_hash(header)};
+    auto table_names = [](const index::TUIndex& view) {
+        std::vector<std::string> names;
+        view.iterate_symbols([&](index::SymbolHash,
+                                 const index::SymbolIdentity& identity,
+                                 llvm::ArrayRef<std::uint32_t>) {
+            names.emplace_back(identity.name);
+            return true;
+        });
+        std::ranges::sort(names);
+        return names;
+    };
+    ZASSERT(table_names(full_view) ==
+            std::vector<std::string>{"internal", "only_in_header", "shared", "user"});
 
-    // The stored header travels as its hash alone, and so do the external
-    // symbols only it names; the main file's rows and every symbol they
-    // name still travel.
+    // The stored header travels as its hash alone, and the external
+    // symbols only it names stay out of the table; the main file's rows,
+    // every symbol they name and the internal ones still travel.
     decode_index(index::build_tu_index(*unit, {.known_variants = known}));
     auto& view = tu_index.view;
     ZASSERT(view.section_hash(header) == known.front());
     ZASSERT(view.section_blob(header).empty());
     ZASSERT(!view.section_blob(*view.section_of(main_id)).empty());
-    std::vector<std::string> names;
-    view.iterate_symbols([&](index::SymbolHash,
-                             const index::SymbolIdentity& identity,
-                             llvm::ArrayRef<std::uint32_t>) {
-        names.emplace_back(identity.name);
-        return true;
-    });
-    std::ranges::sort(names);
-    ZASSERT(names == std::vector<std::string>{"shared", "user"});
+    ZASSERT(table_names(view) == std::vector<std::string>{"internal", "shared", "user"});
 }
 
 ZEST_CASE(SymbolKinds) {
@@ -1921,29 +1928,17 @@ ZEST_CASE(FromRejectsHostileInput) {
 ZEST_CASE(FromRejectsStaleFormatVersion) {
     // Only the version slot and the path table are written: every other
     // field reads back absent, which is structurally valid — the verdict
-    // must hinge on the version value. Field order MUST mirror the
-    // envelope layout (tu_index.cpp): format_version is slot 0.
-    struct VersionAndPaths {
-        std::uint32_t format_version = 0;
-        std::int64_t built_at = 0;
-        std::vector<std::string> paths = {"/proj/main.cpp"};
-    };
-
-    auto bytes_of = [](const std::vector<std::uint8_t>& blob) {
-        return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
-    };
-
-    auto stale = kota::codec::fbs::to_bytes(
-        VersionAndPaths{.format_version = index::index_format_version + 1});
-    ZASSERT(stale);
-    ZASSERT(!index::TUIndex::from_bytes(bytes_of(*stale)).loaded());
+    // must hinge on the version value.
+    EnvelopeMirror stale;
+    stale.format_version = index::index_format_version + 1;
+    stale.paths = {"/proj/main.cpp"};
+    ZASSERT(!index::TUIndex::from_bytes(stale.bytes()).loaded());
 
     // Positive control: the same shape carrying the current version loads,
     // so the rejection above comes from the value, not the blob's shape.
-    auto current =
-        kota::codec::fbs::to_bytes(VersionAndPaths{.format_version = index::index_format_version});
-    ZASSERT(current);
-    ZASSERT(index::TUIndex::from_bytes(bytes_of(*current)).loaded());
+    auto current = stale;
+    current.format_version = index::index_format_version;
+    ZASSERT(index::TUIndex::from_bytes(current.bytes()).loaded());
 }
 
 ZEST_CASE(FromRejectsReservedParents) {
@@ -1961,7 +1956,7 @@ ZEST_CASE(FromRejectsReservedParents) {
     ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
 }
 
-ZEST_CASE(FromRejectsBadSymbolColumns) {
+ZEST_CASE(FromRejectsSymbolColumns) {
     // Merged reference files persist behind versions that match the disk,
     // so a malformed table must fail the envelope as a whole, never merge
     // in part.
@@ -1972,12 +1967,24 @@ ZEST_CASE(FromRejectsBadSymbolColumns) {
     auto bytes = honest.bytes();
     auto view = index::TUIndex::from_bytes(bytes);
     ZASSERT(view.loaded());
-    ZASSERT(view.find_symbol(43)->name == "second");
+    auto second = view.find_symbol(43);
+    ZASSERT(second);
+    ZASSERT(second->name == "second");
 
     {
         // Lookups binary-search the hashes.
         auto hostile = honest;
         std::swap(hostile.sym_hashes[0], hostile.sym_hashes[1]);
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
+    {
+        auto hostile = honest;
+        hostile.sym_hashes[1] = hostile.sym_hashes[0];
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
+    {
+        auto hostile = honest;
+        hostile.sym_hashes[1] = ~std::uint64_t(0);
         ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
@@ -2021,7 +2028,7 @@ ZEST_CASE(FromRejectsOutOfRangePathIds) {
     // merge pipeline dereferences every decoded path id against the path
     // table without further checks — an envelope pointing outside its own
     // table must be rejected as a whole (the symbol table's ids: see
-    // FromRejectsBadSymbolColumns).
+    // FromRejectsSymbolColumns).
 
     // Positive control first: the same shapes with in-range ids load, so
     // the rejections below come from the hostile values.

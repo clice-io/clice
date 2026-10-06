@@ -449,6 +449,14 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
             continue;
         }
 
+        auto bytes = view.section_blob(section);
+        if(bytes.empty()) {
+            LOG_INFO("Rerun {}: {} stores no variant of the hash it names",
+                     main_tu_path,
+                     project.file_table.resolve(global_id));
+            return std::unexpected(MergeError::Outdated);
+        }
+
         // The recomputed hash guards the variant identity alongside the
         // structural verification below: bytes installed under a hash they
         // do not reproduce would satisfy every later hit-path check for
@@ -457,13 +465,6 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         // disk, so an installed manifest would be judged fresh forever
         // with this file's rows missing or stale — reject the whole
         // result; nothing is committed yet.
-        auto bytes = view.section_blob(section);
-        if(bytes.empty()) {
-            LOG_INFO("Rerun {}: the stored variant of {} it names by hash is gone",
-                     main_tu_path,
-                     project.file_table.resolve(global_id));
-            return std::unexpected(MergeError::Outdated);
-        }
         if(llvm::xxh3_64bits(bytes) != blob_hash) {
             LOG_WARN("Reject merge for {}: rows section for {} failed verification",
                      main_tu_path,
@@ -630,8 +631,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
 }
 
 std::vector<std::uint64_t> IndexStore::known_variants(Fid tu) const {
-    auto closure = project.dep_graph.include_closure(tu);
-    llvm::DenseSet<Fid> files(closure.begin(), closure.end());
+    auto files = project.dep_graph.include_closure(tu);
     auto& index = project.project_index;
     if(auto it = index.manifests.find(tu); it != index.manifests.end()) {
         for(auto version: llvm::make_first_range(it->second.contributions)) {
