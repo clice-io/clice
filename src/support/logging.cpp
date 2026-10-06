@@ -24,7 +24,9 @@
 #include "vfs/path.h"
 
 #include "spdlog/sinks/ringbuffer_sink.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Signals.h"
 
@@ -158,6 +160,37 @@ uintptr_t main_executable_base() {
 #endif
 }
 
+#if defined(_WIN32)
+/// LLVM's walk (dbghelp's StackWalk64) stops on arm64 at the exception
+/// dispatcher's return address, which the system DLL signed with pointer
+/// authentication, short of the crashing frames; ntdll's unwinder strips the
+/// signatures. The frames print as LLVM's do without a symbolizer, the
+/// format scripts/symbolize.py reads.
+static void print_stack_trace(llvm::raw_ostream& os) {
+    std::array<void*, 256> frames;
+    auto count = RtlCaptureStackBackTrace(0, frames.size(), frames.data(), nullptr);
+    for(auto* frame: llvm::ArrayRef(frames.data(), count)) {
+        auto address = reinterpret_cast<uintptr_t>(frame);
+        os << llvm::format("0x%016llX", static_cast<unsigned long long>(address));
+        HMODULE module = nullptr;
+        std::array<char, MAX_PATH> path;
+        if(GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                  GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                              static_cast<LPCSTR>(frame),
+                              &module) &&
+           GetModuleFileNameA(module, path.data(), path.size()) != 0) {
+            auto base = reinterpret_cast<uintptr_t>(module);
+            os << llvm::format(", %s(0x%016llX) + 0x%llX byte(s)\n",
+                               path.data(),
+                               static_cast<unsigned long long>(base),
+                               static_cast<unsigned long long>(address - base));
+        } else {
+            os << " <unknown module>\n";
+        }
+    }
+}
+#endif
+
 static void crash_handler(void*) {
     if(crash_log_stream) {
         *crash_log_stream << "\n=== CRASH STACK TRACE ===\n";
@@ -171,7 +204,11 @@ static void crash_handler(void*) {
         *crash_log_stream << "main executable base: 0x";
         crash_log_stream->write_hex(executable_base);
         *crash_log_stream << "\n";
+#if defined(_WIN32)
+        print_stack_trace(*crash_log_stream);
+#else
         llvm::sys::PrintStackTrace(*crash_log_stream);
+#endif
         crash_log_stream->flush();
     }
 }
