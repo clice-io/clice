@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Enforce the src/ include layering: core <- config <- {project, worker} <- sched <- server,
-and project <- analysis; inside core, support <- vfs <- command <- syntax <- semantic <-
-compile <- index <- feature.
+project <- analysis and {analysis, server} <- driver; inside core, support <- vfs <-
+command <- syntax <- semantic <- compile <- index <- feature.
 
-Each layer may include, or import the partitions of, downward only: clice is one module,
-clice, whose partitions are named by their path under src/ (`import :sched.graph;`). Bazel enforces the layering between its targets too,
-as it checks that every header a source includes belongs to the target or its
-dependencies; the core directories share one target, so only this check keeps them
-acyclic, which each needs to become a module. It needs no build.
+Each layer may include, or import the partitions of, downward only: clice is one
+module, clice, whose partitions are named by their path under src/
+(`import :sched.graph;`), which the check verifies too. Bazel enforces the layering
+between its targets, as it checks that every header a source includes belongs to the
+target or its dependencies; the core directories share one target, so only this check
+keeps them acyclic, as partition imports must be. It needs no build.
 """
 
 import re
@@ -29,19 +30,28 @@ CORE = [
 FORBIDDEN = {
     **{
         layer: [f"{above}/" for above in CORE[index + 1 :]]
-        + ["config/", "project/", "worker/", "sched/", "server/", "analysis/"]
+        + [
+            "config/",
+            "project/",
+            "worker/",
+            "sched/",
+            "server/",
+            "analysis/",
+            "driver/",
+        ]
         for index, layer in enumerate(CORE)
     },
-    "config": ["project/", "worker/", "sched/", "server/", "analysis/"],
-    "project": ["worker/", "sched/", "server/", "analysis/"],
-    "worker": ["project/", "sched/", "server/", "analysis/"],
-    "sched": ["server/", "analysis/"],
-    "server": ["analysis/"],
-    "analysis": ["worker/", "sched/", "server/"],
+    "config": ["project/", "worker/", "sched/", "server/", "analysis/", "driver/"],
+    "project": ["worker/", "sched/", "server/", "analysis/", "driver/"],
+    "worker": ["project/", "sched/", "server/", "analysis/", "driver/"],
+    "sched": ["server/", "analysis/", "driver/"],
+    "server": ["analysis/", "driver/"],
+    "analysis": ["worker/", "sched/", "server/", "driver/"],
 }
 
 INCLUDE = re.compile(r'^\s*#include\s+"([^"]+)"')
 IMPORT = re.compile(r"^\s*(?:export\s+)?import\s+:([\w.]+)\s*;")
+PARTITION = re.compile(r"^\s*(?:export\s+)?module\s+clice:([\w.]+)\s*;")
 
 
 def main() -> int:
@@ -67,13 +77,24 @@ def main() -> int:
                             f"{path.relative_to(src.parent)}:{number}: "
                             f"{layer}/ must not include {header}"
                         )
+    for path in sorted(src.rglob("*.cppm")):
+        name = ".".join(path.relative_to(src).with_suffix("").parts)
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            declared = PARTITION.match(line)
+            if declared and declared.group(1) != name:
+                violations.append(
+                    f"{path.relative_to(src.parent)}:{number}: "
+                    f"the partition of this file is named {name}"
+                )
     for violation in violations:
         print(violation)
     if violations:
         print(
             f"\n{len(violations)} layering violation(s): "
-            "core <- config <- {project, worker} <- sched <- server, project <- analysis; "
-            "inside core, " + " <- ".join(CORE) + "; includes go downward only."
+            "core <- config <- {project, worker} <- sched <- server, project <- analysis, "
+            "{analysis, server} <- driver; inside core, "
+            + " <- ".join(CORE)
+            + "; includes and imports go downward only."
         )
         return 1
     return 0

@@ -20,8 +20,7 @@ constexpr llvm::StringLiteral target_directory_prefix = "--target-directory=";
 constexpr llvm::StringLiteral allow_unsupported_flag = "--allow-unsupported-compiler";
 constexpr llvm::StringLiteral gpu_arch_prefix = "-arch=";
 
-/// What separates the directories of PATH. LLVM's EnvPathSeparator has
-/// internal linkage, which no module can export.
+/// LLVM's EnvPathSeparator has internal linkage, which no module can export.
 #ifdef _WIN32
 constexpr char path_separator = ';';
 #else

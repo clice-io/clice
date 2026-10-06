@@ -13,13 +13,13 @@ cc_library(
 )
 
 # Layered libraries: core <- config <- {project, worker} <- sched <- server,
-# and project <- analysis. Each layer may include downward only; the
-# dependency graph plus the layering check in CI (`pixi run check-layers`)
+# project <- analysis, and {analysis, server} <- driver. Each layer may
+# include or import downward only; the dependency graph plus the layering check in CI (`pixi run check-layers`)
 # enforce the boundary — sched and below never see an LSP or server header,
 # and a project never sees scheduling. Inside core the directories are
 # layered in this order, which only the check enforces. They compile against
 # libclang's headers; the programs link its libraries. All of clice is one
-# C++20 module, clice: each header became a partition (<stem>.cppm beside its
+# C++20 module, clice: each header is a partition (<stem>.cppm beside its
 # source) and each source an implementation unit; the primary interface,
 # src/module.cppm, exports nothing and sits in the lowest library.
 CORE = [
@@ -46,18 +46,6 @@ cc_library(
     deps = [
         ":version",
         "//modules",
-        "@libclang//:headers",
-        "@croaring",
-        "@kotatsu//:codec_flatbuffers",
-        "@kotatsu//:codec_json",
-        "@kotatsu//:codec_toml",
-        "@kotatsu//:ipc_json",
-        "@kotatsu//:ipc_lsp",
-        "@kotatsu//:option",
-        "@kotatsu//:support",
-        "@lmdb",
-        "@simdjson",
-        "@spdlog",
     ],
 )
 
@@ -70,16 +58,9 @@ cc_library(
         ],
         allow_empty = True,
     ),
-    hdrs = glob(
-        ["src/%s/**/*.h" % layer],
-        allow_empty = True,
-    ),
     copts = CLICE_COPTS,
     features = ["cpp_modules"],
-    module_interfaces = glob(
-        ["src/%s/**/*.cppm" % layer],
-        allow_empty = True,
-    ),
+    module_interfaces = glob(["src/%s/**/*.cppm" % layer]),
     deps = deps,
 ) for layer, deps in [
     ("config", [":core"]),
@@ -89,15 +70,11 @@ cc_library(
         ":project",
         ":worker",
     ]),
-    ("server", [
-        ":sched",
-        "@kotatsu//:deco",
-    ]),
+    ("server", [":sched"]),
     ("analysis", [":project"]),
     ("driver", [
         ":analysis",
         ":server",
-        "@kotatsu//:deco",
     ]),
 ]]
 
@@ -107,6 +84,7 @@ cc_library(
     name = "allocator",
     srcs = ["src/mimalloc.cc"],
     copts = COPTS,
+    target_compatible_with = ["@platforms//os:windows"],
     deps = ["@mimalloc"],
     alwayslink = True,
 )
@@ -140,37 +118,26 @@ cc_binary(
 cc_library(
     name = "unit_test_support",
     srcs = ["tests/unit/test/tester.cpp"],
-    hdrs = glob(
-        ["tests/unit/**/*.h"],
-        allow_empty = True,
-    ),
-    copts = CLICE_COPTS + ["-Itests/unit"],
+    copts = CLICE_COPTS,
     features = ["cpp_modules"],
     local_defines = ['CLICE_TESTS_DATA_DIR=\\"tests/data\\"'],
     module_interfaces = glob(["tests/unit/**/*.cppm"]),
-    deps = [
-        ":driver",
-        "@kotatsu//:deco",
-        "@kotatsu//:zest_async",
-    ],
+    deps = [":driver"],
 )
 
 cc_binary(
     name = "bin/unit_tests",
     srcs = ["tests/unit/unit_tests.cc"] + glob(["tests/unit/*/*_tests.cpp"]),
-    copts = CLICE_COPTS + ["-Itests/unit"],
+    copts = CLICE_COPTS,
     data = [":resource_dir"],
     features = [
         "cpp_modules",
         "gc_sections",
     ],
     linkopts = LINKOPTS,
-    local_defines = ['CLICE_TESTS_DATA_DIR=\\"tests/data\\"'],
     deps = [
         ":unit_test_support",
         "//bazel:llvm",
-        "@kotatsu//:deco",
-        "@kotatsu//:zest_async",
     ],
 )
 

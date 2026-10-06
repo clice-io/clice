@@ -12,9 +12,6 @@ module;
 #include <sys/stat.h>
 #endif
 
-#ifdef _WIN32
-#include "llvm/Support/ConvertUTF.h"
-#endif
 #include "support/logging.macros.h"
 
 module clice;

@@ -15,11 +15,9 @@ cc_library(
     textual_hdrs = glob(["**/*.h"]),
 )
 
-# A reduced BMI drops the global module fragment's declarations the purview
-# never names, partial specializations among them.
 cc_library(
     name = "deps",
-    copts = MODULE_COPTS + ["-fno-modules-reduced-bmi"],
+    copts = MODULE_COPTS,
     features = ["cpp_modules"],
     module_interfaces = ["deps.cppm"],
     deps = [
@@ -31,8 +29,5 @@ cc_library(
 cc_library(
     name = "modules",
     visibility = ["//visibility:public"],
-    deps = [
-        ":deps",
-        ":headers",
-    ],
+    deps = [":deps"],
 )
