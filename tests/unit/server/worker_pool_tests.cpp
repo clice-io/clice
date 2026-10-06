@@ -363,9 +363,9 @@ struct WorkerPoolFixture {
             [[maybe_unused]] auto result =
                 co_await pool.send_stateless(params, worker::Priority::Low);
         };
+        // The spawn runs the sender up to its wait for the reply.
         group.spawn(sender());
-        while(!pool.stateless_workers[0].busy)
-            co_await kota::sleep(1);
+        ZASSERT(pool.stateless_workers[0].busy);
         kill_worker(0);
         co_await group.join();
     }
@@ -1474,6 +1474,12 @@ ZEST_CASE(BusyKillSpendsBudget) {
     auto second = f.dispatch(0, true, "clice/worker/compile /b.cpp");
     f.simulate_crash(0, true, 0, 9);
     ZEXPECT(f.crash_streak(0, true) == 1u);
+
+    // So does one killed between requests while it holds documents.
+    f.add_stateful(true);
+    ZASSERT(f.assign_worker(1) == 1u);
+    f.simulate_crash(1, true, 0, 9);
+    ZEXPECT(f.crash_streak(1, true) == 1u);
 }
 
 ZEST_CASE(DeathNamesItsRequest) {
@@ -2313,8 +2319,8 @@ ZEST_CASE(BusyRanksAboveMaster) {
         ZEXPECT(worker_score(idx) == std::min(own + 2, 1000));
         ZEXPECT(worker_score(1 - idx) == own);
 
+        // Released, it drops back at once.
         f.release_slot(idx);
-        f.tick_oom_scores(huge);
         ZEXPECT(worker_score(idx) == own);
         co_await f.stop();
         done = true;

@@ -607,10 +607,10 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     // the caller blames the content, and the slot respawns with its streak
     // untouched, like a preemption. A terminated session says nothing about
     // the slot, nor does a kill of an idle worker (the OOM killer, a user).
-    // A worker killed while running requests counts: when several were in
-    // flight none is blamed, and only the budget slows a load that keeps
-    // getting killed.
-    bool idle_kill = exit_signal == sigkill && death.in_flight == 0;
+    // A worker killed while running requests or holding documents counts:
+    // none of them is blamed when several were in flight, or when none
+    // was, and only the budget slows a load that keeps getting killed.
+    bool idle_kill = exit_signal == sigkill && death.in_flight == 0 && w.lost_documents.empty();
     if(death.culprit.empty() && !terminated && !idle_kill) {
         w.crash_streak += 1;
     }
@@ -823,6 +823,7 @@ void WorkerPool::release_stateless_slot(std::size_t worker_index) {
     w.low_priority = false;
     w.preempt_source.reset();
     w.cancel_requested_at = {};
+    set_oom_score(w, false);
     LOG_DEBUG("Release {} (busy={}, low_busy={})", w.name, busy_stateless(), low_busy_count());
     try_dispatch_pending();
 }
@@ -977,10 +978,10 @@ void WorkerPool::tick_oom_scores(std::uint64_t memory_limit) {
         oom_holding = std::min(*oom_base + above_master, 1000);
     }
     for(auto& w: stateless_workers) {
-        set_oom_score(w, w.busy);
+        set_oom_score(w, w.holds_work());
     }
     for(auto& w: stateful_workers) {
-        set_oom_score(w, w.owned_documents > 0);
+        set_oom_score(w, w.holds_work());
     }
 }
 

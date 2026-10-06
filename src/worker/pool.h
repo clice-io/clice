@@ -186,9 +186,9 @@ struct WorkerPoolOptions {
 ///     names the one it killed the worker for; each request in flight
 ///     learns whether it is that one. A death that names a request is that
 ///     request's content's doing and spends no slot budget; neither does a
-///     terminated session (SIGTERM, SIGINT, SIGHUP) or a SIGKILL of an idle
-///     worker (the OOM killer, a user). Every other death naming no request
-///     counts toward the streak.
+///     terminated session (SIGTERM, SIGINT, SIGHUP) or a SIGKILL (the OOM
+///     killer, a user) of a worker holding no work. Every other death
+///     naming no request counts toward the streak.
 ///   - The pool NEVER retries a request. Requests do not survive a crash;
 ///     slots do. Retry policy is semantic and lives with the caller —
 ///     deliver() is the shared form of it.
@@ -392,6 +392,13 @@ private:
         /// selection picks the largest — the actual newest claim; the slot
         /// index says nothing about claim order once slots are reused.
         std::uint64_t claim_epoch = 0;
+
+        /// Whether the worker holds work, and with it memory: a claim, a
+        /// request in flight, or documents (whose last one can close while
+        /// its compile still runs).
+        bool holds_work() const {
+            return busy || !dispatches.empty() || owned_documents > 0;
+        }
     };
 
     /// A request in flight on a slot: what the deadline watchdog times and
@@ -679,8 +686,9 @@ private:
     void tick_oom_scores(std::uint64_t memory_limit);
 
     /// Write a worker's OOM score: oom_holding when it holds work, else
-    /// the master's. Taking on work raises it at once, since a compile can
-    /// exhaust memory before the next tick.
+    /// the master's. Taking on work raises it and a stateless release
+    /// lowers it at once, since a compile can exhaust memory before the
+    /// next tick.
     void set_oom_score(const WorkerProcess& w, bool holds);
 
     /// Scales the stateless pool up/down from saturation/idle streaks.

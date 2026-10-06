@@ -92,8 +92,15 @@ struct [[nodiscard]] PendingGuard {
     PendingGuard& operator=(PendingGuard&&) = delete;
 
     ~PendingGuard() {
-        if(doc) {
-            doc->pending -= 1;
+        if(!doc) {
+            return;
+        }
+        doc->pending -= 1;
+        // The last hold on an evicted entry frees its AST: return the memory
+        // as the eviction would have.
+        if(doc.use_count() == 1) {
+            doc.reset();
+            release_free_memory();
         }
     }
 };
