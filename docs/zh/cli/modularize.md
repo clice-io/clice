@@ -6,7 +6,7 @@
 
 程序自身的代码也可以跟进：划分文件标记为改写的模块，其文件会被原地改写成模块单元，头文件变成分区（partition），包含变成导入。
 
-**用法**：`clice modularize --partition <file> --out <dir> [--std <dir>] [--scope <glob,...>] [--workspace <dir>] [--configuration <tag>]`
+**用法**：`clice modularize --partition <file> --out <dir> [--std <dir>] [--no-mirrors] [--scope <glob,...>] [--workspace <dir>] [--configuration <tag>]`
 
 所有信息都来自持久化索引，可通过 [`clice analyze modules --view interface`](./analyze.md#modules) 查看；请先运行 `clice index`。该命令会写入文件并输出构建所需的信息，但不会修改任何构建文件。
 
@@ -53,6 +53,38 @@
 
 改写哪些模块、模块划分得多粗，由划分文件决定：整个程序一个模块时，每个头文件都是分区，按文件导入；每个目录一个模块时，每个目录都有自己的接口，但修改一个模块的接口分区会导致该模块的所有导入方重新编译。改写之前可以用 [`clice analyze modules`](./analyze.md#modules) 权衡两者。
 
+## 合并构建配置
+
+一次封装只涵盖头文件在单一构建配置下声明和定义的内容：平台的 C 库、库的配置头文件设置的宏、库只为某个目标平台声明的名称。为多个平台或多种配置构建的程序，要为每个配置各运行一次 modularize，各自基于该配置的索引、写到各自的目录，然后合并结果。
+
+**用法**：`clice modularize --merge <file> --out <dir> [--no-mirrors]`
+
+```json
+{
+  "configurations": [
+    {
+      "name": "linux-x64",
+      "condition": "defined(__linux__) && defined(__x86_64__)",
+      "out": "linux-x64"
+    },
+    {
+      "name": "windows-x64",
+      "condition": "defined(_WIN32) && defined(__x86_64__)",
+      "out": "windows-x64"
+    }
+  ]
+}
+```
+
+`out` 是该配置那次运行的 `--out`，相对于合并文件所在位置。条件只在其所属配置的编译中成立。合并后的 `--out` 目录下的内容：
+
+- 每个配置对应一个 `<name>/`：其中有该配置的前导头文件、宏头文件，以及每个模块的 `<module>.fragment.h`，即该配置下这个模块接口单元的全局模块片段。
+- `<module>.cppm` 包含条件成立的那个配置的片段，并导出所有配置都导出的内容；只有部分配置导出的内容放在以这些配置的条件为判断的 `#if` 之下。没有任何条件匹配的编译会停在 `#error` 处。
+- `prelude.h` 包含条件成立的那个配置的前导头文件。
+- `mirror/` 存放任一配置置空的头文件。
+
+各配置必须封装相同的模块。合并输出的构建计划中没有 `stdSources` 和 `includeRoots`，因为它们是各配置所在机器上的路径。
+
 ## 输出
 
 `--out` 目录下的内容：
@@ -60,6 +92,8 @@
 - 每个封装的模块对应一个 `<module>.cppm`，以及一个 `<module>.macros.h`；后者按定义顺序保存导入方所需的宏。
 - `mirror/<module>/`：对于其他模块的文件所包含的每个头文件，按包含指令中使用的名称生成一个空文件；标准头文件对应的目录为 `mirror/std/`。
 - `prelude.h`：仍需使用的 C 库头文件、`import std.compat;`、所有导入语句及所有宏头文件。
+
+使用 `--no-mirrors` 时不置空任何头文件：仍包含已封装头文件的文件（仍保持为头文件的头文件，或另一个被封装模块的全局模块片段）会在导入之外再解析一遍该头文件。clang 会合并两者，除非一个模块的片段包含了它所导入模块的头文件。所有库共用一个模块时，只剩程序中仍保持为头文件的头文件会包含已封装的头文件。
 
 内容未变的文件会保留时间戳。上次运行写出而本次不再生成的文件会被删除；`--out/.modularize` 记录每次运行写出的文件，`--out` 下的其他内容不会改动。
 
