@@ -74,6 +74,16 @@ struct WorkerDeath {
 
     /// How it died, worded for the user ("signal 11 (SIGSEGV)").
     std::string cause;
+
+    /// The pool killed the worker to reclaim memory. Its request may be
+    /// what exhausted memory, so the sender spends its own bounded retries
+    /// (worker_lost) instead of requeueing for free like a deliberate cancel.
+    bool reclaimed = false;
+
+    /// At most one request was in flight when the worker died. A death that
+    /// names no request is held against a request only when it ran alone:
+    /// among several, nothing tells which one killed the worker.
+    bool solo = true;
 };
 
 /// The last lines a worker wrote to stderr, kept for its crash report:
@@ -102,6 +112,10 @@ struct StderrTail {
 
 struct WorkerPoolOptions {
     std::string self_path;
+
+    /// Stateless workers started, and the most that background (Low) work
+    /// keeps busy; only interactive work that finds no idle slot grows the
+    /// pool past it, up to max_stateless.
     std::uint32_t stateless_count = 2;
     std::uint32_t stateful_count = 2;
     std::string log_dir;
@@ -139,7 +153,8 @@ struct WorkerPoolOptions {
 
     /// Dynamic scaling bounds for stateless workers.
     /// min_stateless: floor — never retire below this count.
-    /// max_stateless: ceiling — never spawn above this count (0 = auto = CPU cores).
+    /// max_stateless: ceiling — never spawn above this count (0 = auto = the
+    /// physical cores, see default_max_stateless_worker_count).
     std::uint32_t min_stateless = 1;
     std::uint32_t max_stateless = 0;
 };
@@ -149,11 +164,10 @@ struct WorkerPoolOptions {
 /// Two kinds of workers are managed:
 ///   - Stateless workers execute independent build tasks (PCH/PCM builds,
 ///     indexing, completion, formatting) with two-level priority scheduling:
-///     low-priority concurrency is budgeted — the full schedulable capacity
-///     when the user is idle, a fixed share of the configured capacity while
-///     foreground activity is live, and less under memory pressure. A High
-///     request finding no idle slot cooperatively cancels one low build
-///     instead of waiting out a whole TU.
+///     low-priority concurrency is budgeted — up to stateless_count when the
+///     user is idle, one while foreground activity is live, and less under
+///     memory pressure. A High request finding no idle slot cooperatively
+///     cancels one low build instead of waiting out a whole TU.
 ///   - Stateful workers keep per-document ASTs; each open document is pinned
 ///     to one worker (path_id affinity), balanced by document count.
 ///
@@ -169,8 +183,9 @@ struct WorkerPoolOptions {
 ///     was running (see worker/crash_report.h), or the deadline watchdog
 ///     names the one it killed the worker for; each request in flight
 ///     learns whether it is that one. A death that names a request is that
-///     request's content's doing and spends no slot budget; only nameless
-///     deaths — the process itself failing — count toward the streak.
+///     request's content's doing and spends no slot budget; neither does a
+///     kill from outside (the OOM killer, a signal). Only the process itself
+///     failing without naming a request counts toward the streak.
 ///   - The pool NEVER retries a request. Requests do not survive a crash;
 ///     slots do. Retry policy is semantic and lives with the caller —
 ///     deliver() is the shared form of it.
@@ -178,10 +193,12 @@ struct WorkerPoolOptions {
 ///     this request killed its worker — the caller blames its content
 ///     (Error::data carries the dead incarnation's identity so one death is
 ///     never blamed twice, the message how it died). worker_lost: another
-///     request's crash took it along, blameless. worker_died: the death
-///     named no request. worker_unavailable: never dispatched, a capacity
-///     window — await_capacity() tells when it closes. cancelled:
-///     deliberate preemption, requeue freely.
+///     request's crash took it along, the death named none among several
+///     requests in flight, or the pool reclaimed the worker's memory —
+///     blameless. worker_died: the death named no request and this one ran
+///     alone. worker_unavailable: never dispatched, a capacity window —
+///     await_capacity() tells when it closes. cancelled: deliberate
+///     preemption, requeue freely.
 class WorkerPool {
 public:
     WorkerPool(kota::event_loop& loop) : loop(loop) {}
@@ -252,11 +269,10 @@ public:
     std::size_t schedulable_stateless() const;
 
     /// The current low-priority concurrency budget: the memory controller's
-    /// window, additionally clamped to the foreground cap while the user is
-    /// active. Public so the indexer's feeder can size its in-flight window
-    /// from it.
+    /// window, additionally clamped to one while the user is active. Public
+    /// so the indexer's feeder can size its in-flight window from it.
     std::size_t effective_low_limit() const {
-        return std::min(low_limit, foreground_active ? foreground_cap() : max_low_limit());
+        return std::min(low_limit, foreground_active ? foreground_low_limit : max_low_limit());
     }
 
     /// Foreground evidence from outside the pool: didOpen/didChange/didSave
@@ -503,14 +519,9 @@ private:
     std::deque<PendingStateless*> high_queue;
     std::deque<PendingStateless*> low_queue;
 
-    /// Max concurrent low-priority tasks, adjusted by tick_memory() and
-    /// apply_crash_backoff(). Reads go through effective_low_limit(), which
-    /// clamps to the capacity-derived ceiling.
+    /// Max concurrent low-priority tasks, adjusted by tick_memory(). Reads
+    /// go through effective_low_limit(), which clamps to the ceiling.
     std::size_t low_limit = 0;
-
-    /// Remaining tick_memory cycles to skip after a crash backoff,
-    /// prevents crash AIMD and memory pressure from compounding.
-    unsigned backoff_cooldown = 0;
 
     // All occupancy numbers are derived from slot state on demand instead of
     // being maintained as counters — with at most a few dozen slots the scans
@@ -538,21 +549,25 @@ private:
         return stateless_capacity() > 0;
     }
 
-    /// The low-priority ceiling with no foreground activity: every
-    /// schedulable slot. Foreground bursts reclaim capacity through the
-    /// foreground cap and the deficit cancel in acquire_stateless_slot
-    /// instead of a standing reservation, which would leave a slot idle
-    /// through every fully-idle stretch.
+    /// The low-priority ceiling with no foreground activity: the
+    /// configured stateless count, of the slots schedulable now. Foreground
+    /// bursts reclaim capacity through foreground_low_limit and the deficit
+    /// cancel in acquire_stateless_slot instead of a standing reservation,
+    /// which would leave a slot idle through every fully-idle stretch.
     std::size_t max_low_limit() const {
-        return schedulable_stateless();
+        return std::min<std::size_t>(schedulable_stateless(), options.stateless_count);
     }
 
-    /// The low budget while the user is active: a fixed share of the
-    /// configured capacity (not of the live slot count, which the scaler
-    /// moves and which would turn the share into a feedback loop).
-    std::size_t foreground_cap() const {
-        return std::max<std::size_t>(1, options.max_stateless * 3 / 10);
-    }
+    /// The low budget while the user is active. Background compiles slow
+    /// the user's own down well before the CPU runs out — cores share one
+    /// power limit — so while they type one TU indexes at a time.
+    constexpr static std::size_t foreground_low_limit = 1;
+
+    /// Memory controller thresholds on the available share of memory: below
+    /// severe_ratio running low work is killed and the budget zeroed; below
+    /// pressure_ratio the budget shrinks; at or above it the budget grows.
+    constexpr static double severe_ratio = 0.10;
+    constexpr static double pressure_ratio = 0.20;
 
     /// Rising edge of foreground activity: clamp the budget now and
     /// cooperatively cancel the excess in-flight low work so the CPU frees
@@ -593,8 +608,10 @@ private:
     std::size_t low_reclaim_deficit(std::size_t pending_high = 0);
 
     /// Wait for an idle stateless worker. Returns SIZE_MAX when no slot can
-    /// serve the request anymore (pool stopped or all slots given up).
-    kota::task<std::size_t> acquire_stateless_slot(worker::Priority priority);
+    /// serve the request anymore (pool stopped or all slots given up), or
+    /// once `cancel` fires while it waits.
+    kota::task<std::size_t> acquire_stateless_slot(worker::Priority priority,
+                                                   kota::cancellation_token cancel);
     void release_stateless_slot(std::size_t worker_index);
 
     /// Mark a claimed worker busy. Returns the index for chaining.
@@ -640,15 +657,21 @@ private:
     /// Permanently vacate a slot and fail waiters if it was the last one.
     void give_up_slot(std::size_t index, bool stateful);
 
-    /// AIMD multiplicative decrease on stateless concurrency limit.
-    void apply_crash_backoff();
-
-    /// 3s tick driving the two controllers below.
+    /// 3s tick driving the controllers below.
     kota::task<> monitor_loop();
 
-    /// Adjusts low_limit from memory pressure (AIMD down, CUBIC-style fast
-    /// recovery up) and preempts running low-priority work when severe.
+    /// Adjusts low_limit from memory pressure: zero below severe_ratio,
+    /// killing the low work in flight; one step down below pressure_ratio,
+    /// never under one; one step up above it while the budget is in use, so
+    /// a budget the foreground limit masks or nothing uses never climbs past
+    /// what was tried.
     void tick_memory(double available_ratio);
+
+    /// Rank each worker for the kernel's OOM killer (Linux): one holding a
+    /// request or documents just above the master, which holds every
+    /// session; an idle one at the master's own score, so that killing it —
+    /// which frees nothing — is never the killer's first choice.
+    void tick_oom_scores(std::uint64_t memory_limit);
 
     /// Scales the stateless pool up/down from saturation/idle streaks.
     void tick_scaling(double available_ratio);
@@ -667,13 +690,13 @@ private:
     void retire_idle_worker();
 
     /// Kill up to `count` in-flight low-priority workers to relieve memory
-    /// pressure. Their requests fail with dispatch_errc::cancelled and the
+    /// pressure. Their requests fail with dispatch_errc::worker_lost and the
     /// processes respawn immediately without crash accounting.
     void preempt_low_priority(std::size_t count);
 
     /// Foreground activity state: in-flight foreground work (stateful or
     /// High stateless), or a pulse within fg_hold, keeps the low budget
-    /// clamped to foreground_cap(). Rising edges are synchronous
+    /// clamped to foreground_low_limit. Rising edges are synchronous
     /// (note_foreground); the falling edge is evaluated by the monitor tick
     /// so hot paths never read the clock.
     bool foreground_active = false;
@@ -690,9 +713,6 @@ private:
     /// killed: covers a compile stuck inside one giant declaration, where
     /// the stop flag is never polled.
     constexpr static std::chrono::seconds cancel_grace{10};
-
-    /// CUBIC-style fast recovery target: last low_limit before a reduction.
-    std::size_t w_max = 0;
 
     /// Consecutive monitor ticks where all workers were busy with queued work.
     unsigned saturated_cycles = 0;
@@ -721,6 +741,16 @@ private:
     /// revival) that need a running event loop.
     bool started = false;
     std::string log_dir;
+
+    /// The master's own oom_score_adj, which workers inherit; unset where
+    /// there is none to adjust (not Linux).
+    std::optional<int> oom_base;
+
+    /// The memory.stat of a memory-limited cgroup the master runs in, and
+    /// its key for inactive file cache: libuv counts that cache as used,
+    /// so a container that read and wrote some files would look full.
+    std::string cgroup_memory_stat;
+    std::string cgroup_cache_key;
 
     struct SpawnedProcess {
         kota::process proc;
@@ -801,7 +831,13 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     // queues, foreground_busy() holds the window open.
     if(priority == worker::Priority::High)
         note_foreground();
-    auto idx = co_await acquire_stateless_slot(priority);
+    auto idx = co_await acquire_stateless_slot(priority, cancel);
+    // An advisory cancellation that fired while this request queued for a
+    // slot: nothing was dispatched, give any claim back untouched.
+    if(cancel.cancelled()) {
+        co_await kota::fail(
+            kota::ipc::Error{worker::dispatch_errc::cancelled, "Request cancelled by its round"});
+    }
     if(idx == SIZE_MAX) {
         co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
                                              "No stateless workers available"});
@@ -811,13 +847,6 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     auto peer = stateless_workers[idx].peer;
     auto gen = stateless_workers[idx].generation;
     auto death = stateless_workers[idx].death;
-
-    // An advisory cancellation that fired while this request queued for a
-    // slot: nothing was dispatched, give the claim back untouched.
-    if(cancel.cancelled()) {
-        co_await kota::fail(
-            kota::ipc::Error{worker::dispatch_errc::cancelled, "Request cancelled by its round"});
-    }
 
     if(priority == worker::Priority::Low) {
         // Reclaim demand that arose while this claim's sender was parked

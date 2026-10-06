@@ -8,6 +8,7 @@
 #include "sched/families/turun.h"
 #include "sched/graph.h"
 #include "support/logging.h"
+#include "support/process.h"
 #include "support/timer.h"
 #include "worker/pool.h"
 
@@ -496,6 +497,9 @@ kota::task<> IndexPump::run_background_indexing() {
              timer.ms());
     claim_report(
         co_await store.save(save_debt(), /*settle=*/index_queue_pos >= index_queue.size()));
+    // The round's merge buffers are freed by now; glibc would keep their
+    // pages, and the master its round's peak, for the rest of the session.
+    co_await kota::queue([] { release_free_memory(); });
 
     // The round owns the "active" gate through its save: releasing it
     // before the write await would let a next round's save overlap this
