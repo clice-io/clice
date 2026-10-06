@@ -593,10 +593,16 @@ void ProjectIndex::merge(const TUIndex& index,
     // Units may spell one symbol differently (`X<int>` against
     // `X<signed int>`, a conversion to a typedef): the shortest spelling
     // wins, then the smaller one, so the table reads the same whatever the
-    // merge order — among the units that send the symbol. A unit whose
-    // every file holding its rows is a variant the store had sends none
-    // of it (TUIndexOptions::known_variants), so its spelling, and flags
-    // that vary by unit (SystemHeader, Deprecated), are not offered.
+    // merge order — among the units that send the symbol.
+    //
+    // FIXME: what a symbol is can depend on the unit's command — its
+    // spelling, SystemHeader under -isystem against -I, Deprecated under a
+    // deployment target — and nothing represents that dependence: the
+    // table folds whatever units send, and a unit whose every file holding
+    // the symbol's rows is a stored variant sends nothing of it
+    // (TUIndexOptions::known_variants), so the first unit to store the
+    // variant decides. Such facts want one explicit, per-context record
+    // instead of a fold.
     auto prefer = [](std::string& current, llvm::StringRef incoming) {
         if(incoming.empty() ||
            (!current.empty() && (incoming.size() > current.size() ||
