@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <format>
+#include <limits>
 #include <map>
 #include <memory>
 #include <set>
@@ -417,19 +418,25 @@ std::string with_extension(llvm::StringRef path, llvm::StringRef extension) {
     return result.str().str();
 }
 
-/// The text of `lines` joined, runs of blank lines folded to one, ending
-/// in a single newline.
-std::string assemble(llvm::ArrayRef<std::string> lines) {
+/// The text of `lines` joined, ending in a single newline, runs of blank
+/// lines folded to one up to the first line from `verbatim` on that is not
+/// blank: those are the file's own, and a raw string literal may hold any.
+std::string assemble(llvm::ArrayRef<std::string> lines,
+                     std::size_t verbatim = std::numeric_limits<std::size_t>::max()) {
     std::string text;
     std::uint32_t blanks = 0;
-    for(auto& line: lines) {
-        if(llvm::StringRef(line).trim().empty() && line.find('\r') == std::string::npos) {
+    auto folding = true;
+    for(std::size_t i = 0; i < lines.size(); i += 1) {
+        auto& line = lines[i];
+        if(folding && llvm::StringRef(line).trim().empty() &&
+           line.find('\r') == std::string::npos) {
             blanks += 1;
             if(blanks > 1 || text.empty()) {
                 continue;
             }
         } else {
             blanks = 0;
+            folding = folding && i < verbatim;
         }
         text += line;
         text += '\n';
@@ -494,14 +501,13 @@ struct Rewriter {
     }
 
     /// How `user` names the file: the most common spelling of its includers
-    /// that resolves from there. `"a.h"` from beside the file resolves only
-    /// beside it; a spelling used from another directory goes through the
-    /// include path. With none, its path under the deepest include root,
-    /// else its workspace-relative path, the root being on the include path
-    /// as for the prelude.
+    /// that resolves from there. A quoted one resolving relative to its
+    /// includer (`"a.h"`, `"../include/a.h"`) resolves only from there; one
+    /// that does not goes through the include path. With none, its path
+    /// under the deepest include root, else its workspace-relative path, the
+    /// root being on the include path as for the prelude.
     std::string spelling(std::uint32_t file, std::uint32_t user) const {
         auto& info = facts.files[file];
-        auto directory = llvm::sys::path::parent_path(info.path, posix);
         auto beside = [&](llvm::StringRef from, llvm::StringRef spelled) {
             llvm::SmallString<256> path(llvm::sys::path::parent_path(from, posix));
             llvm::sys::path::append(path, posix, spelled.drop_front().drop_back());
@@ -511,10 +517,9 @@ struct Rewriter {
         std::map<llvm::StringRef, std::uint32_t> counts;
         for(std::size_t i = 0; i < info.includers.size(); i += 1) {
             llvm::StringRef spelled = info.spellings[i];
-            auto& includer = facts.files[info.includers[i]].path;
             if(!spelled.empty() &&
                (spelled.starts_with("<") || beside(facts.files[user].path, spelled) ||
-                llvm::sys::path::parent_path(includer, posix) != directory)) {
+                !beside(facts.files[info.includers[i]].path, spelled))) {
                 counts[spelled] += 1;
             }
         }
@@ -970,6 +975,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         if(interface) {
             lines.push_back("export {");
         }
+        auto verbatim = lines.size();
         llvm::append_range(lines, draft.body);
         if(interface) {
             lines.push_back("}");
@@ -986,7 +992,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 return std::unexpected(*taken);
             }
         }
-        result.files.push_back({.path = path, .content = assemble(lines)});
+        result.files.push_back({.path = path, .content = assemble(lines, verbatim)});
         if(!module_unit) {
             plan.importers.push_back(path);
             continue;

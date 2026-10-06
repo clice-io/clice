@@ -366,6 +366,10 @@ function writeProgram(ws: Workspace): void {
             '#include "tool/tool.h"',
             "signed int main() {",
             '    const char* code = R"(int main() {})";',
+            '    const char* usage = R"(clice',
+            "",
+            "",
+            'run)";',
             "    return code[0] == 'i' ? 0 : tool::run(core::Text{}, nullptr);",
             "}",
         ),
@@ -737,10 +741,12 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(tool).toContain("namespace core {\n}\n");
     expect(ws.read("app/tool/tool.cpp")).toContain('#include "core/text.macros.h"');
     expect(ws.read("app/tool/hook.cpp")).toContain("\nmodule app.core;\n");
-    // main stays attached to the global module; the one in a string is text.
+    // main stays attached to the global module; the one in a string is text,
+    // and so are a string's blank lines.
     const cli = ws.read("app/tool/cli.cpp");
     expect(cli).toContain('extern "C++" signed int main() {');
     expect(cli).toContain('R"(int main() {})"');
+    expect(cli).toContain('R"(clice\n\n\nrun)"');
     // core::Text and cfg's macros reach it through tool's header, but no
     // import re-exports a name and none carries a macro; defs.h, which only
     // config.h beside it names, by its path under the include root text.h
