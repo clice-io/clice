@@ -46,7 +46,13 @@ export interface CurrentContextParams {
 }
 
 export interface CurrentContextResult {
+    /// The context the file compiles under, as queryContext lists it:
+    /// the user's choice, else the one picked automatically; null when
+    /// the file borrows no context and has no entry of its own.
     context: ContextItem | null;
+
+    /// Whether no choice of the user's is in force.
+    automatic: boolean;
 }
 
 export const CurrentContextRequest = new RequestType<
@@ -81,6 +87,15 @@ export interface SwitchContextResult {
 
 export const SwitchContextRequest = new RequestType<SwitchContextParams, SwitchContextResult, void>(
     "clice/switchContext",
+);
+
+/// clice/resetContext: drop the user's choice, back to the automatic one.
+export interface ResetContextParams {
+    uri: string;
+}
+
+export const ResetContextRequest = new RequestType<ResetContextParams, SwitchContextResult, void>(
+    "clice/resetContext",
 );
 
 /// clice/listConfigurations: the build configuration menu (the distinct

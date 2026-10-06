@@ -87,6 +87,7 @@ void CommandResolver::forget_self_contained(Fid path_id) {
     if(auto it = header_verdicts.find(path_id);
        it != header_verdicts.end() && it->second.mode == HeaderMode::SelfContained) {
         header_verdicts.erase(it);
+        project.context_epoch += 1;
     }
 }
 
@@ -100,6 +101,9 @@ std::uint64_t CommandResolver::persisted_mode_hash(Fid path_id) const {
 
 void CommandResolver::record_header_mode(Fid path_id, HeaderMode mode, std::uint64_t content_hash) {
     auto persisted = persisted_mode_hash(path_id);
+    if((header_mode(path_id) == HeaderMode::SelfContained) != (mode == HeaderMode::SelfContained)) {
+        project.context_epoch += 1;
+    }
     header_verdicts[path_id] = {
         .mode = mode,
         .content_hash = mode == HeaderMode::NeedsContext ? content_hash : 0,
@@ -112,6 +116,9 @@ void CommandResolver::record_header_mode(Fid path_id, HeaderMode mode, std::uint
 void CommandResolver::reset_header_mode(Fid path_id) {
     if(persisted_mode_hash(path_id) != 0) {
         project.mark_artifacts_dirty();
+    }
+    if(header_mode(path_id) == HeaderMode::SelfContained) {
+        project.context_epoch += 1;
     }
     header_verdicts.erase(path_id);
 }

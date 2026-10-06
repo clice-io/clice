@@ -162,7 +162,7 @@ test("pins stay with their configuration", async ({ session }) => {
 
     const release = await switchAndRestart(session, client, workspace, "release");
     await release.openAndWait("lib.h");
-    expect((await release.currentContext(header)).context, "no pin under release").toBeNull();
+    expect((await release.currentContext(header)).automatic, "no pin under release").toBe(true);
 
     const debug = await switchAndRestart(session, release, workspace, "debug");
     await debug.openAndWait("lib.h");

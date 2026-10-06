@@ -24,6 +24,7 @@ import {
     LogFloodRequest,
     PollRequest,
     QueryContextRequest,
+    ResetContextRequest,
     StatsRequest,
     SwitchConfigurationRequest,
     SwitchContextRequest,
@@ -1197,6 +1198,10 @@ export class CliceClient {
 
     currentContext(uri: string): Promise<CurrentContextResult> {
         return this.sendRequest(CurrentContextRequest, { uri });
+    }
+
+    resetContext(uri: string): Promise<SwitchContextResult> {
+        return this.sendRequest(ResetContextRequest, { uri });
     }
 
     switchContext(

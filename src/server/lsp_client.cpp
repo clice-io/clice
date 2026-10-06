@@ -1034,6 +1034,17 @@ void LSPClient::register_extensions() {
                 co_await this->server.switch_context(path_id, context_path_id, params));
         });
 
+    peer.on_request(
+        "clice/resetContext",
+        [this](RequestContext& ctx, const ext::ResetContextParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto path = uri_to_path(params.uri);
+            if(!path) {
+                co_return to_raw(ext::SwitchContextResult{});
+            }
+            co_return to_raw(this->server.reset_context(this->server.files.intern(*path)));
+        });
+
     // The project serving the named document; without one the first
     // project over a folder, the first one being rootless in a server
     // without folders.

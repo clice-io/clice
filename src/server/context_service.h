@@ -42,20 +42,26 @@ struct ContextService {
     /// its host sources and the file's own CDB configurations.
     std::vector<ext::ContextItem> contexts(Fid path_id);
 
-    /// clice/currentContext: describe the file's currently active context.
+    /// clice/currentContext: the listing's item for the context the file
+    /// compiles under, and whether the user chose it.
     ext::CurrentContextResult current_context(const Session* session);
 
-    /// clice/switchContext: pin a host source or CDB entry as the file's
-    /// compilation context and persist the choice across sessions. When
-    /// persistence is available, success is acknowledged only once the
-    /// choice is durably committed: the request marks the contexts blob
-    /// dirty and awaits the write pipeline's ticket. Sessions without a
-    /// writable database (read-only, caching disabled, open failure) apply
-    /// the choice in memory and acknowledge immediately.
+    /// clice/switchContext: pin a host source or CDB entry — one contexts()
+    /// lists — as the file's compilation context and persist the choice
+    /// across sessions. When persistence is available, success is
+    /// acknowledged only once the choice is durably committed: the request
+    /// marks the contexts blob dirty and awaits the write pipeline's
+    /// ticket. Sessions without a writable database (read-only, caching
+    /// disabled, open failure) apply the choice in memory and acknowledge
+    /// immediately.
     kota::task<ext::SwitchContextResult> switch_context(Fid path_id,
-                                                        Session* session,
+                                                        Session& session,
                                                         Fid context_path_id,
                                                         const ext::SwitchContextParams& params);
+
+    /// clice/resetContext: drop the file's choice; the next compile picks
+    /// the context automatically.
+    void reset_context(Session& session);
 
     /// clice/listConfigurations: the configuration menu with the running,
     /// persisted and default names.

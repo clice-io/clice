@@ -773,17 +773,31 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
         target->open_session(path_id, session->text, session->version);
         session = find_session(path_id);
     }
-    result = co_await target->context_service.switch_context(path_id,
-                                                             session.get(),
-                                                             context_path_id,
-                                                             params);
+    result =
+        co_await target->context_service.switch_context(path_id, *session, context_path_id, params);
     // A context choice asks for the context-pure AST view; the merged
     // index cannot give it (union rows). A rejected switch changed no
-    // context and owes none.
+    // context and owes none. The compile it kicks lands on unchanged text,
+    // which has the client re-pull what it holds.
     if(result.success) {
         target->ast.escalate(*session);
+        target->ast.request_compile(session);
     }
     co_return result;
+}
+
+ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
+    auto session = find_session(path_id);
+    if(!session) {
+        return {};
+    }
+    for(auto& project: projects) {
+        project->contexts.forget_selection(path_id);
+    }
+    auto& owner = owner_of(path_id);
+    owner.context_service.reset_context(*session);
+    owner.ast.request_compile(session);
+    return {.success = true};
 }
 
 std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::StringRef query) {

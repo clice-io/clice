@@ -167,6 +167,10 @@ public:
                                                         Fid context_path_id,
                                                         ext::SwitchContextParams params);
 
+    /// clice/resetContext: drop the file's choice in every project and
+    /// compile it under the automatic context.
+    ext::SwitchContextResult reset_context(Fid path_id);
+
     /// workspace/symbol over every project: each project's ranked matches,
     /// interleaved rank by rank, a symbol two projects index listed once.
     std::vector<protocol::SymbolInformation> workspace_symbol(llvm::StringRef query);
