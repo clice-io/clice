@@ -15,14 +15,6 @@
 
 namespace clice {
 
-std::uint32_t Project::count_occurrences(Fid host_id, Fid target_id) const {
-    auto chain = dep_graph.find_include_chain(host_id, target_id);
-    if(chain.size() < 2) {
-        return 0;
-    }
-    return dep_graph.count_includes(chain[chain.size() - 2], target_id);
-}
-
 void Project::rescan_disk_file(Fid path_id) {
     rescan_dependency_graph(cdb, dep_graph, path_id);
     context_epoch += 1;

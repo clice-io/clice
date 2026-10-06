@@ -89,6 +89,10 @@ struct HeaderContext {
     /// The versions of the chain files (and the header's snapshot) the
     /// synthesis read.
     DepsSnapshot deps;
+
+    /// Whether the chain is the lexical scan's: no include tree of the host
+    /// could tell where its compile enters the header.
+    bool lexical = false;
 };
 
 /// Whether a header can compile on its own (given a borrowed command)
@@ -261,9 +265,9 @@ struct Project {
     /// What a file without a command can borrow (see command_lender).
     LenderIndex lenders;
 
-    /// How many times the direct includer on host->target's chain includes
-    /// the target; 0 when the host does not include it.
-    std::uint32_t count_occurrences(Fid host_id, Fid target_id) const;
+    /// The include trees preprocess runs took of hosts a header context
+    /// needed while their index manifests could not tell (see enterings).
+    llvm::DenseMap<Fid, HostTree> include_trees;
 
     /// Rescan a file whose disk content changed (rescan_dependency_graph),
     /// so host lookups and context queries see includes the change added

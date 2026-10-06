@@ -143,7 +143,9 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        const std::vector<std::string>& arguments,
                                        const SynthesizedContext* synthesized) {
     auto path = project.file_table.resolve(path_id);
-    auto bound = compute_preamble_bound(text);
+    // The part of the prefix inside braces comes after the preamble, which
+    // the header's own directives would otherwise precede.
+    auto bound = synthesized && !synthesized->open.empty() ? 0 : compute_preamble_bound(text);
     if(bound == 0 && !synthesized) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts land here too: they borrow
@@ -623,6 +625,36 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
     co_return true;
 }
 
+kota::task<bool> ASTFamily::fetch_include_tree(RoundContext& ctx, Fid host) {
+    auto& files = project.file_table;
+    worker::IncludeTreeParams params;
+    params.file = files.resolve(host).str();
+    params.workspace = project.config.workspace_root.str();
+    contexts.commands.resolve_command(host, params.directory, params.arguments);
+    auto result = co_await pool.send_stateless(params, worker::Priority::High, ctx.token());
+    if(!result.has_value() || !result.value().success) {
+        LOG_INFO("No include tree for {}: {}",
+                 params.file,
+                 result.has_value() ? result.value().error : result.error().message);
+        co_return false;
+    }
+    auto& tree = result.value();
+    llvm::SmallVector<VersionID> versions;
+    for(std::size_t i = 0; i < tree.paths.size(); i += 1) {
+        auto fid = files.intern(Spelling::absolute(tree.paths[i]));
+        auto hash = tree.path_hashes[i];
+        if(hash != 0) {
+            files.disk.consumed(fid, hash);
+        }
+        versions.push_back(files.intern_version(fid, hash));
+    }
+    for(auto& node: tree.nodes) {
+        node.file = versions[node.file].raw;
+    }
+    project.include_trees[host] = {.root = versions.back(), .nodes = std::move(tree.nodes)};
+    co_return true;
+}
+
 kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // The session is resolved at round start: a didClose between spawn
     // and entry leaves nothing to compile.
@@ -663,6 +695,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // prefix. The trial's diagnostics are never published.
     bool artifact_retried = false;
     std::size_t trial_misses = 0;
+    llvm::SmallVector<Fid, 2> preprocessed_hosts;
     for(int attempt = 0; attempt < 2; attempt += 1) {
         worker::CompileParams params;
         params.path = file_path;
@@ -670,6 +703,30 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.text = session->text;
         params.workspace = project.config.workspace_root.str();
         auto resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
+        // A context cut along the lexical chain may name directives the
+        // host's compile never enters: once per host and its text, take
+        // its include tree and resolve again — under it, another host may
+        // come first.
+        auto tree_known = [&](Fid host) {
+            auto it = project.include_trees.find(host);
+            return it != project.include_trees.end() &&
+                   project.file_table.check_version(it->second.root) ==
+                       vfs::DiskState::Verdict::Fresh;
+        };
+        while(resolution.tree_wanted.valid() && !tree_known(resolution.tree_wanted) &&
+              !llvm::is_contained(preprocessed_hosts, resolution.tree_wanted)) {
+            preprocessed_hosts.push_back(resolution.tree_wanted);
+            if(!co_await fetch_include_tree(ctx, resolution.tree_wanted)) {
+                break;
+            }
+            if(session->generation != gen) {
+                co_return RoundOutcome::Stale;
+            }
+            contexts.drop_header_context(path_id);
+            params.directory.clear();
+            params.arguments.clear();
+            resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
+        }
         auto source = resolution.source;
         auto* synthesized = resolution.synthesized.get();
 

@@ -12,9 +12,11 @@ const BODY = "int field_a;\nint field_b;\nint sum() const { return field_a + fie
 
 function writeBody(workspace: Workspace) {
     workspace.write("body.inc", BODY);
+    workspace.write("base.h", "#pragma once\nstruct Base {};\n");
     workspace.write(
         "rec.cpp",
-        'struct Rec {\n#include "body.inc"\n};\nint main() { Rec r; return r.sum(); }\n',
+        '#include "base.h"\nstruct Rec : Base {\n#include "body.inc"\n};\n' +
+            "int main() { Rec r; return r.sum(); }\n",
     );
     workspace.writeCDB(["rec.cpp"]);
 }
@@ -30,6 +32,8 @@ test("class body fragment", async ({ session }) => {
 
     const [bodyUri] = await client.openAndWait("body.inc");
     client.assertCleanCompile(bodyUri);
+    // What precedes the class the fragment sits in is a preamble.
+    expect(workspace.pchFiles()).toHaveLength(1);
     expect(names(await client.documentSymbols(bodyUri))).toEqual(["field_a", "field_b", "sum"]);
     expect(JSON.stringify((await client.hoverAt(bodyUri, 2, 26))?.contents)).toContain(
         "field `field_a`",
@@ -104,4 +108,56 @@ test("unclosed host scope", async ({ session }) => {
 
     const [incUri] = await client.openAndWait("x.inc");
     expect(names(await client.documentSymbols(incUri))).toEqual(["S"]);
+});
+
+test("def in header and source", async ({ session }) => {
+    // The header's enum enters the list first; the source's table enters
+    // it again after including the header.
+    const { client, workspace } = session.tmp();
+    workspace.write("ops.def", "OP(Add)\nOP(Sub)\n");
+    workspace.write(
+        "ops.h",
+        '#pragma once\nenum Op {\n#define OP(x) x,\n#include "ops.def"\n#undef OP\n};\n',
+    );
+    workspace.write(
+        "ops.cpp",
+        '#include "ops.h"\nconst char* names[] = {\n#define OP(x) #x,\n#include "ops.def"\n' +
+            "#undef OP\n};\nint main() { return Add; }\n",
+    );
+    workspace.writeCDB(["ops.cpp"]);
+    await client.initialize(workspace);
+
+    const [defUri] = await client.openAndWait("ops.def");
+    client.assertCleanCompile(defUri);
+    expect(names(await client.documentSymbols(defUri))).toEqual(["Add", "Sub"]);
+
+    const switched = await client.switchContext(defUri, workspace.uri("ops.cpp"), {
+        occurrence: 1,
+    });
+    expect(switched.success).toBe(true);
+    await client.waitForRecompile(defUri);
+    client.assertCleanCompile(defUri);
+});
+
+test("host macro definition", async ({ session }) => {
+    // The macro the includer defines before the include point resolves
+    // to its definition there.
+    const { client, workspace } = session.tmp();
+    workspace.write("list.def", "ITEM(alpha)\n");
+    workspace.write(
+        "main.cpp",
+        '#define ITEM(name) int name;\n#include "list.def"\n#undef ITEM\nint main() { return alpha; }\n',
+    );
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+
+    const [mainUri] = client.open("main.cpp");
+    expect(await client.waitForIndex(mainUri, "main")).toBe(true);
+    const [defUri] = await client.openAndWait("list.def");
+    expect(await client.definitionAt(defUri, 0, 1)).toEqual([
+        {
+            uri: mainUri,
+            range: { start: { line: 0, character: 8 }, end: { line: 0, character: 12 } },
+        },
+    ]);
 });

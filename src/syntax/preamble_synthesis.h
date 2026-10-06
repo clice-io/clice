@@ -24,6 +24,10 @@ struct ChainEntry {
 
     /// File content as read from disk.
     llvm::StringRef content;
+
+    /// The 1-based line of the directive entering the next file, when the
+    /// host's include tree tells; 0 picks among the directives naming it.
+    std::uint32_t line = 0;
 };
 
 /// Resolve an include directive of a file in `includer_dir`, which was
@@ -34,8 +38,33 @@ using IncludeResolver =
                                                     llvm::StringRef includer_dir,
                                                     std::optional<unsigned> includer_found_dir)>;
 
-/// Files a compile reads from memory instead of disk: (path, content).
-using SynthesizedFiles = std::vector<std::pair<std::string, std::string>>;
+/// A run of a synthesized file copied from the file it was cut from: where
+/// it starts in each, and its length.
+struct SourceRun {
+    std::uint32_t offset = 0;
+    std::uint32_t source_offset = 0;
+    std::uint32_t length = 0;
+};
+
+/// A file a compile reads from memory instead of disk: a fragment of a
+/// header context, or the header's snapshot.
+struct SynthesizedFile {
+    std::string path;
+    std::string content;
+
+    /// The file its text was cut from, and the runs of it the text copies:
+    /// what an identity names a position in the text by, so that it agrees
+    /// with the compile of that file.
+    std::string source;
+    std::vector<SourceRun> runs;
+
+    /// Entered ahead of the main file, after the command's own -includes,
+    /// by every compile but the preamble's build (see
+    /// SynthesizedContext::open).
+    bool forced = false;
+};
+
+using SynthesizedFiles = std::vector<SynthesizedFile>;
 
 /// The includer context of a header, as files the compile reads from
 /// memory: each chain file cut at its include of the next, the part
@@ -48,13 +77,23 @@ struct SynthesizedContext {
     /// sees inside the host's translation unit. Empty for an empty chain.
     std::string prefix;
 
+    /// The part of the prefix inside the braces the header sits in (a
+    /// class body, an enumerator list), split off from the last place the
+    /// chain stood outside every brace: a precompiled preamble cannot end
+    /// in a declaration, so the prefix up to there is the preamble and
+    /// this file the compile enters after it. Empty when the header sits
+    /// outside every brace.
+    std::string open;
+
     /// The fragment of the direct includer after its cut, entering the
     /// rest of the chain up to the host: injected by appending one
     /// #include line to the header's buffer, so X-macro fragments
     /// embedded in enums or function bodies see their surrounding braces
     /// close. Each fragment starts with a #line marker; a cut inside #if
     /// blocks opens matching `#if 1`s so the fragment's own #endifs stay
-    /// balanced. Empty for an empty chain.
+    /// balanced. Only the main file's include enters it: where another
+    /// file enters the header (an earlier occurrence), the header is its
+    /// text alone. Empty for an empty chain.
     std::string suffix;
 
     /// Every synthesized file: the fragments, and the header's snapshot
@@ -77,14 +116,14 @@ struct SynthesizedContext {
 /// Synthesize both sides of the includer context of `target_path`.
 ///
 /// For each file in the chain, scans its include directives and finds the
-/// one that resolves to the next file in the chain (the target for the
-/// last entry). The host is the main file; every later chain file is
-/// found where its includer's directive resolved, which is where its own
+/// one on the entry's line, or else the one that resolves to the next file
+/// in the chain (the target for the last entry). The host is the main file; every later chain file
+/// is found where its includer's directive resolved, which is where its own
 /// `#include_next` resumes. Returns nullopt when a chain step cannot be
 /// matched.
 ///
-/// `occurrence` selects among multiple includes of the target in its
-/// direct includer (the last chain entry): a file without include guards
+/// `occurrence` selects among multiple includes of the target in a direct
+/// includer (the last chain entry) without a line: a file without include guards
 /// can be included several times with different preprocessor states, and
 /// each occurrence is a distinct context. It indexes the candidate list in
 /// directive order (0-based); out of range fails the synthesis. When
@@ -96,7 +135,8 @@ struct SynthesizedContext {
 /// At compile time the target's path is remapped to the open buffer with
 /// a trailing suffix include, so keeping such directives verbatim would
 /// recurse; they are redirected to the snapshot instead, or blanked (line
-/// count preserved) without one.
+/// count preserved) without one or when the header guards itself with
+/// `#pragma once`, which the compile enters once.
 std::optional<SynthesizedContext>
     synthesize_context(llvm::ArrayRef<ChainEntry> chain,
                        llvm::StringRef target_path,

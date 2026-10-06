@@ -504,11 +504,9 @@ test("includer warnings stay out", async ({ session }) => {
     expect(await synthesized(client)).toBe(1);
 });
 
-test("unmatched chain is reported", async ({ session }) => {
-    // The scan resolved shared.h's include under b.cpp's directories, but
-    // the host chosen for config_b/config.h is a.cpp, whose directories
-    // reach another config.h: the context cannot be rebuilt, and the
-    // header says so instead of only showing what is missing.
+test("config header finds its includer", async ({ session }) => {
+    // The scan resolved shared.h's include under b.cpp's directories;
+    // a.cpp ranks first, but its compile enters another config.h.
     const { client, workspace } = session.tmp();
     workspace.write("common/shared.h", "#pragma once\n#include <config.h>\n");
     workspace.write("config_a/config.h", "#pragma once\nstruct ConfigA {};\n");
@@ -525,6 +523,34 @@ test("unmatched chain is reported", async ({ session }) => {
     await client.initialize(workspace);
 
     const [configUri] = await client.openAndWait("config_b/config.h");
-    const codes = (client.diagnostics.get(configUri) ?? []).map((diagnostic) => diagnostic.code);
-    expect(codes).toContain("unmatched-includer-context");
+    client.assertCleanCompile(configUri);
+});
+
+test("chain the compile takes", async ({ session }) => {
+    // main.cpp enters bar.h through foo.h; its own include of bar.h then
+    // finds the guard.
+    const { client, workspace } = session.tmp();
+    workspace.write("foo.h", '#pragma once\nstruct Foo {};\n#include "bar.h"\n');
+    workspace.write("bar.h", "#pragma once\ninline Foo make() { return {}; }\n");
+    workspace.write("main.cpp", '#include "foo.h"\n#include "bar.h"\nint main() { make(); }\n');
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+
+    const [barUri] = await client.openAndWait("bar.h");
+    client.assertCleanCompile(barUri);
+});
+
+test("inactive include skipped", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("utils.h", "inline Posix make() { return {}; }\n");
+    workspace.write(
+        "main.cpp",
+        '#ifdef CLICE_NEVER\nstruct Other {};\n#include "utils.h"\n#else\n' +
+            'struct Posix {};\n#include "utils.h"\n#endif\nint main() { make(); }\n',
+    );
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+
+    const [utilsUri] = await client.openAndWait("utils.h");
+    client.assertCleanCompile(utilsUri);
 });

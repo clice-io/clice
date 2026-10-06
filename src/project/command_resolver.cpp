@@ -199,7 +199,11 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
         auto resolved = resolve_header_context(path_id, choice, synthesize);
         if(!resolved) {
             resolution.unmatched_host = resolved.error();
+            resolution.tree_wanted = resolved.error();
             return false;
+        }
+        if(resolved->synthesized && resolved->lexical) {
+            resolution.tree_wanted = resolved->host_path_id;
         }
         if(cache) {
             ctx_ptr = &((*cache)[path_id] = std::move(*resolved));
@@ -354,29 +358,33 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
     // A pinned host (and its chosen include occurrence) wins while it
     // still compiles and still includes the header; otherwise the build's
     // default host.
-    Fid host_path_id;
+    std::optional<Host> host;
     std::optional<std::uint32_t> occurrence;
-    std::vector<Fid> chain;
     bool has_host_choice = choice && choice->host_path_id.valid();
     if(has_host_choice) {
         auto preferred = choice->host_path_id;
         if(!project.build.commands(preferred).empty()) {
-            auto c = project.dep_graph.find_include_chain(preferred, header_path_id);
-            if(!c.empty()) {
-                host_path_id = preferred;
+            if(auto found = enterings(project, preferred, header_path_id)) {
+                auto n = choice->occurrence.value_or(0);
+                if(n < found->size()) {
+                    host = std::move((*found)[n]);
+                    occurrence = n;
+                }
+            } else if(auto chain = project.dep_graph.find_include_chain(preferred, header_path_id);
+                      !chain.empty()) {
+                host = Host{.file = preferred, .chain = std::move(chain)};
                 occurrence = choice->occurrence;
-                chain = std::move(c);
             }
         }
     }
-    if(chain.empty()) {
-        auto host = default_host(project, header_path_id);
+    if(!host) {
+        host = default_host(project, header_path_id);
         if(!host) {
             return std::unexpected(Fid{});
         }
-        host_path_id = host->file;
-        chain = std::move(host->chain);
     }
+    auto host_path_id = host->file;
+    auto& chain = host->chain;
 
     // Self-contained route: borrow the host's command, no prefix needed.
     // The chain is kept so a didSave along it still invalidates the session.
@@ -387,12 +395,14 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
         host_base_hash = choice->base_hash;
     }
 
+    bool lexical = host->lines.empty();
     if(!synthesize) {
         return HeaderContext{.host_path_id = host_path_id,
                              .occurrence = occurrence.value_or(0),
                              .host_command_hash = std::move(host_command_hash),
                              .host_base_hash = std::move(host_base_hash),
-                             .chain = llvm::SmallVector<Fid>(chain.begin(), chain.end() - 1)};
+                             .chain = llvm::SmallVector<Fid>(chain.begin(), chain.end() - 1),
+                             .lexical = lexical};
     }
 
     // Include directives along the chain are resolved with the host's real
@@ -462,7 +472,11 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
         }
         chain_contents.emplace_back(observed->content->getBuffer());
         chain_paths.push_back(project.file_table.spelling(chain[i]));
-        chain_entries.push_back({chain_paths.back(), chain_contents.back()});
+        chain_entries.push_back({
+            .path = chain_paths.back(),
+            .content = chain_contents.back(),
+            .line = lexical ? 0 : host->lines[i],
+        });
         project.file_table.observe(chain[i], observed->obs);
         deps.push_back(
             {.path_id = chain[i],
@@ -482,8 +496,11 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
     }
 
     auto target_spelling = project.file_table.spelling(chain.back());
-    auto synthesized =
-        synthesize_context(chain_entries, target_spelling, resolver, occurrence, target_content);
+    auto synthesized = synthesize_context(chain_entries,
+                                          target_spelling,
+                                          resolver,
+                                          lexical ? occurrence : std::nullopt,
+                                          target_content);
     if(!synthesized) {
         LOG_WARN("resolve_header_context: cannot match include chain for {} (host={})",
                  target_path,
@@ -503,7 +520,8 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
                          .host_command_hash = std::move(host_command_hash),
                          .host_base_hash = std::move(host_base_hash),
                          .chain = llvm::SmallVector<Fid>(chain.begin(), chain.end() - 1),
-                         .deps = std::move(deps)};
+                         .deps = std::move(deps),
+                         .lexical = lexical};
 }
 
 }  // namespace clice

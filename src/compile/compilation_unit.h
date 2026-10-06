@@ -13,6 +13,7 @@
 #include "compile/directive.h"
 #include "semantic/resolver.h"
 #include "semantic/symbol.h"
+#include "syntax/preamble_synthesis.h"
 #include "syntax/token.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -22,6 +23,13 @@
 namespace clice {
 
 class Semantics;
+
+/// What a synthesized file's text was cut from (see SynthesizedFile).
+struct SynthesizedOrigin {
+    std::string source;
+    std::vector<SourceRun> runs;
+    bool forced = false;
+};
 
 enum class CompilationKind : std::uint8_t {
     /// From preprocessing the source file. Therefore directives
@@ -173,10 +181,13 @@ public:
     bool borrows_context();
 
     /// The path of the file `fid` stands for: its own, or for a synthesized
-    /// fragment the file it was cut from, which the fragment's opening
-    /// #line marker names (the snapshot of the header, which carries none,
-    /// its own).
+    /// file the one its text was cut from.
     auto source_path(clang::FileID fid) -> llvm::StringRef;
+
+    /// Where `offset` in `fid` lies in source_path(fid): the same offset
+    /// but in a synthesized file, whose text runs copy the file at other
+    /// offsets.
+    std::uint32_t source_offset(clang::FileID fid, std::uint32_t offset);
 
     /// Whether the file is the compile's own source: the main file, or
     /// under a borrowed includer context a fragment cut from the host.

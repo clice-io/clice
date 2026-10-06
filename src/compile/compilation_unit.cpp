@@ -213,20 +213,37 @@ bool CompilationUnitRef::borrows_context() {
     return !self->synthesized.empty();
 }
 
+/// The origin of a synthesized file, null for any other.
+const static SynthesizedOrigin* origin_of(CompilationUnitRef unit,
+                                          const llvm::StringMap<SynthesizedOrigin>& synthesized,
+                                          clang::FileID fid) {
+    if(!unit.synthesized(fid)) {
+        return nullptr;
+    }
+    return &synthesized.find(unit.file_path(fid))->second;
+}
+
 auto CompilationUnitRef::source_path(clang::FileID fid) -> llvm::StringRef {
-    if(!synthesized(fid)) {
-        return file_path(fid);
+    if(auto* origin = origin_of(*this, self->synthesized, fid)) {
+        return origin->source;
     }
-    // The fragment's own marker precedes the cut file's text, whose
-    // #line directives would rename what follows them.
-    auto& SM = self->SM();
-    auto text = SM.getBufferData(fid);
-    auto marker = text.find("#line ");
-    if(marker == llvm::StringRef::npos) {
-        return file_path(fid);
+    return file_path(fid);
+}
+
+std::uint32_t CompilationUnitRef::source_offset(clang::FileID fid, std::uint32_t offset) {
+    auto* origin = origin_of(*this, self->synthesized, fid);
+    if(!origin) {
+        return offset;
     }
-    auto after = text.find('\n', marker) + 1;
-    return SM.getPresumedLoc(SM.getComposedLoc(fid, after)).getFilename();
+    auto run =
+        llvm::upper_bound(origin->runs, offset, [](std::uint32_t offset, const SourceRun& run) {
+            return offset < run.offset;
+        });
+    assert(run != origin->runs.begin() &&
+           offset - std::prev(run)->offset < std::prev(run)->length &&
+           "a position the context did not copy from its file");
+    run = std::prev(run);
+    return run->source_offset + (offset - run->offset);
 }
 
 bool CompilationUnitRef::host_source(clang::FileID fid) {
@@ -242,7 +259,10 @@ bool CompilationUnitRef::host_source(clang::FileID fid) {
         self->host.emplace();
         auto& SM = self->SM();
         auto predefines = self->instance->getPreprocessor().getPredefinesFileID();
-        for(auto path: self->synthesized.keys()) {
+        for(auto& [path, origin]: self->synthesized) {
+            if(origin.forced) {
+                continue;
+            }
             auto entry = SM.getFileManager().getOptionalFileRef(path);
             if(!entry) {
                 continue;

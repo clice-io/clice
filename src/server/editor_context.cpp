@@ -161,16 +161,14 @@ bool EditorContext::holds_choice(Fid path_id) const {
     auto path = project.file_table.resolve(path_id);
     if(saved->host_path_id.valid()) {
         auto host = saved->host_path_id;
-        if(project.build.commands(host).empty() ||
-           project.dep_graph.find_include_chain(host, path_id).empty()) {
+        auto occurrences = count_occurrences(project, host, path_id);
+        if(project.build.commands(host).empty() || occurrences == 0) {
             return false;
         }
         // A pinned occurrence can vanish while other inclusions of the
-        // header survive (the chain stays non-empty).
-        if(saved->occurrence.has_value()) {
-            if(*saved->occurrence >= project.count_occurrences(host, path_id)) {
-                return false;
-            }
+        // header survive.
+        if(saved->occurrence.has_value() && *saved->occurrence >= occurrences) {
+            return false;
         }
         CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
         return saved->command_hash.empty() || pin_alive(host, edit_paths, *saved);

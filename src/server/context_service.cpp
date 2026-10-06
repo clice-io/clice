@@ -92,7 +92,10 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
         // the header actually compiles with — the host's, edited by the
         // rules matching either file.
         CanonicalRef edit_paths[] = {host_path, path};
-        auto occurrences = ws.count_occurrences(host_id, path_id);
+        auto occurrences = count_occurrences(ws, host_id, path_id);
+        if(occurrences == 0) {
+            continue;
+        }
 
         for(auto& entry: commands) {
             auto applied = ws.build
@@ -261,7 +264,8 @@ kota::task<ext::SwitchContextResult>
         if(ws.build.commands(context_path_id).empty()) {
             co_return result;
         }
-        if(ws.dep_graph.find_include_chain(context_path_id, path_id).empty()) {
+        auto occurrences = count_occurrences(ws, context_path_id, path_id);
+        if(occurrences == 0) {
             co_return result;
         }
         std::optional<std::string> base;
@@ -272,10 +276,8 @@ kota::task<ext::SwitchContextResult>
                 co_return result;
             }
         }
-        if(params.occurrence.has_value() && *params.occurrence > 0) {
-            if(*params.occurrence >= ws.count_occurrences(context_path_id, path_id)) {
-                co_return result;
-            }
+        if(params.occurrence.has_value() && *params.occurrence >= occurrences) {
+            co_return result;
         }
         saved.host_path_id = context_path_id;
         saved.occurrence = params.occurrence;

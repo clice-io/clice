@@ -89,8 +89,10 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs;
         if(auto& synthesized = resolution.synthesized) {
             auto memory = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
-            for(auto& [file, text]: synthesized->files) {
-                memory->addFile(file, 0, llvm::MemoryBuffer::getMemBufferCopy(text, file));
+            for(auto& file: synthesized->files) {
+                memory->addFile(file.path,
+                                0,
+                                llvm::MemoryBuffer::getMemBufferCopy(file.content, file.path));
             }
             auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
                 llvm::makeIntrusiveRefCnt<vfs::View>());

@@ -6,9 +6,36 @@
 #include "project/hosting.h"
 #include "project/project.h"
 
+#include "llvm/Support/xxhash.h"
+
 namespace clice::testing {
 
 namespace {
+
+/// A project whose `*.cpp` under `tmp` compile with a default command.
+struct TreeProject {
+    TempDir tmp;
+    FileTable files;
+    Project project{files};
+
+    TreeProject() {
+        project.config.rules.push_back(
+            ConfigRule{.patterns = {"**/*.cpp"}, .default_command = std::string("clang++")});
+        project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+        project.build.reset_active("");
+    }
+
+    /// Write the file and name it.
+    Fid write(llvm::StringRef path, llvm::StringRef content) {
+        tmp.touch(path, content);
+        return project.file_table.intern(Spelling::absolute(tmp.path(path)));
+    }
+
+    /// The version of the file holding `content`.
+    std::uint32_t version(Fid file, llvm::StringRef content) {
+        return project.file_table.intern_version(file, llvm::xxh3_64bits(content)).raw;
+    }
+};
 
 ZEST_SUITE(Hosting) {
 
@@ -309,6 +336,94 @@ ZEST_CASE(LenderIgnoresCommandless) {
     ZASSERT(project.build.members().size() == 2u);
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/new.h")));
     ZEXPECT(!command_lender(project, header).has_value());
+};
+
+ZEST_CASE(EnteringsFollowTree) {
+    /// The unit enters `bar.h` through `foo.h`; its own include of it
+    /// comes later and finds the guard: the chain is the one the compile
+    /// took, not the shortest.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"foo.h\"\n#include \"bar.h\"\n";
+    llvm::StringRef foo_text = "#pragma once\n#include \"bar.h\"\n";
+    llvm::StringRef bar_text = "#pragma once\nint b;\n";
+    auto main = p.write("main.cpp", main_text);
+    auto foo = p.write("foo.h", foo_text);
+    auto bar = p.write("bar.h", bar_text);
+    p.project.dep_graph.set_includes(main, 0, {{foo}, {bar}});
+    p.project.dep_graph.set_includes(foo, 0, {{bar}});
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(foo, foo_text), .line = 1},
+        {.file = p.version(bar, bar_text), .parent = 0, .line = 2},
+        {.file = p.version(bar, bar_text), .line = 2, .skipped = true},
+    };
+    p.project.project_index.manifests[main] = std::move(manifest);
+
+    auto host = default_host(p.project, bar);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{main, foo, bar});
+    ZEXPECT(host->lines == llvm::SmallVector<std::uint32_t>{1, 2});
+    ZEXPECT(count_occurrences(p.project, main, bar) == 1u);
+};
+
+ZEST_CASE(TreeRulesOutHost) {
+    /// The scan resolved `shared.h`'s include under b.cpp's directories;
+    /// a.cpp's compile enters another `config.h`, so it lends no context.
+    TreeProject p;
+    llvm::StringRef a_text = "#include \"shared.h\"\n";
+    llvm::StringRef shared_text = "#pragma once\n#include <config.h>\n";
+    auto a = p.write("a.cpp", a_text);
+    auto b = p.write("b.cpp", "#include \"shared.h\"\n");
+    auto shared = p.write("common/shared.h", shared_text);
+    auto config_a = p.write("config_a/config.h", "");
+    auto config_b = p.write("config_b/config.h", "");
+    p.project.dep_graph.set_includes(a, 0, {{shared}});
+    p.project.dep_graph.set_includes(b, 0, {{shared}});
+    p.project.dep_graph.set_includes(shared, 0, {{config_b}});
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(a, a_text)};
+    manifest.nodes = {
+        {.file = p.version(shared, shared_text), .line = 1},
+        {.file = p.version(config_a, ""), .parent = 0, .line = 2},
+    };
+    p.project.project_index.manifests[a] = std::move(manifest);
+
+    ZEXPECT(count_occurrences(p.project, a, config_b) == 0u);
+    auto host = default_host(p.project, config_b);
+    ZASSERT(host);
+    ZEXPECT(host->file == b);
+    ZEXPECT(host->lines.empty());
+};
+
+ZEST_CASE(StaleTreeFallsBack) {
+    /// A file on the way changed since the tree was taken: the lexical
+    /// chain stands in.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"foo.h\"\n#include \"bar.h\"\n";
+    auto main = p.write("main.cpp", main_text);
+    auto foo = p.write("foo.h", "#pragma once\n");
+    auto bar = p.write("bar.h", "int b;\n");
+    p.project.dep_graph.set_includes(main, 0, {{foo}, {bar}});
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(foo, "#pragma once\n#include \"bar.h\"\n"), .line = 1},
+        {.file = p.version(bar, "int b;\n"), .parent = 0, .line = 2},
+    };
+    p.project.project_index.manifests[main] = std::move(manifest);
+
+    ZEXPECT(!enterings(p.project, main, bar).has_value());
+    auto host = default_host(p.project, bar);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{main, bar});
+    ZEXPECT(host->lines.empty());
 };
 
 };  // ZEST_SUITE(Hosting)

@@ -959,23 +959,24 @@ struct §(ctx)ctx { int x; };
 
     /// The header compiled as its host sees it: the host's text before the
     /// include arrives as a fragment the compile -includes, named after
-    /// the host by its opening #line marker — not by a #line the host's
+    /// the host and the offsets it was cut at — not by a #line the host's
     /// own text carries.
-    std::string marker = "#line 1 \"";
-    for(char c: unit->file_path(unit->main_file())) {
-        if(c == '\\') {
-            marker += '\\';
-        }
-        marker += c;
-    }
-    marker += "\"\n";
+    std::string marker = "#line 1 \"host.c\"\n";
+    std::string copied = "struct ctx { int x; };\n";
 
     Tester context;
     context.add_main("part.h", "struct §(ctx)ctx;\nstruct §(part)part { int x; };\n");
     context.prepare("-std=c17");
     auto prefix = TestVFS::path(".clice-prefix.h");
     context.params.add_synthesized({
-        {prefix, marker + "struct ctx { int x; };\n#line 9 \"elsewhere.c\"\n"}
+        {
+         .path = prefix,
+         .content = marker + copied + "#line 9 \"elsewhere.c\"\n",
+         .source = unit->file_path(unit->main_file()).str(),
+         .runs = {{.offset = static_cast<std::uint32_t>(marker.size()),
+                      .source_offset = 1,
+                      .length = static_cast<std::uint32_t>(copied.size())}},
+         }
     });
     context.owned_args.insert(context.owned_args.end() - 1, {"-include", prefix});
     context.params.arguments.clear();

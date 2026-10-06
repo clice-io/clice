@@ -8,6 +8,7 @@
 
 #include "compile/compilation.h"
 #include "feature/feature.h"
+#include "index/include_tree.h"
 #include "index/tu_index.h"
 #include "support/logging.h"
 #include "vfs/file_system.h"
@@ -365,6 +366,33 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
     }
 }
 
+static worker::IncludeTreeResult
+    handle_include_tree(const worker::IncludeTreeParams& params,
+                        const std::shared_ptr<std::atomic_bool>& stop) {
+    LOG_INFO("IncludeTree request: file={}", params.file);
+    ScopedTimer timer;
+    CompilationParams cp;
+    cp.kind = CompilationKind::Preprocess;
+    fill_args(cp, params.directory, params.arguments);
+    cp.workspace = params.workspace;
+    cp.stop = stop;
+    auto unit = preprocess(cp);
+    if(!unit.completed()) {
+        return {.success = false, .error = "preprocessing failed"};
+    }
+    auto tree = index::IncludeTree::from(unit);
+    LOG_PERF("build",
+             "kind=include_tree file={} nodes={} total_ms={}",
+             params.file,
+             tree.nodes.size(),
+             timer.ms());
+    return {
+        .paths = std::move(tree.paths),
+        .path_hashes = std::move(tree.path_hashes),
+        .nodes = std::move(tree.nodes),
+    };
+}
+
 static worker::TURunResult handle_turun(const worker::TURunParams& params,
                                         const std::shared_ptr<std::atomic_bool>& stop) {
     LOG_INFO("TURun request: file={}", params.file);
@@ -565,6 +593,10 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
             ScopedNice guard;
             return handle_turun(params, stop);
         });
+    serve<worker::IncludeTreeParams>(
+        peer,
+        worker::IncludeTreeResult{.success = false, .error = "Preprocessing cancelled"},
+        &handle_include_tree);
     const kota::codec::RawValue cancelled_query{"null"};
     serve<worker::CompletionParams>(peer, cancelled_query, &handle_completion);
     serve<worker::SignatureHelpParams>(peer, cancelled_query, &handle_signature_help);

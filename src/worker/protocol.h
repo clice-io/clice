@@ -12,6 +12,7 @@
 #include "compile/dep_file.h"
 #include "config/config.h"
 #include "feature/feature.h"
+#include "index/include_tree.h"
 #include "syntax/preamble_synthesis.h"
 #include "syntax/token.h"
 
@@ -382,6 +383,29 @@ struct TURunResult {
     std::vector<TidyDiagnostic> tidy_diagnostics;
 };
 
+/// Preprocess a unit for its include tree: where its compile enters each
+/// file (see HostTree).
+struct IncludeTreeParams {
+    std::string file;
+    std::string directory;
+    /// See CompilationParams::workspace.
+    std::string workspace;
+    std::vector<std::string> arguments;
+};
+
+struct IncludeTreeResult {
+    bool success = true;
+    std::string error;
+
+    /// The files the run read, the unit's own last, with the hash of the
+    /// bytes it read of each.
+    std::vector<std::string> paths;
+    std::vector<std::uint64_t> path_hashes;
+
+    /// The tree, each node's file an index into `paths`.
+    std::vector<index::IncludeNode> nodes;
+};
+
 /// Request the document links of an open file's AST. Only the main-file
 /// region is covered: the preamble is compiled into the PCH, and its links
 /// live in the PCH's pch.idx envelope (spliced in by the master).
@@ -418,7 +442,8 @@ struct EvictedParams {
 template <typename Params>
 constexpr inline bool is_build =
     std::same_as<Params, CompileParams> || std::same_as<Params, BuildPCHParams> ||
-    std::same_as<Params, BuildPCMParams> || std::same_as<Params, TURunParams>;
+    std::same_as<Params, BuildPCMParams> || std::same_as<Params, TURunParams> ||
+    std::same_as<Params, IncludeTreeParams>;
 
 }  // namespace clice::worker
 
@@ -471,6 +496,12 @@ template <>
 struct RequestTraits<clice::worker::TURunParams> {
     using Result = clice::worker::TURunResult;
     constexpr inline static std::string_view method = "clice/worker/tuRun";
+};
+
+template <>
+struct RequestTraits<clice::worker::IncludeTreeParams> {
+    using Result = clice::worker::IncludeTreeResult;
+    constexpr inline static std::string_view method = "clice/worker/includeTree";
 };
 
 template <>

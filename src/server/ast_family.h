@@ -229,6 +229,11 @@ private:
                                     const std::vector<std::string>& arguments,
                                     llvm::StringRef text);
 
+    /// Preprocess `host` for its include tree (Project::include_trees), so
+    /// a header context it lends follows the directives its compile really
+    /// enters. False when the run failed or was cancelled.
+    kota::task<bool> fetch_include_tree(RoundContext& ctx, Fid host);
+
     /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);
 
