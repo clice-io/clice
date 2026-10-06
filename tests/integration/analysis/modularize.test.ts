@@ -5,7 +5,7 @@
 /// The libraries, the standard library and its module sources are stand-ins
 /// in the workspace, so no real system header is involved.
 
-import { statSync } from "node:fs";
+import { cpSync, statSync } from "node:fs";
 import { MTIME_GRANULARITY, type ProcessResult, runProcess, sleep } from "@clice/tools/client";
 import { type Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test, type SessionFactory } from "../fixtures.ts";
@@ -776,6 +776,118 @@ test("modularize rewrites program modules", async ({ session }) => {
     expect(runSource).toContain(
         "int main() { return tool::run(core::Text{}, nullptr) + CFG_SIZE + CFG_DEFS; }",
     );
+});
+
+test("modularize merges configurations", async ({ session }) => {
+    const ws = await writeProject(session);
+    expect((await modularize(ws)).status).toBe(0);
+    // A second configuration: alpha exports blue for red, its alias names
+    // another namespace, and one more header is emptied.
+    cpSync(ws.path("wrap"), ws.path("two"), { recursive: true });
+    const alpha = ws.read("wrap/alpha.cppm");
+    ws.write(
+        "two/alpha.cppm",
+        alpha
+            .replace("using ::alpha::red;", "using ::alpha::blue;")
+            .replace("export namespace al = ::alpha;", "export namespace al = ::alpha::wide;"),
+    );
+    ws.write("two/alpha.macros.h", ws.read("wrap/alpha.macros.h") + "#define ALPHA_WIDE_ONLY 1\n");
+    ws.write("two/mirror/alpha/alpha/wide.h", "");
+    ws.write("two/.modularize", ws.read("two/.modularize") + "mirror/alpha/alpha/wide.h\n");
+    const configurations = [
+        { name: "one", condition: "defined(ONE)", out: "wrap" },
+        { name: "two", condition: "defined(TWO)", out: "two" },
+    ];
+    ws.write("merge.json", JSON.stringify({ configurations }));
+    const merge = (file = ws.path("merge.json")) =>
+        runClice("modularize", "--merge", file, "--out", ws.path("merged"));
+
+    const run = await merge();
+    expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
+    const plan = (JSON.parse(run.stdout) as { wrapping: Plan }).wrapping;
+    expect(plan.modules.map((module) => [module.name, module.imports, module.mirrors])).toEqual([
+        ["alpha", [], ["mirror/std"]],
+        ["beta", ["alpha"], ["mirror/std", "mirror/alpha"]],
+    ]);
+    expect(plan.modules[0]!.includeRoots).toEqual([]);
+    expect(plan.stdSources).toEqual([]);
+    expect(plan.mirrors).toEqual(["mirror/std", "mirror/alpha", "mirror/beta"]);
+
+    const dispatch = (file: string) =>
+        lines(
+            "#if defined(ONE)",
+            `#include "one/${file}"`,
+            "#elif defined(TWO)",
+            `#include "two/${file}"`,
+            "#else",
+            '#error "no configuration merged matches this compilation"',
+            "#endif",
+        );
+    expect(ws.read("merged/prelude.h")).toBe("#pragma once\n\n" + dispatch("prelude.h"));
+    expect(ws.read("merged/one/prelude.h")).toBe(ws.read("wrap/prelude.h"));
+    expect(ws.read("merged/two/alpha.macros.h")).toBe(ws.read("two/alpha.macros.h"));
+    const fragment = alpha.slice("module;\n".length, alpha.indexOf("\nexport module alpha;"));
+    expect(ws.read("merged/one/alpha.fragment.h")).toBe(fragment.trim() + "\n");
+
+    const merged = ws.read("merged/alpha.cppm");
+    expect(
+        merged.startsWith(
+            "module;\n\n" + dispatch("alpha.fragment.h") + "\nexport module alpha;\n",
+        ),
+    ).toBe(true);
+    const one = lines(
+        "#if defined(ONE)",
+        "export namespace al = ::alpha;",
+        "",
+        "export namespace alpha {",
+        "using ::alpha::red;",
+        "}",
+        "#endif",
+    );
+    const two = lines(
+        "#if defined(TWO)",
+        "export namespace al = ::alpha::wide;",
+        "",
+        "export namespace alpha {",
+        "using ::alpha::blue;",
+        "}",
+        "#endif",
+    );
+    // What both export first, unconditionally.
+    expect(merged.indexOf("using ::alpha::Color;")).toBeGreaterThan(-1);
+    expect(merged.indexOf("using ::alpha::Color;")).toBeLessThan(merged.indexOf(one));
+    expect(merged.indexOf(one)).toBeLessThan(merged.indexOf(two));
+    const beta = ws.read("merged/beta.cppm");
+    expect(beta.slice(beta.indexOf("export module beta;"))).not.toContain("#if");
+
+    expect(ws.read("merged/mirror/alpha/alpha/wide.h")).toBe("");
+    expect(ws.read("merged/mirror/alpha/alpha/alpha.h")).toBe("");
+
+    const failure = async (run: Promise<ProcessResult>) => {
+        const result = await run;
+        expect(result.status, result.stdout).toBe(1);
+        return (JSON.parse(result.stdout) as { error: string }).error;
+    };
+    ws.write("two/.modularize", ws.read("two/.modularize").replace("beta.cppm\n", ""));
+    expect(await failure(merge())).toBe("configurations one and two wrap different modules");
+    ws.write(
+        "named.json",
+        JSON.stringify({ configurations: [{ ...configurations[0], name: "mirror" }] }),
+    );
+    expect(await failure(merge(ws.path("named.json")))).toContain("not a distinct directory name");
+    expect(
+        await failure(
+            runClice(
+                "modularize",
+                "--merge",
+                ws.path("merge.json"),
+                "--partition",
+                ws.path("partition.json"),
+                "--out",
+                ws.path("merged"),
+            ),
+        ),
+    ).toContain("needs --out and no --partition");
 });
 
 test("modularize partition errors", async ({ session }) => {

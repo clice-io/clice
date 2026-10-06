@@ -53,6 +53,38 @@ A rewritten module becomes one named module, its name the module's:
 
 Which modules to rewrite and how coarse they are is the partition's choice: one module for the whole program keeps every header a partition, imported file by file; a module per directory gives each directory an interface but rebuilds every importer of a module when one of its interface partitions changes. [`clice analyze modules`](./analyze.md#modules) weighs both before the rewrite.
 
+## Merging configurations
+
+A wrapping holds what the headers declare and define in one build configuration: the platform's C library, the macros a library's configuration header sets, the names a library declares for one target alone. A program built for several platforms or configurations runs modularize once for each, on an index of that configuration and into a directory of its own, then merges the results.
+
+**Usage**: `clice modularize --merge <file> --out <dir>`
+
+```json
+{
+  "configurations": [
+    {
+      "name": "linux-x64",
+      "condition": "defined(__linux__) && defined(__x86_64__)",
+      "out": "linux-x64"
+    },
+    {
+      "name": "windows-x64",
+      "condition": "defined(_WIN32) && defined(__x86_64__)",
+      "out": "windows-x64"
+    }
+  ]
+}
+```
+
+`out` is the `--out` of the configuration's run, relative to the merge file. A condition holds in the compilations of its configuration alone. Under the merged `--out`:
+
+- `<name>/` per configuration: its prelude, its macro headers, and `<module>.fragment.h`, the global module fragment of its unit for each module.
+- `<module>.cppm` includes the fragment of the configuration whose condition holds and exports what every configuration exports; what only some configurations export follows under `#if` their conditions. A compilation no condition matches stops at an `#error`.
+- `prelude.h` includes the prelude of the configuration whose condition holds.
+- `mirror/` holds the headers any configuration empties.
+
+The configurations have to wrap the same modules. The plan the merge prints has neither `stdSources` nor `includeRoots`, paths on each configuration's machine.
+
 ## Output
 
 Under `--out`:

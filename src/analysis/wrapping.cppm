@@ -87,4 +87,23 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
                                           const std::optional<StdModules>& libcxx,
                                           llvm::StringRef root);
 
+/// The wrapping of one build configuration, as `wrap` wrote it.
+struct Configuration {
+    /// The directory under the merged output holding its own files.
+    std::string name;
+    /// A preprocessor condition holding in its compilations alone.
+    std::string condition;
+    std::vector<Wrapping::File> files;
+};
+
+/// The wrappings of several configurations as one, for a build whose
+/// compilations differ by platform or by configuration. A configuration's
+/// global module fragments, macro headers and prelude move into its
+/// directory; each module unit and the prelude pick them by its condition.
+/// A module unit exports what every configuration exports, the rest under
+/// the conditions of the configurations exporting it; the mirrors hold the
+/// headers any configuration empties. The plan carries no paths the
+/// configurations found on their machines.
+std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configurations);
+
 }  // namespace clice::analysis

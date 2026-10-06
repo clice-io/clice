@@ -68,7 +68,26 @@ struct ModularizeOptions {
            required = false)
     <std::string> out;
 
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help =
+               "JSON file listing build configurations to merge instead, each a name, the "
+               "preprocessor condition holding in its compilations alone and the --out "
+               "directory a run for it wrote",
+           required = false)
+    <std::string> merge;
+
     LogLevelOption log{.log_level = LogLevel::Warn};
+};
+
+struct MergeFile {
+    struct Configuration {
+        std::string name;
+        std::string condition;
+        /// Relative to the merge file.
+        std::string out;
+    };
+
+    std::vector<Configuration> configurations;
 };
 
 llvm::SmallString<256> join(llvm::StringRef base, llvm::StringRef relative) {
@@ -130,12 +149,74 @@ std::expected<void, std::string> write_files(llvm::StringRef out,
     return {};
 }
 
+std::expected<std::vector<analysis::Configuration>, std::string>
+    read_configurations(llvm::StringRef path) {
+    auto buffer = vfs::read(path);
+    if(!buffer) {
+        return std::unexpected(
+            std::format("cannot read {}: {}", path.str(), buffer.error().message()));
+    }
+    MergeFile file;
+    if(auto result = kota::codec::json::from_string((*buffer)->getBuffer(), file); !result) {
+        return std::unexpected(
+            std::format("{} is not a merge file: {}", path.str(), result.error().message));
+    }
+    std::vector<analysis::Configuration> configurations;
+    for(auto& entry: file.configurations) {
+        auto out = llvm::sys::path::is_absolute(entry.out)
+                       ? llvm::SmallString<256>(entry.out)
+                       : join(llvm::sys::path::parent_path(path), entry.out);
+        auto manifest = vfs::read(join(out, ".modularize"));
+        if(!manifest) {
+            return std::unexpected(std::format("configuration {}: {} holds no modularize output",
+                                               entry.name,
+                                               out.str().str()));
+        }
+        auto& configuration = configurations.emplace_back(analysis::Configuration{
+            .name = std::move(entry.name),
+            .condition = std::move(entry.condition),
+        });
+        llvm::SmallVector<llvm::StringRef> lines;
+        (*manifest)->getBuffer().split(lines, '\n', -1, false);
+        for(auto relative: lines) {
+            auto content = vfs::read(join(out, relative));
+            if(!content) {
+                return std::unexpected(std::format("cannot read {}/{}: {}",
+                                                   out.str().str(),
+                                                   relative.str(),
+                                                   content.error().message()));
+            }
+            configuration.files.push_back({relative.str(), (*content)->getBuffer().str()});
+        }
+    }
+    return configurations;
+}
+
 int run_modularize(const ModularizeOptions& opts) {
     auto fail = [](std::string error) {
         print_json(Failure{.error = std::move(error)});
         return 1;
     };
 
+    if(opts.merge) {
+        if(opts.partition || !opts.out) {
+            return fail("modularize --merge needs --out and no --partition");
+        }
+        auto configurations = read_configurations(*opts.merge);
+        if(!configurations) {
+            return fail(configurations.error());
+        }
+        auto merged = analysis::merge(*configurations);
+        if(!merged) {
+            return fail(merged.error());
+        }
+        if(auto written = write_files(Spelling(*opts.out, Spelling::cwd()).str(), merged->files);
+           !written) {
+            return fail(written.error());
+        }
+        print_json(Plan{.wrapping = std::move(merged->plan)});
+        return 0;
+    }
     if(!opts.partition || !opts.out) {
         return fail("modularize needs --partition and --out");
     }
@@ -230,8 +311,9 @@ void add_modularize(kota::deco::cli::SubCommander& root) {
         })
         .on_error([](auto err) { print_json(Failure{.error = err.message}); });
     root.add({.name = "modularize",
-              .description = "Wrap a partition's libraries as modules over their headers and "
-                             "rewrite its program modules into module units"},
+              .description = "Wrap a partition's libraries as modules over their headers, "
+                             "rewrite its program modules into module units, or merge the "
+                             "wrappings of several build configurations"},
              std::move(command));
 }
 
