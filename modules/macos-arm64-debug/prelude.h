@@ -1,8 +1,8 @@
 #pragma once
 
 #include <assert.h>
+#include <pthread.h>
 #include <strings.h>
-#include <sys/types.h>
 #include <time.h>
 #include <errno.h>
 #include <stdio.h>

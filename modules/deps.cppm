@@ -4,17 +4,17 @@ module;
 #include "linux-x64/deps.fragment.h"
 #elif defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)
 #include "linux-x64-debug/deps.fragment.h"
-#elif defined(__linux__) && defined(__aarch64__)
+#elif defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)
 #include "linux-arm64/deps.fragment.h"
 #elif defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)
 #include "macos-arm64/deps.fragment.h"
 #elif defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)
 #include "macos-arm64-debug/deps.fragment.h"
-#elif defined(__APPLE__) && defined(__x86_64__)
+#elif defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG)
 #include "macos-x64/deps.fragment.h"
-#elif defined(_WIN32) && defined(__x86_64__)
+#elif defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG)
 #include "windows-x64/deps.fragment.h"
-#elif defined(_WIN32) && defined(__aarch64__)
+#elif defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG)
 #include "windows-arm64/deps.fragment.h"
 #else
 #error "no configuration merged matches this compilation"
@@ -27428,24 +27428,24 @@ using ::toml::impl::value_variadic_ctor_allowed;
 using ::toml::impl::wrap_node;
 }
 
-#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__)) || (defined(_WIN32) && defined(__x86_64__)) || (defined(_WIN32) && defined(__aarch64__))
+#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
 export namespace simdjson::dom {
 using ::simdjson::dom::stage1_worker;
 }
 #endif
 
-#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__))
+#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG))
 export namespace llvm::sys::fs {
 using ::llvm::sys::fs::changeFileOwnership;
 }
 #endif
 
-#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__)) || (defined(_WIN32) && defined(__x86_64__)) || (defined(_WIN32) && defined(__aarch64__))
+#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
 export using ::_CXChildVisitResult;
 export using ::_CXCursorAndRangeVisitorBlock;
 #endif
 
-#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__)) || (defined(_WIN32) && defined(__x86_64__))
+#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG))
 export namespace roaring::internal {
 using ::roaring::internal::ROARING_SUPPORTS_AVX2;
 using ::roaring::internal::ROARING_SUPPORTS_AVX512;
@@ -27524,14 +27524,14 @@ using ::simdjson::fallback::ondemand::logger::log_level;
 }
 #endif
 
-#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__))
+#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG))
 export namespace llvm {
 using ::llvm::DisableABIBreakingChecks;
 using ::llvm::VerifyDisableABIBreakingChecks;
 }
 #endif
 
-#if (defined(__linux__) && defined(__aarch64__)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__))
+#if (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
 export namespace simdjson {
 namespace builder = ::simdjson::arm64::builder;
 namespace builtin = ::simdjson::arm64;
@@ -27601,7 +27601,7 @@ using ::simdjson::arm64::ondemand::logger::log_level;
 }
 #endif
 
-#if (defined(__linux__) && defined(__aarch64__)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__))
+#if (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
 export namespace simdjson::arm64::ondemand {
 using ::simdjson::arm64::ondemand::stage1_worker;
 }
@@ -27624,7 +27624,7 @@ using ::llvm::setCurrentDebugTypes;
 }
 #endif
 
-#if (defined(_WIN32) && defined(__x86_64__)) || (defined(_WIN32) && defined(__aarch64__))
+#if (defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
 export using ::DWORD;
 export using ::HANDLE;
 export using ::PVOID;

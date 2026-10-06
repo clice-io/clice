@@ -1,6 +1,6 @@
 #include <assert.h>
+#include <pthread.h>
 #include <strings.h>
-#include <sys/types.h>
 #include <time.h>
 #include <errno.h>
 #include <stdio.h>
@@ -143,6 +143,7 @@ import std.compat;
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/StringSaver.h"
+#include "llvm/Support/Threading.h"
 #include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Support/raw_ostream.h"
