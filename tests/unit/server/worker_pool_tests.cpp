@@ -1426,13 +1426,14 @@ ZEST_CASE(NamedCrashKeepsBudget) {
     ZEXPECT(f.crash_streak(0, true) == 2u);
 }
 
-ZEST_CASE(OutsideKillKeepsBudget) {
+ZEST_CASE(IdleKillKeepsBudget) {
     WorkerPoolFixture f;
     f.add_stateless(true, false);
     f.set_max_crash_streak(3);
 
-    // The OOM killer or a user's signal says nothing about the slot: kills
-    // by SIGHUP, SIGINT, SIGKILL and SIGTERM in a row leave the budget whole.
+    // A terminated session, or an idle worker the OOM killer or a user
+    // killed, says nothing about the slot: SIGHUP, SIGINT, SIGKILL and
+    // SIGTERM in a row leave the budget whole.
     for(int signal: {1, 2, 9, 15}) {
         ZEXPECT(f.simulate_crash(0, false, 0, signal));
     }
@@ -1440,6 +1441,18 @@ ZEST_CASE(OutsideKillKeepsBudget) {
 
     f.simulate_crash(0, false, 0, 11);
     ZEXPECT(f.crash_streak(0) == 1u);
+}
+
+ZEST_CASE(BusyKillSpendsBudget) {
+    WorkerPoolFixture f;
+    f.add_stateful(true);
+
+    // Killed while compiling several documents, none of which is blamed:
+    // the budget alone slows a load that keeps getting killed.
+    auto first = f.dispatch(0, true, "clice/worker/compile /a.cpp");
+    auto second = f.dispatch(0, true, "clice/worker/compile /b.cpp");
+    f.simulate_crash(0, true, 0, 9);
+    ZEXPECT(f.crash_streak(0, true) == 1u);
 }
 
 ZEST_CASE(DeathNamesItsRequest) {
@@ -1461,10 +1474,10 @@ ZEST_CASE(DeathNamesItsRequest) {
 
     // Among several requests a nameless death accuses none of them, and a
     // memory reclaim accuses its request of nothing either.
-    death.solo = false;
+    death.in_flight = 2;
     ZEXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp").code ==
             worker_lost);
-    death.solo = true;
+    death.in_flight = 1;
     death.reclaimed = true;
     ZEXPECT(WorkerPoolFixture::death_error(death, "clice/worker/compile /a.cpp").code ==
             worker_lost);
@@ -1483,8 +1496,8 @@ ZEST_CASE(DeathCountsCompany) {
     f.mark_dead(0, true);
     f.mark_dead(1, true);
 
-    ZEXPECT(lone->solo);
-    ZEXPECT(!shared->solo);
+    ZEXPECT(lone->in_flight == 1u);
+    ZEXPECT(shared->in_flight == 2u);
 }
 
 ZEST_CASE(DeathFreesDocuments) {
@@ -2397,7 +2410,7 @@ ZEST_CASE(CrashNotification) {
         ZEXPECT(!f.crash_reports[0].stateful);
         ZEXPECT(f.crash_reports[0].exit_signal == 9);
         ZEXPECT(f.crash_reports[0].will_restart);
-        // A kill from outside spends no crash budget.
+        // An idle worker's kill spends no crash budget.
         ZEXPECT(f.crash_reports[0].crash_streak == 0u);
 
         co_await f.stop();

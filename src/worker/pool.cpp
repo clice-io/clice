@@ -418,7 +418,7 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
     w.busy = false;
     w.low_priority = false;
     w.preempt_source.reset();
-    w.death->solo = w.dispatches.size() <= 1;
+    w.death->in_flight = w.dispatches.size();
     w.dispatches.clear();
     if(stateful) {
         for(auto& [path_id, widx]: owner) {
@@ -604,11 +604,13 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     reset_streak_if_healthy(w);
     // A death that names its request is that request's content's doing:
     // the caller blames the content, and the slot respawns with its streak
-    // untouched, like a preemption. A kill from outside (the OOM killer, a
-    // user, a terminated session) says nothing about the slot either: the
-    // slot budget bounds a process that keeps failing. Only a nameless
-    // failure of the process itself counts.
-    if(death.culprit.empty() && !terminated && exit_signal != sigkill) {
+    // untouched, like a preemption. A terminated session says nothing about
+    // the slot, nor does a kill of an idle worker (the OOM killer, a user).
+    // A worker killed while running requests counts: when several were in
+    // flight none is blamed, and only the budget slows a load that keeps
+    // getting killed.
+    bool idle_kill = exit_signal == sigkill && death.in_flight == 0;
+    if(death.culprit.empty() && !terminated && !idle_kill) {
         w.crash_streak += 1;
     }
 
@@ -647,9 +649,9 @@ kota::ipc::Error WorkerPool::death_error(const WorkerDeath& death,
                                          kota::codec::dyn::Value identity) {
     namespace errc = worker::dispatch_errc;
     auto named = !death.culprit.empty();
-    auto code = named && death.culprit == tag              ? errc::worker_crashed
-                : !named && death.solo && !death.reclaimed ? errc::worker_died
-                                                           : errc::worker_lost;
+    auto code = named && death.culprit == tag                        ? errc::worker_crashed
+                : !named && death.in_flight <= 1 && !death.reclaimed ? errc::worker_died
+                                                                     : errc::worker_lost;
     return kota::ipc::Error{code, death.cause, std::move(identity)};
 }
 

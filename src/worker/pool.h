@@ -49,9 +49,9 @@ struct WorkerCrashInfo {
     /// Non-zero when the worker was killed by a signal (e.g. 9 = SIGKILL).
     int exit_signal = 0;
 
-    /// Consecutive fast crashes of this slot that named no request and were
-    /// no kill from outside, this one included when it is such a crash.
-    /// Resets after a healthy uptime, so only genuine crash loops accumulate.
+    /// Consecutive fast deaths of this slot that count against its budget
+    /// (see WorkerPool), this one included when it does. Resets after a
+    /// healthy uptime, so only genuine crash loops accumulate.
     unsigned crash_streak = 0;
 
     /// Whether the pool will attempt to respawn this worker.
@@ -82,10 +82,10 @@ struct WorkerDeath {
     /// (worker_lost) instead of requeueing for free like a deliberate cancel.
     bool reclaimed = false;
 
-    /// At most one request was in flight when the worker died. A death that
-    /// names no request is held against a request only when it ran alone:
-    /// among several, nothing tells which one killed the worker.
-    bool solo = true;
+    /// Requests in flight when the worker died. A death that names no
+    /// request is held against a request only when it ran alone: among
+    /// several, nothing tells which one killed the worker.
+    std::size_t in_flight = 0;
 };
 
 /// The last lines a worker wrote to stderr, kept for its crash report:
@@ -186,9 +186,9 @@ struct WorkerPoolOptions {
 ///     names the one it killed the worker for; each request in flight
 ///     learns whether it is that one. A death that names a request is that
 ///     request's content's doing and spends no slot budget; neither does a
-///     kill from outside (SIGKILL, SIGTERM, SIGINT, SIGHUP: the OOM killer,
-///     a user, a terminated session). Only the process itself failing
-///     without naming a request counts toward the streak.
+///     terminated session (SIGTERM, SIGINT, SIGHUP) or a SIGKILL of an idle
+///     worker (the OOM killer, a user). Every other death naming no request
+///     counts toward the streak.
 ///   - The pool NEVER retries a request. Requests do not survive a crash;
 ///     slots do. Retry policy is semantic and lives with the caller —
 ///     deliver() is the shared form of it.
@@ -358,8 +358,8 @@ private:
         /// memory pressure: respawn immediately, without crash accounting.
         bool preempted = false;
 
-        /// Consecutive fast crashes naming no request, kills from outside
-        /// excluded; resets after healthy uptime.
+        /// Consecutive fast deaths that count against the slot's budget
+        /// (see process_crash); resets after healthy uptime.
         unsigned crash_streak = 0;
 
         /// The death record of the current incarnation, fresh at every
