@@ -1,8 +1,11 @@
-#include <string>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "command/argument_parser.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :command.argument_parser;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 

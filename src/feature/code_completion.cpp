@@ -1,32 +1,13 @@
-#include <algorithm>
-#include <cassert>
-#include <cstdint>
-#include <format>
-#include <optional>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+module;
 
-#include "feature/feature.h"
-#include "semantic/display.h"
-#include "semantic/resolver.h"
-#include "support/fuzzy_matcher.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/raw_ostream.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/Expr.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Lex/Preprocessor.h"
-#include "clang/Sema/CodeCompleteConsumer.h"
-#include "clang/Sema/DeclSpec.h"
-#include "clang/Sema/Designator.h"
-#include "clang/Sema/HeuristicResolver.h"
-#include "clang/Sema/Sema.h"
-#include "clang/Sema/SemaCodeCompletion.h"
+module clice;
+
+import :feature.feature;
+import :semantic.display;
+import :semantic.resolver;
+import :support.fuzzy_matcher;
 
 namespace clice::feature {
 

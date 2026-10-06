@@ -1,18 +1,12 @@
-#include "compile/diagnostic.h"
+module;
 
-#include <utility>
+#include "modules/prelude.h"
 
-#include "compile/implement.h"
-#include "support/format.h"
+module clice;
 
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/AllDiagnostics.h"
-#include "clang/Basic/Diagnostic.h"
-#include "clang/Basic/DiagnosticIDs.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Lex/Preprocessor.h"
+import :compile.diagnostic;
+import :compile.implement;
+import :support.format;
 
 namespace clice {
 

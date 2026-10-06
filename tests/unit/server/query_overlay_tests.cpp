@@ -1,33 +1,29 @@
-#include <format>
-#include <string>
-#include <vector>
+module;
 
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "test/tester.h"
-#include "index/query.h"
-#include "index/serialization.h"
-#include "index/shard.h"
-#include "index/tu_index.h"
-#include "project/command_resolver.h"
-#include "project/index_store.h"
-#include "sched/families/pch.h"
-#include "sched/families/pcm.h"
-#include "sched/families/turun.h"
-#include "sched/graph.h"
-#include "sched/index/pump.h"
-#include "server/ast_projection.h"
-#include "server/live_sources.h"
-#include "server/session_store.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
-#include "worker/pool.h"
+#include "modules/prelude.h"
 
-#include "kota/ipc/lsp/text.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :index.query;
+import :index.serialization;
+import :index.shard;
+import :index.tu_index;
+import :project.command_resolver;
+import :project.index_store;
+import :sched.families.pch;
+import :sched.families.pcm;
+import :sched.families.turun;
+import :sched.graph;
+import :sched.index.pump;
+import :server.ast_projection;
+import :server.live_sources;
+import :server.session_store;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
+import :vfs.file_system;
+import :vfs.path;
+import :worker.pool;
 
 namespace clice::testing {
 namespace {

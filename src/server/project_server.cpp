@@ -1,26 +1,23 @@
-#include "server/project_server.h"
+module;
 
-#include <memory>
-#include <string>
-#include <vector>
+#include "modules/prelude.h"
 
 #include "version.h"
-#include "index/writer_lock.h"
-#include "sched/bootstrap.h"
-#include "server/control_server.h"
-#include "server/file_tracker.h"
-#include "server/master_server.h"
-#include "support/cache_store.h"
-#include "support/logging.h"
-#include "vfs/path.h"
-#include "worker/protocol.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "kota/codec/dyn/decode.h"
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :index.writer_lock;
+import :sched.bootstrap;
+import :server.control_server;
+import :server.file_tracker;
+import :server.master_server;
+import :server.project_server;
+import :support.logging;
+import :vfs.cache_store;
+import :vfs.path;
+import :worker.protocol;
 
 namespace clice {
 

@@ -1,14 +1,10 @@
-#include <format>
-#include <optional>
-#include <string>
-#include <vector>
+module;
 
-#include "feature/feature.h"
+#include "modules/prelude.h"
 
-#include "kota/ipc/lsp/uri.h"
-#include "llvm/ADT/DenseSet.h"
-#include "clang/Basic/DiagnosticLex.h"
-#include "clang/Basic/DiagnosticSema.h"
+module clice;
+
+import :feature.feature;
 
 namespace clice::feature {
 

@@ -1,10 +1,15 @@
-#include "driver/query_support.h"
+module;
 
-#include "config/config.h"
-#include "index/writer_lock.h"
-#include "project/configuration.h"
-#include "sched/batch.h"
-#include "server/control_client.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :config.config;
+import :driver.query_support;
+import :index.writer_lock;
+import :project.configuration;
+import :sched.batch;
+import :server.control_client;
 
 namespace clice::driver {
 

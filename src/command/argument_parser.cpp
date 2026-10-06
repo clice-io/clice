@@ -1,18 +1,10 @@
-#include "command/argument_parser.h"
+module;
 
-#include <format>
-#include <span>
-#include <string_view>
-#include <utility>
+#include "modules/prelude.h"
 
-#include <kota/deco/option.h>
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringTable.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/raw_ostream.h"
-#include "clang/Driver/Types.h"
-#include "clang/Options/OptionUtils.h"
+module clice;
+
+import :command.argument_parser;
 
 namespace clice {
 

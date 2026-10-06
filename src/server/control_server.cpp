@@ -1,17 +1,16 @@
-#include "server/control_server.h"
+module;
 
-#include <format>
-#include <list>
-#include <memory>
+#include "modules/prelude.h"
 
-#include "server/control.h"
-#include "server/file_tracker.h"
-#include "server/project_server.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "kota/ipc/codec/json.h"
-#include "kota/ipc/transport.h"
-#include "llvm/ADT/SmallVector.h"
+module clice;
+
+import :server.control;
+import :server.control_server;
+import :server.file_tracker;
+import :server.project_server;
+import :support.logging;
 
 namespace clice {
 

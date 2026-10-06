@@ -1,6 +1,12 @@
-#include "test/test.h"
-#include "feature/feature.h"
-#include "vfs/file_table.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :feature.feature;
+import :tests.unit.test.test;
+import :vfs.file_table;
 
 namespace clice::testing {
 

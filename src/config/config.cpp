@@ -1,24 +1,18 @@
-#include "config/config.h"
+module;
 
-#include <algorithm>
-#include <initializer_list>
+#include "modules/prelude.h"
 
-#include "feature/feature.h"
-#include "support/logging.h"
-#include "support/shell.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/io/system.h"
-#include "kota/codec/json/json.h"
-#include "kota/codec/json/schema.h"
-#include "kota/codec/toml/toml.h"
-#include "kota/support/glob_pattern.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/Threading.h"
+module clice;
+
+import :config.config;
+import :feature.feature;
+import :support.logging;
+import :support.shell;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

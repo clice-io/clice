@@ -1,14 +1,17 @@
-#include <algorithm>
-#include <thread>
+module;
 
-#include "test/test.h"
-#include "support/process.h"
+#include "modules/prelude.h"
 
 #ifdef __linux__
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 #endif
+
+module clice;
+
+import :support.process;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

@@ -1,15 +1,20 @@
+module;
+
+#include "modules/prelude.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
-#include "test/cdb_helper.h"
-#include "test/platform.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "project/build.h"
-#include "project/configuration.h"
-#include "project/project.h"
-#include "vfs/path.h"
+module clice;
+
+import :project.build;
+import :project.configuration;
+import :project.project;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.platform;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.path;
 
 namespace clice::testing {
 

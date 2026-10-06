@@ -1,6 +1,13 @@
+module;
+
+#include "modules/prelude.h"
+
 #include "version.h"
-#include "test/test.h"
-#include "support/logging.h"
+
+module clice;
+
+import :support.logging;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

@@ -1,20 +1,17 @@
+module;
+
+#include "modules/prelude.h"
 /// What each code action renders is pinned by the snapshot corpus
 /// (tests/snap/code_action/); these cases apply one action and compile the
 /// result, which the corpus cannot: the edited file must be the expected
 /// text, compile cleanly and, for a definition, define the function the
 /// action was offered on.
 
-#include <format>
-#include <string>
-#include <utility>
-#include <vector>
+module clice;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "feature/feature.h"
-
-#include "llvm/ADT/STLExtras.h"
-#include "clang/AST/RecursiveASTVisitor.h"
+import :feature.feature;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 

@@ -1,0 +1,33 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load(":modules.bzl", "LIBRARIES", "MODULE_COPTS")
+
+# The third-party libraries as one named module over their headers, written
+# by `clice modularize` once for each configuration CI builds and merged:
+# deps.cppm includes the libraries' headers in its global module fragment,
+# <configuration>/deps.fragment.h of the configuration whose condition
+# holds, and exports what they declare. prelude.h, which every module unit
+# of clice includes first, imports it and replays the macros its headers
+# define.
+
+# The fragments, the macro headers and the preludes.
+cc_library(
+    name = "headers",
+    textual_hdrs = glob(["**/*.h"]),
+)
+
+cc_library(
+    name = "deps",
+    copts = MODULE_COPTS,
+    features = ["cpp_modules"],
+    module_interfaces = ["deps.cppm"],
+    deps = [
+        ":headers",
+        "@xclang//bazel:std",
+    ] + LIBRARIES,
+)
+
+cc_library(
+    name = "modules",
+    visibility = ["//visibility:public"],
+    deps = [":deps"],
+)

@@ -1,7 +1,13 @@
-#include "driver/driver.h"
-#include "sched/batch.h"
-#include "support/logging.h"
-#include "vfs/path.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :driver.driver;
+import :sched.batch;
+import :support.logging;
+import :vfs.path;
 
 namespace clice::driver {
 

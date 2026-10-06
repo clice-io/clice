@@ -1,7 +1,11 @@
-#include <map>
+module;
 
-#include "test/test.h"
-#include "support/format.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :support.format;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

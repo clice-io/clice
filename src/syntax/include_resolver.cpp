@@ -1,8 +1,11 @@
-#include "syntax/include_resolver.h"
+module;
 
-#include "vfs/file_system.h"
+#include "modules/prelude.h"
 
-#include "llvm/Support/Path.h"
+module clice;
+
+import :syntax.include_resolver;
+import :vfs.file_system;
 
 namespace clice {
 

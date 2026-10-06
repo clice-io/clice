@@ -1,5 +1,11 @@
-#include "test/test.h"
-#include "sched/index/ledger.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :sched.index.ledger;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {

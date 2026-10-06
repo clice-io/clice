@@ -1,14 +1,14 @@
-#include "index/include_tree.h"
+module;
 
-#include "compile/compilation_unit.h"
-#include "support/logging.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/xxhash.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :compile.compilation_unit;
+import :index.include_tree;
+import :support.logging;
 
 namespace clice::index {
 

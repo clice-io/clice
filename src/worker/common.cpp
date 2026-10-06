@@ -1,6 +1,11 @@
-#include "worker/common.h"
+module;
 
-#include "support/environment.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :support.environment;
+import :worker.common;
 
 namespace clice {
 

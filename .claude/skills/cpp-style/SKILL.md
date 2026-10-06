@@ -41,11 +41,23 @@ defending against ghosts.
 
 ## Files & Organization
 
-- Headers are `.h` with `#pragma once` — never include guards.
-- Sources are `.cpp`; entry points are `.cc` (`clice.cc`,
-  `src/driver/*.cc`) — a deliberate distinction, revisit when the project
-  moves to C++20 modules.
+- clice is one C++20 module, `clice`. An interface is a partition,
+  `<stem>.cppm` beside its source, named by its path under `src/`
+  (`module clice:vfs.path;`, `tests.unit.*` under `tests/unit/`);
+  sources are implementation units `.cpp`, entry points `.cc` (`clice.cc`,
+  `src/driver/*.cc`).
+- Every module unit but the primary interface (`src/module.cppm`, which
+  exports nothing) opens with `module;` and `#include "modules/prelude.h"`,
+  which imports the third-party module (`modules/`) and `std.compat` and
+  replays their macros; then the macro headers it uses, the module
+  declaration, and one `import :<partition>;` per partition it names.
+- `.h` is left for what a module cannot carry — macros (`*.macros.h`) and
+  platform headers (`vfs/win32.h`) — with `#pragma once`, never include
+  guards.
 - File names are `snake_case`.
+- Every file sees the names of all it imports: a file-local helper can
+  clash with a name of another partition or lose overload resolution and
+  ADL to a library function (`llvm::join`) no header used to bring in.
 - File-local helpers: a single one is `static`; a cluster of them goes in
   one anonymous namespace.
 

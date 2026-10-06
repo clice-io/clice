@@ -1,16 +1,16 @@
-#include <memory>
-#include <span>
-#include <string>
-#include <vector>
+module;
 
-#include "analysis/annotation.h"
-#include "analysis/module_graph.h"
-#include "driver/analysis_support.h"
-#include "driver/driver.h"
-#include "driver/query_support.h"
+#include "modules/prelude.h"
 
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/StringExtras.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :analysis.annotation;
+import :analysis.module_graph;
+import :driver.analysis_support;
+import :driver.driver;
+import :driver.query_support;
 
 namespace clice::driver {
 

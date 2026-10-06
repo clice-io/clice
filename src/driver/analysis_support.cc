@@ -1,16 +1,14 @@
-#include "driver/analysis_support.h"
+module;
 
-#include <format>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "project/command_resolver.h"
-#include "project/open_index.h"
-#include "project/project.h"
-#include "vfs/file_system.h"
+module clice;
 
-#include "kota/codec/json/json.h"
-#include "kota/support/glob_pattern.h"
-#include "llvm/Support/Path.h"
+import :driver.analysis_support;
+import :project.command_resolver;
+import :project.open_index;
+import :project.project;
+import :vfs.file_system;
 
 namespace clice::driver {
 

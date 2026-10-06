@@ -1,9 +1,8 @@
-#include <csignal>
+module;
+
+#include "modules/prelude.h"
 
 #include "version.h"
-#include "driver/driver.h"
-
-#include "kota/deco/deco.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -11,7 +10,11 @@
 #include <windows.h>
 #endif
 
-int main(int argc, const char** argv) {
+module clice;
+
+import :driver.driver;
+
+extern "C++" int main(int argc, const char** argv) {
 #ifdef _WIN32
     // A process without a window is background work to Windows: it is
     // throttled (EcoQoS) onto the efficiency cores of a hybrid CPU, which

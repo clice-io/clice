@@ -7,6 +7,23 @@ clang API changes; this file covers everything around them. Every entry: what yo
 why, what we do, how to check it before spending CI time. Append to it with every
 toolchain change.
 
+## 2026-10: xclang 23.1.2.9
+
+A repack of 23.1.2.8: the same compiler and runtimes, other config files and Bazel toolchain.
+
+| Symptom                                                                                                                                                                                                            | Cause                                                                                                                                                                           | Fix                                                                                                       | Check                                                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Any compile for `x86_64-pc-windows-msvc`, also `-ffreestanding` ones and clice's queries of the driver, stops at `cannot read configuration file`: the snap fixtures pinning that target fail on the inspect path. | 23.1.2.8's MSVC config files read `../sdk/windows/<target>.cfg`, which only `xclang sdk fetch windows` writes.                                                                  | 23.1.2.9's config files load without a fetched SDK.                                                       | `clang++ --target=x86_64-pc-windows-msvc -ffreestanding -nostdinc -fsyntax-only` on an empty file exits 0 on Linux. |
+| macOS: the dSYM, hence the GSYM, has no line information for half of clice's sources (`crash_handler` symbolizes without `logging.cpp`).                                                                           | A partition `foo.cppm` and its implementation unit `foo.cpp` both compile to `foo.o` in one archive; the debug map names archive members by name, and dsymutil takes the first. | 23.1.2.9's toolchain has `supports_start_end_lib` on Linux and macOS: Bazel links the objects themselves. | `llvm-nm -ap bin/clice \| grep ' OSO ' \| grep -c '\.a('` prints 0.                                                 |
+
+## 2026-10: xclang 23.1.2.8
+
+The same LLVM; the release clice's C++20 modules need.
+
+| Symptom                                                                                                                                   | Cause                                                                                                                                  | Fix                                                                                        | Check                                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| macOS: a module unit compiles as if its dependencies' `defines` were unset (spdlog falls back to its bundled fmt, `fmt_lib` names `fmt`). | rules_cc's macOS feature list leaves the defines to Bazel's legacy feature, whose actions are not the C++20 module compiles and scans. | xclang 23.1.2.8 puts `preprocessor_defines_feature` in the macOS list (clice-io/xclang#1). | `bazel aquery 'mnemonic("CppCompile", //modules:deps)'` on macOS lists `-DSPDLOG_COMPILED_LIB`. |
+
 ## 2026-10: xclang 23.1.2.6
 
 What clice's Bazel files did around xclang's toolchain moved into xclang's

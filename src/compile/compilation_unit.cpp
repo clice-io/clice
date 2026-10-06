@@ -1,10 +1,13 @@
-#include "compile/implement.h"
-#include "semantic/display.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+module;
 
-#include "kota/ipc/lsp/text.h"
-#include "clang/Lex/Preprocessor.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :compile.implement;
+import :semantic.display;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

@@ -1,30 +1,21 @@
-#include "server/master_server.h"
+module;
 
-#include <list>
-#include <memory>
-#include <set>
-#include <string>
-#include <tuple>
-#include <vector>
+#include "modules/prelude.h"
 
 #include "version.h"
-#include "server/features.h"
-#include "server/lsp_client.h"
-#include "support/anomaly.h"
-#include "support/environment.h"
-#include "support/logging.h"
-#include "vfs/file_system.h"
-#include "vfs/path.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "kota/codec/json/json.h"
-#include "kota/ipc/codec/json.h"
-#include "kota/ipc/recording_transport.h"
-#include "kota/ipc/transport.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/Process.h"
+module clice;
+
+import :server.features;
+import :server.lsp_client;
+import :server.master_server;
+import :support.anomaly;
+import :support.environment;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 

@@ -1,22 +1,17 @@
-#include <algorithm>
-#include <expected>
-#include <format>
-#include <map>
-#include <optional>
-#include <string>
-#include <vector>
+module;
 
-#include "test/merge_unit.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "test/tester.h"
-#include "index/query.h"
-#include "index/rename.h"
-#include "index/symbol_query.h"
-#include "vfs/file_system.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Path.h"
+module clice;
+
+import :index.query;
+import :index.rename;
+import :index.symbol_query;
+import :tests.unit.test.merge_unit;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
+import :vfs.file_system;
 
 namespace clice::testing {
 namespace {
