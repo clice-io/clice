@@ -35,7 +35,8 @@ namespace protocol = kota::ipc::protocol;
 /// request that crashed it is blamed.
 namespace dispatch_errc {
 
-/// The request was deliberately cancelled (memory-pressure preemption).
+/// The request was deliberately cancelled: by its caller, or by the pool
+/// taking its slot back for interactive work.
 constexpr inline protocol::integer cancelled =
     static_cast<protocol::integer>(protocol::ErrorCode::RequestCancelled);
 
@@ -46,13 +47,14 @@ constexpr inline protocol::integer worker_unavailable = -33000;
 /// past the pool's deadline. The message says how the worker died.
 constexpr inline protocol::integer worker_crashed = -33001;
 
-/// The worker died of another request's crash: this one is blameless and
-/// safe to resend.
+/// The worker died of another request's crash, died naming no request
+/// while several were in flight, or was killed by the pool to relieve
+/// memory pressure: this one is blameless and safe to resend.
 constexpr inline protocol::integer worker_lost = -33003;
 
-/// The worker died naming no request — killed from outside (the OOM killer,
-/// a signal), or crashed where no request was running. Resend once; a
-/// request whose resend dies the same way is blamed.
+/// The worker died naming no request while this one ran alone on it —
+/// killed from outside (the OOM killer, a user), or crashed where it could
+/// not report. Resend once; a request that dies this way twice is blamed.
 constexpr inline protocol::integer worker_died = -33004;
 
 /// A stateful worker no longer holds the document the query is about (its

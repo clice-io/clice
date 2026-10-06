@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <format>
 #include <string>
-#include <tuple>
 #include <utility>
 
 #include "config/config.h"
@@ -68,64 +67,6 @@ std::string describe_exit(int exit_code, int exit_signal) {
 /// own run() coroutine no matter when the slot drops its copy.
 kota::task<> run_peer(std::shared_ptr<kota::ipc::BincodePeer> peer) {
     co_await peer->run();
-}
-
-// POSIX values: Windows' <csignal> lacks the macros, and a worker can only
-// receive these signals on POSIX anyway.
-constexpr int sighup = 1;
-constexpr int sigkill = 9;
-
-/// Whether a worker was killed from outside — the OOM killer, a user, the
-/// editor tearing down the process group — rather than failing itself.
-bool killed_from_outside(int exit_signal) {
-    return exit_signal == sigkill || exit_signal == SIGTERM || exit_signal == SIGINT ||
-           exit_signal == sighup;
-}
-
-/// The memory.stat of the cgroup libuv measures this process by, with the
-/// key of its inactive file cache (hierarchical on cgroup v1, as libuv's
-/// usage counter is); empty outside a memory cgroup.
-std::pair<std::string, std::string> find_cgroup_memory_stat() {
-    auto cgroup = llvm::MemoryBuffer::getFileAsStream("/proc/self/cgroup");
-    if(!cgroup) {
-        return {};
-    }
-    // Like libuv: the file is a single "0::/path" on cgroup v2, else the v1
-    // memory controller's "N:...memory...:/path" line.
-    llvm::StringRef text = (*cgroup)->getBuffer();
-    if(text.consume_front("0::")) {
-        return {("/sys/fs/cgroup" + text.split('\n').first + "/memory.stat").str(),
-                "inactive_file"};
-    }
-    llvm::SmallVector<llvm::StringRef> lines;
-    text.split(lines, '\n', -1, false);
-    for(auto line: lines) {
-        auto [controllers, path] = line.split(':').second.split(':');
-        llvm::SmallVector<llvm::StringRef> names;
-        controllers.split(names, ',');
-        if(llvm::is_contained(names, "memory")) {
-            return {("/sys/fs/cgroup/memory" + path + "/memory.stat").str(), "total_inactive_file"};
-        }
-    }
-    return {};
-}
-
-/// The bytes of reclaimable file cache memory.stat reports under `key`.
-std::uint64_t inactive_file_cache(const std::string& stat_path, llvm::StringRef key) {
-    auto stat = llvm::MemoryBuffer::getFileAsStream(stat_path);
-    if(!stat) {
-        return 0;
-    }
-    llvm::SmallVector<llvm::StringRef> lines;
-    (*stat)->getBuffer().split(lines, '\n', -1, false);
-    for(auto line: lines) {
-        auto [name, value] = line.split(' ');
-        std::uint64_t bytes = 0;
-        if(name == key && !value.trim().getAsInteger(10, bytes)) {
-            return bytes;
-        }
-    }
-    return 0;
 }
 
 }  // namespace
@@ -341,7 +282,6 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
             oom_base = value;
         }
     }
-    std::tie(cgroup_memory_stat, cgroup_cache_key) = find_cgroup_memory_stat();
 #endif
 
     for(std::uint32_t i = 0; i < options.stateless_count; ++i) {
@@ -598,7 +538,12 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
                   llvm::join(w.stderr_tail->lines, "\n"));
     }
 
-    if(exit_signal == SIGTERM || exit_signal == SIGINT || exit_signal == sighup) {
+    // POSIX values: Windows' <csignal> does not define SIGHUP or SIGKILL,
+    // and a worker can only receive them on POSIX anyway.
+    constexpr int sighup = 1;
+    constexpr int sigkill = 9;
+    bool terminated = exit_signal == SIGTERM || exit_signal == SIGINT || exit_signal == sighup;
+    if(terminated) {
         // Termination requested from outside — e.g. the editor tearing the
         // whole process group down on a hard restart. The worker did not
         // crash; don't alarm the user through the anomaly channel.
@@ -659,11 +604,11 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     reset_streak_if_healthy(w);
     // A death that names its request is that request's content's doing:
     // the caller blames the content, and the slot respawns with its streak
-    // untouched, like a preemption. A kill from outside says nothing about
-    // the slot either: the slot budget bounds a process that keeps failing,
-    // and an OOM killer taking idle workers once burned every slot in
-    // seconds. Only a nameless failure of the process itself counts.
-    if(death.culprit.empty() && !killed_from_outside(exit_signal)) {
+    // untouched, like a preemption. A kill from outside (the OOM killer, a
+    // user, a terminated session) says nothing about the slot either: the
+    // slot budget bounds a process that keeps failing. Only a nameless
+    // failure of the process itself counts.
+    if(death.culprit.empty() && !terminated && exit_signal != sigkill) {
         w.crash_streak += 1;
     }
 
@@ -851,6 +796,8 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
         // joining it, for as long as the pressure lasts.
         auto wake = cancel.on_cancel([&pending] { pending.ready.set(); });
         co_await pending.ready.wait();
+        if(cancel.cancelled())
+            co_return SIZE_MAX;
 
         if(pending.assigned_worker == SIZE_MAX)
             continue;
@@ -948,19 +895,70 @@ kota::task<> WorkerPool::monitor_loop() {
             continue;
 
         auto limited = mem.constrained > 0 && mem.constrained < mem.total;
-        auto effective_total = limited ? mem.constrained : mem.total;
+        auto limit = limited ? mem.constrained : mem.total;
         auto available = mem.available;
-        if(limited && !cgroup_memory_stat.empty()) {
-            available =
-                std::min(available + inactive_file_cache(cgroup_memory_stat, cgroup_cache_key),
-                         effective_total);
+        if(limited) {
+            // Read afresh every tick, as libuv reads the limit: the process
+            // can move between cgroups.
+            if(auto proc_cgroup = llvm::MemoryBuffer::getFileAsStream("/proc/self/cgroup")) {
+                auto cgroup = find_cgroup_memory((*proc_cgroup)->getBuffer());
+                available = cgroup_available(cgroup, limit).value_or(available);
+            }
         }
-        auto ratio = static_cast<double>(available) / static_cast<double>(effective_total);
+        auto ratio = static_cast<double>(available) / static_cast<double>(limit);
 
         tick_memory(ratio);
         tick_scaling(ratio);
-        tick_oom_scores(effective_total);
+        tick_oom_scores(limit);
     }
+}
+
+WorkerPool::CgroupMemory WorkerPool::find_cgroup_memory(llvm::StringRef proc_cgroup) {
+    // Like libuv: the file is a single "0::/path" on cgroup v2, else the v1
+    // memory controller's "N:memory:/path" line.
+    if(proc_cgroup.consume_front("0::")) {
+        auto dir = ("/sys/fs/cgroup" + proc_cgroup.split('\n').first).str();
+        return {dir + "/memory.current", dir + "/memory.stat", "inactive_file"};
+    }
+    llvm::StringRef path;
+    llvm::SmallVector<llvm::StringRef> lines;
+    proc_cgroup.split(lines, '\n', -1, false);
+    for(auto line: lines) {
+        auto [controller, rest] = line.split(':').second.split(':');
+        if(controller == "memory") {
+            path = rest;
+            break;
+        }
+    }
+    // libuv falls back to the hierarchy's root when the process's own
+    // memory cgroup is not there: a container without a cgroup namespace
+    // mounts its own cgroup at the root.
+    auto dir = ("/sys/fs/cgroup/memory" + path).str();
+    if(path.empty() || !llvm::sys::fs::exists(dir + "/memory.usage_in_bytes")) {
+        dir = "/sys/fs/cgroup/memory";
+    }
+    return {dir + "/memory.usage_in_bytes", dir + "/memory.stat", "total_inactive_file"};
+}
+
+std::optional<std::uint64_t> WorkerPool::cgroup_available(const CgroupMemory& cgroup,
+                                                          std::uint64_t limit) {
+    auto usage = llvm::MemoryBuffer::getFileAsStream(cgroup.usage);
+    auto stat = llvm::MemoryBuffer::getFileAsStream(cgroup.stat);
+    std::uint64_t used = 0;
+    if(!usage || !stat || (*usage)->getBuffer().trim().getAsInteger(10, used)) {
+        return std::nullopt;
+    }
+    llvm::SmallVector<llvm::StringRef> lines;
+    (*stat)->getBuffer().split(lines, '\n', -1, false);
+    for(auto line: lines) {
+        auto [name, value] = line.split(' ');
+        std::uint64_t cache = 0;
+        if(name == cgroup.cache_key && !value.trim().getAsInteger(10, cache)) {
+            used -= std::min(used, cache);
+            break;
+        }
+    }
+    return limit - std::min(limit, used);
 }
 
 void WorkerPool::tick_oom_scores(std::uint64_t memory_limit) {
@@ -1196,8 +1194,6 @@ void WorkerPool::tick_memory(double available_ratio) {
 }
 
 void WorkerPool::tick_scaling(double available_ratio) {
-    bool has_queued = !high_queue.empty() || !low_queue.empty();
-
     // Two kinds of demand grow the pool. Interactive work queued with no
     // idle slot, up to max_stateless: the user is waiting. Background work
     // filling its whole budget with more queued, only back up to
@@ -1212,7 +1208,7 @@ void WorkerPool::tick_scaling(double available_ratio) {
     if(high_starved || low_starved) {
         saturated_cycles += 1;
         idle_cycles = 0;
-    } else if(busy_stateless() == 0 && !has_queued) {
+    } else if(busy_stateless() == 0 && high_queue.empty() && low_queue.empty()) {
         idle_cycles += 1;
         saturated_cycles = 0;
     } else {
@@ -1271,9 +1267,8 @@ bool WorkerPool::scale_up_worker() {
                  alive_stateless());
     }
 
-    // The new worker raises the ceiling; grow the low allowance by exactly
-    // the added capacity instead of resetting whatever pressure or crash
-    // backoff state accumulated.
+    // Grow the low allowance by exactly the added capacity, within its
+    // ceiling, instead of resetting whatever memory pressure took off it.
     low_limit = std::min(low_limit + 1, max_low_limit());
     try_dispatch_pending();
     return true;

@@ -300,9 +300,9 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             build_crashes.insert_or_assign(path_id, Crash{content, error});
         });
 
-    // A scheduler preemption (foreground reclaim, memory pressure) or an
-    // advisory cancel is no verdict on the unit: report the round stale so
-    // waiters drive a retry instead of failing their whole chain.
+    // A foreground reclaim or an advisory cancel is no verdict on the
+    // unit: report the round stale so waiters drive a retry instead of
+    // failing their whole chain.
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
         LOG_INFO("BuildPCM preempted for module {}, will retry", module_name);
         co_return RoundOutcome::Stale;

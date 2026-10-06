@@ -406,7 +406,7 @@ test("victims are not blamed", async ({ session }) => {
     expect(notes(client, uri).length).toBe(1);
 });
 
-test.skipIf(process.platform !== "linux")("outside kills blame no one", async ({ session }) => {
+test.skipIf(process.platform !== "linux")("shared deaths blame nobody", async ({ session }) => {
     const workspace = session.tmpdir();
     const names = ["a.cpp", "b.cpp", "c.cpp"];
     for (const name of names) {
@@ -422,8 +422,8 @@ test.skipIf(process.platform !== "linux")("outside kills blame no one", async ({
 
     const uris = names.map((name) => client.open(name)[0]);
     const answers = uris.map((uri) => client.hoverAt(uri, 0, 5));
-    // Killed from outside twice, the second time while all three resends
-    // compile: the death names none of them, so none is blamed.
+    // Killed twice, the second time while all three resends compile: the
+    // death names none of them and they shared the worker, so none is blamed.
     for (const round of [1, 2]) {
         await waitUntil(() => compiles() >= names.length * round, {
             timeout: 20_000,

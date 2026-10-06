@@ -505,7 +505,8 @@ static auto run_lowered(Work& work) {
 }
 
 /// Register the handler of one request type, which runs on the pool
-/// thread. A cancellation (peer close, $/cancelRequest) dequeues work that
+/// thread, or on a lowered thread it joins (ServeOptions::lowered). A
+/// cancellation (peer close, $/cancelRequest) dequeues work that
 /// has not started; work already on the pool thread learns through the
 /// hook's stop flag, which doubles as CompilationParams::stop: clang polls
 /// it after every top-level declaration, so even the parse itself stops

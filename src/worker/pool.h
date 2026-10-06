@@ -19,6 +19,7 @@
 #include "kota/ipc/peer.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace clice::worker {
 
@@ -48,8 +49,9 @@ struct WorkerCrashInfo {
     /// Non-zero when the worker was killed by a signal (e.g. 9 = SIGKILL).
     int exit_signal = 0;
 
-    /// Consecutive fast crashes of this slot, including this one. Resets
-    /// after a healthy uptime, so only genuine crash loops accumulate.
+    /// Consecutive fast crashes of this slot that named no request and were
+    /// no kill from outside, this one included when it is such a crash.
+    /// Resets after a healthy uptime, so only genuine crash loops accumulate.
     unsigned crash_streak = 0;
 
     /// Whether the pool will attempt to respawn this worker.
@@ -184,8 +186,9 @@ struct WorkerPoolOptions {
 ///     names the one it killed the worker for; each request in flight
 ///     learns whether it is that one. A death that names a request is that
 ///     request's content's doing and spends no slot budget; neither does a
-///     kill from outside (the OOM killer, a signal). Only the process itself
-///     failing without naming a request counts toward the streak.
+///     kill from outside (SIGKILL, SIGTERM, SIGINT, SIGHUP: the OOM killer,
+///     a user, a terminated session). Only the process itself failing
+///     without naming a request counts toward the streak.
 ///   - The pool NEVER retries a request. Requests do not survive a crash;
 ///     slots do. Retry policy is semantic and lives with the caller —
 ///     deliver() is the shared form of it.
@@ -355,8 +358,8 @@ private:
         /// memory pressure: respawn immediately, without crash accounting.
         bool preempted = false;
 
-        /// Consecutive fast crashes naming no request; resets after healthy
-        /// uptime.
+        /// Consecutive fast crashes naming no request, kills from outside
+        /// excluded; resets after healthy uptime.
         unsigned crash_streak = 0;
 
         /// The death record of the current incarnation, fresh at every
@@ -435,8 +438,10 @@ private:
     kota::event capacity_returned;
 
     /// The error a request that died with its worker reports: worker_crashed
-    /// when the death names this very request, worker_lost when it names
-    /// another, worker_died when it names none.
+    /// when the death names this very request; worker_lost when it names
+    /// another, names none while other requests were in flight, or was the
+    /// pool's memory reclaim; worker_died when it names none and this
+    /// request ran alone.
     static kota::ipc::Error death_error(const WorkerDeath& death,
                                         llvm::StringRef tag,
                                         kota::codec::dyn::Value identity);
@@ -714,7 +719,9 @@ private:
     /// the stop flag is never polled.
     constexpr static std::chrono::seconds cancel_grace{10};
 
-    /// Consecutive monitor ticks where all workers were busy with queued work.
+    /// Consecutive monitor ticks with interactive work queued and no idle
+    /// slot, or background work queued behind a full allowance while the
+    /// pool is below stateless_count.
     unsigned saturated_cycles = 0;
 
     /// Consecutive monitor ticks where workers were idle with no queued work.
@@ -746,11 +753,25 @@ private:
     /// there is none to adjust (not Linux).
     std::optional<int> oom_base;
 
-    /// The memory.stat of a memory-limited cgroup the master runs in, and
-    /// its key for inactive file cache: libuv counts that cache as used,
-    /// so a container that read and wrote some files would look full.
-    std::string cgroup_memory_stat;
-    std::string cgroup_cache_key;
+    /// The usage counter and memory.stat libuv measures a memory cgroup by,
+    /// with the memory.stat key of the cgroup's inactive file cache
+    /// (hierarchical on v1, as the usage counter is).
+    struct CgroupMemory {
+        std::string usage;
+        std::string stat;
+        llvm::StringRef cache_key;
+    };
+
+    /// The files libuv reads for the memory cgroup `proc_cgroup` (the text
+    /// of /proc/self/cgroup) names.
+    static CgroupMemory find_cgroup_memory(llvm::StringRef proc_cgroup);
+
+    /// What is left of the cgroup's `limit` once its working set (usage
+    /// less inactive file cache, as kubelet counts it) is taken out:
+    /// libuv counts that cache as used, so a container that read and wrote
+    /// some files would look full. Unset when the files cannot be read.
+    static std::optional<std::uint64_t> cgroup_available(const CgroupMemory& cgroup,
+                                                         std::uint64_t limit);
 
     struct SpawnedProcess {
         kota::process proc;
@@ -832,15 +853,12 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     if(priority == worker::Priority::High)
         note_foreground();
     auto idx = co_await acquire_stateless_slot(priority, cancel);
-    // An advisory cancellation that fired while this request queued for a
-    // slot: nothing was dispatched, give any claim back untouched.
-    if(cancel.cancelled()) {
-        co_await kota::fail(
-            kota::ipc::Error{worker::dispatch_errc::cancelled, "Request cancelled by its round"});
-    }
     if(idx == SIZE_MAX) {
-        co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
-                                             "No stateless workers available"});
+        co_await kota::fail(cancel.cancelled()
+                                ? kota::ipc::Error{worker::dispatch_errc::cancelled,
+                                                   "Request cancelled by its round"}
+                                : kota::ipc::Error{worker::dispatch_errc::worker_unavailable,
+                                                   "No stateless workers available"});
     }
 
     StatelessSlot slot(*this, idx);
@@ -860,10 +878,9 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
         }
     }
     // The classification channel for scheduler-initiated cancels: the
-    // cooperative cancel, the memory-preemption kill and the caller's
-    // advisory token all mark it, and the sender consults it when the
-    // reply arrives. Firing it cancels the request on the wire, which
-    // keeps awaiting the worker's real answer.
+    // cooperative cancel and the caller's advisory token both mark it, and
+    // the sender consults it when the reply arrives. Firing it cancels the request on the wire,
+    // which keeps awaiting the worker's real answer.
     auto preempt_src = std::make_shared<kota::cancellation_source>();
     stateless_workers[idx].preempt_source = preempt_src;
 
@@ -902,8 +919,11 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
     // the request awaits the real answer so the slot frees only once the
     // process is actually idle again, keeping the grace deadline armed and
     // the next request off a still-stuck worker. Every shape must surface as
-    // cancelled, so the indexer requeues instead of recording a failure.
-    if(preempt_src->cancelled())
+    // cancelled, so the indexer requeues instead of recording a failure —
+    // unless the pool killed the worker for memory before it stopped: the
+    // request may be what exhausted memory, and a free requeue would let
+    // the user's typing repeat the kill forever.
+    if(preempt_src->cancelled() && !death->reclaimed)
         co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::cancelled,
                                              "Request preempted by the scheduler"});
     // An error returned by the worker's handler leaves the worker healthy;
@@ -932,12 +952,12 @@ void WorkerPool::notify_stateful(std::uint32_t path_id, const Params& params) {
 /// took the attempt along (worker_lost) or the death named no request
 /// (worker_died), and waits out capacity windows (worker_unavailable). One
 /// resend suffices: the culprit of the first death is barred from running
-/// again by then. A request whose resend also dies naming no request is
-/// taken for the killer — an OOM kill, a stack overflow the crash report
-/// cannot run on.
+/// again by then. A request that dies naming no request twice, alone on
+/// its worker both times, is taken for the killer — an OOM kill, a stack
+/// overflow the crash report cannot run on.
 ///
 /// `blame` fires once, when the request is found to have killed its
-/// worker: its own crash, or the second nameless death. The result is the
+/// worker: its own crash, or the second worker_died. The result is the
 /// last attempt's.
 template <typename Send, typename Blame>
 auto deliver(WorkerPool& pool, bool stateful, Send send, Blame blame)
