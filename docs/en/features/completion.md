@@ -432,7 +432,8 @@ A variable declared `auto` from a dependent initializer completes the members of
 `auto& row = rows[0]; row.` lists the members of `Vec<T>`. The
 declarator applies as in a real deduction: `const auto&` makes the
 object const, a by-value `auto` drops the initializer's const, `auto&&`
-and `decltype(auto)` keep it, and `auto*` takes the pointee.
+and `decltype(auto)` keep it, and `auto*` takes the pointee. From a data
+member, `decltype(auto)` takes the type the member is declared with.
 
 ```snap
 tests/snap/code_completion/member_access/16_deduced_variable.cpp
