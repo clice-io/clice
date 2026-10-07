@@ -80,11 +80,11 @@ llvm::SmallVector<Fid> IndexPump::save_debt() const {
 }
 
 kota::task<> IndexPump::persist(IndexStore::SearchRebuild search) {
-    auto report = co_await store.save(save_debt(), search);
-    bool retry = report.owes_retry;
-    claim_report(report);
-    if(retry) {
-        claim_report(co_await store.save(save_debt(), search));
+    bool retry = true;
+    while(retry) {
+        auto report = co_await store.save(save_debt(), search);
+        retry = report.owes_retry;
+        claim_report(report);
     }
 }
 
