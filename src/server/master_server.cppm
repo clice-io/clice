@@ -92,9 +92,20 @@ public:
     void initialize();
     void initialize(const Spelling& root);
 
-    /// After the serving phase, which stopped the pool: join the
-    /// background work, shut the projects down and close them.
+    /// Bring every project to rest with its index committed while the
+    /// transport still answers: the pool stops first, which breaks every
+    /// wait on a worker (a hung one's included), then the background work
+    /// joins and each project quiesces and saves. Runs once; a later caller
+    /// waits for the first.
+    kota::task<> drain();
+
+    /// After the serving phase: drain, then close the projects.
     kota::task<> shutdown_and_cleanup();
+
+    /// Shut down once the client process `pid` is gone: LSP asks a server
+    /// to exit with the process that started it, which may die without
+    /// closing the transport.
+    void watch_client(std::uint32_t pid);
 
     /// The project serving a file: the one its open document was routed
     /// to, else the one routing picks now.
@@ -335,10 +346,22 @@ private:
     kota::task_group<> bg_tasks;
 
     /// The background looks at files and databases, and the ends of the
-    /// file table's turns, until shutdown_and_cleanup() cancels them.
+    /// file table's turns, until the drain cancels them.
     kota::task_group<> polling;
     bool polling_started = false;
     kota::task<> poll_task();
+
+    /// The watch on the client process, which outlives the drain: a client
+    /// may die between the shutdown reply and its exit.
+    kota::task_group<> client_watch;
+    kota::task<> client_task(std::uint32_t pid);
+
+    /// The drain runs here, not in whoever asked first: the shutdown
+    /// request that starts it is cancelled by the exit that follows.
+    kota::task_group<> draining;
+    bool drain_started = false;
+    kota::event drained{false};
+    kota::task<> drain_task();
 
     /// Removed projects, shutting down or kept alive after by the requests
     /// still running in them.

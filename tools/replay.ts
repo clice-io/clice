@@ -169,6 +169,23 @@ function rewriteRecords(records: TraceRecord[], originalWs: string, newWs: strin
     });
 }
 
+/// The replaying process is the client now: the server exits with the
+/// process its initialize names, which in a recording is long gone.
+function claimClientProcess(records: TraceRecord[]): TraceRecord[] {
+    return records.map((rec) => {
+        const parsed = asObject(JSON.parse(rec.msg) as unknown);
+        const params = asObject(parsed["params"]);
+        if (
+            stringField(parsed, "method") !== "initialize" ||
+            typeof params["processId"] !== "number"
+        ) {
+            return rec;
+        }
+        params["processId"] = process.pid;
+        return { ts: rec.ts, msg: JSON.stringify(parsed) };
+    });
+}
+
 function printTraceInfo(name: string, records: TraceRecord[], workspace: string | null): void {
     const methods = new Map<string, number>();
     for (const rec of records) {
@@ -340,6 +357,7 @@ async function replayOne(
             displayWs = newWs;
         }
     }
+    records = claimClientProcess(records);
 
     printTraceInfo(name, records, displayWs);
 

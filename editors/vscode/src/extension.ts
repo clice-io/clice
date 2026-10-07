@@ -13,6 +13,7 @@ import {
     StreamInfo,
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
+import { exitsWithin, retire } from "./process";
 import { getSetting, Setting, workspaceDirectory } from "./setting";
 import { registerAliasRedirect } from "./feature/aliases";
 import { registerBuildConfiguration } from "./feature/configuration";
@@ -88,6 +89,10 @@ let pendingSocket: net.Socket | undefined;
 /// client mid-session and the successor must still wait for this exit.
 let child: cp.ChildProcess | undefined;
 
+/// Set by deactivate: the extension host is going away, and a server
+/// spawned now would outlive it.
+let deactivating = false;
+
 // Settings are read fresh on every (re)start so a plain server restart picks
 // them up. Everything recoverable is validated in startServer before start()
 // is ever called: a rejection here is terminal for the client instance and
@@ -113,29 +118,22 @@ function makeServerOptions(
             throw new Error("no clice executable available");
         }
         if (child) {
+            // The LSP exit already told the old server to quit; the
+            // library tracks and kills only processes it spawned itself.
             const previous = child;
-            // Signal deaths leave exitCode null and set signalCode only.
-            const exited = () => previous.exitCode !== null || previous.signalCode !== null;
-            if (!exited()) {
-                // The LSP exit already told the old server to quit, and
-                // quitting persists its caches — give it time, and kill
-                // only a genuinely hung server (the library force-kills
-                // only processes it spawned itself).
-                await new Promise<void>((resolve) => {
-                    const timer = setTimeout(() => {
-                        previous.kill();
-                        resolve();
-                    }, 10_000);
-                    const finish = () => {
-                        clearTimeout(timer);
-                        resolve();
-                    };
-                    previous.once("exit", finish);
-                    if (exited()) {
-                        finish();
-                    }
-                });
-            }
+            await window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Window,
+                    title: "clice: waiting for the previous server to exit",
+                },
+                () =>
+                    retire(previous, { exit: 10_000, term: 5_000 }, (line) => {
+                        channel.appendLine(line);
+                    }),
+            );
+        }
+        if (deactivating) {
+            throw new Error("clice is shutting down");
         }
         child = cp.spawn(executable, ["serve"], { cwd: workspaceDirectory() });
         child.on("error", (error) => {
@@ -353,9 +351,15 @@ export async function activate(context: ExtensionContext) {
     return { client };
 }
 
-export function deactivate(): Thenable<void> | undefined {
-    if (!client?.isRunning()) {
-        return undefined;
+// The extension host gives deactivate 5 s and then exits, leaving the
+// server behind; one still saving would hold the index lock against the
+// next window's server, so the wait for its exit spends the rest.
+export async function deactivate(): Promise<void> {
+    deactivating = true;
+    if (client?.isRunning()) {
+        await client.current.stop(2_000).catch(() => undefined);
     }
-    return client.current.stop();
+    if (child) {
+        await exitsWithin(child, 2_500);
+    }
 }

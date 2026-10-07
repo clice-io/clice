@@ -149,6 +149,38 @@ test.skipIf(process.platform === "win32")(
     },
 );
 
+test.skipIf(process.platform === "win32")("sighup saves progress", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    const units = Array.from({ length: 24 }, (_, i) => `unit${i}.cpp`);
+    for (const [i, unit] of units.entries()) {
+        ws.write(unit, `#include <map>\n#include <string>\nint unit${i}() { return ${i}; }\n`);
+    }
+    ws.writeCDB(units);
+
+    // A closed terminal hangs the run up once a unit is indexed.
+    const child = spawn(cliceExecutable(), ["index", "--workspace", ws.root, "--workers", "1"], {
+        stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
+    child.stderr.on("data", (chunk: Buffer) => {
+        const indexed = stderr.includes("[perf:index] progress=");
+        stderr += chunk.toString();
+        if (!indexed && stderr.includes("[perf:index] progress=")) {
+            child.kill("SIGHUP");
+        }
+    });
+    const { code } = await exitOf(child);
+    expect(code, `stderr: ${stderr}`).toBe(130);
+    expect(stdout).toContain("progress saved");
+
+    const stats = await runClice("index", "--stats", "--workspace", ws.root);
+    expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
+    expect(stats.stdout).toMatch(/Translation units: [1-9]/);
+});
+
 test("index reports header losing host", async ({ session }) => {
     const ws = session.tmpdir();
     ws.pinCacheDir();
