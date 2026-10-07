@@ -24,6 +24,7 @@ interface Interface {
     exports: { name: string; file: string; used: boolean }[];
     aliases: { name: string; target: string }[];
     textual: Header[];
+    sharedLocals: { name: string; file: string; modules: string[] }[];
     macros: { name: string; module: string; file: string; directive: string }[];
     reads: { name: string }[];
 }
@@ -72,8 +73,13 @@ function runClice(...args: string[]): Promise<ProcessResult> {
 /// whose C++ headers include the C library's, and libc++'s module sources
 /// for it: std.cppm includes the headers `import std` stands for and
 /// std.compat exports fake_puts. With `program`, the program also has two
-/// modules of its own, core and tool, and a source using tool.
-async function writeProject(session: SessionFactory, program = false): Promise<Workspace> {
+/// modules of its own, core and tool, and a source using tool. `extend`
+/// edits the project before it is indexed.
+async function writeProject(
+    session: SessionFactory,
+    program = false,
+    extend?: (ws: Workspace) => void,
+): Promise<Workspace> {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(
@@ -278,6 +284,7 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
             ],
         }),
     );
+    extend?.(ws);
     const run = await runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(run.status, `stderr: ${run.stderr}`).toBe(0);
     return ws;
@@ -521,6 +528,90 @@ test("C library kept headers", async ({ session }) => {
     // The #undef ahead of a definition ends nothing.
     expect(macros).toContain("fassert");
     expect(all.get("std")!.textual).toEqual([]);
+});
+
+test("modules sharing a TU-local entity", async ({ session }) => {
+    const ws = await writeProject(session, false, (project) => {
+        // Static as <emmintrin.h>'s intrinsics, which simdjson and CRoaring both
+        // call from their inline code. alpha reaches fake_simd through
+        // fake_simd2 alone, fake_deep through the C library's inline
+        // fake_wrap, fake_seed through fake_value's initializer, and
+        // fake_noise only from a helper nothing calls.
+        project.write(
+            "third/libc/csimd.h",
+            lines(
+                "#pragma once",
+                "static inline int fake_simd(int v) { return v; }",
+                "static inline int fake_simd2(int v) { return fake_simd(v) * 2; }",
+                "static inline int fake_noise(int v) { return v; }",
+                "static inline int fake_deep(int v) { return v; }",
+            ),
+        );
+        project.write(
+            "third/libc/cwrap.h",
+            lines(
+                "#pragma once",
+                "#include <csimd.h>",
+                "inline int fake_wrap(int v) { return fake_deep(v); }",
+            ),
+        );
+        project.write(
+            "third/libc/cseed.h",
+            lines("#pragma once", "static inline int fake_seed() { return 7; }"),
+        );
+        project.write(
+            "third/libc/cvalue.h",
+            lines(
+                "#pragma once",
+                "#include <cseed.h>",
+                "static const int fake_value = fake_seed();",
+            ),
+        );
+        project.write(
+            "third/alpha/alpha/simd.h",
+            lines(
+                "#pragma once",
+                "#include <cvalue.h>",
+                "#include <cwrap.h>",
+                "static int alpha_unused(int v) { return fake_noise(v); }",
+                "inline int alpha_simd(int v) { return fake_simd2(v) + fake_wrap(fake_value); }",
+            ),
+        );
+        project.write(
+            "third/beta/beta/simd.h",
+            lines(
+                "#pragma once",
+                "#include <csimd.h>",
+                "#include <cvalue.h>",
+                "inline int beta_simd(int v) { return fake_simd(v) + fake_noise(fake_deep(fake_value)); }",
+            ),
+        );
+        project.write(
+            "app/main.cpp",
+            project
+                .read("app/main.cpp")
+                .replace(
+                    "#include <beta/beta.h>\n",
+                    "#include <beta/beta.h>\n#include <alpha/simd.h>\n#include <beta/simd.h>\n",
+                ),
+        );
+    });
+    const all = await interfaces(ws);
+    const shared = (other: string) =>
+        [
+            ["fake_deep", "csimd.h"],
+            ["fake_seed", "cseed.h"],
+            ["fake_simd", "csimd.h"],
+            ["fake_value", "cvalue.h"],
+        ].map(([name, file]) => ({ name, file: `third/libc/${file}`, modules: [other] }));
+    expect(all.get("alpha")!.sharedLocals).toEqual(shared("beta"));
+    expect(all.get("beta")!.sharedLocals).toEqual(shared("alpha"));
+
+    const run = await modularize(ws);
+    expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
+    expect((JSON.parse(run.stdout) as { wrapping: Plan }).wrapping.warnings).toEqual([
+        "alpha and beta both use TU-local fake_seed (third/libc/cseed.h); fake_deep, fake_simd (third/libc/csimd.h); fake_value (third/libc/cvalue.h): an importer using the code of both can define each twice under one name; wrap them as one module",
+    ]);
 });
 
 test("modularize writes the wrapping", async ({ session }) => {

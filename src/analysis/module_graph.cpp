@@ -3367,6 +3367,69 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         return header;
     };
 
+    // The TU-local entities each wrapped module's fragment holds that the
+    // code an importer can emit uses, from the definitions of its headers
+    // through what those call in turn (`_mm_set1_epi8` calls
+    // `_mm_set_epi8`), kept headers' inline functions included: an
+    // importer's inline code uses the copy of the module whose header it
+    // comes from. A constant initialized by a constant expression is no
+    // object where it is used by value.
+    auto tu_local = [&](const Entity& info) {
+        return info.linkage == InternalLinkage::Static ||
+               info.linkage == InternalLinkage::AnonymousNamespace;
+    };
+    auto function = [&](const Entity& info) {
+        return llvm::is_contained({SymbolKind::Function, SymbolKind::Method, SymbolKind::Operator},
+                                  info.kind);
+    };
+    auto emitted = [&](std::uint32_t entity) {
+        auto& info = facts.entities[entity];
+        return tu_local(info) && !facts.files[info.owner].source &&
+               (function(info) ||
+                (info.kind == SymbolKind::Variable && (!info.constant || !info.body.empty())));
+    };
+    std::vector<std::vector<std::uint32_t>> owned(facts.files.size());
+    for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
+        owned[facts.entities[entity].owner].push_back(entity);
+    }
+    llvm::DenseMap<std::uint32_t, std::set<std::uint32_t>> local_users;
+    for(std::uint32_t module = 0; module < count; module += 1) {
+        if(partition.kinds[module] != ModuleKind::Wrapped) {
+            continue;
+        }
+        llvm::DenseSet<std::uint32_t> used, passed;
+        llvm::SmallVector<std::uint32_t> pending;
+        auto use = [&](const Use& named) {
+            auto entity = named.entity;
+            auto& info = facts.entities[entity];
+            if(emitted(entity)) {
+                if(used.insert(entity).second) {
+                    pending.push_back(entity);
+                }
+            } else if(function(info) &&
+                      partition.kinds[module_of(info.owner)] == ModuleKind::Textual &&
+                      passed.insert(entity).second) {
+                pending.push_back(entity);
+            }
+        };
+        for(auto file: reached[module]) {
+            if(module_of(file) != module) {
+                continue;
+            }
+            for(auto entity: owned[file]) {
+                if(!tu_local(facts.entities[entity])) {
+                    llvm::for_each(facts.entities[entity].body, use);
+                }
+            }
+        }
+        while(!pending.empty()) {
+            llvm::for_each(facts.entities[pending.pop_back_val()].body, use);
+        }
+        for(auto entity: used) {
+            local_users[entity].insert(module);
+        }
+    }
+
     std::vector<Interface> result;
     for(std::uint32_t module = 0; module < count; module += 1) {
         if(!name.empty() && module != wanted) {
@@ -3428,6 +3491,27 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             }
             for(auto header: used) {
                 interface.textual_uses.push_back(header_of(module_of(header), header, {}));
+            }
+            // Overloads are one name to the reader.
+            std::map<std::pair<std::string, std::string>, std::set<std::string>> shared;
+            for(auto& [entity, users]: local_users) {
+                if(users.size() < 2 || !users.contains(module)) {
+                    continue;
+                }
+                auto& info = facts.entities[entity];
+                auto& modules = shared[{info.name, facts.files[info.owner].path}];
+                for(auto other: users) {
+                    if(other != module) {
+                        modules.insert(partition.modules[other]);
+                    }
+                }
+            }
+            for(auto& [key, modules]: shared) {
+                interface.shared_locals.push_back({
+                    .name = key.first,
+                    .file = key.second,
+                    .modules = {modules.begin(), modules.end()},
+                });
             }
         }
         for(auto& [key, used]: exports[module]) {

@@ -279,6 +279,29 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
             }
         }
     }
+    std::map<std::pair<std::string, std::string>, std::map<std::string, std::set<std::string>>>
+        shared;
+    for(auto& entry: generated) {
+        for(auto& local: entry.second->shared_locals) {
+            for(auto& other: local.modules) {
+                if(entry.first() < other) {
+                    shared[{entry.first().str(), other}][local.file].insert(local.name);
+                }
+            }
+        }
+    }
+    for(auto& [modules, files]: shared) {
+        llvm::SmallVector<std::string> parts;
+        for(auto& [file, names]: files) {
+            parts.push_back(std::format("{} ({})", llvm::join(names, ", "), file));
+        }
+        result.plan.warnings.push_back(std::format(
+            "{} and {} both use TU-local {}: an importer using the code of both can define each "
+            "twice under one name; wrap them as one module",
+            modules.first,
+            modules.second,
+            llvm::join(parts, "; ")));
+    }
 
     auto order = import_order(imports);
     if(!order) {
