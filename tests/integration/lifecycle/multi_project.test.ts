@@ -608,11 +608,14 @@ test("context from another folder", async ({ session }) => {
     client.assertNoErrors(header, "the application's host defines IN_APP");
     expect((await client.currentContext(header)).context?.uri).toBe(workspace.uri("app/main.cpp"));
 
-    // The reset hands the header back to its own folder's host.
-    const recompiled = client.armDiagnostics(header);
+    // The reset hands the header back to its own folder's host; the
+    // application's project retracts its diagnostics first.
     expect((await client.resetContext(header)).success).toBe(true);
-    await recompiled;
-    client.assertHasErrors(header, "the library does not define IN_APP");
+    await waitUntil(() => client.errors(header).length > 0, {
+        timeout: INDEX_TIMEOUT,
+        interval: SETTLE_TIME,
+        description: "the library does not define IN_APP",
+    });
     const current = await client.currentContext(header);
     expect(current.automatic).toBe(true);
     expect(current.context?.uri).toBe(workspace.uri("lib/src/lib.cpp"));
