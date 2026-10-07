@@ -8,7 +8,8 @@
 /// `auto& row = rows[0]; row.` lists the members of `Vec<T>`. The
 /// declarator applies as in a real deduction: `const auto&` makes the
 /// object const, a by-value `auto` drops the initializer's const, `auto&&`
-/// and `decltype(auto)` keep it, and `auto*` takes the pointee.
+/// and `decltype(auto)` keep it, and `auto*` takes the pointee. From a data
+/// member, `decltype(auto)` takes the type the member is declared with.
 
 // The member accesses dangle; the statements stay semicolon-terminated so a
 // later marker is not dragged into recovery.
@@ -22,7 +23,15 @@ struct Vec {
 };
 
 template <typename T>
-void bar(Vec<Vec<T>> rows, const Vec<Vec<T>>& fixed, Vec<Vec<T>*> pointers) {
+struct Grid {
+    Vec<T> cells;
+};
+
+template <typename T>
+void bar(Vec<Vec<T>> rows,
+         const Vec<Vec<T>>& fixed,
+         Vec<Vec<T>*> pointers,
+         const Grid<T>& grid) {
     auto& row = rows[0];
     row.§(reference);
     const auto& view = rows[0];
@@ -35,4 +44,6 @@ void bar(Vec<Vec<T>> rows, const Vec<Vec<T>>& fixed, Vec<Vec<T>*> pointers) {
     exact.§(decltype_auto);
     auto* pointer = pointers[0];
     pointer->§(pointer);
+    decltype(auto) declared = grid.cells;
+    declared.§(decltype_member);
 }

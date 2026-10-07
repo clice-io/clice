@@ -969,7 +969,7 @@ public:
                 }
                 auto* var = llvm::dyn_cast<clang::VarDecl>(value);
                 type =
-                    substitute(var && var->getInit() && undeduced(type) ? deduce_auto(var) : type);
+                    var && var->getInit() && undeduced(type) ? deduce_auto(var) : substitute(type);
                 if(auto* field = llvm::dyn_cast<clang::FieldDecl>(value);
                    !field || field->isMutable()) {
                     object_quals = 0;
@@ -980,7 +980,14 @@ public:
         if(type.isNull()) {
             return type;
         }
+        /// The substitution put the type in the caller's terms; resolving it
+        /// under the frames of an enclosing lookup would bind them a second
+        /// time where the caller names that lookup's own template
+        /// (`Holder<W<T>>::member` inside `Holder<T>`).
+        InstantiationStack enclosing;
+        std::swap(enclosing, stack);
         type = resolve(type);
+        std::swap(enclosing, stack);
         return type->isReferenceType() ? type : type.withCVRQualifiers(object_quals);
     }
 
@@ -991,10 +998,14 @@ public:
     /// written one, for lookup to resolve.
     clang::QualType expr_type(const clang::Expr* expr) {
         auto type = expr->getType();
-        if(type->isSpecificBuiltinType(clang::BuiltinType::Dependent) || undeduced(type)) {
-            return type_of(expr, /*through_object=*/true);
-        }
-        return type;
+        return unevaluated(type) ? type_of(expr, /*through_object=*/true) : type;
+    }
+
+    /// Whether clang left `type` for evaluation: unknown for a member access,
+    /// call or subscript on a dependent operand, undeduced for an `auto`
+    /// variable.
+    static bool unevaluated(clang::QualType type) {
+        return type->isSpecificBuiltinType(clang::BuiltinType::Dependent) || undeduced(type);
     }
 
     /// Whether `type` holds an `auto` no deduction filled in: a dependent
@@ -1029,40 +1040,47 @@ public:
             init = direct && list->getNumInits() == 1 ? list->getInit(0) : nullptr;
         }
 
-        clang::QualType type;
-        if(auto source = init ? expr_type(init) : clang::QualType(); !source.isNull()) {
-            auto declared = var->getType();
-            type = declared->getContainedAutoType()->isDecltypeAuto()
-                       ? source
-                       : replace_auto(declared, deduced_argument(declared, init, source));
-        }
+        auto type = init ? deduce(var->getType(), init) : clang::QualType();
         deducing.erase(var);
         return type;
     }
 
-    /// What `auto` stands for in `declared` given an initializer `init` of
-    /// type `source`.
-    clang::QualType deduced_argument(clang::QualType declared,
-                                     const clang::Expr* init,
-                                     clang::QualType source) {
+    /// `declared` with its `auto` deduced from `init`.
+    clang::QualType deduce(clang::QualType declared, const clang::Expr* init) {
+        bool evaluated = unevaluated(init->getType());
+        bool decltype_auto = declared->getContainedAutoType()->isDecltypeAuto();
+        /// `decltype(auto)` takes what `decltype(init)` names: a data
+        /// member's declared type, not the object's qualifiers on it.
+        clang::QualType source;
+        if(evaluated || decltype_auto) {
+            source = type_of(init, /*through_object=*/!decltype_auto);
+        }
+        /// An evaluated type is in the caller's terms already; the written
+        /// one is in those of the variable's class, which the frames of the
+        /// lookup that found the variable translate.
+        if(source.isNull() && !evaluated) {
+            source = substitute(init->getType());
+        }
+        if(source.isNull() || decltype_auto) {
+            return source;
+        }
+
         auto argument = source.getNonReferenceType();
         if(auto* RRT = declared->getAs<clang::RValueReferenceType>()) {
-            /// Clang marks every dependent call and subscript an lvalue;
-            /// what they return says which they are.
-            bool lvalue =
-                llvm::isa<clang::CallExpr, clang::ArraySubscriptExpr>(init->IgnoreParens())
-                    ? source->isLValueReferenceType()
-                    : init->isLValue();
+            /// Clang cannot tell what a dependent call or subscript yields;
+            /// the type it returns says.
+            bool lvalue = evaluated && llvm::isa<clang::CallExpr, clang::ArraySubscriptExpr>(
+                                           init->IgnoreParens())
+                              ? source->isLValueReferenceType()
+                              : init->isLValue();
             auto pointee = RRT->getPointeeType();
             if(lvalue && llvm::isa<clang::AutoType>(pointee) && !pointee.hasLocalQualifiers()) {
                 return context.getLValueReferenceType(argument);
             }
-            return argument;
+        } else if(!declared->isReferenceType()) {
+            argument = context.getAdjustedParameterType(argument.getUnqualifiedType());
         }
-        if(declared->isReferenceType()) {
-            return argument;
-        }
-        return context.getAdjustedParameterType(argument.getUnqualifiedType());
+        return replace_auto(declared, argument);
     }
 
     /// `declared` with its `auto` replaced by `argument`, each pointer of
