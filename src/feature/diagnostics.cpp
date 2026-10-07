@@ -195,8 +195,6 @@ private:
         return true;
     }
 
-    /// The filename of the #include in the main file that `fid` was
-    /// entered through, directly or not.
     /// Whether `offset` lies past the include of the includer's remainder
     /// that a borrowed context appends to the main file.
     bool past_suffix_include(std::uint32_t offset) {
@@ -208,6 +206,8 @@ private:
                offset > unit.file_offset(includes.back().location);
     }
 
+    /// The filename of the #include in the main file that `fid` was
+    /// entered through, directly or not.
     std::optional<LocalSourceRange> include_range(clang::FileID fid) {
         for(auto location = unit.include_location(fid); location.isValid();
             location = unit.include_location(fid)) {
