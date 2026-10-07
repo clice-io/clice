@@ -27,9 +27,8 @@ struct MacroExpansion {
 /// behind, is never recorded.
 class TokenMap {
 public:
-    /// Starts collecting from `pp`, which has entered the main file and not
-    /// lexed it yet. The map stays where it is built: the preprocessor holds
-    /// on to it.
+    /// Starts collecting from `pp` before it enters the main file. The map
+    /// stays where it is built: the preprocessor holds on to it.
     explicit TokenMap(clang::Preprocessor& pp);
 
     TokenMap(const TokenMap&) = delete;
@@ -109,6 +108,10 @@ private:
     std::vector<clang::syntax::Token> spelled_tokens;
     std::vector<bool> away;
     std::vector<clang::syntax::Token> expanded_tokens;
+
+    /// Whether the preprocessor reads the main file, not a header it
+    /// includes.
+    bool lexing_main = false;
 
     /// The runs of expanded tokens lexed while the main file was the file
     /// being read: its own tokens, its macro expansions, never a header's.

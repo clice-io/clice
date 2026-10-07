@@ -88,6 +88,14 @@ struct TokenMap::Hooks : clang::PPCallbacks {
                       const clang::MacroArgs*) override {
         map.record_invocation(range);
     }
+
+    void LexedFileChanged(clang::FileID fid,
+                          LexedFileChangeReason,
+                          clang::SrcMgr::CharacteristicKind,
+                          clang::FileID,
+                          clang::SourceLocation) override {
+        map.lexing_main = fid == map.main_fid;
+    }
 };
 
 TokenMap::TokenMap(clang::Preprocessor& pp) : pp(pp), SM(pp.getSourceManager()) {
@@ -105,10 +113,8 @@ void TokenMap::record(const clang::Token& token) {
     if(token.is(clang::tok::eod)) {
         return;
     }
-    // Past the main file's end no file lexer is left: the eof is its own.
     auto index = static_cast<std::uint32_t>(expanded_tokens.size());
-    auto* lexer = pp.getCurrentFileLexer();
-    if(!lexer || lexer->getFileID() == main_fid) {
+    if(lexing_main) {
         if(main_segments.empty() || main_segments.back().second != index) {
             main_segments.emplace_back(index, index);
         }
