@@ -173,6 +173,37 @@ tests/snap/navigation/go_to_definition/12_def_auto_keyword.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent overload candidates**
+
+A dependent call that may reach several overloads lists each of them
+
+Every candidate answers on its own: the definition where it has one, its
+declaration where it has none.
+
+```snap
+tests/snap/navigation/go_to_definition/13_def_overload_candidates.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent expression members**
+
+A member accessed on what a dependent subscript, call or `auto` variable evaluates to resolves to the member declared on the class template
+
+Where the call has a `const` overload, the constness of the object picks
+the one it names; overloads that differ in their parameters are all
+listed.
+
+```snap
+tests/snap/navigation/go_to_definition/14_def_dependent_expression.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Implicit targets
@@ -462,17 +493,15 @@ tests/snap/navigation/implicit_construction/06_delegating_ctor.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Inherited constructors**
 
-An inherited-constructor declaration navigates to one imported base
+An inherited-constructor declaration navigates to every imported base
 constructor
 
 Go-to-definition on an inherited-constructor declaration
-(`using Base::Base;`) reaches a base constructor. When the base declares
-several constructors the reply resolves to one of them rather than
-listing the whole set.
+(`using Base::Base;`) lists each constructor of the base it imports.
 
 ```snap
 tests/snap/navigation/implicit_construction/07_inherited_ctor.cpp
@@ -805,6 +834,19 @@ bound member's type
 
 ```snap
 tests/snap/navigation/go_to_type_definition/06_typedef_structured_binding.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Pointers, references and arrays**
+
+Go-to-type-definition looks through pointers, references and arrays to the
+definition of the element type
+
+```snap
+tests/snap/navigation/go_to_type_definition/07_typedef_pointer_reference.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1358,15 +1400,14 @@ tests/snap/navigation/module_navigation/03_module_iface_impl/main.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Dot-separated module name**
 
-Only the leading segment of a dotted module name navigates to its interface
+Every segment of a dotted module name navigates to its interface
 
-Go-to-definition on the leading segment of a dot-separated module name
-reaches the module's interface unit; the segments after a dot do not
-resolve on their own yet.
+Go-to-definition on any segment of a dot-separated module name reaches
+the module's interface unit; the whole name is one reference.
 
 ```snap
 tests/snap/navigation/module_navigation/04_module_dotted/main.cpp

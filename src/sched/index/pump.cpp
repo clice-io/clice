@@ -1,17 +1,18 @@
-#include "sched/index/pump.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <string>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "sched/families/turun.h"
-#include "sched/graph.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "worker/pool.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/STLExtras.h"
+module clice;
+
+import :sched.families.turun;
+import :sched.graph;
+import :sched.index.pump;
+import :support.logging;
+import :support.process;
+import :support.timer;
+import :worker.pool;
 
 namespace clice {
 
@@ -20,7 +21,7 @@ IndexPump::IndexPump(kota::event_loop& loop,
                      TURunFamily& turun,
                      IndexStore& store,
                      WorkerPool& pool) :
-    loop(loop), bg_tasks(loop), project(project), turun(turun), store(store), pool(pool) {
+    loop(loop), project(project), turun(turun), store(store), pool(pool) {
     capacity_conn = pool.on_stateless_capacity.connect([this] { capacity_event.set(); });
 }
 
@@ -137,6 +138,11 @@ void IndexPump::resume_indexing() {
 kota::task<> IndexPump::stop() {
     bg_tasks.cancel();
     co_await bg_tasks.join();
+    // Cancelling the round that waited on the idle timer leaves it armed,
+    // and an armed timer keeps the loop running until it fires.
+    if(index_idle_timer) {
+        index_idle_timer->stop();
+    }
     // Cancelled tasks unwind before their settle bookkeeping; release any
     // parked feature request rather than stranding it past shutdown.
     for(auto& waits: llvm::make_second_range(attempt_waits)) {
@@ -174,13 +180,15 @@ void IndexPump::schedule(bool immediate) {
 
     if(!bg_tasks.spawn(run_background_indexing())) {
         indexing_scheduled = false;
+        index_idle_timer->stop();
         LOG_WARN("Failed to spawn background indexing task (task group stopped)");
     }
 }
 
-auto IndexPump::note_dispatch_failure(const PendingLedger::Claim& claim, bool crashed)
+auto IndexPump::note_dispatch_failure(const PendingLedger::Claim& claim,
+                                      PendingLedger::Failure failure)
     -> PendingLedger::FailureVerdict {
-    auto outcome = ledger.on_dispatch_failure(claim, crashed);
+    auto outcome = ledger.on_dispatch_failure(claim, failure);
     if(outcome.needs_slot) {
         index_queue.push_back(claim.id);
     }
@@ -321,14 +329,19 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
                 break;
             }
             case TURunFamily::Verdict::Crashed:
+            case TURunFamily::Verdict::Lost:
             case TURunFamily::Verdict::Preempted: {
                 // Preempted under memory pressure or lost to a worker
-                // crash: the work itself is fine — requeue the file
-                // with its original reason so the next round redoes it
-                // instead of silently dropping coverage. Only crashes
-                // spend the bounded budget.
-                bool crashed = outcome.verdict == TURunFamily::Verdict::Crashed;
-                switch(note_dispatch_failure(claim, crashed)) {
+                // death: the work itself is fine — requeue the file with
+                // its original reason so the next round redoes it instead
+                // of silently dropping coverage; only lost runs spend the
+                // bounded budget. A run that crashed its worker waits for
+                // the file to change: the same bytes would crash again.
+                using enum PendingLedger::Failure;
+                auto failure = outcome.verdict == TURunFamily::Verdict::Crashed ? Crashed
+                               : outcome.verdict == TURunFamily::Verdict::Lost  ? Lost
+                                                                                : Preempted;
+                switch(note_dispatch_failure(claim, failure)) {
                     case PendingLedger::FailureVerdict::Dropped: {
                         LOG_INFO("[{}/{}] Index dropped for removed file {}",
                                  index,
@@ -351,19 +364,18 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
                         // into this file stay stale until its content
                         // changes.
                         LOG_WARN(
-                            "[{}/{}] Index giving up on {} after {} crash requeues; "
-                            "its cross-file data stays stale until it is edited: {}",
+                            "[{}/{}] Index giving up on {} ({}); its cross-file data stays "
+                            "stale until it changes",
                             index,
                             total,
                             file_path,
-                            max_requeue_attempts,
                             outcome.error);
                         failed_ids.insert(server_path_id);
                         break;
                     }
                     case PendingLedger::FailureVerdict::Requeued: {
-                        if(crashed) {
-                            LOG_WARN("[{}/{}] Worker crashed while indexing {}; requeued: {}",
+                        if(failure == Lost) {
+                            LOG_WARN("[{}/{}] Worker died while indexing {}; requeued: {}",
                                      index,
                                      total,
                                      file_path,
@@ -455,16 +467,11 @@ kota::task<> IndexPump::run_background_indexing() {
     // Timed at the start of real work; the reporter's token handshake runs
     // off to the side and cannot inflate the reported indexing duration.
     ScopedTimer timer;
-    kota::task_group<> workers(loop);
-
-    // The dispatch loop runs as a child of `workers`, so this frame's only
-    // suspension while children live is the join below: a shutdown cancel
-    // cascades through the join into the group, and the feeder plus every
-    // in-flight task unwind before `workers` is destroyed. Parking the
-    // feeder's waits on this frame instead would let the cancel finalize
-    // the frame — destroying the group with children still in flight.
-    workers.spawn(run_round_feeder(workers, round, round_end, total, dispatched));
-    co_await workers.join();
+    // The dispatch loop runs as the first child of the group it fills, so a
+    // shutdown cancel reaches the feeder and every in-flight task alike.
+    co_await kota::with_task_group([&](kota::task_group<>& workers) {
+        return run_round_feeder(workers, round, round_end, total, dispatched);
+    });
 
     // Skipped files bump `completed` without a Report emit; refresh the
     // materialized count so a subscriber waking up on End reads the truth.
@@ -490,6 +497,9 @@ kota::task<> IndexPump::run_background_indexing() {
              timer.ms());
     claim_report(
         co_await store.save(save_debt(), /*settle=*/index_queue_pos >= index_queue.size()));
+    // The round's merge buffers are freed by now; glibc would keep their
+    // pages, and the master its round's peak, for the rest of the session.
+    co_await kota::queue([] { release_free_memory(); });
 
     // The round owns the "active" gate through its save: releasing it
     // before the write await would let a next round's save overlap this

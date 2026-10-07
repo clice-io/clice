@@ -1,11 +1,6 @@
-#include "support/logging.h"
+module;
 
-#include <array>
-#include <chrono>
-#include <ctime>
-#include <format>
-#include <memory>
-#include <string>
+#include "modules/prelude.h"
 
 #if defined(__linux__)
 #include <link.h>
@@ -19,14 +14,12 @@
 #endif
 
 #include "version.h"
-#include "support/filesystem.h"
-#include "support/stderr_sink.h"
+#include "support/logging.macros.h"
 
-#include "spdlog/sinks/basic_file_sink.h"
-#include "spdlog/sinks/ringbuffer_sink.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/Signals.h"
+module clice;
+
+import :support.log_sinks;
+import :support.logging;
 
 namespace clice::logging {
 
@@ -34,12 +27,21 @@ Options options;
 
 static std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> ringbuffer_sink;
 
+/// The stderr sink stderr_logger chose, mirrored again by file_logger.
+static spdlog::sink_ptr console_sink;
+
 constexpr static auto pattern = "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [thread %t] [%s:%#] %v";
 
 void stderr_logger(std::string_view name, const Options& options) {
-    std::shared_ptr<spdlog::logger> logger;
+    std::shared_ptr<StderrSink> client_stderr;
+    if(options.never_block_stderr) {
+        client_stderr = std::make_shared<StderrSink>();
+        console_sink = client_stderr;
+    } else {
+        console_sink = std::make_shared<FileSink>(2, /*owned=*/false);
+    }
 
-    auto console_sink = std::make_shared<StderrSink>();
+    std::shared_ptr<spdlog::logger> logger;
     if(options.replay_console) {
         ringbuffer_sink = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(128);
         std::array<spdlog::sink_ptr, 2> sinks = {console_sink, ringbuffer_sink};
@@ -52,6 +54,13 @@ void stderr_logger(std::string_view name, const Options& options) {
     logger->set_pattern(pattern);
     logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
+
+    if(client_stderr && client_stderr->inoperative()) {
+        // The sink fails closed (drops everything) rather than risk the
+        // caller blocking on an unswitchable pipe; the line reaches the
+        // file log through the replay buffer.
+        LOG_WARN("stderr mirror disabled: pipe could not be switched to non-blocking");
+    }
 }
 
 std::string session_log_directory(std::string_view logging_dir) {
@@ -64,7 +73,10 @@ std::string session_log_directory(std::string_view logging_dir) {
 #endif
     char stamp[32];
     std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H-%M-%S", &local);
-    return path::join(logging_dir, std::format("{}_{}", stamp, llvm::sys::Process::getProcessId()));
+    llvm::SmallString<256> directory(logging_dir);
+    llvm::sys::path::append(directory,
+                            std::format("{}_{}", stamp, llvm::sys::Process::getProcessId()));
+    return directory.str().str();
 }
 
 bool file_logger(std::string_view name,
@@ -75,39 +87,28 @@ bool file_logger(std::string_view name,
         spdlog::error("Failed to create log directory {}: {}", std::string(dir), ec.message());
         return false;
     }
-    auto filepath = path::join(dir, std::format("{}.log", name));
-    // Verify we can write to the file before constructing the sink.
-    // (spdlog would throw on failure, but exceptions are disabled in this project.)
-    {
-        std::error_code ec;
-        llvm::raw_fd_ostream test(filepath, ec, llvm::sys::fs::OF_Append);
-        if(ec) {
-            spdlog::error("Failed to open log file {}: {}", filepath, ec.message());
-            return false;
-        }
+    llvm::SmallString<256> joined(dir);
+    llvm::sys::path::append(joined, std::format("{}.log", name));
+    auto filepath = joined.str().str();
+    auto opened = FileSink::open(filepath);
+    if(!opened) {
+        spdlog::error("Failed to open log file {}: {}", filepath, opened.error().message());
+        return false;
     }
-    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filepath);
+    auto file_sink = std::move(*opened);
 
     auto replay_buffer = ringbuffer_sink;
 
     llvm::SmallVector<spdlog::sink_ptr, 2> sinks = {file_sink};
-    std::shared_ptr<StderrSink> mirror;
     if(mirror_stderr) {
-        mirror = std::make_shared<StderrSink>();
-        sinks.push_back(mirror);
+        assert(console_sink && "stderr_logger chooses the sink file_logger mirrors to");
+        sinks.push_back(console_sink);
     }
     auto logger = std::make_shared<spdlog::logger>(std::string(name), sinks.begin(), sinks.end());
     logger->set_level(options.level);
     logger->set_pattern(pattern);
     logger->flush_on(Level::trace);
     spdlog::set_default_logger(std::move(logger));
-
-    if(mirror && mirror->inoperative()) {
-        // The mirror fails closed (drops everything) rather than risk the
-        // caller blocking on an unswitchable pipe; say so where it can be
-        // seen — the file log.
-        LOG_WARN("stderr mirror disabled: pipe could not be switched to non-blocking");
-    }
 
     // Replay buffered logs after swapping the default logger, so no messages
     // emitted between the snapshot and the swap are lost.
@@ -155,6 +156,70 @@ uintptr_t main_executable_base() {
 #endif
 }
 
+#if defined(_WIN32)
+static void print_frame(llvm::raw_ostream& os, DWORD64 pc) {
+    os << llvm::format("0x%016llX", static_cast<unsigned long long>(pc));
+    HMODULE module = nullptr;
+    std::array<char, MAX_PATH> path;
+    if(GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          reinterpret_cast<LPCSTR>(pc),
+                          &module) &&
+       GetModuleFileNameA(module, path.data(), path.size()) != 0) {
+        auto base = reinterpret_cast<DWORD64>(module);
+        os << llvm::format(", %s(0x%016llX) + 0x%llX byte(s)\n",
+                           path.data(),
+                           static_cast<unsigned long long>(base),
+                           static_cast<unsigned long long>(pc - base));
+    } else {
+        os << " <unknown module>\n";
+    }
+}
+
+/// LLVM's walk (dbghelp's StackWalk64) stops on arm64 at the exception
+/// dispatcher's return address, which the system DLL signed with pointer
+/// authentication, and RtlCaptureStackBackTrace follows the frame pointer
+/// chain, which ends there too; ntdll's unwinder follows the unwind data,
+/// strips the signatures and goes through the dispatcher to the crashing
+/// frames. The frames print as LLVM's do without a symbolizer, the format
+/// scripts/symbolize.py reads.
+static void print_stack_trace(llvm::raw_ostream& os) {
+    CONTEXT context;
+    RtlCaptureContext(&context);
+#if defined(__aarch64__)
+    auto& pc = context.Pc;
+#else
+    auto& pc = context.Rip;
+#endif
+    for(int depth = 0; depth < 256 && pc != 0; depth += 1) {
+        print_frame(os, pc);
+        DWORD64 image_base = 0;
+        auto* function = RtlLookupFunctionEntry(pc, &image_base, nullptr);
+        if(!function) {
+            // A leaf function, which returns through the link register on
+            // arm64 and through the address on top of the stack on x64.
+#if defined(__aarch64__)
+            pc = context.Lr;
+#else
+            pc = *reinterpret_cast<DWORD64*>(context.Rsp);
+            context.Rsp += 8;
+#endif
+            continue;
+        }
+        void* handler_data = nullptr;
+        DWORD64 establisher_frame = 0;
+        RtlVirtualUnwind(UNW_FLAG_NHANDLER,
+                         image_base,
+                         pc,
+                         function,
+                         &context,
+                         &handler_data,
+                         &establisher_frame,
+                         nullptr);
+    }
+}
+#endif
+
 static void crash_handler(void*) {
     if(crash_log_stream) {
         *crash_log_stream << "\n=== CRASH STACK TRACE ===\n";
@@ -168,7 +233,11 @@ static void crash_handler(void*) {
         *crash_log_stream << "main executable base: 0x";
         crash_log_stream->write_hex(executable_base);
         *crash_log_stream << "\n";
+#if defined(_WIN32)
+        print_stack_trace(*crash_log_stream);
+#else
         llvm::sys::PrintStackTrace(*crash_log_stream);
+#endif
         crash_log_stream->flush();
     }
 }

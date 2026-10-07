@@ -159,7 +159,7 @@ tests/snap/code_action/define/10_missing_from_definition.cpp
 
 在头文件中，成员还可以定义到与该头文件一起编译的源文件里
 
-定义使用完全限定名，并与该文件中该类的其他定义放在一起；已经在某个源文件中定义过的成员不会再次列出。模板和内联函数仍留在头文件中。
+定义使用完全限定名，并与该文件中该类的其他定义放在一起；已经在某个源文件中定义过的成员不会再次列出。模板、内联函数以及其他文件看不到的函数仍留在头文件中；其余函数在头文件里定义到类外时会标上 `inline`。
 
 ```snap
 tests/snap/code_action/define/11_header_host/main.cpp
@@ -179,11 +179,11 @@ tests/snap/code_action/define/12_nested_class.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **依赖返回类型**
 
-依赖返回类型保持原样照搬，在类外可能需要 `typename` 和限定
+返回类型用到类模板本身或其成员类型时，会通过模板形参写出限定
 
 ```snap
 tests/snap/code_action/define/13_dependent_return_type.cpp
@@ -261,6 +261,32 @@ tests/snap/code_action/implement/04_conversion_and_pointers.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**签名相同的多个基类**
+
+一条声明同时重写所有基类中具有该签名的纯虚方法，其中任一个带 `noexcept` 时它也会带上
+
+```snap
+tests/snap/code_action/implement/05_shared_signatures.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**重写声明的说明符**
+
+C 风格可变参数、`consteval`，以及基类方法是否为 `noexcept`，都会沿用到重写声明上
+
+异常说明依赖于基类模板实参的方法不会得到声明。
+
+```snap
+tests/snap/code_action/implement/06_specifiers.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## switch 分支
@@ -331,6 +357,34 @@ tests/snap/code_action/switch_cases/05_selection_range.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**依赖模板的标签**
+
+switch 中有标签依赖模板参数时不给出操作，因为只有实例化之后才知道它覆盖了哪些枚举项
+
+模板中的 switch 若标签不依赖模板参数，仍会像在其他地方一样补全分支。
+
+```snap
+tests/snap/code_action/switch_cases/06_dependent_labels.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**声明变量的分支**
+
+没有 `default` 时，若 switch 在自身作用域内声明了变量，缺失的分支会插在它的第一个标签之前，因为放在声明之后的标签会跳过该声明
+
+原有的分支都不会落入插在那里的分支。
+
+```snap
+tests/snap/code_action/switch_cases/07_declaring_section.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 推导类型
@@ -377,7 +431,9 @@ tests/snap/code_action/deduced_type/03_decltype.cpp
 
 **无法命名的类型保持 auto**
 
-Lambda、依赖类型以及其他写不出名字的类型不会展开
+Lambda、依赖类型以及在该声明中无法命名的类型不会展开
+
+以下类型无法命名：另一个函数内部的局部类型、声明无权访问的成员类型，以及标准名字尚未声明时 `sizeof` 的类型（MSVC 兼容模式会隐式声明 `size_t`）。
 
 ```snap
 tests/snap/code_action/deduced_type/04_unnameable_types.cpp
@@ -393,6 +449,48 @@ tests/snap/code_action/deduced_type/04_unnameable_types.cpp
 
 ```snap
 tests/snap/code_action/deduced_type/05_forwarding_reference.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**按作用域书写的名字**
+
+名字省去外层命名空间的程度，以更短的名字仍能找到同一类型为限
+
+被离展开处更近的声明隐藏的名字会保留限定符；连完全限定名也被隐藏时，则从全局作用域写起。
+
+```snap
+tests/snap/code_action/deduced_type/06_shadowed_names.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**内置类型的标准名字**
+
+在标准名字已声明的位置，`sizeof`、指针相减和 `nullptr` 的类型会展开为对应的标准名字
+
+看不到 `std::nullptr_t` 的声明时，`nullptr` 的类型写作 `decltype(nullptr)`。
+
+```snap
+tests/snap/code_action/deduced_type/07_standard_names.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**推导出的常量指针**
+
+`const` 写在推导出指针的 `auto` 前面时，会移到 `*` 之后，使指针本身保持为常量
+
+`const` 与 `auto` 之间还有其他说明符时，声明保持原样。
+
+```snap
+tests/snap/code_action/deduced_type/08_const_pointer.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -433,10 +531,34 @@ tests/snap/code_action/macro/02_nested_expansion.cpp
 
 **预处理指令中的宏引用与空宏**
 
-预处理条件中出现的宏名不是可以替换的展开，而展开为空的宏会被删除
+预处理条件中出现的宏名，无论位于条件的哪一行，都不是可以替换的展开，而展开为空的宏会被删除
 
 ```snap
 tests/snap/code_action/macro/03_directives_and_empty.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**执行 pragma 的宏**
+
+展开时会执行 `_Pragma` 运算符的宏不给出展开操作，因为 pragma 不会留下可以写回原处的 Token
+
+```snap
+tests/snap/code_action/macro/04_pragma_operator.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Token 不会粘连**
+
+展开结果会插入适当的空格，使其中的 Token 既不会彼此粘连，也不会与紧贴宏调用书写的文本粘连
+
+```snap
+tests/snap/code_action/macro/05_token_boundaries.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -453,7 +575,7 @@ tests/snap/code_action/macro/03_directives_and_empty.cpp
 
 无法解析的标准库名字会依据标准库映射，给出声明它的头文件
 
-指令插入在文件最后一条包含指令之后。非限定的名字还会尝试 `std` 命名空间。
+指令插入在文件开头那组包含指令之后。非限定的名字还会尝试 `std` 命名空间。
 
 ```snap
 tests/snap/code_action/include/01_standard_library.cpp
@@ -495,6 +617,18 @@ tests/snap/code_action/include/03_no_include_yet.cpp
 
 ```snap
 tests/snap/code_action/include/04_conditional_includes.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**嵌入的与尾随的包含指令**
+
+位于 `extern "C"` 或类型体内部的包含指令，以及跟在代码之后的包含指令，都不是新指令该去的位置：新指令会加入文件开头的那组包含指令
+
+```snap
+tests/snap/code_action/include/05_trailing_includes.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -555,6 +689,18 @@ tests/snap/code_action/reorder/04_trailing_comments.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**用到中间内容的定义**
+
+如果移动某个定义会把它挪到它所用的东西之前，例如夹在这些定义之间的变量或宏定义，该定义就留在原处，其余定义围绕它重排
+
+```snap
+tests/snap/code_action/reorder/05_dependencies.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 构造函数
@@ -565,7 +711,7 @@ tests/snap/code_action/reorder/04_trailing_comments.cpp
 
 **逐成员构造函数**
 
-为类生成按顺序接收全部字段的构造函数，标量按值传递，其他类型按 const 引用传递
+为类生成按顺序接收全部字段的构造函数，标量按值传递，可复制的类按 const 引用传递
 
 ```snap
 tests/snap/code_action/constructor/01_memberwise.cpp
@@ -625,10 +771,26 @@ tests/snap/code_action/constructor/05_base_without_default.cpp
 
 **默认构造函数被删除的基类**
 
-当基类的默认构造函数被删除时，无论是显式删除还是因引用成员而隐式删除，同样不会生成逐成员构造函数
+当基类的默认构造函数被删除时，无论是显式删除，还是因引用成员或没有初始化的 const 成员而隐式删除，同样不会生成逐成员构造函数
+
+若基类自己初始化了全部字段，其中的 const 成员不会让它失去默认构造函数。
 
 ```snap
 tests/snap/code_action/constructor/06_implicitly_deleted_base.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**只能移动的字段**
+
+类型只能移动、不能复制的字段按值接收并移动到字段中，右值引用字段则经 `std::move` 绑定到传入的实参
+
+类之前没有任何地方声明 `std::move` 时，会为文件加上 `#include <utility>`。既不能复制也不能移动的类不会得到构造函数。
+
+```snap
+tests/snap/code_action/constructor/07_move_only_fields.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -643,7 +805,7 @@ tests/snap/code_action/constructor/06_implicitly_deleted_base.cpp
 
 - 定义到宿主源文件时，位置在索引已知的、该文件中该类成员的最后一个定义之后；文件中一个都没有时放在文件末尾。哪个源文件充当头文件的宿主，取决于该头文件的编译上下文。
 - 只有当项目索引知道某个定义时，已在另一个源文件中定义的成员才会被“定义缺失的成员”操作排除；关闭索引后，每个未定义的成员都会列出。
-- 依赖返回类型会原样照搬到类外定义中，在那里它可能需要 `typename` 和类限定符。
+- 返回类型用到依赖基类（dependent base class）的成员时，会原样照搬到类外定义中，在那里可能需要 `typename` 和基类的限定符。
 - 缺失包含指令的候选来自标准库映射，以及项目索引见过的头文件；没有任何已索引源文件包含过的头文件不会被建议。
 
 ## 尚未实现

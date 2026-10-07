@@ -1,0 +1,12 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "compat",
+    srcs = [
+        "include/util.h",
+        "src/main.cpp",
+        "src/util.c",
+    ],
+    defines = ["COMPAT_DEFINE=1"],
+    includes = ["include"],
+)

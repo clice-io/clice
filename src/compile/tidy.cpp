@@ -1,19 +1,16 @@
-#include <algorithm>
+module;
 
-#include "compile/implement.h"
-#include "support/logging.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Allocator.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/StringSaver.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang-tidy/ClangTidyCheck.h"
-#include "clang-tidy/ClangTidyDiagnosticConsumer.h"
+#include "support/logging.macros.h"
+
 #include "clang-tidy/ClangTidyForceLinker.h"
-#include "clang-tidy/ClangTidyModule.h"
-#include "clang-tidy/ClangTidyOptions.h"
+
+module clice;
+
+import :compile.implement;
+import :support.logging;
+import :vfs.file_system;
 
 namespace clice::tidy {
 
@@ -473,7 +470,8 @@ TidyParams resolve_tidy_params(llvm::StringRef file) {
             opts.Checks->clear();
             return opts;
         }(),
-        tidy::ClangTidyOptions());
+        tidy::ClangTidyOptions(),
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     auto opts = provider.getOptions(file);
 
     TidyParams params;

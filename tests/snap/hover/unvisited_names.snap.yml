@@ -1,0 +1,88 @@
+---
+created_at: 2026-10-01
+input_file: unvisited_names.cpp
+---
+lambda_gnu: { range: "3:54-3:67" }
+### `always_inline`  
+
+---
+Inlining heuristics are disabled and inlining is always attempted regardless of optimization level.  
+\`\`[[clang::always_inline]]\`\` spelling can be used as a statement attribute; other spellings of the attribute are not supported on statements. If a statement is marked \`\`[[clang::always_inline]]\`\` and contains calls, the compiler attempts to inline those calls.  
+.. code-block:: c  
+int example(void) { int i;  
+[[clang::always_inline]] foo(); // attempts to inline foo [[clang::always_inline]] i = bar(); // attempts to inline bar [[clang::always_inline]] return f(42, baz(bar())); // attempts to inline everything }  
+A declaration statement, which is a statement, is not a statement that can have an attribute associated with it (the attribute applies to the declaration, not the statement in that case). So this use case will not work:  
+.. code-block:: c  
+int example(void) { [[clang::always_inline]] int i = bar();  
+return i;  
+}  
+This attribute does not guarantee that inline substitution actually occurs.  
+\<ins>Note: applying this attribute to a coroutine at the `-O0` optimization level has no effect; other optimization levels may only partially inline and result in a diagnostic.\</ins>  
+See also \`the Microsoft Docs on Inline Functions\`\_, \`the GCC Common Function Attribute docs\`\_, and \`the GCC Inline docs\`\_.  
+.. \_the Microsoft Docs on Inline Functions: https://docs.microsoft.com/en-us/cpp/cpp/inline-functions-cpp .. \_the GCC Common Function Attribute docs: https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html .. \_the GCC Inline docs: https://gcc.gnu.org/onlinedocs/gcc/Inline.html  
+
+---
+```cpp
+__attribute__((always_inline))
+```
+
+lambda_std: { range: "3:19-3:28" }
+### `nodiscard`  
+
+---
+Clang supports the ability to diagnose when the results of a function call expression are discarded under suspicious circumstances. A diagnostic is generated when a function or its return type is marked with \`\`[[nodiscard]]\`\` (or \`\`\_\_attribute\_\_((warn_unused_result))\`\`) and the function call appears as a potentially-evaluated discarded-value expression that is not explicitly cast to  
+\`\`void\`\`.  
+A string literal may optionally be provided to the attribute, which will be reproduced in any resulting diagnostics. Redeclarations using different forms of the attribute (with or without the string literal or with different string literal contents) are allowed. If there are redeclarations of the entity with differing string literals, it is unspecified which one will be used by Clang in any resulting diagnostics.  
+.. code-block:: c++  
+struct [[nodiscard]] error_info { /\*...\*/ };  
+error_info enable_missile_safety_mode();  
+void launch_missiles();  
+void test_missiles() { enable_missile_safety_mode(); // diagnoses launch_missiles();  
+} error_info &foo();  
+void f() { foo(); } // Does not diagnose, error_info is a reference.  
+Additionally, discarded temporaries resulting from a call to a constructor marked with \`\`[[nodiscard]]\`\` or a constructor of a type marked  
+\`\`[[nodiscard]]\`\` will also diagnose. This also applies to type conversions that use the annotated \`\`[[nodiscard]]\`\` constructor or result in an annotated type.  
+.. code-block:: c++  
+struct [[nodiscard]] marked_type {/\*..\*/ };  
+struct marked_ctor { [[nodiscard]] marked_ctor();  
+marked_ctor(int);  
+};  
+struct S { operator marked_type() const;  
+[[nodiscard]] operator int() const;  
+};  
+void usages() { marked_type(); // diagnoses.  
+marked_ctor(); // diagnoses.  
+marked_ctor(3); // Does not diagnose, int constructor isn't marked nodiscard.  
+S s;  
+static_cast\<marked_type>(s); // diagnoses (int)s; // diagnoses }  
+
+---
+```cpp
+[[nodiscard("")]]
+```
+
+udl_digits: { range: "10:11-10:18" }
+### function `operator""_unit`  
+
+---
+→ `int`  
+Parameters:  
+- `unsigned long long value`
+
+---
+```cpp
+int operator""_unit(unsigned long long value)
+```
+
+udl_suffix: { range: "10:21-10:28" }
+### function `operator""_unit`  
+
+---
+→ `int`  
+Parameters:  
+- `unsigned long long value`
+
+---
+```cpp
+int operator""_unit(unsigned long long value)
+```

@@ -1,8 +1,13 @@
-#include "compile/implement.h"
-#include "semantic/display.h"
-#include "support/filesystem.h"
+module;
 
-#include "kota/ipc/lsp/text.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :compile.implement;
+import :semantic.display;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 
@@ -66,12 +71,10 @@ auto CompilationUnitRef::decompose_range(clang::SourceRange range)
 auto CompilationUnitRef::decompose_expansion_range(clang::SourceRange range)
     -> std::pair<clang::FileID, LocalSourceRange> {
     auto [begin, end] = range;
-    if(begin == end) {
-        return decompose_range(expansion_location(begin));
-    } else {
-        return decompose_range(
-            clang::SourceRange(expansion_location(begin), expansion_location(end)));
-    }
+    // An end inside a macro expansion extends to the invocation's last
+    // token: `MAKE_FN(name)` as a whole, not its macro name alone.
+    return decompose_range(
+        clang::SourceRange(expansion_location(begin), self->SM().getExpansionRange(end).getEnd()));
 }
 
 auto CompilationUnitRef::file_id(clang::SourceLocation location) -> clang::FileID {
@@ -148,6 +151,10 @@ auto CompilationUnitRef::main_file() -> clang::FileID {
     return self->SM().getMainFileID();
 }
 
+bool CompilationUnitRef::is_main_file(clang::FileID fid) {
+    return fid == main_file() || (fid.isValid() && fid == self->SM().getPreambleFileID());
+}
+
 auto CompilationUnitRef::main_content() -> llvm::StringRef {
     return file_content(main_file());
 }
@@ -155,10 +162,17 @@ auto CompilationUnitRef::main_content() -> llvm::StringRef {
 auto CompilationUnitRef::line_starts() -> std::span<const std::uint32_t> {
     if(self->line_starts_cache.empty()) {
         auto content = main_content();
-        self->line_starts_cache =
-            kota::ipc::lsp::build_line_starts({content.data(), content.size()});
+        self->line_starts_cache = kota::ipc::lsp::line_starts({content.data(), content.size()});
     }
     return self->line_starts_cache;
+}
+
+auto CompilationUnitRef::non_ascii_lines() -> std::span<const std::uint64_t> {
+    if(!self->non_ascii_cache) {
+        auto content = main_content();
+        self->non_ascii_cache = kota::ipc::lsp::non_ascii_lines({content.data(), content.size()});
+    }
+    return *self->non_ascii_cache;
 }
 
 bool CompilationUnitRef::is_builtin_file(clang::FileID fid) {
@@ -190,16 +204,80 @@ auto CompilationUnitRef::include_location(clang::FileID fid) -> clang::SourceLoc
     return self->SM().getIncludeLoc(fid);
 }
 
-bool CompilationUnitRef::synthesized(clang::FileID fid) {
-    if(self->synthesized.empty()) {
-        return false;
+const SynthesizedOrigin* CompilationUnitRef::origin(clang::FileID fid) {
+    if(!borrows_context()) {
+        return nullptr;
     }
     auto entry = self->SM().getFileEntryRefForID(fid);
-    return entry && self->synthesized.contains(file_path(*entry));
+    if(!entry) {
+        return nullptr;
+    }
+    auto it = self->synthesized.find(file_path(*entry));
+    return it != self->synthesized.end() ? &it->second : nullptr;
+}
+
+bool CompilationUnitRef::synthesized(clang::FileID fid) {
+    return origin(fid) != nullptr;
+}
+
+bool CompilationUnitRef::borrows_context() {
+    return !self->synthesized.empty();
+}
+
+auto CompilationUnitRef::source_path(clang::FileID fid) -> llvm::StringRef {
+    if(auto* found = origin(fid)) {
+        return found->source;
+    }
+    return file_path(fid);
+}
+
+std::uint32_t CompilationUnitRef::source_offset(clang::FileID fid, std::uint32_t offset) {
+    auto* found = origin(fid);
+    if(!found) {
+        return offset;
+    }
+    auto run =
+        llvm::upper_bound(found->runs, offset, [](std::uint32_t offset, const SourceRun& run) {
+            return offset < run.offset;
+        });
+    assert(run != found->runs.begin() && offset - std::prev(run)->offset < std::prev(run)->length &&
+           "a position the context did not copy from its file");
+    run = std::prev(run);
+    return run->source_offset + (offset - run->offset);
+}
+
+bool CompilationUnitRef::host_source(clang::FileID fid) {
+    if(!borrows_context()) {
+        return is_main_file(fid);
+    }
+    if(!synthesized(fid)) {
+        return false;
+    }
+    // The host's first fragment is the one the compile -includes, from
+    // the predefines buffer.
+    if(!self->host) {
+        self->host.emplace();
+        auto& SM = self->SM();
+        auto predefines = self->instance->getPreprocessor().getPredefinesFileID();
+        for(auto& [path, cut]: self->synthesized) {
+            if(cut.forced) {
+                continue;
+            }
+            auto entry = SM.getFileManager().getOptionalFileRef(path);
+            if(!entry) {
+                continue;
+            }
+            auto root = SM.translateFile(*entry);
+            if(root.isValid() && SM.getFileID(SM.getIncludeLoc(root)) == predefines) {
+                *self->host = source_path(root);
+            }
+        }
+    }
+    return source_path(fid) == *self->host;
 }
 
 bool CompilationUnitRef::from_context(clang::FileID fid) {
-    if(self->synthesized.empty()) {
+    if(!borrows_context()) {
         return false;
     }
     auto [it, inserted] = self->context_files.try_emplace(fid);
@@ -214,6 +292,15 @@ bool CompilationUnitRef::from_context(clang::FileID fid) {
     // The recursion may have grown the map: store through a fresh lookup.
     self->context_files[fid] = result;
     return result;
+}
+
+bool CompilationUnitRef::encloses_main_file(const clang::Decl* decl) {
+    auto& SM = self->SM();
+    auto start = SM.getLocForStartOfFile(main_file());
+    // A scope left open at the end of the unit has no end.
+    auto end = expansion_location(decl->getEndLoc());
+    return SM.isBeforeInTranslationUnit(expansion_location(decl->getBeginLoc()), start) &&
+           (end.isInvalid() || SM.isBeforeInTranslationUnit(start, end));
 }
 
 auto CompilationUnitRef::presumed_location(clang::SourceLocation location) -> clang::PresumedLoc {
@@ -331,7 +418,7 @@ std::vector<DepFile> CompilationUnitRef::deps() {
         auto it = deps.try_emplace(path, 0).first;
         if(it->second == 0) {
             if(auto buffer = self->SM().getMemoryBufferForFileOrNone(*file)) {
-                it->second = llvm::xxh3_64bits(without_bom(buffer->getBuffer()));
+                it->second = llvm::xxh3_64bits(vfs::without_bom(buffer->getBuffer()));
             }
         }
     };
@@ -382,7 +469,7 @@ std::vector<std::string> CompilationUnitRef::absent() {
         // `#include_next` does not start at the first directory, a lookup
         // also fails on a directory of that name): only a place holding
         // nothing is absent.
-        if(!llvm::sys::fs::exists(entry.getKey())) {
+        if(!vfs::exists(entry.getKey())) {
             result.emplace_back(entry.getKey());
         }
     }

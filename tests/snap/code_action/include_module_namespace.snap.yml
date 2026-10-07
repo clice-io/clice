@@ -1,0 +1,7 @@
+---
+created_at: 2026-10-02
+input_file: include_module_namespace.cpp
+---
+string:
+- [quickfix] Add #include <string>
+  0:0-0:0 => "#include <string>\n"

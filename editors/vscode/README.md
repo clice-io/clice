@@ -8,7 +8,8 @@ configurations, and native C++20 modules support.
 ## Getting started
 
 1. Install this extension — the clice server for your platform is bundled, no
-   download or extra setup needed.
+   download or extra setup needed. Cursor, VSCodium, Windsurf and other VS Code
+   forks install it from [Open VSX](https://open-vsx.org/extension/clice-io/clice).
 2. Open a C++ project with a
    [compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html).
    For CMake: `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`. clice

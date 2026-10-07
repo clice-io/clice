@@ -1,21 +1,16 @@
+module;
+
+#include "modules/prelude.h"
 /// Parts of this file (only_instantiation, resolve_forwarding_params,
 /// proto_type_loc and the forwarding-call analysis) are ported from
 /// clangd's AST.cpp and InlayHints.cpp (llvmorg-21.1.8), part of the LLVM
 /// project, licensed under Apache License v2.0 with LLVM Exceptions. See
 /// https://llvm.org/LICENSE.txt for license information.
 
-#include "semantic/decls.h"
+module clice;
 
-#include "semantic/unifier.h"
-
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallSet.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/Specifiers.h"
+import :semantic.decls;
+import :semantic.unifier;
 
 namespace clice::decls {
 
@@ -32,6 +27,23 @@ bool is_templated(const clang::Decl* decl) {
     }
 
     return false;
+}
+
+bool is_exported(const clang::Decl* decl) {
+    // A concept's or alias template's parameters sit in the enclosing
+    // context, the `export` block included.
+    if(decl->isTemplateParameter() ||
+       !decl->getDeclContext()->getRedeclContext()->isFileContext()) {
+        return false;
+    }
+    // Clang marks what a named module exports visible to importers — a
+    // namespace too once it holds an exported declaration.
+    return llvm::any_of(decl->redecls(), [](const clang::Decl* redecl) {
+        auto* module = redecl->getOwningModule();
+        return module && module->isNamedModule() &&
+               redecl->getModuleOwnershipKind() ==
+                   clang::Decl::ModuleOwnershipKind::VisibleWhenImported;
+    });
 }
 
 namespace {
@@ -73,6 +85,11 @@ bool is_instantiation(const clang::Decl* decl) {
     }
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
         return clang::isTemplateInstantiation(var->getTemplateSpecializationKind());
+    }
+    /// A member class of a class template specialization, instantiated
+    /// along with it or explicitly (`template struct Outer<int>::Inner;`).
+    if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+        return clang::isTemplateInstantiation(record->getTemplateSpecializationKind());
     }
     return false;
 }

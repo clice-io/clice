@@ -1,13 +1,14 @@
-#include "server/editor_context.h"
+module;
 
-#include <string>
-#include <utility>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/STLExtras.h"
+module clice;
+
+import :server.editor_context;
+import :support.json;
+import :support.logging;
 
 namespace clice {
 
@@ -94,7 +95,7 @@ std::string EditorContext::serialize() const {
         data.contexts.push_back(std::move(entry));
     }
 
-    auto json = kota::codec::json::to_string(data);
+    auto json = kota::codec::json::to_string<PathJsonConfig>(data);
     if(!json) {
         LOG_WARN("Failed to serialize the contexts blob");
         return {};
@@ -160,17 +161,17 @@ bool EditorContext::holds_choice(Fid path_id) const {
     auto path = project.file_table.resolve(path_id);
     if(saved->host_path_id.valid()) {
         auto host = saved->host_path_id;
-        if(project.build.commands(host).empty() ||
-           project.dep_graph.find_include_chain(host, path_id).empty()) {
+        if(project.build.commands(host).empty()) {
+            return false;
+        }
+        auto occurrences = count_occurrences(project, host, path_id);
+        if(occurrences == 0) {
             return false;
         }
         // A pinned occurrence can vanish while other inclusions of the
-        // header survive (the chain stays non-empty).
-        if(saved->occurrence.has_value()) {
-            auto count = project.count_occurrences(host, path_id);
-            if(count > 0 && *saved->occurrence >= count) {
-                return false;
-            }
+        // header survive.
+        if(saved->occurrence.has_value() && *saved->occurrence >= occurrences) {
+            return false;
         }
         CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
         return saved->command_hash.empty() || pin_alive(host, edit_paths, *saved);

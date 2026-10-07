@@ -30,9 +30,9 @@ hook_decl:
     - { file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
     - { file: "${WS}/macro_header/main.cpp", range: "18:27-18:34" }
   callHierarchy:
-    - { name: "advance", kind: Function, file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+    - { name: "advance", kind: Function, file: "${WS}/macro_header/main.cpp", range: "11:0-13:1", selection: "11:12-11:19" }
   incomingCalls:
-    - { name: "check", kind: Function, file: "${WS}/macro_header/main.cpp", range: "17:5-17:10", fromRanges: ["18:27-18:37"] }
+    - { name: "check", kind: Function, file: "${WS}/macro_header/main.cpp", range: "17:0-19:1", selection: "17:5-17:10", fromRanges: ["18:27-18:34"] }
 
 hook_def:
   definition:
@@ -44,9 +44,9 @@ hook_def:
     - { file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
     - { file: "${WS}/macro_header/main.cpp", range: "18:27-18:34" }
   callHierarchy:
-    - { name: "advance", kind: Function, file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+    - { name: "advance", kind: Function, file: "${WS}/macro_header/main.cpp", range: "11:0-13:1", selection: "11:12-11:19" }
   incomingCalls:
-    - { name: "check", kind: Function, file: "${WS}/macro_header/main.cpp", range: "17:5-17:10", fromRanges: ["18:27-18:37"] }
+    - { name: "check", kind: Function, file: "${WS}/macro_header/main.cpp", range: "17:0-19:1", selection: "17:5-17:10", fromRanges: ["18:27-18:34"] }
 
 hook_use:
   definition:
@@ -59,9 +59,9 @@ hook_use:
     - { file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
     - { file: "${WS}/macro_header/main.cpp", range: "18:27-18:34" }
   callHierarchy:
-    - { name: "advance", kind: Function, file: "${WS}/macro_header/main.cpp", range: "11:12-11:19" }
+    - { name: "advance", kind: Function, file: "${WS}/macro_header/main.cpp", range: "11:0-13:1", selection: "11:12-11:19" }
   incomingCalls:
-    - { name: "check", kind: Function, file: "${WS}/macro_header/main.cpp", range: "17:5-17:10", fromRanges: ["18:27-18:37"] }
+    - { name: "check", kind: Function, file: "${WS}/macro_header/main.cpp", range: "17:0-19:1", selection: "17:5-17:10", fromRanges: ["18:27-18:34"] }
 
 macro_use:
   definition:

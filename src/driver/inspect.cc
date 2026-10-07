@@ -1,53 +1,34 @@
-#include <format>
-#include <map>
-#include <print>
-#include <ranges>
+module;
 
-#include "command/command.h"
-#include "command/toolchain.h"
-#include "compile/compilation.h"
-#include "config/config.h"
-#include "driver/driver.h"
-#include "feature/feature.h"
-#include "index/shard.h"
-#include "index/tu_index.h"
-#include "project/command_resolver.h"
-#include "project/configuration.h"
-#include "project/load.h"
-#include "project/project.h"
-#include "semantic/content.h"
-#include "support/filesystem.h"
-#include "syntax/annotation.h"
-#include "syntax/scan.h"
+#include "modules/prelude.h"
 
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/SHA256.h"
-#include "llvm/Support/VirtualFileSystem.h"
-#include "clang/Driver/Types.h"
+#include "support/logging.macros.h"
 
-namespace kota::codec {
+module clice;
 
-/// SymbolKind is a struct wrapping its enum for implicit conversions, so
-/// reflection would serialize it as `{"kind_value": ...}`; emit the enum
-/// name instead, matching how plain enums serialize under enum_repr::String.
-template <typename Config>
-struct serialize_visit<json::ValueWriter, clice::SymbolKind, Config> {
-    static bool visit(json::ValueWriter& vis, const clice::SymbolKind& kind) {
-        return vis.visit_str(
-            kota::meta::enum_name(static_cast<clice::SymbolKind::Kind>(kind), "Invalid"));
-    }
-};
-
-}  // namespace kota::codec
+import :command.command;
+import :command.toolchain;
+import :compile.compilation;
+import :config.config;
+import :driver.driver;
+import :feature.feature;
+import :index.shard;
+import :index.tu_index;
+import :project.command_resolver;
+import :project.configuration;
+import :project.load;
+import :project.project;
+import :syntax.annotation;
+import :syntax.scan;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::driver {
 
 namespace {
 
 struct InspectOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoFlag(names = {"--config-schema"},
              help = "Print the JSON schema of the clice configuration and exit",
@@ -56,7 +37,7 @@ struct InspectOptions {
 
     DecoInput(meta_var = "<FEATURE> <PATH>",
               help =
-                  "Feature to run (code_action, code_completion, content, document_links, "
+                  "Feature to run (code_action, code_completion, document_links, "
                   "document_symbol, folding_range, hover, inlay_hint, semantic_tokens, "
                   "signature_help, tu_index) and a source file or directory",
               required = false)
@@ -93,18 +74,16 @@ struct InspectOptions {
                  required = false)
     <std::string> configuration;
 
-    DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
-                 names = {"--log-level", "--log-level="},
-                 help = "Log level: trace, debug, info, warn, error, off",
-                 required = false)
-    <std::string> log_level;
+    LogLevelOption log{.log_level = LogLevel::Warn};
 };
 
 /// JSON layout of the inspect output. Field names stay snake_case (the
 /// project's native spelling) and enums serialize as their C++ value
-/// names; the TS side owns any mapping to LSP vocabulary.
+/// names; the TS side owns any mapping to LSP vocabulary. Text that is not
+/// UTF-8 is written as U+FFFD, as the server writes it to the client.
 struct InspectJsonConfig {
     constexpr static auto enum_repr = kota::codec::enum_repr::String;
+    constexpr static auto invalid_utf8 = kota::codec::invalid_utf8::Replace;
 };
 
 struct FileEntry {
@@ -280,9 +259,11 @@ std::optional<kota::codec::RawValue> run_hover(CompilationUnitRef unit,
 /// the completion offset.
 std::optional<kota::codec::RawValue> run_code_completion(CompilationParams& params,
                                                          llvm::StringRef config) {
+    // The replies of an editor client that takes everything an item can carry.
     return to_raw_json(
         feature::code_complete(params,
-                               *parse_feature_config<feature::CodeCompletionOptions>(config)));
+                               *parse_feature_config<feature::CodeCompletionOptions>(config),
+                               {.snippets = true, .insert_replace = true}));
 }
 
 std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& params,
@@ -291,8 +272,9 @@ std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& param
 }
 
 /// Occurrence dump of the TU index for the compiled file — the
-/// inspect-path pin of the index layer. No LSP request carries this
-/// shape, so tu_index fixtures are `verify: inspect`.
+/// inspect-path pin of the index layer — each with the kinds of its
+/// symbol's rows spanning it. No LSP request carries this shape, so
+/// tu_index fixtures are `verify: inspect`.
 struct RawOccurrence {
     LocalSourceRange range;
     SymbolKind kind;
@@ -319,7 +301,7 @@ std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
         raw.kind = symbol ? symbol->kind : SymbolKind(SymbolKind::Invalid);
         if(auto found = relations.find(occurrence.target); found != relations.end()) {
             for(const auto& relation: found->second) {
-                if(relation.range == occurrence.range) {
+                if(relation.range.contains(occurrence.range)) {
                     raw.relations.emplace_back(kota::meta::enum_name(relation.kind, "Invalid"));
                 }
             }
@@ -328,84 +310,6 @@ std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
         return true;
     });
     return to_raw_json(out);
-}
-
-struct RawContentDep {
-    std::uint32_t file;
-    std::uint32_t unit;
-};
-
-struct RawContentUnit {
-    /// 1-based lines of the unit's range in its file.
-    std::uint32_t line;
-    std::uint32_t end_line;
-    std::string kind;
-    std::string name;
-    std::string entity;
-    std::string own;
-    std::string content;
-    std::vector<RawContentDep> deps;
-};
-
-struct RawContentFile {
-    std::string path;
-    std::string digest;
-    std::vector<RawContentUnit> units;
-};
-
-/// Content-hash dump of the whole TU the compiled file heads — the
-/// inspect-path pin of the content layer (semantic/content.h). No LSP
-/// request carries this shape, so content fixtures are `verify: inspect`.
-std::optional<kota::codec::RawValue> run_content(CompilationUnitRef unit,
-                                                 [[maybe_unused]] llvm::StringRef config) {
-    auto table = ContentTable::compute(unit);
-
-    // Units come sorted by (file, offset): one entry per file in that
-    // order, so a file included twice keeps two entries; deps point at
-    // (file entry, unit position).
-    std::vector<RawContentFile> files;
-    std::vector<RawContentDep> position;
-    std::vector<std::uint32_t> newlines;
-    clang::FileID current;
-    for(auto& row: table.units) {
-        if(files.empty() || row.fid != current) {
-            current = row.fid;
-            files.push_back({.path = unit.file_path(row.fid).str(),
-                             .digest = std::format("{}", table.digests.lookup(row.fid))});
-            newlines.clear();
-            llvm::StringRef content = unit.file_content(row.fid);
-            for(auto offset = content.find('\n'); offset != llvm::StringRef::npos;
-                offset = content.find('\n', offset + 1)) {
-                newlines.push_back(static_cast<std::uint32_t>(offset));
-            }
-        }
-        auto line_of = [&](std::uint32_t offset) {
-            return static_cast<std::uint32_t>(std::ranges::lower_bound(newlines, offset) -
-                                              newlines.begin()) +
-                   1;
-        };
-        RawContentUnit raw{
-            .line = line_of(row.range.begin),
-            .end_line = line_of(row.range.end - 1),
-            .kind = row.decl->getDeclKindName(),
-            .entity = std::format("{:016x}", row.entity),
-            .own = std::format("{}", row.own),
-            .content = std::format("{}", row.content),
-        };
-        if(auto* named = llvm::dyn_cast<clang::NamedDecl>(row.decl)) {
-            raw.name = named->getNameAsString();
-        }
-        position.push_back({.file = static_cast<std::uint32_t>(files.size() - 1),
-                            .unit = static_cast<std::uint32_t>(files.back().units.size())});
-        files.back().units.push_back(std::move(raw));
-    }
-    for(std::uint32_t u = 0; u < table.units.size(); u += 1) {
-        auto& raw = files[position[u].file].units[position[u].unit];
-        for(auto dep: table.units[u].deps) {
-            raw.deps.push_back(position[dep]);
-        }
-    }
-    return to_raw_json(files);
 }
 
 /// A feature runs in exactly one shape: whole-document (`run`), once per
@@ -443,7 +347,6 @@ constexpr std::array features = {
     FeatureSpec{.name = "code_completion",
                 .run_complete = run_code_completion,
                 .check_config = check_feature_config<feature::CodeCompletionOptions>},
-    FeatureSpec{.name = "content", .run = run_content},
     FeatureSpec{.name = "document_links", .run = run_document_links},
     FeatureSpec{.name = "document_symbol", .run = run_document_symbols},
     FeatureSpec{.name = "folding_range", .run = run_folding_ranges},
@@ -549,9 +452,9 @@ CanonicalPath workspace_of(CanonicalRef start) {
     path::walk_ancestors(start, [&](CanonicalRef dir) {
         bool marked = llvm::any_of(config_file_names,
                                    [&](llvm::StringRef marker) {
-                                       return fs::exists(path::join(dir, marker));
+                                       return vfs::exists(path::join(dir, marker));
                                    }) ||
-                      fs::exists(path::join(dir, "compile_commands.json"));
+                      vfs::exists(path::join(dir, "compile_commands.json"));
         if(marked) {
             workspace = dir;
         }
@@ -659,6 +562,12 @@ void run_feature(FileEntry& entry,
     auto prepare = [&](CompilationParams& params) {
         apply_command(params, command);
         for(const auto& sibling: sources) {
+            if(sibling.abs == file.abs && command.synthesized) {
+                std::string text = sibling.source.content;
+                command.synthesized->append_suffix_include(text);
+                params.add_remapped_file(sibling.abs, text);
+                continue;
+            }
             params.add_remapped_file(sibling.abs, sibling.source.content);
         }
         for(const auto& pcm: pcms) {
@@ -813,11 +722,11 @@ int run_inspect(const InspectOptions& opts) {
     }
 
     Spelling abs_path(inputs[1], Spelling::cwd());
-    if(!fs::exists(abs_path)) {
+    if(!vfs::exists(abs_path)) {
         LOG_ERROR("no such file or directory: {}", abs_path);
         return 1;
     }
-    bool is_dir = fs::is_directory(abs_path);
+    bool is_dir = vfs::is_directory(abs_path);
 
     /// (rel key, absolute path) per file, sorted by the map later.
     std::vector<std::pair<std::string, std::string>> files;
@@ -825,25 +734,19 @@ int run_inspect(const InspectOptions& opts) {
     /// above it may list members the suffix filter does not admit.
     llvm::StringSet<> directories;
     if(is_dir) {
-        std::error_code ec;
-        for(llvm::sys::fs::recursive_directory_iterator it(abs_path, ec), end; it != end && !ec;
-            it.increment(ec)) {
-            if(it->type() == llvm::sys::fs::file_type::regular_file) {
-                directories.insert(path::parent_path(it->path()));
+        vfs::walk(abs_path, [&](const vfs::Entry& entry) {
+            if(entry.type == llvm::sys::fs::file_type::regular_file) {
+                directories.insert(path::parent_path(entry.path));
             }
-            if(!is_c_family_file(it->path())) {
-                continue;
+            if(is_c_family_file(entry.path)) {
+                llvm::StringRef rel = entry.path;
+                rel.consume_front(abs_path.str());
+                rel.consume_front("/");
+                rel.consume_front("\\");
+                files.emplace_back(path::convert_to_slash(rel), entry.path);
             }
-            llvm::StringRef rel = it->path();
-            rel.consume_front(abs_path.str());
-            rel.consume_front("/");
-            rel.consume_front("\\");
-            files.emplace_back(path::convert_to_slash(rel), it->path());
-        }
-        if(ec) {
-            LOG_ERROR("cannot walk {}: {}", abs_path, ec.message());
-            return 1;
-        }
+            return true;
+        });
     } else {
         files.emplace_back(path::filename(abs_path.str()).str(), abs_path.str());
         directories.insert(path::parent_path(abs_path.str()));
@@ -922,7 +825,7 @@ int run_inspect(const InspectOptions& opts) {
     // and module/feature errors below land on stable entries.
     std::vector<SourceFile> sources;
     for(auto& [rel, abs]: files) {
-        auto buffer = fs::read_text(abs);
+        auto buffer = vfs::read(abs);
         if(!buffer) {
             FileEntry entry;
             entry.error = "read_error";
@@ -984,7 +887,7 @@ int run_inspect(const InspectOptions& opts) {
                                 llvm::MemoryBuffer::getMemBufferCopy(source.source.content));
             }
             auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
-                llvm::vfs::createPhysicalFileSystem());
+                llvm::makeIntrusiveRefCnt<vfs::View>());
             overlay->pushOverlay(memory);
 
             SharedScanCache cache;
@@ -1052,7 +955,7 @@ int run_inspect(const InspectOptions& opts) {
                 if(!command) {
                     return;
                 }
-                auto tmp = fs::createTemporaryFile("clice-pcm", "pcm");
+                auto tmp = vfs::temp_file("clice-pcm", "pcm");
                 if(!tmp) {
                     entry.error = "module_error";
                     entry.diagnostics = {"failed to create temporary PCM file"};
@@ -1104,7 +1007,7 @@ int run_inspect(const InspectOptions& opts) {
     }
 
     for(auto& path: pcm_files) {
-        fs::remove(path);
+        vfs::remove(path);
     }
 
     auto json = kota::codec::json::to_string<InspectJsonConfig>(output);
@@ -1112,7 +1015,7 @@ int run_inspect(const InspectOptions& opts) {
         LOG_ERROR("serialization failed: {}", json.error().message);
         return 1;
     }
-    std::println("{}", *json);
+    driver::println("{}", *json);
     return 0;
 }
 
@@ -1122,38 +1025,28 @@ auto make_command() {
 
 }  // namespace
 
-void add_inspect(kota::deco::cli::SubCommander& root, int& exit_code) {
+void add_inspect(kota::deco::cli::SubCommander& root) {
     auto cmd = make_command();
-    cmd.matchAll([&exit_code](InspectOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           // A mode flag like --help: ignores feature/path inputs.
-           if(opts.config_schema) {
-               auto schema = Config::json_schema();
-               if(!schema) {
-                   LOG_ERROR("config schema generation failed: {}", schema.error());
-                   return;
-               }
-               std::println("{}", *schema);
-               exit_code = 0;
-               return;
-           }
-           if(!apply_log_level(opts.log_level.value_or("warn"))) {
-               return;
-           }
-           logging::stderr_logger("inspect", logging::options);
-           if(!opts.inputs.has_value() || opts.inputs->size() != 2) {
-               auto help = make_command();
-               print_usage(help);
-               return;
-           }
-           exit_code = run_inspect(opts);
-       })
-        .on_error([](auto err) { LOG_ERROR("{}", err.message); });
+    cmd.match_all([](InspectOptions opts) {
+        // A mode flag like --help: ignores feature/path inputs.
+        if(opts.config_schema) {
+            auto schema = Config::json_schema();
+            if(!schema) {
+                LOG_ERROR("config schema generation failed: {}", schema.error());
+                return 1;
+            }
+            driver::println("{}", *schema);
+            return 0;
+        }
+        opts.log.apply();
+        logging::stderr_logger("inspect", logging::options);
+        if(!opts.inputs.has_value() || opts.inputs->size() != 2) {
+            auto help = make_command();
+            print_usage(help);
+            return 1;
+        }
+        return run_inspect(opts);
+    });
 
     root.add({.name = "inspect",
               .description = "Run a feature on source files and print raw results as JSON"},

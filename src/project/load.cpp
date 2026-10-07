@@ -1,16 +1,21 @@
-#include "project/load.h"
+module;
 
-#include <string>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "index/database.h"
-#include "project/configuration.h"
-#include "project/project.h"
-#include "support/cache_store.h"
-#include "support/filesystem.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "syntax/dependency_graph.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :index.database;
+import :project.configuration;
+import :project.load;
+import :project.project;
+import :support.logging;
+import :support.timer;
+import :syntax.dependency_graph;
+import :vfs.cache_store;
+import :vfs.path;
 
 namespace clice {
 
@@ -93,6 +98,10 @@ ProjectLoad load_project(Project& project,
     // member yet, so a database generated later (picked up by the CDB
     // poll) starts from the previous session's index.
     report.index = store.load({.read_only = read_only_index});
+    // A unit deleted while no server ran keeps its rows until a look finds
+    // it missing (see FreshnessGate).
+    project.file_table.disk.find_missing(
+        llvm::to_vector(llvm::make_first_range(project.project_index.manifests)));
     return report;
 }
 

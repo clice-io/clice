@@ -4,33 +4,24 @@
 ///   scan_benchmark [OPTIONS] <compile_commands.json>
 ///
 /// Example:
-///   ./build/RelWithDebInfo/bin/scan_benchmark \
+///   ./build/RelWithDebInfo/bin/bin/scan_benchmark \
 ///       /home/ykiko/C++/clice/.llvm/build-debug/compile_commands.json
 ///
-///   ./build/RelWithDebInfo/bin/scan_benchmark --log-level info --export graph.json \
+///   ./build/RelWithDebInfo/bin/bin/scan_benchmark --log-level info --export graph.json \
 ///       /home/ykiko/C++/clice/.llvm/build-debug/compile_commands.json
 
-#include <algorithm>
-#include <chrono>
-#include <cstdlib>
-#include <fstream>
-#include <map>
-#include <numeric>
-#include <print>
-#include <set>
-#include <thread>
+module;
 
-#include "command/command.h"
-#include "config/config.h"
-#include "project/build.h"
-#include "support/filesystem.h"
-#include "support/logging.h"
-#include "syntax/dependency_graph.h"
-#include "vfs/file_table.h"
+#include "modules/prelude.h"
 
-#include "kota/codec/json/json.h"
-#include "kota/deco/deco.h"
-#include "llvm/Support/FileSystem.h"
+module clice;
+
+import :command.command;
+import :config.config;
+import :project.build;
+import :support.logging;
+import :syntax.dependency_graph;
+import :vfs.file_table;
 
 using namespace clice;
 
@@ -160,7 +151,6 @@ void print_report(const ScanReport& report) {
     std::println("    Dir cache pre-pop: {}ms (overlapped with Phase 1)", report.dir_cache_ms);
     std::println("    Phase 1 (read+scan, parallel): {}ms", report.phase1_ms);
     std::println("    Phase 2 (include resolve):     {}ms", report.phase2_ms);
-    std::println("    Phase 3 (graph build):         {}ms", report.phase3_ms);
 
     // Per-wave breakdown.
     if(!report.wave_stats.empty()) {
@@ -220,7 +210,7 @@ void print_report(const ScanReport& report) {
     std::println("===============================================================");
 }
 
-int main(int argc, const char** argv) {
+extern "C++" int main(int argc, const char** argv) {
     auto args = kota::deco::util::argvify(argc, argv);
     auto result = kota::deco::cli::parse<BenchmarkOptions>(args);
 

@@ -1,12 +1,18 @@
-#include "syntax/lexical_scan.h"
+module;
 
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.lexer;
+import :syntax.lexical_scan;
 
 namespace clice {
 
 LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang_opts) {
     using Comment = LexicalInfo::Comment;
     using ModuleDeclaration = LexicalInfo::ModuleDeclaration;
+    using BlockDirective = LexicalInfo::BlockDirective;
 
     LexicalInfo info;
     Lexer lexer(content, {.keep_comments = true, .lang_opts = lang_opts});
@@ -68,6 +74,38 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
         }
     };
 
+    auto scan_directive = [&](const Token& hash) {
+        auto token = advance();
+        auto keyword = token.text(content);
+        std::optional<BlockDirective::Kind> kind;
+        if(keyword == "if" || keyword == "ifdef" || keyword == "ifndef") {
+            kind = BlockDirective::Kind::If;
+        } else if(keyword == "elif" || keyword == "elifdef" || keyword == "elifndef" ||
+                  keyword == "else") {
+            kind = BlockDirective::Kind::Else;
+        } else if(keyword == "endif") {
+            kind = BlockDirective::Kind::EndIf;
+        } else if(keyword == "pragma") {
+            // Only the first argument decides: `#pragma mark endregion`
+            // closes nothing.
+            token = advance();
+            if(is_spelled(token, "region")) {
+                kind = BlockDirective::Kind::Region;
+            } else if(is_spelled(token, "endregion")) {
+                kind = BlockDirective::Kind::EndRegion;
+            }
+        }
+        while(!token.is_eod() && !token.is_eof()) {
+            token = advance();
+        }
+        LocalSourceRange range{hash.range.begin, token.range.begin};
+        if(kind) {
+            info.block_directives.push_back({.kind = *kind, .range = range});
+        } else if(keyword == "include" || keyword == "include_next" || keyword == "import") {
+            info.include_directives.push_back(range);
+        }
+    };
+
     bool file_start = true;
 
     while(true) {
@@ -78,6 +116,17 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
 
         bool at_file_start = file_start;
         file_start = false;
+
+        if(token.is_directive_hash()) {
+            scan_directive(token);
+            continue;
+        }
+
+        if(clang::tok::isStringLiteral(token.kind) &&
+           token.text(content).split('"').first.ends_with("R")) {
+            info.raw_strings.push_back(token.range);
+            continue;
+        }
 
         // Valid code cannot begin a logical line with `module` (or `export
         // module`) in any other meaning, so line-start matching is exact;

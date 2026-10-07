@@ -1,29 +1,57 @@
-#include <expected>
-#include <format>
-#include <string>
-#include <vector>
+module;
 
-#include "feature/feature.h"
-#include "support/logging.h"
+#include "modules/prelude.h"
 
-#include "llvm/Support/Error.h"
-#include "clang/Format/Format.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :feature.feature;
+import :support.logging;
+import :vfs.file_system;
 
 namespace clice::feature {
 
 namespace {
 namespace tooling = clang::tooling;
 
-auto file_style(llvm::StringRef file) -> std::expected<clang::format::FormatStyle, std::string> {
+/// The disk, remembering whether clang-format's search for a style came
+/// across a configuration file.
+struct StyleSearch : llvm::vfs::ProxyFileSystem {
+    StyleSearch() : ProxyFileSystem(llvm::makeIntrusiveRefCnt<vfs::View>()) {}
+
+    llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override {
+        auto status = ProxyFileSystem::status(path);
+        llvm::SmallString<256> buffer;
+        auto name = llvm::sys::path::filename(path.toStringRef(buffer));
+        found |= status && status->isRegularFile() &&
+                 (name == ".clang-format" || name == "_clang-format");
+        return status;
+    }
+
+    bool found = false;
+};
+
+struct FileStyle {
+    clang::format::FormatStyle style;
+    /// A configuration file supplied the style rather than the LLVM
+    /// fallback, even a `.clang-format` inheriting from a parent that is
+    /// missing.
+    bool configured;
+};
+
+auto file_style(llvm::StringRef file) -> std::expected<FileStyle, std::string> {
+    auto search = llvm::makeIntrusiveRefCnt<StyleSearch>();
     // Set code to empty to avoid meaningless file type guess.
     auto style = clang::format::getStyle(clang::format::DefaultFormatStyle,
                                          file,
                                          clang::format::DefaultFallbackStyle,
-                                         "");
+                                         "",
+                                         search.get());
     if(!style) {
         return std::unexpected(llvm::toString(style.takeError()));
     }
-    return std::move(*style);
+    return FileStyle{.style = std::move(*style), .configured = search->found};
 }
 
 auto format_content(llvm::StringRef file, llvm::StringRef content, tooling::Range range)
@@ -34,14 +62,14 @@ auto format_content(llvm::StringRef file, llvm::StringRef content, tooling::Rang
     }
 
     std::vector<tooling::Range> ranges = {range};
-    auto include_replacements = clang::format::sortIncludes(*style, content, ranges, file);
+    auto include_replacements = clang::format::sortIncludes(style->style, content, ranges, file);
     auto changed = tooling::applyAllReplacements(content, include_replacements);
     if(!changed) {
         return std::unexpected(llvm::toString(changed.takeError()));
     }
 
     return include_replacements.merge(clang::format::reformat(
-        *style,
+        style->style,
         *changed,
         tooling::calculateRangesAfterReplacements(include_replacements, ranges)));
 }
@@ -74,12 +102,13 @@ auto document_format(llvm::StringRef file,
         return edits;
     }
 
-    LineMap map(content, encoding);
+    auto lines = lsp::line_starts(content);
+    PositionMap map{.content = content, .lines = lines, .encoding = encoding};
 
     for(const auto& replacement: *replacements) {
         auto begin = static_cast<std::uint32_t>(replacement.getOffset());
         auto end = static_cast<std::uint32_t>(begin + replacement.getLength());
-        auto range = to_range(map, {begin, end});
+        auto range = map.to_range({begin, end});
         if(!range)
             continue;
         protocol::TextEdit edit{
@@ -99,7 +128,7 @@ auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<Tex
         LOG_WARN("Failed to load the format style of {}: {}", file, style.error());
         return edits;
     }
-    if(style->DisableFormat) {
+    if(!style->configured || style->style.DisableFormat) {
         return edits;
     }
 
@@ -120,7 +149,7 @@ auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<Tex
         return edits;
     }
     auto formatted =
-        clang::format::reformat(*style,
+        clang::format::reformat(style->style,
                                 *changed,
                                 tooling::calculateRangesAfterReplacements(replacements, ranges),
                                 file);
@@ -129,14 +158,15 @@ auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<Tex
 
 auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string {
     auto style = file_style(file);
-    if(!style || style->DisableFormat) {
+    if(!style || !style->configured || style->style.DisableFormat) {
         return text.str();
     }
     std::vector<tooling::Range> ranges = {
         tooling::Range(0, static_cast<unsigned>(text.size())),
     };
     auto formatted =
-        tooling::applyAllReplacements(text, clang::format::reformat(*style, text, ranges, file));
+        tooling::applyAllReplacements(text,
+                                      clang::format::reformat(style->style, text, ranges, file));
     return formatted ? std::move(*formatted) : text.str();
 }
 

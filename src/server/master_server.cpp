@@ -1,28 +1,21 @@
-#include "server/master_server.h"
+module;
 
-#include <list>
-#include <memory>
-#include <set>
-#include <string>
-#include <tuple>
-#include <vector>
+#include "modules/prelude.h"
 
 #include "version.h"
-#include "server/features.h"
-#include "server/lsp_client.h"
-#include "support/anomaly.h"
-#include "support/filesystem.h"
-#include "support/logging.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "kota/codec/json/json.h"
-#include "kota/ipc/codec/json.h"
-#include "kota/ipc/recording_transport.h"
-#include "kota/ipc/transport.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/Process.h"
+module clice;
+
+import :server.features;
+import :server.lsp_client;
+import :server.master_server;
+import :support.anomaly;
+import :support.environment;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 
@@ -36,19 +29,21 @@ MasterServer::MasterServer(kota::event_loop& loop,
                            std::string self_path,
                            std::string requested_configuration) :
     loop(loop), pool(loop), requested_configuration(std::move(requested_configuration)),
-    bg_tasks(loop), self_path(std::move(self_path)) {
+    self_path(std::move(self_path)) {
     // Documents opened before initialize land in this project: sessions
     // are plain state, and initialize re-routes them once folders exist.
     projects.push_back(make_project(CanonicalPath()));
+    files.disk.shadow = llvm::sys::Process::GetEnv("CLICE_SHADOW_FRESHNESS").has_value();
     // A disk change can be seen deep inside any operation — a staleness
     // check, a rescan inside a cascade: the drain runs on a later loop
     // turn, outside it.
-    files.on_change = [this] {
+    files.disk.on_change = [this] {
         bg_tasks.spawn([](MasterServer& server) -> kota::task<> {
             co_await kota::sleep(std::chrono::milliseconds(0));
             server.drain_disk_changes();
         }(*this));
     };
+    polling.spawn(files.disk.end_turns(loop));
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) plus a wake-up
@@ -68,6 +63,9 @@ MasterServer::~MasterServer() {
     // The projects go first, while the members their release reads live.
     lifecycle = ServerLifecycle::Exited;
     projects.clear();
+    // A server never shut down (a unit test) still ends the file table's
+    // turns.
+    polling.cancel();
     logging::set_notify_hook(nullptr);
 }
 
@@ -76,20 +74,21 @@ MasterServer::~MasterServer() {
 /// defaults. Absence is stated explicitly so "was my config even read?"
 /// never needs a support round-trip; the stderr mirror puts all of it in
 /// the editor's output panel.
-static void log_configuration(const ProjectServer& project, llvm::StringRef init_options) {
+static void log_configuration(const ProjectServer& project,
+                              const std::optional<kota::codec::dyn::Value>& init_options) {
     if(project.config_path.empty()) {
         LOG_INFO("Configuration file: Missing (project {})", project.root);
     } else {
-        auto text = fs::read_text(project.config_path);
+        auto text = vfs::read(project.config_path);
         LOG_INFO("Configuration file {}:\n{}",
                  project.config_path,
                  text ? (*text)->getBuffer() : llvm::StringRef("<unreadable>"));
     }
-    if(init_options.empty()) {
+    if(!init_options) {
         LOG_INFO("initializationOptions: Missing");
-    } else {
-        auto pretty = kota::codec::json::prettify(init_options);
-        LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : init_options.str());
+    } else if(auto json = kota::codec::json::to_string(*init_options)) {
+        auto pretty = kota::codec::json::prettify(*json);
+        LOG_INFO("initializationOptions:\n{}", pretty ? *pretty : *json);
     }
     if(auto json = kota::codec::json::to_string(project.project.config)) {
         auto pretty = kota::codec::json::prettify(*json);
@@ -108,7 +107,7 @@ void MasterServer::initialize() {
         projects_generation += 1;
     }
     for(auto& project: projects) {
-        project->configure(init_options_json, taken_cache_dirs());
+        project->configure(init_options, taken_cache_dirs());
     }
 
     // One pool serves every project, sized for the most demanding one;
@@ -136,6 +135,12 @@ void MasterServer::initialize() {
     if(unbounded) {
         pool_opts.max_stateless = 0;
     }
+    // Let integration tests hang a worker without waiting out the real
+    // deadline, and drive eviction through a real server.
+    if(auto ms = env_integer("CLICE_TEST_REQUEST_DEADLINE_MS")) {
+        pool_opts.build_deadline = pool_opts.query_deadline = std::chrono::milliseconds(*ms);
+    }
+    pool_opts.max_documents = env_integer("CLICE_TEST_MAX_DOCUMENTS");
 
     auto& first = projects.front()->project.config.project;
     if(!first.logging_dir.empty()) {
@@ -145,7 +150,7 @@ void MasterServer::initialize() {
         }
     }
     for(auto& project: projects) {
-        log_configuration(*project, init_options_json);
+        log_configuration(*project, init_options);
     }
 
     LOG_INFO("Server ready (projects={}, stateful={}, stateless={})",
@@ -179,10 +184,8 @@ void MasterServer::initialize(const Spelling& root) {
 void MasterServer::wire() {
     pool.on_crash = [this](const WorkerCrashInfo& info) {
         // A stateless crash loses only in-flight requests, which fail back
-        // to their callers with dispatch_errc::worker_crashed — the families
-        // resend idempotent builds, the pump requeues the file. No state
-        // outlives the request, so there is nothing to invalidate and no
-        // event to dispatch.
+        // to their senders (see deliver). No state outlives the request, so
+        // there is nothing to invalidate and no event to dispatch.
         if(!info.stateful)
             return;
         llvm::DenseMap<ProjectServer*, llvm::SmallVector<Fid>> lost;
@@ -200,11 +203,22 @@ void MasterServer::wire() {
         // Owner-table upkeep is pool-domain state and stays here; the
         // session-side consequence (the worker's AST is gone, same as a
         // crash) goes through the event pipeline like any invalidation.
-        // Only the current owner's eviction counts: a stale copy left
-        // behind by a probe reassignment says nothing about the document
-        // the new owner still holds.
+        // A live round's compile puts the document back on its owner —
+        // the worker evicted it before that compile arrived, or it would
+        // have kept it — so the eviction changes nothing. One that crossed
+        // the compile's reply on the wire leaves the master trusting a
+        // document the worker no longer holds: the next query hears
+        // document_unloaded and compiles it again (see Dispatcher::ask).
+        auto& project = owner_of(*id);
+        if(project.ast.compiling(*id)) {
+            LOG_INFO("Ignoring eviction of {}: a compile of it is under way", path);
+            return;
+        }
+        // Only the current owner's eviction counts: a copy left behind on
+        // a worker that lost ownership says nothing about the document the
+        // new owner still holds.
         if(pool.remove_owner_from(id->raw, worker_index)) {
-            owner_of(*id).dispatch(FileEvent::document_evicted(*id));
+            project.dispatch(FileEvent::document_evicted(*id));
         } else {
             LOG_INFO("Ignoring eviction of {} from non-owner worker {}", path, worker_index);
         }
@@ -404,10 +418,18 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
         auto& to = route(path_id);
         owners[path_id] = &to;
         to.open_session(path_id, session->text, session->version);
+        auto moved = to.sessions.find(path_id);
+        // The crash records move with the document; work still in flight
+        // under the old project books into them.
+        moved->quarantine = session->quarantine;
+        from.sessions.parked.erase(path_id);
+        if(!moved->quarantine->empty()) {
+            to.ast.republish(moved);
+        }
         // The client still shows what the old project gave it, and no
         // request of its own replaces it: compile under the new one, or
         // have an index-served document's features pulled again.
-        if(auto moved = to.sessions.find(path_id); moved->serving == ServingMode::Escalated) {
+        if(moved->serving == ServingMode::Escalated) {
             to.ast.request_compile(moved);
         } else {
             index_served = true;
@@ -519,8 +541,8 @@ void MasterServer::serve_folders() {
         retired.push_back(project);
     }
     for(auto* project: fresh) {
-        project->configure(init_options_json, taken_cache_dirs());
-        log_configuration(*project, init_options_json);
+        project->configure(init_options, taken_cache_dirs());
+        log_configuration(*project, init_options);
         project->start();
     }
     // Documents may belong elsewhere now: a database under a new root
@@ -611,8 +633,39 @@ std::uint64_t MasterServer::context_epoch() {
 }
 
 void MasterServer::saved(Fid path_id) {
-    files.current(path_id);
+    // The user's retry: whatever crashed on the saved document runs again
+    // on its next request.
+    if(auto session = find_session(path_id)) {
+        owner_of(path_id).ast.saved(*session);
+    }
+    llvm::SmallVector<Fid> closures{path_id};
+    for(auto& project: projects) {
+        project->open_closures(closures);
+    }
+    files.disk.look(closures);
     drain_disk_changes();
+}
+
+void MasterServer::start_polling() {
+    if(!polling_started) {
+        polling_started = true;
+        polling.spawn(poll_task());
+    }
+}
+
+kota::task<> MasterServer::poll_task() {
+    // A tick's looks run on the event loop: bounded, so a backlog (a
+    // checkout making every workspace file due) spreads over ticks instead
+    // of stalling requests.
+    constexpr auto interval = std::chrono::milliseconds(250);
+    constexpr auto budget = std::chrono::milliseconds(2);
+    while(true) {
+        co_await kota::sleep(interval);
+        files.disk.tick(budget);
+        for(auto& project: projects) {
+            project->tick_databases();
+        }
+    }
 }
 
 std::size_t MasterServer::drain_disk_changes() {
@@ -670,15 +723,16 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
         result.stale = true;
         co_return result;
     }
-    params.epoch.reset();
 
     // The project offering the chosen item: the file's own first, then the
     // others, in the order query_contexts listed them.
     auto owner = owner_of(path_id).shared_from_this();
+    // The listing spells the URIs the server's way, not the client's.
+    auto context_uri = feature::to_uri(files.display(context_path_id));
     auto offers = [&](ProjectServer& project) {
         return llvm::any_of(project.context_service.contexts(path_id),
                             [&](const ext::ContextItem& item) {
-                                return item.uri == params.context_uri &&
+                                return item.uri == context_uri &&
                                        item.occurrence == params.occurrence &&
                                        item.command_hash == params.command_hash;
                             });
@@ -691,30 +745,68 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
         }
         target = *it;
     }
+    // A choice applies to an open document; one closed meanwhile keeps the
+    // choice it had.
+    auto session = find_session(path_id);
+    if(!session) {
+        co_return result;
+    }
     // One project holds the file's choice (compiler routes by it).
     for(auto& project: projects) {
         if(project != target) {
             project->contexts.forget_selection(path_id);
         }
     }
-    auto session = find_session(path_id);
-    if(target != owner && session) {
+    if(target != owner) {
         owner->close_session(path_id);
         owners[path_id] = target.get();
         target->open_session(path_id, session->text, session->version);
         session = find_session(path_id);
     }
-    result = co_await target->context_service.switch_context(path_id,
-                                                             session.get(),
-                                                             context_path_id,
-                                                             params);
+    result = co_await target->context_service.switch_context(*session, context_path_id, params);
     // A context choice asks for the context-pure AST view; the merged
     // index cannot give it (union rows). A rejected switch changed no
     // context and owes none.
     if(result.success) {
         target->ast.escalate(*session);
+        serve_again(*target, session);
     }
     co_return result;
+}
+
+ext::CurrentContextResult MasterServer::current_context(ProjectServer& project,
+                                                        const Session* session) {
+    auto result = project.context_service.current_context(session);
+    result.epoch = context_epoch();
+    return result;
+}
+
+ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
+    auto session = find_session(path_id);
+    if(!session) {
+        return {};
+    }
+    for(auto& project: projects) {
+        project->contexts.forget_selection(path_id);
+    }
+    auto& owner = owner_of(path_id);
+    if(&route(path_id) != &owner) {
+        rehome_sessions(owner);
+    } else {
+        owner.context_service.leave_context(*session);
+        serve_again(owner, session);
+    }
+    return {.success = true};
+}
+
+void MasterServer::serve_again(ProjectServer& project, std::shared_ptr<Session> session) {
+    // A compile landing on unchanged text has the client re-pull what it
+    // holds.
+    if(session->serving == ServingMode::Escalated) {
+        project.ast.request_compile(std::move(session));
+    } else {
+        on_serving_rows_changed.emit();
+    }
 }
 
 std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::StringRef query) {
@@ -757,23 +849,39 @@ kota::task<> MasterServer::shutdown_and_cleanup() {
     // start from here on (a retirement finishing below would serve the
     // folders again, see make_project).
     lifecycle = ServerLifecycle::ShuttingDown;
+    polling.cancel();
+    co_await polling.join();
     co_await bg_tasks.join();
     for(auto& project: projects) {
         co_await project->shutdown();
     }
-    co_await pool.stop();
     for(auto& project: projects) {
         project->close();
     }
     lifecycle = ServerLifecycle::Exited;
 }
 
+/// Runs `serving` until the shutdown token fires or it ends on its own. A
+/// cancelled request still waits for its worker's answer, so the pool stops
+/// — killing a worker that would never answer — before `serving` is joined.
+static kota::task<> serve_until_shutdown(MasterServer& server, kota::task<> serving) {
+    auto watch = [](MasterServer& server, kota::task<> serving) -> kota::task<> {
+        co_await kota::with_token(std::move(serving), server.shutdown_token());
+        server.schedule_shutdown();
+    };
+    kota::task_group<> group;
+    group.spawn(watch(server, std::move(serving)));
+    co_await server.shutdown_token().wait().catch_cancel();
+    co_await server.pool.stop();
+    co_await group.join();
+}
+
 struct Connection {
-    std::unique_ptr<kota::ipc::JsonPeer> peer;
+    std::unique_ptr<kota::ipc::JSONPeer> peer;
     std::unique_ptr<LSPClient> lsp_client;
 };
 
-static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
+static kota::task<> run_connection(kota::ipc::JSONPeer* peer,
                                    std::list<Connection>& connections,
                                    std::list<Connection>::iterator pos) {
     co_await peer->run();
@@ -786,8 +894,7 @@ static kota::task<> run_connection(kota::ipc::JsonPeer* peer,
 static kota::task<> accept_connections(MasterServer& server,
                                        kota::tcp::acceptor acceptor,
                                        std::list<Connection>& connections) {
-    auto& loop = kota::event_loop::current();
-    kota::task_group<> group(loop);
+    kota::task_group<> group;
     bool lsp_registered = false;
 
     group.spawn([](MasterServer& server,
@@ -805,7 +912,7 @@ static kota::task<> accept_connections(MasterServer& server,
             LOG_INFO("Client connected");
 
             auto transport = std::make_unique<kota::ipc::StreamTransport>(std::move(*conn));
-            auto peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(transport));
+            auto peer = std::make_unique<kota::ipc::JSONPeer>(loop, std::move(transport));
 
             std::unique_ptr<LSPClient> lsp;
             if(!lsp_registered) {
@@ -828,6 +935,7 @@ static kota::task<> accept_connections(MasterServer& server,
 }
 
 int run_serve_mode(const ServerOptions& opts, const char* self_path) {
+    logging::options.never_block_stderr = true;
     logging::stderr_logger("master", logging::options);
 
     auto mode = opts.mode.value_or(ServerMode::Pipe);
@@ -864,11 +972,11 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
                 std::make_unique<kota::ipc::RecordingTransport>(std::move(final_transport), record);
         }
 
-        kota::ipc::JsonPeer lsp_peer(loop, std::move(final_transport));
+        kota::ipc::JSONPeer lsp_peer(loop, std::move(final_transport));
         LSPClient lsp_client(server, lsp_peer);
 
         loop.schedule(
-            [](MasterServer& server, kota::ipc::JsonPeer& peer, std::string root) -> kota::task<> {
+            [](MasterServer& server, kota::ipc::JSONPeer& peer, std::string root) -> kota::task<> {
                 // Pre-initialize for standalone (no-editor) use; LSP initialize
                 // will be rejected. Runs inside the loop — before the peer
                 // reads its first message — because initialize() spawns
@@ -876,7 +984,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
                 if(!root.empty()) {
                     server.initialize(Spelling(root, Spelling::cwd()));
                 }
-                co_await kota::with_token(peer.run(), server.shutdown_token());
+                co_await serve_until_shutdown(server, peer.run());
                 co_await server.shutdown_and_cleanup();
             }(server, lsp_peer, ws));
         loop.run();
@@ -901,8 +1009,9 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             if(!root.empty()) {
                 server.initialize(Spelling(root, Spelling::cwd()));
             }
-            co_await kota::with_token(accept_connections(server, std::move(acceptor), connections),
-                                      server.shutdown_token());
+            co_await serve_until_shutdown(
+                server,
+                accept_connections(server, std::move(acceptor), connections));
             co_await server.shutdown_and_cleanup();
         }(server, std::move(*acceptor), connections, ws));
         loop.run();

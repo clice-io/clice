@@ -1,28 +1,18 @@
-#include "command/command.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <deque>
-#include <format>
-#include <ranges>
-#include <string_view>
-#include <tuple>
+#include "modules/prelude.h"
 
-#include "simdjson.h"
-#include "command/nvcc.h"
-#include "command/search_config.h"
-#include "command/toolchain.h"
-#include "support/filesystem.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/ConvertUTF.h"
-#include "llvm/Support/StringSaver.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/Driver/Types.h"
+module clice;
+
+import :command.command;
+import :command.nvcc;
+import :command.search_config;
+import :command.toolchain;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 
@@ -36,12 +26,13 @@ clang::driver::types::ID suffix_type(llvm::StringRef path) {
 bool is_header_path(llvm::StringRef path) {
     namespace types = clang::driver::types;
     auto type = suffix_type(path);
-    return type == types::TY_CHeader || type == types::TY_CXXHeader;
+    return type == types::TY_INVALID || types::onlyPrecompileType(type);
 }
 
 bool is_context_header_path(llvm::StringRef path) {
     return path.ends_with(".def") || path.ends_with(".inc") || path.ends_with(".inl") ||
-           path.ends_with(".tpp") || path.ends_with(".ipp");
+           path.ends_with(".tpp") || path.ends_with(".ipp") || path.ends_with(".tcc") ||
+           path.ends_with(".txx");
 }
 
 namespace {
@@ -220,6 +211,65 @@ void render_arg(const Arg& arg, llvm::function_ref<void(std::string_view)> cb) {
         cb(fragment);
     };
     option::table().render(parsed, forward);
+}
+
+void render_driver_arg(const Arg& arg,
+                       CompilerFamily family,
+                       llvm::function_ref<void(std::string_view)> cb) {
+    if(family != CompilerFamily::MSVC && family != CompilerFamily::ClangCL) {
+        render_arg(arg, cb);
+        return;
+    }
+
+    auto reads_back = [&](std::vector<std::string>& fragments) {
+        auto parse_options = kota::option::ParseOptions{.visibility = option::CLOption};
+        std::size_t count = 0;
+        bool same = true;
+        for(auto& parsed: option::table().parse(fragments, parse_options)) {
+            count += 1;
+            same = same && parsed && parsed->id == arg.opt_id &&
+                   llvm::equal(parsed->values,
+                               arg.values,
+                               [](std::string_view lhs, const char* rhs) { return lhs == rhs; });
+        }
+        return same && count == 1;
+    };
+    auto emit = [&](llvm::ArrayRef<std::string> fragments) {
+        for(auto& fragment: fragments) {
+            cb(fragment);
+        }
+    };
+
+    std::vector<std::string> fragments;
+    render_arg(arg, [&](std::string_view fragment) { fragments.emplace_back(fragment); });
+    if(reads_back(fragments)) {
+        emit(fragments);
+        return;
+    }
+
+    // A cl spelling of the option keeps its place among the arguments,
+    // where order decides (`/W3 -Wno-unused-variable`).
+    for(auto& option: option::table().option_infos) {
+        if(option.alias_id != arg.opt_id || !(option.visibility & option::CLOption)) {
+            continue;
+        }
+        std::vector<std::string> spelled{std::string(option.prefixed_name)};
+        if(option.kind != kota::option::Kind::Flag) {
+            if(arg.values.size() != 1) {
+                continue;
+            }
+            spelled[0] += arg.values[0];
+        }
+        if(reads_back(spelled)) {
+            emit(spelled);
+            return;
+        }
+    }
+
+    // The driver appends `/clang:` arguments after all others.
+    for(auto& fragment: fragments) {
+        cb("/clang:" + fragment);
+    }
 }
 
 unsigned family_visibility(CompilerFamily family) {
@@ -569,7 +619,7 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
 
         Spelling full(ref.drop_front(), directory);
         auto file = file_table.intern(full);
-        auto observed = read_file_observed(file_table.resolve(file).data());
+        auto observed = vfs::read_observed(file_table.resolve(file));
         if(observed) {
             file_table.observe(file, observed->obs);
         }
@@ -692,7 +742,7 @@ static Spelling source_key(const Spelling& path) {
     auto file =
         path::extension(path.str()) != ".json" ? Spelling("compile_commands.json", path) : path;
     auto directory = file.parent();
-    if(llvm::sys::fs::is_symlink_file(directory.str())) {
+    if(vfs::is_symlink(directory.str())) {
         return Spelling(
             path::filename(file.str()),
             Spelling(path::filename(directory.str()), Spelling(CanonicalPath(directory.parent()))));
@@ -748,11 +798,16 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     auto& source = source_files[static_cast<std::size_t>(id)];
     llvm::StringRef path = source.path;
 
-    auto observed = read_file_observed(source.path.c_str());
+    auto observed = vfs::read_observed(source.path);
     if(!observed) {
         LOG_ERROR("Failed to read compilation database from {}", path);
         return std::nullopt;
     }
+    auto database = file_table.intern(CanonicalPath(Spelling::absolute(source.path)));
+    file_table.observe(database, observed->obs);
+    source.inputs = {
+        {.file = database, .hash = observed->obs.hash}
+    };
     simdjson::padded_string json_buf(observed->content->getBuffer());
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
@@ -777,11 +832,6 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // entries before the cut still swap in) — the CDB poll's two-tick
     // settle debounce is what keeps half-written files from being read.
     std::vector<CompilationEntry> new_entries;
-    auto database = file_table.intern(CanonicalPath(Spelling::absolute(source.path)));
-    file_table.observe(database, observed->obs);
-    source.inputs = {
-        {.file = database, .hash = observed->obs.hash}
-    };
     loading = id;
     auto recording = llvm::make_scope_exit([&] { loading.reset(); });
 
@@ -979,6 +1029,25 @@ llvm::StringRef CompilationDatabase::forced_language(ConfigID id) const {
     return language_state_at_slot(config(id).args);
 }
 
+/// Whether the driver compiles C inputs as C++, as `g++` and `clang++` do
+/// under any version or target affix (`x86_64-linux-gnu-g++-13`), and
+/// `zig c++` — unless a `--driver-mode=`, the last one winning, says
+/// otherwise.
+static bool cxx_driver(const CompileConfig& config) {
+    if(config.subcommand) {
+        return llvm::StringRef(config.subcommand) == "c++";
+    }
+    for(auto& arg: llvm::reverse(config.args)) {
+        if(arg.opt_id == option::OPT_driver_mode && arg.values.size() == 1) {
+            return llvm::StringRef(arg.values[0]) == "g++";
+        }
+    }
+    std::string lowered = path::filename(config.driver).lower();
+    llvm::StringRef name = lowered;
+    name.consume_back(".exe");
+    return name.rtrim("0123456789.-").ends_with("++");
+}
+
 InputKind CompilationDatabase::input_kind(ConfigID id, llvm::StringRef file) {
     auto state = language_state_at_slot(config(id).args);
     if(!state.empty()) {
@@ -991,8 +1060,12 @@ InputKind CompilationDatabase::input_kind(ConfigID id, llvm::StringRef file) {
     if(ext == "cuh") {
         return {strings.save("cuda").data()};
     }
-    if(auto lang = driver_language_for_extension(ext); !lang.empty()) {
-        return {strings.save(lang).data()};
+    namespace types = clang::driver::types;
+    if(auto type = suffix_type(file); type != types::TY_INVALID) {
+        if(cxx_driver(config(id))) {
+            type = types::lookupCXXTypeForCType(type);
+        }
+        return {strings.save(types::getTypeName(type)).data()};
     }
     /// No mapping: the raw extension keys the probe (the driver sees a
     /// temp file with the same extension, exactly as confused as it would
@@ -1337,7 +1410,7 @@ std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& re
             case ArgClass::Semantic:
             case ArgClass::UserContent:
             case ArgClass::Diagnostics:
-                render_arg(arg, emit);
+                render_driver_arg(arg, cfg.family, emit);
                 if(arg.cls == ArgClass::UserContent) {
                     last_user_content = argv.size();
                 }
@@ -1474,11 +1547,24 @@ SearchConfig CompilationDatabase::search_config(const CommandRef& ref) {
     auto [it, inserted] = search_configs.try_emplace(*resolved);
     if(inserted) {
         it->second = extract_search_config(chain->resolved(*resolved).args, directory);
+        // A directory the command names is the user's, however the driver
+        // passes it on: clang-cl's /imsvc reaches cc1 as -internal-isystem.
+        llvm::StringSet<> named;
+        auto base = Spelling::absolute(directory);
+        for(auto& arg: config(ref.config).args) {
+            for(auto& value: arg.values) {
+                named.insert(Spelling(value, base).str());
+            }
+        }
+        for(auto& dir: it->second.dirs) {
+            dir.driver = dir.driver && !named.contains(dir.path);
+            if(dir.driver) {
+                file_table.disk.add_package(CanonicalPath(Spelling::absolute(dir.path)).str());
+            }
+        }
     }
     return it->second;
 }
-
-#ifdef CLICE_ENABLE_TEST
 
 std::optional<CompilationEntry>
     CompilationDatabase::append_test_command(Fid file, std::optional<ConfigID> normalized) {
@@ -1520,7 +1606,5 @@ std::optional<CompilationEntry> CompilationDatabase::add_command(llvm::StringRef
     auto fid = file_table.intern(Spelling(file, base));
     return append_test_command(fid, normalize(base, fid, command));
 }
-
-#endif
 
 }  // namespace clice

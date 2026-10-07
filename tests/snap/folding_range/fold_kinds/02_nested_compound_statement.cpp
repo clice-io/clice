@@ -20,4 +20,22 @@ void process(int count) {
         int scratch = count;
         count = scratch + 1;
     }
+
+    // Each branch folds on its own; the line that closes one branch and
+    // opens the next stays visible.
+    if (count > 10) {
+        count += 1;
+    } else {
+        count -= 1;
+    }
+
+    try {
+        count *= 2;
+    } catch (...) {
+        count = 0;
+    }
+
+    do {
+        count -= 1;
+    } while (count > 10);
 }

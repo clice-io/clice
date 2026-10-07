@@ -20,14 +20,14 @@ clice 是一个全新的 C++ 语言服务器，从架构层面重新设计，旨
 
 供其他所有模块共享的通用工具和基础设施。
 
-- `CacheStore`：面向文件型构建产物（PCH/PCM 等）的磁盘制品存储——成对原子提交、命名空间配额、LRU 淘汰和崩溃恢复。
 - `FuzzyMatcher`：用于代码补全和符号搜索的 Token 感知模糊匹配。
 - Markup / Doxygen：文档注释的解析与格式化。
 - 日志、文件系统抽象、字符串工具等。
 
 ### `src/vfs/` — 文件标识与版本
 
-- `FileTable`：将文件路径映射为全系统使用的稳定 `Fid` 标识，并管理据此得到的各文件共享信息——每个文件在磁盘上最近一次的观察记录、内容版本、扫描结果和目录列表。同一个文件无论路径怎么写，都只有一个 `Fid`：识别文件时用的是操作系统给它的名字（穿透符号链接；在 Windows 上还会穿透大小写差异、junction 和 subst 盘符），展示给用户时则用用户熟悉的名字——已打开文档所用的名字，否则是它在用户所打开工作区文件夹下的路径，从不使用 include 查找时找到它所用的写法。两层时效性检查（先走 stat 快速路径，再计算内容哈希）集中实现在此处，供所有使用方共享：PCH 验证、索引过期判断和磁盘轮询。无论由谁查看，只要某次查看发现的内容与上一次不同，就会报告为一次变化。
+- `FileTable`：将文件路径映射为全系统使用的稳定 `Fid` 标识，并管理据此得到的各文件共享信息——每个文件在磁盘上最近一次的观察记录、内容版本和目录列表。同一个文件无论路径怎么写，都只有一个 `Fid`：识别文件时用的是操作系统给它的名字（穿透符号链接；在 Windows 上还会穿透大小写差异、junction 和 subst 盘符），展示给用户时则用用户熟悉的名字——已打开文档所用的名字，否则是它在用户所打开工作区文件夹下的路径，从不使用 include 查找时找到它所用的写法。两层时效性检查（先走 stat 快速路径，再计算内容哈希）集中实现在此处，供所有使用方共享：PCH 验证、索引过期判断和磁盘轮询。无论由谁查看，只要某次查看发现的内容与上一次不同，就会报告为一次变化。
+- `CacheStore`：面向文件型构建产物（PCH/PCM 等）的磁盘制品存储——成对原子提交、命名空间配额、LRU 淘汰和崩溃恢复。
 
 ### `src/config/` — 配置
 
@@ -47,8 +47,9 @@ clice 是一个全新的 C++ 语言服务器，从架构层面重新设计，旨
 
 封装 Clang 编译器，将 Clang API 抽象为安全、统一的编译接口。这一层是纯粹的编译抽象，不包含任何服务器逻辑。
 
-- `CompilationUnit` / `CompilationUnitRef`：Clang AST 上下文的 RAII 封装。`CompilationUnitRef` 提供统一的只读视图，可用于访问源位置映射、预处理器指令、AST 节点等。它是 `src/feature/` 和 `src/semantic/` 的主要输入。
+- `CompilationUnit` / `CompilationUnitRef`：Clang AST 上下文的 RAII 封装。`CompilationUnitRef` 提供统一的只读视图，可用于访问源位置映射、预处理器指令、AST 节点等。它是 `src/feature/` 和 `src/index/` 的主要输入。
 - `CompilationParams`：描述单次编译的完整配置，包括编译类型（Preamble / Content / Completion / Indexing 等）、文件重映射、PCH/PCM 复用等。
+- `Semantics`：统一语义映射——每次编译仅遍历一次 AST，记录所有相关节点及其 Token 归属；选择、功能投影和索引生成都是对该映射的纯查询，而无须分别遍历 AST
 - 在编译期间收集诊断信息和 clang-tidy 结果。
 
 ### `src/syntax/` — 轻量级语法处理
@@ -65,9 +66,8 @@ clice 是一个全新的 C++ 语言服务器，从架构层面重新设计，旨
 
 ### `src/semantic/` — 语义分析
 
-提供 Clang 原生 API 之外的语义分析能力。以 `CompilationUnitRef` 为输入，提取更高层次的语义信息。
+提供 Clang 原生 API 之外、直接基于 AST 的语义分析能力，编译层建立在它之上。
 
-- `Semantics`：统一语义映射——每次编译仅遍历一次 AST，记录所有相关节点及其 Token 归属；选择、功能投影和索引生成都是对该映射的纯查询，而无须分别遍历 AST
 - `TemplateResolver`：通过伪实例化解析依赖名，使语义分析能够透视模板上下文。详见 [模板解析器](template-resolver.md)。
 - `SymbolKind` / `RelationKind`：细粒度的符号种类和关系类型
 
@@ -112,7 +112,7 @@ LSP 功能的具体实现。每个功能接收 `CompilationUnitRef`，返回对�
 
 ### `src/worker/` — Worker 进程
 
-- `WorkerPool`：管理 worker 进程的生命周期与调度——在崩溃预算约束下启动、监控和重新拉起进程，并在冷却后恢复；基于文档亲和性安排有状态任务；通过优先级队列和感知前台负载的容量管理分发无状态任务
+- `WorkerPool`：管理 worker 进程的生命周期与调度——在崩溃预算约束下启动、监控和重新拉起进程，并在冷却后恢复；将每次 worker 退出归因于导致它的请求；为每个请求设定截止时间；基于文档亲和性安排有状态任务；通过优先级队列和感知前台负载的容量管理分发无状态任务
 - `StatefulWorker`：持有文档 AST 并响应查询请求
 - 无状态 worker 执行一次性任务（PCH/PCM 构建、代码补全、格式化、索引任务）
 
@@ -129,7 +129,7 @@ LSP 功能的具体实现。每个功能接收 `CompilationUnitRef`，返回对�
 - `EditorContext`：命令解析中属于编辑器的一侧——用户的上下文选择，以及为打开文件解析出的头文件上下文——叠加在项目的 `CommandResolver` 之上，仅用于面向编辑器的编译
 - `Invalidator`：失效引擎——归并文件事件（磁盘内容变化与文件删除、编译数据库重新加载、worker 崩溃），生成一组去重的失效操作
 - `FileTracker`：通过 stat 轮询发现编辑器之外发生的变化（重新生成 `compile_commands.json`、`git checkout`），并将事件送入 `Invalidator`：它包括对项目编译数据库的监视，以及经由文件表进行的一轮扫描，覆盖磁盘上的文件和查找失败的 include 曾经查找过的位置
-- `Quarantine`：按文档统计崩溃——内容屡次导致 worker 崩溃的文档会被隔离，并通过获准的探测尝试恢复
+- `Quarantine`：按文档记录崩溃——某类工作在某个文档上导致 worker 崩溃后，该文档的这类工作会暂停，直到文档发生变化（有间隔、有次数上限）或被保存
 
 **服务** — 使用编译和索引结果的读取侧服务。
 
@@ -150,7 +150,7 @@ LSP 功能的具体实现。每个功能接收 `CompilationUnitRef`，返回对�
 
 ### `src/driver/` — 子命令
 
-`clice` 二进制程序的入口点：`serve`（LSP 服务器）、`worker`、`index`（批量索引）、`lint`（批量 clang-tidy）、`inspect`、`format`、`query` 和 `doc`。
+`clice` 二进制程序的入口点：`serve`（LSP 服务器）、`worker`、`index`（批量索引）、`lint`（批量 clang-tidy）、`inspect`、`format`、`query`、`refactor` 和 `analyze`。
 
 ## 模块间关系
 

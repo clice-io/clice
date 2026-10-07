@@ -1,10 +1,10 @@
-#include "sched/graph.h"
+module;
 
-#include <algorithm>
-#include <cassert>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "llvm/ADT/DenseSet.h"
+module clice;
+
+import :sched.graph;
 
 namespace clice {
 
@@ -45,8 +45,6 @@ bool RoundContext::current() const {
 bool RoundContext::foreground() const {
     return graph.nodes.find(self)->second.foreground;
 }
-
-TaskGraph::TaskGraph(kota::event_loop& loop) : tasks(loop) {}
 
 void TaskGraph::register_family(Family family, RoundRunner run) {
     assert(!families.contains(std::to_underlying(family)) && "family registered twice");

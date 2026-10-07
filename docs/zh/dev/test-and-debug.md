@@ -2,7 +2,7 @@
 
 ## 运行测试
 
-clice 有四种测试：单元测试、集成测试、冒烟测试和快照测试。
+clice 有四种在每次改动时运行的测试：单元测试、集成测试、冒烟测试和快照测试。兼容性测试需要真实的构建系统和编译器，单独运行。
 
 全部测试依赖（集成测试套件和工具所需的 node/npm，以及 scripts/ 所需的 python）均由 pixi 管理，无需另行安装。
 
@@ -16,7 +16,7 @@ pixi run unit-test Debug    # debug build
 等价于：
 
 ```bash
-./build/RelWithDebInfo/bin/unit_tests --verbose
+./build/RelWithDebInfo/bin/bin/unit_tests --verbose
 ```
 
 ### 集成测试
@@ -32,9 +32,10 @@ pixi run integration-test Debug    # debug build
 
 ```bash
 cd tests
-npm run check   # typecheck (tsc strict) + lint (ESLint)
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm test
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm test
 ```
+
+改动 TypeScript 时，还要在仓库根目录通过 `npm run check`：对每个包运行严格模式的 tsc 和 ESLint。
 
 常用变体：
 
@@ -55,7 +56,7 @@ pixi run smoke-test Debug    # debug build
 
 ```bash
 node tools/replay.ts tests/smoke/*.jsonl \
-    --clice=./build/RelWithDebInfo/bin/clice
+    --clice=./build/RelWithDebInfo/bin/bin/clice
 ```
 
 ### 快照测试
@@ -71,7 +72,7 @@ pixi run snap-test Debug    # debug build
 
 ```bash
 cd tests
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm run snap
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm run snap
 ```
 
 fixture 可以是单个 `.cpp`，也可以是以 `main.cpp` 为入口的子目录——一个多文件单元，其中同级的源文件（模块接口、头文件和其他源文件）都属于该 fixture。用于说明某项能力的 fixture 位于语料库的章节目录中，命名为 `<section>/NN_name.cpp`（或 `<section>/NN_unit/main.cpp`），并以 `/// # Capability name` 文档头开头——标题只写名称，至多五个词——后接元数据列表，其中 `status`（`supported`、`partial` 或 `unsupported`）为必填项，再接一段一句话摘要，作为能力卡片的摘要：章节目录名用作功能页面生成区域的键，两位数字决定条目在该区域中的顺序，文档头内容则用于生成页面（见 `tools/docs/feature.ts`）。用于边界情况且没有文档头的 fixture 放在语料库根目录。整个语料库共用的编译标志写在该语料库的 `corpus.json` 清单中；单个 fixture 可用 `- flags: [...]` 追加自己的编译标志。server 路径每次运行时都会把 fixture 放入一次性工作区（源文件落盘时已剥除 `§` 标注），因此 fixture 之间绝不共享状态；后台索引默认关闭，可由各 fixture 使用 `- indexing: true` 开启，读取的字节与编译器完全相同。有意让编译产生诊断的 fixture 需声明 `- diagnostics: expected`；非预期诊断会使 fixture 失败，声明了该项却未产生任何诊断也同样会失败。
@@ -92,7 +93,7 @@ pixi run test Debug          # all tests with debug build
 这些冒烟测试使用真实编辑器（无头 Neovim 和 VS Code）测试本地构建的 clice 可执行文件，在两个 fixture（其中包括一个 C++20 模块项目）上覆盖启动、首次诊断、悬停、转到定义和代码补全。CI 在 Linux 上的 `test-editor` 作业中使用编辑器的最新稳定版本运行这些测试，并且有意不锁定版本：该作业用于发现编辑器新版本导致的故障。
 
 ```bash
-$ pixi run build                  # build/RelWithDebInfo/bin/clice
+$ pixi run build                  # build/RelWithDebInfo/bin/bin/clice
 $ pixi run -e editor editor-test  # nvim + vscode, both fixtures
 ```
 
@@ -102,12 +103,22 @@ pixi 环境之外的前置条件：
 - 系统提供的 `cmake`/`ninja`/`clang`，供 `editor-prepare` 配置基于 CMake 的模块 fixture（集成测试也基于这一假设）。
 - 显示环境（或 `xvfb-run`），以及 Electron 通常依赖的系统库，供 `vscode-e2e` 使用。
 
+## 兼容性测试
+
+真实的构建系统与真实的编译器：`tests/compat/scenarios.ts` 中的每个场景用一种构建系统和一套工具链构建 `tests/compat/project/` 下的小项目，再让 clice 处理该构建写出的编译数据库。每个翻译单元都必须无错误地解析，正如它在真实编译器下能编译通过；clice 必须与该编译器在命令参数所决定的宏上保持一致，比较由一个生成的头文件在 clice 自己的解析中完成；每个文件的命令都必须经编译器解析成功，并按场景列出的要求保留或去掉相应参数。仓库不提交任何编译数据库：套件检查的是工具当下写出的结果。
+
+```bash
+pixi run compat-test          # default RelWithDebInfo
+```
+
+每个场景都按 CI 运行器镜像中的样子指定某一平台的编译器：Linux 上是发行版带版本号的 GCC 与 Clang，以及 bear、ccache、meson、ninja、xmake、bazel、zig、Emscripten、MinGW、RISC-V 和 Arm 交叉编译器，还有 pixi `cuda` 环境中的 nvcc（`pixi install -e cuda`）；Windows 上是 Visual Studio、LLVM 和 MinGW；macOS 上是 Apple clang 以及 Homebrew 的 GCC 和 LLVM。缺少工具的场景在本地跳过，在 CI 中则判为失败。clice 尚不支持的场景在 `unsupported` 中写明原因：它的检查被跳过，构建照常运行。CI 每次构建都会运行它，并每周针对最新的发布版本运行一次。
+
 ## 调试
 
 如果想为 clice 附加调试器，请先以 socket 模式单独启动 clice，然后连接客户端。
 
 ```shell
-./build/Debug/bin/clice serve --mode socket --port 50051
+./build/Debug/bin/bin/clice serve --mode socket --port 50051
 ```
 
 服务器启动后，可以通过以下两种方式连接客户端：

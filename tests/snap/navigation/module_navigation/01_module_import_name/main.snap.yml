@@ -11,9 +11,9 @@ imported_use:
     - { file: "${WS}/module_navigation/01_module_import_name/main.cpp", range: "13:11-13:15" }
     - { file: "${WS}/module_navigation/01_module_import_name/widget.cppm", range: "2:11-2:15" }
   callHierarchy:
-    - { name: "area", kind: Function, file: "${WS}/module_navigation/01_module_import_name/widget.cppm", range: "2:11-2:15" }
+    - { name: "area", kind: Function, file: "${WS}/module_navigation/01_module_import_name/widget.cppm", range: "2:7-4:1", selection: "2:11-2:15" }
   incomingCalls:
-    - { name: "build", kind: Function, file: "${WS}/module_navigation/01_module_import_name/main.cpp", range: "12:4-12:9", fromRanges: ["13:11-13:21"] }
+    - { name: "build", kind: Function, file: "${WS}/module_navigation/01_module_import_name/main.cpp", range: "12:0-14:1", selection: "12:4-12:9", fromRanges: ["13:11-13:15"] }
 
 module_name:
   definition:

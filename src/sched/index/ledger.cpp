@@ -1,6 +1,10 @@
-#include "sched/index/ledger.h"
+module;
 
-#include "llvm/ADT/STLExtras.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :sched.index.ledger;
 
 namespace clice {
 
@@ -64,7 +68,8 @@ bool PendingLedger::superseded(const Claim& claim) const {
     return it == entries.end() || it->second.content_ticket > claim.ticket;
 }
 
-PendingLedger::FailureOutcome PendingLedger::on_dispatch_failure(const Claim& claim, bool crashed) {
+PendingLedger::FailureOutcome PendingLedger::on_dispatch_failure(const Claim& claim,
+                                                                 Failure failure) {
     // Only while the entry survives: a file removed from disk mid-flight
     // was cleared and has nothing to redo.
     auto it = entries.find(claim.id);
@@ -80,16 +85,17 @@ PendingLedger::FailureOutcome PendingLedger::on_dispatch_failure(const Claim& cl
         return {FailureVerdict::Superseded};
     }
 
-    if(crashed) {
-        if(it->second.requeue_attempts >= max_requeue_attempts) {
-            // Giving up accepts the staleness, so clear the ledger state
-            // here rather than relying on the attempt's ticket-guarded
-            // settle: a deps-only recording that landed mid-flight bumped
-            // the ticket, and the guard would leave that downgraded entry
-            // booked — a doomed retry that spends one more worker.
-            clear(claim.id);
-            return {FailureVerdict::GaveUp};
-        }
+    if(failure == Failure::Crashed ||
+       (failure == Failure::Lost && it->second.requeue_attempts >= max_requeue_attempts)) {
+        // Giving up accepts the staleness, so clear the ledger state
+        // here rather than relying on the attempt's ticket-guarded
+        // settle: a deps-only recording that landed mid-flight bumped
+        // the ticket, and the guard would leave that downgraded entry
+        // booked — a doomed retry that spends one more worker.
+        clear(claim.id);
+        return {FailureVerdict::GaveUp};
+    }
+    if(failure == Failure::Lost) {
         it->second.requeue_attempts += 1;
     }
 

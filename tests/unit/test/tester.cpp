@@ -1,7 +1,6 @@
-#include "test/tester.h"
+module;
 
-#include <cassert>
-#include <format>
+#include "modules/prelude.h"
 
 #ifdef _WIN32
 // See cache_store.cpp: windows.h must not spill min/max macros.
@@ -13,19 +12,23 @@
 #include <sys/stat.h>
 #endif
 
-#include "test/temp_dir.h"
-#include "support/logging.h"
-#include "syntax/scan.h"
+#include "support/logging.macros.h"
 
-#ifdef _WIN32
-#include "llvm/Support/ConvertUTF.h"
-#endif
+module clice;
+
+import :support.logging;
+import :syntax.scan;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.tester;
+import :vfs.file_system;
 
 namespace clice::testing {
 
 namespace {
 
+/// The language follows the standard: `-std=c17` compiles C.
 std::vector<std::string> base_cc1_args(llvm::StringRef standard, llvm::StringRef triple) {
+    bool cxx = standard.contains("++");
     return {
         "clang",
         "-cc1",
@@ -37,7 +40,7 @@ std::vector<std::string> base_cc1_args(llvm::StringRef standard, llvm::StringRef
         "-fms-extensions",
         "-fsyntax-only",
         "-x",
-        "c++",
+        cxx ? "c++" : "c",
     };
 }
 
@@ -45,7 +48,7 @@ std::vector<std::string> base_cc1_args(llvm::StringRef standard, llvm::StringRef
 
 Tester::~Tester() {
     for(auto& path: pcm_paths) {
-        fs::remove(path);
+        vfs::remove(path);
     }
 }
 
@@ -90,14 +93,14 @@ bool Tester::compile(llvm::StringRef standard) {
 bool Tester::compile_with_pch(llvm::StringRef standard) {
     prepare(standard);
 
-    auto pch_path = fs::createTemporaryFile("clice", "pch");
+    auto pch_path = vfs::temp_file("clice", "pch");
     if(!pch_path) {
         LOG_ERROR("{}", pch_path.error().message());
         return false;
     }
 
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 
@@ -220,15 +223,15 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
             return false;
     }
 
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
 
     llvm::StringMap<std::string> built_pcms;
     for(auto idx: order) {
         auto& mod = modules[idx];
 
-        auto pcm_path = fs::createTemporaryFile("clice", "pcm");
+        auto pcm_path = vfs::temp_file("clice", "pcm");
         if(!pcm_path) {
             LOG_ERROR("{}", pcm_path.error().message());
             return false;
@@ -335,8 +338,8 @@ void Tester::prepare_driver(llvm::StringRef standard) {
 
     params.kind = CompilationKind::Content;
 
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 
@@ -400,7 +403,7 @@ void Tester::clear() {
     vfs.reset();
     module_files.clear();
     for(auto& path: pcm_paths) {
-        fs::remove(path);
+        vfs::remove(path);
     }
     pcm_paths.clear();
 }

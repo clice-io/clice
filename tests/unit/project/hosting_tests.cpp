@@ -1,18 +1,47 @@
-#include <format>
+module;
 
-#include "test/cdb_helper.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "project/hosting.h"
-#include "project/project.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :project.hosting;
+import :project.project;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 
 namespace {
 
-TEST_SUITE(Hosting) {
+/// A project whose `*.cpp` under `tmp` compile with a default command.
+struct TreeProject {
+    TempDir tmp;
+    FileTable files;
+    Project project{files};
 
-TEST_CASE(SourcePriorityBeatsProximity) {
+    TreeProject() {
+        project.config.rules.push_back(
+            ConfigRule{.patterns = {"**/*.cpp"}, .default_command = std::string("clang++")});
+        project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+        project.build.reset_active("");
+    }
+
+    /// Write the file and name it.
+    Fid write(llvm::StringRef path, llvm::StringRef content) {
+        tmp.touch(path, content);
+        return project.file_table.intern(Spelling::absolute(tmp.path(path)));
+    }
+
+    /// The version of the file holding `content`.
+    std::uint32_t version(Fid file, llvm::StringRef content) {
+        return project.file_table.intern_version(file, llvm::xxh3_64bits(content)).raw;
+    }
+};
+
+ZEST_SUITE(Hosting) {
+
+ZEST_CASE(SourcePriorityBeatsProximity) {
     /// Two units include the header; the one compiled from the database
     /// the header's rule names ranks first even though the other sits next
     /// to the header, and it is the default host.
@@ -49,16 +78,16 @@ TEST_CASE(SourcePriorityBeatsProximity) {
     project.dep_graph.build_reverse_map();
 
     auto ranked = ranked_hosts(project, header);
-    ASSERT_EQ(ranked.size(), 2u);
-    EXPECT_EQ(ranked[0], far);
-    EXPECT_EQ(ranked[1], near);
+    ZASSERT(ranked.size() == 2u);
+    ZEXPECT(ranked[0] == far);
+    ZEXPECT(ranked[1] == near);
     auto host = default_host(project, header);
-    ASSERT_TRUE(host.has_value());
-    EXPECT_EQ(host->file, far);
-    EXPECT_EQ(host->chain.back(), header);
+    ZASSERT(host);
+    ZEXPECT(host->file == far);
+    ZEXPECT(host->chain.back() == header);
 };
 
-TEST_CASE(ProximityWithinSource) {
+ZEST_CASE(ProximityWithinSource) {
     /// Same database: the unit sharing the header's stem wins, then the one
     /// in its directory; a unit the build does not compile is no host.
     TempDir tmp;
@@ -83,10 +112,10 @@ TEST_CASE(ProximityWithinSource) {
     project.dep_graph.build_reverse_map();
 
     auto ranked = ranked_hosts(project, header);
-    ASSERT_EQ(ranked.size(), 3u);
-    EXPECT_EQ(ranked[0], same_stem);
-    EXPECT_EQ(ranked[1], same_dir);
-    EXPECT_EQ(ranked[2], elsewhere);
+    ZASSERT(ranked.size() == 3u);
+    ZEXPECT(ranked[0] == same_stem);
+    ZEXPECT(ranked[1] == same_dir);
+    ZEXPECT(ranked[2] == elsewhere);
 
     /// Equal scores fall back to path order, so the ranking is stable.
     auto first = project.file_table.intern(Spelling::absolute(tmp.path("other/aaa.cpp")));
@@ -95,13 +124,39 @@ TEST_CASE(ProximityWithinSource) {
     project.dep_graph.set_includes(first, 0, {{header}});
     project.dep_graph.build_reverse_map();
     ranked = ranked_hosts(project, header);
-    ASSERT_EQ(ranked.size(), 5u);
-    EXPECT_EQ(ranked[2], first);
-    EXPECT_EQ(ranked[3], second);
-    EXPECT_EQ(ranked[4], elsewhere);
+    ZASSERT(ranked.size() == 5u);
+    ZEXPECT(ranked[2] == first);
+    ZEXPECT(ranked[3] == second);
+    ZEXPECT(ranked[4] == elsewhere);
 };
 
-TEST_CASE(HostsMatchLanguage) {
+ZEST_CASE(ProximityByDirectories) {
+    /// Closeness counts whole directories: `a/b/x.h` is as near the units
+    /// of `a/` as `a/bc/` is, and those go no deeper.
+    TempDir tmp;
+    tmp.touch("a/b/x.h", "");
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"a/**"}, .default_command = std::string("clang++")});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("a/b/x.h")));
+    auto parent = project.file_table.intern(Spelling::absolute(tmp.path("a/zz.cpp")));
+    auto cousin = project.file_table.intern(Spelling::absolute(tmp.path("a/bc/z.cpp")));
+    for(auto host: {parent, cousin}) {
+        project.dep_graph.set_includes(host, 0, {{header}});
+    }
+    project.dep_graph.build_reverse_map();
+
+    auto ranked = ranked_hosts(project, header);
+    ZASSERT(ranked.size() == 2u);
+    ZEXPECT(ranked[0] == parent);
+    ZEXPECT(ranked[1] == cousin);
+};
+
+ZEST_CASE(HostsMatchLanguage) {
     /// A C unit never hosts a C++ header; an ambiguous `.h` takes any host.
     TempDir tmp;
     tmp.touch("shared/types.hpp", "");
@@ -119,15 +174,15 @@ TEST_CASE(HostsMatchLanguage) {
     project.dep_graph.set_includes(impl, 0, {{hpp}, {plain}});
     project.dep_graph.build_reverse_map();
 
-    EXPECT_TRUE(ranked_hosts(project, hpp).empty());
-    EXPECT_EQ(ranked_hosts(project, plain), llvm::SmallVector<Fid>{impl});
+    ZEXPECT(ranked_hosts(project, hpp).empty());
+    ZEXPECT(ranked_hosts(project, plain) == llvm::SmallVector<Fid>{impl});
 
     /// A source borrows only its own language: a `.cl` or a `.m` next to
     /// the C unit would compile as C under its command.
     auto kernel_cl = project.file_table.intern(Spelling::absolute(tmp.path("c/kernel.cl")));
     auto objc = project.file_table.intern(Spelling::absolute(tmp.path("c/new.m")));
-    EXPECT_FALSE(command_lender(project, kernel_cl).has_value());
-    EXPECT_FALSE(command_lender(project, objc).has_value());
+    ZEXPECT(!command_lender(project, kernel_cl).has_value());
+    ZEXPECT(!command_lender(project, objc).has_value());
 
     /// An Objective-C++ unit is C++ with more: it hosts a C++ header.
     tmp.touch("mac/impl.mm", "");
@@ -139,7 +194,7 @@ TEST_CASE(HostsMatchLanguage) {
     auto impl_mm = project.file_table.intern(Spelling::absolute(tmp.path("mac/impl.mm")));
     project.dep_graph.set_includes(impl_mm, 0, {{hpp}});
     project.dep_graph.build_reverse_map();
-    EXPECT_EQ(ranked_hosts(project, hpp), llvm::SmallVector<Fid>{impl_mm});
+    ZEXPECT(ranked_hosts(project, hpp) == llvm::SmallVector<Fid>{impl_mm});
 
     /// A CUDA unit is C++ with device code: it hosts a C++ header.
     tmp.touch("gpu/kernel.cu", "");
@@ -151,14 +206,14 @@ TEST_CASE(HostsMatchLanguage) {
     auto kernel = project.file_table.intern(Spelling::absolute(tmp.path("gpu/kernel.cu")));
     project.dep_graph.set_includes(kernel, 0, {{hpp}});
     project.dep_graph.build_reverse_map();
-    EXPECT_EQ(ranked_hosts(project, hpp), (llvm::SmallVector<Fid>{kernel, impl_mm}));
+    ZEXPECT(ranked_hosts(project, hpp) == (llvm::SmallVector<Fid>{kernel, impl_mm}));
 
     /// Only headers get that latitude: a C++ source borrowing the CUDA
     /// command would compile as CUDA.
     auto gpu_header = project.file_table.intern(Spelling::absolute(tmp.path("gpu/new.hpp")));
     auto gpu_source = project.file_table.intern(Spelling::absolute(tmp.path("gpu/new.cpp")));
-    EXPECT_EQ(command_lender(project, gpu_header)->unit, kernel);
-    EXPECT_FALSE(command_lender(project, gpu_source).has_value());
+    ZEXPECT(command_lender(project, gpu_header)->unit == kernel);
+    ZEXPECT(!command_lender(project, gpu_source).has_value());
 
     /// A host offers only the commands that fit the header: with a C entry
     /// first and a C++ one second, a `.hpp` sees the second alone.
@@ -174,12 +229,12 @@ TEST_CASE(HostsMatchLanguage) {
     project.dep_graph.set_includes(dual, 0, {{dual_hpp}});
     project.dep_graph.build_reverse_map();
     auto fitting = host_commands(project, dual_hpp, dual);
-    ASSERT_EQ(fitting.size(), 1u);
-    EXPECT_EQ(fitting.front().config, cxx.config);
-    EXPECT_EQ(ranked_hosts(project, dual_hpp), llvm::SmallVector<Fid>{dual});
+    ZASSERT(fitting.size() == 1u);
+    ZEXPECT(fitting.front().config == cxx.config);
+    ZEXPECT(ranked_hosts(project, dual_hpp) == llvm::SmallVector<Fid>{dual});
 };
 
-TEST_CASE(LenderSibling) {
+ZEST_CASE(LenderSibling) {
     /// A file without a command borrows from a unit in its directory, the
     /// one sharing its stem before the first by name; a `.c` only from a C
     /// unit, and nothing when the build has none.
@@ -201,12 +256,46 @@ TEST_CASE(LenderSibling) {
     auto first = project.file_table.intern(Spelling::absolute(tmp.path("src/aaa.cpp")));
     auto other = project.file_table.intern(Spelling::absolute(tmp.path("src/other.cpp")));
     auto plain = project.file_table.intern(Spelling::absolute(tmp.path("src/plain.c")));
-    EXPECT_EQ(command_lender(project, header)->unit, same_stem);
-    EXPECT_EQ(command_lender(project, other)->unit, first);
-    EXPECT_FALSE(command_lender(project, plain).has_value());
+    ZEXPECT(command_lender(project, header)->unit == same_stem);
+    ZEXPECT(command_lender(project, other)->unit == first);
+    ZEXPECT(!command_lender(project, plain).has_value());
 };
 
-TEST_CASE(LenderSearchDir) {
+ZEST_CASE(LenderCxxDriverC) {
+    /// A `.c` borrows from a `.c` unit its C++ driver compiles as C++.
+    TempDir tmp;
+    tmp.touch("lib/a.c", "");
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"lib/*.c"}, .default_command = std::string("clang++")});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+
+    auto borrower = project.file_table.intern(Spelling::absolute(tmp.path("lib/new.c")));
+    auto unit = project.file_table.intern(Spelling::absolute(tmp.path("lib/a.c")));
+    ZEXPECT(command_lender(project, borrower)->unit == unit);
+};
+
+ZEST_CASE(LenderByDirectories) {
+    /// Away from every unit's directory, a file borrows from the unit the
+    /// fewest directories off, not the one sharing the longest spelling.
+    TempDir tmp;
+    tmp.touch("a/zz.cpp", "");
+    tmp.touch("a/bc/z.cpp", "");
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"a/**"}, .default_command = std::string("clang++")});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+
+    auto borrower = project.file_table.intern(Spelling::absolute(tmp.path("a/b/new.cpp")));
+    auto parent = project.file_table.intern(Spelling::absolute(tmp.path("a/zz.cpp")));
+    ZEXPECT(command_lender(project, borrower)->unit == parent);
+};
+
+ZEST_CASE(LenderSearchDir) {
     /// A header under a command's header search directory borrows that
     /// command — the entry that searches there, not the unit's first —
     /// over the unit closest by path; a source there borrows the closest.
@@ -227,15 +316,15 @@ TEST_CASE(LenderSearchDir) {
 
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.h")));
     auto lender = command_lender(project, header);
-    ASSERT_TRUE(lender.has_value());
-    EXPECT_EQ(lender->unit, searching.file);
-    EXPECT_EQ(lender->config, searching.config);
+    ZASSERT(lender);
+    ZEXPECT(lender->unit == searching.file);
+    ZEXPECT(lender->config == searching.config);
 
     auto source = project.file_table.intern(Spelling::absolute(tmp.path("include/api/new.cpp")));
-    EXPECT_EQ(command_lender(project, source)->unit, near.file);
+    ZEXPECT(command_lender(project, source)->unit == near.file);
 };
 
-TEST_CASE(LenderIgnoresCommandless) {
+ZEST_CASE(LenderIgnoresCommandless) {
     /// A member a rule claims with a default command that is no compile
     /// command lends nothing.
     TempDir tmp;
@@ -246,12 +335,212 @@ TEST_CASE(LenderIgnoresCommandless) {
     project.config.rules.push_back(ConfigRule{.default_command = std::string("ccache")});
     project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     project.build.reset_active("");
-    ASSERT_EQ(project.build.members().size(), 2u);
+    ZASSERT(project.build.members().size() == 2u);
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("src/new.h")));
-    EXPECT_FALSE(command_lender(project, header).has_value());
+    ZEXPECT(!command_lender(project, header).has_value());
 };
 
-};  // TEST_SUITE(Hosting)
+ZEST_CASE(EnteringsFollowTree) {
+    /// The unit enters `bar.h` through `foo.h`; its own include of it
+    /// comes later and finds the guard: the chain is the one the compile
+    /// took, not the shortest.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"foo.h\"\n#include \"bar.h\"\n";
+    llvm::StringRef foo_text = "#pragma once\n#include \"bar.h\"\n";
+    llvm::StringRef bar_text = "#pragma once\nint b;\n";
+    auto main = p.write("main.cpp", main_text);
+    auto foo = p.write("foo.h", foo_text);
+    auto bar = p.write("bar.h", bar_text);
+    p.project.dep_graph.set_includes(main, 0, {{foo}, {bar}});
+    p.project.dep_graph.set_includes(foo, 0, {{bar}});
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(foo, foo_text), .line = 1},
+        {.file = p.version(bar, bar_text), .parent = 0, .line = 2},
+        {.file = p.version(bar, bar_text), .line = 2, .skipped = true},
+    };
+    p.project.project_index.manifests[main] = std::move(manifest);
+
+    auto host = default_host(p.project, bar);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{main, foo, bar});
+    ZEXPECT(host->lines == llvm::SmallVector<std::uint32_t>{1, 2});
+    ZEXPECT(count_occurrences(p.project, main, bar) == 1u);
+};
+
+ZEST_CASE(TreeRulesOutHost) {
+    /// The scan resolved `shared.h`'s include under b.cpp's directories;
+    /// a.cpp's compile enters another `config.h`, so it lends no context.
+    TreeProject p;
+    llvm::StringRef a_text = "#include \"shared.h\"\n";
+    llvm::StringRef shared_text = "#pragma once\n#include <config.h>\n";
+    auto a = p.write("a.cpp", a_text);
+    auto b = p.write("b.cpp", "#include \"shared.h\"\n");
+    auto shared = p.write("common/shared.h", shared_text);
+    auto config_a = p.write("config_a/config.h", "");
+    auto config_b = p.write("config_b/config.h", "");
+    p.project.dep_graph.set_includes(a, 0, {{shared}});
+    p.project.dep_graph.set_includes(b, 0, {{shared}});
+    p.project.dep_graph.set_includes(shared, 0, {{config_b}});
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(a, a_text)};
+    manifest.nodes = {
+        {.file = p.version(shared, shared_text), .line = 1},
+        {.file = p.version(config_a, ""), .parent = 0, .line = 2},
+    };
+    p.project.project_index.manifests[a] = std::move(manifest);
+
+    ZEXPECT(count_occurrences(p.project, a, config_b) == 0u);
+    auto host = default_host(p.project, config_b);
+    ZASSERT(host);
+    ZEXPECT(host->file == b);
+    ZEXPECT(host->lines.empty());
+
+    /// Once shared.h changes, the tree vouches for nothing on its way.
+    p.write("common/shared.h", "#pragma once\n#include <config.h>\nint more;\n");
+    p.project.file_table.disk.end_turn();
+    ZEXPECT(!enterings(p.project, a, config_b).has_value());
+};
+
+ZEST_CASE(EnteringsInCompileOrder) {
+    /// Node numbers follow includers, not the compile: a later directive
+    /// of the unit numbered before a nested one still comes after it.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"mid.h\"\n#define AGAIN\n#include \"list.def\"\n";
+    llvm::StringRef mid_text = "#include \"list.def\"\n";
+    auto main = p.write("main.cpp", main_text);
+    auto mid = p.write("mid.h", mid_text);
+    auto list = p.write("list.def", "X(a)\n");
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(list, "X(a)\n"), .line = 3},
+        {.file = p.version(mid, mid_text), .line = 1},
+        {.file = p.version(list, "X(a)\n"), .parent = 1, .line = 1},
+    };
+    p.project.project_index.manifests[main] = std::move(manifest);
+
+    auto found = enterings(p.project, main, list);
+    ZASSERT(found);
+    ZASSERT(found->size() == 2u);
+    ZEXPECT((*found)[0].lines == llvm::SmallVector<std::uint32_t>{1, 1});
+    ZEXPECT((*found)[1].lines == llvm::SmallVector<std::uint32_t>{3});
+};
+
+ZEST_CASE(ForcedIncludeFallsBack) {
+    /// The compile enters the header only through a file its command
+    /// forces in, which no cut of the unit's text reproduces: the tree
+    /// settles on the lexical chain.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"t.h\"\n";
+    llvm::StringRef common_text = "#pragma once\n#include \"t.h\"\n";
+    auto main = p.write("main.cpp", main_text);
+    auto common = p.write("common.h", common_text);
+    auto t = p.write("t.h", "#pragma once\n");
+    p.project.dep_graph.set_includes(main, 0, {{t}});
+    p.project.dep_graph.set_includes(common, 0, {{t}});
+    p.project.dep_graph.add_forced_include(main, common);
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(common, common_text), .line = 300},
+        {.file = p.version(t, "#pragma once\n"), .parent = 0, .line = 2},
+        {.file = p.version(t, "#pragma once\n"), .line = 1, .skipped = true},
+    };
+    p.project.project_index.manifests[main] = std::move(manifest);
+
+    auto found = enterings(p.project, main, t);
+    ZASSERT(found);
+    ZASSERT(found->size() == 1u);
+    ZEXPECT(found->front().chain == std::vector<Fid>{main, t});
+    ZEXPECT(found->front().lines.empty());
+    ZEXPECT(!found->front().lexical);
+};
+
+ZEST_CASE(ContributorHosts) {
+    /// A unit whose indexed compile gave the header rows hosts it though
+    /// the scan reached the header under another configuration.
+    TreeProject p;
+    llvm::StringRef b_text = "#include <config.h>\n";
+    auto b = p.write("b.cpp", b_text);
+    auto config_b = p.write("config_b/config.h", "");
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(b, b_text)};
+    manifest.nodes = {
+        {.file = p.version(config_b, ""), .line = 1}
+    };
+    p.project.project_index.manifests[b] = std::move(manifest);
+    p.project.project_index.contributions[config_b][b] = 1;
+
+    auto host = default_host(p.project, config_b);
+    ZASSERT(host);
+    ZEXPECT(host->file == b);
+    ZEXPECT(host->lines == llvm::SmallVector<std::uint32_t>{1});
+};
+
+ZEST_CASE(StaleTreeFallsBack) {
+    /// A file on the way changed since the tree was taken: the lexical
+    /// chain stands in.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"foo.h\"\n#include \"bar.h\"\n";
+    auto main = p.write("main.cpp", main_text);
+    auto foo = p.write("foo.h", "#pragma once\n");
+    auto bar = p.write("bar.h", "int b;\n");
+    p.project.dep_graph.set_includes(main, 0, {{foo}, {bar}});
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(foo, "#pragma once\n#include \"bar.h\"\n"), .line = 1},
+        {.file = p.version(bar, "int b;\n"), .parent = 0, .line = 2},
+    };
+    p.project.project_index.manifests[main] = std::move(manifest);
+
+    ZEXPECT(!enterings(p.project, main, bar).has_value());
+    auto host = default_host(p.project, bar);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{main, bar});
+    ZEXPECT(host->lines.empty());
+};
+
+ZEST_CASE(RepeatedHeaderChangeStales) {
+    /// The header's guard decided its second include: once the header
+    /// changes the tree cannot tell; a header included once keeps it.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"t.h\"\n#include \"t.h\"\n#include \"u.h\"\n";
+    auto main = p.write("main.cpp", main_text);
+    auto t = p.write("t.h", "int t;\n");
+    auto u = p.write("u.h", "int u;\n");
+    p.project.dep_graph.set_includes(main, 0, {{t}, {t}, {u}});
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(t, "#pragma once\nint t;\n"), .line = 1},
+        {.file = p.version(t, "#pragma once\nint t;\n"), .line = 2, .skipped = true},
+        {.file = p.version(u, "#pragma once\nint u;\n"), .line = 3},
+    };
+    p.project.project_index.manifests[main] = std::move(manifest);
+
+    ZEXPECT(!enterings(p.project, main, t).has_value());
+    auto once = enterings(p.project, main, u);
+    ZASSERT(once);
+    ZEXPECT(once->size() == 1u);
+};
+
+};  // ZEST_SUITE(Hosting)
 
 }  // namespace
 

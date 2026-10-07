@@ -1,0 +1,11 @@
+---
+created_at: 2026-10-01
+input_file: deduced_type/06_shadowed_names.cpp
+---
+argument:
+- [refactor.rewrite] Replace 'auto' with 'Box<outer::Item>'
+  22:4-22:8 => "Box<outer::Item>"
+
+global:
+- [refactor.rewrite] Replace 'auto' with '::Global'
+  23:4-23:8 => "::Global"

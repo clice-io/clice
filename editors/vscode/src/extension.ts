@@ -9,6 +9,7 @@ import {
     LanguageClientOptions,
     ServerOptions,
     State,
+    StaticFeature,
     StreamInfo,
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
@@ -20,6 +21,21 @@ import { registerConflictCheck } from "./feature/conflicts";
 import { registerInactiveRegions } from "./feature/inactive";
 
 let client: ClientHandle | undefined;
+
+/// Keeps clice's diagnostics pushed: vscode-languageclient 9 shows the
+/// pull it cancels on every edit as an empty report, so pulled
+/// diagnostics would blink while typing. clice pushes to a client that
+/// does not declare pull support. Registered after the built-in features,
+/// so it runs after the one declaring it.
+const declinePullDiagnostics: StaticFeature = {
+    fillClientCapabilities(capabilities) {
+        delete capabilities.textDocument?.diagnostic;
+        delete capabilities.workspace?.diagnostics;
+    },
+    initialize: () => undefined,
+    getState: () => ({ kind: "static" }),
+    clear: () => undefined,
+};
 
 // Platform-specific builds of the extension ship the server under clice/;
 // universal builds (a plain `vsce package` without the binary staged) carry
@@ -313,9 +329,11 @@ export async function activate(context: ExtensionContext) {
     };
 
     const serverOptions = makeServerOptions(context, channel);
-    client = new ClientHandle(
-        () => new LanguageClient("clice", "clice", serverOptions, clientOptions),
-    );
+    client = new ClientHandle(() => {
+        const created = new LanguageClient("clice", "clice", serverOptions, clientOptions);
+        created.registerFeature(declinePullDiagnostics);
+        return created;
+    });
 
     context.subscriptions.push(
         vscode.commands.registerCommand("clice.restart", () => startServer(context)),

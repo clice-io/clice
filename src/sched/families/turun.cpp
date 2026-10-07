@@ -1,13 +1,18 @@
-#include "sched/families/turun.h"
+module;
 
-#include <cassert>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "compile/compilation.h"
-#include "sched/families/pcm.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "worker/protocol.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :compile.compilation;
+import :sched.families.pcm;
+import :sched.families.turun;
+import :support.logging;
+import :support.timer;
+import :vfs.file_system;
+import :worker.protocol;
 
 namespace clice {
 
@@ -102,81 +107,96 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // the module files. The scan runs under the command resolved above —
     // a borrowed header host's flags select the same imports the parse
     // will see — and its sentinel edges are what let an unresolved
-    // name's first provider re-dirty this TU. In a project without
-    // providers the lexical candidate set (from the dependency scan)
-    // gates the cost. A failed PCM build is not terminal on either
-    // shape — the parse consumes whatever artifacts landed and the
-    // worker reports its own failure if they are not enough.
+    // name's first provider re-dirty this TU. A failed PCM build is not
+    // terminal on either shape — the parse consumes whatever artifacts
+    // landed and the worker reports its own failure if they are not
+    // enough.
     bool own_module = !project.dep_graph.module_of(path_id).empty();
-    if(own_module || project.dep_graph.has_modules() ||
-       !project.dep_graph.import_candidate_files().empty() ||
-       llvm::any_of(params.arguments, [](const std::string& arg) {
-           return llvm::StringRef(arg).starts_with("-include");
-       })) {
-        PCMFamily::ModuleDeps deps;
-        if(own_module) {
-            deps.resolved.push_back(path_id);
-            deps.declared.push_back({Family::PCM, path_id.raw});
+    PCMFamily::ModuleDeps deps;
+    if(own_module) {
+        deps.resolved.push_back(path_id);
+        deps.declared.push_back({Family::PCM, path_id.raw});
+    }
+    // The scan must evaluate the same conditionals the worker's parse
+    // will — the resolved command already carries the plan's extra args.
+    // A module unit's own PCM round resolves the base command without
+    // them, so extras run their own scan even there.
+    bool has_extras = !extras.prepend.empty() || !extras.append.empty();
+    if(!own_module || has_extras) {
+        std::vector<const char*> argv;
+        argv.reserve(params.arguments.size());
+        for(auto& arg: params.arguments) {
+            argv.push_back(arg.c_str());
         }
-        // The scan must evaluate the same conditionals the worker's
-        // parse will — the resolved command already carries the plan's
-        // extra args. A module unit's own PCM round resolves the base
-        // command without them, so extras run their own scan even there.
-        bool has_extras = !extras.prepend.empty() || !extras.append.empty();
-        if(!own_module || has_extras) {
-            std::vector<const char*> argv;
-            argv.reserve(params.arguments.size());
-            for(auto& arg: params.arguments) {
-                argv.push_back(arg.c_str());
-            }
-            auto scanned = pcm.direct_deps(path_id,
-                                           argv,
-                                           params.directory,
-                                           std::nullopt,
-                                           resolved.synthesized.get());
-            llvm::append_range(deps.resolved, scanned.resolved);
-            llvm::append_range(deps.declared, scanned.declared);
-        }
+        auto scanned =
+            co_await pcm.direct_deps(path_id, resolved, argv, params.directory, std::nullopt);
+        llvm::append_range(deps.resolved, scanned.resolved);
+        llvm::append_range(deps.declared, scanned.declared);
+    }
 
-        // Scanner truth outlives the run: committed as durable edges even
-        // when the run or a build fails, so fixing or providing an import
-        // re-dirties this TU — the invalidator reaches closed TUs through
-        // these edges alone (the include reverse map carries no import
-        // edges).
-        graph.declare(node(path_id), deps.declared);
-        for(auto dep: deps.declared) {
-            if(PCMFamily::is_unresolved(dep)) {
-                ctx.reference(dep);
-            }
+    // Scanner truth outlives the run: committed as durable edges even
+    // when the run or a build fails, so fixing or providing an import
+    // re-dirties this TU — the invalidator reaches closed TUs through
+    // these edges alone (the include reverse map carries no import
+    // edges).
+    graph.declare(node(path_id), deps.declared);
+    for(auto dep: deps.declared) {
+        if(PCMFamily::is_unresolved(dep)) {
+            ctx.reference(dep);
         }
+    }
 
-        // On-disk PCM blobs can be LRU-evicted while their nodes stay
-        // clean; re-dirty evicted ones so depend() rebuilds instead of
-        // handing the worker a dead path. Bounded: a rebuild can itself
-        // evict under budget pressure, and past the bound the parse fails
-        // visibly on the missing file.
-        for(int attempt = 0; !deps.resolved.empty() && attempt < 3; attempt += 1) {
-            bool any_evicted = pcm.revalidate_blobs();
-            if(attempt > 0 && !any_evicted) {
-                break;
-            }
-            for(auto dep: deps.resolved) {
-                if(co_await ctx.depend({Family::PCM, dep.raw}) == DependResult::Cancelled) {
-                    landed[path_id] = {.verdict = Verdict::Preempted};
-                    co_return RoundOutcome::Stale;
-                }
+    // On-disk PCM blobs can be LRU-evicted while their nodes stay clean;
+    // re-dirty evicted ones so depend() rebuilds instead of handing the
+    // worker a dead path. Bounded: a rebuild can itself evict under budget
+    // pressure, and past the bound the parse fails visibly on the missing
+    // file.
+    for(int attempt = 0; !deps.resolved.empty() && attempt < 3; attempt += 1) {
+        bool any_evicted = pcm.revalidate_blobs();
+        if(attempt > 0 && !any_evicted) {
+            break;
+        }
+        for(auto dep: deps.resolved) {
+            if(co_await ctx.depend({Family::PCM, dep.raw}) == DependResult::Cancelled) {
+                landed[path_id] = {.verdict = Verdict::Preempted};
+                co_return RoundOutcome::Stale;
             }
         }
     }
 
     project.fill_pcm_deps(params.pcms, path_id);
+    if(plan.index && !send_in_full.erase(path_id)) {
+        params.known_variants = store.known_variants(path_id);
+    }
+
+    std::optional<CacheStore::PendingEntry> transfer;
+    if(plan.index && project.store) {
+        transfer = project.store->begin_transfer();
+        params.index_output_path = transfer->tmp_path;
+    }
 
     ScopedTimer timer;
-    auto result = co_await pool.send_stateless(params, worker::Priority::Low, {}, ctx.token());
+    auto result = co_await pool.send_stateless(params, worker::Priority::Low, ctx.token());
     if(result.has_value() && result.value().success) {
         auto run_ms = timer.ms();
         auto& value = result.value();
-        if(plan.index && value.tu_index_data.empty()) {
+        llvm::StringRef index_bytes = value.tu_index_data;
+        // Declared after `transfer`: the mapping must close before the
+        // entry removes the file, which Windows refuses while it is mapped.
+        std::unique_ptr<llvm::MemoryBuffer> transferred;
+        if(value.index_in_file) {
+            auto read = vfs::read(transfer->tmp_path, vfs::Read::Mapped);
+            if(!read) {
+                landed[path_id] = {.verdict = Verdict::Failed,
+                                   .error = std::format("reading the index from {} failed: {}",
+                                                        transfer->tmp_path,
+                                                        read.error().message())};
+                co_return RoundOutcome::Failed;
+            }
+            transferred = std::move(*read);
+            index_bytes = transferred->getBuffer();
+        }
+        if(plan.index && index_bytes.empty()) {
             landed[path_id] = {.verdict = Verdict::Failed,
                                .error = "the worker returned no TUIndex"};
             co_return RoundOutcome::Failed;
@@ -184,7 +204,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         Outcome outcome;
         outcome.verdict = Verdict::Completed;
         outcome.tidy_diagnostics = std::move(value.tidy_diagnostics);
-        outcome.perf = {.bytes = value.tu_index_data.size(), .index_ms = run_ms, .merge_ms = 0};
+        outcome.perf = {.bytes = index_bytes.size(), .index_ms = run_ms, .merge_ms = 0};
         if(plan.index) {
             // Merge guard: a newer content-level invalidation during this
             // build (or a removal clearing the entry) means this result
@@ -198,8 +218,14 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                 co_return RoundOutcome::Stale;
             }
             ScopedTimer merge_timer;
-            auto report = store.merge(value.tu_index_data.data(), value.tu_index_data.size());
+            auto report = store.merge(index_bytes.data(), index_bytes.size());
             if(!report) {
+                if(report.error() == IndexStore::MergeError::Outdated) {
+                    send_in_full.insert(path_id);
+                    landed[path_id] = {.verdict = Verdict::Preempted,
+                                       .error = "a variant the result named by hash is not stored"};
+                    co_return RoundOutcome::Stale;
+                }
                 // Rejected wholesale: the file's rows are missing or stale,
                 // which is a failure, not a completed index.
                 landed[path_id] = {.verdict = Verdict::Failed,
@@ -232,7 +258,13 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_crashed) {
-        landed[path_id] = {.verdict = Verdict::Crashed, .error = result.error().message};
+        landed[path_id] = {.verdict = Verdict::Crashed,
+                           .error = "it crashed the worker: " + result.error().message};
+        co_return RoundOutcome::Stale;
+    }
+    if(result.error().code == worker::dispatch_errc::worker_died ||
+       result.error().code == worker::dispatch_errc::worker_lost) {
+        landed[path_id] = {.verdict = Verdict::Lost, .error = result.error().message};
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_unavailable && pool.revives_slots()) {

@@ -1,16 +1,15 @@
-#include <cstddef>
-#include <cstdint>
-#include <optional>
-#include <utility>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "index/serialization.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :index.serialization;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {
 
-using index::read_bitmap;
 using index::view_bitmap;
 using index::write_bitmap;
 
@@ -18,14 +17,9 @@ std::optional<Bitmap> view_of(const std::vector<std::byte>& image) {
     return view_bitmap(image.data(), image.size());
 }
 
-std::optional<Bitmap> read_of(const std::vector<std::byte>& image) {
-    return read_bitmap(image.data(), image.size());
-}
+ZEST_SUITE(BitmapImage) {
 
-TEST_SUITE(BitmapImage) {
-
-TEST_CASE(ViewMatchesRead) {
-    // Array containers alone (no run cookie, offsets stored), one run
+ZEST_CASE(ViewMatchesBitmap) {  // Array containers alone (no run cookie, offsets stored), one run
     // container (too few containers to store offsets), and bitset, run
     // and array containers together (offsets stored).
     Bitmap arrays;
@@ -45,28 +39,26 @@ TEST_CASE(ViewMatchesRead) {
     for(const auto* bitmap: {&arrays, &runs, &mixed}) {
         auto image = write_bitmap(*bitmap);
         auto view = view_of(image);
-        auto read = read_of(image);
-        ASSERT_TRUE(view.has_value());
-        ASSERT_TRUE(read.has_value());
-        EXPECT_TRUE(*view == *read);
-        EXPECT_EQ(view->cardinality(), bitmap->cardinality());
-        EXPECT_TRUE(view->contains(bitmap->minimum()));
-        EXPECT_TRUE((*view & arrays) == (*bitmap & arrays));
+        ZASSERT(view);
+        ZEXPECT(*view == *bitmap);
+        ZEXPECT(view->cardinality() == bitmap->cardinality());
+        ZEXPECT(view->contains(bitmap->minimum()));
+        ZEXPECT((*view & arrays) == (*bitmap & arrays));
 
         // A view moves with its arena; the moved-from shell frees nothing.
         Bitmap moved = std::move(*view);
         std::vector<Bitmap> held;
         held.push_back(std::move(moved));
         held.reserve(64);
-        EXPECT_TRUE(held.front() == *bitmap);
+        ZEXPECT(held.front() == *bitmap);
     }
 
     auto empty = write_bitmap(Bitmap{});
-    ASSERT_TRUE(view_of(empty).has_value());
-    EXPECT_TRUE(view_of(empty)->isEmpty());
+    ZASSERT(view_of(empty));
+    ZEXPECT(view_of(empty)->isEmpty());
 }
 
-TEST_CASE(ViewRejectsMalformed) {
+ZEST_CASE(ViewRejectsMalformed) {
     Bitmap bitmap;
     bitmap.add(1);
     bitmap.add(2);
@@ -74,32 +66,35 @@ TEST_CASE(ViewRejectsMalformed) {
     // One array container: cookie, container count, key and cardinality,
     // the payload offset, then the three values.
     auto image = write_bitmap(bitmap);
-    ASSERT_EQ(image.size(), 22u);
-    ASSERT_TRUE(view_of(image).has_value());
+    ZASSERT(image.size() == 22u);
+    ZASSERT(view_of(image));
 
-    EXPECT_FALSE(view_bitmap(image.data(), 0).has_value());
+    ZEXPECT(!view_bitmap(image.data(), 0).has_value());
     auto truncated = image;
     truncated.pop_back();
-    EXPECT_FALSE(view_of(truncated).has_value());
+    ZEXPECT(!view_of(truncated).has_value());
 
-    // The bounded reader walks the payload and ignores the offset; the
-    // in-place reader follows it.
+    // The bounded reader walks the payload and ignores the offset, so
+    // the image stays valid to it; the in-place reader follows the offset.
     auto skewed = image;
     skewed[12] = std::byte{0xff};
-    EXPECT_TRUE(read_of(skewed).has_value());
-    EXPECT_FALSE(view_of(skewed).has_value());
+    auto* walked = roaring::api::roaring_bitmap_portable_deserialize_safe(
+        reinterpret_cast<const char*>(skewed.data()),
+        skewed.size());
+    ZEXPECT(walked != nullptr);
+    roaring::api::roaring_bitmap_free(walked);
+    ZEXPECT(!view_of(skewed).has_value());
     auto rewound = image;
     rewound[12] = std::byte{0};
-    EXPECT_FALSE(view_of(rewound).has_value());
+    ZEXPECT(!view_of(rewound).has_value());
 
-    // Values out of order fail the structural check of both readers.
+    // Values out of order fail the structural check.
     auto unsorted = image;
     std::swap(unsorted[16], unsorted[20]);
-    EXPECT_FALSE(read_of(unsorted).has_value());
-    EXPECT_FALSE(view_of(unsorted).has_value());
+    ZEXPECT(!view_of(unsorted).has_value());
 }
 
-};  // TEST_SUITE(BitmapImage)
+};  // ZEST_SUITE(BitmapImage)
 
 }  // namespace
 }  // namespace clice::testing

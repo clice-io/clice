@@ -2,7 +2,7 @@
 
 ## Run Tests
 
-clice has four types of tests: unit tests, integration tests, smoke tests, and snap tests.
+clice has four types of tests that run on every change: unit tests, integration tests, smoke tests, and snap tests. Compatibility tests, which need real build systems and compilers, run separately.
 
 All test dependencies (node/npm for the integration suite and tools, python for scripts/) are managed by pixi — no separate installation needed.
 
@@ -16,7 +16,7 @@ pixi run unit-test Debug    # debug build
 Equivalent to:
 
 ```bash
-./build/RelWithDebInfo/bin/unit_tests --verbose
+./build/RelWithDebInfo/bin/bin/unit_tests --verbose
 ```
 
 ### Integration Tests
@@ -33,9 +33,10 @@ official vscode-languageserver-protocol stack. Equivalent to:
 
 ```bash
 cd tests
-npm run check   # typecheck (tsc strict) + lint (ESLint)
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm test
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm test
 ```
+
+A change to the TypeScript also passes `npm run check` at the repository root: strict tsc and ESLint over every package.
 
 Useful variants:
 
@@ -56,7 +57,7 @@ Equivalent to:
 
 ```bash
 node tools/replay.ts tests/smoke/*.jsonl \
-    --clice=./build/RelWithDebInfo/bin/clice
+    --clice=./build/RelWithDebInfo/bin/bin/clice
 ```
 
 ### Snap Tests
@@ -72,7 +73,7 @@ Equivalent to:
 
 ```bash
 cd tests
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm run snap
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm run snap
 ```
 
 A fixture is a single `.cpp`, or a subdirectory entered through its `main.cpp` — one multi-file unit whose sibling sources (module interfaces, headers, extra sources) belong to the fixture. A fixture that documents a capability lives in a section directory of the corpus as `<section>/NN_name.cpp` (or `<section>/NN_unit/main.cpp`) and opens with a `/// # Capability name` doc header — the name alone, at most five words — followed by its metadata list, where `status` (`supported`, `partial` or `unsupported`) is required, and a one-sentence summary paragraph that becomes the capability card's summary: the directory keys the feature page's generated region, the two-digit number orders the item within it, and the header feeds the page (see `tools/docs/feature.ts`). Edge-case fixtures without a doc header stay at the corpus root. Corpus-wide compile flags live in the corpus's `corpus.json` manifest; a fixture appends its own with `- flags: [...]`. Each server-path run materializes the fixture into a throwaway workspace (sources arrive on disk with `§`-annotations already stripped), so fixtures never share state and background indexing — off by default, enabled per fixture with `- indexing: true` — sees the same bytes the compiler does. A fixture that deliberately does not compile cleanly declares `- diagnostics: expected`; unexpected diagnostics fail the fixture, and so does a clean compile under that declaration.
@@ -93,7 +94,7 @@ pixi run test Debug          # all tests with debug build
 Smoke tests that run real editors (headless Neovim and VSCode) against a locally built clice binary, covering startup, first diagnostics, hover, definition and completion on two fixtures (including a C++20 modules project). CI runs them in the `test-editor` job on Linux with the latest stable editor releases, on purpose unpinned: the job exists to catch breakage caused by new editor versions.
 
 ```bash
-$ pixi run build                  # build/RelWithDebInfo/bin/clice
+$ pixi run build                  # build/RelWithDebInfo/bin/bin/clice
 $ pixi run -e editor editor-test  # nvim + vscode, both fixtures
 ```
 
@@ -103,12 +104,22 @@ Prerequisites outside the pixi env:
 - A system `cmake`/`ninja`/`clang` for `editor-prepare` to configure the CMake-based module fixture (same assumption the integration tests make).
 - A display (or `xvfb-run`) plus the usual Electron system libraries for `vscode-e2e`.
 
+## Compatibility Tests
+
+Real build systems and real compilers: each scenario in `tests/compat/scenarios.ts` builds the small project under `tests/compat/project/` with one build system and one toolchain, then runs clice over the compilation database that build wrote. Every translation unit must parse without errors, as it compiled for the real compiler; clice must agree with that compiler on the macros the command's flags imply, which a generated header compares inside clice's own parse; and each file's command must resolve through the compiler and keep or drop the flags the scenario lists. No database is committed: the suite checks what the tools write today.
+
+```bash
+pixi run compat-test          # default RelWithDebInfo
+```
+
+Each scenario names the compilers of one platform as its CI runner image has them: on Linux the distribution's versioned GCC and Clang plus bear, ccache, meson, ninja, xmake, bazel, zig, Emscripten, the MinGW, RISC-V and Arm cross compilers, and nvcc from the pixi `cuda` environment (`pixi install -e cuda`); on Windows Visual Studio, LLVM and MinGW; on macOS Apple clang and Homebrew's GCC and LLVM. A scenario whose tools are missing is skipped locally and fails in CI. A scenario clice does not support yet names why in `unsupported`: its checks are skipped while its build still runs. CI runs the suite with every build, and weekly against the newest release.
+
 ## Debug
 
 If you want to attach a debugger to clice, start it in socket mode independently, then connect a client.
 
 ```shell
-./build/Debug/bin/clice serve --mode socket --port 50051
+./build/Debug/bin/bin/clice serve --mode socket --port 50051
 ```
 
 After the server starts, you can connect a client in two ways:

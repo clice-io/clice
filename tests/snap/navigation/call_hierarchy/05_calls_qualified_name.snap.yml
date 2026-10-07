@@ -11,4 +11,4 @@ method:
     - { file: "${WS}/call_hierarchy/05_calls_qualified_name.cpp", range: "10:9-10:13" }
     - { file: "${WS}/call_hierarchy/05_calls_qualified_name.cpp", range: "13:13-13:17" }
   callHierarchy:
-    - { name: "draw", kind: Method, file: "${WS}/call_hierarchy/05_calls_qualified_name.cpp", range: "13:13-13:17" }
+    - { name: "draw", kind: Method, file: "${WS}/call_hierarchy/05_calls_qualified_name.cpp", range: "13:0-13:22", selection: "13:13-13:17" }

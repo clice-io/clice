@@ -1,15 +1,12 @@
-#include "server/format.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <ranges>
-#include <string>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "compile/diagnostic.h"
-#include "support/logging.h"
+module clice;
 
-#include "kota/codec/json/json.h"
+import :compile.diagnostic;
+import :feature.feature;
+import :server.format;
 
 namespace clice {
 
@@ -33,34 +30,32 @@ static protocol::Diagnostic make_inferred_command_diagnostic(CommandSource sourc
         .name = "inferred-compile-command",
     };
 
-    protocol::Diagnostic diagnostic;
-    diagnostic.range = protocol::Range{
-        .start = protocol::Position{.line = 0, .character = 0},
-        .end = protocol::Position{.line = 0, .character = 0},
-    };
-    diagnostic.severity = protocol::DiagnosticSeverity::Warning;
-    diagnostic.code = id.name.str();
-    if(auto uri = id.diagnostic_document_uri()) {
-        diagnostic.code_description = protocol::CodeDescription{.href = std::move(*uri)};
-    }
-    diagnostic.source = diagnostic_source_name(id.source).str();
-    diagnostic.message = std::format(
+    auto diagnostic = feature::file_warning(std::format(
         "No compilation database entry for this file (compile command was {}), so some includes "
         "may not be found. Configure compile_commands.json for accurate diagnostics.",
         source == CommandSource::Fallback   ? "synthesized from defaults"
         : source == CommandSource::Inferred ? "borrowed from a nearby translation unit"
-                                            : "inferred from an including file");
+                                            : "inferred from an including file"));
+    diagnostic.code = id.name.str();
+    if(auto uri = id.diagnostic_document_uri()) {
+        diagnostic.code_description = protocol::CodeDescription{.href = std::move(*uri)};
+    }
+    return diagnostic;
+}
+
+/// File-top warning naming the host whose includer context the header
+/// needed but could not get: the diagnostics below miss what it provides.
+static protocol::Diagnostic make_unmatched_context_diagnostic(llvm::StringRef host) {
+    auto diagnostic = feature::file_warning(std::format(
+        "This header needs the context of its includer, but the include chain from {} could not "
+        "be followed under that file's compile command, so it compiled without it.",
+        host));
+    diagnostic.code = "unmatched-includer-context";
     return diagnostic;
 }
 
 std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output) {
-    std::vector<protocol::Diagnostic> diagnostics;
-    if(!output.diagnostics.empty()) {
-        auto status = kota::codec::json::from_string(output.diagnostics.data, diagnostics);
-        if(!status) {
-            LOG_WARN("Failed to deserialize diagnostics JSON");
-        }
-    }
+    auto diagnostics = output.diagnostics;
 
     // Suffix injection appends an #include past the user's EOF; errors in
     // host code after the include point remap onto those phantom lines.
@@ -76,6 +71,10 @@ std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output
     if(output.source != CommandSource::CDBExact && output.source != CommandSource::Default &&
        std::ranges::any_of(diagnostics, is_file_not_found)) {
         diagnostics.insert(diagnostics.begin(), make_inferred_command_diagnostic(output.source));
+    }
+    if(!output.unmatched_host.empty()) {
+        diagnostics.insert(diagnostics.begin(),
+                           make_unmatched_context_diagnostic(output.unmatched_host));
     }
 
     return diagnostics;

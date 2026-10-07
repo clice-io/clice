@@ -2,7 +2,7 @@
 
 ## 包含路径
 
-由 `<`、`"`、`/` 字符触发。在构建 AST 之前处理（在 Preamble 层面处理，无需编译）。引号内的补全会搜索已配置的包含目录，不会搜索包含方文件自身所在的目录（除非该目录位于包含路径中）。
+由 `<`、`"`、`/` 字符触发。在构建 AST 之前处理（在 Preamble 层面处理，无需编译）。引号内的补全先搜索包含方文件自身所在的目录，再搜索已配置的包含目录。只有看起来像头文件的文件才会成为候选：任何目录下带头文件扩展名的文件，以及系统目录等存放此类头文件的位置中不带扩展名的文件。
 
 <!-- BEGIN GENERATED ITEMS: include_path_completion -->
 
@@ -26,6 +26,18 @@ tests/snap/code_completion/include_path_completion/01_include_quoted.cpp
 
 ```snap
 tests/snap/code_completion/include_path_completion/02_include_angled.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**闭合定界符**
+
+接受头文件候选时会补上闭合定界符；光标后已有的定界符会被替换，不会重复
+
+```snap
+tests/snap/code_completion/include_path_completion/03_closing_delimiter.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -258,7 +270,7 @@ tests/snap/code_completion/member_access/05_inherited_members.cpp
 
 若变量的类型是某个依赖模板特化的成员别名，补全该别名所代表的类的成员
 
-解析别名时会代入代码中写出的模板实参，因此 `Vec<Vec<T>>::value_type` 会列出 `Vec<T>` 的成员，而不是什么都列不出来。
+解析别名时会代入代码中写出的模板实参，因此 `Vec<Vec<T>>::value_type` 会列出 `Vec<T>` 的成员，而不是什么都列不出来。别名代表引用类型时（`Vec<Vec<T>>::reference`），列出被引用的类的成员。
 
 ```snap
 tests/snap/code_completion/member_access/06_dependent_member_type.cpp
@@ -328,6 +340,72 @@ tests/snap/code_completion/member_access/11_designated_initializer.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**不可访问的成员**
+
+私有和受保护的成员不会出现在无法使用它们的位置
+
+```snap
+tests/snap/code_completion/member_access/12_inaccessible_members.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**析构函数标签**
+
+无论类位于哪个命名空间，析构函数都补全为 `~` 加上不带限定的类名
+
+```snap
+tests/snap/code_completion/member_access/13_destructor_label.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#443 -->
+
+**依赖表达式的结果**
+
+在模板中对下标或成员调用的返回值进行成员访问时，补全该返回值所属类的成员
+
+`rows[0].` 用在 `Vec<Vec<T>>` 上时，列出 `Vec<T>` 的成员：解析沿着容器的 `reference` 别名进行，与标准容器声明该别名的方式一致。若成员有 `const` 重载，由对象是否为 const 决定调用哪一个，通过 const 对象访问到的数据成员也算作 const；对返回的迭代器使用 `->` 可以访问到元素。
+
+```snap
+tests/snap/code_completion/member_access/14_dependent_expression_result.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**返回类型相同的重载**
+
+依赖调用的候选重载都返回同一类型时，补全该类型的成员
+
+`table[key].` 用在 `operator[]` 接受 `const K&` 或 `K&&` 的映射上时，列出映射值类型的成员。这些重载可以定义在类外，类模板也可以在定义之后再次声明，标准库中的映射正是如此。
+
+```snap
+tests/snap/code_completion/member_access/15_overloaded_subscript.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**推导变量的成员**
+
+用依赖初始化器声明为 `auto` 的变量，补全其推导出的类的成员
+
+`auto& row = rows[0]; row.` 列出 `Vec<T>` 的成员。声明符的作用与真实推导中一致：`const auto&` 使对象成为 const，按值的 `auto` 去掉初始化器的 const，`auto&&` 和 `decltype(auto)` 保留这一 const，`auto*` 则推导出指针所指的类型。初始化器为数据成员时，`decltype(auto)` 取该成员声明时的类型；加了括号时，则取该表达式的 const 引用类型。
+
+```snap
+tests/snap/code_completion/member_access/16_deduced_variable.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 - [x] `->`——指针成员访问（带有 Clang 修正）
@@ -380,14 +458,21 @@ tests/snap/code_completion/member_access/11_designated_initializer.cpp
 
 ## 重写与类外定义
 
-- [ ] 虚函数重写补全，包含完整签名和 `override` 关键字
+<!-- BEGIN GENERATED ITEMS: override_completion -->
 
-  ```cpp
-  struct Base { virtual void draw(int x, int y) const; };
-  struct Derived : Base {
-      ^  // suggest: void draw(int x, int y) const override
-  };
-  ```
+<!-- BEGIN CAPABILITY: supported -->
+
+**重写声明**
+
+在派生类中，基类的虚函数补全为完整的重写声明，包括返回类型和 `override`；在重写函数内部，该名称按其自身补全，而不是补全为对基类版本的调用
+
+```snap
+tests/snap/code_completion/override_completion/01_override_declaration.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
 
 - [ ] 遍历完整的继承层次结构以查找重写候选项（[clangd#226](https://github.com/clangd/clangd/issues/226)、[clangd#2374](https://github.com/clangd/clangd/issues/2374)）
 
@@ -572,12 +657,59 @@ tests/snap/code_completion/symbols/12_dependent_scope.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**必需的限定符**
+
+仅凭名称无法指到的枚举项会带上所需的限定符补全，并按不带限定的名称匹配
+
+```snap
+tests/snap/code_completion/symbols/13_required_qualifier.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**局部变量隐藏函数**
+
+局部变量隐藏同名函数时，提供的候选项是该局部变量，而不是被隐藏的函数
+
+```snap
+tests/snap/code_completion/symbols/14_hidden_by_local.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**构造函数模板**
+
+与其他构造函数一样，构造函数模板补全为不带限定的类名
+
+```snap
+tests/snap/code_completion/symbols/15_constructor_template.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**跨命名空间的重载**
+
+作用域内来自不同命名空间的同名函数合并为一项，并计入全部重载
+
+```snap
+tests/snap/code_completion/symbols/16_overloads_across_scopes.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 - [x] 限定名称查找（`std::`）
-- [x] 实参依赖查找（ADL）候选项
+- [ ] 实参依赖查找（ADL）候选项
 - [x] 宏补全——候选集包含对象式宏和函数式宏
-- [ ] 带占位符的代码片段模式（函数体、控制流）
 - [ ] C++ 属性补全
 
   ```cpp
@@ -694,15 +826,43 @@ tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**调用括号**
+
+补全函数调用时会插入圆括号并把光标放在括号之间，除非名称后面已经写了实参，或者此处并不是调用
+
+```snap
+tests/snap/code_completion/functions_snippets/08_call_parentheses.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模板实参占位符**
+
+类模板为每个没有默认值的模板形参插入一个占位符；所有形参都有默认值时插入一对空的尖括号
+
+```snap
+tests/snap/code_completion/functions_snippets/09_template_arguments.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**语句关键字**
+
+语句关键字作为关键字补全；开启该选项后会插入整条语句，并为每个组成部分提供占位符
+
+```snap
+tests/snap/code_completion/functions_snippets/10_statement_snippets.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
-
-- [ ] 模板实参占位符（`enable_template_arguments_snippet`）
-- [ ] 自动插入圆括号（`insert_paren_in_function_call`）
-- [ ] 向后检查是否已有圆括号或方括号，避免重复插入
-
-  ```cpp
-  foo^(10, 20);  // should NOT insert another pair of parens → foo(10, 20)
-  ```
 
 - [ ] 根据上下文调整代码片段：在函数指针上下文中仅插入名称，不插入调用语法
 
@@ -739,12 +899,6 @@ tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
   auto p = std::make_unique<Widget>(^  // show "(int w, int h)"
   ```
 
-- [ ] 支持 `InsertReplaceEdit`（在单词中间进行代码补全时，同时提供插入范围和替换范围）
-
-  ```cpp
-  refact^orize  // insert: "refactoring^orize", replace: "refactoring"
-  ```
-
 - [ ] 没有占位符时设置 `InsertTextFormat::PlainText`
 
 ## 模板与概念
@@ -758,15 +912,6 @@ tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
   template<Drawable T>
   void render(T& widget) {
       widget.^  // suggest draw(), resize() from Drawable concept
-  }
-  ```
-
-- [ ] 在未实例化的模板中补全待决类型（dependent type）的成员
-
-  ```cpp
-  template<typename T>
-  void process(std::vector<std::vector<T>>& matrix) {
-      matrix[0].^  // resolve operator[] → vector<T>&, suggest push_back(), size() etc.
   }
   ```
 
@@ -857,6 +1002,30 @@ tests/snap/code_completion/filtering_ranking/04_case_insensitive.cpp
 
 ```snap
 tests/snap/code_completion/filtering_ranking/05_prefix_beats_subsequence.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**单词中间的补全**
+
+在单词中间补全时同时提供两种范围：编辑器可以在单词剩余部分之前插入，也可以替换整个单词
+
+```snap
+tests/snap/code_completion/filtering_ranking/06_inside_a_word.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**非 ASCII 前缀**
+
+由非 ASCII 标识符字符组成的前缀会被替换，而不是在其前面插入
+
+```snap
+tests/snap/code_completion/filtering_ranking/07_unicode_prefix.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -957,19 +1126,17 @@ tests/snap/code_completion/filtering_ranking/05_prefix_beats_subsequence.cpp
 
 ## 触发字符
 
-已注册：`. < > : " / *`。空格（` `）的支持处于计划中，但尚未合并（[#460](https://github.com/clice-io/clice/pull/460)）。
+已注册：`. < > : " /` 和空格。
 
-| 字符 | 上下文           | 行为                                                                                    |
-| ---- | ---------------- | --------------------------------------------------------------------------------------- |
-| `.`  | 成员访问         | 语义补全                                                                                |
-| `->` | 通过指针访问成员 | `[ ]` 不支持——尚未传递将点号改为箭头的修复建议                                          |
-| `::` | 通过 `:` 触发    | 作用域补全                                                                              |
-| `<`  | `#include <`     | 包含路径补全                                                                            |
-| `>`  | 模板闭合         | 语义补全                                                                                |
-| `"`  | `#include "`     | 包含路径补全                                                                            |
-| `/`  | 路径分隔符       | 继续补全包含路径                                                                        |
-| `*`  | 指针解引用       | 语义补全                                                                                |
-| ` `  | `import` 之后    | 模块名补全（受扩展限制）——**计划中 [#460](https://github.com/clice-io/clice/pull/460)** |
+| 字符 | 上下文         | 行为                                |
+| ---- | -------------- | ----------------------------------- |
+| `.`  | 成员访问       | 语义补全                            |
+| `>`  | 通过 `->` 触发 | 指针成员补全；其他位置的 `>` 不触发 |
+| `:`  | 通过 `::` 触发 | 作用域补全                          |
+| `<`  | `#include <`   | 包含路径补全                        |
+| `"`  | `#include "`   | 包含路径补全                        |
+| `/`  | 路径分隔符     | 继续补全包含路径                    |
+| ` `  | `import` 之后  | 模块名补全（受扩展限制）            |
 
 ## 协议
 

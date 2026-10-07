@@ -39,6 +39,9 @@ test("fallback guidance lifecycle", async ({ session }) => {
     expect(guidance[0]!.severity).toBe(proto.DiagnosticSeverity.Warning);
     expect(guidance[0]!.range.start.line).toBe(0);
     expect(guidance[0]!.source).toBe("clice");
+    expect(guidance[0]!.codeDescription?.href).toBe(
+        "https://docs.clice.io/clice/guide/quick-start#project-setup",
+    );
     // The missing CDB is also announced via window/logMessage guidance.
     expect(first.guidanceMessages().some((m) => m.includes("compile_commands.json"))).toBe(true);
 

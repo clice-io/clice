@@ -1,12 +1,11 @@
-#include <initializer_list>
-#include <string>
+module;
 
-#include "test/test.h"
-#include "support/fuzzy_matcher.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
+module clice;
+
+import :support.fuzzy_matcher;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {
@@ -142,245 +141,244 @@ constexpr llvm::StringRef corpus[] = {
     "convertModelPosition",
 };
 
-TEST_SUITE(FuzzyMatcher) {
+ZEST_SUITE(FuzzyMatcher) {
 
-TEST_CASE(Segmentation) {
-    EXPECT_EQ(segmented("std::basic_string"), "+--  +---- +-----");
-    EXPECT_EQ(segmented("XMLHttpRequest"), "+--+---+------");
-    EXPECT_EQ(segmented("t3h PeNgU1N oF d00m!!!!!!!!"), "+-- +-+-+-+ ++ +---        ");
-    EXPECT_EQ(segmented("ab\xF0\x9F\x99\x82"
-                        "cd"),
-              "+-------");
-    EXPECT_EQ(segmented("HTMLElement"), "+---+------");
+ZEST_CASE(Segmentation) {
+    ZEXPECT(segmented("std::basic_string") == "+--  +---- +-----");
+    ZEXPECT(segmented("XMLHttpRequest") == "+--+---+------");
+    ZEXPECT(segmented("t3h PeNgU1N oF d00m!!!!!!!!") == "+-- +-+-+-+ ++ +---        ");
+    ZEXPECT(segmented("ab\xF0\x9F\x99\x82"
+                      "cd") == "+-------");
+    ZEXPECT(segmented("HTMLElement") == "+---+------");
 }
 
-TEST_CASE(Accepts) {
-    EXPECT_EQ(annotated("", "unique_ptr"), "unique_ptr");
-    EXPECT_EQ(annotated("u_p", "unique_ptr"), "[u]nique[_p]tr");
-    EXPECT_EQ(annotated("up", "unique_ptr"), "[u]nique_[p]tr");
-    EXPECT_FALSE(matches("uq", "unique_ptr"));
-    EXPECT_FALSE(matches("qp", "unique_ptr"));
-    EXPECT_EQ(annotated("tit", "win.tit"), "win.[tit]");
-    EXPECT_EQ(annotated("title", "win.title"), "win.[title]");
-    EXPECT_EQ(annotated("WordCla", "WordCharacterClassifier"), "[Word]Character[Cla]ssifier");
-    EXPECT_EQ(annotated("WordCCla", "WordCharacterClassifier"), "[WordC]haracter[Cla]ssifier");
-    EXPECT_FALSE(matches("dete", "editor.quickSuggestionsDelay"));
-    EXPECT_EQ(annotated("highlight", "editorHoverHighlight"), "editorHover[Highlight]");
-    EXPECT_EQ(annotated("hhighlight", "editorHoverHighlight"), "editor[H]over[Highlight]");
-    EXPECT_FALSE(matches("dhhighlight", "editorHoverHighlight"));
-    EXPECT_EQ(annotated("-moz", "-moz-foo"), "[-moz]-foo");
-    EXPECT_EQ(annotated("moz", "-moz-foo"), "-[moz]-foo");
-    EXPECT_EQ(annotated("moza", "-moz-animation"), "-[moz]-[a]nimation");
-    EXPECT_EQ(annotated("ab", "abA"), "[ab]A");
-    EXPECT_FALSE(matches("ccm", "cacmelCase"));
-    EXPECT_FALSE(matches("bti", "the_black_knight"));
-    EXPECT_FALSE(matches("ccm", "camelCase"));
-    EXPECT_FALSE(matches("cmcm", "camelCase"));
-    EXPECT_EQ(annotated("BK", "the_black_knight"), "the_[b]lack_[k]night");
-    EXPECT_FALSE(matches("KeyboardLayout=", "KeyboardLayout"));
-    EXPECT_EQ(annotated("LLL", "SVisualLoggerLogsList"), "SVisual[L]ogger[L]ogs[L]ist");
-    EXPECT_EQ(annotated("TEdit", "TextEdit"), "[T]ext[Edit]");
-    EXPECT_EQ(annotated("TEdit", "TextEditor"), "[T]ext[Edit]or");
-    EXPECT_FALSE(matches("TEdit", "Textedit"));
-    EXPECT_EQ(annotated("TEdit", "text_edit"), "[t]ext_[edit]");
-    EXPECT_EQ(annotated("TEditDt", "TextEditorDecorationType"), "[T]ext[Edit]or[D]ecoration[T]ype");
-    EXPECT_EQ(annotated("Tedit", "TextEdit"), "[T]ext[Edit]");
-    EXPECT_FALSE(matches("ba", "?AB?"));
-    EXPECT_EQ(annotated("bkn", "the_black_knight"), "the_[b]lack_[kn]ight");
-    EXPECT_FALSE(matches("bt", "the_black_knight"));
-    EXPECT_FALSE(matches("fdm", "findModel"));
-    EXPECT_FALSE(matches("fob", "foobar"));
-    EXPECT_FALSE(matches("fobz", "foobar"));
-    EXPECT_EQ(annotated("foobar", "foobar"), "[foobar]");
-    EXPECT_EQ(annotated("form", "editor.formatOnSave"), "editor.[form]atOnSave");
-    EXPECT_EQ(annotated("g p", "Git: Pull"), "[G]it:[ P]ull");
-    EXPECT_EQ(annotated("gip", "Git: Pull"), "[Gi]t: [P]ull");
-    EXPECT_EQ(annotated("gp", "Git: Pull"), "[G]it: [P]ull");
-    EXPECT_EQ(annotated("gp", "Git_Git_Pull"), "[G]it_Git_[P]ull");
-    EXPECT_EQ(annotated("is", "ImportStatement"), "[I]mport[S]tatement");
-    EXPECT_EQ(annotated("is", "isValid"), "[is]Valid");
-    EXPECT_FALSE(matches("lowrd", "lowWord"));
-    EXPECT_FALSE(matches("myvable", "myvariable"));
-    EXPECT_FALSE(matches("no", ""));
-    EXPECT_FALSE(matches("no", "match"));
-    EXPECT_EQ(annotated("sl", "SVisualLoggerLogsList"), "[S]Visual[L]oggerLogsList");
-    EXPECT_EQ(annotated("sllll", "SVisualLoggerLlamaList"), "[S]Visual[L]ogger[Ll]ama[L]ist");
-    EXPECT_EQ(annotated("THRE", "HTMLHRElement"), "H[T]ML[HRE]lement");
-    EXPECT_EQ(annotated("Three", "Three"), "[Three]");
-    EXPECT_EQ(annotated("fo", "bar_foo"), "bar_[fo]o");
-    EXPECT_EQ(annotated("fo", "bar_Foo"), "bar_[Fo]o");
-    EXPECT_EQ(annotated("fo", "bar foo"), "bar [fo]o");
-    EXPECT_EQ(annotated("fo", "bar.foo"), "bar.[fo]o");
-    EXPECT_EQ(annotated("aaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-              "[aaaaaa]aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-    EXPECT_FALSE(matches("fsfsfs", "dsafdsafdsafdsafdsafdsafdsafasdfdsa"));
-    EXPECT_FALSE(matches("fsfsfsfsfsfsfsf",
-                         "dsafdsafdsafdsafdsafdsafdsafasdfdsafdsafdsafdsafdsfd"
-                         "safdsfdfdfasdnfdsajfndsjnafjndsajlknfdsa"));
-    EXPECT_EQ(annotated("  g", "  group"), "[  g]roup");
-    EXPECT_EQ(annotated("g", "  group"), "  [g]roup");
-    EXPECT_FALSE(matches("g g", "  groupGroup"));
-    EXPECT_EQ(annotated("g g", "  group Group"), "  [g]roup[ G]roup");
-    EXPECT_EQ(annotated(" g g", "  group Group"), "[ ] [g]roup[ G]roup");
-    EXPECT_EQ(annotated("zz", "zzGroup"), "[zz]Group");
-    EXPECT_EQ(annotated("zzg", "zzGroup"), "[zzG]roup");
-    EXPECT_EQ(annotated("g", "zzGroup"), "zz[G]roup");
-    EXPECT_EQ(annotated("aaaa", "_a_aaaa"), "_a_[aaaa]");
-    EXPECT_FALSE(matches("strcpy", "strncpy"));
-    EXPECT_FALSE(matches("std", "PTHREAD_MUTEX_STALLED"));
-    EXPECT_FALSE(matches("std", "pthread_condattr_setpshared"));
+ZEST_CASE(Accepts) {
+    ZEXPECT(annotated("", "unique_ptr") == "unique_ptr");
+    ZEXPECT(annotated("u_p", "unique_ptr") == "[u]nique[_p]tr");
+    ZEXPECT(annotated("up", "unique_ptr") == "[u]nique_[p]tr");
+    ZEXPECT(!matches("uq", "unique_ptr"));
+    ZEXPECT(!matches("qp", "unique_ptr"));
+    ZEXPECT(annotated("tit", "win.tit") == "win.[tit]");
+    ZEXPECT(annotated("title", "win.title") == "win.[title]");
+    ZEXPECT(annotated("WordCla", "WordCharacterClassifier") == "[Word]Character[Cla]ssifier");
+    ZEXPECT(annotated("WordCCla", "WordCharacterClassifier") == "[WordC]haracter[Cla]ssifier");
+    ZEXPECT(!matches("dete", "editor.quickSuggestionsDelay"));
+    ZEXPECT(annotated("highlight", "editorHoverHighlight") == "editorHover[Highlight]");
+    ZEXPECT(annotated("hhighlight", "editorHoverHighlight") == "editor[H]over[Highlight]");
+    ZEXPECT(!matches("dhhighlight", "editorHoverHighlight"));
+    ZEXPECT(annotated("-moz", "-moz-foo") == "[-moz]-foo");
+    ZEXPECT(annotated("moz", "-moz-foo") == "-[moz]-foo");
+    ZEXPECT(annotated("moza", "-moz-animation") == "-[moz]-[a]nimation");
+    ZEXPECT(annotated("ab", "abA") == "[ab]A");
+    ZEXPECT(!matches("ccm", "cacmelCase"));
+    ZEXPECT(!matches("bti", "the_black_knight"));
+    ZEXPECT(!matches("ccm", "camelCase"));
+    ZEXPECT(!matches("cmcm", "camelCase"));
+    ZEXPECT(annotated("BK", "the_black_knight") == "the_[b]lack_[k]night");
+    ZEXPECT(!matches("KeyboardLayout=", "KeyboardLayout"));
+    ZEXPECT(annotated("LLL", "SVisualLoggerLogsList") == "SVisual[L]ogger[L]ogs[L]ist");
+    ZEXPECT(annotated("TEdit", "TextEdit") == "[T]ext[Edit]");
+    ZEXPECT(annotated("TEdit", "TextEditor") == "[T]ext[Edit]or");
+    ZEXPECT(!matches("TEdit", "Textedit"));
+    ZEXPECT(annotated("TEdit", "text_edit") == "[t]ext_[edit]");
+    ZEXPECT(annotated("TEditDt", "TextEditorDecorationType") == "[T]ext[Edit]or[D]ecoration[T]ype");
+    ZEXPECT(annotated("Tedit", "TextEdit") == "[T]ext[Edit]");
+    ZEXPECT(!matches("ba", "?AB?"));
+    ZEXPECT(annotated("bkn", "the_black_knight") == "the_[b]lack_[kn]ight");
+    ZEXPECT(!matches("bt", "the_black_knight"));
+    ZEXPECT(!matches("fdm", "findModel"));
+    ZEXPECT(!matches("fob", "foobar"));
+    ZEXPECT(!matches("fobz", "foobar"));
+    ZEXPECT(annotated("foobar", "foobar") == "[foobar]");
+    ZEXPECT(annotated("form", "editor.formatOnSave") == "editor.[form]atOnSave");
+    ZEXPECT(annotated("g p", "Git: Pull") == "[G]it:[ P]ull");
+    ZEXPECT(annotated("gip", "Git: Pull") == "[Gi]t: [P]ull");
+    ZEXPECT(annotated("gp", "Git: Pull") == "[G]it: [P]ull");
+    ZEXPECT(annotated("gp", "Git_Git_Pull") == "[G]it_Git_[P]ull");
+    ZEXPECT(annotated("is", "ImportStatement") == "[I]mport[S]tatement");
+    ZEXPECT(annotated("is", "isValid") == "[is]Valid");
+    ZEXPECT(!matches("lowrd", "lowWord"));
+    ZEXPECT(!matches("myvable", "myvariable"));
+    ZEXPECT(!matches("no", ""));
+    ZEXPECT(!matches("no", "match"));
+    ZEXPECT(annotated("sl", "SVisualLoggerLogsList") == "[S]Visual[L]oggerLogsList");
+    ZEXPECT(annotated("sllll", "SVisualLoggerLlamaList") == "[S]Visual[L]ogger[Ll]ama[L]ist");
+    ZEXPECT(annotated("THRE", "HTMLHRElement") == "H[T]ML[HRE]lement");
+    ZEXPECT(annotated("Three", "Three") == "[Three]");
+    ZEXPECT(annotated("fo", "bar_foo") == "bar_[fo]o");
+    ZEXPECT(annotated("fo", "bar_Foo") == "bar_[Fo]o");
+    ZEXPECT(annotated("fo", "bar foo") == "bar [fo]o");
+    ZEXPECT(annotated("fo", "bar.foo") == "bar.[fo]o");
+    ZEXPECT(annotated("aaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") ==
+            "[aaaaaa]aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    ZEXPECT(!matches("fsfsfs", "dsafdsafdsafdsafdsafdsafdsafasdfdsa"));
+    ZEXPECT(!matches("fsfsfsfsfsfsfsf",
+                     "dsafdsafdsafdsafdsafdsafdsafasdfdsafdsafdsafdsafdsfd"
+                     "safdsfdfdfasdnfdsajfndsjnafjndsajlknfdsa"));
+    ZEXPECT(annotated("  g", "  group") == "[  g]roup");
+    ZEXPECT(annotated("g", "  group") == "  [g]roup");
+    ZEXPECT(!matches("g g", "  groupGroup"));
+    ZEXPECT(annotated("g g", "  group Group") == "  [g]roup[ G]roup");
+    ZEXPECT(annotated(" g g", "  group Group") == "[ ] [g]roup[ G]roup");
+    ZEXPECT(annotated("zz", "zzGroup") == "[zz]Group");
+    ZEXPECT(annotated("zzg", "zzGroup") == "[zzG]roup");
+    ZEXPECT(annotated("g", "zzGroup") == "zz[G]roup");
+    ZEXPECT(annotated("aaaa", "_a_aaaa") == "_a_[aaaa]");
+    ZEXPECT(!matches("strcpy", "strncpy"));
+    ZEXPECT(!matches("std", "PTHREAD_MUTEX_STALLED"));
+    ZEXPECT(!matches("std", "pthread_condattr_setpshared"));
 }
 
-TEST_CASE(StartsInsideWord) {
+ZEST_CASE(StartsInsideWord) {
     // With the option, a run may begin anywhere in a name at a low
     // score, which keeps the C library's unsegmented names reachable.
     MatchOptions inside{.inside_word = true};
-    EXPECT_EQ(annotated("printf", "sprintf", inside), "s[printf]");
-    EXPECT_EQ(annotated("str", "ostream", inside), "o[str]eam");
-    EXPECT_EQ(annotated("fo", "barfoo", inside), "bar[fo]o");
-    EXPECT_EQ(annotated("b", "NDEBUG", inside), "NDE[B]UG");
-    EXPECT_EQ(annotated("baba", "ababababab", inside), "a[baba]babab");
-    EXPECT_EQ(annotated("log", "SVGFEMorphologyElement", inside), "SVGFEMorpho[log]yElement");
-    EXPECT_EQ(annotated("TEdit", "Textedit", inside), "Tex[tedit]");
-    EXPECT_EQ(annotated("tru", "struct", inside), "s[tru]ct");
+    ZEXPECT(annotated("printf", "sprintf", inside) == "s[printf]");
+    ZEXPECT(annotated("str", "ostream", inside) == "o[str]eam");
+    ZEXPECT(annotated("fo", "barfoo", inside) == "bar[fo]o");
+    ZEXPECT(annotated("b", "NDEBUG", inside) == "NDE[B]UG");
+    ZEXPECT(annotated("baba", "ababababab", inside) == "a[baba]babab");
+    ZEXPECT(annotated("log", "SVGFEMorphologyElement", inside) == "SVGFEMorpho[log]yElement");
+    ZEXPECT(annotated("TEdit", "Textedit", inside) == "Tex[tedit]");
+    ZEXPECT(annotated("tru", "struct", inside) == "s[tru]ct");
     // Only the first character may: after a gap the run lands on a head
     // or continues an initialism, and the run must finish its word.
-    EXPECT_FALSE(matches("getfoo", "get_my_xfoo", inside));
-    EXPECT_FALSE(matches("qp", "unique_ptr", inside));
-    EXPECT_EQ(annotated("getfoo", "get_my_foo", inside), "[get]_my_[foo]");
+    ZEXPECT(!matches("getfoo", "get_my_xfoo", inside));
+    ZEXPECT(!matches("qp", "unique_ptr", inside));
+    ZEXPECT(annotated("getfoo", "get_my_foo", inside) == "[get]_my_[foo]");
     // Without it, the first character starts a word too.
-    EXPECT_FALSE(matches("printf", "sprintf"));
-    EXPECT_FALSE(matches("tru", "struct"));
-    EXPECT_FALSE(matches("no", "alignof"));
-    EXPECT_FALSE(matches("fo", "barfoo"));
+    ZEXPECT(!matches("printf", "sprintf"));
+    ZEXPECT(!matches("tru", "struct"));
+    ZEXPECT(!matches("no", "alignof"));
+    ZEXPECT(!matches("fo", "barfoo"));
 }
 
-TEST_CASE(Ranks) {
-    EXPECT_TRUE(ranks("cons", {"console", "Console", "ArrayBufferConstructor"}));
-    EXPECT_TRUE(ranks("foo", {"foo", "Foo"}));
-    EXPECT_TRUE(ranks("onMes", {"onMessage", "onmessage", "onThisMegaEscapes"}));
-    EXPECT_TRUE(ranks("onmes", {"onmessage", "onMessage", "onThisMegaEscapes"}));
-    EXPECT_TRUE(ranks("CC", {"CamelCase", "camelCase"}));
-    EXPECT_TRUE(ranks("cC", {"camelCase", "CamelCase"}));
-    EXPECT_TRUE(ranks("p", {"p", "parse", "posix", "pafdsa", "path"}));
-    EXPECT_TRUE(ranks("pa", {"parse", "path", "pafdsa"}));
-    EXPECT_TRUE(ranks("log", {"log", "ScrollLogicalPosition"}));
-    EXPECT_TRUE(ranks("e", {"else", "AbstractElement"}));
-    EXPECT_TRUE(ranks("workbench.sideb",
-                      {"workbench.sideBar.location", "workbench.editor.defaultSideBySideLayout"}));
-    EXPECT_TRUE(ranks("editor.r",
-                      {"editor.renderControlCharacter",
-                       "editor.overviewRulerlanes",
-                       "diffEditor.renderSideBySide"}));
-    EXPECT_TRUE(ranks("-mo", {"-moz-columns", "-ms-ime-mode"}));
-    EXPECT_TRUE(ranks("convertModelPosition",
-                      {"convertModelPositionToViewPosition", "convertViewToModelPosition"}));
-    EXPECT_TRUE(ranks("is", {"isValidViewletId", "import statement"}));
-    EXPECT_TRUE(ranks("strcpy", {"strcpy", "strcpy_s"}));
-    EXPECT_TRUE(ranks("foo", {"foo", "foobar", "bar_foo", "xfoo"}));
-    EXPECT_TRUE(ranks("print", {"printf", "vprintf"}));
-    EXPECT_TRUE(ranks("up", {"upper_bound", "unique_ptr"}));
-    EXPECT_TRUE(ranks("log", {"log", "Logger", "ScrollLogicalPosition", "SVGFEMorphologyElement"}));
-    EXPECT_TRUE(ranks("s", {"s", "size", "Size", "as", "less"}));
+ZEST_CASE(Ranks) {
+    ZEXPECT(ranks("cons", {"console", "Console", "ArrayBufferConstructor"}));
+    ZEXPECT(ranks("foo", {"foo", "Foo"}));
+    ZEXPECT(ranks("onMes", {"onMessage", "onmessage", "onThisMegaEscapes"}));
+    ZEXPECT(ranks("onmes", {"onmessage", "onMessage", "onThisMegaEscapes"}));
+    ZEXPECT(ranks("CC", {"CamelCase", "camelCase"}));
+    ZEXPECT(ranks("cC", {"camelCase", "CamelCase"}));
+    ZEXPECT(ranks("p", {"p", "parse", "posix", "pafdsa", "path"}));
+    ZEXPECT(ranks("pa", {"parse", "path", "pafdsa"}));
+    ZEXPECT(ranks("log", {"log", "ScrollLogicalPosition"}));
+    ZEXPECT(ranks("e", {"else", "AbstractElement"}));
+    ZEXPECT(ranks("workbench.sideb",
+                  {"workbench.sideBar.location", "workbench.editor.defaultSideBySideLayout"}));
+    ZEXPECT(ranks("editor.r",
+                  {"editor.renderControlCharacter",
+                   "editor.overviewRulerlanes",
+                   "diffEditor.renderSideBySide"}));
+    ZEXPECT(ranks("-mo", {"-moz-columns", "-ms-ime-mode"}));
+    ZEXPECT(ranks("convertModelPosition",
+                  {"convertModelPositionToViewPosition", "convertViewToModelPosition"}));
+    ZEXPECT(ranks("is", {"isValidViewletId", "import statement"}));
+    ZEXPECT(ranks("strcpy", {"strcpy", "strcpy_s"}));
+    ZEXPECT(ranks("foo", {"foo", "foobar", "bar_foo", "xfoo"}));
+    ZEXPECT(ranks("print", {"printf", "vprintf"}));
+    ZEXPECT(ranks("up", {"upper_bound", "unique_ptr"}));
+    ZEXPECT(ranks("log", {"log", "Logger", "ScrollLogicalPosition", "SVGFEMorphologyElement"}));
+    ZEXPECT(ranks("s", {"s", "size", "Size", "as", "less"}));
 }
 
-TEST_CASE(Scores) {
-    EXPECT_EQ(score("abs", "absl"), 1.0f);
-    EXPECT_EQ(score("abs", "abs"), 2.0f);
-    EXPECT_GT(score("Abs", "abs"), 1.0f);
-    EXPECT_GT(score("abs", "awBxYzS"), 0.0f);
-    EXPECT_LT(score("abs", "awBxYzS"), 1.0f);
-    EXPECT_EQ(score("", "anything"), 1.0f);
-    EXPECT_EQ(score("up", "upper_bound"), 1.0f);
-    EXPECT_GT(score("up", "unique_ptr"), 0.5f);
-    EXPECT_LT(score("up", "unique_ptr"), 1.0f);
+ZEST_CASE(Scores) {
+    ZEXPECT(score("abs", "absl") == 1.0f);
+    ZEXPECT(score("abs", "abs") == 2.0f);
+    ZEXPECT(score("Abs", "abs") > 1.0f);
+    ZEXPECT(score("abs", "awBxYzS") > 0.0f);
+    ZEXPECT(score("abs", "awBxYzS") < 1.0f);
+    ZEXPECT(score("", "anything") == 1.0f);
+    ZEXPECT(score("up", "upper_bound") == 1.0f);
+    ZEXPECT(score("up", "unique_ptr") > 0.5f);
+    ZEXPECT(score("up", "unique_ptr") < 1.0f);
 }
 
-TEST_CASE(Bounds) {
+ZEST_CASE(Bounds) {
     // Past the bounds a match stays partial: neither a pattern nor a
     // name longer than the bound is ever "the whole name".
     std::string sixty_three(63, 'a');
     std::string sixty_four(64, 'a');
     std::string long_name(200, 'a');
-    EXPECT_EQ(score(sixty_three, sixty_three), 2.0f);
-    EXPECT_LE(score(sixty_four, sixty_three), 1.0f);
-    EXPECT_LE(score(std::string(127, 'a'), long_name), 1.0f);
-    EXPECT_TRUE(matches(sixty_four, long_name));
+    ZEXPECT(score(sixty_three, sixty_three) == 2.0f);
+    ZEXPECT(score(sixty_four, sixty_three) <= 1.0f);
+    ZEXPECT(score(std::string(127, 'a'), long_name) <= 1.0f);
+    ZEXPECT(matches(sixty_four, long_name));
     // Tokens stop at the bound too: a long name's tail is not keyed,
     // which the index makes up for by scanning such names.
     auto tail = tokens_of(long_name + "xyz");
-    EXPECT_FALSE(llvm::is_contained(tail, token("xyz")));
-    EXPECT_FALSE(tail.empty());
+    ZEXPECT(!llvm::is_contained(tail, token("xyz")));
+    ZEXPECT(!tail.empty());
 }
 
-TEST_CASE(Typos) {
+ZEST_CASE(Typos) {
     MatchOptions typo{.typo = true, .inside_word = true};
-    EXPECT_FALSE(matches("strcpy", "strncpy"));
-    EXPECT_EQ(annotated("strcpy", "strncpy", typo), "[str]n[cpy]");
-    EXPECT_EQ(annotated("strdpy", "strcpy", typo), "[str]c[py]");
-    EXPECT_EQ(annotated("strxcpy", "strcpy", typo), "[strcpy]");
-    EXPECT_EQ(annotated("strpy", "strcpy", typo), "[str]c[py]");
-    EXPECT_FALSE(matches("strxxcpy", "strcpy", typo));
-    EXPECT_FALSE(matches("stxxpy", "strcpy", typo));
+    ZEXPECT(!matches("strcpy", "strncpy"));
+    ZEXPECT(annotated("strcpy", "strncpy", typo) == "[str]n[cpy]");
+    ZEXPECT(annotated("strdpy", "strcpy", typo) == "[str]c[py]");
+    ZEXPECT(annotated("strxcpy", "strcpy", typo) == "[strcpy]");
+    ZEXPECT(annotated("strpy", "strcpy", typo) == "[str]c[py]");
+    ZEXPECT(!matches("strxxcpy", "strcpy", typo));
+    ZEXPECT(!matches("stxxpy", "strcpy", typo));
     FuzzyMatcher lenient("strcpy", typo);
     auto edited = lenient.match("strncpy");
-    EXPECT_TRUE(edited.has_value() && *edited <= 0.5f);
+    ZEXPECT((edited.has_value() && *edited <= 0.5f));
     // A clean match is scored as without the allowance.
-    EXPECT_EQ(lenient.match("strcpy").value_or(-1), score("strcpy", "strcpy"));
-    EXPECT_EQ(lenient.match("strcpy_s").value_or(-1), score("strcpy", "strcpy_s"));
+    ZEXPECT(lenient.match("strcpy").value_or(-1) == score("strcpy", "strcpy"));
+    ZEXPECT(lenient.match("strcpy_s").value_or(-1) == score("strcpy", "strcpy_s"));
 }
 
-TEST_CASE(NameTokens) {
+ZEST_CASE(NameTokens) {
     auto tokens = tokens_of("unique_ptr");
-    EXPECT_TRUE(llvm::is_contained(tokens, token("uni")));
-    EXPECT_TRUE(llvm::is_contained(tokens, token("unp")));
-    EXPECT_TRUE(llvm::is_contained(tokens, token("upt")));
-    EXPECT_TRUE(llvm::is_contained(tokens, token("ptr")));
-    EXPECT_TRUE(llvm::is_contained(tokens, token("u")));
-    EXPECT_TRUE(llvm::is_contained(tokens, token("un")));
-    EXPECT_TRUE(llvm::is_contained(tokens, token("up")));
-    EXPECT_TRUE(llvm::is_contained(tokens, token("p")));
-    EXPECT_TRUE(llvm::is_contained(tokens, token("pt")));
-    EXPECT_FALSE(llvm::is_contained(tokens, token("n")));
-    EXPECT_FALSE(llvm::is_contained(tokens, token("uq")));
-    EXPECT_FALSE(llvm::is_contained(tokens, token("nqp")));
-    EXPECT_TRUE(llvm::is_sorted(tokens));
-    EXPECT_TRUE(tokens_of("").empty());
-    EXPECT_TRUE(tokens_of("__").empty());
+    ZEXPECT(llvm::is_contained(tokens, token("uni")));
+    ZEXPECT(llvm::is_contained(tokens, token("unp")));
+    ZEXPECT(llvm::is_contained(tokens, token("upt")));
+    ZEXPECT(llvm::is_contained(tokens, token("ptr")));
+    ZEXPECT(llvm::is_contained(tokens, token("u")));
+    ZEXPECT(llvm::is_contained(tokens, token("un")));
+    ZEXPECT(llvm::is_contained(tokens, token("up")));
+    ZEXPECT(llvm::is_contained(tokens, token("p")));
+    ZEXPECT(llvm::is_contained(tokens, token("pt")));
+    ZEXPECT(!llvm::is_contained(tokens, token("n")));
+    ZEXPECT(!llvm::is_contained(tokens, token("uq")));
+    ZEXPECT(!llvm::is_contained(tokens, token("nqp")));
+    ZEXPECT(llvm::is_sorted(tokens));
+    ZEXPECT(tokens_of("").empty());
+    ZEXPECT(tokens_of("__").empty());
     // Short tokens come from the first two heads only.
     auto three = tokens_of("foo_bar_baz");
-    EXPECT_TRUE(llvm::is_contained(three, token("fb")));
-    EXPECT_TRUE(llvm::is_contained(three, token("b")));
-    EXPECT_TRUE(llvm::is_contained(three, token("bb")));
-    EXPECT_FALSE(llvm::is_contained(three, token("bz")));
+    ZEXPECT(llvm::is_contained(three, token("fb")));
+    ZEXPECT(llvm::is_contained(three, token("b")));
+    ZEXPECT(llvm::is_contained(three, token("bb")));
+    ZEXPECT(!llvm::is_contained(three, token("bz")));
 }
 
-TEST_CASE(QueryTokens) {
+ZEST_CASE(QueryTokens) {
     llvm::SmallVector<NameToken> tokens;
     query_tokens("getFoo", tokens);
-    EXPECT_EQ(tokens.size(), std::size_t(4));
-    EXPECT_TRUE(llvm::is_contained(tokens, token("get")));
-    EXPECT_TRUE(llvm::is_contained(tokens, token("etf")));
-    EXPECT_TRUE(llvm::is_contained(tokens, token("tfo")));
-    EXPECT_TRUE(llvm::is_contained(tokens, token("foo")));
+    ZEXPECT(tokens.size() == std::size_t(4));
+    ZEXPECT(llvm::is_contained(tokens, token("get")));
+    ZEXPECT(llvm::is_contained(tokens, token("etf")));
+    ZEXPECT(llvm::is_contained(tokens, token("tfo")));
+    ZEXPECT(llvm::is_contained(tokens, token("foo")));
     query_tokens("u_p", tokens);
-    EXPECT_EQ(tokens.size(), std::size_t(1));
-    EXPECT_EQ(tokens.front(), token("up"));
+    ZEXPECT(tokens.size() == std::size_t(1));
+    ZEXPECT(tokens.front() == token("up"));
     query_tokens("X", tokens);
-    EXPECT_EQ(tokens.front(), token("x"));
+    ZEXPECT(tokens.front() == token("x"));
     query_tokens("::", tokens);
-    EXPECT_TRUE(tokens.empty());
+    ZEXPECT(tokens.empty());
 
     llvm::SmallVector<TypoAlternative> alternatives;
     typo_tokens("strcp", alternatives);
-    EXPECT_TRUE(alternatives.empty());
+    ZEXPECT(alternatives.empty());
     typo_tokens("strcpy", alternatives);
-    EXPECT_EQ(alternatives.size(), std::size_t(6));
+    ZEXPECT(alternatives.size() == std::size_t(6));
     // Wrong third letter: nothing survives before it, `cpy` after.
-    EXPECT_EQ(alternatives[2].tokens.size(), std::size_t(1));
-    EXPECT_EQ(alternatives[2].tokens.front(), token("cpy"));
+    ZEXPECT(alternatives[2].tokens.size() == std::size_t(1));
+    ZEXPECT(alternatives[2].tokens.front() == token("cpy"));
     for(auto& alternative: alternatives) {
-        EXPECT_FALSE(alternative.tokens.empty());
+        ZEXPECT(!alternative.tokens.empty());
     }
 }
 
@@ -388,7 +386,7 @@ TEST_CASE(QueryTokens) {
 /// property that makes token intersection a complete retrieval. Checked
 /// over every three-to-five letter subsequence of the corpus names, plus
 /// their one-edit corruptions against the typo alternatives.
-TEST_CASE(TokensCoverMatches) {
+ZEST_CASE(TokensCoverMatches) {
     std::size_t accepted = 0;
     std::size_t typo_accepted = 0;
     std::string uncovered;
@@ -437,12 +435,12 @@ TEST_CASE(TokensCoverMatches) {
             }
         });
     }
-    EXPECT_EQ(uncovered, "");
-    EXPECT_GT(accepted, std::size_t(100));
-    EXPECT_GT(typo_accepted, std::size_t(100));
+    ZEXPECT(uncovered == "");
+    ZEXPECT(accepted > std::size_t(100));
+    ZEXPECT(typo_accepted > std::size_t(100));
 }
 
-};  // TEST_SUITE(FuzzyMatcher)
+};  // ZEST_SUITE(FuzzyMatcher)
 
 }  // namespace
 }  // namespace clice::testing

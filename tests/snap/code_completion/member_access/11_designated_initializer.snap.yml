@@ -10,3 +10,8 @@ partial:
 plain:
 - { label: "x", kind: Field, description: "int", edit: "35:17-35:17" }
 - { label: "y", kind: Field, description: "int", edit: "35:17-35:17" }
+
+unnamed_partial:
+
+unnamed_primary:
+- { label: "stride", kind: Field, description: "int", edit: "58:22-58:22" }

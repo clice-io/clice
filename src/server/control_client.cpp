@@ -1,11 +1,10 @@
-#include "server/control_client.h"
+module;
 
-#include <format>
-#include <memory>
+#include "modules/prelude.h"
 
-#include "kota/async/async.h"
-#include "kota/ipc/codec/json.h"
-#include "kota/ipc/transport.h"
+module clice;
+
+import :server.control_client;
 
 namespace clice::control {
 
@@ -15,7 +14,7 @@ template <typename Params>
 using Result = typename kota::ipc::protocol::RequestTraits<Params>::Result;
 
 template <typename Params>
-kota::task<> exchange(kota::ipc::JsonPeer& peer,
+kota::task<> exchange(kota::ipc::JSONPeer& peer,
                       Params params,
                       std::expected<Result<Params>, std::string>& out) {
     auto result = co_await peer.send_request(std::move(params));
@@ -28,34 +27,30 @@ kota::task<> exchange(kota::ipc::JsonPeer& peer,
 }
 
 template <typename Params>
-kota::task<> session(const index::ServerEndpoint& endpoint,
-                     Params params,
-                     std::unique_ptr<kota::ipc::JsonPeer>& peer,
-                     std::expected<Result<Params>, std::string>& out) {
+kota::task<std::expected<Result<Params>, std::string>>
+    session(const index::ServerEndpoint& endpoint, Params params) {
     auto& loop = kota::event_loop::current();
     auto transport =
         co_await kota::ipc::StreamTransport::connect_tcp(endpoint.host, endpoint.port, loop);
     if(!transport) {
-        out = std::unexpected(std::format("cannot connect to the clice server (pid {}) at {}:{}",
-                                          endpoint.pid,
-                                          endpoint.host,
-                                          endpoint.port));
-        co_return;
+        co_return std::unexpected(
+            std::format("cannot connect to the clice server (pid {}) at {}:{}",
+                        endpoint.pid,
+                        endpoint.host,
+                        endpoint.port));
     }
-    peer = std::make_unique<kota::ipc::JsonPeer>(loop, std::move(*transport));
-    co_await kota::when_all(peer->run(), exchange(*peer, std::move(params), out));
+    kota::ipc::JSONPeer peer(loop, std::move(*transport));
+    std::expected<Result<Params>, std::string> out =
+        std::unexpected(std::string("the clice server closed the connection"));
+    co_await kota::when_all(peer.run(), exchange(peer, std::move(params), out));
+    co_return out;
 }
 
 template <typename Params>
 std::expected<Result<Params>, std::string> request(const index::ServerEndpoint& endpoint,
                                                    Params params) {
-    kota::event_loop loop;
-    std::unique_ptr<kota::ipc::JsonPeer> peer;
-    std::expected<Result<Params>, std::string> out =
-        std::unexpected(std::string("the clice server closed the connection"));
-    loop.schedule(session(endpoint, std::move(params), peer, out));
-    loop.run();
-    return out;
+    auto [ended] = kota::run(session(endpoint, std::move(params)));
+    return std::move(*ended);
 }
 
 }  // namespace

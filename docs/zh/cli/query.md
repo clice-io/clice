@@ -9,9 +9,9 @@
 ## 支持的问题
 
 - `symbolSearch --query <query> [--limit <n>] [--kind <Kind,...>]` 列出名称查询匹配到的符号，最佳匹配排在最前，并附上各符号的种类、文件、行号、所属容器和 id。
-- `definition`、`readSymbol`、`references [--include-declaration]`、`callGraph [--direction callers|callees|both]` 和 `typeHierarchy [--direction supertypes|subtypes|both]` 回答关于单个符号的问题。符号由 `--name <query>`（一个名称查询，可用 `--path` 进一步缩小范围）、`--symbol <id>`（此前的答案所带的 `#<hex>` id）或 `--path <file> --line <n>`（该行上定义的符号）指定。多个符号叫同一个名字时，会把它们一一列出并要求改用 id；没有符号与该名称完全一致时，同样会列出最接近的匹配。
+- `definition`、`readSymbol`、`references [--include-declaration]`、`callGraph [--direction callers|callees|both]` 和 `typeHierarchy [--direction supertypes|subtypes|both]` 回答关于单个符号的问题。符号由 `--name <query>`（一个名称查询，可用 `--path` 进一步缩小范围）、`--symbol <id>`（此前的答案所带的 `#<hex>` id；对于内部链接符号，例如 `static` 函数，还要同时用 `--path` 给出该答案中它所在的文件）或 `--path <file> --line <n>`（该行上定义的符号）指定。多个符号叫同一个名字时，会把它们一一列出并要求改用 id；没有符号与该名称完全一致时，同样会列出最接近的匹配。
 - `documentSymbols --path <file>` 给出该文件的大纲。
-- `compileCommand --path <file>` 给出编辑器编译该文件时会使用的命令，以及它的来源：文件自身的数据库条目、头文件的宿主源文件、规则的默认命令、根据邻近翻译单元推断出的命令，或内置的回退命令。
+- `compileCommand --path <file>` 给出编辑器编译该文件时会使用的命令，以及它的来源：文件自身的数据库条目、头文件的宿主源文件、规则的默认命令、根据邻近翻译单元推断出的命令，或内置的回退命令。给出的是经编译器解析后的命令，带有目标平台和系统头文件目录；询问编译器失败时，`toolchainError` 说明原因，命令则停留在未经解析的驱动命令。
 - `projectFiles [--filter all|source|header|module]` 列出构建涉及的文件；`fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` 和 `impactAnalysis --path <file>` 则沿包含关系图查询。
 
 问题中的路径可以相对于工作区，也可以是绝对路径，答案中的路径一律是绝对路径；行号从 1 开始。
@@ -37,7 +37,7 @@
 
 ## 答案
 
-每个答案都是一个 JSON 对象：成功时是 `{"result": ..., "stale": [...]}`；问题无法回答时（符号不存在、文件不存在、选项无效）是 `{"error": "...", "stale": [...]}`，退出码为 1。
+每个答案都是一个 JSON 对象：成功时是 `{"result": ..., "stale": [...]}`；问题无法回答时（符号不存在、文件不存在、选项取了不支持的值）是 `{"error": "...", "stale": [...]}`，退出码为 1；参数无法解析时同样如此，退出码为 2。
 
 `stale` 列出答案不得不略过其数据行的文件：它们在磁盘上的内容已经与建立索引时不一致，索引为它们保存的位置会指向移动过的文本。仅因所包含的头文件发生变化的文件，仍用它上一次的数据行作答。定义位于已过期文件中的符号会被报告为未找到，并给出文件名，这样读者就能区分“不存在”和“尚未建立索引”。只有答案查阅过的文件才会被检查：在文件建立索引之后新增的符号只会缺席，因为没有任何数据行指向那个文件——要询问磁盘的当前状态，请用 `--fresh`。索引从不读取编辑器中未保存的缓冲区：它描述的是磁盘上的内容。
 

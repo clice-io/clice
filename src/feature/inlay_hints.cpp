@@ -1,31 +1,16 @@
-#include <algorithm>
-#include <cassert>
-#include <cstdint>
-#include <format>
-#include <optional>
-#include <ranges>
-#include <string>
-#include <tuple>
-#include <vector>
+module;
 
-#include "compile/compilation_unit.h"
-#include "feature/feature.h"
-#include "semantic/decls.h"
-#include "semantic/display.h"
-#include "semantic/resolver.h"
-#include "semantic/semantics.h"
-#include "semantic/types.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/Casting.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/Lex/Lexer.h"
-#include "clang-tidy/utils/DesignatedInitializers.h"
+module clice;
+
+import :compile.compilation_unit;
+import :compile.semantics;
+import :feature.feature;
+import :semantic.decls;
+import :semantic.display;
+import :semantic.resolver;
+import :semantic.types;
 
 namespace clice::feature {
 
@@ -1048,13 +1033,13 @@ auto inlay_hints(CompilationUnitRef unit,
                  const InlayHintsOptions& options,
                  PositionEncoding encoding) -> std::vector<protocol::InlayHint> {
     auto collected = inlay_hints(unit, target, options);
-    LineMap map(unit.main_content(), unit.line_starts(), encoding);
+    auto map = main_position_map(unit, encoding);
 
     std::vector<protocol::InlayHint> hints;
     hints.reserve(collected.size());
 
     for(const auto& hint: collected) {
-        auto pos = to_position(map, hint.offset);
+        auto pos = map.to_position(hint.offset);
         if(!pos)
             continue;
         protocol::InlayHint out{

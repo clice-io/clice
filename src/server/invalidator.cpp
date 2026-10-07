@@ -1,13 +1,11 @@
-#include "server/invalidator.h"
+module;
 
-#include <utility>
+#include "modules/prelude.h"
 
-#include "sched/families/pcm.h"
+module clice;
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
+import :sched.families.pcm;
+import :server.invalidator;
 
 namespace clice {
 
@@ -52,7 +50,7 @@ void Invalidator::mark_dependent(Fid path_id, DirtySet& dirty) {
 }
 
 llvm::SmallVector<Fid> Invalidator::readers(Fid path_id) const {
-    auto result = project.dep_graph.find_host_sources(path_id);
+    auto result = project.dep_graph.find_readers(path_id);
     auto add = [&](Fid reader) {
         if(reader != path_id && !llvm::is_contained(result, reader)) {
             result.push_back(reader);
@@ -93,8 +91,8 @@ void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty
     // module's symbols and their dep snapshots never named the
     // interface, so the content-hash gate would filter a DepsOnly
     // reindex — ContentChanged bypasses it. Nothing is dropped: a
-    // rebuild replaces the rows, and a unit that can no longer build
-    // (retired entry, deleted file) keeps serving its last-known ones.
+    // rebuild replaces the rows, and a unit that can no longer build keeps
+    // its last-known ones (queries withhold those of a deleted file).
     for(auto id: pcm.provider_appeared(module_name)) {
         if(PCMFamily::is_unresolved(id)) {
             continue;
@@ -143,10 +141,13 @@ void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
 }
 
 void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
-    // The file's own self-containment may have changed; re-evaluate on its
-    // next compile.
-    dirty.reset_header_mode.push_back(path_id);
-    dirty.reset_trial.push_back(path_id);
+    // A header's verdict was scored on the bytes it compiled: the disk's
+    // while closed, its buffer while open — which a save of that buffer
+    // leaves as they were, and a change from elsewhere does not.
+    auto session = store.find(path_id);
+    if(!session || project.file_table.disk.seen_hash(path_id) != session->hash) {
+        dirty.reset_header_mode.push_back(path_id);
+    }
 
     // Taken before the rescan below, which rewrites only the file's own
     // outgoing edges, never the includers this walks. A file the scan did
@@ -254,23 +255,19 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // A removed module unit takes its PCM with it: importers'
                 // build products went stale.
                 cascade_compile_graph(path_id, dirty);
-                // The file's shard deliberately keeps serving navigation
-                // (its content snapshot is the only remaining truth), so any
-                // pending reindex reason recorded before the removal — e.g.
-                // a DiskChanged observed moments earlier — must be dropped:
-                // there is nothing to reindex any more, and a lingering
-                // ContentChanged would suppress the shard forever. Emitted
-                // after the compile-graph cascade, which lists the removed
-                // module itself among its dirtied units: the removal is this
-                // event's final word for the file itself.
+                // Any reindex reason recorded before the removal — e.g. a
+                // DiskChanged observed moments earlier — is dropped: there
+                // is nothing to reindex any more, and the file's shard stays
+                // behind (queries withhold the rows of a file seen missing).
+                // Emitted after the compile-graph cascade, which lists the
+                // removed module itself among its dirtied units: the removal
+                // is this event's final word for the file itself.
                 dirty.add_clear_reindex(path_id);
                 project.forget_file(path_id);
                 // Contexts hosted by (or chained through) the removed file
                 // are cleaned by ContextService::drop_orphaned_choices.
                 dirty.recheck_contexts = true;
                 dirty.reschedule_indexing = true;
-                // Index shards are deliberately kept: the last-known content
-                // still serves navigation.
                 // TODO: sweep orphaned shards of files that stay deleted.
                 break;
             }
@@ -413,7 +410,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
 
     dedup(dirty.mark_ast_dirty);
     dedup(dirty.mark_lost);
-    dedup(dirty.reset_trial);
     dedup(dirty.reset_header_mode);
     dedup(dirty.reindex_content_changed);
     dedup(dirty.reindex_deps_only);

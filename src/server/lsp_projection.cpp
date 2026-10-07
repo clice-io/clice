@@ -1,12 +1,11 @@
-#include "server/lsp_projection.h"
+module;
 
-#include <format>
-#include <string>
-#include <variant>
+#include "modules/prelude.h"
 
-#include "feature/feature.h"
+module clice;
 
-#include "llvm/ADT/StringRef.h"
+import :feature.feature;
+import :server.lsp_projection;
 
 namespace clice::to_lsp {
 
@@ -62,32 +61,36 @@ protocol::SymbolInformation symbol_information(const index::SymbolRef& symbol,
 }
 
 template <typename Item>
-static Item hierarchy_item(const index::SymbolRef& symbol, const index::Site& site) {
+static Item hierarchy_item(const index::SymbolRef& symbol,
+                           const index::Site& site,
+                           const index::Site& extent) {
     Item item;
     item.name = symbol.display_name();
     item.kind = symbol_kind(symbol.kind);
     item.uri = feature::to_uri(site.path);
-    item.range = range(site);
-    item.selection_range = item.range;
+    item.range = range(extent);
+    item.selection_range = range(site);
     item.data = protocol::LSPAny(std::format("{}", symbol.hash));
     return item;
 }
 
 protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolRef& symbol,
-                                                const index::Site& site) {
-    return hierarchy_item<protocol::CallHierarchyItem>(symbol, site);
+                                                const index::Site& site,
+                                                const index::Site& extent) {
+    return hierarchy_item<protocol::CallHierarchyItem>(symbol, site, extent);
 }
 
 protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolRef& symbol,
-                                                const index::Site& site) {
-    return hierarchy_item<protocol::TypeHierarchyItem>(symbol, site);
+                                                const index::Site& site,
+                                                const index::Site& extent) {
+    return hierarchy_item<protocol::TypeHierarchyItem>(symbol, site, extent);
 }
 
 std::optional<index::SymbolHash> hierarchy_symbol(const std::optional<protocol::LSPAny>& data) {
     if(!data) {
         return std::nullopt;
     }
-    auto* str = std::get_if<std::string>(&static_cast<const protocol::LSPVariant&>(*data));
+    auto str = data->get_string();
     if(!str) {
         return std::nullopt;
     }

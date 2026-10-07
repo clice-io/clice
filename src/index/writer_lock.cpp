@@ -1,15 +1,16 @@
-#include "index/writer_lock.h"
+module;
 
-#include <format>
+#include "modules/prelude.h"
 
 #include "version.h"
-#include "support/filesystem.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "kota/codec/json/json.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/raw_ostream.h"
+module clice;
+
+import :index.writer_lock;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::index {
 
@@ -21,9 +22,9 @@ constexpr llvm::StringLiteral endpoint_name = "server.json";
 /// The holder's pid as stamped into the lock file; nullopt when the stamp
 /// is unreadable (a Windows holder keeps the file exclusive) or absent.
 std::optional<std::uint32_t> stamped_pid(llvm::StringRef lock_path) {
-    auto stamped = fs::read(lock_path);
+    auto stamped = vfs::read(lock_path, vfs::Read::Bytes);
     std::uint32_t pid = 0;
-    if(!stamped || llvm::StringRef(*stamped).trim().getAsInteger(10, pid)) {
+    if(!stamped || (*stamped)->getBuffer().trim().getAsInteger(10, pid)) {
         return std::nullopt;
     }
     return pid;
@@ -85,26 +86,16 @@ bool write_endpoint(llvm::StringRef cache_dir, const ServerEndpoint& endpoint) {
         LOG_WARN("Failed to serialize the server endpoint record: {}", json.error().to_string());
         return false;
     }
-    auto final_path = path::join(cache_dir, endpoint_name);
-    auto tmp_path = final_path + ".tmp";
-    if(auto written = fs::write(tmp_path, *json); !written) {
-        LOG_WARN("Failed to record the server endpoint at {}: {}",
-                 final_path,
-                 written.error().message());
-        return false;
-    }
-    if(auto renamed = fs::rename(tmp_path, final_path); !renamed) {
-        LOG_WARN("Failed to record the server endpoint at {}: {}",
-                 final_path,
-                 renamed.error().message());
-        llvm::sys::fs::remove(tmp_path);
+    auto record = path::join(cache_dir, endpoint_name);
+    if(auto error = vfs::write_atomic(record, *json)) {
+        LOG_WARN("Failed to record the server endpoint at {}: {}", record, error.message());
         return false;
     }
     return true;
 }
 
 void remove_endpoint(llvm::StringRef cache_dir) {
-    llvm::sys::fs::remove(path::join(cache_dir, endpoint_name));
+    vfs::remove(path::join(cache_dir, endpoint_name));
 }
 
 std::string held_writer_message(const WriterProbe& probe, llvm::StringRef cache_dir) {
@@ -139,12 +130,12 @@ WriterProbe probe_writer(llvm::StringRef cache_dir) {
     auto holder = stamped_pid(lock_path);
     probe.holder = holder_name(holder);
 
-    auto record = fs::read(path::join(cache_dir, endpoint_name));
+    auto record = vfs::read(path::join(cache_dir, endpoint_name), vfs::Read::Bytes);
     if(!record) {
         return probe;
     }
     ServerEndpoint endpoint;
-    if(auto parsed = kota::codec::json::from_string(*record, endpoint); !parsed) {
+    if(auto parsed = kota::codec::json::from_string((*record)->getBuffer(), endpoint); !parsed) {
         return probe;
     }
     // A record from a server that died holding the lock survives until the

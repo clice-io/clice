@@ -65,20 +65,20 @@ config.name = 'clice'
 config.cmd = { clice_path, 'serve' }
 config.root_dir = fixture_dir
 
-local main_file_uri = vim.uri_from_fname(fixture_dir .. '/' .. scenario.file)
-local got_diagnostics = false
-config.handlers = {
-    ['textDocument/publishDiagnostics'] = function(_, result)
-        if result and result.uri == main_file_uri then
-            got_diagnostics = true
-        end
-    end,
-}
-
 step('open ' .. scenario.file)
 vim.cmd.edit(fixture_dir .. '/' .. scenario.file)
 local buf = vim.api.nvim_get_current_buf()
 vim.bo[buf].filetype = 'cpp'
+
+-- Pushed or pulled (a Neovim declaring pull support pulls them), the
+-- diagnostics land through vim.diagnostic.set, empty ones included.
+local got_diagnostics = false
+vim.api.nvim_create_autocmd('DiagnosticChanged', {
+    buffer = buf,
+    callback = function()
+        got_diagnostics = true
+    end,
+})
 
 step 'start clice'
 local client_id = vim.lsp.start(config, { bufnr = buf })

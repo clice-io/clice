@@ -124,7 +124,7 @@ Number of stateful workers — they hold ASTs in memory and serve queries (hover
 | ------------------------ | -------- | ------- |
 | `stateless_worker_count` | `uint32` | —       |
 
-Initial number of stateless workers — they handle ephemeral tasks (PCH/PCM builds, completion, signature help); defaults to half the machine's parallelism, at least 2. `0` is invalid and falls back to that default.
+Number of stateless workers started — they handle ephemeral tasks (PCH/PCM builds, completion, signature help, background indexing) — and the most that background indexing keeps busy at once; defaults to half the machine's physical cores, at least 2. `0` is invalid and falls back to that default.
 
 </div>
 
@@ -144,7 +144,7 @@ Lower bound for dynamic stateless-worker scaling; `0` is invalid and falls back 
 | ---------------------------- | -------- | ------- |
 | `max_stateless_worker_count` | `uint32` | —       |
 
-Upper bound for dynamic stateless-worker scaling; `0` means the machine's parallelism, which is also the default.
+Upper bound for dynamic stateless-worker scaling, which only interactive work that finds every worker busy reaches; `0` means the machine's physical cores, which is also the default.
 
 </div>
 
@@ -152,19 +152,9 @@ Upper bound for dynamic stateless-worker scaling; `0` means the machine's parall
 
 ## `[tracker]`
 
-The file tracker polls for changes that happen outside the editor (a `git checkout`, a regenerated `compile_commands.json`, code generators writing headers) so the server picks them up without a restart. Setting an interval to `0` disables that polling loop.
+clice looks at files on disk in the background to notice changes made outside the editor (a `git checkout`, a regenerated `compile_commands.json`, an agent or a code generator writing files), so the server picks them up without a restart. A workspace file is also looked at before every request that depends on it; headers the toolchain installed are looked at every few minutes, whenever their environment is updated, and at every save. Setting `workspace_poll_seconds` to `0` turns the background polling off.
 
 <!-- BEGIN GENERATED CONFIG: tracker -->
-
-<div class="config-option">
-
-| Option             | Type     | Default |
-| ------------------ | -------- | ------- |
-| `cdb_poll_seconds` | `uint32` | `3`     |
-
-Compilation database poll interval in seconds; 0 disables polling.
-
-</div>
 
 <div class="config-option">
 
@@ -172,7 +162,7 @@ Compilation database poll interval in seconds; 0 disables polling.
 | ------------------------ | -------- | ------- |
 | `workspace_poll_seconds` | `uint32` | `30`    |
 
-Workspace file sweep interval in seconds; 0 disables polling.
+Longest interval in seconds between two background looks at a workspace file: the interval doubles at every look that finds the file unchanged, up to this. 0 disables background polling, compilation databases included.
 
 </div>
 
@@ -296,7 +286,7 @@ The `[code_completion]` section controls completion item assembly.
 | ------------------------ | ------ | ------- |
 | `enable_keyword_snippet` | `bool` | `false` |
 
-Complete keywords as snippets (not yet implemented).
+Complete statements such as `if` and `for` as snippets with placeholders for their parts; otherwise only the keyword is inserted. Ignored for clients without snippet support.
 
 </div>
 
@@ -306,7 +296,7 @@ Complete keywords as snippets (not yet implemented).
 | ----------------------------------- | ------ | ------- |
 | `enable_function_arguments_snippet` | `bool` | `false` |
 
-Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet.
+Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet. Ignored for clients without snippet support.
 
 </div>
 
@@ -316,7 +306,7 @@ Insert function arguments as a snippet when completing a call. For functions thi
 | ----------------------------------- | ------ | ------- |
 | `enable_template_arguments_snippet` | `bool` | `false` |
 
-Insert template arguments as a snippet on completion (not yet implemented).
+Insert template arguments as a snippet when completing a class, alias or variable template. Ignored for clients without snippet support.
 
 </div>
 
@@ -326,7 +316,7 @@ Insert template arguments as a snippet on completion (not yet implemented).
 | ------------------------------- | ------ | ------- |
 | `insert_paren_in_function_call` | `bool` | `false` |
 
-Insert parentheses when completing a function call (not yet implemented).
+Insert parentheses when completing a function call, unless the name is already followed by one; with snippet support the cursor lands between them.
 
 </div>
 

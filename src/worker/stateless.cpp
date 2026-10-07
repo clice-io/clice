@@ -1,49 +1,32 @@
-#include "worker/stateless.h"
+module;
 
-#include <atomic>
-#include <cstdlib>
-#include <expected>
-#include <format>
-#include <optional>
+#include "modules/prelude.h"
 
-#include "compile/compilation.h"
-#include "feature/feature.h"
-#include "index/tu_index.h"
-#include "support/logging.h"
-#include "support/stderr_sink.h"
-#include "worker/common.h"
-#include "worker/protocol.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "kota/ipc/codec/bincode.h"
-#include "kota/ipc/peer.h"
-#include "kota/ipc/transport.h"
-#include "llvm/Support/Regex.h"
-#include "llvm/Support/raw_ostream.h"
+#include "kota/ipc/framing.h"
+
+module clice;
+
+import :compile.compilation;
+import :feature.feature;
+import :index.include_tree;
+import :index.tu_index;
+import :support.logging;
+import :support.process;
+import :vfs.file_system;
+import :worker.common;
+import :worker.crash_report;
+import :worker.protocol;
+import :worker.stateless;
 
 namespace clice {
-
-/// RAII guard that lowers the current process's scheduling priority and
-/// restores it on destruction.
-struct ScopedNice {
-    int saved;
-
-    explicit ScopedNice(int increment = 10) {
-        auto p = kota::sys::priority();
-        saved = p ? *p : 0;
-        kota::sys::set_priority(saved + increment);
-    }
-
-    ~ScopedNice() {
-        kota::sys::set_priority(saved);
-    }
-};
 
 using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::BincodePeer::RequestContext;
 
 /// Serialize the preamble's index envelope (full index + document links
-/// + inactive regions) into a string. Runs while the freshly parsed AST
+/// + inactive regions + diagnostics) into a string. Runs while the freshly parsed AST
 /// is still in memory — the only moment the preamble's index is
 /// obtainable without deserializing the whole PCH. The file write
 /// happens separately, after the PCH itself is flushed.
@@ -53,9 +36,14 @@ static std::string serialize_preamble_envelope(CompilationUnit& unit,
     auto links = feature::document_links(unit);
     auto inactive = feature::inactive_regions(unit, {}, 0, preamble_bound);
     auto links_ms = links_timer.ms_f();
+    auto diagnostics = to_client_json(feature::diagnostics(unit), "[]");
 
     ScopedTimer blob_timer;
-    auto blob = index::build_preamble_index(unit, links, inactive.regions, inactive.open_stack);
+    auto blob = index::build_preamble_index(unit,
+                                            links,
+                                            inactive.regions,
+                                            inactive.open_stack,
+                                            diagnostics);
     LOG_PERF("index_detail",
              "op=preamble links_ms={:.2f} blob_ms={:.2f} bytes={}",
              links_ms,
@@ -68,21 +56,9 @@ static std::string serialize_preamble_envelope(CompilationUnit& unit,
 /// on failure so the master's anomaly carries the cause.
 static std::optional<std::string> write_preamble_envelope(llvm::StringRef blob,
                                                           llvm::StringRef output_path) {
-    std::error_code ec;
-    llvm::raw_fd_ostream os(output_path, ec);
-    if(ec) {
+    if(auto error = vfs::write(output_path, blob)) {
         auto message =
-            std::format("cannot open pch.idx envelope {}: {}", output_path, ec.message());
-        LOG_ERROR("BuildPCH: {}", message);
-        return message;
-    }
-    os << blob;
-    os.flush();
-    if(os.has_error()) {
-        auto message = std::format("failed writing pch.idx envelope {}: {}",
-                                   output_path,
-                                   os.error().message());
-        os.clear_error();
+            std::format("failed writing pch.idx envelope {}: {}", output_path, error.message());
         LOG_ERROR("BuildPCH: {}", message);
         return message;
     }
@@ -100,7 +76,7 @@ static std::expected<std::string, std::string> artifact_output(llvm::StringRef l
     if(!output_path.empty()) {
         return output_path.str();
     }
-    auto tmp = fs::createTemporaryFile(prefix, extension);
+    auto tmp = vfs::temp_file(prefix, extension);
     if(!tmp) {
         LOG_ERROR("Build{}: failed to create temp file", label);
         return std::unexpected(std::format("Failed to create temporary {} file", label));
@@ -109,10 +85,10 @@ static std::expected<std::string, std::string> artifact_output(llvm::StringRef l
 }
 
 /// The reply of a finished artifact build. Success hands the master the
-/// path to commit and the build's inputs; failure removes the half-written
-/// file and classifies the errors — `internal_error` marks a failure of
-/// the worker's own I/O, never the user's code, and must not be downgraded
-/// to an expected build failure.
+/// path to commit; failure removes the half-written file and classifies
+/// the errors — `internal_error` marks a failure of the worker's own I/O,
+/// never the user's code, and must not be downgraded to an expected build
+/// failure. Either way the reply carries the build's inputs.
 static worker::ArtifactBuildResult land_artifact(llvm::StringRef label,
                                                  bool success,
                                                  const std::string& tmp_path,
@@ -121,14 +97,14 @@ static worker::ArtifactBuildResult land_artifact(llvm::StringRef label,
                                                  std::string errors,
                                                  bool internal_error) {
     worker::ArtifactBuildResult result;
+    result.build_at = build_at;
+    result.deps = deps;
     if(success) {
         result.success = true;
         result.output_path = tmp_path;
-        result.build_at = build_at;
-        result.deps = deps;
         return result;
     }
-    fs::remove(tmp_path);
+    vfs::remove(tmp_path);
     result.success = false;
     result.has_user_errors = !internal_error && !errors.empty();
     result.error = errors.empty() ? std::format("{} compilation failed", label) : std::move(errors);
@@ -225,9 +201,7 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
     CompilationParams cp;
     cp.kind = CompilationKind::ModuleInterface;
     fill_args(cp, params.directory, params.arguments);
-    for(auto& [name, path]: params.pcms) {
-        cp.pcms.try_emplace(name, path);
-    }
+    use_artifacts(cp, {}, params.pcms);
     cp.stop = stop;
 
     auto output = artifact_output("PCM", params.output_path, "clice-pcm", "pcm");
@@ -277,6 +251,16 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
                          /*internal_error=*/false);
 }
 
+/// Where a diagnostic starts, its column counted in bytes as compilers
+/// count them.
+static auto byte_position(CompilationUnitRef unit, const Diagnostic& diagnostic)
+    -> std::optional<kota::ipc::protocol::Position> {
+    auto content = unit.file_content(diagnostic.fid);
+    return kota::ipc::lsp::to_position({content.data(), content.size()},
+                                       diagnostic.range.begin,
+                                       kota::ipc::lsp::PositionEncoding::UTF8);
+}
+
 /// Collect the tidy pass's findings with real per-file locations: unlike
 /// the LSP path, which folds header diagnostics onto their include line,
 /// the CLI reports them where they are. clang-tidy's header-filter
@@ -308,12 +292,11 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
             if(!last_kept || raw.fid.isInvalid() || !raw.range.valid()) {
                 continue;
             }
-            feature::LineMap map(unit.file_content(raw.fid), feature::PositionEncoding::UTF8);
-            if(auto range = feature::to_range(map, raw.range)) {
+            if(auto start = byte_position(unit, raw)) {
                 out.back().notes.push_back({
                     .file = std::string(unit.file_path(raw.fid)),
-                    .line = range->start.line + 1,
-                    .column = range->start.character + 1,
+                    .line = start->line + 1,
+                    .column = start->character + 1,
                     .message = raw.message,
                 });
             }
@@ -344,15 +327,14 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
                 continue;
             }
         }
-        feature::LineMap map(unit.file_content(raw.fid), feature::PositionEncoding::UTF8);
-        auto range = feature::to_range(map, raw.range);
-        if(!range) {
+        auto start = byte_position(unit, raw);
+        if(!start) {
             continue;
         }
         out.push_back({
             .file = std::string(file),
-            .line = range->start.line + 1,
-            .column = range->start.character + 1,
+            .line = start->line + 1,
+            .column = start->character + 1,
             .error =
                 raw.id.level == DiagnosticLevel::Error || raw.id.level == DiagnosticLevel::Fatal,
             .message = raw.message,
@@ -364,8 +346,36 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
     }
 }
 
+static worker::IncludeTreeResult
+    handle_include_tree(const worker::IncludeTreeParams& params,
+                        const std::shared_ptr<std::atomic_bool>& stop) {
+    LOG_INFO("IncludeTree request: file={}", params.file);
+    ScopedTimer timer;
+    CompilationParams cp;
+    cp.kind = CompilationKind::Preprocess;
+    fill_args(cp, params.directory, params.arguments);
+    cp.workspace = params.workspace;
+    cp.stop = stop;
+    auto unit = preprocess(cp);
+    if(!unit.completed()) {
+        return {.success = false, .error = "preprocessing failed"};
+    }
+    auto tree = index::IncludeTree::from(unit);
+    LOG_PERF("build",
+             "kind=include_tree file={} nodes={} total_ms={}",
+             params.file,
+             tree.nodes.size(),
+             timer.ms());
+    return {
+        .paths = std::move(tree.paths),
+        .path_hashes = std::move(tree.path_hashes),
+        .nodes = std::move(tree.nodes),
+    };
+}
+
 static worker::TURunResult handle_turun(const worker::TURunParams& params,
                                         const std::shared_ptr<std::atomic_bool>& stop) {
+    LOG_INFO("TURun request: file={}", params.file);
     ScopedTimer timer;
 
     CompilationParams cp;
@@ -376,9 +386,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     fill_args(cp, params.directory, params.arguments);
     cp.workspace = params.workspace;
     cp.add_synthesized(params.synthesized);
-    for(auto& [name, path]: params.pcms) {
-        cp.pcms.try_emplace(name, path);
-    }
+    use_artifacts(cp, {}, params.pcms);
     if(params.tidy) {
         // The command-affecting extra args are already in params.arguments
         // (applied at driver resolution); the copies here feed the
@@ -412,8 +420,13 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     worker::TURunResult result;
     result.success = true;
     ScopedTimer index_timer;
+    std::size_t index_bytes = 0;
     if(params.index) {
-        result.tu_index_data = index::build_tu_index(unit);
+        auto envelope = index::build_tu_index(unit, {.known_variants = params.known_variants});
+        index_bytes = envelope.size();
+        if(auto error = hand_over_index(std::move(envelope), params.index_output_path, result)) {
+            return {false, std::move(*error)};
+        }
     }
     auto index_ms = index_timer.ms();
     if(params.tidy) {
@@ -431,7 +444,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
         "build",
         "kind=turun file={} bytes={} findings={} compile_ms={} index_ms={} teardown_ms={} total_ms={}",
         params.file,
-        result.tu_index_data.size(),
+        index_bytes,
         result.tidy_diagnostics.size(),
         compile_ms,
         index_ms,
@@ -447,18 +460,13 @@ static kota::codec::RawValue handle_completion(const worker::CompletionParams& p
     CompilationParams cp;
     cp.kind = CompilationKind::Completion;
     fill_args(cp, params.directory, params.arguments);
-    if(!params.pch.first.empty()) {
-        cp.pch = params.pch;
-    }
-    for(auto& [name, path]: params.pcms) {
-        cp.pcms.try_emplace(name, path);
-    }
+    use_artifacts(cp, params.pch, params.pcms);
     cp.add_remapped_file(params.file, params.text);
     cp.add_synthesized(params.synthesized);
     cp.completion = {params.file, params.offset};
     cp.stop = stop;
 
-    auto items = feature::code_complete(cp, params.config.code_completion);
+    auto items = feature::code_complete(cp, params.config.code_completion, params.client);
     LOG_DEBUG("Completion done: {} items, {}ms", items.size(), timer.ms());
 
     return to_raw(items);
@@ -471,12 +479,7 @@ static kota::codec::RawValue handle_signature_help(const worker::SignatureHelpPa
     CompilationParams cp;
     cp.kind = CompilationKind::Completion;
     fill_args(cp, params.directory, params.arguments);
-    if(!params.pch.first.empty()) {
-        cp.pch = params.pch;
-    }
-    for(auto& [name, path]: params.pcms) {
-        cp.pcms.try_emplace(name, path);
-    }
+    use_artifacts(cp, params.pch, params.pcms);
     cp.add_remapped_file(params.file, params.text);
     cp.add_synthesized(params.synthesized);
     cp.completion = {params.file, params.offset};
@@ -502,34 +505,58 @@ static kota::codec::RawValue handle_format(const worker::FormatParams& params) {
     return to_raw(edits);
 }
 
-/// Register the handler of one request type. Each request arms a fresh
-/// stop flag as the most recent build's — published before the
-/// pool-thread hop so a CancelBuild aimed at it still lands — and runs
-/// the handler on the pool thread. A cancellation (peer close, wire-level
-/// $/cancelRequest) dequeues work that has not started, which answers
-/// `cancelled`; work already on the pool thread learns through the hook:
-/// the flag doubles as CompilationParams::stop, which clang polls after
-/// every top-level declaration, so even the parse itself stops instead of
-/// running to completion for a result nobody will read.
+/// How serve() runs a request's work.
+struct ServeOptions {
+    /// Background work: run it on a thread of its own at lowered priority,
+    /// which ends with the request. Lowering the pool thread instead would
+    /// leave every later request on it lowered (see lower_thread_priority).
+    bool lowered = false;
+};
+
+/// Run `work` on a fresh thread of lowered priority and wait for it.
+template <typename Work>
+static auto run_lowered(Work& work) {
+    std::optional<std::invoke_result_t<Work&>> result;
+    // As much stack as libuv gives its pool threads; a deep parse needs it.
+    llvm::thread thread(std::optional<unsigned>(8u << 20), [&] {
+        lower_thread_priority();
+        result.emplace(work());
+    });
+    thread.join();
+    return std::move(*result);
+}
+
+/// Register the handler of one request type, which runs on the pool
+/// thread, or on a lowered thread it joins (ServeOptions::lowered). A
+/// cancellation (peer close, $/cancelRequest) dequeues work that
+/// has not started; work already on the pool thread learns through the
+/// hook's stop flag, which doubles as CompilationParams::stop: clang polls
+/// it after every top-level declaration, so even the parse itself stops
+/// instead of running to completion for a result nobody will read.
 template <typename Params, typename Result, typename Handler>
 static void serve(kota::ipc::BincodePeer& peer,
-                  std::shared_ptr<std::atomic_bool>& build_stop,
                   Result cancelled,
-                  Handler handler) {
-    peer.on_request([&build_stop,
-                     cancelled,
-                     handler](RequestContext&, const Params& params) -> RequestResult<Params> {
+                  Handler handler,
+                  ServeOptions options = {}) {
+    peer.on_request([cancelled, handler, options](RequestContext&,
+                                                  const Params& params) -> RequestResult<Params> {
         auto stop = std::make_shared<std::atomic_bool>(false);
-        build_stop = stop;
-        auto result = co_await kota::queue(
+        co_return co_await kota::queue(
             [&]() -> Result {
                 if(stop->load(std::memory_order_relaxed)) {
                     return cancelled;
                 }
-                return handler(params, stop);
+                // The crash report reads the scope of the thread that
+                // faults, so it opens on the thread that runs the work.
+                auto work = [&] {
+                    CrashScope crash_scope(worker::crash_tag(params));
+                    return handler(params, stop);
+                };
+                auto result = options.lowered ? run_lowered(work) : work();
+                release_free_memory();
+                return result;
             },
             [stop] { stop->store(true, std::memory_order_relaxed); });
-        co_return result.value();
     });
 }
 
@@ -545,12 +572,6 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
 #endif
 
     logging::stderr_logger(worker_name, logging::options);
-    // A worker's stderr reader is the master's always-running drain — a
-    // trusted party — and the fd is reserved for third-party crash output
-    // (assertion failures, sanitizer reports) whose writers expect blocking
-    // semantics. Undo the sink's non-blocking switch unconditionally: with
-    // no log directory the file_logger below never runs.
-    logging::restore_pipe_blocking();
     if(!log_dir.empty()) {
         // File only: worker stderr is reserved for crash/unexpected output,
         // which the master relays into its own log (see logging taxonomy).
@@ -558,6 +579,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
     }
 
     LOG_INFO("Starting stateless worker");
+    install_crash_report();
 
     kota::event_loop loop;
 
@@ -566,40 +588,26 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         LOG_ERROR("Failed to open stdio transport");
         return 1;
     }
-
-    // Stop flag of the most recent build request, published before its
-    // pool-thread hop so a CancelBuild aimed at it still lands. Never
-    // cleared: the master sends CancelBuild only while it awaits that
-    // build's reply, and pipe ordering pins any follow-up build behind the
-    // cancel, so a set can only ever hit the stale build's flag.
-    std::shared_ptr<std::atomic_bool> build_stop;
+    (*transport_result)->set_remote_max_payload(kota::ipc::default_max_payload);
 
     kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
 
-    peer.on_notification([&build_stop](const worker::CancelBuildParams&) {
-        LOG_DEBUG("CancelBuild notification received");
-        if(build_stop) {
-            build_stop->store(true, std::memory_order_relaxed);
-        }
-    });
-
     const worker::ArtifactBuildResult cancelled_build{.success = false, .error = "Build cancelled"};
-    serve<worker::BuildPCHParams>(peer, build_stop, cancelled_build, &handle_build_pch);
-    serve<worker::BuildPCMParams>(peer, build_stop, cancelled_build, &handle_build_pcm);
-    serve<worker::TURunParams>(
+    serve<worker::BuildPCHParams>(peer, cancelled_build, &handle_build_pch);
+    serve<worker::BuildPCMParams>(peer, cancelled_build, &handle_build_pcm);
+    serve<worker::TURunParams>(peer,
+                               worker::TURunResult{.success = false, .error = "Build cancelled"},
+                               &handle_turun,
+                               {.lowered = true});
+    serve<worker::IncludeTreeParams>(
         peer,
-        build_stop,
-        worker::TURunResult{.success = false, .error = "Build cancelled"},
-        [](const worker::TURunParams& params, const std::shared_ptr<std::atomic_bool>& stop) {
-            ScopedNice guard;
-            return handle_turun(params, stop);
-        });
+        worker::IncludeTreeResult{.success = false, .error = "Preprocessing cancelled"},
+        &handle_include_tree);
     const kota::codec::RawValue cancelled_query{"null"};
-    serve<worker::CompletionParams>(peer, build_stop, cancelled_query, &handle_completion);
-    serve<worker::SignatureHelpParams>(peer, build_stop, cancelled_query, &handle_signature_help);
+    serve<worker::CompletionParams>(peer, cancelled_query, &handle_completion);
+    serve<worker::SignatureHelpParams>(peer, cancelled_query, &handle_signature_help);
     serve<worker::FormatParams>(
         peer,
-        build_stop,
         cancelled_query,
         [](const worker::FormatParams& params, const std::shared_ptr<std::atomic_bool>&) {
             return handle_format(params);

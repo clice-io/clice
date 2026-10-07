@@ -1,11 +1,11 @@
-#include <algorithm>
-#include <cstdint>
-#include <optional>
-#include <string>
-#include <vector>
+module;
 
-#include "feature/feature.h"
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :feature.feature;
+import :syntax.lexer;
 
 namespace clice::feature {
 
@@ -19,12 +19,30 @@ auto find_directive_argument(llvm::StringRef content,
                              const clang::LangOptions* lang_opts)
     -> std::optional<LocalSourceRange> {
     auto lexer = Lexer::from_line(content, offset, {.lang_opts = lang_opts});
+    bool directive = lexer.next().kind == clang::tok::hash;
     bool after_keyword = false;
 
     while(true) {
         auto token = lexer.advance();
         if(token.is_eof() || token.is_eod()) {
             return std::nullopt;
+        }
+
+        // A filename passed through a macro argument (`#if HAS(<c.h>)`)
+        // follows no keyword of its own: the offset pins its start.
+        if(directive && token.range.begin == offset) {
+            if(token.kind == clang::tok::string_literal) {
+                return token.range;
+            }
+            if(token.kind == clang::tok::less) {
+                for(auto close = lexer.advance(); !close.is_eod() && !close.is_eof();
+                    close = lexer.advance()) {
+                    if(close.kind == clang::tok::greater) {
+                        return LocalSourceRange{token.range.begin, close.range.end};
+                    }
+                }
+                return std::nullopt;
+            }
         }
 
         if(token.is_identifier()) {
@@ -55,8 +73,8 @@ auto find_directive_argument(llvm::StringRef content,
     }
 }
 
-auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
-    std::vector<DocumentLink> links;
+auto document_links(CompilationUnitRef unit) -> std::vector<index::DocumentLink> {
+    std::vector<index::DocumentLink> links;
 
     auto main_fid = unit.main_file();
     auto directives_it = unit.directives().find(main_fid);
@@ -75,7 +93,7 @@ auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
         auto range = find_directive_argument(content, offset, lang_opts);
         if(!range)
             return;
-        links.push_back(DocumentLink{.range = *range, .target = target.str()});
+        links.push_back(index::DocumentLink{.range = *range, .target = target.str()});
     };
 
     for(const auto& include: directives.includes) {
@@ -104,7 +122,7 @@ auto document_links(CompilationUnitRef unit) -> std::vector<DocumentLink> {
 
     // Directives are collected grouped by kind; the reply promises
     // document order.
-    std::ranges::sort(links, {}, [](const DocumentLink& link) { return link.range.begin; });
+    std::ranges::sort(links, {}, [](const index::DocumentLink& link) { return link.range.begin; });
 
     return links;
 }

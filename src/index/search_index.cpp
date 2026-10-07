@@ -1,20 +1,14 @@
-#include "index/search_index.h"
+module;
 
-#include <algorithm>
-#include <cmath>
-#include <functional>
-#include <numeric>
-#include <string_view>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "index/serialization.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "kota/meta/enum.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/raw_ostream.h"
+module clice;
+
+import :index.search_index;
+import :index.serialization;
+import :support.logging;
 
 namespace clice::index {
 
@@ -254,7 +248,8 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     llvm::DenseSet<SymbolHash> seen;
     for(std::uint32_t i = 0; i < snapshot.entries.size(); i += 1) {
         auto& entry = snapshot.entries[i];
-        if(!is_searchable_kind(entry.kind) || entry.name.empty() || entry.hash == 0 ||
+        if(!is_searchable_kind(entry.kind) || entry.name.empty() ||
+           has_flag(entry.flags, SymbolFlags::Unnamed) || entry.hash == 0 ||
            reserved_key(entry.hash) || !seen.insert(entry.hash).second) {
             continue;
         }
@@ -277,10 +272,23 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
     for(std::uint32_t doc = 0; doc < count; doc += 1) {
         doc_of.try_emplace(entry_of(doc).hash, doc);
     }
-    // The chain a qualified name spells skips inline namespaces.
+    // The chain a qualified name spells skips transparent scopes: inline
+    // namespaces are documents, anonymous scopes are not, so their parents
+    // are kept apart.
+    llvm::DenseMap<SymbolHash, SymbolHash> anonymous_parents;
+    for(auto& entry: snapshot.entries) {
+        if(has_flag(entry.flags, SymbolFlags::AnonymousScope)) {
+            anonymous_parents.try_emplace(entry.hash, entry.parent);
+        }
+    }
     auto parent_of = [&](std::uint32_t doc) {
         auto parent = entry_of(doc).parent;
         for(std::size_t depth = 0; parent != 0 && depth < max_chain; depth += 1) {
+            if(auto anonymous = anonymous_parents.find(parent);
+               anonymous != anonymous_parents.end()) {
+                parent = anonymous->second;
+                continue;
+            }
             auto it = doc_of.find(parent);
             if(it == doc_of.end()) {
                 return no_doc;
@@ -576,19 +584,12 @@ struct SearchIndex::View {
         return static_cast<std::uint32_t>(hashes.size());
     }
 
-    static llvm::StringRef slice(llvm::StringRef arena,
-                                 llvm::ArrayRef<std::uint32_t> ends,
-                                 std::uint32_t i) {
-        auto begin = i == 0 ? 0 : ends[i - 1];
-        return arena.slice(begin, ends[i]);
-    }
-
     llvm::StringRef name(std::uint32_t doc) const {
-        return slice(names, name_ends, doc);
+        return back_to_back(names, name_ends, doc);
     }
 
     llvm::StringRef arguments(std::uint32_t doc) const {
-        return slice(args, args_ends, doc);
+        return back_to_back(args, args_ends, doc);
     }
 
     /// A posting image viewed in place; a malformed one reads as empty
@@ -596,8 +597,8 @@ struct SearchIndex::View {
     Bitmap decode(llvm::ArrayRef<std::uint8_t> arena,
                   llvm::ArrayRef<std::uint32_t> ends,
                   std::uint32_t i) const {
-        auto begin = i == 0 ? 0 : ends[i - 1];
-        auto decoded = view_bitmap(arena.data() + begin, ends[i] - begin);
+        auto image = back_to_back(arena, ends, i);
+        auto decoded = view_bitmap(image.data(), image.size());
         if(!decoded || (!decoded->isEmpty() && decoded->maximum() >= count())) {
             if(!damaged) {
                 LOG_WARN("A search index posting list does not decode; the index is rebuilt");

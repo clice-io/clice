@@ -1,33 +1,17 @@
-#include <utility>
+module;
+
+#include "modules/prelude.h"
 
 /// Parts of this file are ported from clangd's AST.cpp, Hover.cpp,
 /// InlayHints.cpp and CodeCompletionStrings.cpp (llvmorg-21.1.8), part of
 /// the LLVM project, licensed under Apache License v2.0 with LLVM
 /// Exceptions. See https://llvm.org/LICENSE.txt for license information.
 
-#include "semantic/display.h"
-#include "semantic/types.h"
-#include "support/format.h"
+module clice;
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Format.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/JSON.h"
-#include "llvm/Support/SaveAndRestore.h"
-#include "llvm/Support/ScopedPrinter.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/ASTDiagnostic.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/RawCommentList.h"
-#include "clang/AST/StmtVisitor.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Sema/CodeCompleteConsumer.h"
-#include "clang/Tooling/Syntax/Tokens.h"
+import :semantic.display;
+import :semantic.types;
+import :support.format;
 
 namespace clice::display {
 
@@ -305,7 +289,13 @@ std::string bare_name(const clang::NamedDecl* decl, const Options& options) {
 
         case clang::DeclarationName::CXXConversionFunctionName: {
             result += "operator ";
-            result += name.getCXXNameType().getAsString(policy);
+            /// The name holds the canonical type (`operator int *` for
+            /// `operator Handle`); the declaration keeps the type as written.
+            auto type = name.getCXXNameType();
+            if(auto* conversion = llvm::dyn_cast<clang::CXXConversionDecl>(decl)) {
+                type = conversion->getConversionType();
+            }
+            result += type.getAsString(policy);
             break;
         }
 
@@ -398,8 +388,12 @@ auto name_of(const clang::NamedDecl* decl, const Options& options) -> std::strin
         qualifier.print(os, policy);
     }
 
-    /// Print the name itself.
-    decl->getDeclName().print(os, policy);
+    /// Print the name itself — a conversion's as declared, see bare_name.
+    if(llvm::isa<clang::CXXConversionDecl>(decl)) {
+        os << bare_name(decl, options);
+    } else {
+        decl->getDeclName().print(os, policy);
+    }
 
     /// Print template arguments.
     os << template_args(*decl);
@@ -793,13 +787,13 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
     }
 
     /// Show enums symbolically, not numerically like APValue::printPretty().
-    if(type->isEnumeralType() && constant.Val.isInt() &&
-       constant.Val.getInt().getSignificantBits() <= 64) {
-        /// Compare to int64_t to avoid bit-width match requirements.
-        std::int64_t value = constant.Val.getInt().getExtValue();
+    if(type->isEnumeralType() && constant.Val.isInt()) {
         for(const clang::EnumConstantDecl* enumerator:
             type->castAs<clang::EnumType>()->getDecl()->enumerators()) {
-            if(enumerator->getInitVal() == value) {
+            if(llvm::APSInt::isSameValue(enumerator->getInitVal(), constant.Val.getInt())) {
+                if(constant.Val.getInt().getSignificantBits() > 64) {
+                    return enumerator->getNameAsString();
+                }
                 return llvm::formatv("{0} ({1})",
                                      enumerator->getNameAsString(),
                                      print_hex(constant.Val.getInt()))
@@ -817,10 +811,24 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
             .str();
     }
 
-    return constant.Val.getAsString(context, type);
+    /// Arrays show their first elements only, as in diagnostics.
+    clang::PrintingPolicy policy = context.getPrintingPolicy();
+    policy.EntireContentsOfLargeArray = false;
+    std::string value;
+    llvm::raw_string_ostream os(value);
+    constant.Val.printPretty(os, policy, type, &context);
+    return value;
 }
 
 namespace {
+
+/// An `#embed` or a string literal is a single token of any length.
+auto printed_length(const clang::Expr& expr, const clang::PrintingPolicy& policy) -> std::size_t {
+    std::string text;
+    llvm::raw_string_ostream os(text);
+    expr.printPretty(os, nullptr, policy);
+    return text.size();
+}
 
 /// Default argument might exist but be unavailable, in the case of unparsed
 /// arguments for example. This function returns the default argument if it is
@@ -984,7 +992,8 @@ auto definition(const clang::Decl* decl,
                 /// Initializers might be huge and result in lots of memory allocations
                 /// in some catastrophic cases. Such long lists are not useful in hover
                 /// cards anyway.
-                if(tb->expandedTokens(init->getSourceRange()).size() > 200) {
+                if(tb->expandedTokens(init->getSourceRange()).size() > 200 ||
+                   printed_length(*init, policy) > 500) {
                     policy.SuppressInitializers = true;
                 }
             }

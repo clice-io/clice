@@ -2,6 +2,7 @@
   "name": "clice",
   "displayName": "clice vscode",
   "description": "VSCode extension for clice",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/clice-io/clice"
@@ -102,6 +103,10 @@
       {
         "command": "clice.showCurrentContext",
         "title": "Clice: Show Current Compilation Context"
+      },
+      {
+        "command": "clice.resetContext",
+        "title": "Clice: Use Automatic Compilation Context"
       },
       {
         "command": "clice.queryContexts",
@@ -270,7 +275,7 @@
         {
           "id": "clice.contexts",
           "name": "Compilation Contexts",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "resourceLangId == c || resourceLangId == cpp || resourceLangId == cuda-cpp"
         }
       ]
     },
@@ -294,6 +299,10 @@
         },
         {
           "command": "clice.showCurrentContext",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.resetContext",
           "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
         },
         {
@@ -329,6 +338,7 @@
     "vscode:prepublish": "webpack --mode production --devtool hidden-source-map",
     "package": "vsce package --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
     "publish": "vsce publish --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
+    "publish:ovsx": "ovsx publish --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
     "compile-tests": "tsc -p . --outDir out",
     "typecheck": "tsc -p . --noEmit",
     "lint": "eslint .",
@@ -345,8 +355,9 @@
     "@types/vscode": "^1.82.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
-    "@vscode/vsce": "^3.7.1",
+    "@vscode/vsce": "^4.0.0",
     "eslint": "^10.8.0",
+    "ovsx": "^1.2.0",
     "ts-loader": "^9.5.4",
     "typescript-eslint": "^8.65.0",
     "typescript": "~5.5.4",

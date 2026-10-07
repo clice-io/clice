@@ -10,7 +10,9 @@
 ///
 /// The definition is fully qualified and joins the class's other
 /// definitions in that file; members already defined in some source file
-/// are not offered again. Templates and inline functions stay in the header.
+/// are not offered again. Templates, inline functions and functions other
+/// files cannot see stay in the header; any other function defined there
+/// out of the class is marked `inline`.
 
 // snap: The inspect path has no index or host: it pins the definitions the
 // snap: host would receive as the unresolved request. The server path,

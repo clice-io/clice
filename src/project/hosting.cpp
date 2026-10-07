@@ -1,14 +1,12 @@
-#include "project/hosting.h"
+module;
 
-#include <algorithm>
-#include <tuple>
+#include "modules/prelude.h"
 
-#include "project/project.h"
-#include "support/filesystem.h"
+module clice;
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Path.h"
-#include "clang/Driver/Types.h"
+import :project.hosting;
+import :project.project;
+import :vfs.path;
 
 namespace clice {
 
@@ -16,15 +14,9 @@ namespace {
 
 namespace types = clang::driver::types;
 
-/// Whether the suffix names a header — or nothing clang knows, which a
-/// file under a header search directory usually is (`.inc`, `.ipp`).
-bool header_suffix(llvm::StringRef path) {
-    auto type = suffix_type(path);
-    return type == types::TY_INVALID || types::onlyPrecompileType(type);
-}
-
 /// The language a command compiles its unit as — a `-x` in the entry or
-/// a rule's append included, else the unit's suffix.
+/// a rule's append included, else the unit's suffix as its driver reads
+/// it (`g++` takes a `.c` as C++).
 types::ID language_of(const CommandRef& command) {
     return types::lookupTypeForTypeSpecifier(command.input.value);
 }
@@ -34,13 +26,14 @@ CommandRef effective(Project& project, Fid unit, const Candidate& command) {
     return project.build.resolve(unit, command.config, command.source, path, path);
 }
 
-/// Whether the file at `path` can be part of a translation unit compiled
-/// as `language`. A source only in its own: rendering the borrowed
-/// command for it would otherwise force `-x`, and a `.cpp` compiled as
-/// CUDA or a `.m` as C is not the file. A header has latitude: a `.h`
-/// fits any, a C++ header every language built on C++ (Objective-C++,
-/// CUDA, HIP), a `.cuh` CUDA.
-bool compatible(llvm::StringRef path, types::ID language) {
+/// Whether the file at `path` can be part of the translation unit `unit`
+/// compiled as `language`. A source only in its own, or in the one the
+/// unit's command gives the unit's own suffix (`g++` takes a `.c` as
+/// C++): rendering the borrowed command for it would otherwise force
+/// `-x`, and a `.cpp` compiled as CUDA or a `.m` as C is not the file. A
+/// header has latitude: a `.h` fits any, a C++ header every language
+/// built on C++ (Objective-C++, CUDA, HIP), a `.cuh` CUDA.
+bool compatible(llvm::StringRef path, llvm::StringRef unit, types::ID language) {
     auto file = suffix_type(path);
     if(file == types::TY_INVALID) {
         return path::extension(path) != ".cuh" || types::isCuda(language) || types::isHIP(language);
@@ -51,16 +44,104 @@ bool compatible(llvm::StringRef path, types::ID language) {
     if(types::onlyPrecompileType(file) && types::isCXX(file)) {
         return types::isCXX(language);
     }
-    return file == language;
+    return file == language ||
+           (file == suffix_type(unit) && language == types::lookupCXXTypeForCType(file));
 }
 
-std::size_t shared_prefix(llvm::StringRef a, llvm::StringRef b) {
-    std::size_t common = 0;
-    auto n = std::min(a.size(), b.size());
-    while(common < n && a[common] == b[common]) {
-        common += 1;
+/// How far `other` sits from `path` in the directory tree: how much of
+/// `path` lies past the directories the two share, then how many
+/// directories deeper `other` goes below them.
+std::pair<std::size_t, std::size_t> tree_distance(llvm::StringRef path, llvm::StringRef other) {
+    std::size_t shared = 0;
+    auto n = std::min(path.size(), other.size());
+    while(shared < n && path[shared] == other[shared]) {
+        shared += 1;
     }
-    return common;
+    auto separator = [](char c) {
+        return path::is_separator(c);
+    };
+    while(shared > 0 && !separator(path[shared - 1])) {
+        shared -= 1;
+    }
+    return {path.size() - shared,
+            static_cast<std::size_t>(llvm::count_if(other.substr(shared), separator))};
+}
+
+/// enterings() by one include tree, rooted at `root`.
+std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
+                                                      Fid host,
+                                                      Fid header,
+                                                      VersionID root,
+                                                      llvm::ArrayRef<index::IncludeNode> nodes) {
+    using Verdict = vfs::DiskState::Verdict;
+    auto& files = project.file_table;
+    if(files.check_version(root) != Verdict::Fresh) {
+        return std::nullopt;
+    }
+    auto file_of = [&](std::uint32_t node) {
+        return files.version(VersionID{nodes[node].file}).fid;
+    };
+    auto fresh = [&](std::uint32_t node) {
+        return files.check_version(VersionID{nodes[node].file}) == Verdict::Fresh;
+    };
+
+    // The header's own guard decides which of its includes after the first
+    // enter it.
+    auto repeated = llvm::count_if(nodes, [&](const index::IncludeNode& node) {
+                        return files.version(VersionID{node.file}).fid == header;
+                    }) > 1;
+    llvm::SmallVector<Host> found;
+    bool forced = false;
+    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
+        if(nodes[i].skipped || file_of(i) != header) {
+            continue;
+        }
+        llvm::SmallVector<std::uint32_t> path;
+        for(auto node = i; node != index::no_node; node = nodes[node].parent) {
+            path.push_back(node);
+        }
+        // A file the command forces in hangs off the unit like its own
+        // directives, at a line of the command-line buffer.
+        if(llvm::is_contained(project.dep_graph.get_forcing_units(file_of(path.back())), host)) {
+            forced = true;
+            continue;
+        }
+        Host entering{.file = host, .chain = {host}};
+        for(auto node: llvm::reverse(path)) {
+            if((node != i || repeated) && !fresh(node)) {
+                return std::nullopt;
+            }
+            entering.chain.push_back(file_of(node));
+            entering.lines.push_back(nodes[node].line);
+        }
+        found.push_back(std::move(entering));
+    }
+    if(forced && found.empty()) {
+        auto chain = project.dep_graph.find_include_chain(host, header);
+        if(!chain.empty()) {
+            found.push_back({.file = host, .chain = std::move(chain)});
+        }
+        return found;
+    }
+    if(!found.empty()) {
+        // Nodes are numbered by includer, not by when the compile entered
+        // them; within one file the directives run top to bottom, so the
+        // first line where two chains part orders them.
+        llvm::sort(found, [](const Host& a, const Host& b) {
+            return std::ranges::lexicographical_compare(a.lines, b.lines);
+        });
+        return found;
+    }
+
+    auto chain = project.dep_graph.find_include_chain(host, header);
+    llvm::DenseSet<Fid> on_chain(chain.begin(), chain.end());
+    on_chain.erase(header);
+    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
+        if(on_chain.contains(file_of(i)) && !fresh(i)) {
+            return std::nullopt;
+        }
+    }
+    return found;
 }
 
 const LenderIndex& lender_index(Project& project) {
@@ -101,12 +182,12 @@ const LenderIndex& lender_index(Project& project) {
 std::optional<Lender> command_lender(Project& project, Fid file) {
     auto& files = project.file_table;
     auto path = files.resolve(file);
-    bool header = header_suffix(path);
+    bool header = is_header_path(path);
     auto dir = path::parent_path(path);
     auto stem = path::stem(path);
     auto& index = lender_index(project);
     auto fits = [&](const LenderIndex::Command& command) {
-        return compatible(path, command.language);
+        return compatible(path, files.resolve(command.lender.unit), command.language);
     };
 
     // Every unit with its first command of the family, in path order.
@@ -153,17 +234,44 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
         }
     }
 
-    // The closest unit by path: the longest shared prefix, then by name.
+    // The closest unit in the directory tree, then by name.
     return *std::ranges::min_element(units, {}, [&](const Lender& lender) {
-        return std::tuple(path.size() - shared_prefix(unit_path(lender), path), unit_path(lender));
+        return std::tuple(tree_distance(path, unit_path(lender)), unit_path(lender));
     });
+}
+
+std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header) {
+    if(auto it = project.project_index.manifests.find(host);
+       it != project.project_index.manifests.end()) {
+        if(auto found = tree_enterings(project, host, header, it->second.tu_fv, it->second.nodes)) {
+            return found;
+        }
+    }
+    if(auto it = project.include_trees.find(host);
+       it != project.include_trees.end() && it->second.root.valid() &&
+       it->second.commands_epoch == project.commands_epoch) {
+        return tree_enterings(project, host, header, it->second.root, it->second.nodes);
+    }
+    return std::nullopt;
+}
+
+std::uint32_t count_occurrences(Project& project, Fid host, Fid header) {
+    if(auto found = enterings(project, host, header)) {
+        return static_cast<std::uint32_t>(found->size());
+    }
+    auto chain = project.dep_graph.find_include_chain(host, header);
+    if(chain.size() < 2) {
+        return 0;
+    }
+    return project.dep_graph.count_includes(chain[chain.size() - 2], header);
 }
 
 llvm::SmallVector<Candidate, 2> host_commands(Project& project, Fid header, Fid host) {
     auto header_path = project.file_table.resolve(header);
+    auto host_path = project.file_table.resolve(host);
     llvm::SmallVector<Candidate, 2> fitting;
     for(auto& command: project.build.commands(host)) {
-        if(compatible(header_path, language_of(effective(project, host, command)))) {
+        if(compatible(header_path, host_path, language_of(effective(project, host, command)))) {
             fitting.push_back(command);
         }
     }
@@ -177,14 +285,25 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
     auto header_dir = llvm::sys::path::parent_path(header_path);
     auto sources = project.build.source_order(header_path);
 
+    // The lexical scan follows each header's includes under the first
+    // command that reached it; a unit whose compile resolved them
+    // otherwise names the header in its index rows.
     llvm::SmallVector<Fid> hosts;
-    for(auto candidate: project.dep_graph.find_host_sources(header)) {
-        if(!host_commands(project, header, candidate).empty()) {
+    llvm::DenseSet<Fid> seen;
+    auto add = [&](Fid candidate) {
+        // A header with an entry of its own contributes to itself.
+        if(candidate != header && seen.insert(candidate).second &&
+           !host_commands(project, header, candidate).empty()) {
             hosts.push_back(candidate);
         }
+    };
+    for(auto candidate: project.dep_graph.find_host_sources(header)) {
+        add(candidate);
     }
+    project.project_index.each_contributor(header, add);
 
-    auto score = [&](Fid host) -> std::tuple<std::size_t, int, int, std::size_t> {
+    auto score =
+        [&](Fid host) -> std::tuple<std::size_t, int, int, std::pair<std::size_t, std::size_t>> {
         auto host_path = files.resolve(host);
         // A host compiled from a database the header's rules name comes
         // first; one living on a default command comes after every
@@ -195,12 +314,7 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
         }
         int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
         int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
-        // Longer shared prefix means "closer" in the tree; measured against
-        // the header's own length so every candidate shares one baseline.
-        return {source_rank,
-                stem_match,
-                same_dir,
-                header_path.size() - shared_prefix(host_path, header_path)};
+        return {source_rank, stem_match, same_dir, tree_distance(header_path, host_path)};
     };
     std::ranges::sort(hosts, [&](Fid a, Fid b) {
         auto sa = score(a), sb = score(b);
@@ -214,9 +328,15 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
 
 std::optional<Host> default_host(Project& project, Fid header) {
     for(auto host: ranked_hosts(project, header)) {
+        if(auto found = enterings(project, host, header)) {
+            if(!found->empty()) {
+                return std::move(found->front());
+            }
+            continue;
+        }
         auto chain = project.dep_graph.find_include_chain(host, header);
         if(!chain.empty()) {
-            return Host{.file = host, .chain = std::move(chain)};
+            return Host{.file = host, .chain = std::move(chain), .lexical = true};
         }
     }
     return std::nullopt;

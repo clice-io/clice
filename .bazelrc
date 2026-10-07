@@ -1,0 +1,4 @@
+import %workspace%/bazel/clice.bazelrc
+
+# A local file of one's own (a disk cache, say), never committed.
+try-import %workspace%/user.bazelrc

@@ -13,9 +13,9 @@ export interface ContextItem {
     /// compile configurations).
     uri: string;
 
-    /// For header contexts: which include of the header in its direct
-    /// includer this context represents (0-based, in directive order).
-    /// Present only when the header is included more than once.
+    /// For header contexts: which place the host's compile enters the
+    /// header this context represents (0-based, in the order it does).
+    /// Present only when it enters the header more than once.
     occurrence?: number;
 
     /// For source compile configurations: canonical hash identifying the
@@ -46,7 +46,17 @@ export interface CurrentContextParams {
 }
 
 export interface CurrentContextResult {
+    /// The context the file compiles under, as queryContext lists it:
+    /// the user's choice, else the one picked automatically; null when
+    /// the file borrows no context and has no entry of its own.
     context: ContextItem | null;
+
+    /// Whether no choice of the user's is in force.
+    automatic: boolean;
+
+    /// The listing generation it answers under (QueryContextResult.epoch):
+    /// a listing of another epoch is out of date.
+    epoch: number;
 }
 
 export const CurrentContextRequest = new RequestType<
@@ -81,6 +91,15 @@ export interface SwitchContextResult {
 
 export const SwitchContextRequest = new RequestType<SwitchContextParams, SwitchContextResult, void>(
     "clice/switchContext",
+);
+
+/// clice/resetContext: drop the user's choice, back to the automatic one.
+export interface ResetContextParams {
+    uri: string;
+}
+
+export const ResetContextRequest = new RequestType<ResetContextParams, SwitchContextResult, void>(
+    "clice/resetContext",
 );
 
 /// clice/listConfigurations: the build configuration menu (the distinct
@@ -173,7 +192,8 @@ export const LogFloodRequest = new RequestType<LogFloodParams, LogFloodResult, v
 
 /// clice/internal/stats — TEST-ONLY, not a stable API. Ownership gauges
 /// for memory-lifecycle regression tests: each leak class is pinned by a
-/// deterministic counter instead of brittle RSS assertions.
+/// deterministic counter instead of brittle RSS assertions; and the counts
+/// of freshness checks, which pin what a request looks at.
 export interface StatsResult {
     pchLoadedStates: number;
     pchStateBytes: number;
@@ -185,6 +205,12 @@ export interface StatsResult {
     headerContexts: number;
     synthesizedContexts: number;
     sessions: number;
+    /// Freshness checks of files answered by a look at the disk, and from a
+    /// look not yet due.
+    checksLooked: number;
+    checksTrusted: number;
+    /// Preprocessor passes that looked for a unit's imports.
+    importScans: number;
 }
 
 export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/stats");

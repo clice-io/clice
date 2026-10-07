@@ -1,10 +1,11 @@
-#include <string>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "index/symbol_query.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/SmallVector.h"
+module clice;
+
+import :index.symbol_query;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {
@@ -44,218 +45,224 @@ llvm::SmallVector<index::ScopeEntry> chain(std::initializer_list<llvm::StringRef
     return entries;
 }
 
-TEST_SUITE(SymbolQuery) {
+ZEST_SUITE(SymbolQuery) {
 
-TEST_CASE(Modes) {
+ZEST_CASE(Modes) {
     auto fuzzy = parsed("foo");
-    EXPECT_EQ(fuzzy.mode, Mode::Fuzzy);
-    EXPECT_EQ(fuzzy.pattern, "foo");
-    EXPECT_TRUE(fuzzy.scope.empty());
-    EXPECT_TRUE(fuzzy.by_pattern());
+    ZEXPECT(fuzzy.mode == Mode::Fuzzy);
+    ZEXPECT(fuzzy.pattern == "foo");
+    ZEXPECT(fuzzy.scope.empty());
+    ZEXPECT(fuzzy.by_pattern());
 
     auto exact = parsed(R"("foo")");
-    EXPECT_EQ(exact.mode, Mode::Exact);
-    EXPECT_EQ(exact.pattern, "foo");
+    ZEXPECT(exact.mode == Mode::Exact);
+    ZEXPECT(exact.pattern == "foo");
 
     auto glob = parsed("get*Name");
-    EXPECT_EQ(glob.mode, Mode::Glob);
-    EXPECT_EQ(glob.pattern, "get*Name");
+    ZEXPECT(glob.mode == Mode::Glob);
+    ZEXPECT(glob.pattern == "get*Name");
 
     auto everything = parsed("");
-    EXPECT_EQ(everything.mode, Mode::Fuzzy);
-    EXPECT_TRUE(everything.pattern.empty());
+    ZEXPECT(everything.mode == Mode::Fuzzy);
+    ZEXPECT(everything.pattern.empty());
 
-    EXPECT_EQ(parsed("   ").mode, Mode::Fuzzy);
-    EXPECT_EQ(parsed("*").mode, Mode::Members);
-    EXPECT_EQ(parsed("**").mode, Mode::Subtree);
+    ZEXPECT(parsed("   ").mode == Mode::Fuzzy);
+    ZEXPECT(parsed("*").mode == Mode::Members);
+    ZEXPECT(parsed("**").mode == Mode::Subtree);
 }
 
-TEST_CASE(Scopes) {
+ZEST_CASE(Scopes) {
     auto qualified = parsed("ns::Foo::bar");
-    EXPECT_EQ(scope_names(qualified), (std::vector<std::string>{"ns", "Foo"}));
-    EXPECT_EQ(qualified.pattern, "bar");
-    EXPECT_FALSE(qualified.absolute);
+    ZEXPECT(scope_names(qualified) == (std::vector<std::string>{"ns", "Foo"}));
+    ZEXPECT(qualified.pattern == "bar");
+    ZEXPECT(!qualified.absolute);
 
     auto absolute = parsed("::ns::bar");
-    EXPECT_TRUE(absolute.absolute);
-    EXPECT_EQ(scope_names(absolute), (std::vector<std::string>{"ns"}));
-    EXPECT_EQ(absolute.pattern, "bar");
+    ZEXPECT(absolute.absolute);
+    ZEXPECT(scope_names(absolute) == (std::vector<std::string>{"ns"}));
+    ZEXPECT(absolute.pattern == "bar");
 
     auto top = parsed("::bar");
-    EXPECT_TRUE(top.absolute);
-    EXPECT_TRUE(top.scope.empty());
+    ZEXPECT(top.absolute);
+    ZEXPECT(top.scope.empty());
 
     auto members = parsed("ns::*");
-    EXPECT_EQ(members.mode, Mode::Members);
-    EXPECT_EQ(scope_names(members), (std::vector<std::string>{"ns"}));
-    EXPECT_EQ(parsed("ns::").mode, Mode::Members);
-    EXPECT_TRUE(parsed("ns::").pattern.empty());
+    ZEXPECT(members.mode == Mode::Members);
+    ZEXPECT(scope_names(members) == (std::vector<std::string>{"ns"}));
+    ZEXPECT(parsed("ns::").mode == Mode::Members);
+    ZEXPECT(parsed("ns::").pattern.empty());
 
     auto subtree = parsed("ns::**");
-    EXPECT_EQ(subtree.mode, Mode::Subtree);
-    EXPECT_TRUE(subtree.direct() == false);
-    EXPECT_TRUE(parsed("::ns::foo").direct());
+    ZEXPECT(subtree.mode == Mode::Subtree);
+    ZEXPECT(subtree.direct() == false);
+    ZEXPECT(parsed("::ns::foo").direct());
 
     auto quoted = parsed(R"(ns::"foo")");
-    EXPECT_EQ(quoted.mode, Mode::Exact);
-    EXPECT_EQ(scope_names(quoted), (std::vector<std::string>{"ns"}));
+    ZEXPECT(quoted.mode == Mode::Exact);
+    ZEXPECT(scope_names(quoted) == (std::vector<std::string>{"ns"}));
     auto wholly_quoted = parsed(R"("ns::foo")");
-    EXPECT_EQ(wholly_quoted.mode, Mode::Exact);
-    EXPECT_EQ(scope_names(wholly_quoted), (std::vector<std::string>{"ns"}));
-    EXPECT_EQ(wholly_quoted.pattern, "foo");
+    ZEXPECT(wholly_quoted.mode == Mode::Exact);
+    ZEXPECT(scope_names(wholly_quoted) == (std::vector<std::string>{"ns"}));
+    ZEXPECT(wholly_quoted.pattern == "foo");
     auto quoted_args = parsed(R"("ns::Box<std::string>")");
-    EXPECT_EQ(quoted_args.mode, Mode::Exact);
-    EXPECT_EQ(scope_names(quoted_args), (std::vector<std::string>{"ns"}));
-    EXPECT_EQ(quoted_args.pattern, "Box");
-    EXPECT_EQ(quoted_args.args, "<std::string>");
+    ZEXPECT(quoted_args.mode == Mode::Exact);
+    ZEXPECT(scope_names(quoted_args) == (std::vector<std::string>{"ns"}));
+    ZEXPECT(quoted_args.pattern == "Box");
+    ZEXPECT(quoted_args.args == "<std::string>");
 }
 
-TEST_CASE(Arguments) {
+ZEST_CASE(Arguments) {
     auto special = parsed("Widget<int>");
-    EXPECT_EQ(special.pattern, "Widget");
-    EXPECT_EQ(special.args, "<int>");
+    ZEXPECT(special.pattern == "Widget");
+    ZEXPECT(special.args == "<int>");
     auto nested = parsed("ns::Box<std::pair<int, int>>::get");
-    EXPECT_EQ(scope_names(nested), (std::vector<std::string>{"ns", "Box<std::pair<int, int>>"}));
-    EXPECT_EQ(nested.pattern, "get");
-    EXPECT_EQ(parsed("operator<<").pattern, "operator<<");
-    EXPECT_EQ(parsed("operator<=>").pattern, "operator<=>");
-    EXPECT_EQ(parsed("operator>").pattern, "operator>");
-    EXPECT_EQ(parsed("Foo::operator<").pattern, "operator<");
-    EXPECT_EQ(parsed("operator->").pattern, "operator->");
-    EXPECT_TRUE(parsed("operator<<").args.empty());
-    EXPECT_TRUE(index::args_match("", "<int>"));
-    EXPECT_TRUE(index::args_match("<int,4>", "<int, 4>"));
-    EXPECT_FALSE(index::args_match("<int>", "<long>"));
-    EXPECT_FALSE(index::args_match("<int>", ""));
+    ZEXPECT(scope_names(nested) == (std::vector<std::string>{"ns", "Box<std::pair<int, int>>"}));
+    ZEXPECT(nested.pattern == "get");
+    ZEXPECT(parsed("operator<<").pattern == "operator<<");
+    ZEXPECT(parsed("operator<=>").pattern == "operator<=>");
+    ZEXPECT(parsed("operator>").pattern == "operator>");
+    ZEXPECT(parsed("Foo::operator<").pattern == "operator<");
+    ZEXPECT(parsed("operator->").pattern == "operator->");
+    ZEXPECT(parsed("operator<<").args.empty());
+    auto named = parsed("binary_operator<int>");
+    ZEXPECT(named.pattern == "binary_operator");
+    ZEXPECT(named.args == "<int>");
+    auto member = parsed("binary_operator<int>::apply");
+    ZEXPECT(scope_names(member) == (std::vector<std::string>{"binary_operator<int>"}));
+    ZEXPECT(member.pattern == "apply");
+    ZEXPECT(index::args_match("", "<int>"));
+    ZEXPECT(index::args_match("<int,4>", "<int, 4>"));
+    ZEXPECT(!index::args_match("<int>", "<long>"));
+    ZEXPECT(!index::args_match("<int>", ""));
 }
 
-TEST_CASE(HandlesAndPositions) {
+ZEST_CASE(HandlesAndPositions) {
     auto handle = parsed("#1a2b");
-    EXPECT_TRUE(handle.handle.has_value());
-    EXPECT_EQ(*handle.handle, index::SymbolHash(0x1a2b));
-    EXPECT_FALSE(handle.by_pattern());
-    EXPECT_EQ(error_of("#xyz"), "invalid symbol id '#xyz'");
-    EXPECT_EQ(error_of("#"), "invalid symbol id '#'");
+    ZEXPECT(handle.handle);
+    ZEXPECT(*handle.handle == index::SymbolHash(0x1a2b));
+    ZEXPECT(!handle.by_pattern());
+    ZEXPECT(error_of("#xyz") == "invalid symbol id '#xyz'");
+    ZEXPECT(error_of("#") == "invalid symbol id '#'");
 
     auto line = parsed("src/a.cpp:120");
-    EXPECT_TRUE(line.position.has_value());
-    EXPECT_EQ(line.position->path, "src/a.cpp");
-    EXPECT_EQ(line.position->line, 120);
-    EXPECT_FALSE(line.position->column.has_value());
+    ZEXPECT(line.position);
+    ZEXPECT(line.position->path == "src/a.cpp");
+    ZEXPECT(line.position->line == 120);
+    ZEXPECT(!line.position->column.has_value());
 
     auto cursor = parsed("a.h:12:8");
-    EXPECT_EQ(cursor.position->path, "a.h");
-    EXPECT_EQ(cursor.position->line, 12);
-    EXPECT_EQ(cursor.position->column.value_or(0), 8);
+    ZEXPECT(cursor.position->path == "a.h");
+    ZEXPECT(cursor.position->line == 12);
+    ZEXPECT(cursor.position->column.value_or(0) == 8);
 
     auto windows = parsed(R"(C:\src\a.cpp:3)");
-    EXPECT_EQ(windows.position->path, R"(C:\src\a.cpp)");
-    EXPECT_EQ(windows.position->line, 3);
+    ZEXPECT(windows.position->path == R"(C:\src\a.cpp)");
+    ZEXPECT(windows.position->line == 3);
 
     // A colon inside a name that is no file is just a name.
-    EXPECT_FALSE(parsed("Foo:3").position.has_value());
-    EXPECT_EQ(parsed("Foo:3").pattern, "Foo:3");
-    EXPECT_EQ(error_of("a.cpp:0"), "lines and columns count from 1");
+    ZEXPECT(!parsed("Foo:3").position.has_value());
+    ZEXPECT(parsed("Foo:3").pattern == "Foo:3");
+    ZEXPECT(error_of("a.cpp:0") == "lines and columns count from 1");
 }
 
-TEST_CASE(Filters) {
+ZEST_CASE(Filters) {
     auto filtered = parsed("foo kind:function,Method path:src/index/");
-    EXPECT_EQ(filtered.pattern, "foo");
-    EXPECT_EQ(filtered.kinds.size(), std::size_t(2));
-    EXPECT_TRUE(filtered.kinds[0] == SymbolKind::Function);
-    EXPECT_TRUE(filtered.kinds[1] == SymbolKind::Method);
-    EXPECT_EQ(filtered.paths, (std::vector<std::string>{"src/index/"}));
+    ZEXPECT(filtered.pattern == "foo");
+    ZEXPECT(filtered.kinds.size() == std::size_t(2));
+    ZEXPECT(filtered.kinds[0] == SymbolKind::Function);
+    ZEXPECT(filtered.kinds[1] == SymbolKind::Method);
+    ZEXPECT(filtered.paths == (std::vector<std::string>{"src/index/"}));
     auto spaced_path = parsed(R"(foo path:"src/my file.cpp")");
-    EXPECT_EQ(spaced_path.paths, (std::vector<std::string>{"src/my file.cpp"}));
+    ZEXPECT(spaced_path.paths == (std::vector<std::string>{"src/my file.cpp"}));
     auto spaced_place = parsed(R"("src/my file.cpp:12")");
-    EXPECT_TRUE(spaced_place.position.has_value());
-    EXPECT_EQ(spaced_place.position->path, "src/my file.cpp");
+    ZEXPECT(spaced_place.position);
+    ZEXPECT(spaced_place.position->path == "src/my file.cpp");
     auto repeated = parsed("kind:struct kind:class Foo");
-    EXPECT_EQ(repeated.kinds.size(), std::size_t(2));
-    EXPECT_EQ(repeated.pattern, "Foo");
-    EXPECT_EQ(error_of("foo kind:banana"), "unknown symbol kind 'banana'");
-    EXPECT_EQ(error_of("foo bar"), "one name per query; 'bar' is a second");
-    EXPECT_EQ(error_of(R"("foo)"), "unterminated quote");
-    EXPECT_EQ(error_of("Foo<int"), "unbalanced '<'");
-    EXPECT_EQ(error_of("*::foo"), "a scope names a container: '*'");
+    ZEXPECT(repeated.kinds.size() == std::size_t(2));
+    ZEXPECT(repeated.pattern == "Foo");
+    ZEXPECT(error_of("foo kind:banana") == "unknown symbol kind 'banana'");
+    ZEXPECT(error_of("foo bar") == "one name per query; 'bar' is a second");
+    ZEXPECT(error_of(R"("foo)") == "unterminated quote");
+    ZEXPECT(error_of("Foo<int") == "unbalanced '<'");
+    ZEXPECT(error_of("*::foo") == "a scope names a container: '*'");
     auto spaced = parsed(R"(Box<int, 4> kind:struct)");
-    EXPECT_EQ(spaced.pattern, "Box");
-    EXPECT_EQ(spaced.args, "<int, 4>");
-    EXPECT_EQ(spaced.kinds.size(), std::size_t(1));
+    ZEXPECT(spaced.pattern == "Box");
+    ZEXPECT(spaced.args == "<int, 4>");
+    ZEXPECT(spaced.kinds.size() == std::size_t(1));
 }
 
-TEST_CASE(Globs) {
-    EXPECT_TRUE(index::glob_matches("foo*", "foobar"));
-    EXPECT_TRUE(index::glob_matches("*_test", "unit_test"));
-    EXPECT_FALSE(index::glob_matches("*_test", "unit_tests"));
-    EXPECT_TRUE(index::glob_matches("get?Name", "getXName"));
-    EXPECT_FALSE(index::glob_matches("get?Name", "getName"));
-    EXPECT_TRUE(index::glob_matches("*foo*", "xfoox"));
-    EXPECT_TRUE(index::glob_matches("foo", "FOO"));
-    EXPECT_FALSE(index::glob_matches("Foo", "foo"));
-    EXPECT_TRUE(index::glob_matches("*", ""));
-    EXPECT_TRUE(index::glob_matches("a*b*c", "aXbYc"));
-    EXPECT_FALSE(index::glob_matches("a*b*c", "aXcYb"));
+ZEST_CASE(Globs) {
+    ZEXPECT(index::glob_matches("foo*", "foobar"));
+    ZEXPECT(index::glob_matches("*_test", "unit_test"));
+    ZEXPECT(!index::glob_matches("*_test", "unit_tests"));
+    ZEXPECT(index::glob_matches("get?Name", "getXName"));
+    ZEXPECT(!index::glob_matches("get?Name", "getName"));
+    ZEXPECT(index::glob_matches("*foo*", "xfoox"));
+    ZEXPECT(index::glob_matches("foo", "FOO"));
+    ZEXPECT(!index::glob_matches("Foo", "foo"));
+    ZEXPECT(index::glob_matches("*", ""));
+    ZEXPECT(index::glob_matches("a*b*c", "aXbYc"));
+    ZEXPECT(!index::glob_matches("a*b*c", "aXcYb"));
     auto literals = index::glob_literals("get*Na?e*");
-    EXPECT_EQ(literals.size(), std::size_t(3));
-    EXPECT_EQ(literals[0], "get");
-    EXPECT_EQ(literals[1], "Na");
-    EXPECT_EQ(literals[2], "e");
+    ZEXPECT(literals.size() == std::size_t(3));
+    ZEXPECT(literals[0] == "get");
+    ZEXPECT(literals[1] == "Na");
+    ZEXPECT(literals[2] == "e");
 }
 
-TEST_CASE(Paths) {
-    EXPECT_TRUE(index::path_matches("a.cpp", "/w/src/a.cpp"));
-    EXPECT_FALSE(index::path_matches("a.cpp", "/w/src/ba.cpp"));
-    EXPECT_TRUE(index::path_matches("src/a.cpp", "/w/src/a.cpp"));
-    EXPECT_FALSE(index::path_matches("src/a.cpp", "/w/xsrc/a.cpp"));
-    EXPECT_TRUE(index::path_matches("src/index/", "/w/src/index/a.cpp"));
-    EXPECT_FALSE(index::path_matches("src/index/", "/w/src/indexer/a.cpp"));
-    EXPECT_TRUE(index::path_matches("/w/src/", "/w/src/a.cpp"));
-    EXPECT_TRUE(index::path_matches("/w/src/a.cpp", "/w/src/a.cpp"));
-    EXPECT_FALSE(index::path_matches("/w/src/a.cpp", "/w/src/a.cpp2"));
-    EXPECT_TRUE(index::path_matches("/w/src", "/w/src/a.cpp"));
-    EXPECT_FALSE(index::path_matches("/w/src/", "/x/w/src/a.cpp"));
-    EXPECT_TRUE(index::path_matches(R"(src\a.cpp)", "C:/w/src/a.cpp"));
-    EXPECT_TRUE(index::path_matches("C:/w/", R"(C:\w\src\a.cpp)"));
+ZEST_CASE(Paths) {
+    ZEXPECT(index::path_matches("a.cpp", "/w/src/a.cpp"));
+    ZEXPECT(!index::path_matches("a.cpp", "/w/src/ba.cpp"));
+    ZEXPECT(index::path_matches("src/a.cpp", "/w/src/a.cpp"));
+    ZEXPECT(!index::path_matches("src/a.cpp", "/w/xsrc/a.cpp"));
+    ZEXPECT(index::path_matches("src/index/", "/w/src/index/a.cpp"));
+    ZEXPECT(!index::path_matches("src/index/", "/w/src/indexer/a.cpp"));
+    ZEXPECT(index::path_matches("/w/src/", "/w/src/a.cpp"));
+    ZEXPECT(index::path_matches("/w/src/a.cpp", "/w/src/a.cpp"));
+    ZEXPECT(!index::path_matches("/w/src/a.cpp", "/w/src/a.cpp2"));
+    ZEXPECT(index::path_matches("/w/src", "/w/src/a.cpp"));
+    ZEXPECT(!index::path_matches("/w/src/", "/x/w/src/a.cpp"));
+    ZEXPECT(index::path_matches(R"(src\a.cpp)", "C:/w/src/a.cpp"));
+    ZEXPECT(index::path_matches("C:/w/", R"(C:\w\src\a.cpp)"));
 }
 
-TEST_CASE(Scope) {
+ZEST_CASE(Scope) {
     auto sub = parsed("inner::paint");
-    EXPECT_TRUE(index::in_scope(sub, chain({"outer", "inner", "Widget"})));
-    EXPECT_TRUE(index::in_scope(sub, chain({"inner"})));
-    EXPECT_FALSE(index::in_scope(sub, chain({"outer"})));
-    EXPECT_FALSE(index::in_scope(parsed("inner::outer::paint"), chain({"outer", "inner"})));
-    EXPECT_TRUE(index::in_scope(parsed("outer::paint"), chain({"outer", "inner", "Widget"})));
-    EXPECT_TRUE(index::in_scope(parsed("paint"), chain({"outer"})));
-    EXPECT_TRUE(index::in_scope(parsed("paint"), chain({})));
+    ZEXPECT(index::in_scope(sub, chain({"outer", "inner", "Widget"})));
+    ZEXPECT(index::in_scope(sub, chain({"inner"})));
+    ZEXPECT(!index::in_scope(sub, chain({"outer"})));
+    ZEXPECT(!index::in_scope(parsed("inner::outer::paint"), chain({"outer", "inner"})));
+    ZEXPECT(index::in_scope(parsed("outer::paint"), chain({"outer", "inner", "Widget"})));
+    ZEXPECT(index::in_scope(parsed("paint"), chain({"outer"})));
+    ZEXPECT(index::in_scope(parsed("paint"), chain({})));
 
     auto absolute = parsed("::outer::inner::paint");
-    EXPECT_TRUE(index::in_scope(absolute, chain({"outer", "inner"})));
-    EXPECT_FALSE(index::in_scope(absolute, chain({"outer", "inner", "Widget"})));
-    EXPECT_FALSE(index::in_scope(parsed("::inner::paint"), chain({"outer", "inner"})));
-    EXPECT_TRUE(index::in_scope(parsed("::paint"), chain({})));
-    EXPECT_FALSE(index::in_scope(parsed("::paint"), chain({"outer"})));
+    ZEXPECT(index::in_scope(absolute, chain({"outer", "inner"})));
+    ZEXPECT(!index::in_scope(absolute, chain({"outer", "inner", "Widget"})));
+    ZEXPECT(!index::in_scope(parsed("::inner::paint"), chain({"outer", "inner"})));
+    ZEXPECT(index::in_scope(parsed("::paint"), chain({})));
+    ZEXPECT(!index::in_scope(parsed("::paint"), chain({"outer"})));
 
     auto members = parsed("inner::*");
-    EXPECT_TRUE(index::in_scope(members, chain({"outer", "inner"})));
-    EXPECT_FALSE(index::in_scope(members, chain({"outer", "inner", "Widget"})));
-    EXPECT_TRUE(index::in_scope(parsed("outer::inner::*"), chain({"outer", "v2", "inner"})));
-    EXPECT_TRUE(index::in_scope(parsed("*"), chain({"outer"})));
-    EXPECT_TRUE(index::in_scope(parsed("::*"), chain({})));
-    EXPECT_FALSE(index::in_scope(parsed("::*"), chain({"outer"})));
+    ZEXPECT(index::in_scope(members, chain({"outer", "inner"})));
+    ZEXPECT(!index::in_scope(members, chain({"outer", "inner", "Widget"})));
+    ZEXPECT(index::in_scope(parsed("outer::inner::*"), chain({"outer", "v2", "inner"})));
+    ZEXPECT(index::in_scope(parsed("*"), chain({"outer"})));
+    ZEXPECT(index::in_scope(parsed("::*"), chain({})));
+    ZEXPECT(!index::in_scope(parsed("::*"), chain({"outer"})));
 
     auto subtree = parsed("inner::**");
-    EXPECT_TRUE(index::in_scope(subtree, chain({"outer", "inner", "Widget"})));
-    EXPECT_TRUE(index::in_scope(parsed("::outer::**"), chain({"outer", "inner"})));
-    EXPECT_FALSE(index::in_scope(parsed("::inner::**"), chain({"outer", "inner"})));
+    ZEXPECT(index::in_scope(subtree, chain({"outer", "inner", "Widget"})));
+    ZEXPECT(index::in_scope(parsed("::outer::**"), chain({"outer", "inner"})));
+    ZEXPECT(!index::in_scope(parsed("::inner::**"), chain({"outer", "inner"})));
 
-    EXPECT_TRUE(index::in_scope(parsed("Widget<int>::paint"), chain({"inner", "Widget<int>"})));
-    EXPECT_FALSE(index::in_scope(parsed("Widget<int>::paint"), chain({"inner", "Widget<long>"})));
-    EXPECT_TRUE(index::in_scope(parsed("Widget::paint"), chain({"inner", "Widget<int>"})));
-    EXPECT_TRUE(index::in_scope(parsed("INNER::paint"), chain({"inner"})));
+    ZEXPECT(index::in_scope(parsed("Widget<int>::paint"), chain({"inner", "Widget<int>"})));
+    ZEXPECT(!index::in_scope(parsed("Widget<int>::paint"), chain({"inner", "Widget<long>"})));
+    ZEXPECT(index::in_scope(parsed("Widget::paint"), chain({"inner", "Widget<int>"})));
+    ZEXPECT(index::in_scope(parsed("INNER::paint"), chain({"inner"})));
 }
 
-};  // TEST_SUITE(SymbolQuery)
+};  // ZEST_SUITE(SymbolQuery)
 
 }  // namespace
 }  // namespace clice::testing

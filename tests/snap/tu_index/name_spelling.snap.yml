@@ -1,0 +1,15 @@
+---
+created_at: 2026-10-02
+input_file: name_spelling.cpp
+---
+- { loc: "5:8", kind: Macro, text: "NAME", relations: [Definition] }
+- { loc: "7:7", kind: Struct, text: "Widget", relations: [Definition] }
+- { loc: "8:4", kind: Method, text: "~", relations: [Declaration] }
+- { loc: "8:5", kind: Macro, text: "NAME", relations: [Reference] }
+- { loc: "11:5", kind: Function, text: "make", relations: [Definition] }
+- { loc: "12:4", kind: Struct, text: "Widget", relations: [Reference] }
+- { loc: "12:12", kind: Variable, text: "widget", relations: [Definition] }
+- { loc: "12:23", kind: Operator, text: "new", relations: [Reference, Caller] }
+- { loc: "12:27", kind: Struct, text: "Widget", relations: [Reference] }
+- { loc: "13:6", kind: Operator, text: "delete", relations: [Reference, Caller] }
+- { loc: "13:13", kind: Variable, text: "widget", relations: [Reference] }

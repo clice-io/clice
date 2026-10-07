@@ -1,33 +1,29 @@
-#include "sched/batch.h"
+module;
 
-#include <algorithm>
-#include <chrono>
-#include <csignal>
-#include <cstdlib>
-#include <format>
-#include <thread>
+#include "modules/prelude.h"
 
-#include "command/command.h"
-#include "config/config.h"
-#include "project/command_resolver.h"
-#include "project/configuration.h"
-#include "project/index_store.h"
-#include "project/project.h"
-#include "sched/bootstrap.h"
-#include "sched/index/pump.h"
-#include "sched/stack.h"
-#include "support/anomaly.h"
-#include "support/cache_store.h"
-#include "support/filesystem.h"
-#include "support/logging.h"
-#include "support/timer.h"
-#include "worker/pool.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/Program.h"
+module clice;
+
+import :command.command;
+import :config.config;
+import :project.command_resolver;
+import :project.configuration;
+import :project.index_store;
+import :project.project;
+import :sched.batch;
+import :sched.bootstrap;
+import :sched.index.pump;
+import :sched.stack;
+import :support.anomaly;
+import :support.logging;
+import :support.timer;
+import :vfs.cache_store;
+import :vfs.file_system;
+import :vfs.path;
+import :worker.pool;
 
 namespace clice {
 
@@ -58,10 +54,12 @@ kota::task<> wait_until_indexed(const IndexPump& pump) {
     }
 }
 
-/// The first signal asks for a graceful stop: in-flight files are
-/// abandoned, finished ones are persisted, and a rerun resumes from
-/// there. A second signal — of either watched kind, hence the shared
-/// flag — exits immediately.
+/// The first signal — of either watched kind, hence the shared flag —
+/// asks for a graceful stop: in-flight files are abandoned, finished ones
+/// are persisted, and a rerun resumes from there. A second Ctrl-C exits
+/// immediately; a repeated SIGTERM does not: supervisors send it more than
+/// once (GNU timeout signals the child, then its whole process group) and
+/// escalate with SIGKILL themselves.
 kota::task<> watch_signal(int signum, kota::cancellation_source& stop, bool& stop_requested) {
     auto watcher = kota::signal::create();
     if(!watcher || watcher->start(signum).has_error()) {
@@ -69,12 +67,13 @@ kota::task<> watch_signal(int signum, kota::cancellation_source& stop, bool& sto
     }
     while(true) {
         co_await watcher->wait();
-        if(stop_requested) {
+        if(!stop_requested) {
+            stop_requested = true;
+            LOG_INFO("Interrupted; saving indexing progress");
+            stop.cancel();
+        } else if(signum == SIGINT) {
             std::_Exit(130);
         }
-        stop_requested = true;
-        LOG_INFO("Interrupted; saving indexing progress");
-        stop.cancel();
     }
 }
 
@@ -134,10 +133,11 @@ struct BatchLifetime {
     kota::cancellation_source stop;
     kota::task_group<> aux;
 
-    explicit BatchLifetime(BatchStack& stack) : stack(stack), aux(stack.loop) {
+    explicit BatchLifetime(BatchStack& stack) : stack(stack) {
         aux.spawn(watch_signal(SIGINT, stop, stop_requested));
         aux.spawn(watch_signal(SIGTERM, stop, stop_requested));
         aux.spawn(checkpoint_task(stack));
+        aux.spawn(stack.files.disk.end_turns(stack.loop));
     }
 
     kota::cancellation_token token() {
@@ -325,11 +325,11 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
         plan.tidy_params = tidy::resolve_tidy_params(stack.project.file_table.spelling(path_id));
     }
 
-    // One budget-free retry: a worker crash or preemption says nothing
-    // about the TU, and a one-shot sweep has no later round to requeue
-    // into.
+    // One retry: a lost run or a preemption says nothing about the TU, and
+    // a one-shot sweep has no later round to requeue into. A run that
+    // crashed its worker would crash the retry too.
     auto outcome = co_await stack.sched.turun.run(path_id, plan);
-    if(outcome.verdict == TURunFamily::Verdict::Crashed ||
+    if(outcome.verdict == TURunFamily::Verdict::Lost ||
        outcome.verdict == TURunFamily::Verdict::Preempted) {
         outcome = co_await stack.sched.turun.run(path_id, std::move(plan));
     }
@@ -366,7 +366,12 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
                      outcome.error.empty() ? "no compile command found" : outcome.error);
             break;
         }
-        case TURunFamily::Verdict::Crashed:
+        case TURunFamily::Verdict::Crashed: {
+            sweep.failed += 1;
+            LOG_WARN("Lint gave up on {}: {}", file, outcome.error);
+            break;
+        }
+        case TURunFamily::Verdict::Lost:
         case TURunFamily::Verdict::Preempted: {
             sweep.failed += 1;
             LOG_WARN("Lint gave up on {} after a retry: {}", file, outcome.error);
@@ -384,7 +389,7 @@ kota::task<> run_lint_sweep(BatchStack& stack,
                             const BatchLintOptions& options,
                             llvm::ArrayRef<Fid> tus,
                             LintSweep& sweep) {
-    kota::task_group<> workers(stack.loop);
+    kota::task_group<> workers;
 
     // The dispatch loop runs as a child of `workers`, like the pump's
     // round feeder: a cancel cascades through the join and every in-flight
@@ -570,9 +575,13 @@ std::vector<CanonicalPath> project_files(Project& project,
     llvm::DenseSet<Fid> unit(members.begin(), members.end());
     for(auto fid: project.dep_graph.all_files()) {
         auto path = files.resolve(fid);
+        // A header only a command forces in, which no unit's text
+        // includes, is left as it is: often a build generated it (CMake's
+        // cmake_pch.hxx).
         if(!formats(path) || !build.formattable(path) ||
            (!unit.contains(fid) &&
-            llvm::any_of(skipped_dirs, [&](auto& dir) { return path::under(path, dir); }))) {
+            (project.dep_graph.get_includers(fid).empty() ||
+             llvm::any_of(skipped_dirs, [&](auto& dir) { return path::under(path, dir); })))) {
             continue;
         }
         result.emplace_back(path);
@@ -581,27 +590,14 @@ std::vector<CanonicalPath> project_files(Project& project,
 }
 
 /// The stderr of one clang-format run; `status` is negative when the
-/// process could not be run or waited for, `error` saying why.
+/// process could not be run or was killed, `error` saying why.
 struct ToolRun {
     std::int64_t status = -1;
     std::string output;
     std::string error;
 };
 
-kota::task<std::string> drain_pipe(kota::pipe pipe) {
-    std::string buffer;
-    while(true) {
-        auto chunk = co_await pipe.read();
-        if(!chunk.has_value() || chunk.value().empty()) {
-            break;
-        }
-        buffer += chunk.value();
-    }
-    co_return buffer;
-}
-
-kota::task<ToolRun> run_clang_format(kota::event_loop& loop,
-                                     const std::string& executable,
+kota::task<ToolRun> run_clang_format(const std::string& executable,
                                      bool check,
                                      llvm::ArrayRef<std::string> chunk) {
     kota::process::options opts;
@@ -614,37 +610,23 @@ kota::task<ToolRun> run_clang_format(kota::event_loop& loop,
         opts.args.push_back("-i");
     }
     opts.args.insert(opts.args.end(), chunk.begin(), chunk.end());
-    opts.streams = {
-        kota::process::stdio::ignore(),
-        kota::process::stdio::ignore(),
-        kota::process::stdio::pipe(false, true),
-    };
-    auto spawn = kota::process::spawn(opts, loop);
-    if(!spawn.has_value()) {
+    auto captured = co_await kota::process::capture(std::move(opts));
+    if(!captured) {
         co_return ToolRun{
-            .error = std::format("cannot run {}: {}", executable, spawn.error().message())};
+            .error = std::format("cannot run {}: {}", executable, captured.error().message())};
     }
-    auto& child = *spawn;
-    auto output = co_await drain_pipe(std::move(child.stderr_pipe));
-    auto exit = co_await child.proc.wait();
-    if(!exit.has_value()) {
+    if(captured->status.term_signal != 0) {
         co_return ToolRun{
-            .output = std::move(output),
-            .error =
-                std::format("{} did not exit cleanly: {}", executable, exit.error().message())};
+            .output = std::move(captured->stderr_data),
+            .error = std::format("{} was killed by {}", executable, captured->status.to_string())};
     }
-    if(exit->term_signal != 0) {
-        co_return ToolRun{
-            .output = std::move(output),
-            .error = std::format("{} was killed by signal {}", executable, exit->term_signal)};
-    }
-    co_return ToolRun{.status = exit->status, .output = std::move(output)};
+    co_return ToolRun{.status = captured->status.status,
+                      .output = std::move(captured->stderr_data)};
 }
 
 /// One of the `jobs` workers: runs the next unclaimed chunk until none is
 /// left.
-kota::task<> format_chunks(kota::event_loop& loop,
-                           const std::string& executable,
+kota::task<> format_chunks(const std::string& executable,
                            bool check,
                            llvm::ArrayRef<std::vector<std::string>> chunks,
                            std::size_t& next,
@@ -652,20 +634,19 @@ kota::task<> format_chunks(kota::event_loop& loop,
     while(next < chunks.size()) {
         auto index = next;
         next += 1;
-        runs[index] = co_await run_clang_format(loop, executable, check, chunks[index]);
+        runs[index] = co_await run_clang_format(executable, check, chunks[index]);
     }
 }
 
-kota::task<> run_format_sweep(kota::event_loop& loop,
-                              const std::string& executable,
+kota::task<> run_format_sweep(const std::string& executable,
                               bool check,
                               std::uint32_t jobs,
                               llvm::ArrayRef<std::vector<std::string>> chunks,
                               std::vector<ToolRun>& runs) {
     std::size_t next = 0;
-    kota::task_group<> workers(loop);
+    kota::task_group<> workers;
     for(std::uint32_t i = 0; i < jobs && i < chunks.size(); i += 1) {
-        workers.spawn(format_chunks(loop, executable, check, chunks, next, runs));
+        workers.spawn(format_chunks(executable, check, chunks, next, runs));
     }
     co_await workers.join();
 }
@@ -696,7 +677,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
         return result;
     }
 
-    if(!llvm::sys::fs::is_directory(options.root)) {
+    if(!vfs::is_directory(options.root)) {
         result.exit_code = 2;
         result.error = std::format("{}: not a directory", options.root);
         return result;
@@ -728,9 +709,9 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     std::vector<CanonicalPath> directories;
     CanonicalRef root = project.config.workspace_root;
     for(auto& path: options.paths) {
-        if(llvm::sys::fs::is_directory(path)) {
+        if(vfs::is_directory(path)) {
             directories.push_back(CanonicalPath(path));
-        } else if(!llvm::sys::fs::exists(path)) {
+        } else if(!vfs::exists(path)) {
             result.exit_code = 2;
             result.error = std::format("{}: no such file", path);
             return result;
@@ -816,9 +797,7 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
     std::uint32_t jobs =
         options.jobs != 0 ? options.jobs : std::max(1u, std::thread::hardware_concurrency());
     std::vector<ToolRun> runs(chunks.size());
-    kota::event_loop loop;
-    loop.schedule(run_format_sweep(loop, *executable, options.check, jobs, chunks, runs));
-    loop.run();
+    kota::run(run_format_sweep(*executable, options.check, jobs, chunks, runs));
 
     llvm::StringSet<> unformatted;
     bool failed = false;

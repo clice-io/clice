@@ -1,32 +1,30 @@
-#include "index/database.h"
+module;
 
-#include <atomic>
-#include <cassert>
-#include <cstring>
-#include <format>
-#include <type_traits>
+#include "modules/prelude.h"
 
 #ifdef __linux__
 #include <sys/vfs.h>
 #endif
 
-#include "lmdb.h"
-#include "support/cache_store.h"
-#include "support/filesystem.h"
-#include "support/logging.h"
-
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/xxhash.h"
+#ifndef _WIN32
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 #ifdef _WIN32
 #include <io.h>
 #include <windows.h>
 #endif
+#include "support/logging.macros.h"
+
+module clice;
+
+import :index.database;
+import :support.logging;
+import :vfs.cache_store;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::index {
 
@@ -37,16 +35,25 @@ constexpr llvm::StringLiteral lmdb_file_name = "index.mdb";
 constexpr std::size_t lmdb_small_mapsize = 256ull << 20;
 
 /// Virtual reservation; pages materialize on use. On POSIX the file's
-/// size tracks the data high-water mark, so the reservation is generous.
-/// On Windows the mapping extends the file to the whole mapsize — a
-/// 64 GiB file (sparse or not) alarms users and feeds backup and sync
-/// tools at its logical size — so the map starts small and grows on
-/// demand instead.
+/// size tracks the data high-water mark, so the reservation is generous —
+/// unless the address space is capped (`ulimit -v` on HPC and sandboxed
+/// hosts), where it would not fit. On Windows the mapping extends the file
+/// to the whole mapsize — a 64 GiB file (sparse or not) alarms users and
+/// feeds backup and sync tools at its logical size. Either way the map
+/// then starts small and grows on demand instead.
+std::size_t default_mapsize() {
 #ifdef _WIN32
-constexpr std::size_t lmdb_default_mapsize = lmdb_small_mapsize;
+    return lmdb_small_mapsize;
 #else
-constexpr std::size_t lmdb_default_mapsize = 64ull << 30;
+    constexpr std::size_t generous = 64ull << 30;
+    struct rlimit limit;
+    if(getrlimit(RLIMIT_AS, &limit) == 0 && limit.rlim_cur != RLIM_INFINITY &&
+       limit.rlim_cur < 2 * generous) {
+        return lmdb_small_mapsize;
+    }
+    return generous;
 #endif
+}
 
 char kind_prefix(IndexBlobKind kind) {
     switch(kind) {
@@ -97,8 +104,68 @@ bool is_corruption(int rc) {
 }
 
 void remove_database_files(llvm::StringRef path) {
-    llvm::sys::fs::remove(path);
-    llvm::sys::fs::remove(path + "-lock");
+    vfs::remove(path);
+    vfs::remove(path.str() + "-lock");
+}
+
+/// The file's length against the length its newest meta page vouches
+/// for: every page up to the last one it declares.
+struct Coverage {
+    std::uint64_t length;
+    std::uint64_t declared;
+};
+
+Coverage coverage(MDB_env* env) {
+    MDB_envinfo info;
+    mdb_env_info(env, &info);
+    MDB_stat db_stat;
+    mdb_env_stat(env, &db_stat);
+    std::uint64_t declared = (static_cast<std::uint64_t>(info.me_last_pgno) + 1) * db_stat.ms_psize;
+    mdb_filehandle_t fd;
+    mdb_env_get_fd(env, &fd);
+#ifdef _WIN32
+    LARGE_INTEGER length{};
+    ::GetFileSizeEx(fd, &length);
+    return {static_cast<std::uint64_t>(length.QuadPart), declared};
+#else
+    struct stat file{};
+    ::fstat(fd, &file);
+    return {static_cast<std::uint64_t>(file.st_size), declared};
+#endif
+}
+
+/// LMDB reads the file through a shared mapping, so a page referenced
+/// past the end of a truncated file faults (SIGBUS) instead of failing
+/// the read. A healthy file can be short too — a commit never writes the
+/// tail pages it allocated and freed again, and nothing references them —
+/// so the length alone cannot tell damage from health. Writers keep the
+/// file covering every declared page, zero-filling the gap: a healthy
+/// tree never reads those pages, and a damaged one reads zeros instead of
+/// faulting — a tree page as MDB_CORRUPTED, which the repair path
+/// handles, a blob as bytes its format check rejects. Read-only openers
+/// rely on it and take a short file for damage; a file written before
+/// this rule existed reads as damaged until a writer opens it. The write
+/// transaction keeps every other writer from growing the file meanwhile.
+int cover_declared_pages(MDB_env* env) {
+#ifdef _WIN32
+    // A writable mapping extends the file to the whole map size.
+    return 0;
+#else
+    MDB_txn* txn = nullptr;
+    if(int rc = mdb_txn_begin(env, nullptr, 0, &txn)) {
+        return rc;
+    }
+    int rc = 0;
+    if(auto [length, declared] = coverage(env); length < declared) {
+        mdb_filehandle_t fd;
+        mdb_env_get_fd(env, &fd);
+        if(::ftruncate(fd, static_cast<off_t>(declared)) != 0) {
+            rc = errno;
+        }
+    }
+    mdb_txn_abort(txn);
+    return rc;
+#endif
 }
 
 class LmdbDatabase final : public BlobDatabase {
@@ -208,6 +275,9 @@ public:
         }
         if(int rc = mdb_txn_commit(wtxn)) {
             return fail_all(rc, "commit");
+        }
+        if(int rc = cover_declared_pages(env)) {
+            LOG_WARN("Cannot extend the index database over its pages: {}", mdb_strerror(rc));
         }
         return {};
     }
@@ -408,7 +478,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
                                             bool read_only) {
     auto path = path::join(library, lmdb_file_name);
 
-    auto mapsize = initial_mapsize != 0 ? initial_mapsize : lmdb_default_mapsize;
+    auto mapsize = initial_mapsize != 0 ? initial_mapsize : default_mapsize();
 
     // One recovery retry: confirmed corruption (or a meta mismatch) is
     // repaired by deleting the database — it is a rebuildable cache, and
@@ -416,12 +486,14 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
     // Transient errors (permissions, fd/memory pressure) must NOT delete
     // anything: persistence is disabled for this session instead, the
     // same discipline the loader applies to an unreadable global blob.
-    for(int attempt = 0; attempt < 2; attempt += 1) {
+    bool repaired = false;
+    int reopens = 0;
+    while(true) {
         // Giving up must not leave behind a file this attempt created
         // (make_sparse and mdb_env_open both create on demand): a later
         // session would misread the abandoned uninitialized placeholder as
         // corruption and log a spurious rebuild.
-        bool created = !read_only && !llvm::sys::fs::exists(path);
+        bool created = !read_only && !vfs::exists(path);
         auto discard_created = [&] {
             if(created) {
                 remove_database_files(path);
@@ -444,12 +516,22 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
         // loop should retry; false = give up with persistence disabled.
         auto fail = [&](int rc, llvm::StringRef stage) {
             mdb_env_close(env);
-            if(!read_only && is_corruption(rc) && attempt == 0) {
+            if(read_only && is_corruption(rc)) {
+                LOG_WARN(
+                    "Index database at {} is damaged ({} failed: {}); run `clice index` to "
+                    "repair it",
+                    path,
+                    stage,
+                    mdb_strerror(rc));
+                return false;
+            }
+            if(is_corruption(rc) && !repaired) {
                 LOG_WARN("Index database at {} is corrupt ({} failed: {}); rebuilding",
                          path,
                          stage,
                          mdb_strerror(rc));
                 remove_database_files(path);
+                repaired = true;
                 return true;
             }
             LOG_WARN(
@@ -483,8 +565,37 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
             mdb_env_set_mapsize(env, 0);
             rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &txn);
         }
+        // The last process to close finds itself alone and destroys the
+        // lock file's mutexes, racing an opener blocked on its shared lock
+        // meanwhile: that opener's first transaction fails with EINVAL. A
+        // reopen finds the lock file unowned and initializes it afresh.
+        if(rc == EINVAL && reopens < 3) {
+            mdb_env_close(env);
+            reopens += 1;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10 * reopens));
+            continue;
+        }
         if(rc != 0) {
             if(fail(rc, "snapshot")) {
+                continue;
+            }
+            return nullptr;
+        }
+        if(read_only) {
+            if(auto [length, declared] = coverage(env); length < declared) {
+                mdb_txn_abort(txn);
+                mdb_env_close(env);
+                LOG_WARN(
+                    "Index database at {} is shorter than its pages ({} of {} bytes); run "
+                    "`clice index` to repair it",
+                    path,
+                    length,
+                    declared);
+                return nullptr;
+            }
+        } else if(int cover_rc = cover_declared_pages(env)) {
+            mdb_txn_abort(txn);
+            if(fail(cover_rc, "cover")) {
                 continue;
             }
             return nullptr;
@@ -519,7 +630,6 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
         }
         return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), read_only);
     }
-    return nullptr;
 }
 
 enum class FsLocality : std::uint8_t {
@@ -587,10 +697,10 @@ std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
     read_only = read_only || store.read_only();
     auto library = library_directory(store, configuration);
     if(read_only) {
-        if(!llvm::sys::fs::exists(path::join(library, lmdb_file_name))) {
+        if(!vfs::exists(path::join(library, lmdb_file_name))) {
             return nullptr;
         }
-    } else if(auto ec = llvm::sys::fs::create_directories(library)) {
+    } else if(auto ec = vfs::create_directories(library)) {
         LOG_WARN("Cannot create the index library {}: {}", library, ec.message());
         return nullptr;
     }

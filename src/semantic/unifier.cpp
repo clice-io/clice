@@ -1,7 +1,10 @@
-#include "semantic/unifier.h"
+module;
 
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/RecursiveASTVisitor.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :semantic.unifier;
 
 namespace clice::types {
 

@@ -9,9 +9,9 @@ input_file: modules/02_module_partition.cpp
 - { loc: "4:0", text: "/// Module declarations tokenize partition names", kind: comment }
 - { loc: "6:0", text: "export", kind: keyword }
 - { loc: "6:7", text: "module", kind: keyword }
-- { loc: "6:14", text: "demo", kind: module }
-- { loc: "6:19", text: "core", kind: module }
-- { loc: "6:24", text: "part", kind: module }
+- { loc: "6:14", text: "demo", kind: module, modifiers: [definition] }
+- { loc: "6:19", text: "core", kind: module, modifiers: [definition] }
+- { loc: "6:24", text: "part", kind: module, modifiers: [definition] }
 - { loc: "8:0", text: "export", kind: keyword }
 - { loc: "8:7", text: "int", kind: primitive }
 - { loc: "8:11", text: "partition_value", kind: variable, modifiers: [definition] }

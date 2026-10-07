@@ -12,9 +12,9 @@ decl:
     - { file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "12:4-12:10" }
     - { file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "17:11-17:17" }
   callHierarchy:
-    - { name: "render", kind: Function, file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "12:4-12:10" }
+    - { name: "render", kind: Function, file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "12:0-14:1", selection: "12:4-12:10" }
   incomingCalls:
-    - { name: "use_render", kind: Function, file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "16:4-16:14", fromRanges: ["17:11-17:27"] }
+    - { name: "use_render", kind: Function, file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "16:0-18:1", selection: "16:4-16:14", fromRanges: ["17:11-17:17"] }
 
 def:
   definition:
@@ -26,9 +26,9 @@ def:
     - { file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "12:4-12:10" }
     - { file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "17:11-17:17" }
   callHierarchy:
-    - { name: "render", kind: Function, file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "12:4-12:10" }
+    - { name: "render", kind: Function, file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "12:0-14:1", selection: "12:4-12:10" }
   incomingCalls:
-    - { name: "use_render", kind: Function, file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "16:4-16:14", fromRanges: ["17:11-17:27"] }
+    - { name: "use_render", kind: Function, file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "16:0-18:1", selection: "16:4-16:14", fromRanges: ["17:11-17:17"] }
 
 use:
   definition:
@@ -41,6 +41,6 @@ use:
     - { file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "12:4-12:10" }
     - { file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "17:11-17:17" }
   callHierarchy:
-    - { name: "render", kind: Function, file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "12:4-12:10" }
+    - { name: "render", kind: Function, file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "12:0-14:1", selection: "12:4-12:10" }
   incomingCalls:
-    - { name: "use_render", kind: Function, file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "16:4-16:14", fromRanges: ["17:11-17:27"] }
+    - { name: "use_render", kind: Function, file: "${WS}/go_to_declaration/07_decl_signature_mismatch.cpp", range: "16:0-18:1", selection: "16:4-16:14", fromRanges: ["17:11-17:17"] }

@@ -1,38 +1,35 @@
-#include "server/project_server.h"
+module;
 
-#include <memory>
-#include <string>
-#include <vector>
+#include "modules/prelude.h"
 
 #include "version.h"
-#include "index/writer_lock.h"
-#include "sched/bootstrap.h"
-#include "server/control_server.h"
-#include "server/file_tracker.h"
-#include "server/master_server.h"
-#include "support/cache_store.h"
-#include "support/filesystem.h"
-#include "support/logging.h"
-#include "worker/protocol.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
 
-#include "kota/async/async.h"
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :index.writer_lock;
+import :sched.bootstrap;
+import :server.control_server;
+import :server.file_tracker;
+import :server.master_server;
+import :server.project_server;
+import :support.logging;
+import :vfs.cache_store;
+import :vfs.path;
+import :worker.protocol;
 
 namespace clice {
 
 ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     server(server), loop(server.loop), root(std::move(root)), project(server.files),
     sched(loop, project, commands, server.pool),
-    ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions, loop),
+    ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions),
     dispatcher(project, contexts, ast, server.pool),
     live_sources(project, sched.pch, sessions, ast.projections),
     index_query(project.project_index, project.file_table, &freshness, &live_sources),
     features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
-    invalidator(project, sessions, contexts, ast.projections, sched.pcm, sched.store),
-    bg_tasks(loop) {
+    invalidator(project, sessions, contexts, ast.projections, sched.pcm, sched.store) {
     ast.register_runner();
     // The loaded-state budget follows the open-document count; the PCH
     // family cannot see SessionStore, so the project wires the provider.
@@ -70,6 +67,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     // document changed on disk: the document gets the treatment the
     // changed file's cascade gives its dependents.
     ast.on_stale = [this](Fid path_id) {
+        this->server.drain_disk_changes();
         if(auto session = sessions.find(path_id)) {
             ast.invalidate(path_id);
             session->trial_done = false;
@@ -80,7 +78,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
 
 ProjectServer::~ProjectServer() = default;
 
-void ProjectServer::configure(llvm::StringRef init_options,
+void ProjectServer::configure(const std::optional<kota::codec::dyn::Value>& init_options,
                               llvm::ArrayRef<CanonicalPath> taken_cache_dirs) {
     config_issues.clear();
     config_path.clear();
@@ -96,8 +94,8 @@ void ProjectServer::configure(llvm::StringRef init_options,
             issue.message);
     }
     std::string own_cache_dir = project.config.project.cache_dir;
-    if(!init_options.empty()) {
-        if(auto ov = kota::codec::json::from_string(init_options, project.config); !ov) {
+    if(init_options) {
+        if(auto ov = kota::codec::dyn::from_dyn(*init_options, project.config); !ov) {
             LOG_GUIDANCE("Failed to apply initializationOptions: {}", ov.error().to_string());
         }
     }
@@ -170,7 +168,8 @@ void ProjectServer::start() {
         if(!report.has_commands) {
             LOG_GUIDANCE(
                 "No compile_commands.json found in workspace {}. Compile commands will be "
-                "guessed; see https://clice.io/en/guide/quick-start for setup.",
+                "guessed; see https://docs.clice.io/clice/guide/quick-start#project-setup for "
+                "setup.",
                 project.file_table.display(root));
         }
     }
@@ -194,6 +193,8 @@ void ProjectServer::start() {
     if(root.empty()) {
         return;
     }
+    auto poll_seconds = std::chrono::seconds(project.config.tracker.workspace_poll_seconds.value);
+    project.file_table.disk.add_root(root, {.max = poll_seconds});
     // Construct after the project load: the tracker baselines each
     // database at the read its entries came from.
     tracker = std::make_unique<FileTracker>(project, sessions, root);
@@ -202,12 +203,9 @@ void ProjectServer::start() {
     for(auto& [path_id, session]: sessions.sessions) {
         discover_around(path_id);
     }
-    auto& tracker_cfg = project.config.tracker;
-    if(tracker_cfg.cdb_poll_seconds.value > 0) {
-        bg_tasks.spawn(cdb_poll_task());
-    }
-    if(tracker_cfg.workspace_poll_seconds.value > 0) {
-        bg_tasks.spawn(workspace_poll_task());
+    if(poll_seconds.count() > 0) {
+        bg_tasks.spawn(sources_poll_task());
+        server.start_polling();
     }
 }
 
@@ -292,6 +290,9 @@ void ProjectServer::close_session(Fid path_id) {
     // flow before the initialize response. CDBExact keeps
     // format_diagnostics from decorating the empty set with guidance.
     if(auto session = sessions.find(path_id)) {
+        // The crash records stay with the file for a reopen; the
+        // retraction must not carry their notes.
+        sessions.park(*session);
         ast.publish_output(session,
                            CompileOutput{
                                .version = std::nullopt,
@@ -309,8 +310,9 @@ void ProjectServer::close_session(Fid path_id) {
     ast.drop(path_id);
     // The session's compile stood in for the file's background index
     // (IndexPump::compiled_by_session); the disk's turn again, unless it
-    // was deleted meanwhile.
-    if(!project.file_table.seen_missing(path_id) &&
+    // was deleted meanwhile or its index run failed for good, which waits
+    // for a change.
+    if(!project.file_table.seen_missing(path_id) && !sched.pump.failed().contains(path_id) &&
        sched.pump.enqueue(path_id, ReindexReason::DepsOnly)) {
         sched.pump.schedule(false);
     }
@@ -321,6 +323,12 @@ void ProjectServer::close_session(Fid path_id) {
     LOG_DEBUG("Closed {}", path);
 }
 
+void ProjectServer::open_closures(llvm::SmallVectorImpl<Fid>& files) {
+    for(auto& [path_id, session]: sessions.sessions) {
+        ast.closure(path_id, files);
+    }
+}
+
 bool ProjectServer::knows(Fid path_id) {
     return sessions.find(path_id) != nullptr || !project.build.commands(path_id).empty() ||
            project.dep_graph.knows(path_id) || !invalidator.readers(path_id).empty();
@@ -329,6 +337,11 @@ bool ProjectServer::knows(Fid path_id) {
 void ProjectServer::open_session(Fid path_id, std::string text, int version) {
     auto session = create_session(path_id);
     sessions.apply_open(*session, std::move(text), version);
+    // A reopened document still barred by a crash says so at once: its
+    // requests answer empty, and no compile will run to publish the note.
+    if(!session->quarantine->empty()) {
+        ast.republish(session);
+    }
     // What the disk holds under the buffer: a later save or outside
     // write is then a change from it, even for a file nothing else knew.
     project.file_table.current(path_id);
@@ -369,14 +382,18 @@ void ProjectServer::index_rows_changed(llvm::ArrayRef<Fid> path_ids) {
     }
 }
 
+void ProjectServer::tick_databases() {
+    if(!tracker || project.config.tracker.workspace_poll_seconds.value == 0) {
+        return;
+    }
+    auto events = tracker->tick_cdb();
+    if(!events.empty()) {
+        dispatch(events);
+    }
+}
+
 void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     auto dirty = invalidator.apply(events);
-
-    for(auto path_id: dirty.reset_trial) {
-        if(auto session = sessions.find(path_id)) {
-            session->trial_done = false;
-        }
-    }
 
     for(auto path_id: dirty.reset_header_mode) {
         commands.reset_header_mode(path_id);
@@ -390,12 +407,16 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
         if(auto session = sessions.find(path_id)) {
             ast.invalidate(path_id);
             session->trial_done = false;
+            session->quarantine->on_change(Quarantine::Clock::now());
         }
         commands.forget_self_contained(path_id);
     }
 
+    // A live round sends a compile of its own, which puts the AST back on
+    // a worker — invalidating it would only make it land stale and compile
+    // twice.
     for(auto path_id: dirty.mark_lost) {
-        if(sessions.find(path_id)) {
+        if(sessions.find(path_id) && !ast.compiling(path_id)) {
             ast.invalidate(path_id);
         }
     }
@@ -489,21 +510,16 @@ void ProjectServer::drain_store_evictions() {
     // on a worker thread); drop the derived pch_cache metadata here on the
     // event loop, or the content-keyed map grows for the server's
     // lifetime even for keys never requested again. An entry mid-rebuild
-    // keeps its slot — its commit republishes fresh blobs over the
-    // eviction.
+    // keeps its slot — its commit publishes a fresh pair. A key rebuilt
+    // after the eviction was recorded names another blob by now.
     for(auto& evicted: project.store->take_evictions()) {
         if(evicted.ns != "pch") {
             continue;
         }
-        // A key rebuilt after the eviction was recorded has live blobs
-        // again — the record is stale, not the entry. Erase only when the
-        // store still lacks the blob, and never mid-rebuild (the commit
-        // republishes over the eviction).
-        if(project.store->lookup("pch", evicted.key)) {
-            continue;
-        }
-        if(auto it = project.pch_cache.find(evicted.key);
-           it != project.pch_cache.end() && !sched.pch.building(evicted.key)) {
+        auto it = llvm::find_if(project.pch_cache, [&](const auto& entry) {
+            return entry.second.blob == evicted.key;
+        });
+        if(it != project.pch_cache.end() && !sched.pch.building(it->getKey())) {
             project.pch_cache.erase(it);
         }
     }
@@ -514,8 +530,8 @@ void ProjectServer::start_control_listener() {
     auto acceptor = kota::tcp::listen(host, 0, {}, loop);
     std::optional<int> port;
     if(acceptor) {
-        if(auto bound = kota::tcp::local_port(*acceptor)) {
-            port = *bound;
+        if(auto bound = acceptor->getsockname()) {
+            port = bound->port;
         }
     }
     if(!port) {
@@ -536,26 +552,14 @@ void ProjectServer::start_control_listener() {
     bg_tasks.spawn(serve_control(*this, std::move(*acceptor)));
 }
 
-kota::task<> ProjectServer::cdb_poll_task() {
-    auto interval = std::chrono::seconds(project.config.tracker.cdb_poll_seconds.value);
-    while(true) {
-        co_await kota::sleep(interval);
-        auto events = tracker->tick_cdb();
-        if(!events.empty()) {
-            dispatch(events);
-        }
-    }
-}
-
-kota::task<> ProjectServer::workspace_poll_task() {
+kota::task<> ProjectServer::sources_poll_task() {
     auto interval = std::chrono::seconds(project.config.tracker.workspace_poll_seconds.value);
     while(true) {
         co_await kota::sleep(interval);
-        auto events = co_await tracker->tick_workspace();
+        auto events = co_await tracker->tick_sources();
         if(!events.empty()) {
             dispatch(events);
         }
-        server.drain_disk_changes();
     }
 }
 

@@ -1,18 +1,22 @@
-#include <string>
+module;
 
-#include "test/test.h"
-#include "server/master_server.h"
-#include "support/anomaly.h"
-#include "support/logging.h"
+#include "modules/prelude.h"
 
-#include "kota/async/async.h"
+#include "support/anomaly.macros.h"
+
+module clice;
+
+import :server.master_server;
+import :support.anomaly;
+import :support.logging;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {
 
-TEST_SUITE(NotifyLog) {
+ZEST_SUITE(NotifyLog) {
 
-TEST_CASE(BoundedRetention) {
+ZEST_CASE(BoundedRetention) {
     kota::event_loop loop;
     MasterServer server(loop, "clice-test", "");
 
@@ -30,17 +34,17 @@ TEST_CASE(BoundedRetention) {
 
     spdlog::set_level(saved_level);
 
-    EXPECT_EQ(server.notify_seq, 130u);
-    EXPECT_EQ(wakeups, 130u);
-    ASSERT_EQ(server.notify_log.size(), 128u);
+    ZEXPECT(server.notify_seq == 130u);
+    ZEXPECT(wakeups == 130u);
+    ZASSERT(server.notify_log.size() == 128u);
     // Drop-oldest: the first two messages were evicted, and the sequence
     // arithmetic keeps addressing the retained window.
-    EXPECT_TRUE(server.notify_log.front().text.ends_with("probe 2"));
-    EXPECT_TRUE(server.notify_log.back().text.ends_with("probe 129"));
-    EXPECT_EQ(server.notify_seq - server.notify_log.size(), 2u);
+    ZEXPECT(server.notify_log.front().text.ends_with("probe 2"));
+    ZEXPECT(server.notify_log.back().text.ends_with("probe 129"));
+    ZEXPECT(server.notify_seq - server.notify_log.size() == 2u);
 }
 
-};  // TEST_SUITE(NotifyLog)
+};  // ZEST_SUITE(NotifyLog)
 
 }  // namespace
 }  // namespace clice::testing

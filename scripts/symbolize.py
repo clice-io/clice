@@ -48,7 +48,7 @@ def main() -> int:
     parser.add_argument(
         "--symbols",
         required=True,
-        help="symbol file (clice.gsym / clice.debug / dSYM inner DWARF)",
+        help="symbol file (clice.gsym / an unstripped clice / dSYM inner DWARF)",
     )
     parser.add_argument(
         "--module",

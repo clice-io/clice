@@ -2,34 +2,28 @@ name: editor-test
 
 on:
   workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
+      target:
+        required: true
+        type: string
 
 jobs:
   editor:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-          - os: macos-15
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ inputs.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-pixi
+      - uses: ./.github/actions/download-programs
         with:
+          target: ${{ inputs.target }}
+          build_type: RelWithDebInfo
           environments: editor
-
-      - name: Download binaries
-        uses: actions/download-artifact@v8
-        with:
-          name: native-build-${{ matrix.os }}-RelWithDebInfo
-          path: build/RelWithDebInfo/
-
-      - name: Make binaries executable
-        run: chmod +x build/RelWithDebInfo/bin/*
 
       # Always the latest stable release on purpose: this job exists to
       # catch breakage caused by new editor versions.

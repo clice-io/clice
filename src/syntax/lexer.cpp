@@ -1,8 +1,23 @@
-#include "syntax/lexer.h"
+module;
 
-#include "clang/Lex/Lexer.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.lexer;
 
 namespace clice {
+
+clang::LangOptions raw_dialect(clang::Language language, clang::LangStandard::Kind standard) {
+    clang::LangOptions options;
+    std::vector<std::string> includes;
+    clang::LangOptions::setLangDefaults(options, language, llvm::Triple(), includes, standard);
+    options.Char8 = options.CPlusPlus20;
+    options.CPlusPlusModules = options.CPlusPlus20;
+    options.GNUKeywords = options.GNUMode;
+    options.LineComment = true;
+    return options;
+}
 
 static clang::SourceLocation fake_loc = clang::SourceLocation::getFromRawEncoding(1);
 static clang::LangOptions default_opts;
@@ -128,16 +143,6 @@ Token Lexer::advance() {
     }
 
     return current_token;
-}
-
-std::optional<Token> Lexer::advance_if(llvm::function_ref<bool(const Token&)> callback) {
-    auto token = next();
-
-    if(callback(token)) {
-        return advance();
-    }
-
-    return std::nullopt;
 }
 
 Token Lexer::advance_until(TokenKind kind) {

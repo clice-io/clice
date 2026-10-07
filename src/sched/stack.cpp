@@ -1,4 +1,10 @@
-#include "sched/stack.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :sched.stack;
 
 namespace clice {
 
@@ -6,9 +12,9 @@ SchedulingStack::SchedulingStack(kota::event_loop& loop,
                                  Project& project,
                                  CommandResolver& commands,
                                  WorkerPool& pool) :
-    project(project), pool(pool), graph(loop), pcm(graph, project, commands, pool),
-    pch(graph, project, pool), store(loop, project, commands),
-    turun(graph, project, commands, pcm, store, pool), pump(loop, project, turun, store, pool) {
+    project(project), pool(pool), pcm(graph, project, commands, pool), pch(graph, project, pool),
+    store(loop, project, commands), turun(graph, project, commands, pcm, store, pool),
+    pump(loop, project, turun, store, pool) {
     pcm.register_runner();
     pch.register_runner();
     turun.register_runner();

@@ -1,23 +1,13 @@
-#include <algorithm>
-#include <cstdint>
-#include <map>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
+module;
 
-#include "feature/feature.h"
-#include "feature/lexical_classify.h"
-#include "index/shard.h"
-#include "support/text.h"
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/TargetParser/Triple.h"
-#include "clang/Basic/IdentifierTable.h"
-#include "clang/Basic/LangStandard.h"
+module clice;
+
+import :feature.feature;
+import :feature.lexical_classify;
+import :index.shard;
+import :syntax.lexer;
 
 namespace clice::feature {
 
@@ -27,6 +17,17 @@ IndexRows extract_index_rows(const index::Shard& shard) {
         rows.occurrences.push_back(occurrence);
         return true;
     });
+    auto written = rows.occurrences;
+    std::ranges::sort(written, {}, [](const index::Occurrence& o) { return o.range.begin; });
+    auto nested = [&](LocalSourceRange range) {
+        auto it =
+            std::ranges::upper_bound(written, range.begin, {}, [](const index::Occurrence& o) {
+                return o.range.begin;
+            });
+        return it != written.begin() && std::prev(it)->range.contains(range) &&
+               std::prev(it)->range != range;
+    };
+    std::vector<index::Occurrence> names;
     shard.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
         RelationKind kind(relation.kind);
         if(kind.isDeclOrDef()) {
@@ -35,9 +36,12 @@ IndexRows extract_index_rows(const index::Shard& shard) {
                                   .extent = copy.definition_range(),
                                   .symbol = hash,
                                   .definition = kind.is_one_of(RelationKind::Definition)});
+        } else if(kind.isReference() && nested(relation.range)) {
+            names.push_back({.range = relation.range, .target = hash});
         }
         return true;
     });
+    llvm::append_range(rows.occurrences, names);
     return rows;
 }
 
@@ -50,16 +54,7 @@ struct LangProfile {
     clang::IdentifierTable keywords;
 
     explicit LangProfile(clang::Language lang, clang::LangStandard::Kind std) :
-        keywords((set_defaults(opts, lang, std), opts)) {}
-
-private:
-    static void set_defaults(clang::LangOptions& opts,
-                             clang::Language lang,
-                             clang::LangStandard::Kind std) {
-        std::vector<std::string> includes;
-        clang::LangOptions::setLangDefaults(opts, lang, llvm::Triple(), includes, std);
-        opts.LineComment = true;
-    }
+        opts(raw_dialect(lang, std)), keywords(opts) {}
 };
 
 LangProfile& profile_for(clang::Language lang, clang::LangStandard::Kind std) {
@@ -76,6 +71,7 @@ LangProfile& profile_for(const clang::LangOptions& lang_opts) {
 bool outline_kind(SymbolKind kind) {
     switch(kind) {
         case SymbolKind::Macro:
+        case SymbolKind::Module:
         case SymbolKind::Namespace:
         case SymbolKind::Class:
         case SymbolKind::Struct:
@@ -91,6 +87,62 @@ bool outline_kind(SymbolKind kind) {
         case SymbolKind::Variable: return true;
         default: return false;
     }
+}
+
+struct Brace {
+    LocalSourceRange range;
+    bool open;
+};
+
+/// The last balanced top-level group of `braces` (in source order) inside
+/// `extent`: a function's body rather than a member-initializer's braces,
+/// a tag's brace range, a namespace's block.
+std::optional<LocalSourceRange> last_brace_group(llvm::ArrayRef<Brace> braces,
+                                                 LocalSourceRange extent) {
+    auto begin = std::ranges::lower_bound(braces, extent.begin, {}, [](const Brace& b) {
+        return b.range.begin;
+    });
+    std::optional<LocalSourceRange> group;
+    std::int32_t depth = 0;
+    std::uint32_t open_begin = 0;
+    for(auto it = begin; it != braces.end() && it->range.end <= extent.end; ++it) {
+        if(it->open) {
+            if(depth == 0) {
+                open_begin = it->range.begin;
+            }
+            depth += 1;
+        } else if(depth > 0) {
+            depth -= 1;
+            if(depth == 0) {
+                group = LocalSourceRange{open_begin, it->range.end};
+            }
+        }
+    }
+    return group;
+}
+
+/// The text of a definition before the body its extent ends with, or
+/// nullopt when the extent ends otherwise (`= default`, an initializer).
+std::optional<llvm::StringRef> before_body(const std::string& text) {
+    std::vector<Brace> braces;
+    bool in_directive = false;
+    Lexer lexer(text, {.lang_opts = &index_lang_options("", false)});
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        if(token.is_eod()) {
+            in_directive = false;
+        } else if(token.is_directive_hash()) {
+            in_directive = true;
+        } else if(!in_directive &&
+                  (token.kind == clang::tok::l_brace || token.kind == clang::tok::r_brace)) {
+            braces.push_back({token.range, token.kind == clang::tok::l_brace});
+        }
+    }
+    auto written = llvm::StringRef(text).rtrim();
+    auto body = last_brace_group(braces, {0, static_cast<std::uint32_t>(written.size())});
+    if(!body || body->end != written.size()) {
+        return std::nullopt;
+    }
+    return written.take_front(body->begin).rtrim();
 }
 
 }  // namespace
@@ -169,7 +221,8 @@ auto index_semantic_tokens(llvm::StringRef content,
     // A module occurrence spans the whole written name (`demo.core`,
     // `foo:part` — the index stores one row over all components), while
     // the raw lex sees one token per component; collect the spans so the
-    // components past the first classify too, as on the AST path.
+    // components past the first classify like the first, as on the AST
+    // path.
     std::vector<LocalSourceRange> module_spans;
     for(const auto& occ: occs) {
         if(auto info = resolve(occ.target); info && info->kind == SymbolKind::Module) {
@@ -186,6 +239,7 @@ auto index_semantic_tokens(llvm::StringRef content,
         Body,
     };
     Directive directive = Directive::None;
+    bool after_line_export = false;
 
     Lexer lexer(content, {.keep_comments = true, .lang_opts = &profile.opts});
     while(true) {
@@ -213,6 +267,28 @@ auto index_semantic_tokens(llvm::StringRef content,
         }
         auto lexical_class = classify_lexical_kind(kind, spelling);
         Classified lexical{lexical_class.kind, lexical_class.modifiers};
+
+        // The contextual `module` and `import` open a module declaration
+        // or an import at the start of a line, behind `export` at most,
+        // and before what clang requires to recognize them.
+        bool line_head = token.is_at_start_of_line || after_line_export;
+        after_line_export = token.is_at_start_of_line && spelling == "export";
+        if(profile.opts.CPlusPlusModules && line_head &&
+           (spelling == "module" || spelling == "import")) {
+            auto next = lexer.next().kind;
+            if((spelling == "module" &&
+                llvm::is_contained(
+                    {clang::tok::raw_identifier, clang::tok::colon, clang::tok::semi},
+                    next)) ||
+               (spelling == "import" && llvm::is_contained({clang::tok::raw_identifier,
+                                                            clang::tok::colon,
+                                                            clang::tok::less,
+                                                            clang::tok::header_name,
+                                                            clang::tok::string_literal},
+                                                           next))) {
+                lexical = {SymbolKind::Keyword, 0};
+            }
+        }
 
         // Directive overlay, driven by the lexer's preprocessor awareness:
         // the hash and the directive name paint as Directive, a #define's
@@ -260,7 +336,7 @@ auto index_semantic_tokens(llvm::StringRef content,
                                                      {},
                                                      &LocalSourceRange::begin);
             if(covering != module_spans.begin() && token.range.end <= (covering - 1)->end) {
-                semantic = {SymbolKind::Module, 0};
+                semantic = semantic_at((covering - 1)->begin);
             }
         }
 
@@ -386,11 +462,6 @@ auto index_folding_ranges(llvm::StringRef content,
     // or #endif observing a brace depth other than its #if's means the
     // branches unbalance braces — any raw pairing is then wrong for some
     // variant, and folds touching the region are suppressed below.
-    struct Brace {
-        LocalSourceRange range;
-        bool open;
-    };
-
     struct CondLevel {
         std::uint32_t begin;
         std::int32_t depth;
@@ -398,6 +469,7 @@ auto index_folding_ranges(llvm::StringRef content,
 
     std::vector<Brace> braces;
     std::vector<LocalSourceRange> ambiguous;
+    std::vector<std::uint32_t> block_directives;
     {
         std::vector<CondLevel> levels;
         std::int32_t depth = 0;
@@ -425,15 +497,22 @@ auto index_folding_ranges(llvm::StringRef content,
                 after_hash = false;
                 auto spelling = token.text(content);
                 if(spelling == "if" || spelling == "ifdef" || spelling == "ifndef") {
+                    block_directives.push_back(hash_begin);
                     levels.push_back({hash_begin, depth});
                 } else if(spelling == "elif" || spelling == "elifdef" || spelling == "elifndef" ||
                           spelling == "else" || spelling == "endif") {
+                    block_directives.push_back(hash_begin);
                     if(!levels.empty() && depth != levels.back().depth) {
                         ambiguous.push_back({levels.back().begin, token.range.end});
                         levels.back().depth = depth;
                     }
                     if(spelling == "endif" && !levels.empty()) {
                         levels.pop_back();
+                    }
+                } else if(spelling == "pragma") {
+                    auto pragma = lexer.next().text(content);
+                    if(pragma == "region" || pragma == "endregion") {
+                        block_directives.push_back(hash_begin);
                     }
                 }
                 continue;
@@ -464,29 +543,9 @@ auto index_folding_ranges(llvm::StringRef content,
             continue;
         }
 
-        // The last balanced top-level brace group inside the extent: a
-        // function's body rather than a member-initializer's braces, a
-        // tag's brace range, a namespace's block — keeping the name and
-        // signature visible like the AST folds do.
-        auto begin = std::ranges::lower_bound(braces, row.extent.begin, {}, [](const Brace& b) {
-            return b.range.begin;
-        });
-        std::optional<LocalSourceRange> group;
-        std::int32_t depth = 0;
-        std::uint32_t open_begin = 0;
-        for(auto it = begin; it != braces.end() && it->range.end <= row.extent.end; ++it) {
-            if(it->open) {
-                if(depth == 0) {
-                    open_begin = it->range.begin;
-                }
-                depth += 1;
-            } else if(depth > 0) {
-                depth -= 1;
-                if(depth == 0) {
-                    group = LocalSourceRange{open_begin, it->range.end};
-                }
-            }
-        }
+        // The block keeps the name and signature visible like the AST
+        // folds do.
+        auto group = last_brace_group(braces, row.extent);
         if(!group) {
             continue;
         }
@@ -497,28 +556,29 @@ auto index_folding_ranges(llvm::StringRef content,
             continue;
         }
 
-        // Fold kinds mirror the AST collector's strings; a symbol the
-        // resolver cannot name still folds, just without a kind.
+        // A symbol the resolver cannot name still folds, just without a
+        // kind.
         std::optional<protocol::FoldingRangeKind> kind;
         if(auto info = resolve(row.symbol)) {
-            switch(info->kind) {
-                case SymbolKind::Namespace: kind = "namespace"; break;
-                case SymbolKind::Class: kind = "class"; break;
-                case SymbolKind::Struct: kind = "struct"; break;
-                case SymbolKind::Union: kind = "union"; break;
-                case SymbolKind::Enum: kind = "enum"; break;
-                case SymbolKind::Function:
-                case SymbolKind::Method:
-                case SymbolKind::Operator: kind = "functionBody"; break;
-                default: break;
-            }
+            kind = declaration_fold_kind(info->kind);
         }
 
-        ranges.push_back({.range = *group, .kind = kind, .collapsed_text = "{...}"});
+        // Only a declaration's own block folds from its head; an
+        // initializer's or a lambda's folds at its brace, as on the AST.
+        ranges.push_back({
+            .range = *group,
+            .kind = kind,
+            .collapsed_text = "{...}",
+            .lines = kind ? declaration_lines(content, *group, row.range.begin, block_directives)
+                          : std::nullopt,
+        });
     }
 
+    // One fold per range, the declaration's own where several rows share
+    // its braces (`typedef struct {...} T;`, the struct's and the alias's).
     std::ranges::sort(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
-        return std::tie(lhs.range.begin, lhs.range.end) < std::tie(rhs.range.begin, rhs.range.end);
+        return std::tuple(lhs.range.begin, lhs.range.end, !lhs.kind, lhs.kind) <
+               std::tuple(rhs.range.begin, rhs.range.end, !rhs.kind, rhs.kind);
     });
     auto duplicates =
         std::ranges::unique(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
@@ -531,10 +591,11 @@ auto index_folding_ranges(llvm::StringRef content,
 
 auto index_document_links(llvm::StringRef content,
                           const clang::LangOptions& lang_opts,
-                          llvm::ArrayRef<IndexIncludeEdge> edges) -> std::vector<DocumentLink> {
-    auto line_starts = kota::ipc::lsp::build_line_starts({content.data(), content.size()});
+                          llvm::ArrayRef<IndexIncludeEdge> edges)
+    -> std::vector<index::DocumentLink> {
+    auto line_starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
 
-    std::vector<DocumentLink> links;
+    std::vector<index::DocumentLink> links;
     for(const auto& edge: edges) {
         if(edge.line == 0 || edge.line > line_starts.size()) {
             continue;
@@ -547,87 +608,17 @@ auto index_document_links(llvm::StringRef content,
         links.push_back({.range = *range, .target = edge.target});
     }
 
-    std::ranges::sort(links, [](const DocumentLink& lhs, const DocumentLink& rhs) {
+    std::ranges::sort(links, [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
         return std::tie(lhs.range.begin, lhs.target) < std::tie(rhs.range.begin, rhs.target);
     });
     auto duplicates =
-        std::ranges::unique(links, [](const DocumentLink& lhs, const DocumentLink& rhs) {
-            return lhs.range == rhs.range && lhs.target == rhs.target;
-        });
+        std::ranges::unique(links,
+                            [](const index::DocumentLink& lhs, const index::DocumentLink& rhs) {
+                                return lhs.range == rhs.range && lhs.target == rhs.target;
+                            });
     links.erase(duplicates.begin(), duplicates.end());
 
     return links;
-}
-
-auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::string {
-    if(offset > content.size()) {
-        return {};
-    }
-
-    // Walk to the start of the line containing `offset`, then collect the
-    // contiguous run of comment-looking lines directly above it.
-    auto begin = line_begin(content, offset);
-    llvm::SmallVector<llvm::StringRef, 8> lines;
-    // Between a closing */ and its opener the scan is inside a block
-    // comment: interior lines need no marker of their own (`/*` above bare
-    // text above `*/`). `block_start` remembers where the block began in
-    // `lines` so one whose opener never surfaces can be dropped.
-    bool in_block = false;
-    std::size_t block_start = 0;
-    while(begin > 0) {
-        auto prev_begin = line_begin(content, begin - 1);
-        auto line = content.substr(prev_begin, begin - prev_begin).rtrim("\r\n").trim();
-        if(in_block) {
-            // An opener sharing its line with code marks a comment trailing
-            // that code, not documentation of the decl below.
-            if(line.contains("/*") && !line.starts_with("/*")) {
-                break;
-            }
-            lines.push_back(line);
-            if(line.starts_with("/*")) {
-                in_block = false;
-            }
-        } else {
-            // A trailing */ only marks a comment line when the opener is on
-            // an earlier line: `int a; /* note */` closes a comment it
-            // opened itself, and everything before the marker is code.
-            bool closes_block = line.ends_with("*/") && !line.contains("/*");
-            bool comment_like = line.starts_with("//") || line.starts_with("/*") ||
-                                line.starts_with("*") || closes_block;
-            if(!comment_like || line.empty()) {
-                break;
-            }
-            if(closes_block) {
-                in_block = true;
-                block_start = lines.size();
-            }
-            lines.push_back(line);
-        }
-        begin = prev_begin;
-    }
-    if(in_block) {
-        lines.truncate(block_start);
-    }
-
-    std::string result;
-    for(auto& line: llvm::reverse(lines)) {
-        auto text = line;
-        for(llvm::StringRef marker: {"///<", "///", "//!", "//", "/**", "/*", "*/"}) {
-            if(text.starts_with(marker)) {
-                text = text.drop_front(marker.size());
-                break;
-            }
-        }
-        if(text.starts_with("*")) {
-            text = text.drop_front(1);
-        }
-        text = text.rtrim("*/").trim();
-        if(!result.empty()) {
-            result += '\n';
-        }
-        result += text.str();
-    }
-    return llvm::StringRef(result).trim().str();
 }
 
 auto index_hover(const index::SymbolRef& info,
@@ -636,8 +627,43 @@ auto index_hover(const index::SymbolRef& info,
     HoverInfo hover;
     hover.name = info.display_name();
     hover.kind = info.kind;
-    hover.definition = definition_text.str();
     hover.documentation = comment.str();
+    if(definition_text.empty()) {
+        return hover;
+    }
+
+    // The stored extent is the whole written definition; the AST card
+    // prints a declaration — a function without its body, a type or
+    // namespace with an empty one, a macro with its `#define`.
+    hover.definition = definition_text.str();
+    switch(info.kind) {
+        case SymbolKind::Function:
+        case SymbolKind::Method:
+        case SymbolKind::Operator: {
+            if(auto head = before_body(hover.definition)) {
+                hover.definition = head->str();
+            }
+            break;
+        }
+        case SymbolKind::Namespace:
+        case SymbolKind::Class:
+        case SymbolKind::Struct:
+        case SymbolKind::Union:
+        case SymbolKind::Enum: {
+            if(auto head = before_body(hover.definition)) {
+                hover.definition = head->str() + " {}";
+            }
+            break;
+        }
+        case SymbolKind::Macro: {
+            hover.definition.insert(0, "#define ");
+            break;
+        }
+        default: break;
+    }
+    if(index::has_flag(info.flags, index::SymbolFlags::Exported)) {
+        hover.definition.insert(0, "export ");
+    }
     return hover;
 }
 

@@ -17,6 +17,14 @@ function offsetOf(text: string, position: proto.Position): number {
     return Math.min(offset + position.character, text.length);
 }
 
+/// The position of UTF-8 byte `offset` in `text`, as annotated sources
+/// mark it.
+export function positionAt(text: string, offset: number): proto.Position {
+    const before = Buffer.from(text).subarray(0, offset).toString();
+    const line = before.split("\n").length - 1;
+    return { line, character: before.length - (before.lastIndexOf("\n") + 1) };
+}
+
 /// The document after `edits`, each replacing its range of the original
 /// text; ranges must not overlap.
 export function applyTextEdits(text: string, edits: readonly proto.TextEdit[]): string {
@@ -34,11 +42,28 @@ export function applyTextEdits(text: string, edits: readonly proto.TextEdit[]): 
     return result;
 }
 
+/// The code actions of a codeAction reply; a bare command carries its
+/// command name as a string.
+export function actionsOf(reply: (proto.Command | proto.CodeAction)[] | null): proto.CodeAction[] {
+    return (reply ?? []).filter(
+        (item): item is proto.CodeAction => typeof item.command !== "string",
+    );
+}
+
 /// The text edits a code action applies to `uri`, from its versioned
 /// document changes.
 export function editsFor(action: proto.CodeAction, uri: string): proto.TextEdit[] {
+    return documentEdits(action.edit, uri);
+}
+
+/// The text edits a workspace edit applies to `uri`, from its versioned
+/// document changes.
+export function documentEdits(
+    edit: proto.WorkspaceEdit | null | undefined,
+    uri: string,
+): proto.TextEdit[] {
     const edits: proto.TextEdit[] = [];
-    for (const change of action.edit?.documentChanges ?? []) {
+    for (const change of edit?.documentChanges ?? []) {
         if (!("textDocument" in change) || change.textDocument.uri !== uri) {
             continue;
         }

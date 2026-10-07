@@ -76,12 +76,11 @@ export function rawSemanticTokenPieces(result: unknown, stripped: Buffer): Token
             if (i !== chunk.length && chunk[i] !== 0x0a) {
                 continue;
             }
-            const text = chunk.subarray(pieceStart, i).toString("utf8");
-            // A newline-terminated piece always encodes with length >= 1 (the
-            // newline itself), so the server emits it even for a blank
-            // interior line and the decoder reconstructs text: "". Only the
-            // final, unterminated piece is dropped when empty.
-            if (i !== chunk.length || text.length > 0) {
+            // A piece ends before its line's "\n" or "\r\n", and an empty
+            // one is not emitted.
+            const end = i !== chunk.length && i > pieceStart && chunk[i - 1] === 0x0d ? i - 1 : i;
+            const text = chunk.subarray(pieceStart, end).toString("utf8");
+            if (text.length > 0) {
                 out.push({
                     line,
                     character,

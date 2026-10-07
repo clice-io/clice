@@ -1,0 +1,17 @@
+---
+created_at: 2026-09-27
+input_file: functions_snippets/09_template_arguments.cpp
+---
+default:
+  all_defaulted:
+  - { label: "Defaulted", kind: Class, detail: "<>", edit: "20:14-20:19" }
+
+  pos:
+  - { label: "Buffer", kind: Class, detail: "<typename T>", edit: "17:4-17:7" }
+
+configured:
+  all_defaulted:
+  - { label: "Defaulted", kind: Class, detail: "<>", edit: "20:14-20:19", insert: "Defaulted<>" }
+
+  pos:
+  - { label: "Buffer", kind: Class, detail: "<typename T>", edit: "17:4-17:7", insert: "Buffer<${1:typename T}>", snippet: true }

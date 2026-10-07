@@ -5,13 +5,10 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { ClientHandle } from "../client";
 // Shared protocol shapes — type-only, mirrors feature/context.ts.
-import type {
-    CurrentContextResult,
-    QueryContextResult,
-    SwitchContextResult,
-} from "@clice/tools/protocol" with { "resolution-mode": "import" };
+import type { CurrentContextResult, QueryContextResult } from "@clice/tools/protocol" with {
+    "resolution-mode": "import",
+};
 
-import { resyncDocument } from "../feature/context";
 import { inactiveRuns } from "../feature/inactive";
 import { resolveExecutable } from "../setting";
 
@@ -220,6 +217,15 @@ suite("clice E2E", function () {
         position = document.positionAt(offset);
 
         await diagnostics;
+        // clice offers pulls only to a client declaring them; the extension
+        // declines (see declinePullDiagnostics in extension.ts).
+        const extension = vscode.extensions.getExtension("clice-io.clice");
+        const client = (extension?.exports as { client: ClientHandle }).client;
+        assert.strictEqual(
+            client.current.initializeResult?.capabilities.diagnosticProvider,
+            undefined,
+            "diagnostics must stay pushed",
+        );
     });
 
     test("workspace symbol indexed", async function () {
@@ -317,12 +323,27 @@ suite("clice E2E", function () {
         const host = query.contexts.find((c) => c.uri.includes("main.cpp"));
         assert.ok(host, "main.cpp should be offered as a context");
 
-        const switched = await client.sendRequest<SwitchContextResult>("clice/switchContext", {
-            uri,
-            contextUri: host.uri,
-        });
-        assert.ok(switched.success, "switchContext should succeed");
+        // The client contract: a switch through the extension's commands
+        // keeps the document open; the server recompiles the unchanged text
+        // and publishes its diagnostics anew.
+        const published = () =>
+            new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    subscription.dispose();
+                    reject(new Error("no diagnostics publish after the switch"));
+                }, 30 * 1000);
+                const subscription = vscode.languages.onDidChangeDiagnostics((event) => {
+                    if (event.uris.some((changed) => changed.toString() === uri)) {
+                        clearTimeout(timer);
+                        subscription.dispose();
+                        resolve();
+                    }
+                });
+            });
 
+        let republished = published();
+        await vscode.commands.executeCommand("clice.applyContext", host, query.epoch, uri);
+        await republished;
         const current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
             uri,
         });
@@ -330,39 +351,17 @@ suite("clice E2E", function () {
             current.context?.uri.includes("main.cpp"),
             "currentContext should report the switched host",
         );
+        assert.ok(!current.automatic, "the switched host is the user's choice");
+        assert.strictEqual(document.languageId, "cpp", "the switch keeps the document as it was");
 
-        // The client contract: after a successful switch the extension
-        // re-syncs the document (didClose + didOpen) so every feature
-        // refreshes. A fresh diagnostics publish is the proof the
-        // round-trip reached the server — currentContext alone would pass
-        // without any reopen (it reads the persisted choice directly).
-        const diagnosticsChanged = new Promise<void>((resolve, reject) => {
-            const timer = setTimeout(() => {
-                subscription.dispose();
-                reject(new Error("no diagnostics publish after resync"));
-            }, 30 * 1000);
-            const subscription = vscode.languages.onDidChangeDiagnostics((event) => {
-                if (event.uris.some((changed) => changed.toString() === uri)) {
-                    clearTimeout(timer);
-                    subscription.dispose();
-                    resolve();
-                }
-            });
-        });
-        await resyncDocument(uri);
-        await diagnosticsChanged;
-        assert.strictEqual(
-            document.languageId,
-            "cpp",
-            "language id restored after the resync round-trip",
-        );
-        const resynced = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
+        republished = published();
+        await vscode.window.showTextDocument(document);
+        await vscode.commands.executeCommand("clice.resetContext");
+        await republished;
+        const automatic = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
             uri,
         });
-        assert.ok(
-            resynced.context?.uri.includes("main.cpp"),
-            "switched context should survive the resync",
-        );
+        assert.ok(automatic.automatic, "the reset leaves the automatic context");
     });
 
     test("completion", async function () {

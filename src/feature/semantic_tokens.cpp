@@ -1,22 +1,17 @@
-#include <cstdint>
-#include <optional>
-#include <ranges>
-#include <utility>
-#include <vector>
+module;
 
-#include "compile/compilation_unit.h"
-#include "feature/feature.h"
-#include "feature/lexical_classify.h"
-#include "semantic/decls.h"
-#include "semantic/semantics.h"
-#include "semantic/symbol.h"
-#include "syntax/lexer.h"
-#include "syntax/token.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/DenseMap.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/DeclObjC.h"
-#include "clang/Basic/TokenKinds.h"
+module clice;
+
+import :compile.compilation_unit;
+import :compile.semantics;
+import :feature.feature;
+import :feature.lexical_classify;
+import :semantic.decls;
+import :semantic.symbol;
+import :syntax.lexer;
+import :syntax.token;
 
 namespace clice::feature {
 
@@ -489,20 +484,9 @@ private:
                     auto* import = node.get<Import>();
                     anchor(import->location, {SymbolKind::Keyword, 0}, true);
                     for(auto location: import->name_locations) {
-                        auto index = spelled_index(location);
-                        if(!index) {
-                            continue;
+                        if(auto index = spelled_index(location)) {
+                            combine(token_semantics[*index], {SymbolKind::Module, 0});
                         }
-                        /// A partition import (`import :part;`) reports the
-                        /// component location at its leading colon; the
-                        /// written name is the next spelled token. The colon
-                        /// itself stays unpainted, matching the module
-                        /// declaration side.
-                        if(spelled[*index].kind() == clang::tok::colon &&
-                           *index + 1 < spelled.size()) {
-                            *index += 1;
-                        }
-                        combine(token_semantics[*index], {SymbolKind::Module, 0});
                     }
                     break;
                 }
@@ -520,12 +504,16 @@ private:
                     /// keywords the lexical pass paints on its own, and the
                     /// separators stay unpainted, matching the import side.
                     anchor_offset(module->keyword.begin, {SymbolKind::Keyword, 0});
+                    Classified name{SymbolKind::Module,
+                                    unit.is_module_interface_unit()
+                                        ? SymbolModifiers::to_mask(SymbolModifiers::Definition)
+                                        : 0};
                     for(auto& part: module->name_parts) {
-                        anchor_offset(part.begin, {SymbolKind::Module, 0});
+                        anchor_offset(part.begin, name);
                     }
                     if(module->kind == LexicalInfo::ModuleDeclaration::Kind::Declaration) {
                         for(auto& part: module->partition_parts) {
-                            anchor_offset(part.begin, {SymbolKind::Module, 0});
+                            anchor_offset(part.begin, name);
                         }
                     }
                     break;
@@ -648,17 +636,11 @@ private:
 
 class SemanticTokenEncoder {
 public:
-    SemanticTokenEncoder(llvm::StringRef content,
-                         llvm::ArrayRef<std::uint32_t> line_starts,
-                         PositionEncoding encoding,
-                         protocol::SemanticTokens& output) :
-        map(content,
-            std::span<const std::uint32_t>(line_starts.data(), line_starts.size()),
-            encoding),
-        encoding(encoding), output(output) {}
+    SemanticTokenEncoder(const PositionMap& map, protocol::SemanticTokens& output) :
+        map(map), output(output) {}
 
     void append(const SemanticToken& token) {
-        auto content = map.content();
+        auto content = map.content;
         if(!token.range.valid() || token.range.end <= token.range.begin ||
            token.range.end > content.size()) {
             return;
@@ -666,8 +648,8 @@ public:
 
         auto begin = token.range.begin;
         auto end = token.range.end;
-        auto begin_position = to_position(map, begin);
-        auto end_position = to_position(map, end);
+        auto begin_position = map.to_position(begin);
+        auto end_position = map.to_position(end);
         if(!begin_position || !end_position)
             return;
         auto begin_line = static_cast<std::uint32_t>(begin_position->line);
@@ -694,7 +676,11 @@ public:
                 continue;
             }
 
-            auto length = lsp::encoded_length(chunk.substr(chunk_offset, piece_size), encoding);
+            auto piece = chunk.substr(chunk_offset, piece_size - 1);
+            if(piece.ends_with('\r')) {
+                piece.remove_suffix(1);
+            }
+            auto length = lsp::encoded_length(piece, map.encoding);
             emit(line, character, length, token.kind, token.modifiers);
 
             line += 1;
@@ -704,7 +690,7 @@ public:
         }
 
         if(piece_size > 0) {
-            auto length = lsp::encoded_length(chunk.substr(chunk_offset), encoding);
+            auto length = lsp::encoded_length(chunk.substr(chunk_offset), map.encoding);
             emit(line, character, length, token.kind, token.modifiers);
         }
     }
@@ -735,8 +721,7 @@ private:
     }
 
 private:
-    lsp::LineMap map;
-    PositionEncoding encoding;
+    PositionMap map;
     protocol::SemanticTokens& output;
     std::uint32_t last_line = 0;
     std::uint32_t last_start_character = 0;
@@ -752,30 +737,22 @@ auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken> {
 
 auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
     -> protocol::SemanticTokens {
-    return semantic_tokens_to_protocol(semantic_tokens(unit),
-                                       unit.main_content(),
-                                       unit.line_starts(),
-                                       encoding);
+    return semantic_tokens_to_protocol(semantic_tokens(unit), main_position_map(unit, encoding));
 }
 
 auto semantic_tokens(CompilationUnitRef unit,
                      llvm::ArrayRef<std::uint32_t> inactive_regions,
                      PositionEncoding encoding) -> protocol::SemanticTokens {
     SemanticTokensCollector collector(unit, inactive_regions);
-    return semantic_tokens_to_protocol(collector.collect(),
-                                       unit.main_content(),
-                                       unit.line_starts(),
-                                       encoding);
+    return semantic_tokens_to_protocol(collector.collect(), main_position_map(unit, encoding));
 }
 
-auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
-                                 llvm::StringRef content,
-                                 llvm::ArrayRef<std::uint32_t> line_starts,
-                                 PositionEncoding encoding) -> protocol::SemanticTokens {
+auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens, const PositionMap& map)
+    -> protocol::SemanticTokens {
     protocol::SemanticTokens result;
     result.data.reserve(tokens.size() * 5);
 
-    SemanticTokenEncoder encoder(content, line_starts, encoding, result);
+    SemanticTokenEncoder encoder(map, result);
     for(const auto& token: tokens) {
         encoder.append(token);
     }

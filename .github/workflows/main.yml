@@ -22,7 +22,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       vscode: ${{ steps.filter.outputs.vscode }}
       zed: ${{ steps.filter.outputs.zed }}
-      cmake: ${{ steps.filter.outputs.cmake }}
+      build: ${{ steps.filter.outputs.build }}
 
     steps:
       - uses: actions/checkout@v7
@@ -33,7 +33,7 @@ jobs:
         with:
           filters: |
             format:
-              - '**/*.{h,c,cpp,hpp,ts,js,lua,md,yml,yaml}'
+              - '**/*.{h,c,cc,cpp,cppm,hpp,ts,js,lua,md,yml,yaml}'
             docs:
               - 'docs/**'
               # The site renders the feature pages' snap fences from the
@@ -47,20 +47,27 @@ jobs:
               - 'tools/**'
             zed:
               - 'editors/zed/**'
+              - 'tests/zed/**'
               - '.github/workflows/main.yml'
-            cmake:
-              - 'CMakeLists.txt'
+            build:
+              - 'BUILD.bazel'
+              - 'MODULE.bazel'
+              - 'REPO.bazel'
+              - '.bazelrc'
+              - '.bazelversion'
+              - 'bazel/**'
               # Generated docs and the committed schema are verified against
-              # the built binary, so edits to them must run native-test.
+              # the built binary, so edits to them must run the tests.
               - 'docs/public/clice-config.schema.json'
               - 'docs/en/guide/configuration.md'
               - 'docs/en/features/**'
               - 'src/**'
+              - 'modules/**'
+              - 'benchmarks/**'
               - 'include/**'
               - 'tests/**'
               - 'tools/**'
               - 'config/**'
-              - 'cmake/**'
               - 'scripts/**'
               - 'editors/nvim/**'
               - 'editors/vscode/**'
@@ -68,10 +75,11 @@ jobs:
               - 'pixi.lock'
               - 'package.json'
               - 'package-lock.json'
-              - '.github/workflows/native-test.yml'
-              - '.github/workflows/cross-test.yml'
-              - '.github/workflows/cross-pair.yml'
+              - '.github/actions/**'
+              - '.github/workflows/test.yml'
+              - '.github/workflows/test-leg.yml'
               - '.github/workflows/editor-test.yml'
+              - '.github/workflows/compat-test.yml'
 
   lint:
     needs: changes
@@ -106,7 +114,14 @@ jobs:
   zed:
     needs: changes
     if: ${{ needs.changes.outputs.zed == 'true' }}
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
@@ -114,31 +129,52 @@ jobs:
       - uses: Swatinem/rust-cache@v2.9.1
         with:
           workspaces: editors/zed
-      - name: Build Zed extension
+      - name: Unit tests
+        working-directory: editors/zed
+        run: cargo test
+      # wasm32-wasip2 is the target Zed and its extension registry build with.
+      - name: Add the wasm target
+        run: rustup target add wasm32-wasip2
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+          activate-environment: node
+
+      # Always the latest stable Zed on purpose, like the other editor tests.
+      - name: Install Zed (Linux)
+        if: runner.os == 'Linux'
         run: |
-          rustup target add wasm32-wasip1
-          cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip1 --release
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers libvulkan1 libxkbcommon-x11-0
+          curl -fsSL https://zed.dev/install.sh | sh
+          echo "ZED_EXECUTABLE=$HOME/.local/zed.app/libexec/zed-editor" >> "$GITHUB_ENV"
+      - name: Install Zed (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/zed-setup.exe" \
+            https://zed.dev/api/releases/stable/latest/Zed-x86_64.exe
+          "$RUNNER_TEMP/zed-setup.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART //SP- //CURRENTUSER
+          echo "ZED_EXECUTABLE=$LOCALAPPDATA/Programs/Zed/Zed.exe" >> "$GITHUB_ENV"
 
-  native-test:
+      - name: E2E test (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 20
+        run: xvfb-run -a pixi run -e node zed-e2e
+      - name: E2E test (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 20
+        run: pixi run -e node zed-e2e
+
+  test:
     needs: changes
-    if: ${{ needs.changes.outputs.cmake == 'true' }}
-    uses: ./.github/workflows/native-test.yml
-
-  cross-test:
-    needs: changes
-    if: ${{ needs.changes.outputs.cmake == 'true' }}
-    uses: ./.github/workflows/cross-test.yml
-
-  editor-test:
-    needs: [changes, native-test]
-    if: ${{ needs.changes.outputs.cmake == 'true' }}
-    uses: ./.github/workflows/editor-test.yml
+    if: ${{ needs.changes.outputs.build == 'true' }}
+    uses: ./.github/workflows/test.yml
 
   # Instant builds: repackage the test-suite binaries as installable vsix
   # artifacts so a fix can be tried the moment CI is green.
   instant-vscode:
-    needs: [changes, native-test, cross-test]
-    if: ${{ needs.changes.outputs.cmake == 'true' }}
+    needs: [changes, test]
+    if: ${{ needs.changes.outputs.build == 'true' }}
     uses: ./.github/workflows/publish-vscode.yml
     with:
       source: build
@@ -170,9 +206,7 @@ jobs:
       - deploy
       - vscode
       - zed
-      - native-test
-      - cross-test
-      - editor-test
+      - test
       - instant-vscode
 
     runs-on: ubuntu-latest
@@ -182,5 +216,5 @@ jobs:
         with:
           allowed-skips: >-
             lint,deploy,vscode,zed,
-            native-test,cross-test,editor-test,instant-vscode
+            test,instant-vscode
           jobs: ${{ toJSON(needs) }}

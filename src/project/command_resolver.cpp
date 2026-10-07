@@ -1,25 +1,20 @@
-#include "project/command_resolver.h"
+module;
 
-#include <format>
-#include <optional>
-#include <string>
-#include <vector>
+#include "modules/prelude.h"
 
-#include "command/argument_parser.h"
-#include "command/search_config.h"
-#include "project/hosting.h"
-#include "support/filesystem.h"
-#include "support/logging.h"
-#include "syntax/include_resolver.h"
-#include "syntax/preamble_synthesis.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :command.argument_parser;
+import :command.search_config;
+import :project.command_resolver;
+import :project.hosting;
+import :support.logging;
+import :syntax.include_resolver;
+import :syntax.preamble_synthesis;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 
@@ -43,16 +38,13 @@ static void log_command_decision(llvm::StringRef path,
              llvm::xxh3_64bits(llvm::StringRef(joined)));
 }
 
-/// Pick the candidate matching a pinned command (multi-configuration files
-/// and hosts), defaulting to the build's first command. `paths` are the
-/// files whose edits the published hash was computed with.
-static Candidate pick_pinned_config(Project& project,
-                                    Fid file,
-                                    llvm::ArrayRef<Candidate> candidates,
-                                    llvm::ArrayRef<CanonicalRef> paths,
-                                    llvm::StringRef language_path,
-                                    llvm::StringRef pinned_hash,
-                                    llvm::StringRef pinned_base) {
+Candidate pick_pinned_config(Project& project,
+                             Fid file,
+                             llvm::ArrayRef<Candidate> candidates,
+                             llvm::ArrayRef<CanonicalRef> paths,
+                             llvm::StringRef language_path,
+                             llvm::StringRef pinned_hash,
+                             llvm::StringRef pinned_base) {
     // The base identity resolved at pin time is exact; the applied hash
     // remains as the fallback for pins saved before the base was recorded
     // (and cannot distinguish candidates the rules collapse together).
@@ -86,9 +78,8 @@ HeaderMode CommandResolver::header_mode(Fid path_id) const {
 }
 
 void CommandResolver::forget_self_contained(Fid path_id) {
-    if(auto it = header_verdicts.find(path_id);
-       it != header_verdicts.end() && it->second.mode == HeaderMode::SelfContained) {
-        header_verdicts.erase(it);
+    if(header_mode(path_id) == HeaderMode::SelfContained) {
+        reset_header_mode(path_id);
     }
 }
 
@@ -102,6 +93,9 @@ std::uint64_t CommandResolver::persisted_mode_hash(Fid path_id) const {
 
 void CommandResolver::record_header_mode(Fid path_id, HeaderMode mode, std::uint64_t content_hash) {
     auto persisted = persisted_mode_hash(path_id);
+    if((header_mode(path_id) == HeaderMode::SelfContained) != (mode == HeaderMode::SelfContained)) {
+        project.context_epoch += 1;
+    }
     header_verdicts[path_id] = {
         .mode = mode,
         .content_hash = mode == HeaderMode::NeedsContext ? content_hash : 0,
@@ -114,6 +108,9 @@ void CommandResolver::record_header_mode(Fid path_id, HeaderMode mode, std::uint
 void CommandResolver::reset_header_mode(Fid path_id) {
     if(persisted_mode_hash(path_id) != 0) {
         project.mark_artifacts_dirty();
+    }
+    if(header_mode(path_id) == HeaderMode::SelfContained) {
+        project.context_epoch += 1;
     }
     header_verdicts.erase(path_id);
 }
@@ -161,15 +158,13 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
                                                Resolution& resolution) {
     // Self-containment routing: an Unknown or SelfContained header borrows
     // the host command without a prefix; NeedsContext synthesizes one.
-    // run_compile() flips Unknown to NeedsContext when the trial compile's
-    // diagnostics indicate missing includer state. An explicitly chosen
-    // occurrence — even #0 — only has meaning under includer-context
-    // semantics, so it forces synthesis regardless of the verdict.
+    // ASTFamily::run() flips Unknown to NeedsContext when the trial compile's
+    // diagnostics indicate missing includer state. A host the user chose
+    // is chosen for its preprocessor state, so it always synthesizes.
     auto path = project.file_table.resolve(path_id);
     const Selection* choice = request.selection;
     bool has_host_choice = choice && choice->host_path_id.valid();
-    bool synthesize = header_mode(path_id) == HeaderMode::NeedsContext ||
-                      (has_host_choice && choice->occurrence.has_value());
+    bool synthesize = has_host_choice || header_mode(path_id) == HeaderMode::NeedsContext;
 
     // Use cached context if it is still valid; otherwise resolve. The cache
     // is dropped when an active context override points to a different host
@@ -189,7 +184,6 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
                                     context.host_command_hash != choice->command_hash ||
                                     context.host_base_hash != choice->base_hash);
             bool mode_mismatch = (context.synthesized != nullptr) != synthesize;
-            auto wave = project.file_table.wave();
             if(override_mismatch || mode_mismatch ||
                deps_changed(project.file_table, context.deps)) {
                 cache->erase(cached);
@@ -203,7 +197,8 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
     if(!ctx_ptr) {
         auto resolved = resolve_header_context(path_id, choice, synthesize);
         if(!resolved) {
-            LOG_WARN("No CDB entry and no header context for {}", path);
+            resolution.unmatched_host = resolved.error();
+            resolution.tree_wanted = resolved.error();
             return false;
         }
         if(cache) {
@@ -212,6 +207,9 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
             local_ctx = std::move(*resolved);
             ctx_ptr = &*local_ctx;
         }
+    }
+    if(ctx_ptr->synthesized && ctx_ptr->lexical) {
+        resolution.tree_wanted = ctx_ptr->host_path_id;
     }
 
     auto host_path = project.file_table.resolve(ctx_ptr->host_path_id);
@@ -353,36 +351,39 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     return settle(CommandSource::Fallback);
 }
 
-std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_path_id,
-                                                                     const Selection* choice,
-                                                                     bool synthesize) {
+std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid header_path_id,
+                                                                          const Selection* choice,
+                                                                          bool synthesize) {
     // A pinned host (and its chosen include occurrence) wins while it
     // still compiles and still includes the header; otherwise the build's
     // default host.
-    Fid host_path_id;
+    std::optional<Host> host;
     std::optional<std::uint32_t> occurrence;
-    std::vector<Fid> chain;
     bool has_host_choice = choice && choice->host_path_id.valid();
     if(has_host_choice) {
         auto preferred = choice->host_path_id;
         if(!project.build.commands(preferred).empty()) {
-            auto c = project.dep_graph.find_include_chain(preferred, header_path_id);
-            if(!c.empty()) {
-                host_path_id = preferred;
+            if(auto found = enterings(project, preferred, header_path_id)) {
+                auto n = choice->occurrence.value_or(0);
+                if(n < found->size()) {
+                    host = std::move((*found)[n]);
+                    occurrence = n;
+                }
+            } else if(auto chain = project.dep_graph.find_include_chain(preferred, header_path_id);
+                      !chain.empty()) {
+                host = Host{.file = preferred, .chain = std::move(chain), .lexical = true};
                 occurrence = choice->occurrence;
-                chain = std::move(c);
             }
         }
     }
-    if(chain.empty()) {
-        auto host = default_host(project, header_path_id);
+    if(!host) {
+        host = default_host(project, header_path_id);
         if(!host) {
-            LOG_DEBUG("resolve_header_context: no host for path_id={}", header_path_id);
-            return std::nullopt;
+            return std::unexpected(Fid{});
         }
-        host_path_id = host->file;
-        chain = std::move(host->chain);
     }
+    auto host_path_id = host->file;
+    auto& chain = host->chain;
 
     // Self-contained route: borrow the host's command, no prefix needed.
     // The chain is kept so a didSave along it still invalidates the session.
@@ -393,12 +394,14 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
         host_base_hash = choice->base_hash;
     }
 
+    bool lexical = host->lexical;
     if(!synthesize) {
         return HeaderContext{.host_path_id = host_path_id,
                              .occurrence = occurrence.value_or(0),
                              .host_command_hash = std::move(host_command_hash),
                              .host_base_hash = std::move(host_base_hash),
-                             .chain = llvm::SmallVector<Fid>(chain.begin(), chain.end() - 1)};
+                             .chain = llvm::SmallVector<Fid>(chain.begin(), chain.end() - 1),
+                             .lexical = lexical};
     }
 
     // Include directives along the chain are resolved with the host's real
@@ -407,7 +410,7 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
     auto host_path = project.file_table.resolve(host_path_id);
     auto commands = host_commands(project, chain.back(), host_path_id);
     if(commands.empty()) {
-        return std::nullopt;
+        return std::unexpected(host_path_id);
     }
     auto target_path = project.file_table.resolve(chain.back());
     CanonicalRef edit_paths[] = {host_path, target_path};
@@ -422,30 +425,29 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
         project.build.resolve(host_path_id, picked.config, picked.source, edit_paths, host_path);
 
     auto search_config = project.cdb.search_config(host_ref);
-    DirListingCache dir_cache;
-    dir_cache.shared = &project.file_table;
-    auto resolved_config = resolve_search_config(search_config, dir_cache);
+    vfs::Scope scope(project.file_table.dirs);
+    auto resolved_config = resolve_search_config(search_config, scope);
 
-    auto resolver = [&](llvm::StringRef filename,
-                        bool is_angled,
-                        bool is_include_next,
-                        llvm::StringRef includer_dir) -> std::optional<std::string> {
-        auto entries = resolve_dir(includer_dir, dir_cache);
-        auto result = resolve_include(filename,
-                                      is_angled,
-                                      entries,
+    auto resolver =
+        [&](const ScanResult::IncludeInfo& include,
+            llvm::StringRef includer_dir,
+            std::optional<unsigned> includer_found_dir) -> std::optional<ResolveResult> {
+        auto result = resolve_include(include.path,
+                                      include.is_angled,
+                                      &scope.list(includer_dir),
                                       includer_dir,
-                                      is_include_next,
-                                      0,
+                                      include.is_include_next,
+                                      includer_found_dir,
                                       resolved_config,
-                                      dir_cache);
+                                      scope);
         if(!result) {
             return std::nullopt;
         }
         // Chain files are named by the build's spelling of each, so a
         // resolution matches the next one exactly when it is that file.
         auto found = project.file_table.intern(Spelling::absolute(result->path));
-        return project.file_table.spelling(found).str();
+        result->path = project.file_table.spelling(found).str();
+        return result;
     };
 
     // Read the chain files (all but the target) from disk. The synthesized
@@ -462,14 +464,18 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
     deps.reserve(chain.size());
     for(std::size_t i = 0; i + 1 < chain.size(); ++i) {
         auto cur_path = project.file_table.resolve(chain[i]);
-        auto observed = read_file_observed(cur_path.data());
+        auto observed = vfs::read_observed(cur_path);
         if(!observed) {
             LOG_WARN("resolve_header_context: cannot read {}", cur_path);
-            return std::nullopt;
+            return std::unexpected(host_path_id);
         }
         chain_contents.emplace_back(observed->content->getBuffer());
         chain_paths.push_back(project.file_table.spelling(chain[i]));
-        chain_entries.push_back({chain_paths.back(), chain_contents.back()});
+        chain_entries.push_back({
+            .path = chain_paths.back(),
+            .content = chain_contents.back(),
+            .line = host->lines.empty() ? 0 : host->lines[i],
+        });
         project.file_table.observe(chain[i], observed->obs);
         deps.push_back(
             {.path_id = chain[i],
@@ -479,26 +485,31 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
     // Snapshot the header itself for other occurrences along the chain:
     // its real path is remapped to the open buffer at compile time, so
     // includes of it inside the context must point at a copy. The snapshot
-    // mirrors the header's disk state; re-synthesize when it changes so
-    // other-occurrence expansions stay current.
+    // mirrors the header's disk state; a context embedding it re-synthesizes
+    // when it changes so other-occurrence expansions stay current.
     std::optional<llvm::StringRef> target_content;
-    auto target_observed = read_file_observed(target_path.data());
+    auto target_observed = vfs::read_observed(target_path);
     if(target_observed) {
         target_content = target_observed->content->getBuffer();
         project.file_table.observe(chain.back(), target_observed->obs);
-        deps.push_back({.path_id = chain.back(),
-                        .version = project.file_table.intern_version(chain.back(),
-                                                                     target_observed->obs.hash)});
     }
 
     auto target_spelling = project.file_table.spelling(chain.back());
-    auto synthesized =
-        synthesize_context(chain_entries, target_spelling, resolver, occurrence, target_content);
+    auto synthesized = synthesize_context(chain_entries,
+                                          target_spelling,
+                                          resolver,
+                                          host->lines.empty() ? occurrence : std::nullopt,
+                                          target_content);
     if(!synthesized) {
         LOG_WARN("resolve_header_context: cannot match include chain for {} (host={})",
                  target_path,
                  host_path);
-        return std::nullopt;
+        return std::unexpected(host_path_id);
+    }
+    if(synthesized->snapshot) {
+        deps.push_back({.path_id = chain.back(),
+                        .version = project.file_table.intern_version(chain.back(),
+                                                                     target_observed->obs.hash)});
     }
 
     return HeaderContext{.host_path_id = host_path_id,
@@ -508,7 +519,8 @@ std::optional<HeaderContext> CommandResolver::resolve_header_context(Fid header_
                          .host_command_hash = std::move(host_command_hash),
                          .host_base_hash = std::move(host_base_hash),
                          .chain = llvm::SmallVector<Fid>(chain.begin(), chain.end() - 1),
-                         .deps = std::move(deps)};
+                         .deps = std::move(deps),
+                         .lexical = lexical};
 }
 
 }  // namespace clice

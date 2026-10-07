@@ -21,4 +21,4 @@ type:
     - { file: "${WS}/go_to_type_definition/06_typedef_structured_binding.cpp", range: "8:7-8:13" }
     - { file: "${WS}/go_to_type_definition/06_typedef_structured_binding.cpp", range: "11:4-11:10" }
   typeHierarchy:
-    - { name: "Widget", kind: Struct, file: "${WS}/go_to_type_definition/06_typedef_structured_binding.cpp", range: "8:7-8:13" }
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_type_definition/06_typedef_structured_binding.cpp", range: "8:0-8:16", selection: "8:7-8:13" }

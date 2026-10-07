@@ -1,12 +1,15 @@
-#include "project/cdb_watcher.h"
+module;
 
-#include <ranges>
-#include <utility>
+#include "modules/prelude.h"
 
-#include "support/filesystem.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/STLExtras.h"
+module clice;
+
+import :project.cdb_watcher;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 
@@ -22,25 +25,26 @@ CDBWatcher::Hashes CDBWatcher::loaded(SourceID id) const {
         llvm::map_range(project.cdb.inputs(id), [](auto& input) { return input.hash; }));
 }
 
-Fid CDBWatcher::database(SourceID id) {
-    return project.file_table.intern(
-        CanonicalPath(Spelling::absolute(project.cdb.source_path(id))));
+CDBWatcher::Hashes CDBWatcher::looked(const TrackedSource& tracked) {
+    return llvm::to_vector(
+        llvm::map_range(tracked.inputs, [](auto& input) { return input->hash; }));
 }
 
-CDBWatcher::Hashes CDBWatcher::look(SourceID id) {
-    auto hash = [&](Fid file) {
-        auto observed = project.file_table.current(file);
-        return observed ? std::optional(observed->hash) : std::nullopt;
-    };
-    Hashes result{hash(database(id))};
-    for(auto& input: project.cdb.inputs(id).drop_front()) {
-        result.push_back(hash(input.file));
+void CDBWatcher::watch_inputs(TrackedSource& tracked) {
+    tracked.inputs.truncate(1);
+    for(auto& input: project.cdb.inputs(tracked.id).drop_front()) {
+        tracked.inputs.push_back(
+            project.file_table.disk.watch(project.file_table.resolve(input.file).str()));
     }
-    return result;
 }
 
 void CDBWatcher::track(SourceID id) {
-    sources.push_back({.id = id, .applied = loaded(id)});
+    auto& tracked = sources.emplace_back(TrackedSource{
+        .id = id,
+        .applied = loaded(id),
+        .inputs = {project.file_table.disk.watch(project.cdb.source_path(id).str())},
+    });
+    watch_inputs(tracked);
 }
 
 llvm::SmallVector<Fid> CDBWatcher::shared_files(SourceID id) const {
@@ -91,7 +95,7 @@ static void append(CDBDiff& into, const CDBDiff& from) {
 }
 
 void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta) {
-    auto current = look(tracked.id);
+    auto current = looked(tracked);
     if(!force) {
         if(current == tracked.applied) {
             tracked.pending.reset();
@@ -107,7 +111,7 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
     // A forced tick reloads unconditionally: a spurious reload just yields
     // an empty diff.
     tracked.pending.reset();
-    bool exists = !project.file_table.seen_missing(database(tracked.id));
+    bool exists = tracked.inputs.front()->stamp.has_value();
     // A discovered database's presence ranks it (see Build::source_order):
     // the files whose default entry moves with it change command.
     bool flips = project.cdb.present(tracked.id) != exists && project.build.discovered(tracked.id);
@@ -128,15 +132,15 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
         return;
     }
     auto diff = project.cdb.reload_and_diff(tracked.id);
+    // The baseline is the reload's own reads: a rewrite landing meanwhile
+    // is seen next tick. A database the reload could not read (still
+    // locked by the generator) leaves them as they were, so the reload is
+    // retried; one it read but could not parse is retried once it moves.
+    tracked.applied = loaded(tracked.id);
+    watch_inputs(tracked);
     if(!diff) {
-        // Unreadable or unparsable right now (e.g. still locked by the
-        // generator). Leave `applied` alone: the content stays different,
-        // so the reload is retried on a later tick instead of being lost.
         return;
     }
-    // The baseline is the reload's own reads: a rewrite landing meanwhile
-    // is seen next tick.
-    tracked.applied = loaded(tracked.id);
     LOG_INFO("Reloaded CDB from {}: {} added, {} removed, {} changed",
              project.cdb.source_path(tracked.id),
              diff->added.size(),
@@ -175,28 +179,82 @@ void CDBWatcher::discover_into(Fid path_id, CDBDiff& found) {
     }
 }
 
-CDBDiff CDBWatcher::tick(llvm::ArrayRef<Fid> open_files, bool force) {
-    CDBDiff delta;
-    // Nothing declared: keep looking, so a database generated after
-    // startup — at the root, in a new subdirectory, or above a file open
-    // without one — is picked up. Declared sources are registered
-    // (existing or not) and only watched.
-    if(!project.build.declares_sources()) {
-        for(auto& found: discover_compile_commands(root)) {
-            auto id = project.cdb.add_source(found);
-            if(llvm::none_of(sources,
-                             [&](const TrackedSource& tracked) { return tracked.id == id; })) {
-                // Never loaded, so baselined unread: the fresh file is a change against
-                // the never-loaded source and goes through the normal
-                // settle-and-reload path.
-                LOG_INFO("Found compilation database: {}", found);
-                track(id);
+void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
+    auto& disk = project.file_table.disk;
+    if(!root_flag) {
+        root_flag = disk.watch(root.str());
+    }
+    if(!listed_at || root_flag->stamp != listed_at) {
+        listed = database_places(root);
+        // An entry made within the clock tick of the root's last change
+        // leaves its stamp as it was: only a settled stamp vouches for the
+        // listing (see vfs::settled).
+        auto& stamp = root_flag->stamp;
+        listed_at = stamp && vfs::settled(stamp->mtime_ns) ? stamp : std::nullopt;
+    }
+
+    // In the order a startup discovery would register them, the nearest
+    // database first above each open file.
+    llvm::SmallVector<Spelling> wanted;
+    llvm::StringSet<> seen;
+    auto want = [&](llvm::ArrayRef<Spelling> candidates) {
+        for(auto& place: candidates) {
+            if(seen.insert(place.str()).second) {
+                wanted.push_back(place);
             }
         }
-        for(auto path_id: open_files) {
-            discover_into(path_id, delta);
+    };
+    want(listed);
+    for(auto path_id: open_files) {
+        auto path = project.file_table.resolve(path_id);
+        if(project.build.commands(path_id).empty() && path::under(path, root)) {
+            want(database_places_above(path.parent(), root));
         }
     }
+
+    llvm::SmallVector<std::string> unwanted;
+    for(auto& entry: places) {
+        if(!seen.contains(entry.getKey())) {
+            unwanted.push_back(entry.getKey().str());
+        }
+    }
+    for(auto& place: unwanted) {
+        places.erase(place);
+    }
+
+    for(auto& place: wanted) {
+        if(registered.contains(place.str())) {
+            continue;
+        }
+        auto it = places.find(place.str());
+        if(it == places.end()) {
+            if(project.cdb.find_source(place)) {
+                registered.insert(place.str());
+                continue;
+            }
+            it = places.try_emplace(place.str(), disk.watch(place.str())).first;
+        }
+        if(!it->second->stamp) {
+            continue;
+        }
+        // Never loaded, so baselined unread: the fresh file is a change
+        // against the never-loaded source and goes through the normal
+        // settle-and-reload path.
+        auto id = project.cdb.add_source(place);
+        if(llvm::none_of(sources, [&](const TrackedSource& tracked) { return tracked.id == id; })) {
+            LOG_INFO("Found compilation database: {}", place);
+            track(id);
+        }
+        registered.insert(place.str());
+        places.erase(it);
+    }
+}
+
+CDBDiff CDBWatcher::tick(llvm::ArrayRef<Fid> open_files, bool force) {
+    if(!project.build.declares_sources()) {
+        discover(open_files);
+    }
+    CDBDiff delta;
     for(auto& tracked: sources) {
         tick_source(tracked, force, delta);
     }

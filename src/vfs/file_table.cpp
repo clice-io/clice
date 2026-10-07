@@ -1,70 +1,79 @@
-#include "vfs/file_table.h"
+module;
 
-#include <chrono>
+#include "modules/prelude.h"
 
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/xxhash.h"
+module clice;
+
+import :vfs.file_table;
 
 namespace clice {
-
-std::optional<ObservedFile> read_file_observed(const char* path) {
-    auto fd = llvm::sys::fs::openNativeFileForRead(path);
-    if(!fd) {
-        llvm::consumeError(fd.takeError());
-        return std::nullopt;
-    }
-    auto close = llvm::make_scope_exit([&] { llvm::sys::fs::closeFile(*fd); });
-
-    llvm::sys::fs::file_status before;
-    bool have_before = !llvm::sys::fs::status(*fd, before);
-
-    // Force read() instead of mmap (IsVolatile): the bytes must be a
-    // snapshot taken between the two fstats — a mapped buffer would keep
-    // tracking the file after the post-fstat, unpairing hash and stat.
-    auto buf = llvm::MemoryBuffer::getOpenFile(*fd,
-                                               path,
-                                               /*FileSize=*/-1,
-                                               /*RequiresNullTerminator=*/true,
-                                               /*IsVolatile=*/true);
-    if(!buf) {
-        return std::nullopt;
-    }
-
-    ObservedFile result;
-    result.content = std::move(*buf);
-    if(auto text = without_bom(result.content->getBuffer());
-       text.size() != result.content->getBufferSize()) {
-        result.content = llvm::MemoryBuffer::getMemBufferCopy(text, path);
-    }
-
-    llvm::sys::fs::file_status after;
-    bool have_after = !llvm::sys::fs::status(*fd, after);
-    result.obs.hash = llvm::xxh3_64bits(result.content->getBuffer());
-    if(!have_after) {
-        return result;
-    }
-    result.obs.size = after.getSize();
-    result.obs.mtime_ns = fs::mtime_ns(after);
-    result.obs.uid_device = after.getUniqueID().getDevice();
-    result.obs.uid_file = after.getUniqueID().getFile();
-    result.obs.paired = have_before && before.getSize() == after.getSize() &&
-                        fs::mtime_ns(before) == result.obs.mtime_ns;
-
-    auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::system_clock::now().time_since_epoch())
-                      .count();
-    result.obs.reliable =
-        result.obs.paired && result.obs.mtime_ns <= fs::stat_baseline_before_ns(now_ms);
-    return result;
-}
 
 /// `path` with its `..` segments resolved as text.
 static Spelling fold(const Spelling& path) {
     llvm::SmallString<256> text(path.str());
     path::remove_dots(text, /*remove_dot_dot=*/true);
     return Spelling::absolute(text);
+}
+
+Fid FileTable::intern(const Spelling& path) {
+    if(auto it = ids.find(path.str()); it != ids.end()) {
+        return it->second;
+    }
+    auto fid = intern(CanonicalPath(path));
+    ids.try_emplace(path.str(), fid);
+    return fid;
+}
+
+Fid FileTable::intern_spelled(const Spelling& path) {
+    auto fid = intern(path);
+    spell_as(fid, path);
+    return fid;
+}
+
+Fid FileTable::intern(CanonicalRef identity) {
+    auto [it, inserted] =
+        ids.try_emplace(identity, Fid{static_cast<std::uint32_t>(spellings.size())});
+    if(inserted) {
+        // Allocate with null terminator so that resolve().data() is safe
+        // to use as const char* (e.g. in MemoryBuffer::getFile which calls strlen).
+        const std::size_t n = identity.size();
+        char* buf = allocator.Allocate<char>(n + 1);
+        std::ranges::copy(llvm::StringRef(identity), buf);
+        buf[n] = '\0';
+        spellings.push_back(llvm::StringRef(buf, n));
+    }
+    return it->second;
+}
+
+std::optional<Fid> FileTable::find(const Spelling& path) const {
+    auto it = ids.find(path.str());
+    if(it == ids.end()) {
+        it = ids.find(CanonicalPath(path));
+    }
+    if(it == ids.end()) {
+        return std::nullopt;
+    }
+    return it->second;
+}
+
+void FileTable::spell_as(Fid fid, const Spelling& path) {
+    if(llvm::StringRef(path) != llvm::StringRef(resolve(fid))) {
+        spelled.try_emplace(fid, path.str());
+    }
+}
+
+Spelling FileTable::spelling(Fid fid) const {
+    if(auto it = spelled.find(fid); it != spelled.end()) {
+        return Spelling::absolute(it->second);
+    }
+    return Spelling(resolve(fid));
+}
+
+std::string FileTable::display(Fid fid) const {
+    if(auto it = shown.find(fid); it != shown.end()) {
+        return it->second;
+    }
+    return display(resolve(fid));
 }
 
 std::string FileTable::display(CanonicalRef identity) const {
@@ -88,6 +97,21 @@ void FileTable::spell_root(const Spelling& root) {
 void FileTable::unspell_root(const Spelling& root) {
     auto folded = fold(root);
     llvm::erase_if(spelled_roots, [&](auto& entry) { return entry.second == folded; });
+}
+
+VersionID FileTable::intern_version(Fid fid, std::uint64_t content_hash) {
+    auto [it, inserted] =
+        version_ids.try_emplace({fid, content_hash},
+                                VersionID{static_cast<std::uint32_t>(versions.size())});
+    if(inserted) {
+        versions.push_back(FileVersion{.fid = fid, .content_hash = content_hash});
+    }
+    return it->second;
+}
+
+vfs::DiskState::Verdict FileTable::check_version(VersionID vid) {
+    auto& version = this->version(vid);
+    return disk.check(version.fid, version.content_hash);
 }
 
 }  // namespace clice

@@ -1,11 +1,13 @@
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "project/project.h"
+module;
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/xxhash.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :project.project;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :vfs.file_system;
 
 namespace clice::testing {
 namespace {
@@ -22,42 +24,27 @@ std::int64_t generous_build_at() {
 /// The consumed hash a worker would report for the file's current bytes
 /// (0 = unreadable, which no test here expects).
 std::uint64_t consumed_hash(llvm::StringRef path) {
-    auto buf = llvm::MemoryBuffer::getFile(path);
-    return buf ? llvm::xxh3_64bits((*buf)->getBuffer()) : 0;
+    auto text = vfs::read(path);
+    return text ? llvm::xxh3_64bits((*text)->getBuffer()) : 0;
 }
 
 /// Rewind a file's mtime out of the mtime-granularity guard window, the
 /// way real project files predate a server start. A freshly touched file
-/// is deliberately untrusted (see read_file_observed), so tests exercising
+/// is deliberately untrusted (see vfs::read_observed), so tests exercising
 /// the stat fast path must age their files first.
 void age_file(llvm::StringRef path) {
-    EXPECT_TRUE(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
+    ZEXPECT(set_file_mtime(path, file_mtime_ns(path) - 10'000'000'000));
 }
 
 /// Whether the file table answers the file's current stat without a read.
 bool vouched(FileTable& pool, llvm::StringRef path) {
-    llvm::sys::fs::file_status status;
-    if(llvm::sys::fs::status(path, status)) {
-        return false;
-    }
-    auto uid = status.getUniqueID();
-    return pool
-        .cached_hash(pool.intern(Spelling::absolute(path)),
-                     status.getSize(),
-                     fs::mtime_ns(status),
-                     uid.getDevice(),
-                     uid.getFile())
-        .has_value();
+    auto status = vfs::status(path);
+    return status && pool.cached_hash(pool.intern(Spelling::absolute(path)), status->stamp);
 }
 
-bool changed(FileTable& pool, const DepsSnapshot& snap) {
-    auto wave = pool.wave();
-    return deps_changed(pool, snap);
-}
+ZEST_SUITE(DepsSnapshot) {
 
-TEST_SUITE(DepsSnapshot) {
-
-TEST_CASE(FreshWhenUntouched) {
+ZEST_CASE(FreshWhenUntouched) {
     TempDir tmp;
     tmp.touch("dep.h", "int f();\n");
     auto dep = tmp.path("dep.h");
@@ -69,15 +56,15 @@ TEST_CASE(FreshWhenUntouched) {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    ASSERT_EQ(snap.size(), 1u);
-    ASSERT_FALSE(changed(pool, snap));
+    ZASSERT(snap.size() == 1u);
+    ZASSERT(!deps_changed(pool, snap));
 
     // The check's read left the file's pair behind: the next check is a
     // stat.
-    ASSERT_TRUE(vouched(pool, dep));
+    ZASSERT(vouched(pool, dep));
 }
 
-TEST_CASE(SnapshotsShareOneVersion) {
+ZEST_CASE(SnapshotsShareOneVersion) {
     TempDir tmp;
     tmp.touch("dep.h", "int f();\n");
     auto dep = tmp.path("dep.h");
@@ -95,15 +82,15 @@ TEST_CASE(SnapshotsShareOneVersion) {
                                             DepFile{dep, consumed_hash(dep)}
     },
                                         build_at);
-    ASSERT_EQ(pool.versions.size(), 1u);
+    ZASSERT(pool.versions.size() == 1u);
 
     // One check's read serves the other snapshot.
-    ASSERT_FALSE(changed(pool, first));
-    ASSERT_TRUE(vouched(pool, dep));
-    ASSERT_FALSE(changed(pool, second));
+    ZASSERT(!deps_changed(pool, first));
+    ZASSERT(vouched(pool, dep));
+    ZASSERT(!deps_changed(pool, second));
 }
 
-TEST_CASE(ImmediateEditDetected) {
+ZEST_CASE(ImmediateEditDetected) {
     // The F44 shape: the dependency is saved right after the artifact's
     // freshness was captured — no watermark may bless it.
     TempDir tmp;
@@ -117,10 +104,35 @@ TEST_CASE(ImmediateEditDetected) {
     },
                                       generous_build_at());
     tmp.touch("dep.h", "int renamed();\n");
-    ASSERT_TRUE(changed(pool, snap));
+    ZASSERT(deps_changed(pool, snap));
 }
 
-TEST_CASE(BackdatedEditDetected) {
+ZEST_CASE(EveryChangeFound) {
+    // One check finds every changed dependency, so they cascade together.
+    TempDir tmp;
+    tmp.touch("a.h", "int a();\n");
+    tmp.touch("b.h", "int b();\n");
+    auto a = tmp.path("a.h");
+    auto b = tmp.path("b.h");
+    age_file(a);
+    age_file(b);
+
+    FileTable pool;
+    pool.read(pool.intern(Spelling::absolute(a)));
+    pool.read(pool.intern(Spelling::absolute(b)));
+    auto snap = capture_deps_snapshot(pool,
+                                      {
+                                          DepFile{a, consumed_hash(a)},
+                                          DepFile{b, consumed_hash(b)},
+    },
+                                      generous_build_at());
+    tmp.touch("a.h", "int a2();\n");
+    tmp.touch("b.h", "int b2();\n");
+    ZASSERT(deps_changed(pool, snap));
+    ZASSERT(pool.take_changes().size() == 2u);
+}
+
+ZEST_CASE(BackdatedEditDetected) {
     // The F04 shape: the edit lands with an mtime that does not move
     // forward (rsync -t, git-restore-mtime). Equality comparison sends it
     // to the hash layer regardless of the timestamp's direction.
@@ -137,14 +149,14 @@ TEST_CASE(BackdatedEditDetected) {
     },
                                       generous_build_at());
     auto recorded_mtime = file_mtime_ns(dep);
-    ASSERT_TRUE(vouched(pool, dep));
+    ZASSERT(vouched(pool, dep));
 
     tmp.touch("dep.h", "int new_name();\n");  // same length
-    ASSERT_TRUE(set_file_mtime(dep, recorded_mtime - 5'000'000'000));
-    ASSERT_TRUE(changed(pool, snap));
+    ZASSERT(set_file_mtime(dep, recorded_mtime - 5'000'000'000));
+    ZASSERT(deps_changed(pool, snap));
 }
 
-TEST_CASE(TouchRepairsFastPath) {
+ZEST_CASE(TouchRepairsFastPath) {
     TempDir tmp;
     tmp.touch("dep.h", "int f();\n");
     auto dep = tmp.path("dep.h");
@@ -161,15 +173,15 @@ TEST_CASE(TouchRepairsFastPath) {
     // Rewrite identical bytes: the stat moves, the content does not.
     auto before = file_mtime_ns(dep);
     tmp.touch("dep.h", "int f();\n");
-    ASSERT_TRUE(set_file_mtime(dep, before + 5'000'000'000));
-    ASSERT_FALSE(vouched(pool, dep));
-    ASSERT_FALSE(changed(pool, snap));
+    ZASSERT(set_file_mtime(dep, before + 5'000'000'000));
+    ZASSERT(!vouched(pool, dep));
+    ZASSERT(!deps_changed(pool, snap));
 
     // The check's read moved the pair to the new stat.
-    ASSERT_TRUE(vouched(pool, dep));
+    ZASSERT(vouched(pool, dep));
 }
 
-TEST_CASE(PoisonedCaptureDetected) {
+ZEST_CASE(PoisonedCaptureDetected) {
     // The F01 shape: the dependency changed between the build reading it
     // and the snapshot being captured. The consumed hash describes v1, the
     // disk holds v2, and the capture-time stat must not bless v2.
@@ -185,10 +197,10 @@ TEST_CASE(PoisonedCaptureDetected) {
                                           DepFile{dep, consumed}
     },
                                       /*build_at=*/1);
-    ASSERT_TRUE(changed(pool, snap));
+    ZASSERT(deps_changed(pool, snap));
 }
 
-TEST_CASE(StalePairRereads) {
+ZEST_CASE(StalePairRereads) {
     // The pair describes bytes the scan read; after an edit the live stat
     // no longer matches it, so the check reads instead of answering with
     // the old hash.
@@ -206,18 +218,18 @@ TEST_CASE(StalePairRereads) {
     // coarse-timestamp filesystems, and an equal-stat same-size rewrite
     // is the accepted mtime residual — the premise here is a stat that
     // does differ, so force it apart.
-    ASSERT_TRUE(set_file_mtime(dep, file_mtime_ns(dep) - 5'000'000'000));
+    ZASSERT(set_file_mtime(dep, file_mtime_ns(dep) - 5'000'000'000));
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    ASSERT_FALSE(vouched(pool, dep));
-    ASSERT_FALSE(changed(pool, snap));
-    ASSERT_TRUE(vouched(pool, dep));
+    ZASSERT(!vouched(pool, dep));
+    ZASSERT(!deps_changed(pool, snap));
+    ZASSERT(vouched(pool, dep));
 }
 
-TEST_CASE(MissingTransitions) {
+ZEST_CASE(MissingTransitions) {
     TempDir tmp;
     auto dep = tmp.path("ghost.h");
 
@@ -227,18 +239,18 @@ TEST_CASE(MissingTransitions) {
                                           DepFile{dep, 0}
     },
                                       generous_build_at());
-    ASSERT_TRUE(snap[0].missing);
+    ZASSERT(snap[0].missing);
 
     // Still missing: unchanged.
-    ASSERT_FALSE(changed(pool, snap));
+    ZASSERT(!deps_changed(pool, snap));
 
     // Appearing is a change, and the file table saw it.
     tmp.touch("ghost.h", "int f();\n");
-    ASSERT_TRUE(changed(pool, snap));
-    ASSERT_FALSE(pool.seen_missing(pool.intern(Spelling::absolute(dep))));
+    ZASSERT(deps_changed(pool, snap));
+    ZASSERT(!pool.seen_missing(pool.intern(Spelling::absolute(dep))));
 }
 
-TEST_CASE(AbsentPlaceFilled) {
+ZEST_CASE(AbsentPlaceFilled) {
     // A place a failed lookup looked holds a file by the capture: the build
     // never saw it, so the artifact is stale however old the file is.
     TempDir tmp;
@@ -252,11 +264,11 @@ TEST_CASE(AbsentPlaceFilled) {
                                           DepFile{.path = place, .absent = true}
     },
                                       generous_build_at());
-    ASSERT_TRUE(snap[0].missing);
-    ASSERT_TRUE(changed(pool, snap));
+    ZASSERT(snap[0].missing);
+    ZASSERT(deps_changed(pool, snap));
 }
 
-TEST_CASE(RemovedAfterBuild) {
+ZEST_CASE(RemovedAfterBuild) {
     TempDir tmp;
     tmp.touch("dep.h", "int f();\n");
     auto dep = tmp.path("dep.h");
@@ -268,11 +280,11 @@ TEST_CASE(RemovedAfterBuild) {
     },
                                       generous_build_at());
 
-    fs::remove(dep);
-    ASSERT_TRUE(changed(pool, snap));
+    vfs::remove(dep);
+    ZASSERT(deps_changed(pool, snap));
 }
 
-};  // TEST_SUITE(DepsSnapshot)
+};  // ZEST_SUITE(DepsSnapshot)
 
 }  // namespace
 }  // namespace clice::testing

@@ -1,6 +1,10 @@
-#include "server/live_sources.h"
+module;
 
-#include "llvm/ADT/StringSet.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :server.live_sources;
 
 namespace clice {
 
@@ -27,9 +31,7 @@ index::RowSource ServerLiveSources::buffer_source(index::RowSource::Kind kind,
         .file = file,
         .path = project.file_table.display(file),
         .rows = &rows,
-        .coords = {session.text,
-                   static_cast<std::uint32_t>(session.text.size()),
-                   session.line_starts}
+        .coords = {session.text, session.line_starts}
     };
 }
 

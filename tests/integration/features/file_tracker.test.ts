@@ -13,6 +13,7 @@ import {
     withTimeout,
     type CliceClient,
 } from "@clice/tools/client";
+import type { Workspace } from "@clice/tools/workspace";
 import { test, expect } from "../fixtures.ts";
 
 const GATED_MAIN = `#ifndef FEATURE
@@ -307,7 +308,7 @@ test("cdb polling loop live", async ({ session }) => {
     workspace.write("main.cpp", GATED_MAIN);
     workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace, {
-        initializationOptions: { tracker: { cdb_poll_seconds: 1 } },
+        initializationOptions: { tracker: { workspace_poll_seconds: 1 } },
     });
 
     const mainUri = workspace.uri("main.cpp");
@@ -315,7 +316,7 @@ test("cdb polling loop live", async ({ session }) => {
     client.assertHasErrors(mainUri);
 
     workspace.writeCDB(["main.cpp"], { extraArgs: ["-DFEATURE"] });
-    // No hook: the 1s poll loop needs two stable ticks (settle debounce),
+    // No hook: the poll loop needs two stable ticks (settle debounce),
     // so poll for the errors to clear instead of trusting one fixed sleep.
     // Until the reload lands the hover fast-paths on a clean AST and no
     // diagnostics arrive — that round just times out and retries.
@@ -362,7 +363,7 @@ test("cdb flag change reindexes closed", async ({ session }) => {
     ).toBe(true);
 });
 
-test("rewrite before first sweep reported", async ({ session }) => {
+test("rewrite before first tick reported", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("header.h", HEADER_V1);
     workspace.write("closed.cpp", '#include "header.h"\nint use_target() { return TARGET(); }\n');
@@ -376,7 +377,7 @@ test("rewrite before first sweep reported", async ({ session }) => {
         "initial index never resolved the closed TU's alpha call",
     ).toBe(true);
 
-    // No seeding sweep: the first one judges the header against the bytes
+    // No seeding tick: the first one judges the header against the bytes
     // the startup scan read.
     await sleep(MTIME_GRANULARITY);
     workspace.write("header.h", HEADER_V2);
@@ -464,4 +465,109 @@ test("same stamp cdb rewrite applied", async ({ session }) => {
     expect(await eventsOf(client, "cdb", stamped)).toBe(1);
     await client.waitForRecompile(main);
     client.assertNoErrors(main, "the rewritten flag must reach the open file");
+});
+
+/// Flags giving the TU a sysroot inside the workspace: the driver adds its
+/// include directories itself, so the headers there count as installed
+/// ones, like a toolchain's.
+function sysrootArgs(workspace: Workspace): string[] {
+    return ["--target=x86_64-unknown-linux-gnu", `--sysroot=${workspace.path("sysroot")}`];
+}
+
+test("requests look at workspace files only", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("sysroot/usr/include/installed.h", "#define INSTALLED 1\n");
+    workspace.write("local.h", "#define LOCAL 1\n");
+    workspace.write(
+        "main.cpp",
+        '#include <installed.h>\n#include "local.h"\nint main() { return INSTALLED + LOCAL; }\n',
+    );
+    workspace.writeCDB(["main.cpp"], { extraArgs: sysrootArgs(workspace) });
+    await client.initialize(workspace, {
+        initializationOptions: { project: { enable_indexing: false } },
+    });
+    const [main] = await client.openAndWait("main.cpp");
+    client.assertNoErrors(main);
+    await client.hoverAt(main, 2, 4);
+
+    const before = await client.stats();
+    await client.hoverAt(main, 2, 4);
+    const after = await client.stats();
+    expect(after.checksLooked - before.checksLooked, "the workspace header is looked at").toBe(1);
+    expect(after.checksTrusted - before.checksTrusted, "the installed header is not").toBe(1);
+});
+
+test("stale request looks once", async ({ session }) => {
+    // Finding the PCH stale, the request rebuilds it: the check, the PCH's
+    // preparation and its build share one look at each header.
+    const { client, workspace } = session.tmp();
+    workspace.write("a.h", "#pragma once\ninline int a() { return 1; }\n");
+    workspace.write("b.h", "#pragma once\ninline int b() { return 2; }\n");
+    workspace.write(
+        "main.cpp",
+        '#include "a.h"\n#include "b.h"\nint main() { return a() + b(); }\n',
+    );
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace, {
+        initializationOptions: { project: { enable_indexing: false } },
+    });
+    const [main] = await client.openAndWait("main.cpp");
+
+    const looked = async (request: () => Promise<unknown>) => {
+        const before = await client.stats();
+        await request();
+        return (await client.stats()).checksLooked - before.checksLooked;
+    };
+    const hover = () => client.hoverAt(main, 2, 4);
+    const completion = () => client.completionAt(main, 2, 20);
+    const freshHover = await looked(hover);
+    const freshCompletion = await looked(completion);
+
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("b.h", "#pragma once\ninline int b() { return 22; }\n");
+    expect(await looked(hover)).toBe(freshHover);
+    workspace.write("a.h", "#pragma once\ninline int a() { return 11; }\n");
+    expect(await looked(completion)).toBe(freshCompletion);
+});
+
+test("save looks at installed headers", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("sysroot/usr/include/installed.h", "#define INSTALLED 1\n");
+    workspace.write("main.cpp", '#include <installed.h>\nstatic_assert(INSTALLED == 2, "");\n');
+    workspace.writeCDB(["main.cpp"], { extraArgs: sysrootArgs(workspace) });
+    await client.initialize(workspace, {
+        initializationOptions: { project: { enable_indexing: false } },
+    });
+    const [main] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(main, "the installed header defines 1");
+
+    // An upgrade rewrites the installed header; nothing asks until a save.
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("sysroot/usr/include/installed.h", "#define INSTALLED 2\n");
+    client.save(main);
+    await client.waitForRecompile(main);
+    client.assertNoErrors(main, "the save must look at the installed header");
+});
+
+test("background ticks see a rewrite", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("header.h", HEADER_V1);
+    workspace.write("closed.cpp", '#include "header.h"\nint use_target() { return TARGET(); }\n');
+    workspace.writeCDB(["closed.cpp"]);
+    await client.initialize(workspace, {
+        initializationOptions: { tracker: { workspace_poll_seconds: 1 } },
+    });
+
+    const headerUri = workspace.uri("header.h");
+    const closedUri = workspace.uri("closed.cpp");
+    expect(await client.waitForReference(headerUri, 2, 11, closedUri)).toBe(true);
+
+    // No hook, no save, and the index answers without looking at the disk:
+    // only a tick can see the rewrite.
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("header.h", HEADER_V2);
+    expect(
+        await client.waitForReference(headerUri, 3, 11, closedUri),
+        "a background tick must see the rewrite",
+    ).toBe(true);
 });

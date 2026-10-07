@@ -1,22 +1,13 @@
-#include "syntax/scan.h"
+module;
 
-#include <deque>
+#include "modules/prelude.h"
 
-#include "command/invocation.h"
-#include "syntax/lexer.h"
+module clice;
 
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "clang/Basic/DiagnosticOptions.h"
-#include "clang/Basic/FileEntry.h"
-#include "clang/Basic/FileManager.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/FrontendActions.h"
-#include "clang/Lex/PPCallbacks.h"
-#include "clang/Lex/Preprocessor.h"
-#include "clang/Lex/PreprocessorOptions.h"
-#include "clang/Tooling/CompilationDatabase.h"
+import :command.invocation;
+import :syntax.lexer;
+import :syntax.scan;
+import :vfs.file_system;
 
 namespace clice {
 
@@ -29,6 +20,8 @@ ScanResult scan_quick(llvm::StringRef content) {
     llvm::SmallVector<dds::Directive> directives;
 
     if(clang::scanSourceForDependencyDirectives(content, tokens, directives)) {
+        // A precise scan lexes text the directive scanner rejects in full.
+        result.directives_hash = llvm::xxh3_64bits(content);
         return result;
     }
 
@@ -36,8 +29,16 @@ ScanResult scan_quick(llvm::StringRef content) {
     result.includes.reserve(std::min<std::size_t>(directives.size(), 32));
 
     int conditional_depth = 0;
+    llvm::SmallString<1024> stream;
 
     for(auto& dir: directives) {
+        stream.push_back(static_cast<char>(dir.Kind));
+        for(auto& tok: dir.Tokens) {
+            // The flags tell `F(x)` from `F (x)` in a #define.
+            stream += content.substr(tok.Offset, tok.Length);
+            stream.append(reinterpret_cast<const char*>(&tok.Flags),
+                          reinterpret_cast<const char*>(&tok.Flags) + sizeof(tok.Flags));
+        }
         switch(dir.Kind) {
             case dds::pp_if:
             case dds::pp_ifdef:
@@ -131,6 +132,7 @@ ScanResult scan_quick(llvm::StringRef content) {
         }
     }
 
+    result.directives_hash = llvm::xxh3_64bits(stream);
     return result;
 }
 
@@ -148,6 +150,9 @@ public:
 
     std::optional<llvm::ArrayRef<clang::dependency_directives_scan::Directive>>
         operator()(clang::FileEntryRef file) override {
+        if(file == main_file) {
+            return std::nullopt;
+        }
         auto path = file.getFileEntry().tryGetRealPathName();
         if(path.empty()) {
             path = file.getName();
@@ -197,6 +202,13 @@ public:
 
         return llvm::ArrayRef(entry_ptr->directives);
     }
+
+    /// Lexed by clang's ordinary lexer, not from its directives: the main
+    /// file is the text being typed, and the directives lexer breaks on
+    /// half-typed directives (an `#if(` cut off at the end of the buffer,
+    /// `import <header>;`) where the ordinary lexer reports an error — the
+    /// scan runs in the master process, where a crash ends the server.
+    clang::OptionalFileEntryRef main_file;
 
 private:
     SharedScanCache* cache;
@@ -279,12 +291,10 @@ private:
 };
 
 /// The setup every preprocessor-driven scan shares: the instance from the
-/// command (diagnostics ignored), the directives getter — a remapped main file bypasses the
-/// path-keyed cache, or it would read a prior on-disk scan of the same
-/// path and poison it for later ones — the target, and the main file
-/// entered through a preprocess-only action. `body` runs on the entered
-/// preprocessor; the module declaration it reached is read into `result`
-/// before the source file is ended.
+/// command (diagnostics ignored), the directives getter, the target, and
+/// the main file entered through a preprocess-only action. `body` runs on
+/// the entered preprocessor; the module declaration it reached is read
+/// into `result` before the source file is ended.
 void scan_with_preprocessor(
     llvm::ArrayRef<const char*> arguments,
     llvm::StringRef directory,
@@ -294,7 +304,7 @@ void scan_with_preprocessor(
     ScanResult& result,
     llvm::function_ref<void(clang::CompilerInstance&, clang::FrontendAction&)> body) {
     if(!vfs) {
-        vfs = llvm::vfs::createPhysicalFileSystem();
+        vfs = new vfs::View();
     }
 
     clang::DiagnosticOptions diag_opts;
@@ -307,8 +317,8 @@ void scan_with_preprocessor(
         return;
     }
 
-    // An engaged content remaps the main file to it, even when empty: an
-    // overlay VFS, so both the preprocessor and the directives getter see it.
+    // An engaged content remaps the main file to it, even when empty,
+    // through an overlay VFS.
     if(content.has_value()) {
         auto& inputs = invocation->getFrontendOpts().Inputs;
         if(!inputs.empty()) {
@@ -329,8 +339,8 @@ void scan_with_preprocessor(
     instance->getDiagnostics().setSuppressAllDiagnostics(true);
     instance->createFileManager();
 
-    auto getter = std::make_unique<ScanDirectivesGetter>(content ? nullptr : cache,
-                                                         instance->getFileManager());
+    auto getter = std::make_unique<ScanDirectivesGetter>(cache, instance->getFileManager());
+    auto& directives = *getter;
     instance->setDependencyDirectivesGetter(std::move(getter));
 
     if(!instance->createTarget()) {
@@ -341,6 +351,8 @@ void scan_with_preprocessor(
     if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
         return;
     }
+    auto& sources = instance->getSourceManager();
+    directives.main_file = sources.getFileEntryRefForID(sources.getMainFileID());
 
     body(*instance, *action);
 
@@ -354,6 +366,16 @@ void scan_with_preprocessor(
 }
 
 }  // namespace
+
+const ScanResult& QuickScanCache::scan_of(Fid fid,
+                                          std::uint64_t content_hash,
+                                          llvm::StringRef content) {
+    auto [it, inserted] = results.try_emplace({fid, content_hash});
+    if(inserted) {
+        it->second = scan_quick(content);
+    }
+    return it->second;
+}
 
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,

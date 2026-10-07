@@ -1,141 +1,75 @@
-/// End-to-end check of the release symbol-separation flow.
+/// End-to-end check of the release's crash symbolization.
 ///
-/// Replays the release pipeline on the freshly built binary (split DWARF, convert
-/// to GSYM, strip), crashes a worker of the stripped binary, and verifies
-/// scripts/symbolize.py recovers function/file information from the raw-address
-/// crash log. This is the guarantee that shipped crash logs stay actionable.
+/// Crashes a worker of the release's stripped clice inside clang and verifies
+/// scripts/symbolize.py recovers clice's frames and libclang's from the
+/// raw-address crash log against the release's GSYM. This is the guarantee
+/// that shipped crash logs stay actionable.
 
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { CliceClient, waitUntil } from "@clice/tools/client";
+import { runProcess, waitUntil } from "@clice/tools/client";
 import { REPO_ROOT } from "@clice/tools/compile-commands";
-import { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
-function childPids(parentPid: number): number[] {
-    const pids: number[] = [];
-    for (const entry of fs.readdirSync("/proc")) {
-        if (!/^\d+$/.test(entry)) {
-            continue;
-        }
-        let stat: string;
-        try {
-            stat = fs.readFileSync(`/proc/${entry}/stat`, "utf8");
-        } catch {
-            continue;
-        }
-        const ppid = Number(
-            stat
-                .slice(stat.lastIndexOf(")") + 1)
-                .trim()
-                .split(/\s+/)[1],
-        );
-        if (ppid === parentPid) {
-            pids.push(Number(entry));
-        }
-    }
-    return pids;
-}
-
-function which(tool: string): boolean {
-    return (process.env["PATH"] ?? "").split(path.delimiter).some((dir) => {
-        try {
-            fs.accessSync(path.join(dir, tool), fs.constants.X_OK);
-            return true;
-        } catch {
-            return false;
-        }
-    });
-}
-
-// llvm-gsymutil floods stdout with its conversion log; match Python's
-// subprocess.run (unbounded capture) so a large log never overflows the
-// default 1 MB buffer and kills the child.
-const SPAWN_OPTS = { encoding: "utf8", maxBuffer: 512 * 1024 * 1024 } as const;
-
-function runTool(...command: string[]): void {
-    const result = spawnSync(command[0]!, command.slice(1), SPAWN_OPTS);
-    expect(result.status, `${command[0]} failed: ${result.stderr.slice(0, 2000)}`).toBe(0);
-}
-
-function isDebugBuild(): boolean {
+/// `//:package`'s clice and `//:symbols`' GSYM, next to the programs.
+function releaseFiles(): { stripped: string; gsym: string } | undefined {
+    let bin: string;
     try {
-        return cliceExecutable().split(path.sep).includes("Debug");
+        bin = path.dirname(cliceExecutable());
     } catch {
-        return false;
+        return undefined;
     }
+    if (bin.split(path.sep).includes("Debug")) {
+        return undefined;
+    }
+    const files = {
+        stripped: path.join(bin, "clice.stripped"),
+        gsym: path.join(path.dirname(bin), "clice.gsym"),
+    };
+    // CI builds them on every RelWithDebInfo leg; a local build has them
+    // after `pixi run build RelWithDebInfo -- //:package //:symbols`.
+    return process.env["CI"] !== undefined || fs.existsSync(files.gsym) ? files : undefined;
 }
 
-test.skipIf(process.platform !== "linux" || isDebugBuild())(
+const release = releaseFiles();
+
+test.skipIf(release === undefined)(
     "stripped crash symbolization",
     async ({ session }) => {
-        const executable = cliceExecutable();
+        const { stripped, gsym } = release!;
 
-        for (const tool of ["llvm-objcopy", "llvm-strip", "llvm-gsymutil"]) {
-            expect(which(tool), `${tool} must be available for the symbol flow`).toBe(true);
-        }
+        // Under the program's own name, which the crash log's frames carry.
+        const workspace = session.tmpdir();
+        const executable = workspace.path(process.platform === "win32" ? "clice.exe" : "clice");
+        fs.copyFileSync(stripped, executable);
+        fs.chmodSync(executable, 0o755);
 
-        const tmp = session.tmpdir();
-        // Replay the clice-strip / clice-pack-symbol steps from cmake/release.cmake.
-        const stripped = tmp.path("clice");
-        const debugFile = tmp.path("clice.debug");
-        const gsymFile = tmp.path("clice.gsym");
-        fs.copyFileSync(executable, stripped);
-        fs.chmodSync(stripped, 0o755);
-        runTool("llvm-objcopy", "--only-keep-debug", stripped, debugFile);
-        runTool(
-            "llvm-gsymutil",
-            "--convert",
-            debugFile,
-            "--merged-functions",
-            "--quiet",
-            "--out-file",
-            gsymFile,
+        workspace.write(
+            "poison.cpp",
+            "int add(int a, int b) { return a + b; }\n#pragma clang __debug crash\n",
         );
-        runTool("llvm-strip", "--strip-debug", "--strip-unneeded", stripped);
-
-        const workspace = new Workspace(tmp.path("ws"));
-        workspace.write("main.cpp", "int main() { return 0; }\n");
-        workspace.writeCDB(["main.cpp"]);
-
-        // The stripped binary lives in the temp dir, so it cannot be spawned
-        // through the session factory (which always runs cliceExecutable);
-        // this client is owned manually and shut down below.
-        //
-        // Force the raw-address dump: with in-process symbolization disabled the
-        // log carries only "clice 0x..." frames, exactly like a user machine
-        // without llvm-symbolizer.
-        process.env["LLVM_DISABLE_SYMBOLIZATION"] = "1";
-        process.env["CLICE_ANOMALY_NO_TRAP"] = "1";
-        let client;
-        try {
-            client = CliceClient.start(stripped);
-            await client.initialize(workspace);
-        } finally {
-            delete process.env["LLVM_DISABLE_SYMBOLIZATION"];
-            delete process.env["CLICE_ANOMALY_NO_TRAP"];
-        }
-
-        try {
-            await client.openAndWait("main.cpp");
-
-            const workers = childPids(client.child.pid!);
-            expect(workers.length, "server should have spawned worker processes").toBeGreaterThan(
-                0,
-            );
-            // SIGABRT for the same reasons as anomaly.test: it exercises the crash
-            // handler and is not intercepted by sanitizers.
-            process.kill(workers[0]!, "SIGABRT");
-
-            await waitUntil(() => client.anomaliesInLogMessages().includes("WorkerCrash"), {
-                timeout: 10_000,
-                interval: 200,
-                description: "the worker crash anomaly message",
-            });
-        } finally {
-            await client.shutdown();
-        }
+        workspace.writeCDB(["poison.cpp"]);
+        // Without in-process symbolization the log carries addresses only,
+        // as on a user's machine without llvm-symbolizer.
+        const client = session.spawn(workspace, {
+            executable,
+            allowAnomaly: true,
+            env: {
+                CLICE_ANOMALY_NO_TRAP: "1",
+                CLICE_TEST_PRAGMA_CRASH: "1",
+                LLVM_DISABLE_SYMBOLIZATION: "1",
+            },
+        });
+        await client.initialize(workspace);
+        const compile = `compile ${workspace.displayPath("poison.cpp")}`;
+        const [uri] = client.open("poison.cpp");
+        expect(await client.hoverAt(uri, 0, 5)).toBeNull();
+        await waitUntil(() => workspace.workerCrashes(compile) >= 1, {
+            timeout: 20_000,
+            interval: 200,
+            description: "the worker crash",
+        });
+        expect(workspace.workerCrashes(compile)).toBe(1);
 
         const logsDir = workspace.path(".clice/logs");
         const crashLogs = fs
@@ -143,29 +77,22 @@ test.skipIf(process.platform !== "linux" || isDebugBuild())(
             .filter((name) => name.endsWith(".log") && path.basename(name) !== "master.log")
             .map((name) => path.join(logsDir, name))
             .filter((p) => fs.readFileSync(p, "utf8").includes("CRASH STACK TRACE"));
-        expect(
-            crashLogs.length,
-            "worker crash backtrace should be written to its log file",
-        ).toBeGreaterThan(0);
+        expect(crashLogs.length, "the worker's log should hold its backtrace").toBe(1);
         const raw = fs.readFileSync(crashLogs[0]!, "utf8");
         expect(raw).toContain("main executable base: 0x");
-        expect(raw, "stripped binary must not self-symbolize").not.toContain("logging.cpp");
+        expect(raw, "the stripped binary must not symbolize itself").not.toContain("logging.cpp");
 
-        const result = spawnSync(
-            "python3",
-            [path.join(REPO_ROOT, "scripts", "symbolize.py"), crashLogs[0]!, "--symbols", gsymFile],
-            SPAWN_OPTS,
-        );
+        const result = await runProcess(process.platform === "win32" ? "python" : "python3", [
+            path.join(REPO_ROOT, "scripts", "symbolize.py"),
+            crashLogs[0]!,
+            "--symbols",
+            gsym,
+        ]);
         expect(result.status, `symbolize.py failed: ${result.stderr.slice(0, 2000)}`).toBe(0);
-        // The crash handler itself is always on the stack; recovering its source
-        // file proves rebasing and GSYM lookup both worked.
-        expect(
-            result.stdout,
-            `symbolized output should name the crash handler source:\n${result.stdout.slice(
-                0,
-                3000,
-            )}`,
-        ).toContain("logging.cpp");
+        const trace = result.stdout.slice(result.stdout.indexOf("CRASH STACK TRACE"));
+        // The crash handler is clice's code, the pragma's handler libclang's.
+        expect(trace, `clice's frames:\n${trace.slice(0, 6000)}`).toContain("logging.cpp");
+        expect(trace, `libclang's frames:\n${trace.slice(0, 6000)}`).toContain("Pragma.cpp");
     },
-    600_000,
+    120_000,
 );

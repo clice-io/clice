@@ -23,9 +23,8 @@
         },
         "tracker": {
             "$ref": "#/$defs/TrackerConfig",
-            "description": "The [tracker] section: file tracker poll intervals.",
+            "description": "The [tracker] section: background polling of files.",
             "default": {
-                "cdb_poll_seconds": 3,
                 "workspace_poll_seconds": 30
             }
         },
@@ -93,13 +92,13 @@
                 },
                 "readonly": {
                     "type": "string",
-                    "description": "Read-only serving for open files: \"off\" targets a full AST for every open file — builds are pulled by the first request that needs them, with the index answering in the meantime; \"on\" never builds a PCH — reads serve from the index alone (a cold file jumps the indexing queue), while completion and signature help still compile on demand without a preamble; \"auto\" starts every file as \"on\", switches it to \"off\" at the first edit intent (edit, completion, signature help, context switch), and falls back to \"off\" for a file the index cannot serve. Feature routing always answers from the best source currently available.",
-                    "default": "off",
                     "enum": [
                         "off",
                         "on",
                         "auto"
-                    ]
+                    ],
+                    "description": "Read-only serving for open files: \"off\" targets a full AST for every open file — builds are pulled by the first request that needs them, with the index answering in the meantime; \"on\" never builds a PCH — reads serve from the index alone (a cold file jumps the indexing queue), while completion and signature help still compile on demand without a preamble; \"auto\" starts every file as \"on\", switches it to \"off\" at the first edit intent (edit, completion, signature help, context switch), and falls back to \"off\" for a file the index cannot serve. Feature routing always answers from the best source currently available.",
+                    "default": "off"
                 },
                 "idle_timeout_ms": {
                     "type": "integer",
@@ -124,7 +123,7 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 4294967295,
-                    "description": "Initial number of stateless workers — they handle ephemeral tasks (PCH/PCM builds, completion, signature help); defaults to half the machine's parallelism, at least 2. `0` is invalid and falls back to that default."
+                    "description": "Number of stateless workers started — they handle ephemeral tasks (PCH/PCM builds, completion, signature help, background indexing) — and the most that background indexing keeps busy at once; defaults to half the machine's physical cores, at least 2. `0` is invalid and falls back to that default."
                 },
                 "min_stateless_worker_count": {
                     "type": "integer",
@@ -137,7 +136,7 @@
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 4294967295,
-                    "description": "Upper bound for dynamic stateless-worker scaling; `0` means the machine's parallelism, which is also the default."
+                    "description": "Upper bound for dynamic stateless-worker scaling, which only interactive work that finds every worker busy reaches; `0` means the machine's physical cores, which is also the default."
                 }
             },
             "additionalProperties": false
@@ -145,18 +144,11 @@
         "TrackerConfig": {
             "type": "object",
             "properties": {
-                "cdb_poll_seconds": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 4294967295,
-                    "description": "Compilation database poll interval in seconds; 0 disables polling.",
-                    "default": 3
-                },
                 "workspace_poll_seconds": {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 4294967295,
-                    "description": "Workspace file sweep interval in seconds; 0 disables polling.",
+                    "description": "Longest interval in seconds between two background looks at a workspace file: the interval doubles at every look that finds the file unchanged, up to this. 0 disables background polling, compilation databases included.",
                     "default": 30
                 }
             },
@@ -226,22 +218,22 @@
             "properties": {
                 "enable_keyword_snippet": {
                     "type": "boolean",
-                    "description": "Complete keywords as snippets (not yet implemented).",
+                    "description": "Complete statements such as `if` and `for` as snippets with placeholders for their parts; otherwise only the keyword is inserted. Ignored for clients without snippet support.",
                     "default": false
                 },
                 "enable_function_arguments_snippet": {
                     "type": "boolean",
-                    "description": "Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet.",
+                    "description": "Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet. Ignored for clients without snippet support.",
                     "default": false
                 },
                 "enable_template_arguments_snippet": {
                     "type": "boolean",
-                    "description": "Insert template arguments as a snippet on completion (not yet implemented).",
+                    "description": "Insert template arguments as a snippet when completing a class, alias or variable template. Ignored for clients without snippet support.",
                     "default": false
                 },
                 "insert_paren_in_function_call": {
                     "type": "boolean",
-                    "description": "Insert parentheses when completing a function call (not yet implemented).",
+                    "description": "Insert parentheses when completing a function call, unless the name is already followed by one; with snippet support the cursor lands between them.",
                     "default": false
                 },
                 "bundle_overloads": {

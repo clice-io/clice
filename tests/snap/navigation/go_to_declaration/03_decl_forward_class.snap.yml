@@ -13,7 +13,7 @@ class_use:
     - { file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "17:6-17:11" }
     - { file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "21:26-21:31" }
   typeHierarchy:
-    - { name: "Panel", kind: Class, file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "17:6-17:11" }
+    - { name: "Panel", kind: Class, file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "17:0-19:1", selection: "17:6-17:11" }
 
 def:
   definition:
@@ -25,7 +25,7 @@ def:
     - { file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "11:7-11:13" }
     - { file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "21:10-21:16" }
   typeHierarchy:
-    - { name: "Widget", kind: Struct, file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "11:7-11:13" }
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "11:0-13:1", selection: "11:7-11:13" }
 
 fwd:
   definition:
@@ -37,7 +37,7 @@ fwd:
     - { file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "11:7-11:13" }
     - { file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "21:10-21:16" }
   typeHierarchy:
-    - { name: "Widget", kind: Struct, file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "11:7-11:13" }
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "11:0-13:1", selection: "11:7-11:13" }
 
 use:
   definition:
@@ -50,4 +50,4 @@ use:
     - { file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "11:7-11:13" }
     - { file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "21:10-21:16" }
   typeHierarchy:
-    - { name: "Widget", kind: Struct, file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "11:7-11:13" }
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_declaration/03_decl_forward_class.cpp", range: "11:0-13:1", selection: "11:7-11:13" }

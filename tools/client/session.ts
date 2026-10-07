@@ -10,11 +10,12 @@ import * as path from "node:path";
 import { CliceClient, type InitializeOptions, type StartOptions } from "./client.ts";
 import { Workspace } from "./workspace.ts";
 import { DATA_DIR, generateCDB } from "../compile_commands.ts";
+import { logFiles } from "../process_gate.ts";
 
 export function cliceExecutable(): string {
     let exe = process.env["CLICE_EXECUTABLE"];
     if (!exe) {
-        throw new Error("CLICE_EXECUTABLE is not set; point it at build/<type>/bin/clice");
+        throw new Error("CLICE_EXECUTABLE is not set; point it at build/<type>/bin/bin/clice");
     }
     if (process.platform === "win32" && !exe.toLowerCase().endsWith(".exe")) {
         const withSuffix = `${exe}.exe`;
@@ -155,12 +156,24 @@ async function acquireWorkspaceLock(name: string): Promise<() => void> {
     }
 }
 
+const LOG_TAIL_LINES = 200;
+
+function printLogTails(root: string | null): void {
+    for (const file of logFiles(root)) {
+        const lines = fs.readFileSync(file, "utf8").trimEnd().split("\n").slice(-LOG_TAIL_LINES);
+        console.log(`--- last ${lines.length} lines of ${file}\n${lines.join("\n")}`);
+    }
+}
+
 export interface Session {
     client: CliceClient;
     workspace: Workspace;
 }
 
 export interface SessionOptions extends InitializeOptions, StartOptions {
+    /// The program to run instead of cliceExecutable(), such as a release
+    /// build of it.
+    executable?: string | undefined;
     /// Anomalies are internal clice bugs — every test session must end
     /// without one. Tests that intentionally trigger anomalies opt out here
     /// and assert on them explicitly.
@@ -224,9 +237,10 @@ export function createSessionFactory(): SessionHandle {
         workspace: Workspace | null,
         options: SessionOptions = {},
     ): CliceClient => {
-        const client = CliceClient.start(cliceExecutable(), {
+        const client = CliceClient.start(options.executable ?? cliceExecutable(), {
             drainStderr: options.drainStderr,
             args: options.args,
+            env: options.env,
         });
         opened.push({
             client,
@@ -240,14 +254,17 @@ export function createSessionFactory(): SessionHandle {
         const workspace = new Workspace(path.join(DATA_DIR, name));
         releases.push(await acquireWorkspaceLock(name));
         prepareWorkspace(workspace);
+        const executable = options.executable ?? cliceExecutable();
         const client =
             options.socketPort !== undefined
-                ? await CliceClient.startSocket(cliceExecutable(), options.socketPort, {
+                ? await CliceClient.startSocket(executable, options.socketPort, {
                       args: options.args,
+                      env: options.env,
                   })
-                : CliceClient.start(cliceExecutable(), {
+                : CliceClient.start(executable, {
                       drainStderr: options.drainStderr,
                       args: options.args,
+                      env: options.env,
                   });
         opened.push({
             client,
@@ -292,6 +309,13 @@ export function createSessionFactory(): SessionHandle {
                 } catch (exc) {
                     teardownErrors.push(exc);
                 }
+            }
+        }
+        // A failure only CI reproduces leaves nothing else to read once the
+        // workspace below is deleted.
+        if (failed) {
+            for (const session of opened) {
+                printLogTails(session.workspace?.root ?? null);
             }
         }
         // Directories go after every server is down: the anomaly gates

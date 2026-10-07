@@ -19,45 +19,28 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64", "win-
 
 [environments]
 default = ["build", "test"]
-package = ["build", "test", "package"]
 node = ["node"]
 format = ["format"]
 test-run = ["test", "cuda"]
+# The CUDA toolkit alone, for the compat suite's nvcc scenarios. The suite
+# runs it without activating the environment, whose activation would point
+# nvcc at conda's g++ and every other build at conda's flags.
+cuda = ["cuda"]
 editor = ["editor", "node"]
 
 # ============================================================================== #
 #                                  DEPENDENCIES                                  #
 # ============================================================================== #
-[feature.build]
-platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
-
 [feature.build.dependencies]
 python = ">=3.13"
-cmake = ">=3.30"
-ninja = "*"
-# The toolchain: clang, lld and the LLVM tools, with libc++, compiler-rt
-# and the sysroots of all six targets (glibc 2.17, mingw-w64, macOS runtimes
-# on Xcode's SDK), so a cross build needs nothing else. Its version is the
-# one of the libclang cmake/llvm.cmake downloads.
-xclang = "==23.1.2.3"
-# cmake/archive.cmake pipes tar through xz for the symbol archives.
-xz = ">=5.8.1,<6"
+# Bazel is npm's bazelisk (package.json), which runs the release of
+# .bazelversion; bazel/workspace_status.mjs runs on it too.
+nodejs = ">=24"
+# The LLVM tools the artifact checks run (scripts/check_artifact_deps.py), of
+# the xclang release MODULE.bazel builds with.
+xclang = "==23.1.2.9"
 
-[feature.build.target.win-64.dependencies]
-# Pinned on every platform: ccache 4.14 disables its direct mode for any
-# translation unit whose headers contain the text "#embed", and the comment
-# "// C23 & C++26 #embed" in clang/Basic/TokenKinds.def matches, so every
-# clang-dependent object would fall back to the slower preprocessor mode.
-ccache = "4.13.*"
-
-[feature.build.target.linux-64.dependencies]
-ccache = "4.13.*"
-
-[feature.build.target.osx-arm64.dependencies]
-ccache = "4.13.*"
-
-# nodejs bundles npm on every platform including win-arm64, where
-# cross-test runs this env. Floor 24: the tools
+# nodejs bundles npm on every platform including win-arm64. Floor 24: the tools
 # run as bare .ts (type stripping, default since node 23.6) and the
 # cache tests use JSON.rawJSON (21+). python remains only for
 # scripts/symbolize.py; the scripts/ tools are not part of the TS
@@ -68,16 +51,15 @@ nodejs = ">=24"
 # `clice format` runs the clang-format found in PATH; the integration
 # tests drive it on real files.
 clang-format = "==23.1.1"
+# The fixtures with a CMakeLists.txt get their compile_commands.json from a
+# CMake configuration (tools/compile_commands.ts).
+cmake = ">=3.30"
+ninja = "*"
 
-# ToolchainTests.GCC queries the g++ found in PATH and compiles C++23
-# (<print>), so the test env must provide the same pinned gcc the build
-# env uses — runner system gcc is too old.
 [feature.test.target.linux-64.dependencies]
-gcc = "==15.2.0"
-gxx = "==15.2.0"
-# The symbolization round-trip test replays the release strip/GSYM flow
-# (linux-only, like the crash tests it builds on) with xclang's LLVM tools.
-xclang = "==23.1.2.3"
+# The symbolization test reads the release's GSYM with llvm-gsymutil, here
+# xclang's.
+xclang = "==23.1.2.9"
 
 # The NVCC toolchain tests drive a real nvcc; cudart is the runtime the
 # probe compiles against and curand is included unconditionally by clang's
@@ -89,19 +71,28 @@ cuda-nvcc = "13.*"
 cuda-cudart-dev = "13.*"
 libcurand-dev = "*"
 
-# The linux-aarch64 cross-test job runs the integration suite on a native
-# arm64 runner, so the symbolization test needs the same tools there.
+# The integration suite runs on arm64 Linux too, so the symbolization test
+# needs the same tools there.
 [feature.test.target.linux-aarch64.dependencies]
-xclang = "==23.1.2.3"
+xclang = "==23.1.2.9"
 
 # On macOS, the system Apple clang emits vendor-specific flags that upstream
-# LLVM cannot parse.  Providing upstream clang + lld in PATH prevents
-# fallback to /usr/bin/clang++ and satisfies toolchain.cmake's -fuse-ld=lld.
+# LLVM cannot parse. Providing upstream clang in PATH prevents fallback to
+# /usr/bin/clang++, for the tests and for the CMake configurations of the
+# fixtures (tools/compile_commands.ts).
 [feature.test.target.osx-64.dependencies]
-xclang = "==23.1.2.3"
+xclang = "==23.1.2.9"
 
 [feature.test.target.osx-arm64.dependencies]
-xclang = "==23.1.2.3"
+xclang = "==23.1.2.9"
+
+# On Windows LLVM's tools alone, for the symbolization test's llvm-gsymutil:
+# the clang the tests find stays the one they find without it.
+[feature.test.target.win-64.dependencies]
+llvm-tools = "==23.1.2"
+
+[feature.test.target.win-arm64.dependencies]
+llvm-tools = "==23.1.2"
 
 # Debug builds are ASAN-instrumented; macOS links the ASAN runtime as a
 # dylib resolved against the build env, which artifact-based test jobs
@@ -113,41 +104,16 @@ scripts = ["scripts/activate_asan_macos.sh"]
 [feature.test.target.osx-arm64.activation]
 scripts = ["scripts/activate_asan_macos.sh"]
 
-# Packaging reuses the standard build: the shipped binary is the tested one.
-[feature.package.tasks.package]
-args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = "cmake --build build/{{ type }} --target clice-pack clice-pack-symbol"
-depends-on = [{ task = "build", args = ["{{ type }}"] }]
-
 # ============================================================================== #
-#                                   CMAKE                                        #
+#                                   BAZEL                                        #
 # ============================================================================== #
-[feature.build.tasks.cmake-config]
-args = [
-    { arg = "type", default = "RelWithDebInfo" },
-    { arg = "ci", default = "OFF" },
-]
-cmd = """
-cmake -B build/{{ type }} -G Ninja \
-    -DCMAKE_BUILD_TYPE={{ type }} \
-    -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
-    -DCLICE_ENABLE_TEST=ON \
-    -DCLICE_CI_ENVIRONMENT={{ ci }}
-"""
-
-[feature.build.tasks.cmake-build]
-args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = "cmake --build build/{{ type }}"
-
+# The programs land in build/{{ type }}/bin/bin (bazel/clice.bazelrc).
+# Arguments after `--` go to Bazel: more targets, such as //:package, and
+# options.
 [feature.build.tasks.build]
-args = [
-    { arg = "type", default = "RelWithDebInfo" },
-    { arg = "ci", default = "OFF" },
-]
-depends-on = [
-    { task = "cmake-config", args = ["{{ type }}", "{{ ci }}"] },
-    { task = "cmake-build", args = ["{{ type }}"] },
-]
+args = [{ arg = "type", default = "RelWithDebInfo" }]
+cmd = "npx bazel build --config={{ type }} //:dist"
+depends-on = ["install-tests"]
 
 [feature.build.tasks.check-layers]
 cmd = "python3 scripts/check_layers.py"
@@ -171,26 +137,23 @@ cmd = "node tools/docs/config.ts update"
 depends-on = ["install-tests"]
 
 # docs/en and docs/zh are both hand-edited; docs/meta/translations holds
-# the per-segment hash pairs tying them together (tools/docs/translate.ts).
+# the per-segment hash pairs tying them together. The checker comes from
+# clice-io/docs (tools/translations, its RULES.md states the contract).
 [tasks.check-doc-translations]
-cmd = "node tools/docs/translate.ts check"
-depends-on = ["install-tests"]
+cmd = "node tools/docs/translations.ts check"
 
 [tasks.report-doc-translations]
-cmd = "node tools/docs/translate.ts report"
-depends-on = ["install-tests"]
+cmd = "node tools/docs/translations.ts report"
 
 [tasks.record-doc-translations]
-cmd = "node tools/docs/translate.ts record"
-depends-on = ["install-tests"]
+cmd = "node tools/docs/translations.ts record"
 
 [tasks.review-doc-translations]
-cmd = "node tools/docs/translate.ts review"
-depends-on = ["install-tests"]
+cmd = "node tools/docs/translations.ts review --glossary=.claude/skills/translate-docs/SKILL.md"
 
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = 'CLICE_TEST_DATA_DIR=$PIXI_PROJECT_ROOT/tests/data ./build/{{ type }}/bin/unit_tests --verbose'
+cmd = 'CLICE_TEST_DATA_DIR=$PIXI_PROJECT_ROOT/tests/data ./build/{{ type }}/bin/bin/unit_tests --verbose'
 depends-on = [{ task = "check-feature-docs" }]
 
 # npm workspaces: install runs at the repo root and covers tools/, tests/
@@ -206,14 +169,13 @@ inputs = [
 ]
 outputs = ["node_modules/.package-lock.json"]
 
-# npm run check (tsc strict + ESLint) gates every run, then vitest: files
-# run in parallel worker processes (one per file, like xdist -n auto);
-# tests within a file are sequential.
+# Files run in parallel worker processes (one per file, like xdist -n
+# auto); tests within a file are sequential. `shard` is vitest's --shard,
+# <index>/<count> of the files, for CI's runners.
 [feature.test.tasks.integration-test]
-args = [{ arg = "type", default = "RelWithDebInfo" }]
+args = [{ arg = "type", default = "RelWithDebInfo" }, { arg = "shard", default = "1/1" }]
 cmd = """
-npm run check && \
-CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm test --workspace tests
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test --workspace tests -- --shard={{ shard }}
 """
 depends-on = ["install-tests"]
 
@@ -221,16 +183,38 @@ depends-on = ["install-tests"]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
 node tools/replay.ts tests/smoke/*.jsonl \
-    --clice=./build/{{ type }}/bin/clice
+    --clice=./build/{{ type }}/bin/bin/clice
 """
 
 # Feature snapshots exercise `clice inspect` and real server paths over
 # tests/snap corpora. Driver logic lives under tools/snap/; the vitest glue
-# schedules fixture work concurrently within the suite.
+# schedules fixture work concurrently within the suite. `shard` is
+# <index>/<count> of the fixtures (tests/snap/snap.test.ts).
 [feature.test.tasks.snap-test]
+args = [{ arg = "type", default = "RelWithDebInfo" }, { arg = "shard", default = "1/1" }]
+cmd = """
+CLICE_SNAP_SHARD={{ shard }} CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm run snap --workspace tests
+"""
+depends-on = ["install-tests"]
+
+# The Zed extension in a real Zed (tests/zed); ZED_EXECUTABLE names the Zed
+# app, and the extension builds with the system's cargo. Workspace-level so CI
+# can run it from the bare `node` env.
+[tasks.zed-e2e]
+cmd = """
+cargo build --manifest-path editors/zed/Cargo.toml --target wasm32-wasip2 --release && \
+ZED_EXTENSION_WASM=$PIXI_PROJECT_ROOT/editors/zed/target/wasm32-wasip2/release/zed_clice.wasm npm run zed --workspace tests
+"""
+depends-on = ["install-tests"]
+
+# Real build systems and toolchains over tests/compat/project; the tools each
+# scenario names come from the system (CI installs them, see compat-test.yml),
+# nvcc from the `cuda` environment. Workspace-level so CI can run it from
+# the bare `node` env.
+[tasks.compat-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm run snap --workspace tests
+CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm run compat --workspace tests
 """
 depends-on = ["install-tests"]
 
@@ -251,12 +235,12 @@ depends-on = [
 platforms = ["linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
 # Same mitigation as feature.test: editor-prepare configures fixtures with
-# toolchain.cmake's -fuse-ld=lld, which Apple system clang rejects.
+# CMake and xclang's clang (tools/compile_commands.ts).
 [feature.editor.target.osx-arm64.dependencies]
-xclang = "==23.1.2.3"
+xclang = "==23.1.2.9"
 
 [feature.editor.target.osx-64.dependencies]
-xclang = "==23.1.2.3"
+xclang = "==23.1.2.9"
 
 # Fixture list kept in sync with editors/vscode/.vscode-test.mjs.
 [feature.editor.tasks.editor-prepare]
@@ -266,16 +250,16 @@ cmd = "node tools/prepare.ts hello_world modules/hover_on_imported_symbol header
 [feature.editor.tasks.nvim-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/clice tests/data/hello_world && \
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/clice tests/data/modules/hover_on_imported_symbol && \
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/clice tests/data/header_context
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice tests/data/hello_world && \
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice tests/data/modules/hover_on_imported_symbol && \
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice tests/data/header_context
 """
 depends-on = ["editor-prepare"]
 
 [feature.editor.tasks.vscode-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "editors/vscode"
-cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/clice npm test"
+cmd = "CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test"
 depends-on = ["install-vscode", "editor-prepare"]
 
 [feature.editor.tasks.editor-test]
@@ -294,7 +278,7 @@ depends-on = [
 platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
 [feature.node.dependencies]
-nodejs = ">=20"
+nodejs = ">=22"
 
 # The instant-build packaging strips test binaries before bundling them
 # into the vsix (an unstripped ELF carries ~700MB of DWARF).
@@ -306,6 +290,7 @@ llvm-tools = "==23.1.1"
 # through npm to the underlying script.
 build-vscode = { cwd = "editors/vscode", cmd = "npm run package --", depends-on = ["install-vscode"] }
 publish-vscode = { cwd = "editors/vscode", cmd = "npm run publish --", depends-on = ["install-vscode"] }
+publish-ovsx = { cwd = "editors/vscode", cmd = "npm run publish:ovsx --", depends-on = ["install-vscode"] }
 
 # Same root npm-workspaces install as install-tests, available in the node
 # environment (the publish pipeline installs no test feature).

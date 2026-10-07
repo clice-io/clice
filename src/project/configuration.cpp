@@ -1,15 +1,18 @@
-#include "project/configuration.h"
+module;
 
-#include "config/config.h"
-#include "support/anomaly.h"
-#include "support/filesystem.h"
-#include "support/logging.h"
+#include "modules/prelude.h"
 
-#include "kota/codec/json/json.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/FileSystem.h"
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :config.config;
+import :project.configuration;
+import :support.anomaly;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 
@@ -42,7 +45,7 @@ std::string read_selection(llvm::StringRef cache_dir) {
         return {};
     }
     auto path = state_path(cache_dir);
-    auto content = fs::read(path);
+    auto content = vfs::read(path, vfs::Read::Bytes);
     if(!content) {
         if(content.error() != std::errc::no_such_file_or_directory) {
             LOG_WARN("Cannot read {}: {}", path, content.error().message());
@@ -50,7 +53,7 @@ std::string read_selection(llvm::StringRef cache_dir) {
         return {};
     }
     PersistedState state;
-    if(auto parsed = kota::codec::json::from_string(*content, state); !parsed) {
+    if(auto parsed = kota::codec::json::from_string((*content)->getBuffer(), state); !parsed) {
         LOG_WARN("Ignoring malformed {}: {}", path, parsed.error().message);
         return {};
     }
@@ -62,26 +65,17 @@ std::expected<void, std::error_code> write_selection(llvm::StringRef cache_dir,
     if(cache_dir.empty()) {
         return std::unexpected(std::make_error_code(std::errc::invalid_argument));
     }
-    if(auto ec = llvm::sys::fs::create_directories(cache_dir)) {
+    if(auto ec = vfs::create_directories(cache_dir)) {
         return std::unexpected(ec);
     }
     auto json = kota::codec::json::to_string(PersistedState{.configuration = configuration.str()});
     if(!json) {
         return std::unexpected(std::make_error_code(std::errc::invalid_argument));
     }
-    auto path = state_path(cache_dir);
-    llvm::SmallString<256> tmp_path;
-    if(auto ec = llvm::sys::fs::createUniqueFile(path + ".%%%%%%", tmp_path)) {
+    if(auto ec = vfs::write_atomic(state_path(cache_dir), *json + '\n')) {
         return std::unexpected(ec);
     }
-    auto written = fs::write(tmp_path, *json + '\n');
-    if(written) {
-        written = fs::rename(tmp_path, path);
-    }
-    if(!written) {
-        llvm::sys::fs::remove(tmp_path);
-    }
-    return written;
+    return {};
 }
 
 bool declares_configuration(const Config& config, llvm::StringRef name) {

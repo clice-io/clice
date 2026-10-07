@@ -1,0 +1,281 @@
+module;
+
+#include "modules/prelude.h"
+
+module clice:vfs.cache_store;
+
+namespace clice {
+
+/// Lifecycle policy for a cache namespace.
+enum class CachePolicy : std::uint8_t {
+    /// Size-capped with least-recently-used eviction: rebuildable large
+    /// artifacts (PCH, PCM).
+    LRU,
+
+    /// Per-instance working files: not tracked in the manifest, not part
+    /// of LRU.  Stored under a pid subdirectory; directories of dead pids
+    /// are cleaned up when the namespace is registered.
+    Scratch,
+};
+
+/// Static configuration of a cache namespace.
+struct CacheNamespace {
+    /// Directory name under the store root, e.g. "pch".
+    std::string name;
+
+    /// File extension appended to keys, including the dot, e.g. ".pch".
+    std::string extension;
+
+    /// Optional paired-blob extension, e.g. ".pch.idx".  When set, a key
+    /// owns two files — `{key}{extension}` plus `{key}{aux_extension}` —
+    /// forming a single entry: sized, aged and evicted together.  The
+    /// primary is committed first; committing it resets any stale aux
+    /// blob, so a pair is only served complete (see lookup_aux).  Must not
+    /// be a suffix collision with `extension`.
+    std::string aux_extension;
+
+    CachePolicy policy = CachePolicy::LRU;
+
+    /// Size budget for LRU namespaces; 0 means unlimited.
+    /// Ignored for Scratch.
+    std::uint64_t max_bytes = 0;
+};
+
+/// Content-addressed blob store with atomic writes, crash recovery and
+/// per-namespace lifecycle policies.
+///
+/// Responsibility split: the store only manages blob lifecycle — atomic
+/// two-phase writes (begin_store/commit), LRU accounting and eviction,
+/// orphan cleanup and the manifest checkpoint.  Keys are opaque,
+/// filename-safe strings constructed by the caller (project convention:
+/// hex of llvm::xxh3_128bits, optionally with a readable prefix).
+/// Dependency tracking and staleness decisions are the caller's job.
+///
+/// FIXME: Whether several processes (a server plus a batch `clice lint`)
+/// may share one store read-write — and how blob metadata stays truthful
+/// if they do — is an undecided design question this layer does not
+/// answer. The exposure: PCH/PCM keys are not fully content-addressed (a
+/// dependency edit changes the bytes but not the key), and their validity
+/// metadata is flushed debounced by the owner, so a crash before the
+/// flush — or a concurrent writer republishing a key mid-session — can
+/// leave metadata that validates against its deps while describing bytes
+/// it never saw; clang's own PCH/PCM validation is the backstop (for a
+/// PCH, input sizes only: a same-size edit gets past it). An
+/// earlier revision pinned each record to its blob's identity (size,
+/// mtime, UniqueID and xxh3, captured from the tmp file before the
+/// publishing rename) and revalidated it on every use, with per-writer
+/// durable dirty markers latching content-verification debt across
+/// crashes; it was backed out of PR #650 to keep the scope on the file
+/// table until the concurrency model is decided — see that PR's history
+/// to resurrect it.
+///
+/// On-disk layout under `{root}/cache/v{version}/`:
+///   manifest.json        last-accessed checkpoint (not a source of truth)
+///   tmp/{pid}/           in-flight writes of one live instance
+///   {ns}/{key}{ext}      committed blobs (LRU)
+///   {ns}/{pid}/{key}{ext}  Scratch blobs of one live instance
+///
+/// A blob is complete iff it exists at its final path (atomic rename); the
+/// only crash residue is tmp files, swept on open().  Opening a root whose
+/// layout version differs discards the old directory entirely.
+///
+/// The store is passive: it owns no timer and never blocks waiting for IO
+/// completion beyond the call itself.  Periodic checkpoint() scheduling is
+/// the owner's responsibility.  All methods are thread-safe so that heavy
+/// calls (commit's fsync, checkpoint) can be offloaded to a worker thread
+/// while lookups continue on the event loop.  A synchronous operation runs
+/// to completion once started, so cancellation can never observe a torn
+/// mid-operation state.
+///
+/// TODO: once usage settles, evaluate making commit/checkpoint coroutines
+/// over kota's async fs (kota::fsync/rename) with all state confined to
+/// the event loop — that removes the mutex entirely, but moves the burden
+/// from lock discipline to cancellation points inside each operation.
+class CacheStore {
+public:
+    /// A two-phase write in progress.  The caller (or a worker process on
+    /// its behalf) writes the blob to tmp_path, then commits — except a
+    /// transfer (begin_transfer), which is only read.  Self-cleaning:
+    /// an entry destroyed without being committed removes its tmp file —
+    /// kotatsu cancellation destroys a suspended coroutine frame without
+    /// resuming it, so a manual abort after the await would never run on
+    /// that path and the tmp blob would leak until the next open() sweep.
+    struct PendingEntry {
+        std::string ns;
+        std::string key;
+        std::string tmp_path;
+
+        /// Whether this write targets the key's aux blob (begin_store_aux).
+        bool aux = false;
+
+        PendingEntry() = default;
+
+        PendingEntry(std::string ns, std::string key, std::string tmp_path, bool aux = false) :
+            ns(std::move(ns)), key(std::move(key)), tmp_path(std::move(tmp_path)), aux(aux) {}
+
+        PendingEntry(const PendingEntry&) = delete;
+        PendingEntry& operator=(const PendingEntry&) = delete;
+
+        PendingEntry(PendingEntry&& other) noexcept :
+            ns(std::move(other.ns)), key(std::move(other.key)), tmp_path(std::move(other.tmp_path)),
+            aux(other.aux) {
+            other.tmp_path.clear();
+        }
+
+        PendingEntry& operator=(PendingEntry&& other) noexcept {
+            if(this != &other) {
+                remove_tmp();
+                ns = std::move(other.ns);
+                key = std::move(other.key);
+                tmp_path = std::move(other.tmp_path);
+                aux = other.aux;
+                other.tmp_path.clear();
+            }
+            return *this;
+        }
+
+        ~PendingEntry() {
+            remove_tmp();
+        }
+
+    private:
+        /// Idempotent: commit() consumes the entry by value, and after its
+        /// rename the tmp path no longer exists — removing a missing file
+        /// is a no-op.
+        void remove_tmp();
+    };
+
+    /// Open (creating if necessary) the store under `root`.  Any sibling
+    /// version directory other than v{version} is deleted.  Loads the
+    /// manifest if present and sweeps tmp directories of dead instances.
+    ///
+    /// `read_only` opens for inspection without touching the disk: nothing
+    /// is created, swept or discarded — a store another process (possibly
+    /// an older layout version) is live on must survive being inspected.
+    /// Fails with `no_such_file_or_directory` when the versioned directory
+    /// does not exist; only lookups may be used.
+    static std::expected<CacheStore, std::error_code> open(llvm::StringRef root,
+                                                           std::uint32_t version,
+                                                           bool read_only = false);
+
+    /// Drop self-ignore markers into `root` (created if missing): a
+    /// `.gitignore` and a CACHEDIR.TAG. Sessions call this right after
+    /// resolving the configuration, before anything (session logs, the
+    /// store itself) lands content under the root — a startup that fails
+    /// later must never leave an unignored directory behind. Callers gate
+    /// this on `root` being clice's own dedicated directory (the default
+    /// `${workspace}/.clice`) — an explicitly configured directory may be
+    /// shared with other content, which the markers would hide from git
+    /// and skip in backups. Best effort; an existing marker (possibly
+    /// user-customized) is never touched.
+    static void write_ignore_markers(llvm::StringRef root);
+
+    CacheStore(CacheStore&&) noexcept;
+    CacheStore& operator=(CacheStore&&) noexcept;
+    ~CacheStore();
+
+    /// Register a namespace and scan its directory to rebuild in-memory
+    /// state.  Blobs already on disk are adopted; their last-accessed time
+    /// comes from the manifest, falling back to file mtime.  For Scratch
+    /// namespaces this cleans dead-pid subdirectories instead.
+    void register_namespace(CacheNamespace ns);
+
+    /// Return the absolute blob path on hit and refresh its in-memory
+    /// last-accessed time (persisted on the next checkpoint).  No disk IO.
+    std::optional<std::string> lookup(llvm::StringRef ns, llvm::StringRef key);
+
+    /// Return the key's aux blob path when the entry exists and its aux
+    /// blob was committed.  Also refreshes last-accessed.  A miss with a
+    /// present primary means the pair is incomplete (crash between the two
+    /// commits, failed aux commit) — callers treat it as a cache miss and
+    /// rebuild the pair.
+    std::optional<std::string> lookup_aux(llvm::StringRef ns, llvm::StringRef key);
+
+    /// Begin a two-phase write: returns a unique tmp path the blob must be
+    /// written to (safe to hand to a worker process).
+    PendingEntry begin_store(llvm::StringRef ns, llvm::StringRef key);
+
+    /// Begin a two-phase write of the key's aux blob.  Commit the primary
+    /// first: committing an aux blob for a key with no live entry fails.
+    PendingEntry begin_store_aux(llvm::StringRef ns, llvm::StringRef key);
+
+    /// A tmp path for handing one blob from a worker process to its caller
+    /// — a reply too large for an IPC message.  Never committed: the
+    /// caller reads the file and the entry removes it when destroyed.
+    PendingEntry begin_transfer();
+
+    /// Finish a two-phase write: fsync the tmp file and atomically rename
+    /// it to its final path.  Triggers LRU eviction when the namespace
+    /// exceeds its budget.  Returns the final blob path.
+    ///
+    /// On a rename collision (Windows, destination open) the existing blob
+    /// is kept only when verified byte-identical to the new one; otherwise
+    /// the stale destination is removed and the rename retried, and if the
+    /// new blob still cannot be published an error is returned.
+    std::expected<std::string, std::error_code> commit(PendingEntry pending);
+
+    /// Remove a blob before the LRU budget would get to it — retraction of
+    /// an artifact the owner has judged unusable (corrupt, invalidated).
+    void invalidate(llvm::StringRef ns, llvm::StringRef key);
+
+    /// Number of in-flight tmp blobs of this instance (files under
+    /// `tmp/{pid}`). A settled server has zero: every PendingEntry either
+    /// committed (renamed away) or cleaned itself up. Memory/leak gauge
+    /// for the stats endpoint; scans the directory, so not free.
+    std::size_t pending_tmp_files() const;
+
+    /// A blob the LRU budget evicted, reported so owners of derived
+    /// in-memory state (e.g. the PCH cache's entry metadata) can drop it:
+    /// eviction happens inside commit — possibly on a worker thread — so
+    /// the store records instead of calling back, and the owner drains on
+    /// its own loop.
+    struct EvictedBlob {
+        std::string ns;
+        std::string key;
+    };
+
+    /// Drain the evictions recorded since the last call.
+    std::vector<EvictedBlob> take_evictions();
+
+    /// The versioned root directory, e.g. `{root}/cache/v1`.  Callers may
+    /// place their own metadata files directly under it (the store only
+    /// manages namespace subdirectories); they die with the version.
+    llvm::StringRef base_dir() const;
+
+    /// The directory the store was opened under (`cache_dir`), which
+    /// outlives any layout version.
+    llvm::StringRef root_dir() const;
+
+    /// Whether the store was opened in read-only inspection mode.
+    bool read_only() const;
+
+    /// Atomically persist the manifest (key sizes and last-accessed times)
+    /// if anything changed.  Also runs automatically every few commits;
+    /// the owner should additionally schedule it periodically and call
+    /// shutdown() on exit.
+    void checkpoint();
+
+    /// Final checkpoint plus removal of this instance's tmp and Scratch
+    /// directories.
+    void shutdown();
+
+private:
+    struct State;
+
+    explicit CacheStore(std::unique_ptr<State> state);
+
+    /// Checkpoint if enough changes accumulated since the last one.
+    void maybe_checkpoint();
+
+    /// The admission both begin_store entry points share; the caller holds
+    /// the state lock.
+    PendingEntry begin_store_locked(llvm::StringRef ns, llvm::StringRef key, bool aux);
+
+    /// A fresh path under this instance's tmp dir; the caller holds the
+    /// state lock.
+    std::string next_tmp_path(llvm::StringRef extension);
+
+    std::unique_ptr<State> state;
+};
+
+}  // namespace clice

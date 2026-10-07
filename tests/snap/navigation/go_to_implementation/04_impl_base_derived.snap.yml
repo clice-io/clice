@@ -15,7 +15,7 @@ base:
     - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "12:16-12:20" }
     - { file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "14:16-14:20" }
   typeHierarchy:
-    - { name: "Base", kind: Struct, file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "10:7-10:11" }
+    - { name: "Base", kind: Struct, file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "10:0-10:14", selection: "10:7-10:11" }
   subtypes:
-    - { name: "Circle", kind: Struct, file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "12:7-12:13" }
-    - { name: "Square", kind: Struct, file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "14:7-14:13" }
+    - { name: "Circle", kind: Struct, file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "12:0-12:23", selection: "12:7-12:13" }
+    - { name: "Square", kind: Struct, file: "${WS}/go_to_implementation/04_impl_base_derived.cpp", range: "14:0-14:23", selection: "14:7-14:13" }
