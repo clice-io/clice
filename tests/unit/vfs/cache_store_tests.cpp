@@ -170,6 +170,23 @@ ZEST_CASE(DropRemovesTmp) {
     ZASSERT(llvm::sys::fs::exists(fourth));
 }
 
+ZEST_CASE(TransferRemovedOnDrop) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+
+    std::string tmp_path;
+    {
+        auto transfer = store.begin_transfer();
+        auto other = store.begin_transfer();
+        ZEXPECT(transfer.tmp_path != other.tmp_path);
+        ZASSERT(!vfs::write(transfer.tmp_path, "index"));
+        ZEXPECT(store.pending_tmp_files() == 1);
+        tmp_path = transfer.tmp_path;
+    }
+    ZEXPECT(!llvm::sys::fs::exists(tmp_path));
+    ZEXPECT(store.pending_tmp_files() == 0);
+}
+
 ZEST_CASE(CommitWithoutWriteFails) {
     TempDir tmp;
     auto store = open_store(tmp);

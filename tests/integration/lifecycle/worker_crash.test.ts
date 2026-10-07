@@ -494,20 +494,3 @@ test("hung compile is killed", async ({ session }) => {
     expect(await client.hoverAt(uri, 0, 16)).toBeNull();
     expect(workspace.log("master.log").split("for over 2s; killing it").length - 1).toBe(1);
 });
-
-test("oversized index is dropped", async ({ session }) => {
-    const workspace = session.tmpdir();
-    const functions = Array.from({ length: 200 }, (_, i) => `int function_${i}() { return ${i}; }`);
-    workspace.write("big.cpp", `${functions.join("\n")}\n`);
-    workspace.writeCDB(["big.cpp"]);
-    const client = session.spawn(workspace, { env: { CLICE_TEST_MAX_INDEX_BYTES: "1024" } });
-    await client.initialize(workspace);
-
-    const [uri] = await client.openAndWait("big.cpp");
-    const warnings = (client.diagnostics.get(uri) ?? []).filter((d) =>
-        text(d).includes("too large to send between clice processes"),
-    );
-    expect(warnings.length).toBe(1);
-    expect(await client.hoverAt(uri, 0, 5)).not.toBeNull();
-    expect(workspace.log("master.log")).not.toContain("[anomaly:WorkerCrash]");
-});

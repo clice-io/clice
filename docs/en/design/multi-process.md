@@ -157,7 +157,7 @@ Each worker slot has a crash budget with exponential backoff between restarts. O
 
 ### Hangs and Oversized Results
 
-A build (a compile, a PCH or module build, an indexing run) that runs longer than ten minutes, or any other request that runs longer than two, is taken for a hung worker: the worker is killed and the request blamed like a crash, with the same warning and the same retries. A result too large for the 64 MiB limit on a message between processes is no crash: an open document's compile keeps its diagnostics and drops only the document's own index, with a warning, and a background index run of the file fails until the file changes.
+A build (a compile, a PCH or module build, an indexing run) that runs longer than ten minutes, or any other request that runs longer than two, is taken for a hung worker: the worker is killed and the request blamed like a crash, with the same warning and the same retries. An index too large for the 64 MiB limit on a message between processes is handed over through a file in the cache store instead. Without a cache store it cannot be sent, which is no crash: an open document's compile keeps its diagnostics and drops only the document's own index, with a warning, and a background index run of the file fails until the file changes.
 
 ## Design Decisions and Trade-offs
 

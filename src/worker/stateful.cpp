@@ -24,19 +24,6 @@ using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::BincodePeer::RequestContext;
 namespace protocol = kota::ipc::protocol;
 
-namespace {
-
-/// What a compile reports in place of an index too large for its reply.
-protocol::Diagnostic index_too_large(std::size_t bytes) {
-    return feature::file_warning(
-        std::format("this file's index ({} MiB) is too large to send between clice processes; "
-                    "features that read the file's own index, such as references within it, are "
-                    "unavailable",
-                    bytes / (1024 * 1024)));
-}
-
-}  // namespace
-
 struct DocumentEntry {
     int version = 0;
     std::string text;
@@ -328,19 +315,22 @@ RequestResult<worker::CompileParams>
                 });
             }
 
+            std::optional<std::string> index_error;
             if(doc->unit.completed() && !stop->load(std::memory_order_relaxed)) {
                 result.build_at = doc->unit.build_at().count();
                 result.deps = doc->unit.deps();
 
                 // Build index for main file only (main_file_only=true).
-                result.tu_index_data = index::build_tu_index(doc->unit, {.main_file_only = true});
+                index_error =
+                    hand_over_index(index::build_tu_index(doc->unit, {.main_file_only = true}),
+                                    params.index_output_path,
+                                    result);
             }
 
             if(doc->unit.completed() || doc->unit.fatal_error()) {
                 auto diags = feature::diagnostics(doc->unit);
-                if(result.tu_index_data.size() > max_index_bytes()) {
-                    diags.push_back(index_too_large(result.tu_index_data.size()));
-                    result.tu_index_data.clear();
+                if(index_error) {
+                    diags.push_back(index_unavailable(*index_error));
                 }
                 LOG_INFO("Compile done: path={}, {}ms, {} diags, fatal={}",
                          params.path,

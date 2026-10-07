@@ -420,13 +420,12 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     worker::TURunResult result;
     result.success = true;
     ScopedTimer index_timer;
+    std::size_t index_bytes = 0;
     if(params.index) {
-        result.tu_index_data =
-            index::build_tu_index(unit, {.known_variants = params.known_variants});
-        if(result.tu_index_data.size() > max_index_bytes()) {
-            return {false,
-                    std::format("the index ({} MiB) is too large to send between clice processes",
-                                result.tu_index_data.size() / (1024 * 1024))};
+        auto envelope = index::build_tu_index(unit, {.known_variants = params.known_variants});
+        index_bytes = envelope.size();
+        if(auto error = hand_over_index(std::move(envelope), params.index_output_path, result)) {
+            return {false, std::move(*error)};
         }
     }
     auto index_ms = index_timer.ms();
@@ -445,7 +444,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
         "build",
         "kind=turun file={} bytes={} findings={} compile_ms={} index_ms={} teardown_ms={} total_ms={}",
         params.file,
-        result.tu_index_data.size(),
+        index_bytes,
         result.tidy_diagnostics.size(),
         compile_ms,
         index_ms,

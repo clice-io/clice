@@ -159,6 +159,9 @@ struct CompileParams {
     /// PCH bound), read from the PCH's pch.idx envelope. The worker only
     /// scans past the bound, yet serves semantic tokens for the whole file.
     std::vector<std::uint32_t> preamble_inactive_regions;
+
+    /// See TURunParams::index_output_path.
+    std::string index_output_path;
 };
 
 /// Outcome of a stateful compile. Anything but `Done` is a non-result: the
@@ -197,6 +200,9 @@ struct CompileResult {
     std::vector<DepFile> deps;
     /// Serialized TUIndex for the main file (main_file_only=true).
     std::string tu_index_data;
+
+    /// See TURunResult::index_in_file.
+    bool index_in_file = false;
 };
 
 /// Build a PCH (and its paired pch.idx envelope) from preamble content.
@@ -261,6 +267,10 @@ struct TURunParams {
     /// Variant identities the master stores for the files this TU is
     /// expected to include, sorted (see index::TUIndexOptions).
     std::vector<std::uint64_t> known_variants;
+
+    /// Where the worker writes an index too large for an IPC message: a
+    /// transfer path of the master's store, empty when it has none.
+    std::string index_output_path;
 
     /// Frozen clang-tidy configuration (see tidy::TidyParams); meaningful
     /// only when `tidy` is set.
@@ -374,6 +384,9 @@ struct TURunResult {
 
     /// Serialized TUIndex, merged by the master (plan product `index`).
     std::string tu_index_data;
+
+    /// The index went to index_output_path instead of tu_index_data.
+    bool index_in_file = false;
 
     /// Findings of the tidy pass (plan product `tidy`).
     std::vector<TidyDiagnostic> tidy_diagnostics;

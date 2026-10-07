@@ -583,6 +583,16 @@ CacheStore::PendingEntry CacheStore::begin_store_locked(llvm::StringRef ns,
         return {};
     }
 
+    return PendingEntry{ns.str(), key.str(), next_tmp_path(extension), aux};
+}
+
+CacheStore::PendingEntry CacheStore::begin_transfer() {
+    std::lock_guard guard(state->mutex);
+    assert(!state->read_only && "write on a read-only store");
+    return PendingEntry{{}, {}, next_tmp_path(".transfer")};
+}
+
+std::string CacheStore::next_tmp_path(llvm::StringRef extension) {
     // The cache directory can be wiped externally while the server runs
     // (a user resetting state with `rm -rf`); re-create the tmp dir so
     // writers don't fail forever afterwards. Idempotent and cheap.
@@ -592,8 +602,7 @@ CacheStore::PendingEntry CacheStore::begin_store_locked(llvm::StringRef ns,
 
     auto tmp_id = state->next_tmp_id;
     state->next_tmp_id += 1;
-    auto tmp_name = std::format("{}{}", tmp_id, extension);
-    return PendingEntry{ns.str(), key.str(), path::join(state->tmp_dir, tmp_name), aux};
+    return path::join(state->tmp_dir, std::format("{}{}", tmp_id, extension));
 }
 
 std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pending) {
