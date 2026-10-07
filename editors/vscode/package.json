@@ -298,7 +298,7 @@
     "@types/vscode": "^1.82.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
-    "@vscode/vsce": "^3.7.1",
+    "@vscode/vsce": "^4.0.0",
     "eslint": "^10.8.0",
     "ovsx": "^1.2.0",
     "ts-loader": "^9.5.4",
