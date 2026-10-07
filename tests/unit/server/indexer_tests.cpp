@@ -3632,7 +3632,7 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     auto& log = open_logged(tmp, project);
     auto indexed = index_file(tmp, tmp.path("main.cpp"));
     ZASSERT(!indexed.data.empty());
-    auto report = stack.store.merge(indexed.data.data(), indexed.data.size());
+    auto report = stack.store.merge(indexed.data.data(), indexed.data.size(), {});
     ZASSERT(report);
     stack.pump.claim_report(*report);
 

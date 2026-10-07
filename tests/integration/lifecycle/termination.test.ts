@@ -91,17 +91,20 @@ test.for([false, true])(
         workspace.write("main.cpp", "int main() { return 0; }\n");
         workspace.writeCDB(["main.cpp"]);
         const editor = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"]);
-        await client.sendRequest("initialize", {
-            processId: editor.pid,
-            rootUri: workspace.uri(),
-            capabilities: {},
-            initializationOptions: { project: { cache_dir: workspace.path(".clice") } },
-        });
-        await client.sendNotification(proto.InitializedNotification.type, {});
-        if (shutdown) {
-            await client.sendRequest(proto.ShutdownRequest.type);
+        try {
+            await client.sendRequest("initialize", {
+                processId: editor.pid,
+                rootUri: workspace.uri(),
+                capabilities: {},
+                initializationOptions: { project: { cache_dir: workspace.path(".clice") } },
+            });
+            await client.sendNotification(proto.InitializedNotification.type, {});
+            if (shutdown) {
+                await client.sendRequest(proto.ShutdownRequest.type);
+            }
+        } finally {
+            editor.kill("SIGKILL");
         }
-        editor.kill("SIGKILL");
         await client.assertExitedCleanly(15_000);
         client.dispose();
     },

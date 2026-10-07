@@ -90,8 +90,15 @@ let pendingSocket: net.Socket | undefined;
 let child: cp.ChildProcess | undefined;
 
 /// Set by deactivate: the extension host is going away, and a server
-/// spawned now would outlive it.
+/// started now would outlive it.
 let deactivating = false;
+
+function refuseWhenDeactivating(socket?: net.Socket): void {
+    if (deactivating) {
+        socket?.destroy();
+        throw new Error("clice is shutting down");
+    }
+}
 
 // Settings are read fresh on every (re)start so a plain server restart picks
 // them up. Everything recoverable is validated in startServer before start()
@@ -102,6 +109,7 @@ function makeServerOptions(
     channel: vscode.OutputChannel,
 ): ServerOptions {
     return async (): Promise<StreamInfo | cp.ChildProcess> => {
+        refuseWhenDeactivating();
         const setting = getSetting();
         if (setting.mode === "socket") {
             const socket = pendingSocket;
@@ -111,6 +119,7 @@ function makeServerOptions(
             }
             // Library-initiated restart after a crash: no validation ran.
             const fresh = await connectSocket(setting.host, setting.port);
+            refuseWhenDeactivating(fresh);
             return { reader: fresh, writer: fresh };
         }
         const executable = setting.executable ?? bundledExecutable(context);
@@ -132,9 +141,7 @@ function makeServerOptions(
                     }),
             );
         }
-        if (deactivating) {
-            throw new Error("clice is shutting down");
-        }
+        refuseWhenDeactivating();
         child = cp.spawn(executable, ["serve"], { cwd: workspaceDirectory() });
         child.on("error", (error) => {
             channel.appendLine(`clice spawn failed: ${error.message}`);
