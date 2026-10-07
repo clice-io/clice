@@ -74,7 +74,11 @@ function runClice(...args: string[]): Promise<ProcessResult> {
 /// for it: std.cppm includes the headers `import std` stands for and
 /// std.compat exports fake_puts. With `program`, the program also has two
 /// modules of its own, core and tool, and a source using tool.
-async function writeProject(session: SessionFactory, program = false): Promise<Workspace> {
+async function writeProject(
+    session: SessionFactory,
+    program = false,
+    extend?: (ws: Workspace) => void,
+): Promise<Workspace> {
     const ws = session.tmpdir();
     ws.pinCacheDir();
     ws.write(
@@ -279,6 +283,7 @@ async function writeProject(session: SessionFactory, program = false): Promise<W
             ],
         }),
     );
+    extend?.(ws);
     const run = await runClice("index", "--workspace", ws.root, "--workers", "2");
     expect(run.status, `stderr: ${run.stderr}`).toBe(0);
     return ws;
@@ -525,38 +530,39 @@ test("C library kept headers", async ({ session }) => {
 });
 
 test("modules sharing a TU-local entity", async ({ session }) => {
-    const ws = await writeProject(session);
-    // Static as <emmintrin.h>'s intrinsics, which simdjson and CRoaring both
-    // call from their inline code.
-    ws.write(
-        "third/libc/csimd.h",
-        lines("#pragma once", "static inline int fake_simd(int v) { return v; }"),
-    );
-    ws.write(
-        "third/alpha/alpha/simd.h",
-        lines(
-            "#pragma once",
-            "#include <csimd.h>",
-            "inline int alpha_simd(int v) { return fake_simd(v); }",
-        ),
-    );
-    ws.write(
-        "third/beta/beta/simd.h",
-        lines(
-            "#pragma once",
-            "#include <csimd.h>",
-            "inline int beta_simd(int v) { return fake_simd(v); }",
-        ),
-    );
-    ws.write(
-        "app/main.cpp",
-        ws
-            .read("app/main.cpp")
-            .replace(
-                "#include <beta/beta.h>\n",
-                "#include <beta/beta.h>\n#include <alpha/simd.h>\n#include <beta/simd.h>\n",
+    const ws = await writeProject(session, false, (project) => {
+        // Static as <emmintrin.h>'s intrinsics, which simdjson and CRoaring both
+        // call from their inline code.
+        project.write(
+            "third/libc/csimd.h",
+            lines("#pragma once", "static inline int fake_simd(int v) { return v; }"),
+        );
+        project.write(
+            "third/alpha/alpha/simd.h",
+            lines(
+                "#pragma once",
+                "#include <csimd.h>",
+                "inline int alpha_simd(int v) { return fake_simd(v); }",
             ),
-    );
+        );
+        project.write(
+            "third/beta/beta/simd.h",
+            lines(
+                "#pragma once",
+                "#include <csimd.h>",
+                "inline int beta_simd(int v) { return fake_simd(v); }",
+            ),
+        );
+        project.write(
+            "app/main.cpp",
+            project
+                .read("app/main.cpp")
+                .replace(
+                    "#include <beta/beta.h>\n",
+                    "#include <beta/beta.h>\n#include <alpha/simd.h>\n#include <beta/simd.h>\n",
+                ),
+        );
+    });
     const all = await interfaces(ws);
     const shared = { name: "fake_simd", file: "third/libc/csimd.h" };
     expect(all.get("alpha")!.sharedLocals).toEqual([{ ...shared, modules: ["beta"] }]);
