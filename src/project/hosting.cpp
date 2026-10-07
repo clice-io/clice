@@ -85,6 +85,11 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
         return files.check_version(VersionID{nodes[node].file}) == Verdict::Fresh;
     };
 
+    // The header's own guard decides which of its includes after the first
+    // enter it.
+    auto repeated = llvm::count_if(nodes, [&](const index::IncludeNode& node) {
+                        return files.version(VersionID{node.file}).fid == header;
+                    }) > 1;
     llvm::SmallVector<Host> found;
     bool forced = false;
     for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
@@ -103,7 +108,7 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
         }
         Host entering{.file = host, .chain = {host}};
         for(auto node: llvm::reverse(path)) {
-            if(node != i && !fresh(node)) {
+            if((node != i || repeated) && !fresh(node)) {
                 return std::nullopt;
             }
             entering.chain.push_back(file_of(node));
@@ -129,11 +134,11 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
     }
 
     auto chain = project.dep_graph.find_include_chain(host, header);
-    for(auto file: llvm::ArrayRef(chain).drop_back(chain.empty() ? 0 : 1)) {
-        for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
-            if(file_of(i) == file && !fresh(i)) {
-                return std::nullopt;
-            }
+    llvm::DenseSet<Fid> on_chain(chain.begin(), chain.end());
+    on_chain.erase(header);
+    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
+        if(on_chain.contains(file_of(i)) && !fresh(i)) {
+            return std::nullopt;
         }
     }
     return found;

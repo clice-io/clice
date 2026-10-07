@@ -628,6 +628,11 @@ kota::task<bool> ASTFamily::fetch_include_tree(Fid host) {
     auto result = co_await pool.send_stateless(params, worker::Priority::High);
     if(!result.has_value()) {
         LOG_INFO("No include tree for {}: {}", params.file, result.error().message);
+        // A host whose preprocessing kills the worker would kill one per
+        // edit; any other failure is not the host's.
+        if(result.error().code == worker::dispatch_errc::worker_crashed) {
+            project.include_trees[host].last_run = started;
+        }
         co_return false;
     }
     if(!result.value().success) {
@@ -648,11 +653,14 @@ kota::task<bool> ASTFamily::fetch_include_tree(Fid host) {
     for(auto& node: tree.nodes) {
         node.file = versions[node.file].raw;
     }
+    // The tree can move the host's contexts: the listings it changes are
+    // stale.
+    project.context_epoch += 1;
     project.include_trees[host] = {
         .root = versions.back(),
         .nodes = std::move(tree.nodes),
         .commands_epoch = started.first,
-        .last_run = started,
+        .last_run = {started.first, started.second + 1},
     };
     co_return true;
 }
