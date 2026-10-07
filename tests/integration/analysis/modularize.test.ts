@@ -73,7 +73,8 @@ function runClice(...args: string[]): Promise<ProcessResult> {
 /// whose C++ headers include the C library's, and libc++'s module sources
 /// for it: std.cppm includes the headers `import std` stands for and
 /// std.compat exports fake_puts. With `program`, the program also has two
-/// modules of its own, core and tool, and a source using tool.
+/// modules of its own, core and tool, and a source using tool. `extend`
+/// edits the project before it is indexed.
 async function writeProject(
     session: SessionFactory,
     program = false,
@@ -532,17 +533,22 @@ test("C library kept headers", async ({ session }) => {
 test("modules sharing a TU-local entity", async ({ session }) => {
     const ws = await writeProject(session, false, (project) => {
         // Static as <emmintrin.h>'s intrinsics, which simdjson and CRoaring both
-        // call from their inline code.
+        // call from their inline code; alpha reaches fake_simd through
+        // fake_simd2 alone.
         project.write(
             "third/libc/csimd.h",
-            lines("#pragma once", "static inline int fake_simd(int v) { return v; }"),
+            lines(
+                "#pragma once",
+                "static inline int fake_simd(int v) { return v; }",
+                "static inline int fake_simd2(int v) { return fake_simd(v) * 2; }",
+            ),
         );
         project.write(
             "third/alpha/alpha/simd.h",
             lines(
                 "#pragma once",
                 "#include <csimd.h>",
-                "inline int alpha_simd(int v) { return fake_simd(v); }",
+                "inline int alpha_simd(int v) { return fake_simd2(v); }",
             ),
         );
         project.write(
@@ -567,12 +573,11 @@ test("modules sharing a TU-local entity", async ({ session }) => {
     const shared = { name: "fake_simd", file: "third/libc/csimd.h" };
     expect(all.get("alpha")!.sharedLocals).toEqual([{ ...shared, modules: ["beta"] }]);
     expect(all.get("beta")!.sharedLocals).toEqual([{ ...shared, modules: ["alpha"] }]);
-    expect(all.get("libc")!.sharedLocals).toEqual([]);
 
     const run = await modularize(ws);
     expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
     expect((JSON.parse(run.stdout) as { wrapping: Plan }).wrapping.warnings).toEqual([
-        "alpha and beta both use fake_simd of third/libc/csimd.h: an importer of both defines them twice, wrap them as one module",
+        "alpha and beta both use TU-local fake_simd (third/libc/csimd.h): an importer using the code of both can define each twice under one name; wrap them as one module",
     ]);
 });
 

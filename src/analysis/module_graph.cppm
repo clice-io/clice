@@ -775,11 +775,6 @@ struct InterfaceMacro {
     std::string directive;
 };
 
-/// A module as an interface unit wrapping its headers whole, as a
-/// third-party library's module does: the global module fragment imports
-/// what its headers need and includes its entries, the purview exports its
-/// namespace-scope names, and its macros reach the importers through a
-/// macro header.
 /// A TU-local function or variable a module's headers use that headers of
 /// other wrapped modules use too.
 struct InterfaceSharedLocal {
@@ -792,6 +787,11 @@ struct InterfaceSharedLocal {
     std::vector<std::string> modules;
 };
 
+/// A module as an interface unit wrapping its headers whole, as a
+/// third-party library's module does: the global module fragment imports
+/// what its headers need and includes its entries, the purview exports its
+/// namespace-scope names, and its macros reach the importers through a
+/// macro header.
 struct Interface {
     std::string module;
 
