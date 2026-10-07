@@ -272,8 +272,10 @@ test.skipIf(process.platform === "win32")("closed reader ends quietly", async ({
     const child = spawn(
         cliceExecutable(),
         ["inspect", "document_symbol", ws.path("big.cpp"), "--flags", '["-std=c++23"]'],
-        { stdio: ["ignore", "pipe", "ignore"] },
+        { stdio: ["ignore", "pipe", "pipe"] },
     );
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
     child.stdout.once("data", () => child.stdout.destroy());
-    expect(await exitOf(child)).toEqual({ code: null, signal: "SIGPIPE" });
+    expect(await exitOf(child), `stderr: ${stderr}`).toEqual({ code: null, signal: "SIGPIPE" });
 });
