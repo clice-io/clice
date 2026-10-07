@@ -137,6 +137,11 @@ private:
     /// entry per TU.
     llvm::DenseMap<Fid, Inputs> inputs;
     llvm::DenseMap<Fid, Outcome> landed;
+
+    /// TUs whose last result named a variant by hash that the store did
+    /// not hold for its file: the next run sends every section's bytes,
+    /// so the rerun cannot fail the same way.
+    llvm::DenseSet<Fid> send_in_full;
 };
 
 }  // namespace clice

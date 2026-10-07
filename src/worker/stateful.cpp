@@ -333,7 +333,7 @@ RequestResult<worker::CompileParams>
                 result.deps = doc->unit.deps();
 
                 // Build index for main file only (main_file_only=true).
-                result.tu_index_data = index::build_tu_index(doc->unit, true);
+                result.tu_index_data = index::build_tu_index(doc->unit, {.main_file_only = true});
             }
 
             if(doc->unit.completed() || doc->unit.fatal_error()) {

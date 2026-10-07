@@ -24,7 +24,8 @@ namespace {
 /// One file's rows on the wire: a self-contained single-variant shard
 /// blob (index/shard.h). `hash` is xxh3 of `blob` — the variant's
 /// identity — so the master can skip blobs it already stores without
-/// touching their bytes.
+/// touching their bytes; the blob is left empty for a variant the master
+/// said it stores.
 struct FileSection {
     std::uint32_t path_id = 0;
 
@@ -53,7 +54,24 @@ struct EnvelopeBlob {
     std::vector<std::uint64_t> path_hashes;
     std::vector<IncludeNode> nodes;
 
-    SymbolTable symbols;
+    /// The symbols the rows name, sorted by hash, except the file-local
+    /// ones (a function's locals, a template's parameters) — only their
+    /// own file can mention one, and that file's section names it — and
+    /// the external symbols only sections left empty name. Names and arguments are back to back
+    /// with one end offset per row; so are the reference files, as path ids.
+    std::vector<std::uint64_t> sym_hashes;
+    std::string sym_names;
+    std::vector<std::uint32_t> sym_name_ends;
+    std::string sym_args;
+    std::vector<std::uint32_t> sym_args_ends;
+    std::vector<std::uint64_t> sym_parents;
+    std::vector<std::uint8_t> sym_kinds;
+    std::vector<std::uint8_t> sym_scopes;
+    std::vector<std::uint16_t> sym_flags;
+    /// Path ids, `no_file` for a symbol without a declaring row.
+    std::vector<std::uint32_t> sym_files;
+    std::vector<std::uint32_t> sym_reference_ends;
+    std::vector<std::uint32_t> sym_references;
 
     /// One entry per file with rows, ascending by path id.
     std::vector<FileSection> sections;
@@ -273,8 +291,9 @@ bool is_completable(const clang::NamedDecl* decl) {
 /// relations from the resolve facts, macros from the preprocessor directives.
 class Projector {
 public:
-    Projector(CompilationUnitRef unit, bool main_file_only) :
-        unit(unit), main_file_only(main_file_only) {}
+    Projector(CompilationUnitRef unit, const TUIndexOptions& options) :
+        unit(unit), main_file_only(options.main_file_only), known_variants(options.known_variants) {
+    }
 
     /// The only gate through which rows enter `file_indices`. With
     /// main_file_only, the index covers just the main file — yet
@@ -1113,6 +1132,7 @@ public:
         }
         llvm::sort(path_ids);
         std::vector<FileSection> sections;
+        llvm::BitVector known_paths(tree.paths.size());
         for(auto path_id: path_ids) {
             auto& rows = by_path[path_id];
             if(rows.empty()) {
@@ -1122,6 +1142,11 @@ public:
             llvm::raw_string_ostream os(bytes);
             write_shard(rows, resolve, unit.file_content(path_fids[path_id]), os);
             auto hash = llvm::xxh3_64bits(bytes);
+            if(std::ranges::binary_search(known_variants, hash)) {
+                known_paths.set(path_id);
+                sections.push_back({path_id, hash, {}});
+                continue;
+            }
             sections.push_back(
                 {path_id, hash, std::vector<std::uint8_t>(bytes.begin(), bytes.end())});
         }
@@ -1134,7 +1159,37 @@ public:
         blob.path_hashes = std::move(tree.path_hashes);
         blob.nodes = std::move(tree.nodes);
         blob.absent = unit.absent();
-        blob.symbols = std::move(symbols);
+        llvm::SmallVector<SymbolHash> table;
+        for(auto& [hash, symbol]: symbols) {
+            if(symbol.scope == SymbolScope::FileLocal) {
+                continue;
+            }
+            if(symbol.scope == SymbolScope::External && !symbol.reference_files.isEmpty() &&
+               llvm::all_of(symbol.reference_files,
+                            [&](std::uint32_t path_id) { return known_paths.test(path_id); })) {
+                continue;
+            }
+            table.push_back(hash);
+        }
+        llvm::sort(table);
+        for(auto hash: table) {
+            auto& symbol = symbols.find(hash)->second;
+            blob.sym_hashes.push_back(hash);
+            blob.sym_names += symbol.name;
+            blob.sym_name_ends.push_back(static_cast<std::uint32_t>(blob.sym_names.size()));
+            blob.sym_args += symbol.args;
+            blob.sym_args_ends.push_back(static_cast<std::uint32_t>(blob.sym_args.size()));
+            blob.sym_parents.push_back(symbol.parent);
+            blob.sym_kinds.push_back(symbol.kind.value());
+            blob.sym_scopes.push_back(static_cast<std::uint8_t>(symbol.scope));
+            blob.sym_flags.push_back(static_cast<std::uint16_t>(symbol.flags));
+            blob.sym_files.push_back(symbol.file);
+            for(auto file: symbol.reference_files) {
+                blob.sym_references.push_back(file);
+            }
+            blob.sym_reference_ends.push_back(
+                static_cast<std::uint32_t>(blob.sym_references.size()));
+        }
         blob.sections = std::move(sections);
         if(extras) {
             blob.preamble_hash = extras->hash;
@@ -1165,6 +1220,7 @@ public:
 private:
     CompilationUnitRef unit;
     bool main_file_only;
+    llvm::ArrayRef<std::uint64_t> known_variants;
     IncludeTree tree;
     SymbolTable symbols;
     /// Build-time working state keyed by FileID — clang::FileID means
@@ -1177,8 +1233,8 @@ private:
 
 }  // namespace
 
-std::string build_tu_index(CompilationUnitRef unit, bool main_file_only) {
-    Projector projector(unit, main_file_only);
+std::string build_tu_index(CompilationUnitRef unit, const TUIndexOptions& options) {
+    Projector projector(unit, options);
     return projector.build(nullptr);
 }
 
@@ -1199,7 +1255,7 @@ std::string build_preamble_index(CompilationUnitRef unit,
         .open_conditionals = open_conditionals,
         .diagnostics = diagnostics,
     };
-    Projector projector(unit, false);
+    Projector projector(unit, {});
     return projector.build(&extras);
 }
 
@@ -1213,27 +1269,62 @@ WireView wire_root(llvm::StringRef data) {
     return WireView::from_verified_bytes(blob_bytes(data));
 }
 
-SymbolIdentity identity_of(kota::codec::fbs::table_view<Symbol> symbol) {
-    return {
-        .name = to_ref(symbol[&Symbol::name]),
-        .args = to_ref(symbol[&Symbol::args]),
-        .parent = symbol[&Symbol::parent],
-        .kind = SymbolKind(symbol[&Symbol::kind]),
-        .scope = symbol[&Symbol::scope],
-        .flags = symbol[&Symbol::flags],
-        .file = symbol[&Symbol::file],
-    };
-}
+/// The symbol table columns of an envelope, borrowing the wire.
+struct SymbolColumns {
+    llvm::ArrayRef<std::uint64_t> hashes;
+    llvm::StringRef names;
+    llvm::ArrayRef<std::uint32_t> name_ends;
+    llvm::StringRef args;
+    llvm::ArrayRef<std::uint32_t> args_ends;
+    llvm::ArrayRef<std::uint64_t> parents;
+    llvm::ArrayRef<std::uint8_t> kinds;
+    llvm::ArrayRef<std::uint8_t> scopes;
+    llvm::ArrayRef<std::uint16_t> flags;
+    llvm::ArrayRef<std::uint32_t> files;
+    llvm::ArrayRef<std::uint32_t> reference_ends;
+    llvm::ArrayRef<std::uint32_t> references;
 
-/// The symbol's serialized reference bitmap (the Bitmap repr's byte image)
-/// as a StringRef borrowing the wire.
-llvm::StringRef bitmap_bytes(kota::codec::fbs::table_view<Symbol> symbol) {
-    const auto* raw = symbol[&Symbol::reference_files].raw();
-    if(!raw) {
-        return {};
+    static SymbolColumns of(WireView root) {
+        return {
+            .hashes = to_array_ref(root[&EnvelopeBlob::sym_hashes]),
+            .names = to_ref(root[&EnvelopeBlob::sym_names]),
+            .name_ends = to_array_ref(root[&EnvelopeBlob::sym_name_ends]),
+            .args = to_ref(root[&EnvelopeBlob::sym_args]),
+            .args_ends = to_array_ref(root[&EnvelopeBlob::sym_args_ends]),
+            .parents = to_array_ref(root[&EnvelopeBlob::sym_parents]),
+            .kinds = to_array_ref(root[&EnvelopeBlob::sym_kinds]),
+            .scopes = to_array_ref(root[&EnvelopeBlob::sym_scopes]),
+            .flags = to_array_ref(root[&EnvelopeBlob::sym_flags]),
+            .files = to_array_ref(root[&EnvelopeBlob::sym_files]),
+            .reference_ends = to_array_ref(root[&EnvelopeBlob::sym_reference_ends]),
+            .references = to_array_ref(root[&EnvelopeBlob::sym_references]),
+        };
     }
-    return llvm::StringRef(reinterpret_cast<const char*>(raw->data()), raw->size());
-}
+
+    std::optional<std::uint32_t> find(SymbolHash hash) const {
+        auto it = std::ranges::lower_bound(hashes, hash);
+        if(it == hashes.end() || *it != hash) {
+            return std::nullopt;
+        }
+        return static_cast<std::uint32_t>(it - hashes.begin());
+    }
+
+    SymbolIdentity identity(std::uint32_t row) const {
+        return {
+            .name = back_to_back(names, name_ends, row),
+            .args = back_to_back(args, args_ends, row),
+            .parent = parents[row],
+            .kind = SymbolKind(kinds[row]),
+            .scope = static_cast<SymbolScope>(scopes[row]),
+            .flags = static_cast<SymbolFlags>(flags[row]),
+            .file = files[row],
+        };
+    }
+
+    llvm::ArrayRef<std::uint32_t> references_of(std::uint32_t row) const {
+        return back_to_back(references, reference_ends, row);
+    }
+};
 
 }  // namespace
 
@@ -1270,17 +1361,39 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
             return {};
         }
     }
-    // Symbol hashes and parents become DenseMap and DenseSet keys in every
-    // consumer (the project table, a query's parent walk), and the two
-    // sentinel values corrupt or assert in those containers; the builder
-    // never emits them, so an envelope carrying one is corrupt.
-    auto symbols = root[&EnvelopeBlob::symbols];
-    for(std::size_t i = 0; i < symbols.size(); i += 1) {
-        auto entry = symbols.at(i);
-        if(reserved_key(entry.get<0>()) || reserved_key(entry.get<1>()[&Symbol::parent])) {
-            LOG_DEBUG("Rejecting TU index: reserved symbol hash or parent");
+    auto symbols = SymbolColumns::of(root);
+    auto rows = symbols.hashes.size();
+    if(symbols.name_ends.size() != rows || symbols.args_ends.size() != rows ||
+       symbols.parents.size() != rows || symbols.kinds.size() != rows ||
+       symbols.scopes.size() != rows || symbols.flags.size() != rows ||
+       symbols.files.size() != rows || symbols.reference_ends.size() != rows ||
+       !monotone_ends(symbols.name_ends, symbols.names.size()) ||
+       !monotone_ends(symbols.args_ends, symbols.args.size()) ||
+       !monotone_ends(symbols.reference_ends, symbols.references.size())) {
+        LOG_DEBUG("Rejecting TU index: malformed symbol columns");
+        return {};
+    }
+    // Lookups binary-search the hashes. Hashes and parents become DenseMap
+    // and DenseSet keys in every consumer (the project table, a query's
+    // parent walk), and the two sentinel values corrupt or assert in those
+    // containers; the builder never emits them, so an envelope carrying
+    // one is corrupt. Merged reference files would persist behind versions
+    // that match the disk, so a path id past the table must reject the
+    // whole envelope rather than be dropped.
+    for(std::size_t i = 0; i < rows; i += 1) {
+        if((i != 0 && symbols.hashes[i] <= symbols.hashes[i - 1]) ||
+           reserved_key(symbols.hashes[i]) || reserved_key(symbols.parents[i])) {
+            LOG_DEBUG("Rejecting TU index: unsorted or reserved symbol hash, or reserved parent");
             return {};
         }
+        if(symbols.files[i] != no_file && symbols.files[i] >= count) {
+            LOG_DEBUG("Rejecting TU index: symbol file past the path table");
+            return {};
+        }
+    }
+    if(llvm::any_of(symbols.references, [&](std::uint32_t file) { return file >= count; })) {
+        LOG_DEBUG("Rejecting TU index: reference file past the path table");
+        return {};
     }
     // section_of binary-searches the section table by path id and shard_of
     // trusts the result, so the ids must ascend strictly — a repeated or
@@ -1379,15 +1492,16 @@ std::optional<std::uint32_t> TUIndex::section_of(std::uint32_t path_id) const {
 const Shard& TUIndex::shard_of(std::uint32_t path_id) const {
     const static Shard missing;
     auto section = section_of(path_id);
-    if(!section) {
-        return missing;
-    }
+    return section ? section_shard(*section) : missing;
+}
+
+const Shard& TUIndex::section_shard(std::uint32_t section) const {
     if(shards.empty()) {
         shards.resize(section_count());
     }
-    auto& slot = shards[*section];
+    auto& slot = shards[section];
     if(!slot.loaded()) {
-        slot = Shard::from_bytes(section_blob(*section));
+        slot = Shard::from_bytes(section_blob(section));
     }
     return slot;
 }
@@ -1415,14 +1529,14 @@ bool TUIndex::shards_verify() const {
 }
 
 void TUIndex::iterate_symbols(
-    llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, llvm::StringRef)> callback) const {
+    llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, llvm::ArrayRef<std::uint32_t>)>
+        callback) const {
     if(!loaded()) {
         return;
     }
-    auto symbols = wire_root(data)[&EnvelopeBlob::symbols];
-    for(std::size_t i = 0; i < symbols.size(); i += 1) {
-        auto entry = symbols.at(i);
-        if(!callback(entry.get<0>(), identity_of(entry.get<1>()), bitmap_bytes(entry.get<1>()))) {
+    auto symbols = SymbolColumns::of(wire_root(data));
+    for(std::uint32_t row = 0; row < symbols.hashes.size(); row += 1) {
+        if(!callback(symbols.hashes[row], symbols.identity(row), symbols.references_of(row))) {
             return;
         }
     }
@@ -1432,11 +1546,16 @@ std::optional<SymbolIdentity> TUIndex::find_symbol(SymbolHash hash) const {
     if(!loaded()) {
         return std::nullopt;
     }
-    auto found = wire_root(data)[&EnvelopeBlob::symbols].find(hash);
-    if(!found) {
-        return std::nullopt;
+    auto symbols = SymbolColumns::of(wire_root(data));
+    if(auto row = symbols.find(hash)) {
+        return symbols.identity(*row);
     }
-    return identity_of(found->get<1>());
+    for(std::uint32_t section = 0; section < section_count(); section += 1) {
+        if(auto identity = section_shard(section).find_symbol(hash)) {
+            return identity;
+        }
+    }
+    return std::nullopt;
 }
 
 std::optional<std::vector<LocalFanout>>
@@ -1447,34 +1566,26 @@ std::optional<std::vector<LocalFanout>>
     }
     std::vector<LocalFanout> result;
     bool valid = true;
-    iterate_symbols([&](SymbolHash hash, const SymbolIdentity& identity, llvm::StringRef bitmap) {
-        if(identity.scope != SymbolScope::TULocal || bitmap.empty()) {
-            return true;
-        }
-        auto files = read_bitmap(bitmap.data(), bitmap.size());
-        if(!files) {
-            valid = false;
-            return false;
-        }
-        if(files->cardinality() < 2) {
-            return true;
-        }
-        LocalFanout fanout{.symbol = hash};
-        for(auto path_id: *files) {
-            auto it = contribution_of.find(path_id);
-            if(it == contribution_of.end()) {
-                valid = false;
-                return false;
+    iterate_symbols(
+        [&](SymbolHash hash, const SymbolIdentity& identity, llvm::ArrayRef<std::uint32_t> files) {
+            if(identity.scope != SymbolScope::TULocal || files.size() < 2) {
+                return true;
             }
-            fanout.files.push_back(it->second);
-        }
-        result.push_back(std::move(fanout));
-        return true;
-    });
+            LocalFanout fanout{.symbol = hash};
+            for(auto path_id: files) {
+                auto it = contribution_of.find(path_id);
+                if(it == contribution_of.end()) {
+                    valid = false;
+                    return false;
+                }
+                fanout.files.push_back(it->second);
+            }
+            result.push_back(std::move(fanout));
+            return true;
+        });
     if(!valid) {
         return std::nullopt;
     }
-    std::ranges::sort(result, {}, &LocalFanout::symbol);
     return result;
 }
 
