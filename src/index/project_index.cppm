@@ -158,6 +158,10 @@ struct ProjectIndex {
     /// those TUs (TUManifest::absent).
     llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> probed;
 
+    /// Derived from `manifests`: an input of an imported module -> the TUs
+    /// importing it (TUManifest::imports).
+    llvm::DenseMap<Fid, llvm::SmallDenseSet<Fid, 2>> importers;
+
     /// The file table's id for a version id the loaded global blob
     /// carries; nullopt for any other.
     std::optional<VersionID> runtime_version(std::uint32_t persisted) const;
@@ -171,15 +175,15 @@ struct ProjectIndex {
     /// persisted ids, handing ids out to versions that have none yet.
     TUManifest export_manifest(const TUManifest& manifest);
 
-    /// Install (or replace) a TU's manifest and rederive the affected
-    /// contribution entries. Returns the file path_ids whose contribution
+    /// Install (or replace) a TU's manifest and rederive the maps derived
+    /// from it. Returns the file path_ids whose contribution
     /// set changed — the caller refreshes those shards' live-variant masks.
     llvm::SmallVector<Fid> apply_manifest(const FileTable& files,
                                           Fid tu_path_id,
                                           TUManifest manifest);
 
-    /// Drop a TU's manifest and its contribution entries. Returns the
-    /// affected file path_ids, like apply_manifest.
+    /// Drop a TU's manifest and its entries in the maps derived from it.
+    /// Returns the affected file path_ids, like apply_manifest.
     llvm::SmallVector<Fid> remove_manifest(const FileTable& files, Fid tu_path_id);
 
     /// The distinct rows hashes contributed to `path_id` — the file's live

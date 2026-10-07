@@ -361,7 +361,9 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
 }
 
 std::expected<IndexStore::Report, IndexStore::MergeError>
-    IndexStore::merge(const void* tu_index_data, std::size_t size) {
+    IndexStore::merge(const void* tu_index_data,
+                      std::size_t size,
+                      llvm::ArrayRef<DepState> imports) {
     // Zero-copy consumption: the wire stays serialized; a new variant's
     // blob bytes are sliced out and installed or merged without decoding
     // the envelope, and only genuinely new symbol names are materialized.
@@ -567,6 +569,22 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
             report.add_reindex(tu_path_id);
         }
         manifest.absent.push_back(project.file_table.intern_version(fid, 0));
+    }
+
+    // The imported modules' inputs never enter the parse's include tree,
+    // yet each is an input of the parse all the same. Not stale on
+    // arrival like the parse's own lookups: a reindex would read the same
+    // PCM, which only a change event reaching the module rebuilds. An
+    // input the module's build could not version reads as stale until a
+    // rebuild names its bytes.
+    for(auto& dep: imports) {
+        if(dep.missing) {
+            manifest.absent.push_back(project.file_table.intern_version(dep.path_id, 0));
+        } else {
+            manifest.imports.push_back(dep.version.valid()
+                                           ? dep.version
+                                           : project.file_table.intern_version(dep.path_id, 0));
+        }
     }
 
     for(auto& [global_id, replacement]: replacements) {
@@ -1873,6 +1891,9 @@ bool IndexStore::need_update(Fid file) {
         if(file_version_stale(VersionID{node.file})) {
             return true;
         }
+    }
+    if(llvm::any_of(manifest.imports, [&](VersionID fv) { return file_version_stale(fv); })) {
+        return true;
     }
     return llvm::any_of(manifest.absent, [&](VersionID fv) {
         return project.file_table.present(project.file_table.version(fv).fid);

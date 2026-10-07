@@ -57,7 +57,7 @@ struct IncludeTree {
     std::vector<std::uint64_t> path_hashes;
 
     /// Every include edge of the parse. Besides backing `path_id` lookups,
-    /// this doubles as the TU's dependency set for shard freshness checks,
+    /// these are the TU's include dependencies for shard freshness checks,
     /// so it keeps every edge even when no index row lands in the included
     /// file.
     std::vector<IncludeNode> nodes;

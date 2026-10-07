@@ -970,6 +970,37 @@ ZEST_CASE(InternalPartitionName) {
     ZEXPECT(llvm::any_of(it->second, [](auto& r) { return r.kind == RelationKind::Definition; }));
 }
 
+ZEST_CASE(ImportedDeclarationsSkipped) {
+    add_files("main.cpp", R"(
+#[widget.h]
+struct Widget {
+    int value;
+};
+
+#[foo.cppm]
+module;
+#include "widget.h"
+export module foo;
+export Widget make();
+
+#[main.cpp]
+import foo;
+
+int main() {
+    return §(use)make().value;
+}
+)");
+    ZASSERT(compile_with_modules());
+    decode_index(index::build_tu_index(*unit));
+
+    // The module's own unit indexes its declarations and the headers behind
+    // them; an importer's index holds what it parsed.
+    ZEXPECT(tu_index.file_indices.empty());
+    auto occs = select("use");
+    ZASSERT(!occs.empty());
+    ZEXPECT(occs.front().target == symbol_named("make").first);
+}
+
 ZEST_CASE(ImplementationUnitReference) {
     add_files("main.cpp", R"(
 #[foo.cppm]

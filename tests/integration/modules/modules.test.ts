@@ -5,6 +5,7 @@ import * as proto from "vscode-languageserver-protocol";
 import {
     IDLE_TIMEOUT,
     locationsOf,
+    MTIME_GRANULARITY,
     sleep,
     withTimeout,
     type CliceClient,
@@ -123,6 +124,49 @@ test("internal partition definition", async ({ session }) => {
         locs.some((u) => u.endsWith("util.cppm")),
         JSON.stringify(locs),
     ).toBe(true);
+});
+
+const PICK_V1 = "export module m;\nexport int pick(int v) { return v; }\n";
+
+// Adds an overload the closed importer's call prefers: only a reindex of
+// the importer against the new interface points the call at it.
+const PICK_V2 =
+    "export module m;\nexport int pick(int v) { return v; }\nexport int pick(long v) { return 2; }\n";
+
+test("module save reindexes importers", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write("m.cppm", PICK_V1);
+    ws.write("closed.cpp", "import m;\nint use() { return pick(1L); }\n");
+    ws.writeCDB(["m.cppm", "closed.cpp"], { std: "c++20" });
+
+    const moduleUri = ws.uri("m.cppm");
+    const closedUri = ws.uri("closed.cpp");
+    const first = await session.spawn(ws).initialize(ws);
+    await first.openAndWait("m.cppm");
+    expect(
+        await first.waitForReference(moduleUri, 1, 11, closedUri),
+        "initial index never produced the importer's pick(int) reference",
+    ).toBe(true);
+    await first.shutdown();
+
+    // The next server's startup sweep finds the importer fresh and never
+    // runs it: only the index's record of what it imported leads the save
+    // to it.
+    const client = await session.spawn(ws).initialize(ws, {
+        initializationOptions: { project: { idle_timeout_ms: 10 } },
+    });
+    await client.openAndWait("m.cppm");
+    await sleep(MTIME_GRANULARITY);
+    ws.write("m.cppm", PICK_V2);
+    client.change(moduleUri, 2, PICK_V2);
+    client.save(moduleUri);
+
+    expect(
+        await client.waitForReference(moduleUri, 2, 11, closedUri),
+        "the importer was not reindexed after the module save",
+    ).toBe(true);
+    expect(await client.referenceUris(moduleUri, 1, 11)).not.toContain(closedUri);
 });
 
 /// Re-exported symbols (export import) should be accessible through the wrapper.
