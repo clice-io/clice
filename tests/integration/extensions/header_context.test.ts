@@ -279,3 +279,22 @@ test("switch republishes diagnostics", async ({ session }) => {
     expect(current.automatic).toBe(true);
     expect(current.context?.uri).toContain("main.cpp");
 });
+
+/// A source a rule's default command claims compiles under that command,
+/// which the listing does not offer, even where another unit includes it.
+test("default command unit names no host", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write(
+        "clice.toml",
+        '[[rules]]\npatterns = ["src/**"]\ndefault_command = "clang++ -std=c++20"\n',
+    );
+    workspace.write("src/part.cpp", "int part() { return 1; }\n");
+    workspace.write("src/main.cpp", '#include "part.cpp"\nint main() { return part(); }\n');
+    await client.initialize(workspace);
+
+    await client.openAndWait("src/main.cpp");
+    const [part] = await client.openAndWait("src/part.cpp");
+    const current = await client.currentContext(part);
+    expect(current.automatic).toBe(true);
+    expect(current.context).toBeNull();
+});

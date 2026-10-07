@@ -219,8 +219,9 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
         result.context = own_item(ws, path_id, index, own_config(ws, path_id, entry.config));
     };
 
-    // The choice, else what resolve_command picks: the file's own entry,
-    // then the host of its resolved context or the default one.
+    // The choice, else what resolve_command picks: the file's own command
+    // — listed only when it is an entry, not a rule's default — then the
+    // host of its resolved context or the default one.
     if(choice && choice->host_path_id.valid()) {
         lent(choice->host_path_id,
              choice->command_hash,
@@ -228,8 +229,10 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
              choice->occurrence.value_or(0));
     } else if(choice) {
         own(choice->command_hash, choice->base_hash);
-    } else if(!ws.build.entries(path_id).empty()) {
-        own({}, {});
+    } else if(ws.build.unit(path_id)) {
+        if(!ws.build.entries(path_id).empty()) {
+            own({}, {});
+        }
     } else if(const auto* context = editor.header_context(path_id)) {
         lent(context->host_path_id, {}, {}, context->occurrence);
     } else if(auto host = default_host(ws, path_id)) {

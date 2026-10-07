@@ -417,8 +417,8 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
             // The document may have moved on while the query was in flight:
             // closed, or re-languaged by the user.
             if (query.total > 0 && awaitingDetection()) {
-                detected.add(uri);
                 await vscode.languages.setTextDocumentLanguage(document, "cpp");
+                detected.add(uri);
             }
         } catch {
             // Server not ready — leave the document as-is.
