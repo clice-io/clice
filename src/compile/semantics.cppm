@@ -264,9 +264,9 @@ clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
 struct SemanticsOptions {
     /// Traverse only the main file's top-level decls — the shape features
     /// consume, cached on the unit, owning the main file's spelled tokens.
-    /// Without it the whole TU is traversed, the transient shape the full
-    /// index projection uses; it reads no tokens, so it builds on a compile
-    /// that collected none.
+    /// Without it everything the unit parsed is traversed, the transient
+    /// shape the full index projection uses; it reads no tokens, so it
+    /// builds on a compile that collected none.
     bool main_file_only = true;
 
     /// Also traverse template instantiations, flagged in_instantiation:

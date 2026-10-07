@@ -361,7 +361,9 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
 }
 
 std::expected<IndexStore::Report, IndexStore::MergeError>
-    IndexStore::merge(const void* tu_index_data, std::size_t size) {
+    IndexStore::merge(const void* tu_index_data,
+                      std::size_t size,
+                      llvm::ArrayRef<DepState> imports) {
     // Zero-copy consumption: the wire stays serialized; a new variant's
     // blob bytes are sliced out and installed or merged without decoding
     // the envelope, and only genuinely new symbol names are materialized.
@@ -569,6 +571,22 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         manifest.absent.push_back(project.file_table.intern_version(fid, 0));
     }
 
+    // The imported modules' inputs never enter the parse's include tree,
+    // yet each is an input of the parse all the same. Not stale on
+    // arrival like the parse's own lookups: a reindex would read the same
+    // PCM, which only a change event reaching the module rebuilds. An
+    // input the module's build could not version reads as stale until a
+    // rebuild names its bytes.
+    for(auto& dep: imports) {
+        if(dep.missing) {
+            manifest.absent.push_back(project.file_table.intern_version(dep.path_id, 0));
+        } else {
+            manifest.imports.push_back(dep.version.valid()
+                                           ? dep.version
+                                           : project.file_table.intern_version(dep.path_id, 0));
+        }
+    }
+
     for(auto& [global_id, replacement]: replacements) {
         project.project_index.shards[global_id] = std::move(replacement);
         dirty_shards.insert(global_id);
@@ -664,7 +682,7 @@ void IndexStore::drop_index_into(Fid tu_path_id, Report& report) {
     global_dirty = true;
 }
 
-kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, bool settle) {
+kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, SearchRebuild search) {
     Report report;
     // Reset up front: every early return below means this save committed
     // nothing, and the gauge must not keep exposing the previous round's
@@ -685,7 +703,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     auto& project_index = project.project_index;
     ScopedTimer timer;
 
-    if(search_rebuild_due(settle)) {
+    if(search_rebuild_due(search)) {
         co_await rebuild_search_index();
     }
 
@@ -996,7 +1014,10 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     co_return report;
 }
 
-bool IndexStore::search_rebuild_due(bool settle) const {
+bool IndexStore::search_rebuild_due(SearchRebuild search) const {
+    if(search == SearchRebuild::Never) {
+        return false;
+    }
     auto& index = project.project_index.search_index;
     auto base = index.size();
     if(project.project_index.search_pending.size() > std::max<std::size_t>(10000, base / 20)) {
@@ -1007,7 +1028,7 @@ bool IndexStore::search_rebuild_due(bool settle) const {
     if(index.damaged()) {
         return true;
     }
-    if(!settle) {
+    if(search == SearchRebuild::Behind) {
         return false;
     }
     // A missing one — never built, or persisted under another pin than
@@ -1123,7 +1144,10 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
         co_return;
     }
     bool grew = *grown;
-    if(!grew) {
+    if(grew) {
+        // The refused batch is dirty again; the grown map takes it now.
+        report.owes_retry = true;
+    } else {
         // The LMDB backend hands out pointers into its resident read
         // snapshot; after a commit the resident shards migrate onto a
         // fresh snapshot so the old one can be retired. Both snapshots
@@ -1226,9 +1250,9 @@ void IndexStore::recover_corrupt_database(Report& report) {
     global_dirty = true;
     cdb_dirty = true;
     // The snapshot just persisted (if any) predates this recovery's debt
-    // and lives in a condemned database anyway: the caller's shutdown path
-    // owes one metadata retry so the fresh database records it.
-    report.snapshot_stale = true;
+    // and lives in a condemned database anyway: one metadata retry makes
+    // the fresh database record it.
+    report.owes_retry = true;
     persisted_cdb_snapshot.clear();
     reopen_fresh_database();
 }
@@ -1867,6 +1891,9 @@ bool IndexStore::need_update(Fid file) {
         if(file_version_stale(VersionID{node.file})) {
             return true;
         }
+    }
+    if(llvm::any_of(manifest.imports, [&](VersionID fv) { return file_version_stale(fv); })) {
+        return true;
     }
     return llvm::any_of(manifest.absent, [&](VersionID fv) {
         return project.file_table.present(project.file_table.version(fv).fid);

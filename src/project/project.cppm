@@ -310,6 +310,10 @@ struct Project {
     /// Fill PCM paths for all built modules, excluding exclude_path_id.
     void fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,
                        Fid exclude_path_id = {}) const;
+
+    /// What the PCMs of `modules` were built from, their imports' inputs
+    /// included, each once; a module without a PCM contributes nothing.
+    DepsSnapshot module_inputs(llvm::ArrayRef<Fid> modules) const;
 };
 
 /// Where a `compile_commands.json` is looked for when no rule declares
@@ -357,6 +361,12 @@ llvm::SmallVector<Spelling> compile_commands_above(CanonicalRef start, Canonical
 DepsSnapshot capture_deps_snapshot(FileTable& files,
                                    llvm::ArrayRef<DepFile> deps,
                                    std::int64_t build_at);
+
+/// Append the entries of `parts` that `into` lacks. A module's snapshot
+/// already carries its imports', so a plain concatenation of several
+/// repeats a module's inputs once per import path to it — exponentially
+/// many over a deep partition graph.
+void merge_deps(DepsSnapshot& into, llvm::ArrayRef<const DepsSnapshot*> parts);
 
 /// Whether any consumed version stopped matching the disk; see
 /// FileTable::check_version and DepState for the

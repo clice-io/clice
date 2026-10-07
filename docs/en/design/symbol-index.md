@@ -139,7 +139,7 @@ Searching symbols by name (`workspace/symbol`, the name queries of `clice query`
 
 A token is a trigram of a path a fuzzy match may take through a name, following the split of identifiers into words (`getSymbolHash` is `get`, `Symbol`, `Hash`): from a character a match continues to the next character of the same word or jumps to the head of a later word, so `gsh` and `symhash` both reach `getSymbolHash`. The trigrams of a query therefore select, by intersecting posting lists — together with the kind, file and scope bitmaps — every candidate the matcher could accept, and the matcher scores only those. Since rows come in quality order and no partial match outscores an exact one, the scan stops as soon as the remaining rows cannot enter the result set. Queries of one or two letters key the first two words of a name only.
 
-The index is rebuilt from the table, on the thread pool, when the symbols merged since its build outgrow it, when indexing settles after enough merges, and at shutdown; the symbols merged in between are scanned directly, as are the open documents' own symbols. A reader opening the persisted index (`clice query`) maps the blob and answers at once.
+The index is rebuilt from the table, on the thread pool, when the symbols merged since its build outgrow it and when indexing settles after enough merges; the symbols merged in between are scanned directly, as are the open documents' own symbols. A shutdown saves the table without rebuilding the index, which a cut-short first round would wait on longest; the next session rebuilds it. A reader opening the persisted index (`clice query`) maps the blob and answers at once.
 
 ### Staleness Detection
 

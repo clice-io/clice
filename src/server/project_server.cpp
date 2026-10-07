@@ -160,7 +160,7 @@ void ProjectServer::start() {
                                         server.requested_configuration);
         contexts.load();
         if(report.opened_store) {
-            bg_tasks.spawn(cache_checkpoint_task());
+            bg_tasks.spawn(checkpoint_task());
         }
         if(project.index_db && !project.index_db->read_only()) {
             start_control_listener();
@@ -486,22 +486,18 @@ kota::task<> ProjectServer::metadata_flush_task() {
     // failure) retries on the next spawn with this backoff.
     co_await kota::sleep(std::chrono::milliseconds(50));
     metadata_flush_scheduled = false;
-    sched.pump.claim_report(co_await sched.store.save(sched.pump.save_debt()));
+    co_await sched.pump.persist();
     if(project.artifacts_dirty || sched.store.contexts.dirty) {
         co_await kota::sleep(std::chrono::seconds(5));
         schedule_metadata_flush();
     }
 }
 
-kota::task<> ProjectServer::cache_checkpoint_task() {
-    constexpr auto interval = std::chrono::minutes(5);
+kota::task<> ProjectServer::checkpoint_task() {
     while(true) {
-        co_await kota::sleep(interval);
-        if(project.store) {
-            // Offload to the thread pool: checkpoint writes the manifest.
-            co_await kota::queue([this] { project.store->checkpoint(); });
-            drain_store_evictions();
-        }
+        co_await kota::sleep(SchedulingStack::checkpoint_interval());
+        co_await sched.checkpoint();
+        drain_store_evictions();
     }
 }
 

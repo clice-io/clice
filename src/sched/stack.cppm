@@ -37,10 +37,18 @@ struct SchedulingStack {
     TURunFamily turun;
     IndexPump pump;
 
+    /// How often a long-lived owner calls checkpoint().
+    static std::chrono::milliseconds checkpoint_interval();
+
+    /// Persist the index and the cache store's manifest as they stand, a
+    /// round running or not: a cold round covers the whole workspace, and
+    /// a process killed mid-round loses only what merged since the last
+    /// checkpoint.
+    kota::task<> checkpoint();
+
     /// The shutdown tail once compile and index work is quiesced
-    /// (contract 11): wind down the graph's rounds, then the final save
-    /// with the one metadata retry late debt may owe. The owner closes the
-    /// cache store next (see close).
+    /// (contract 11): wind down the graph's rounds, then the final save.
+    /// The owner closes the cache store next (see close).
     kota::task<> shutdown();
 
     /// Close the cache store once no build of this stack is awaited: after

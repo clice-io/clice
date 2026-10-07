@@ -82,10 +82,11 @@ public:
             return rows_ids;
         }
 
-        /// Debt surfaced after this save() serialized its CDB snapshot:
-        /// the persisted standalone-debt record is stale. A shutdown owes
-        /// one metadata retry; a live session's next save covers it.
-        bool snapshot_stale = false;
+        /// This save left state that an immediate retry commits: debt
+        /// that surfaced after its CDB snapshot serialized (write-time
+        /// corruption recovery), or a batch a full map refused before the
+        /// map grew.
+        bool owes_retry = false;
 
         void add_reindex(Fid id) {
             if(reindex_seen.insert(id).second) {
@@ -100,7 +101,7 @@ public:
         }
 
         bool empty() const {
-            return reindex_ids.empty() && rows_ids.empty() && !snapshot_stale;
+            return reindex_ids.empty() && rows_ids.empty() && !owes_retry;
         }
 
     private:
@@ -108,6 +109,19 @@ public:
         llvm::SmallVector<Fid> rows_ids;
         llvm::DenseSet<Fid> reindex_seen;
         llvm::DenseSet<Fid> rows_seen;
+    };
+
+    /// When a save rebuilds the derived search index before it commits.
+    enum class SearchRebuild : std::uint8_t {
+        /// Only when the merges since its last build left it far behind,
+        /// or it is damaged.
+        Behind,
+        /// Also when it is missing or merely behind: no more indexing is
+        /// queued, so the persisted one is fresh for the next cold start.
+        Settled,
+        /// Never: the rows commit without waiting for it, and the next
+        /// session rebuilds it.
+        Never,
     };
 
     struct LoadResult {
@@ -138,8 +152,11 @@ public:
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
     /// manifest, and write row blobs only for variants no shard stores yet
     /// — a re-index whose rows are unchanged records its contributions and
-    /// touches nothing else.
-    std::expected<Report, MergeError> merge(const void* tu_index_data, std::size_t size);
+    /// touches nothing else. `imports` is what the PCMs the parse read
+    /// were built from (Project::module_inputs).
+    std::expected<Report, MergeError> merge(const void* tu_index_data,
+                                            std::size_t size,
+                                            llvm::ArrayRef<DepState> imports);
 
     /// The variant identities stored for the files `tu` is expected to
     /// include — its scanned include closure and its last manifest's
@@ -165,12 +182,9 @@ public:
     /// repair debt survives a process exit. Owner debt the compaction
     /// discovers before serializing joins the same snapshot; debt surfaced
     /// after it (write-time corruption recovery) comes back in the report
-    /// with snapshot_stale set.
-    ///
-    /// `settle` says no more indexing is queued: a search index that the
-    /// merges since its last build left well behind is rebuilt first, so
-    /// the persisted one is fresh for the next cold start.
-    kota::task<Report> save(llvm::SmallVector<Fid> debt, bool settle = false);
+    /// with owes_retry set.
+    kota::task<Report> save(llvm::SmallVector<Fid> debt,
+                            SearchRebuild search = SearchRebuild::Behind);
 
     /// The databases the persisted index was built from, as absolute
     /// paths: what discovery registers at startup before anything is
@@ -268,7 +282,7 @@ private:
     /// Whether the search index is worth rebuilding now: the symbols
     /// merged since its build outgrew what a direct scan should carry,
     /// or indexing settled after enough merges (or with no index at all).
-    bool search_rebuild_due(bool settle) const;
+    bool search_rebuild_due(SearchRebuild search) const;
 
     /// Rebuild the search index from the symbol table — the build runs on
     /// the thread pool over a snapshot — adopt it, and hold its blob for

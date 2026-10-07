@@ -22,6 +22,7 @@ import :sched.families.pcm;
 import :sched.families.turun;
 import :sched.graph;
 import :sched.index.pump;
+import :sched.stack;
 import :server.editor_context;
 import :syntax.dependency_graph;
 import :tests.unit.server.worker_test_helpers;
@@ -59,17 +60,17 @@ struct IndexerFixture {
 
     /// Merge a worker result and claim its report, as the TURun round does.
     bool merge(const void* data, std::size_t size) {
-        auto report = index_store.merge(data, size);
+        auto report = index_store.merge(data, size, {});
         if(report) {
             pump.claim_report(*report);
         }
         return report.has_value();
     }
 
-    /// Persist with the pump's debt snapshot and claim the report back, as
-    /// the round tail does.
-    kota::task<> async_save(bool settle = false) {
-        pump.claim_report(co_await index_store.save(pump.save_debt(), settle));
+    /// One save with the pump's debt snapshot, its report claimed back —
+    /// without persist()'s retry, so a test observes each save.
+    kota::task<> async_save(IndexStore::SearchRebuild search = IndexStore::SearchRebuild::Behind) {
+        pump.claim_report(co_await index_store.save(pump.save_debt(), search));
     }
 
     /// Load and claim the report, as the workspace load does. Returns the
@@ -166,8 +167,8 @@ struct IndexerFixture {
     }
 
     /// Run one save() to completion on the fixture's loop.
-    void save(bool settle = false) {
-        auto task = async_save(settle);
+    void save(IndexStore::SearchRebuild search = IndexStore::SearchRebuild::Behind) {
+        auto task = async_save(search);
         loop.schedule(task);
         loop.run();
     }
@@ -694,7 +695,7 @@ ZEST_CASE(KnownVariantByHash) {
     // A result naming a variant the store does not hold commits nothing:
     // the file must run again.
     auto early = index_file(tmp, tmp.path("b.cpp"), {}, {variant});
-    auto outdated = index_store.merge(early.data.data(), early.data.size());
+    auto outdated = index_store.merge(early.data.data(), early.data.size(), {});
     ZASSERT(!outdated);
     ZEXPECT(outdated.error() == IndexStore::MergeError::Outdated);
     auto b_id = project.file_table.intern(Spelling::absolute(early.tu_path));
@@ -1410,7 +1411,7 @@ ZEST_CASE(SettledRebuildPinsSearch) {
         f.save();
         ZASSERT(!f.global_dirty());
         ZASSERT(!f.project.project_index.search_index.loaded());
-        f.save(/*settle=*/true);
+        f.save(IndexStore::SearchRebuild::Settled);
         ZASSERT(f.project.project_index.search_index.loaded());
     }
 
@@ -3496,7 +3497,7 @@ ZEST_CASE(LateDebtShutdownRetry) {
     f.loop.schedule(task);
     f.loop.run();
 
-    ZASSERT(report.snapshot_stale);
+    ZASSERT(report.owes_retry);
     f.pump.claim_report(report);
 
     // The retry persists into the freshly reopened database, snapshot
@@ -3526,6 +3527,127 @@ ZEST_CASE(BoostRearmsIdleTimer) {
 }
 
 };  // ZEST_SUITE(IndexReports)
+
+/// Forwards to a real database and logs the blob kinds of each write.
+struct WriteLog final : index::BlobDatabase {
+    std::unique_ptr<index::BlobDatabase> real;
+    std::vector<std::vector<index::IndexBlobKind>> writes;
+    std::size_t refused = 0;
+
+    index::ReadBlob read(index::IndexBlobKind kind, llvm::StringRef key) override {
+        return real->read(kind, key);
+    }
+
+    bool contains(index::IndexBlobKind kind, llvm::StringRef key) override {
+        return real->contains(kind, key);
+    }
+
+    llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
+                                         llvm::ArrayRef<index::BlobKey> removes) override {
+        writes.emplace_back();
+        for(auto& put: puts) {
+            writes.back().push_back(put.kind);
+        }
+        auto failed = real->write(puts, removes);
+        if(!failed.empty()) {
+            refused += 1;
+        }
+        return failed;
+    }
+
+    void for_each_key(index::IndexBlobKind kind,
+                      llvm::function_ref<void(llvm::StringRef)> fn) override {
+        real->for_each_key(kind, fn);
+    }
+
+    std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
+        return real->advance_read_snapshot();
+    }
+
+    void retire_old_snapshot() override {
+        real->retire_old_snapshot();
+    }
+
+    std::expected<bool, std::string> grow() override {
+        return real->grow();
+    }
+
+    bool corrupted() const override {
+        return real->corrupted();
+    }
+};
+
+/// Open the cache store under `tmp` with a logged LMDB database of
+/// `mapsize` bytes (0 = the default).
+WriteLog& open_logged(TempDir& tmp, Project& project, std::size_t mapsize = 0) {
+    auto store = CacheStore::open(tmp.path("cache"), 1);
+    ZASSERT(store);
+    project.store.emplace(std::move(*store));
+    auto log = std::make_unique<WriteLog>();
+    log->real = index::open_lmdb_database(*project.store, "", mapsize);
+    ZASSERT(log->real != nullptr);
+    auto& logged = *log;
+    project.index_db = std::move(log);
+    return logged;
+}
+
+ZEST_SUITE(IndexerPersist) {
+
+ZEST_CASE(GrownMapRetriesAtOnce) {
+    TempDir tmp;
+    std::string header = "#pragma once\n";
+    for(int i = 0; i < 2000; i += 1) {
+        header += std::format("inline int function_{0}(int x) {{ return x + {0}; }}\n", i);
+    }
+    tmp.touch("big.h", header);
+    tmp.touch("main.cpp", "#include \"big.h\"\nint use() { return function_1(0); }\n");
+
+    IndexerFixture f;
+    // Far smaller than the batch: the first write fails whole and the map
+    // grows under it.
+    auto& log = open_logged(tmp, f.project, 64 * 1024);
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ZASSERT(!indexed.data.empty());
+    ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
+
+    auto task = f.pump.persist();
+    f.loop.schedule(task);
+    f.loop.run();
+
+    ZASSERT(log.refused == 1u);
+    ZASSERT(log.writes.size() == 2u);
+    ZASSERT(!f.index_store.has_unsaved_state());
+}
+
+ZEST_CASE(ShutdownSkipsSearchRebuild) {
+    TempDir tmp;
+    tmp.touch("main.cpp", "int use() { return 1; }\n");
+
+    kota::event_loop loop;
+    FileTable files;
+    Project project{files};
+    WorkerPool pool{loop};
+    CommandResolver commands{project};
+    SchedulingStack stack(loop, project, commands, pool);
+    auto& log = open_logged(tmp, project);
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ZASSERT(!indexed.data.empty());
+    auto report = stack.store.merge(indexed.data.data(), indexed.data.size());
+    ZASSERT(report);
+    stack.pump.claim_report(*report);
+
+    auto task = stack.shutdown();
+    loop.schedule(task);
+    loop.run();
+
+    // The rows commit without the search index a cold round never built.
+    ZASSERT(log.writes.size() == 1u);
+    ZASSERT(llvm::is_contained(log.writes[0], index::IndexBlobKind::Manifest));
+    ZASSERT(!llvm::is_contained(log.writes[0], index::IndexBlobKind::Search));
+    ZASSERT(!project.project_index.search_index.loaded());
+}
+
+};  // ZEST_SUITE(IndexerPersist)
 
 ZEST_SUITE(TURunLint) {
 

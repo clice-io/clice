@@ -241,8 +241,9 @@ public:
 
     /// The root TUs and open documents whose compiles depend on the file:
     /// the ones the lexical scan sees including it, and the ones whose
-    /// compiles read it or looked for it — the scan cannot resolve a macro
-    /// include, and never sees a file before it exists.
+    /// compiles read it, imported a module built from it, or looked for it
+    /// — the scan cannot resolve a macro include, never follows an import,
+    /// and never sees a file before it exists.
     llvm::SmallVector<Fid> readers(Fid path_id) const;
 
 private:

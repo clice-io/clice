@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :sched.stack;
+import :support.environment;
 
 namespace clice {
 
@@ -23,16 +24,33 @@ SchedulingStack::SchedulingStack(kota::event_loop& loop,
     };
 }
 
+std::chrono::milliseconds SchedulingStack::checkpoint_interval() {
+    // Lets integration tests kill a server between checkpoints.
+    if(auto ms = env_integer("CLICE_TEST_CHECKPOINT_MS")) {
+        return std::chrono::milliseconds(*ms);
+    }
+    return std::chrono::minutes(5);
+}
+
+kota::task<> SchedulingStack::checkpoint() {
+    if(project.store) {
+        co_await kota::queue([this] { project.store->checkpoint(); });
+    }
+    // A search rebuild here could still be running on the thread pool when
+    // a shutdown cancels the checkpoint, holding up the final save behind
+    // seconds of derived work: the round end rebuilds it.
+    co_await pump.persist(IndexStore::SearchRebuild::Never);
+    // Repair debt the save's compaction discovered needs a round of its own
+    // when none is running.
+    pump.schedule();
+}
+
 kota::task<> SchedulingStack::shutdown() {
     co_await graph.shutdown();
-    auto report = co_await store.save(pump.save_debt(), /*settle=*/true);
-    pump.claim_report(report);
-    if(report.snapshot_stale) {
-        // Debt surfaced after the snapshot serialized (write-time
-        // corruption recovery): one metadata retry, or a dropped
-        // standalone header's repair debt dies with this process.
-        pump.claim_report(co_await store.save(pump.save_debt(), /*settle=*/true));
-    }
+    // Editors kill a server that is slow to exit, and rebuilding the
+    // search index dominates a cold round's save: the rows commit alone,
+    // and the next session's first settled save rebuilds the index.
+    co_await pump.persist(IndexStore::SearchRebuild::Never);
 }
 
 void SchedulingStack::close() {

@@ -149,6 +149,10 @@ public:
     /// attempt failed for good plus everything still booked in the ledger.
     llvm::SmallVector<Fid> save_debt() const;
 
+    /// Save the index with this pump's debt and claim the report, again
+    /// while a save owes a retry (a grown map can still be too small).
+    kota::task<> persist(IndexStore::SearchRebuild search = IndexStore::SearchRebuild::Behind);
+
     /// Cancel background indexing and wait for all tasks to settle.
     kota::task<> stop();
 

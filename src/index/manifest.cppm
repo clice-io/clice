@@ -29,8 +29,8 @@ struct LocalFanout {
 
 /// What one TU's indexing produced, replaced wholesale by its next reindex:
 /// the include tree over file versions (the envelope's nodes with their
-/// path ids remapped, which doubles as the TU's dependency set for
-/// staleness) and the rows each file received, keyed by content-identity
+/// path ids remapped, which with `absent` and `imports` is the TU's
+/// dependency set for staleness) and the rows each file received, keyed by content-identity
 /// so a re-merge can tell "already stored" from "new variant" without
 /// touching any shard. In memory its versions are the file table's ids;
 /// persisted, the index's own (ProjectIndex::export_manifest).
@@ -61,6 +61,11 @@ struct TUManifest {
     /// versions without bytes (content hash 0): a file appearing at one
     /// changes what the TU compiles to.
     std::vector<VersionID> absent;
+
+    /// The versions the modules the TU imports were built from, their own
+    /// imports' included: the parse read those interfaces without
+    /// entering their files, which carry no rows of the TU.
+    std::vector<VersionID> imports;
 
     /// Sorted by symbol.
     std::vector<LocalFanout> local_fanout;
