@@ -70,19 +70,32 @@ bool externally_drained(int fd) {
 #endif
 }
 
-/// Switch such an fd to non-blocking writes. False means the fd needs the
-/// treatment but could not be switched — writing to it could still wedge
-/// the caller, so the sink must not write at all.
-bool set_pipe_nonblocking(int fd) {
+/// How switching an fd to non-blocking writes went.
+enum class Switch : std::uint8_t {
+    Done,
+    /// Windows refuses while the pipe holds bytes its reader has not taken
+    /// yet (ERROR_PIPE_BUSY); the switch can succeed once it has.
+    Busy,
+    /// The fd needs the treatment but cannot have it: writing to it could
+    /// still wedge the caller.
+    Refused,
+};
+
+Switch set_pipe_nonblocking(int fd) {
 #ifdef _WIN32
     HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
     DWORD mode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
-    return ::SetNamedPipeHandleState(handle, &mode, nullptr, nullptr) != 0;
+    if(::SetNamedPipeHandleState(handle, &mode, nullptr, nullptr)) {
+        return Switch::Done;
+    }
+    return ::GetLastError() == ERROR_PIPE_BUSY ? Switch::Busy : Switch::Refused;
 #else
     if(int flags = ::fcntl(fd, F_GETFL); flags >= 0) {
-        return ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+        if(::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0) {
+            return Switch::Done;
+        }
     }
-    return false;
+    return Switch::Refused;
 #endif
 }
 
@@ -92,8 +105,17 @@ StderrSink::StderrSink(int fd, std::size_t capacity) : fd(fd), capacity(capacity
     // A pipe that cannot be switched must never be written: a blocking
     // write to it is exactly the wedge this sink exists to prevent.
     if(externally_drained(fd)) {
-        disabled = !set_pipe_nonblocking(fd);
+        auto result = set_pipe_nonblocking(fd);
+        disabled = result == Switch::Refused;
+        switch_pending = result == Switch::Busy;
     }
+}
+
+bool StderrSink::switched() {
+    if(switch_pending && set_pipe_nonblocking(fd) == Switch::Done) {
+        switch_pending = false;
+    }
+    return !switch_pending;
 }
 
 void StderrSink::stage_note_if_due() {
@@ -164,12 +186,15 @@ void StderrSink::sink_it_(const spdlog::details::log_msg& msg) {
         return;
     }
 
-    stage_note_if_due();
-    pump();
+    bool writable = switched();
+    if(writable) {
+        stage_note_if_due();
+        pump();
+    }
 
     spdlog::memory_buf_t formatted;
     formatter_->format(msg, formatted);
-    if(active_note.empty() && pending.empty()) {
+    if(writable && active_note.empty() && pending.empty()) {
         auto n = write_fd(fd, llvm::StringRef(formatted.data(), formatted.size())).bytes;
         if(n < formatted.size()) {
             pending.assign(formatted.data() + n, formatted.size() - n);
@@ -183,7 +208,7 @@ void StderrSink::sink_it_(const spdlog::details::log_msg& msg) {
 }
 
 void StderrSink::flush_() {
-    if(disabled) {
+    if(disabled || !switched()) {
         return;
     }
     stage_note_if_due();

@@ -23,6 +23,11 @@ namespace clice::logging {
 /// Terminals and regular files are left in blocking mode: they cannot
 /// exert client-controlled backpressure, and O_NONBLOCK on a tty is
 /// shared with the parent shell's own file description.
+///
+/// Windows refuses the switch while the pipe holds bytes the reader has
+/// not taken yet, as at process start when something wrote to stderr
+/// first (mimalloc writes a newline). Lines then wait in the buffer and
+/// the switch is retried before each write, until the reader catches up.
 class StderrSink final : public spdlog::sinks::base_sink<std::mutex> {
 public:
     /// `capacity` bounds the backpressure buffer: enough to ride out a
@@ -59,10 +64,17 @@ private:
     /// Evict whole oldest lines until the backlog fits its budget.
     void shed_over_capacity();
 
+    /// Whether the fd may be written: retries a switch the pipe refused
+    /// as busy.
+    bool switched();
+
     int fd;
     /// The fd needs non-blocking treatment but could not be switched:
     /// every line is shed without touching the fd.
     bool disabled = false;
+    /// The pipe was busy when switched: nothing is written until a retry
+    /// succeeds.
+    bool switch_pending = false;
     std::size_t capacity;
     /// Gap report in flight, held OUTSIDE the backlog: eviction can never
     /// lose the count, and it is delivered ahead of everything — the gap
