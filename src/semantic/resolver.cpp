@@ -1044,10 +1044,12 @@ public:
         bool evaluated = unevaluated(init->getType());
         bool decltype_auto = declared->getContainedAutoType()->isDecltypeAuto();
         /// `decltype(auto)` takes what `decltype(init)` names: a data
-        /// member's declared type, not the object's qualifiers on it.
+        /// member's declared type, not the object's qualifiers on it, unless
+        /// parenthesized, which names the lvalue the expression is.
+        bool parenthesized = llvm::isa<clang::ParenExpr>(init);
         clang::QualType source;
         if(evaluated || decltype_auto) {
-            source = type_of(init, /*through_object=*/!decltype_auto);
+            source = type_of(init, /*through_object=*/!decltype_auto || parenthesized);
         }
         /// An evaluated type is in the caller's terms already; the written
         /// one is in those of the variable's class, which the frames of the
@@ -1055,8 +1057,12 @@ public:
         if(source.isNull() && !evaluated) {
             source = substitute(init->getType());
         }
-        if(source.isNull() || decltype_auto) {
+        if(source.isNull()) {
             return source;
+        }
+        if(decltype_auto) {
+            bool lvalue = parenthesized && init->isLValue() && !source->isReferenceType();
+            return lvalue ? context.getLValueReferenceType(source) : source;
         }
 
         auto argument = source.getNonReferenceType();

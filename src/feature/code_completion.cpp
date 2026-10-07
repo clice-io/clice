@@ -424,9 +424,13 @@ public:
                 ast.getQualifiedType(ast.getCanonicalTagType(record), object.getQualifiers());
 
             if(!base) {
-                /// Sema reports nothing at all for a class without fields;
-                /// the resolved reply is still empty, not Sema's.
-                if(record->fields().empty()) {
+                /// A class without a named field offers no designator; the
+                /// resolved reply is empty, not what Sema found elsewhere.
+                bool named = std::ranges::any_of(record->decls(), [](const clang::Decl* decl) {
+                    return llvm::isa<clang::FieldDecl, clang::IndirectFieldDecl>(decl) &&
+                           llvm::cast<clang::NamedDecl>(decl)->getDeclName();
+                });
+                if(!named) {
                     output.clear();
                     return true;
                 }

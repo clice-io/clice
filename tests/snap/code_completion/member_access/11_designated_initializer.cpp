@@ -50,6 +50,12 @@ struct Padded<T*> {
 };
 
 template <typename T>
+struct Options<T***> {
+    int : 4;
+};
+
+template <typename T>
 void baz() {
     Padded<T*> p = { .§(unnamed_primary) };
+    Options<T***> u = { .§(unnamed_partial) };
 }

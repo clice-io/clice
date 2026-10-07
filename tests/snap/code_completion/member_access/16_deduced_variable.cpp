@@ -9,7 +9,8 @@
 /// declarator applies as in a real deduction: `const auto&` makes the
 /// object const, a by-value `auto` drops the initializer's const, `auto&&`
 /// and `decltype(auto)` keep it, and `auto*` takes the pointee. From a data
-/// member, `decltype(auto)` takes the type the member is declared with.
+/// member, `decltype(auto)` takes the type the member is declared with, or
+/// with parentheses the const reference the expression is.
 
 // The member accesses dangle; the statements stay semicolon-terminated so a
 // later marker is not dragged into recovery.
@@ -47,6 +48,8 @@ void bar(Vec<Vec<T>> rows,
     pointer->§(pointer);
     decltype(auto) declared = grid.cells;
     declared.§(decltype_member);
+    decltype(auto) named = (grid.cells);
+    named.§(decltype_parenthesized);
     auto decayed = grid.spare;
     decayed->§(decayed_array);
 }
