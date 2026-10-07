@@ -34,6 +34,8 @@ ZEST_CASE(ManifestRoundTrip) {
         {VersionID{300}, 0xdeadbeefdeadbeefull},
         {VersionID{302}, 42                   },
     };
+    manifest.absent = {VersionID{303}};
+    manifest.imports = {VersionID{304}, VersionID{305}};
     manifest.local_fanout = {
         {.symbol = 5, .files = {0, 1}},
         {.symbol = 9, .files = {1, 0}},
@@ -63,6 +65,7 @@ struct ManifestBlobMirror {
     std::vector<std::uint8_t> nodes;
     std::vector<std::uint8_t> contributions;
     std::vector<std::uint32_t> absent;
+    std::vector<std::uint32_t> imports;
     std::vector<std::uint64_t> local_symbols;
     std::vector<std::uint32_t> local_file_ends;
     std::vector<std::uint32_t> local_files;

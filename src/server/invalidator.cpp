@@ -62,9 +62,11 @@ llvm::SmallVector<Fid> Invalidator::readers(Fid path_id) const {
             add(tu);
         }
     }
-    if(auto it = index.probed.find(path_id); it != index.probed.end()) {
-        for(auto tu: it->second) {
-            add(tu);
+    for(auto* tus: {&index.probed, &index.importers}) {
+        if(auto it = tus->find(path_id); it != tus->end()) {
+            for(auto tu: it->second) {
+                add(tu);
+            }
         }
     }
     for(auto document: llvm::make_first_range(store.sessions)) {

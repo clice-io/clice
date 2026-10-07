@@ -152,8 +152,11 @@ public:
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
     /// manifest, and write row blobs only for variants no shard stores yet
     /// — a re-index whose rows are unchanged records its contributions and
-    /// touches nothing else.
-    std::expected<Report, MergeError> merge(const void* tu_index_data, std::size_t size);
+    /// touches nothing else. `imports` is what the PCMs the parse read
+    /// were built from (Project::module_inputs).
+    std::expected<Report, MergeError> merge(const void* tu_index_data,
+                                            std::size_t size,
+                                            llvm::ArrayRef<DepState> imports);
 
     /// The variant identities stored for the files `tu` is expected to
     /// include — its scanned include closure and its last manifest's

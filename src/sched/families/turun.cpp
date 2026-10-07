@@ -136,9 +136,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
 
     // Scanner truth outlives the run: committed as durable edges even
     // when the run or a build fails, so fixing or providing an import
-    // re-dirties this TU — the invalidator reaches closed TUs through
-    // these edges alone (the include reverse map carries no import
-    // edges).
+    // re-dirties this TU — the include reverse map carries no import
+    // edges, and the index records only imports that resolved
+    // (ProjectIndex::importers).
     graph.declare(node(path_id), deps.declared);
     for(auto dep: deps.declared) {
         if(PCMFamily::is_unresolved(dep)) {
@@ -165,6 +165,22 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     }
 
     project.fill_pcm_deps(params.pcms, path_id);
+    // The modules the parse reads — a module unit's are the imports its own
+    // PCM round resolved, built or not, never its own PCM. Taken with the
+    // PCM paths: a module rebuilt while the parse runs is no input of it.
+    llvm::SmallVector<Fid> read;
+    for(auto dep: deps.resolved) {
+        if(dep != path_id) {
+            read.push_back(dep);
+            continue;
+        }
+        for(auto id: graph.dependencies({Family::PCM, path_id.raw})) {
+            if(!PCMFamily::is_unresolved(id)) {
+                read.push_back(Fid{static_cast<std::uint32_t>(id.key)});
+            }
+        }
+    }
+    auto imports = project.module_inputs(read);
     if(plan.index && !send_in_full.erase(path_id)) {
         params.known_variants = store.known_variants(path_id);
     }
@@ -218,7 +234,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                 co_return RoundOutcome::Stale;
             }
             ScopedTimer merge_timer;
-            auto report = store.merge(index_bytes.data(), index_bytes.size());
+            auto report = store.merge(index_bytes.data(), index_bytes.size(), imports);
             if(!report) {
                 if(report.error() == IndexStore::MergeError::Outdated) {
                     send_in_full.insert(path_id);

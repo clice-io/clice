@@ -332,7 +332,7 @@ public:
     //  - those without source range information, we don't record those
     //  - those that can't be stored in SemanticNode.
     bool TraverseDecl(clang::Decl* X) {
-        if(llvm::isa_and_nonnull<clang::TranslationUnitDecl>(X)) {
+        if(auto* tu = llvm::dyn_cast_if_present<clang::TranslationUnitDecl>(X)) {
             /// The TU decl is not stored; its children become roots.
             if(options.main_file_only) {
                 for(auto decl: unit.top_level_decls()) {
@@ -343,7 +343,16 @@ public:
                 return true;
             }
 
-            return Base::TraverseDecl(X);
+            // The declarations this unit parsed: noload_decls leaves those of
+            // the modules it imports on disk, indexed by their own units —
+            // loading them costs a deserialization of whole interfaces, and
+            // their headers would ride in every importer's index.
+            for(auto* decl: tu->noload_decls()) {
+                if(!canIgnoreChildDeclWhileTraversingDeclContext(decl) && !TraverseDecl(decl)) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         // Base::TraverseDecl will suppress children, but not this node itself.
