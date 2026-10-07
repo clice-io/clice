@@ -279,6 +279,28 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
             }
         }
     }
+    std::map<std::pair<std::string, std::string>, std::map<std::string, std::set<std::string>>>
+        shared;
+    for(auto& entry: generated) {
+        for(auto& local: entry.second->shared_locals) {
+            for(auto& other: local.modules) {
+                if(entry.first() < other) {
+                    shared[{entry.first().str(), other}][local.file].insert(local.name);
+                }
+            }
+        }
+    }
+    for(auto& [modules, files]: shared) {
+        for(auto& [file, names]: files) {
+            result.plan.warnings.push_back(std::format(
+                "{} and {} both use {} of {}: an importer of both defines them twice, wrap them "
+                "as one module",
+                modules.first,
+                modules.second,
+                llvm::join(names, ", "),
+                file));
+        }
+    }
 
     auto order = import_order(imports);
     if(!order) {

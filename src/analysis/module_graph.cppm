@@ -780,6 +780,18 @@ struct InterfaceMacro {
 /// what its headers need and includes its entries, the purview exports its
 /// namespace-scope names, and its macros reach the importers through a
 /// macro header.
+/// A TU-local function or variable a module's headers use that headers of
+/// other wrapped modules use too.
+struct InterfaceSharedLocal {
+    std::string name;
+
+    /// The header declaring it.
+    std::string file;
+
+    /// The other wrapped modules whose headers use it.
+    std::vector<std::string> modules;
+};
+
 struct Interface {
     std::string module;
 
@@ -808,6 +820,13 @@ struct Interface {
     /// Textual headers of other wrapped modules its headers name entities
     /// of: what the fragment includes beside the imports.
     std::vector<InterfaceHeader> textual_uses;
+
+    /// TU-local entities its headers share with other wrapped modules, from
+    /// a header their fragments include alike (`<emmintrin.h>`'s intrinsics):
+    /// clang mangles internal linkage alike across modules, so an importer
+    /// of both defines each twice under one name. Such modules have to be
+    /// one.
+    std::vector<InterfaceSharedLocal> shared_locals;
 
     /// Macros other modules use and those their directives expand, in the
     /// order their files define them.

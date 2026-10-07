@@ -3367,6 +3367,37 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
         return header;
     };
 
+    // The wrapped modules whose fragments hold each TU-local entity their
+    // headers use: the uses of an importer's inline code are the copy of
+    // the module whose header it comes from.
+    llvm::DenseMap<std::uint32_t, std::set<std::uint32_t>> local_users;
+    for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
+        auto& info = facts.entities[entity];
+        if((info.linkage != InternalLinkage::Static &&
+            info.linkage != InternalLinkage::AnonymousNamespace) ||
+           facts.files[info.owner].source ||
+           !(info.kind == SymbolKind::Function ||
+             (info.kind == SymbolKind::Variable && !info.constant))) {
+            continue;
+        }
+        std::set<std::uint32_t> users;
+        auto add = [&](std::uint32_t file) {
+            auto user = module_of(file);
+            if(partition.kinds[user] == ModuleKind::Wrapped && reached[user].contains(file)) {
+                users.insert(user);
+            }
+        };
+        for(auto user: reverse.users[entity]) {
+            add(user);
+        }
+        if(info.self_uses != 0) {
+            add(info.owner);
+        }
+        if(users.size() > 1) {
+            local_users.try_emplace(entity, std::move(users));
+        }
+    }
+
     std::vector<Interface> result;
     for(std::uint32_t module = 0; module < count; module += 1) {
         if(!name.empty() && module != wanted) {
@@ -3429,6 +3460,21 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             for(auto header: used) {
                 interface.textual_uses.push_back(header_of(module_of(header), header, {}));
             }
+            for(auto& [entity, users]: local_users) {
+                if(!users.contains(module)) {
+                    continue;
+                }
+                auto& shared = interface.shared_locals.emplace_back();
+                shared.name = facts.entities[entity].name;
+                shared.file = facts.files[facts.entities[entity].owner].path;
+                for(auto other: users) {
+                    if(other != module) {
+                        shared.modules.push_back(partition.modules[other]);
+                    }
+                }
+                std::ranges::sort(shared.modules);
+            }
+            std::ranges::sort(interface.shared_locals, {}, &InterfaceSharedLocal::name);
         }
         for(auto& [key, used]: exports[module]) {
             interface.exports.push_back(

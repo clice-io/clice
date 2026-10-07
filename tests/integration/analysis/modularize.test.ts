@@ -24,6 +24,7 @@ interface Interface {
     exports: { name: string; file: string; used: boolean }[];
     aliases: { name: string; target: string }[];
     textual: Header[];
+    sharedLocals: { name: string; file: string; modules: string[] }[];
     macros: { name: string; module: string; file: string; directive: string }[];
     reads: { name: string }[];
 }
@@ -521,6 +522,52 @@ test("C library kept headers", async ({ session }) => {
     // The #undef ahead of a definition ends nothing.
     expect(macros).toContain("fassert");
     expect(all.get("std")!.textual).toEqual([]);
+});
+
+test("modules sharing a TU-local entity", async ({ session }) => {
+    const ws = await writeProject(session);
+    // Static as <emmintrin.h>'s intrinsics, which simdjson and CRoaring both
+    // call from their inline code.
+    ws.write(
+        "third/libc/csimd.h",
+        lines("#pragma once", "static inline int fake_simd(int v) { return v; }"),
+    );
+    ws.write(
+        "third/alpha/alpha/simd.h",
+        lines(
+            "#pragma once",
+            "#include <csimd.h>",
+            "inline int alpha_simd(int v) { return fake_simd(v); }",
+        ),
+    );
+    ws.write(
+        "third/beta/beta/simd.h",
+        lines(
+            "#pragma once",
+            "#include <csimd.h>",
+            "inline int beta_simd(int v) { return fake_simd(v); }",
+        ),
+    );
+    ws.write(
+        "app/main.cpp",
+        ws
+            .read("app/main.cpp")
+            .replace(
+                "#include <beta/beta.h>\n",
+                "#include <beta/beta.h>\n#include <alpha/simd.h>\n#include <beta/simd.h>\n",
+            ),
+    );
+    const all = await interfaces(ws);
+    const shared = { name: "fake_simd", file: "third/libc/csimd.h" };
+    expect(all.get("alpha")!.sharedLocals).toEqual([{ ...shared, modules: ["beta"] }]);
+    expect(all.get("beta")!.sharedLocals).toEqual([{ ...shared, modules: ["alpha"] }]);
+    expect(all.get("libc")!.sharedLocals).toEqual([]);
+
+    const run = await modularize(ws);
+    expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
+    expect((JSON.parse(run.stdout) as { wrapping: Plan }).wrapping.warnings).toEqual([
+        "alpha and beta both use fake_simd of third/libc/csimd.h: an importer of both defines them twice, wrap them as one module",
+    ]);
 });
 
 test("modularize writes the wrapping", async ({ session }) => {
