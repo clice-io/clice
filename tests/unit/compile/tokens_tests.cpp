@@ -5,7 +5,7 @@ module;
 module clice;
 
 import :compile.semantics;
-import :compile.tokens;
+import :syntax.lexical_scan;
 import :tests.unit.test.test;
 import :tests.unit.test.tester;
 
@@ -55,8 +55,24 @@ const clang::syntax::Token& expanded(llvm::StringRef spelling, std::size_t nth =
     std::unreachable();
 }
 
-std::string spelled_for(const clang::syntax::Token& first, const clang::syntax::Token& last) {
-    return text(unit->spelled_tokens(clang::SourceRange(first.location(), last.location())));
+/// The spelled tokens the first run of expanded tokens spelled `sequence`
+/// (space-separated) maps to.
+std::string spelled_for(llvm::StringRef sequence) {
+    auto& SM = unit->context().getSourceManager();
+    llvm::SmallVector<llvm::StringRef> words;
+    sequence.split(words, ' ');
+    auto stream = unit->expanded_tokens();
+    for(std::size_t i = 0; i + words.size() <= stream.size(); i += 1) {
+        auto run = stream.slice(i, words.size());
+        if(llvm::equal(run, words, [&](const clang::syntax::Token& token, llvm::StringRef word) {
+               return token.text(SM) == word;
+           })) {
+            auto range = clang::SourceRange(run.front().location(), run.back().location());
+            return text(unit->spelled_tokens(range));
+        }
+    }
+    ZASSERT(false);
+    std::unreachable();
 }
 
 std::string expansions() {
@@ -114,16 +130,69 @@ ZEST_CASE(SpelledForRanges) {
 #define ID(x) x
 #define BAR 1 + 2
 int a1, a2;
-int x = ID(1) + BAR;
+int x = ID(a1) + BAR;
 int y = ID(ID(ID(a1) + a2));
 )cpp");
     ZASSERT(compile());
-    ZEXPECT(spelled_for(expanded("1"), expanded("1")) == "1");
-    ZEXPECT(spelled_for(expanded("1"), expanded("2")) == "ID ( 1 ) + BAR");
-    ZEXPECT(spelled_for(expanded("1", 1), expanded("1", 1)).empty());
-    ZEXPECT(spelled_for(expanded("a1", 1), expanded("a1", 1)) == "a1");
-    ZEXPECT(spelled_for(expanded("a2", 1), expanded("a2", 1)) == "a2");
-    ZEXPECT(spelled_for(expanded("a1", 1), expanded("a2", 1)) == "ID ( a1 ) + a2");
+    ZEXPECT(spelled_for("a1 + 1 + 2") == "ID ( a1 ) + BAR");
+    ZEXPECT(spelled_for("1").empty());
+    ZEXPECT(spelled_for("a1 + a2") == "ID ( a1 ) + a2");
+}
+
+ZEST_CASE(SpelledForArguments) {
+    add_main("main.cpp", R"cpp(
+#define ID(X) X
+#define ID2(X, Y) X Y
+#define FOO(X) foo(X)
+#define INDIRECT FOO(y)
+ID2(ID(a1), ID(a2) a3) ID2(a4, a5 a6 a7)
+INDIRECT
+)cpp");
+    ZASSERT(compile());
+    ZEXPECT(spelled_for("a1 a2").empty());
+    ZEXPECT(spelled_for("a2 a3") == "ID ( a2 ) a3");
+    ZEXPECT(spelled_for("a1 a2 a3") == "ID2 ( ID ( a1 ) , ID ( a2 ) a3 )");
+    ZEXPECT(spelled_for("a5 a6") == "a5 a6");
+    ZEXPECT(spelled_for("a1 a2 a3 a4").empty());
+    ZEXPECT(spelled_for("y").empty());
+}
+
+ZEST_CASE(PragmaExpansions) {
+    add_main("main.cpp", R"cpp(
+#define WIDTH 4
+#define COUNT 2
+void f(int* a) {
+#pragma clang loop vectorize_width(WIDTH) interleave_count(COUNT)
+    for(int i = 0; i < 64; i += 1) a[i] = 0;
+}
+)cpp");
+    ZASSERT(compile());
+    ZEXPECT(expansions() == "[WIDTH => 4][COUNT => 2]");
+}
+
+ZEST_CASE(BuiltinMacroArgument) {
+    add_main("main.cpp", R"cpp(
+#define ATTR nodiscard
+int v = __has_cpp_attribute(ATTR);
+)cpp");
+    ZASSERT(compile());
+    auto& SM = unit->context().getSourceManager();
+    auto expansions = unit->expansions_overlapping(unit->spelled_tokens());
+    ZASSERT(expansions.size() == 2U);
+    ZEXPECT(text(expansions[0].spelled) == "__has_cpp_attribute");
+    ZASSERT(expansions[0].expanded.size() == 1U);
+    auto& result = expansions[0].expanded.front();
+    ZEXPECT(spelled_for(result.text(SM)) == "__has_cpp_attribute");
+    ZEXPECT(text(expansions[1].spelled) == "ATTR");
+    ZEXPECT(expansions[1].expanded.empty());
+}
+
+ZEST_CASE(TouchingFileEnd) {
+    add_main("main.cpp", "int x");
+    ZASSERT(compile());
+    auto& SM = unit->context().getSourceManager();
+    auto end = SM.getLocForEndOfFile(SM.getMainFileID());
+    ZEXPECT(text(unit->spelled_tokens_touch(end)) == "x");
 }
 
 ZEST_CASE(SplitShiftRange) {
@@ -140,6 +209,7 @@ ZEST_CASE(PreambleAway) {
     add_main("main.cpp", "#include \"a.h\"\nint x = A;\n");
     ZASSERT(compile_with_pch());
     ZEXPECT(spelled_where(false) == "int x = A ;");
+    ZEXPECT(spelled_where(true) == "# include \"a.h\"");
     ZEXPECT(expansions() == "[A => 1]");
 }
 
@@ -155,6 +225,9 @@ ZEST_CASE(AssemblerComment) {
     }
     ZASSERT(try_compile());
     ZEXPECT(spelled_where(false) == "# comment . text");
+    ZEXPECT(llvm::none_of(unit->expanded_tokens(), [](const clang::syntax::Token& token) {
+        return token.kind() == clang::tok::eod;
+    }));
     unit->semantics();
 }
 
@@ -164,13 +237,16 @@ export module app;
 #if 0
 module :private;
 #endif
+module :§(live)⟦private⟧;
 )cpp");
     ZASSERT(compile());
-    auto modules = unit->semantics().module_declarations();
-    ZASSERT(modules.size() == 1U);
-    ZEXPECT(modules[0].kind == LexicalInfo::ModuleDeclaration::Kind::Declaration);
-    auto whole = Semantics::build(*unit, {.main_file_only = false});
-    ZEXPECT(whole.module_declarations().size() == 1U);
+    for(bool main_file_only: {true, false}) {
+        auto semantics = Semantics::build(*unit, {.main_file_only = main_file_only});
+        auto modules = semantics.module_declarations();
+        ZASSERT(modules.size() == 2U);
+        ZEXPECT(modules[1].kind == LexicalInfo::ModuleDeclaration::Kind::PrivateFragment);
+        ZEXPECT(modules[1].partition_parts.front() == range("live"));
+    }
 }
 
 };  // ZEST_SUITE(Tokens)

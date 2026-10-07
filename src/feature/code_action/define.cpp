@@ -172,8 +172,7 @@ public:
         fid = unit.file_id(range.getBegin());
         base = unit.file_offset(range.getBegin());
         source = *text;
-        // Lexed here rather than taken from the token buffer, which holds
-        // none for a header the preamble compiled.
+        // Lexed here: the unit's spelled tokens cover the main file only.
         tokens = clang::syntax::tokenize(clang::syntax::FileRange(fid, base, base + source.size()),
                                          unit.context().getSourceManager(),
                                          unit.lang_options());

@@ -245,7 +245,7 @@ public:
     auto expanded_tokens() -> TokenRange;
 
     /// Returns the subrange of expanded_tokens() corresponding to the closed
-    /// token range R.
+    /// token range `range`.
     auto expanded_tokens(clang::SourceRange range) -> TokenRange;
 
     /// The main file's top-level macro expansions sharing a token with

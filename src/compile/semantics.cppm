@@ -364,7 +364,7 @@ public:
     /// Whether spelled token `index` was preprocessed away to nothing
     /// (a disabled region or an empty expansion).
     bool token_preprocessed_away(std::uint32_t index) const {
-        return pp_ignored[index];
+        return (*pp_ignored)[index];
     }
 
     /// The nodes owning spelled token `index`. Almost always a single node;
@@ -414,8 +414,9 @@ private:
     /// Start location of the main file, for O(1) offset computation.
     clang::SourceLocation file_begin;
 
-    /// Tokens preprocessed to nothing.
-    std::vector<bool> pp_ignored;
+    /// Per spelled token, whether it was preprocessed to nothing (a view
+    /// into the unit's tokens, like `tokens`).
+    const std::vector<bool>* pp_ignored = nullptr;
 
     /// CSR layout: the owners of token i are
     /// owner_nodes[owner_begin[i] .. owner_begin[i + 1]).

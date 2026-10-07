@@ -28,8 +28,8 @@ struct MacroExpansion {
 class TokenMap {
 public:
     /// Starts collecting from `pp`, which has entered the main file and not
-    /// lexed it yet. The map stays where it is built: the preprocessor
-    /// holds on to it until finish().
+    /// lexed it yet. The map stays where it is built: the preprocessor holds
+    /// on to it.
     explicit TokenMap(clang::Preprocessor& pp);
 
     TokenMap(const TokenMap&) = delete;
@@ -77,14 +77,6 @@ public:
 private:
     struct Hooks;
 
-    /// An invocation the preprocessor reported: its first and last spelled
-    /// token, and where its expanded tokens start in the stream.
-    struct Invocation {
-        clang::SourceLocation begin;
-        clang::SourceLocation end;
-        std::uint32_t first_expanded;
-    };
-
     void record(const clang::Token& token);
 
     void record_invocation(clang::SourceRange range);
@@ -101,17 +93,17 @@ private:
     /// `offset`.
     std::uint32_t spelled_at_or_after(std::uint32_t offset) const;
 
-    /// The expansion that produced expanded token `index`, if one in the
+    /// The spelled token starting at `location`, if one does.
+    const clang::syntax::Token* spelled_at(clang::SourceLocation location) const;
+
+    /// The expansion that produced expanded token `token`, if one in the
     /// main file did.
-    const MacroExpansion* expansion_of(std::uint32_t index) const;
+    const MacroExpansion* expansion_of(const clang::syntax::Token& token) const;
 
     clang::Preprocessor& pp;
     const clang::SourceManager& SM;
     clang::SourceLocation main_begin;
     clang::SourceLocation main_end;
-
-    /// Owned by the preprocessor; cut off from this map at finish().
-    Hooks* hooks;
 
     std::vector<clang::syntax::Token> spelled_tokens;
     std::vector<bool> away;
@@ -120,9 +112,15 @@ private:
     /// Expanded tokens by location, for the AST's token ranges.
     llvm::DenseMap<clang::SourceLocation, std::uint32_t> expanded_index;
 
-    /// Top-level, in source order: the end of the last one bounds the next.
-    std::vector<Invocation> invocations;
+    /// The first and last spelled token of each top-level invocation, in
+    /// source order: the end of the last one bounds the next.
+    std::vector<clang::SourceRange> invocations;
+
+    /// One per invocation.
     std::vector<MacroExpansion> expansions;
+
+    /// The expansions that produced tokens, in stream order.
+    std::vector<std::uint32_t> producing;
 };
 
 }  // namespace clice

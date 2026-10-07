@@ -595,7 +595,7 @@ private:
         // shape reads no tokens.
         if(options.main_file_only) {
             semantics.tokens = unit.spelled_tokens();
-            semantics.pp_ignored = unit.preprocessed_away();
+            semantics.pp_ignored = &unit.preprocessed_away();
         }
 
         stack.push_back(Semantics::invalid);
@@ -899,7 +899,7 @@ private:
         assert(begin <= end);
         auto count = static_cast<std::uint32_t>(semantics.tokens.size());
         for(auto i = first_token_at(begin); i < count && semantics.token_offset(i) <= end; i++) {
-            if(!should_ignore_token(semantics.tokens[i]) && !semantics.pp_ignored[i]) {
+            if(!should_ignore_token(semantics.tokens[i]) && !(*semantics.pp_ignored)[i]) {
                 entries.emplace_back(i, self);
             }
         }
@@ -909,7 +909,7 @@ private:
     void add_token_entry(unsigned offset, std::uint32_t self) {
         auto i = first_token_at(offset);
         if(i < semantics.tokens.size() && semantics.token_offset(i) == offset) {
-            if(!should_ignore_token(semantics.tokens[i]) && !semantics.pp_ignored[i]) {
+            if(!should_ignore_token(semantics.tokens[i]) && !(*semantics.pp_ignored)[i]) {
                 entries.emplace_back(i, self);
             }
         }

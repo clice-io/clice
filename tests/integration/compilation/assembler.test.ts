@@ -12,6 +12,7 @@ function writeAssembler(workspace: Workspace): void {
         "#define SIZE 8\n" +
             "# Copyright 2003 Pavel Machek <pavel@suse.cz\n" +
             ".text\n" +
+            "# Hooray, we are in long mode\n" +
             "entry:\n" +
             "    .quad SIZE\n",
     );
@@ -33,8 +34,8 @@ test("open assembler with comments", async ({ session }) => {
     await client.initialize(workspace);
     const [uri] = await client.openAndWait("entry.S");
 
-    const tokens = await client.semanticTokensFull(uri);
-    expect(tokens?.data.length).toBeGreaterThan(0);
+    const hover = await client.hoverAt(uri, 5, 11);
+    expect(JSON.stringify(hover?.contents)).toContain("Expands to");
 });
 
 test("index assembler with comments", async ({ session }) => {

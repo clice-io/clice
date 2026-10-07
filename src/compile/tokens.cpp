@@ -8,26 +8,24 @@ import :compile.tokens;
 
 namespace clice {
 
-namespace {
-
-// The spelled range in `target` covering the expanded tokens First..Last,
-// which lie within one macro argument of an expansion in `target`; invalid
-// when that range would also cover Prev or Next, the expanded tokens
+// The main-file range covering the expanded tokens `first`..`last`, which
+// lie within one macro argument of an expansion in the main file; invalid
+// when that range would also cover `prev` or `next`, the expanded tokens
 // around them. Ported from clang's syntax::TokenBuffer.
 //
 // ID(ID(ID(a1) a2))
 //          ~~       -> a1
 //              ~~   -> a2
 //       ~~~~~~~~~   -> a1 a2
-clang::SourceRange spelled_within_argument(clang::SourceLocation first,
-                                           clang::SourceLocation last,
-                                           clang::SourceLocation prev,
-                                           clang::SourceLocation next,
-                                           clang::FileID target,
-                                           const clang::SourceManager& SM) {
-    // When First and Last are part of the same macro arg of a macro written
-    // in the target file, the result is that slice of the arg, i.e. their
-    // spelling range. Unwrap such macro calls: if the target file has
+static clang::SourceRange spelled_within_argument(clang::SourceLocation first,
+                                                  clang::SourceLocation last,
+                                                  clang::SourceLocation prev,
+                                                  clang::SourceLocation next,
+                                                  const clang::SourceManager& SM) {
+    auto target = SM.getMainFileID();
+    // When `first` and `last` are part of the same macro arg of a macro
+    // written in the main file, the result is that slice of the arg, i.e.
+    // their spelling range. Unwrap such macro calls: if the main file has
     // A(B(C)), the location stack of a token inside C shows the expansion of
     // A first, then B, then any macros inside C's body, then C itself.
     while(first.isMacroID() && last.isMacroID()) {
@@ -55,7 +53,7 @@ clang::SourceRange spelled_within_argument(clang::SourceLocation first,
     }
 
     // In all remaining cases the full containing macros are needed; if they
-    // overlap Prev or Next, no range is possible.
+    // overlap `prev` or `next`, no range is possible.
     auto candidate = SM.getExpansionRange(clang::SourceRange(first, last)).getAsRange();
     auto candidate_first = SM.getDecomposedExpansionLoc(candidate.getBegin());
     auto candidate_last = SM.getDecomposedExpansionLoc(candidate.getEnd());
@@ -79,20 +77,16 @@ clang::SourceRange spelled_within_argument(clang::SourceLocation first,
     return candidate;
 }
 
-}  // namespace
-
 struct TokenMap::Hooks : clang::PPCallbacks {
-    TokenMap* map;
+    TokenMap& map;
 
-    explicit Hooks(TokenMap* map) : map(map) {}
+    explicit Hooks(TokenMap& map) : map(map) {}
 
     void MacroExpands(const clang::Token&,
                       const clang::MacroDefinition&,
                       clang::SourceRange range,
                       const clang::MacroArgs*) override {
-        if(map) {
-            map->record_invocation(range);
-        }
+        map.record_invocation(range);
     }
 };
 
@@ -101,9 +95,7 @@ TokenMap::TokenMap(clang::Preprocessor& pp) : pp(pp), SM(pp.getSourceManager()) 
     main_begin = SM.getLocForStartOfFile(main);
     main_end = SM.getLocForEndOfFile(main);
     pp.setTokenWatcher([this](const clang::Token& token) { record(token); });
-    auto owned = std::make_unique<Hooks>(this);
-    hooks = owned.get();
-    pp.addPPCallbacks(std::move(owned));
+    pp.addPPCallbacks(std::make_unique<Hooks>(*this));
 }
 
 void TokenMap::record(const clang::Token& token) {
@@ -125,7 +117,7 @@ void TokenMap::record_invocation(clang::SourceRange range) {
     // A top-level invocation ends in the file; one ending within the last
     // one sits in its arguments.
     auto end = range.getEnd();
-    if(!in_main_file(end) || (!invocations.empty() && end <= invocations.back().end)) {
+    if(!in_main_file(end) || (!invocations.empty() && end <= invocations.back().getEnd())) {
         return;
     }
     auto begin = range.getBegin();
@@ -134,18 +126,15 @@ void TokenMap::record_invocation(clang::SourceRange range) {
         // expansion and its arguments from the file, so A's invocation
         // grows to take B's in.
         begin = SM.getExpansionLoc(begin);
-        if(!invocations.empty() && invocations.back().begin == begin) {
-            invocations.back().end = end;
+        if(!invocations.empty() && invocations.back().getBegin() == begin) {
+            invocations.back().setEnd(end);
         }
         return;
     }
-    invocations.push_back({begin, end, static_cast<std::uint32_t>(expanded_tokens.size())});
+    invocations.emplace_back(begin, end);
 }
 
 void TokenMap::finish() {
-    pp.setTokenWatcher(nullptr);
-    hooks->map = nullptr;
-
     spelled_tokens = clang::syntax::tokenize(SM.getMainFileID(), SM, pp.getLangOpts());
 
     expanded_index.reserve(expanded_tokens.size());
@@ -153,32 +142,66 @@ void TokenMap::finish() {
         expanded_index[token.location()] = static_cast<std::uint32_t>(index);
     }
 
-    llvm::ArrayRef<clang::syntax::Token> spelled = spelled_tokens;
+    // An invocation's expanded tokens are the run that expands from its
+    // name, wherever it lands in the stream: pragma handlers lex theirs
+    // ahead and hand them over later, and a builtin like
+    // `__has_cpp_attribute` expands the macros of its argument first.
+    llvm::DenseMap<clang::SourceLocation, std::uint32_t> by_begin;
+    for(auto [index, invocation]: llvm::enumerate(invocations)) {
+        by_begin[invocation.getBegin()] = static_cast<std::uint32_t>(index);
+    }
     llvm::ArrayRef<clang::syntax::Token> stream = expanded_tokens;
-    expansions.reserve(invocations.size());
-    for(auto& invocation: invocations) {
-        auto first = spelled_at_or_after(main_offset(invocation.begin));
-        auto last = spelled_at_or_after(main_offset(invocation.end) + 1);
-        auto end = invocation.first_expanded;
-        while(end < stream.size() && stream[end].location().isMacroID() &&
-              SM.getExpansionLoc(stream[end].location()) == invocation.begin) {
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> runs(invocations.size());
+    for(std::uint32_t index = 0; index < stream.size();) {
+        auto location = stream[index].location();
+        if(location.isFileID()) {
+            index += 1;
+            continue;
+        }
+        // The tokens of one macro FileID share where they expand from.
+        auto fid = SM.getFileID(location);
+        auto limit = SM.getComposedLoc(fid, SM.getFileIDSize(fid));
+        auto end = index + 1;
+        while(end < stream.size() && location <= stream[end].location() &&
+              stream[end].location() <= limit) {
             end += 1;
         }
+        if(auto it = by_begin.find(SM.getExpansionLoc(location)); it != by_begin.end()) {
+            auto& run = runs[it->second];
+            if(run.second == 0) {
+                run = {index, end};
+            } else if(run.second == index) {
+                run.second = end;
+            }
+        }
+        index = end;
+    }
+
+    llvm::ArrayRef<clang::syntax::Token> spelled = spelled_tokens;
+    expansions.reserve(invocations.size());
+    for(auto [invocation, run]: llvm::zip_equal(invocations, runs)) {
+        auto first = spelled_at_or_after(main_offset(invocation.getBegin()));
+        auto last = spelled_at_or_after(main_offset(invocation.getEnd()) + 1);
         expansions.push_back({
             .spelled = spelled.slice(first, last - first),
-            .expanded = stream.slice(invocation.first_expanded, end - invocation.first_expanded),
+            .expanded = stream.slice(run.first, run.second - run.first),
         });
     }
+    for(auto [index, expansion]: llvm::enumerate(expansions)) {
+        if(!expansion.expanded.empty()) {
+            producing.push_back(static_cast<std::uint32_t>(index));
+        }
+    }
+    llvm::sort(producing, [&](std::uint32_t left, std::uint32_t right) {
+        return expansions[left].expanded.begin() < expansions[right].expanded.begin();
+    });
 
     // A spelled token survives preprocessing when the parser saw it or it
     // is part of an invocation that expanded to something.
     away.assign(spelled_tokens.size(), true);
     for(auto& token: expanded_tokens) {
-        if(in_main_file(token.location())) {
-            auto index = spelled_at_or_after(main_offset(token.location()));
-            if(index < spelled.size() && spelled[index].location() == token.location()) {
-                away[index] = false;
-            }
+        if(const auto* written = spelled_at(token.location())) {
+            away[written - spelled.data()] = false;
         }
     }
     for(auto& expansion: expansions) {
@@ -197,16 +220,26 @@ std::uint32_t TokenMap::spelled_at_or_after(std::uint32_t offset) const {
     return static_cast<std::uint32_t>(it - spelled_tokens.begin());
 }
 
-const MacroExpansion* TokenMap::expansion_of(std::uint32_t index) const {
-    const auto* token = &expanded_tokens[index];
-    auto it = llvm::partition_point(expansions, [&](const MacroExpansion& expansion) {
-        return expansion.expanded.begin() <= token;
-    });
-    if(it == expansions.begin()) {
+const clang::syntax::Token* TokenMap::spelled_at(clang::SourceLocation location) const {
+    if(!in_main_file(location)) {
         return nullptr;
     }
-    it -= 1;
-    return token < it->expanded.end() ? &*it : nullptr;
+    auto index = spelled_at_or_after(main_offset(location));
+    if(index == spelled_tokens.size() || spelled_tokens[index].location() != location) {
+        return nullptr;
+    }
+    return &spelled_tokens[index];
+}
+
+const MacroExpansion* TokenMap::expansion_of(const clang::syntax::Token& token) const {
+    auto it = llvm::partition_point(producing, [&](std::uint32_t index) {
+        return expansions[index].expanded.begin() <= &token;
+    });
+    if(it == producing.begin()) {
+        return nullptr;
+    }
+    const auto& expansion = expansions[*std::prev(it)];
+    return &token < expansion.expanded.end() ? &expansion : nullptr;
 }
 
 llvm::ArrayRef<clang::syntax::Token>
@@ -229,10 +262,8 @@ llvm::ArrayRef<clang::syntax::Token> TokenMap::spelled_for(clang::SourceRange ra
     }
     const auto& first = tokens.front();
     const auto& last = tokens.back();
-    const auto* first_expansion =
-        expansion_of(static_cast<std::uint32_t>(&first - expanded_tokens.data()));
-    const auto* last_expansion =
-        expansion_of(static_cast<std::uint32_t>(&last - expanded_tokens.data()));
+    const auto* first_expansion = expansion_of(first);
+    const auto* last_expansion = expansion_of(last);
 
     llvm::ArrayRef<clang::syntax::Token> spelled = spelled_tokens;
     if(first_expansion && first_expansion == last_expansion &&
@@ -241,12 +272,7 @@ llvm::ArrayRef<clang::syntax::Token> TokenMap::spelled_for(clang::SourceRange ra
             &first == expanded_tokens.data() ? clang::SourceLocation() : (&first - 1)->location();
         auto next =
             &last == &expanded_tokens.back() ? clang::SourceLocation() : (&last + 1)->location();
-        auto covering = spelled_within_argument(first.location(),
-                                                last.location(),
-                                                prev,
-                                                next,
-                                                SM.getMainFileID(),
-                                                SM);
+        auto covering = spelled_within_argument(first.location(), last.location(), prev, next, SM);
         if(covering.isInvalid()) {
             return {};
         }
@@ -256,16 +282,6 @@ llvm::ArrayRef<clang::syntax::Token> TokenMap::spelled_for(clang::SourceRange ra
     }
 
     // Anything else maps whole expansions, or file tokens of the main file.
-    auto spelled_of = [&](const clang::syntax::Token& token) -> const clang::syntax::Token* {
-        if(!in_main_file(token.location())) {
-            return nullptr;
-        }
-        auto index = spelled_at_or_after(main_offset(token.location()));
-        if(index == spelled.size() || spelled[index].location() != token.location()) {
-            return nullptr;
-        }
-        return &spelled[index];
-    };
     const clang::syntax::Token* begin = nullptr;
     if(first_expansion) {
         if(&first != first_expansion->expanded.begin()) {
@@ -273,7 +289,7 @@ llvm::ArrayRef<clang::syntax::Token> TokenMap::spelled_for(clang::SourceRange ra
         }
         begin = first_expansion->spelled.begin();
     } else {
-        begin = spelled_of(first);
+        begin = spelled_at(first.location());
     }
     const clang::syntax::Token* end = nullptr;
     if(last_expansion) {
@@ -281,7 +297,7 @@ llvm::ArrayRef<clang::syntax::Token> TokenMap::spelled_for(clang::SourceRange ra
             return {};
         }
         end = last_expansion->spelled.end();
-    } else if(const auto* token = spelled_of(last)) {
+    } else if(const auto* token = spelled_at(last.location())) {
         end = token + 1;
     }
     if(!begin || !end || begin >= end) {
@@ -323,16 +339,14 @@ llvm::ArrayRef<MacroExpansion>
     if(spelled.empty()) {
         return {};
     }
-    auto first = llvm::partition_point(expansions, [&](const MacroExpansion& expansion) {
+    llvm::ArrayRef<MacroExpansion> all = expansions;
+    const auto* first = llvm::partition_point(all, [&](const MacroExpansion& expansion) {
         return expansion.spelled.end() <= &spelled.front();
     });
-    auto last = llvm::partition_point(expansions, [&](const MacroExpansion& expansion) {
+    const auto* last = llvm::partition_point(all, [&](const MacroExpansion& expansion) {
         return expansion.spelled.begin() <= &spelled.back();
     });
-    if(first >= last) {
-        return {};
-    }
-    return {&*first, static_cast<std::size_t>(last - first)};
+    return {first, last};
 }
 
 }  // namespace clice
