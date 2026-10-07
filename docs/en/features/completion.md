@@ -285,7 +285,8 @@ completes the members of the class the alias stands for
 
 The alias is resolved with the written template arguments substituted,
 so `Vec<Vec<T>>::value_type` lists the members of `Vec<T>` rather than
-nothing at all.
+nothing at all. An alias naming a reference (`Vec<Vec<T>>::reference`)
+lists the members of the class referred to.
 
 ```snap
 tests/snap/code_completion/member_access/06_dependent_member_type.cpp
@@ -383,6 +384,57 @@ the class lives in
 
 ```snap
 tests/snap/code_completion/member_access/13_destructor_label.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#443 -->
+
+**Dependent expression results**
+
+A member access on what a subscript or a member call returns inside a template completes the members of the class it evaluates to
+
+`rows[0].` on a `Vec<Vec<T>>` lists the members of `Vec<T>`, followed
+through the container's `reference` alias the way the standard containers
+declare it. Where a member has a `const` overload, the constness of the
+object picks the one called, and `->` on a returned iterator reaches the
+element.
+
+```snap
+tests/snap/code_completion/member_access/14_dependent_expression_result.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Overloads sharing a return type**
+
+A dependent call whose candidate overloads all return the same type completes the members of that type
+
+`table[key].` on a map whose `operator[]` takes either a `const K&` or a
+`K&&` lists the members of the mapped type. The overloads may be defined
+outside the class, and the class template redeclared after its
+definition, as the standard maps are.
+
+```snap
+tests/snap/code_completion/member_access/15_overloaded_subscript.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Deduced variable members**
+
+A variable declared `auto` from a dependent initializer completes the members of the class it deduces to
+
+`auto& row = rows[0]; row.` lists the members of `Vec<T>`. The
+declarator applies as in a real deduction: `const auto&` makes the
+object const, and a by-value `auto` drops the initializer's const.
+
+```snap
+tests/snap/code_completion/member_access/16_deduced_variable.cpp
 ```
 
 <!-- END CAPABILITY -->

@@ -188,6 +188,21 @@ tests/snap/navigation/go_to_definition/13_def_overload_candidates.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent expression members**
+
+A member accessed on what a dependent subscript, call or `auto` variable evaluates to resolves to the member declared on the class template
+
+Where the call has a `const` overload, the constness of the object picks
+the one it names.
+
+```snap
+tests/snap/navigation/go_to_definition/14_def_dependent_expression.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Implicit targets
