@@ -284,17 +284,9 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
     for(auto& entry: generated) {
         for(auto& local: entry.second->shared_locals) {
             for(auto& other: local.modules) {
-                if(entry.first() >= other) {
-                    continue;
+                if(entry.first() < other) {
+                    shared[{entry.first().str(), other}][local.file].insert(local.name);
                 }
-                auto& theirs = generated.lookup(other)->shared_locals;
-                auto match = llvm::find_if(theirs, [&](const InterfaceSharedLocal& candidate) {
-                    return candidate.name == local.name;
-                });
-                auto files = match->file == local.file
-                                 ? local.file
-                                 : std::format("{}, {}", local.file, match->file);
-                shared[{entry.first().str(), other}][files].insert(local.name);
             }
         }
     }
