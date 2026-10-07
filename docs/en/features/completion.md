@@ -397,8 +397,8 @@ A member access on what a subscript or a member call returns inside a template c
 `rows[0].` on a `Vec<Vec<T>>` lists the members of `Vec<T>`, followed
 through the container's `reference` alias the way the standard containers
 declare it. Where a member has a `const` overload, the constness of the
-object picks the one called, and `->` on a returned iterator reaches the
-element.
+object picks the one called, a data member reached through a const object
+counting as const, and `->` on a returned iterator reaches the element.
 
 ```snap
 tests/snap/code_completion/member_access/14_dependent_expression_result.cpp
@@ -431,7 +431,8 @@ A variable declared `auto` from a dependent initializer completes the members of
 
 `auto& row = rows[0]; row.` lists the members of `Vec<T>`. The
 declarator applies as in a real deduction: `const auto&` makes the
-object const, and a by-value `auto` drops the initializer's const.
+object const, a by-value `auto` drops the initializer's const, `auto&&`
+and `decltype(auto)` keep it, and `auto*` takes the pointee.
 
 ```snap
 tests/snap/code_completion/member_access/16_deduced_variable.cpp

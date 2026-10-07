@@ -370,7 +370,7 @@ tests/snap/code_completion/member_access/13_destructor_label.cpp
 
 在模板中对下标或成员调用的返回值进行成员访问时，补全该返回值所属类的成员
 
-`rows[0].` 用在 `Vec<Vec<T>>` 上时，列出 `Vec<T>` 的成员：解析沿着容器的 `reference` 别名进行，与标准容器声明该别名的方式一致。若成员有 `const` 重载，由对象是否为 const 决定调用哪一个；对返回的迭代器使用 `->` 可以访问到元素。
+`rows[0].` 用在 `Vec<Vec<T>>` 上时，列出 `Vec<T>` 的成员：解析沿着容器的 `reference` 别名进行，与标准容器声明该别名的方式一致。若成员有 `const` 重载，由对象是否为 const 决定调用哪一个，通过 const 对象访问到的数据成员也算作 const；对返回的迭代器使用 `->` 可以访问到元素。
 
 ```snap
 tests/snap/code_completion/member_access/14_dependent_expression_result.cpp
@@ -398,7 +398,7 @@ tests/snap/code_completion/member_access/15_overloaded_subscript.cpp
 
 用依赖初始化器声明为 `auto` 的变量，补全其推导出的类的成员
 
-`auto& row = rows[0]; row.` 列出 `Vec<T>` 的成员。声明符的作用与真实推导中一致：`const auto&` 使对象成为 const，按值的 `auto` 则去掉初始化器的 const。
+`auto& row = rows[0]; row.` 列出 `Vec<T>` 的成员。声明符的作用与真实推导中一致：`const auto&` 使对象成为 const，按值的 `auto` 去掉初始化器的 const，`auto&&` 和 `decltype(auto)` 保留这一 const，`auto*` 则推导出指针所指的类型。
 
 ```snap
 tests/snap/code_completion/member_access/16_deduced_variable.cpp
