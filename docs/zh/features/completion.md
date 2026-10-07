@@ -398,7 +398,7 @@ tests/snap/code_completion/member_access/15_overloaded_subscript.cpp
 
 用依赖初始化器声明为 `auto` 的变量，补全其推导出的类的成员
 
-`auto& row = rows[0]; row.` 列出 `Vec<T>` 的成员。声明符的作用与真实推导中一致：`const auto&` 使对象成为 const，按值的 `auto` 去掉初始化器的 const，`auto&&` 和 `decltype(auto)` 保留这一 const，`auto*` 则推导出指针所指的类型。初始化器为数据成员时，`decltype(auto)` 取该成员声明时的类型。
+`auto& row = rows[0]; row.` 列出 `Vec<T>` 的成员。声明符的作用与真实推导中一致：`const auto&` 使对象成为 const，按值的 `auto` 去掉初始化器的 const，`auto&&` 和 `decltype(auto)` 保留这一 const，`auto*` 则推导出指针所指的类型。初始化器为数据成员时，`decltype(auto)` 取该成员声明时的类型；加了括号时，则取该表达式的 const 引用类型。
 
 ```snap
 tests/snap/code_completion/member_access/16_deduced_variable.cpp
