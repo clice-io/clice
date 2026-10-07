@@ -664,7 +664,7 @@ void IndexStore::drop_index_into(Fid tu_path_id, Report& report) {
     global_dirty = true;
 }
 
-kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, bool settle) {
+kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, SearchRebuild search) {
     Report report;
     // Reset up front: every early return below means this save committed
     // nothing, and the gauge must not keep exposing the previous round's
@@ -685,7 +685,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     auto& project_index = project.project_index;
     ScopedTimer timer;
 
-    if(search_rebuild_due(settle)) {
+    if(search_rebuild_due(search)) {
         co_await rebuild_search_index();
     }
 
@@ -996,7 +996,10 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, boo
     co_return report;
 }
 
-bool IndexStore::search_rebuild_due(bool settle) const {
+bool IndexStore::search_rebuild_due(SearchRebuild search) const {
+    if(search == SearchRebuild::Never) {
+        return false;
+    }
     auto& index = project.project_index.search_index;
     auto base = index.size();
     if(project.project_index.search_pending.size() > std::max<std::size_t>(10000, base / 20)) {
@@ -1007,7 +1010,7 @@ bool IndexStore::search_rebuild_due(bool settle) const {
     if(index.damaged()) {
         return true;
     }
-    if(!settle) {
+    if(search == SearchRebuild::Behind) {
         return false;
     }
     // A missing one — never built, or persisted under another pin than
@@ -1123,7 +1126,10 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
         co_return;
     }
     bool grew = *grown;
-    if(!grew) {
+    if(grew) {
+        // The refused batch is dirty again; the grown map takes it now.
+        report.owes_retry = true;
+    } else {
         // The LMDB backend hands out pointers into its resident read
         // snapshot; after a commit the resident shards migrate onto a
         // fresh snapshot so the old one can be retired. Both snapshots
@@ -1226,9 +1232,9 @@ void IndexStore::recover_corrupt_database(Report& report) {
     global_dirty = true;
     cdb_dirty = true;
     // The snapshot just persisted (if any) predates this recovery's debt
-    // and lives in a condemned database anyway: the caller's shutdown path
-    // owes one metadata retry so the fresh database records it.
-    report.snapshot_stale = true;
+    // and lives in a condemned database anyway: one metadata retry makes
+    // the fresh database record it.
+    report.owes_retry = true;
     persisted_cdb_snapshot.clear();
     reopen_fresh_database();
 }

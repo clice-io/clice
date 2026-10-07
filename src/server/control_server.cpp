@@ -64,7 +64,7 @@ void register_control(ProjectServer& srv, kota::ipc::JSONPeer& peer) {
         }
         // The round persists at its end; the asker reads the disk, so its
         // rows must be there before the answer.
-        srv.sched.pump.claim_report(co_await srv.sched.store.save(srv.sched.pump.save_debt()));
+        co_await srv.sched.pump.persist();
         if(srv.sched.store.has_unsaved_state()) {
             co_await kota::fail(
                 kota::ipc::Error{"part of the index could not be persisted; see the server log"});
