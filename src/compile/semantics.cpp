@@ -756,7 +756,38 @@ private:
             }
         }
 
+        // An implicit cast spans exactly the operator it wraps, as in each
+        // link of `a = b = c = ...`.
+        if(const auto* expr = N.get<clang::Expr>()) {
+            if(const auto* op = llvm::dyn_cast<clang::BinaryOperator>(expr->IgnoreImpCasts())) {
+                claim_range(operator_range(op), self);
+                return;
+            }
+        }
+
         claim_range(claimed_source_range(N), self);
+    }
+
+    /// clang finds a binary operator's ends by recursing down its operands,
+    /// quadratic over a chain like `a + b + c + ...`. The operands popped
+    /// first, so a nested operator's range is already known.
+    clang::SourceRange operator_range(const clang::BinaryOperator* op) {
+        auto known = [&](const clang::Expr* expr) -> std::optional<clang::SourceRange> {
+            if(auto it = operator_ranges.find(expr->IgnoreImpCasts());
+               it != operator_ranges.end()) {
+                return it->second;
+            }
+            return std::nullopt;
+        };
+        if(auto range = known(op)) {
+            return *range;
+        }
+        auto lhs = known(op->getLHS());
+        auto rhs = known(op->getRHS());
+        clang::SourceRange range(lhs ? lhs->getBegin() : op->getLHS()->getBeginLoc(),
+                                 rhs ? rhs->getEnd() : op->getRHS()->getEndLoc());
+        operator_ranges.try_emplace(op, range);
+        return range;
     }
 
     // Claim all unclaimed expanded tokens in S for node `self`, and attribute
@@ -1113,6 +1144,9 @@ private:
     /// Depth of enclosing instantiation subtrees; nodes pushed while it is
     /// non-zero are flagged in_instantiation.
     std::uint32_t instantiation_depth = 0;
+
+    /// The source ranges of the binary operators popped so far.
+    llvm::DenseMap<const clang::Expr*, clang::SourceRange> operator_ranges;
 
     /// (spelled token index, owning node index) pairs, sorted in finalize().
     std::vector<std::pair<std::uint32_t, std::uint32_t>> entries;
