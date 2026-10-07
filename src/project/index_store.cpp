@@ -574,12 +574,16 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     // The imported modules' inputs never enter the parse's include tree,
     // yet each is an input of the parse all the same. Not stale on
     // arrival like the parse's own lookups: a reindex would read the same
-    // PCM, which only a change event reaching the module rebuilds.
+    // PCM, which only a change event reaching the module rebuilds. An
+    // input the module's build could not version reads as stale until a
+    // rebuild names its bytes.
     for(auto& dep: imports) {
         if(dep.missing) {
             manifest.absent.push_back(project.file_table.intern_version(dep.path_id, 0));
-        } else if(dep.version.valid()) {
-            manifest.imports.push_back(dep.version);
+        } else {
+            manifest.imports.push_back(dep.version.valid()
+                                           ? dep.version
+                                           : project.file_table.intern_version(dep.path_id, 0));
         }
     }
 
