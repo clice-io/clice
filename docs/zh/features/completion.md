@@ -270,7 +270,7 @@ tests/snap/code_completion/member_access/05_inherited_members.cpp
 
 若变量的类型是某个依赖模板特化的成员别名，补全该别名所代表的类的成员
 
-解析别名时会代入代码中写出的模板实参，因此 `Vec<Vec<T>>::value_type` 会列出 `Vec<T>` 的成员，而不是什么都列不出来。
+解析别名时会代入代码中写出的模板实参，因此 `Vec<Vec<T>>::value_type` 会列出 `Vec<T>` 的成员，而不是什么都列不出来。别名代表引用类型时（`Vec<Vec<T>>::reference`），列出被引用的类的成员。
 
 ```snap
 tests/snap/code_completion/member_access/06_dependent_member_type.cpp
@@ -360,6 +360,48 @@ tests/snap/code_completion/member_access/12_inaccessible_members.cpp
 
 ```snap
 tests/snap/code_completion/member_access/13_destructor_label.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#443 -->
+
+**依赖表达式的结果**
+
+在模板中对下标或成员调用的返回值进行成员访问时，补全该返回值所属类的成员
+
+`rows[0].` 用在 `Vec<Vec<T>>` 上时，列出 `Vec<T>` 的成员：解析沿着容器的 `reference` 别名进行，与标准容器声明该别名的方式一致。若成员有 `const` 重载，由对象是否为 const 决定调用哪一个，通过 const 对象访问到的数据成员也算作 const；对返回的迭代器使用 `->` 可以访问到元素。
+
+```snap
+tests/snap/code_completion/member_access/14_dependent_expression_result.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**返回类型相同的重载**
+
+依赖调用的候选重载都返回同一类型时，补全该类型的成员
+
+`table[key].` 用在 `operator[]` 接受 `const K&` 或 `K&&` 的映射上时，列出映射值类型的成员。这些重载可以定义在类外，类模板也可以在定义之后再次声明，标准库中的映射正是如此。
+
+```snap
+tests/snap/code_completion/member_access/15_overloaded_subscript.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**推导变量的成员**
+
+用依赖初始化器声明为 `auto` 的变量，补全其推导出的类的成员
+
+`auto& row = rows[0]; row.` 列出 `Vec<T>` 的成员。声明符的作用与真实推导中一致：`const auto&` 使对象成为 const，按值的 `auto` 去掉初始化器的 const，`auto&&` 和 `decltype(auto)` 保留这一 const，`auto*` 则推导出指针所指的类型。初始化器为数据成员时，`decltype(auto)` 取该成员声明时的类型；加了括号时，则取该表达式的 const 引用类型。
+
+```snap
+tests/snap/code_completion/member_access/16_deduced_variable.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -870,15 +912,6 @@ tests/snap/code_completion/functions_snippets/10_statement_snippets.cpp
   template<Drawable T>
   void render(T& widget) {
       widget.^  // suggest draw(), resize() from Drawable concept
-  }
-  ```
-
-- [ ] 在未实例化的模板中补全待决类型（dependent type）的成员
-
-  ```cpp
-  template<typename T>
-  void process(std::vector<std::vector<T>>& matrix) {
-      matrix[0].^  // resolve operator[] → vector<T>&, suggest push_back(), size() etc.
   }
   ```
 

@@ -33,6 +33,11 @@ public:
     /// Null when the type does not resolve to a class or enumeration.
     clang::TagDecl* resolve_tag(clang::QualType type);
 
+    /// What a member access on `base` (`base.`, or `base->` when `arrow`)
+    /// names its members in, resolved: what the base evaluates to, through
+    /// `operator->` chains for an arrow. Null when it does not resolve.
+    clang::QualType member_object(const clang::Expr* base, bool arrow);
+
     using lookup_result = clang::DeclContext::lookup_result;
 
     /// Look up the name in the given nested name specifier.
@@ -60,19 +65,21 @@ public:
 
     /// A dependent call's candidate set: the callee clang resolved itself
     /// when it did, else the resolved overload set filtered down to
-    /// overloads whose parameter list can accept the call's argument count.
-    /// Full overload resolution needs conversion rules (Sema territory);
-    /// arity is the safe, conversion-free subset of it. A dependent
-    /// operator (`a == b`) gets no candidates: instantiation adds the operands'
-    /// associated operators and the built-in ones, so the operators its
-    /// definition happened to see say nothing, and differ between the
-    /// units including it.
+    /// overloads whose parameter list can accept the call's argument count,
+    /// and for a member call those its object binds best (`front()` or
+    /// `front() const`). Full overload resolution needs conversion rules
+    /// (Sema territory); arity and the object's qualifiers are the safe,
+    /// conversion-free subset of it. A dependent operator (`a == b`) gets
+    /// no candidates: instantiation adds the operands' associated operators
+    /// and the built-in ones, so the operators its definition happened to
+    /// see say nothing, and differ between the units including it.
     llvm::SmallVector<const clang::NamedDecl*, 4> lookup(const clang::CallExpr* expr);
 
     /// Resolve the base type through pseudo-instantiation, then look the
     /// member up in the resolved record (e.g. `this->foo()` inherited from
-    /// `Base<T>`). A base that is itself a dependent member access or call
-    /// (`box.inner.leaf`) is resolved to the type it evaluates to first.
+    /// `Base<T>`). A base that is itself a dependent member access, call,
+    /// subscript or `auto` variable (`box.inner.leaf`, `rows[0].size`) is
+    /// resolved to the type it evaluates to first.
     lookup_result lookup(const clang::CXXDependentScopeMemberExpr* expr);
 
     lookup_result lookup(const clang::UnresolvedUsingValueDecl* decl) {

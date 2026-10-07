@@ -37,3 +37,25 @@ void bar() {
     Options<T*> o = { .§(partial) };
     Options<T**> n = { .§(no_fields) };
 }
+
+template <typename T>
+struct Padded {
+    int : 4;
+};
+
+template <typename T>
+struct Padded<T*> {
+    int stride;
+    void reset();
+};
+
+template <typename T>
+struct Options<T***> {
+    int : 4;
+};
+
+template <typename T>
+void baz() {
+    Padded<T*> p = { .§(unnamed_primary) };
+    Options<T***> u = { .§(unnamed_partial) };
+}

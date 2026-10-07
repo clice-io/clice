@@ -1,0 +1,15 @@
+---
+created_at: 2026-10-07
+input_file: member_access/15_overloaded_subscript.cpp
+---
+iterator:
+- { label: "Vec", kind: Class, edit: "59:26-59:26" }
+- { label: "push_back", kind: Method, detail: "(const T &value)", description: "void", edit: "59:26-59:26" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "59:26-59:26" }
+- { label: "template", kind: Keyword, edit: "59:26-59:26" }
+
+subscript:
+- { label: "Vec", kind: Class, edit: "58:15-58:15" }
+- { label: "push_back", kind: Method, detail: "(const T &value)", description: "void", edit: "58:15-58:15" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "58:15-58:15" }
+- { label: "template", kind: Keyword, edit: "58:15-58:15" }

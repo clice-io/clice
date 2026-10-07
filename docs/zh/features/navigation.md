@@ -168,6 +168,20 @@ tests/snap/navigation/go_to_definition/13_def_overload_candidates.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**依赖表达式的成员**
+
+在依赖下标、调用或 `auto` 变量的结果上访问成员时，解析到类模板中声明的成员
+
+调用存在 `const` 重载时，由对象是否为 const 决定解析到哪一个重载；参数不同的各个重载则全部列出。
+
+```snap
+tests/snap/navigation/go_to_definition/14_def_dependent_expression.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 隐式目标
