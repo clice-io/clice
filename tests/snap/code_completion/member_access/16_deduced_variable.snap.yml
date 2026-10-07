@@ -1,0 +1,30 @@
+---
+created_at: 2026-10-07
+input_file: member_access/16_deduced_variable.cpp
+---
+const_reference:
+- { label: "Vec", kind: Class, edit: "27:9-27:9" }
+- { label: "operator[]", kind: Method, detail: "(int index)", description: "const T &", edit: "27:9-27:9" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "27:9-27:9" }
+- { label: "template", kind: Keyword, edit: "27:9-27:9" }
+
+forwarding:
+- { label: "Vec", kind: Class, edit: "31:14-31:14" }
+- { label: "operator[]", kind: Method, detail: "(int index)", description: "T &", edit: "31:14-31:14" }
+- { label: "push_back", kind: Method, detail: "(const T &value)", description: "void", edit: "31:14-31:14" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "31:14-31:14" }
+- { label: "template", kind: Keyword, edit: "31:14-31:14" }
+
+reference:
+- { label: "Vec", kind: Class, edit: "25:8-25:8" }
+- { label: "operator[]", kind: Method, detail: "(int index)", description: "T &", edit: "25:8-25:8" }
+- { label: "push_back", kind: Method, detail: "(const T &value)", description: "void", edit: "25:8-25:8" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "25:8-25:8" }
+- { label: "template", kind: Keyword, edit: "25:8-25:8" }
+
+value:
+- { label: "Vec", kind: Class, edit: "29:9-29:9" }
+- { label: "operator[]", kind: Method, detail: "(int index)", description: "T &", edit: "29:9-29:9" }
+- { label: "push_back", kind: Method, detail: "(const T &value)", description: "void", edit: "29:9-29:9" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "29:9-29:9" }
+- { label: "template", kind: Keyword, edit: "29:9-29:9" }

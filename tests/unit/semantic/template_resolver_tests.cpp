@@ -48,7 +48,18 @@ ZEST_SUITE(TemplateResolver, Tester) {
 void run(llvm::StringRef code) {
     add_main("main.cpp", code);
     ZASSERT(compile());
+    expect_resolved();
+}
 
+/// Against the host's standard library, which only the driver's search
+/// paths find.
+void run_standard(llvm::StringRef code) {
+    add_main("main.cpp", code);
+    ZASSERT(compile_driver());
+    expect_resolved();
+}
+
+void expect_resolved() {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
@@ -3988,7 +3999,7 @@ ZEST_CASE(ConcreteScopeTemplateArgument) {
 }
 
 ZEST_CASE(StandardMap) {
-    add_main("main.cpp", R"code(
+    run_standard(R"code(
         #include <map>
 
         template <typename K, typename V>
@@ -3997,19 +4008,10 @@ ZEST_CASE(StandardMap) {
             using expect = V;
         };
     )code");
-    ZASSERT(compile_driver());
-
-    InputFinder finder(*unit);
-    finder.TraverseAST(unit->context());
-
-    auto input = unit->resolver().resolve(finder.input);
-    auto target = finder.expect;
-    ZASSERT(!(input.isNull() || target.isNull()));
-    ZEXPECT(input.getCanonicalType() == target.getCanonicalType());
 }
 
 ZEST_CASE(StandardString) {
-    add_main("main.cpp", R"code(
+    run_standard(R"code(
         #include <string>
 
         template <typename T>
@@ -4018,19 +4020,10 @@ ZEST_CASE(StandardString) {
             using expect = T;
         };
     )code");
-    ZASSERT(compile_driver());
-
-    InputFinder finder(*unit);
-    finder.TraverseAST(unit->context());
-
-    auto input = unit->resolver().resolve(finder.input);
-    auto target = finder.expect;
-    ZASSERT(!(input.isNull() || target.isNull()));
-    ZEXPECT(input.getCanonicalType() == target.getCanonicalType());
 }
 
 ZEST_CASE(Standard) {
-    add_main("main.cpp", R"code(
+    run_standard(R"code(
         #include <vector>
 
         template <typename T>
@@ -4039,16 +4032,62 @@ ZEST_CASE(Standard) {
             using expect = T&;
         };
     )code");
-    ZASSERT(compile_driver());
+}
 
-    InputFinder finder(*unit);
-    finder.TraverseAST(unit->context());
+ZEST_CASE(StandardSubscript) {
+    run_standard(R"code(
+        #include <vector>
 
-    auto input = unit->resolver().resolve(finder.input);
-    auto target = finder.expect;
-    ZASSERT(!(input.isNull() || target.isNull()));
-    ZEXPECT(input.getCanonicalType() == target.getCanonicalType());
-};
+        template <typename T>
+        struct test {
+            std::vector<std::vector<T>> rows;
+            using input = decltype(rows[0]);
+            using expect = std::vector<T>&;
+        };
+    )code");
+}
+
+ZEST_CASE(StandardConstOverload) {
+    run_standard(R"code(
+        #include <vector>
+
+        template <typename T>
+        struct test {
+            const std::vector<std::vector<T>> rows;
+            using input = decltype(rows.front());
+            using expect = const std::vector<T>&;
+        };
+    )code");
+}
+
+ZEST_CASE(StandardMapSubscript) {
+    run_standard(R"code(
+        #include <map>
+        #include <vector>
+
+        template <typename K, typename V>
+        struct test {
+            std::map<K, std::vector<V>> table;
+            K key;
+            using input = decltype(table[key]);
+            using expect = std::vector<V>&;
+        };
+    )code");
+}
+
+ZEST_CASE(StandardMapIterator) {
+    run_standard(R"code(
+        #include <map>
+        #include <vector>
+
+        template <typename K, typename V>
+        struct test {
+            std::map<K, std::vector<V>> table;
+            using input = decltype(table.begin()->second);
+            using expect = std::vector<V>;
+        };
+    )code");
+}
 
 ZEST_CASE(DependentTemplateHead) {
     /// A template template argument that is itself a dependent name (libc++

@@ -352,9 +352,7 @@ public:
     /// When pseudo-instantiation reaches a class Sema did not, run the
     /// completion again against that class. Returns whether the nested run
     /// produced the reply, which is then in `output`.
-    bool complete_resolved(clang::Sema& sema,
-                           clang::CodeCompletionContext& context,
-                           llvm::ArrayRef<clang::CodeCompletionResult> candidates) {
+    bool complete_resolved(clang::Sema& sema, clang::CodeCompletionContext& context) {
         using Kind = clang::CodeCompletionContext::Kind;
         auto kind = context.getKind();
         auto& ast = sema.getASTContext();
@@ -397,32 +395,36 @@ public:
         };
 
         if(kind == Kind::CCC_DotMemberAccess || kind == Kind::CCC_ArrowMemberAccess) {
-            /// For an arrow Sema reports the pointee: it only gets here once
-            /// it has unwrapped the pointer itself.
-            auto base = context.getBaseType();
-            if(base.isNull() || !base->isDependentType()) {
+            /// A designated initializer (`{ .§ }`) reports the same context
+            /// as a member access, but without a base expression: its base
+            /// type is the aggregate being initialized.
+            auto* base = context.getBaseExpr();
+            auto object = context.getBaseType();
+            if(base) {
+                if(!base->isTypeDependent()) {
+                    return false;
+                }
+                object = resolver.member_object(base, kind == Kind::CCC_ArrowMemberAccess);
+                if(object.isNull()) {
+                    return false;
+                }
+            } else if(!object->isDependentType()) {
                 return false;
             }
-            auto* tag = resolver.resolve_tag(base);
-            if(!tag || same(tag, clang::HeuristicResolver(ast).resolveTypeToTagDecl(base))) {
+            auto* tag = resolver.resolve_tag(object);
+            if(!tag ||
+               same(tag,
+                    clang::HeuristicResolver(ast).resolveTypeToTagDecl(context.getBaseType()))) {
                 return false;
             }
             auto* record = llvm::dyn_cast_or_null<clang::CXXRecordDecl>(definition(tag));
             if(!record) {
                 return false;
             }
-            auto type = ast.getQualifiedType(ast.getCanonicalTagType(record), base.getQualifiers());
+            auto type =
+                ast.getQualifiedType(ast.getCanonicalTagType(record), object.getQualifiers());
 
-            /// A designated initializer (`{ .§ }`) reports the same context
-            /// as a member access but offers fields only, while a member
-            /// access on a dependent base always offers more (the class
-            /// name, the `template` keyword).
-            bool designator =
-                !candidates.empty() && std::ranges::all_of(candidates, [](const auto& candidate) {
-                    return candidate.Kind == clang::CodeCompletionResult::RK_Declaration &&
-                           llvm::isa<clang::FieldDecl>(candidate.Declaration);
-                });
-            if(designator) {
+            if(!base) {
                 /// Sema reports nothing at all for a class without fields;
                 /// the resolved reply is still empty, not Sema's.
                 if(record->fields().empty()) {
@@ -434,10 +436,10 @@ public:
                 });
             }
 
-            auto* object = new (ast) clang::OpaqueValueExpr(loc, type, clang::VK_LValue);
+            auto* stand_in = new (ast) clang::OpaqueValueExpr(loc, type, clang::VK_LValue);
             return run([&] {
                 sema.CodeCompletion().CodeCompleteMemberReferenceExpr(scope,
-                                                                      object,
+                                                                      stand_in,
                                                                       /*OtherOpBase=*/nullptr,
                                                                       loc,
                                                                       /*IsArrow=*/false,
@@ -511,7 +513,7 @@ public:
 
         if(resolving) {
             resolved_candidates |= candidate_count > 0;
-        } else if(complete_resolved(sema, context, {candidates, candidate_count})) {
+        } else if(complete_resolved(sema, context)) {
             return;
         }
 

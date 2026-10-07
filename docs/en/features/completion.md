@@ -917,15 +917,6 @@ tests/snap/code_completion/functions_snippets/10_statement_snippets.cpp
   }
   ```
 
-- [ ] Dependent type member completion in uninstantiated templates
-
-  ```cpp
-  template<typename T>
-  void process(std::vector<std::vector<T>>& matrix) {
-      matrix[0].^  // resolve operator[] → vector<T>&, suggest push_back(), size() etc.
-  }
-  ```
-
 - [ ] Use single-instantiation information for generic lambda completion — when a generic lambda is only called from one site, use that site's argument types to provide completion inside the lambda body
 
   ```cpp
