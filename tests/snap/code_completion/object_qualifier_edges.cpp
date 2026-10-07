@@ -2,8 +2,8 @@
 
 // A parenthesized `decltype(auto)` from a member inside a const member
 // function is a const reference, so only the const overload of `get` is
-// offered; a volatile object that no overload of `front` can bind completes
-// nothing.
+// offered; a volatile object that no overload of `peek` can bind completes
+// nothing, even though every overload returns the same type.
 struct Mutable {
     void mutate();
 };
@@ -12,20 +12,17 @@ struct Viewed {
     void view();
 };
 
-struct Cell {
+template <typename T>
+struct Box {
     Mutable get();
     Viewed get() const;
-};
-
-template <typename T>
-struct Vec {
-    T& front();
-    const T& front() const;
+    Viewed peek();
+    Viewed peek() const;
 };
 
 template <typename T>
 struct Grid {
-    Cell cells;
+    Box<T> cells;
 
     void show() const {
         decltype(auto) view = (cells);
@@ -34,6 +31,6 @@ struct Grid {
 };
 
 template <typename T>
-void bar(volatile Vec<Vec<T>>& rows) {
-    rows.front().§(unbindable_object);
+void bar(volatile Box<T>& box) {
+    box.peek().§(unbindable_object);
 }
