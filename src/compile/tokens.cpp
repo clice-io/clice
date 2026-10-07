@@ -149,10 +149,11 @@ void TokenMap::record_invocation(clang::SourceRange range) {
 void TokenMap::finish() {
     spelled_tokens = clang::syntax::tokenize(main_fid, SM, pp.getLangOpts());
 
-    for(auto [begin, end]: main_segments) {
-        for(auto index = begin; index < end; index += 1) {
-            expanded_index[expanded_tokens[index].location()] = index;
-        }
+    // Every token, a header's included: the main file's nodes have ranges
+    // in headers too, and a miss costs a search by isBeforeInTranslationUnit.
+    expanded_index.reserve(expanded_tokens.size());
+    for(auto [index, token]: llvm::enumerate(expanded_tokens)) {
+        expanded_index[token.location()] = static_cast<std::uint32_t>(index);
     }
 
     // An invocation's expanded tokens are the run that expands from its
@@ -327,8 +328,7 @@ llvm::ArrayRef<clang::syntax::Token> TokenMap::expanded(clang::SourceRange range
     if(range.isInvalid()) {
         return {};
     }
-    // The AST's ranges of the main file start and end at expanded tokens it
-    // lexed.
+    // The AST's ranges start and end at expanded tokens.
     auto begin = expanded_index.find(range.getBegin());
     auto end = expanded_index.find(range.getEnd());
     if(begin != expanded_index.end() && end != expanded_index.end()) {

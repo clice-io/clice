@@ -114,8 +114,7 @@ private:
     /// being read: its own tokens, its macro expansions, never a header's.
     std::vector<std::pair<std::uint32_t, std::uint32_t>> main_segments;
 
-    /// Expanded tokens of the main segments by location, for the AST's
-    /// token ranges.
+    /// Expanded tokens by location, for the AST's token ranges.
     llvm::DenseMap<clang::SourceLocation, std::uint32_t> expanded_index;
 
     /// The first and last spelled token of each top-level invocation, in
