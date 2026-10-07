@@ -12,5 +12,5 @@ input_file: global_anonymous_union.cpp
 - { loc: "5:10", text: "u2", kind: field, modifiers: [definition] }
 - { loc: "8:0", text: "int", kind: primitive }
 - { loc: "8:4", text: "read", kind: function, modifiers: [definition] }
-- { loc: "9:4", text: "return", kind: keyword }
+- { loc: "9:4", text: "return", kind: keyword, modifiers: [controlFlow] }
 - { loc: "9:11", text: "u1", kind: field }
