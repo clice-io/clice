@@ -53,7 +53,8 @@ public:
     }
 
     /// The fd needed the non-blocking switch but refused it: the sink
-    /// sheds everything rather than risk blocking the caller.
+    /// sheds everything rather than risk blocking the caller. Unsynchronized:
+    /// read it before the sink is shared, as logging retries the switch.
     bool inoperative() const {
         return pipe == PipeSwitch::Refused;
     }

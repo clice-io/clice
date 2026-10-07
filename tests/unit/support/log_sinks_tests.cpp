@@ -6,6 +6,11 @@ module;
 
 #ifdef _WIN32
 #include <io.h>
+
+// See cache_store.cpp: windows.h must not spill min/max macros.
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
 #else
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -42,6 +47,10 @@ ZEST_CASE(BusyPipeSwitchesLater) {
     logging::StderrSink sink(fds[1]);
     ZEXPECT(!sink.inoperative());
     sink.log(info_msg("while busy"));
+    DWORD unread = 0;
+    auto read_end = reinterpret_cast<HANDLE>(::_get_osfhandle(fds[0]));
+    ZASSERT(::PeekNamedPipe(read_end, nullptr, 0, nullptr, &unread, nullptr) != 0);
+    ZEXPECT(unread == 1u);
 
     char byte = 0;
     ZASSERT(::_read(fds[0], &byte, 1) == 1);
