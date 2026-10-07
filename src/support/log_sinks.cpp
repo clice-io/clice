@@ -70,19 +70,20 @@ bool externally_drained(int fd) {
 #endif
 }
 
-/// Switch such an fd to non-blocking writes. False means the fd needs the
-/// treatment but could not be switched — writing to it could still wedge
-/// the caller, so the sink must not write at all.
-bool set_pipe_nonblocking(int fd) {
+PipeSwitch set_pipe_nonblocking(int fd) {
 #ifdef _WIN32
     HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
     DWORD mode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
-    return ::SetNamedPipeHandleState(handle, &mode, nullptr, nullptr) != 0;
-#else
-    if(int flags = ::fcntl(fd, F_GETFL); flags >= 0) {
-        return ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+    if(::SetNamedPipeHandleState(handle, &mode, nullptr, nullptr)) {
+        return PipeSwitch::Done;
     }
-    return false;
+    return ::GetLastError() == ERROR_PIPE_BUSY ? PipeSwitch::Busy : PipeSwitch::Refused;
+#else
+    if(int flags = ::fcntl(fd, F_GETFL);
+       flags >= 0 && ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0) {
+        return PipeSwitch::Done;
+    }
+    return PipeSwitch::Refused;
 #endif
 }
 
@@ -92,8 +93,15 @@ StderrSink::StderrSink(int fd, std::size_t capacity) : fd(fd), capacity(capacity
     // A pipe that cannot be switched must never be written: a blocking
     // write to it is exactly the wedge this sink exists to prevent.
     if(externally_drained(fd)) {
-        disabled = !set_pipe_nonblocking(fd);
+        pipe = set_pipe_nonblocking(fd);
     }
+}
+
+bool StderrSink::retry_switch() {
+    if(pipe == PipeSwitch::Busy) {
+        pipe = set_pipe_nonblocking(fd);
+    }
+    return pipe == PipeSwitch::Done;
 }
 
 void StderrSink::stage_note_if_due() {
@@ -159,17 +167,20 @@ void StderrSink::shed_over_capacity() {
 }
 
 void StderrSink::sink_it_(const spdlog::details::log_msg& msg) {
-    if(disabled) {
+    bool writable = retry_switch();
+    if(pipe == PipeSwitch::Refused) {
         dropped_total.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
-    stage_note_if_due();
-    pump();
+    if(writable) {
+        stage_note_if_due();
+        pump();
+    }
 
     spdlog::memory_buf_t formatted;
     formatter_->format(msg, formatted);
-    if(active_note.empty() && pending.empty()) {
+    if(writable && active_note.empty() && pending.empty()) {
         auto n = write_fd(fd, llvm::StringRef(formatted.data(), formatted.size())).bytes;
         if(n < formatted.size()) {
             pending.assign(formatted.data() + n, formatted.size() - n);
@@ -183,7 +194,7 @@ void StderrSink::sink_it_(const spdlog::details::log_msg& msg) {
 }
 
 void StderrSink::flush_() {
-    if(disabled) {
+    if(!retry_switch()) {
         return;
     }
     stage_note_if_due();

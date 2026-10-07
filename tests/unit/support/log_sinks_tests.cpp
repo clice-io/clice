@@ -2,8 +2,16 @@ module;
 
 #include "modules/prelude.h"
 
-#ifndef _WIN32
 #include <fcntl.h>
+
+#ifdef _WIN32
+#include <io.h>
+
+// See cache_store.cpp: windows.h must not spill min/max macros.
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -19,18 +27,57 @@ namespace clice::testing {
 
 namespace {
 
-// POSIX-only: the Windows PIPE_NOWAIT path has no unit harness (_pipe
-// buffers are not fillable without a reader thread); it is exercised
-// end-to-end by the integration flood test on the Windows CI runner. A
-// full disk is simulated by the file size limit, which Windows lacks.
-#ifndef _WIN32
-
 spdlog::details::log_msg info_msg(std::string_view text) {
     return spdlog::details::log_msg(spdlog::source_loc{},
                                     "test",
                                     spdlog::level::info,
                                     spdlog::string_view_t(text.data(), text.size()));
 }
+
+#ifdef _WIN32
+
+ZEST_SUITE(StderrSink) {
+
+ZEST_CASE(BusyPipeSwitchesLater) {
+    // The byte stands in for mimalloc's newline at process start.
+    int fds[2] = {-1, -1};
+    ZASSERT(::_pipe(fds, 65536, _O_BINARY) == 0);
+    ZASSERT(::_write(fds[1], "\n", 1) == 1);
+
+    logging::StderrSink sink(fds[1]);
+    ZEXPECT(!sink.inoperative());
+    sink.log(info_msg("while busy"));
+    DWORD unread = 0;
+    auto read_end = reinterpret_cast<HANDLE>(::_get_osfhandle(fds[0]));
+    ZASSERT(::PeekNamedPipe(read_end, nullptr, 0, nullptr, &unread, nullptr) != 0);
+    ZEXPECT(unread == 1u);
+
+    char byte = 0;
+    ZASSERT(::_read(fds[0], &byte, 1) == 1);
+    sink.log(info_msg("after the read"));
+    ::_close(fds[1]);
+
+    std::string out;
+    char buf[4096];
+    while(std::ranges::count(out, '\n') < 2) {
+        auto n = ::_read(fds[0], buf, sizeof(buf));
+        ZASSERT(n > 0);
+        out.append(buf, static_cast<std::size_t>(n));
+    }
+    ZEXPECT(out.find("while busy") < out.find("after the read"));
+    ZEXPECT(sink.dropped() == 0);
+    ::_close(fds[0]);
+}
+
+};  // ZEST_SUITE(StderrSink)
+
+#else
+
+// The rest is POSIX-only: the Windows PIPE_NOWAIT backpressure path has no
+// unit harness (_pipe buffers are not fillable without a reader thread);
+// it is exercised end-to-end by the integration flood test on the Windows
+// CI runner. A full disk is simulated by the file size limit, which
+// Windows lacks.
 
 struct Pipe {
     int fds[2] = {-1, -1};

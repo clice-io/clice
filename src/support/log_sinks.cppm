@@ -6,6 +6,18 @@ module clice:support.log_sinks;
 
 namespace clice::logging {
 
+/// How switching an fd to non-blocking writes went.
+enum class PipeSwitch : std::uint8_t {
+    /// Switched, or the fd needs no switch.
+    Done,
+    /// Windows refuses while the pipe holds bytes its reader has not taken
+    /// yet (ERROR_PIPE_BUSY); the switch can succeed once it has.
+    Busy,
+    /// The fd needs the treatment but cannot have it: writing to it could
+    /// still wedge the caller, so every line is shed without touching it.
+    Refused,
+};
+
 /// A stderr sink that buffers, then drops — never blocks.
 ///
 /// fd 2's reader is the editor/client. Every client we support drains it,
@@ -23,6 +35,11 @@ namespace clice::logging {
 /// Terminals and regular files are left in blocking mode: they cannot
 /// exert client-controlled backpressure, and O_NONBLOCK on a tty is
 /// shared with the parent shell's own file description.
+///
+/// Windows refuses the switch while the pipe holds bytes the reader has
+/// not taken yet, as at process start when something wrote to stderr
+/// first (mimalloc writes a newline). Lines then wait in the buffer and
+/// the switch is retried before each write, until the reader catches up.
 class StderrSink final : public spdlog::sinks::base_sink<std::mutex> {
 public:
     /// `capacity` bounds the backpressure buffer: enough to ride out a
@@ -36,9 +53,10 @@ public:
     }
 
     /// The fd needed the non-blocking switch but refused it: the sink
-    /// sheds everything rather than risk blocking the caller.
+    /// sheds everything rather than risk blocking the caller. Unsynchronized:
+    /// read it before the sink is shared, as logging retries the switch.
     bool inoperative() const {
-        return disabled;
+        return pipe == PipeSwitch::Refused;
     }
 
 protected:
@@ -59,10 +77,11 @@ private:
     /// Evict whole oldest lines until the backlog fits its budget.
     void shed_over_capacity();
 
+    /// True once the fd may be written.
+    bool retry_switch();
+
     int fd;
-    /// The fd needs non-blocking treatment but could not be switched:
-    /// every line is shed without touching the fd.
-    bool disabled = false;
+    PipeSwitch pipe = PipeSwitch::Done;
     std::size_t capacity;
     /// Gap report in flight, held OUTSIDE the backlog: eviction can never
     /// lose the count, and it is delivered ahead of everything — the gap
