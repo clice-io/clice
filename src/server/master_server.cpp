@@ -723,7 +723,6 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
         result.stale = true;
         co_return result;
     }
-    params.epoch.reset();
 
     // The project offering the chosen item: the file's own first, then the
     // others, in the order query_contexts listed them.
@@ -764,17 +763,50 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
         target->open_session(path_id, session->text, session->version);
         session = find_session(path_id);
     }
-    result = co_await target->context_service.switch_context(path_id,
-                                                             session.get(),
-                                                             context_path_id,
-                                                             params);
+    result = co_await target->context_service.switch_context(*session, context_path_id, params);
     // A context choice asks for the context-pure AST view; the merged
     // index cannot give it (union rows). A rejected switch changed no
     // context and owes none.
     if(result.success) {
         target->ast.escalate(*session);
+        serve_again(*target, session);
     }
     co_return result;
+}
+
+ext::CurrentContextResult MasterServer::current_context(ProjectServer& project,
+                                                        const Session* session) {
+    auto result = project.context_service.current_context(session);
+    result.epoch = context_epoch();
+    return result;
+}
+
+ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
+    auto session = find_session(path_id);
+    if(!session) {
+        return {};
+    }
+    for(auto& project: projects) {
+        project->contexts.forget_selection(path_id);
+    }
+    auto& owner = owner_of(path_id);
+    if(&route(path_id) != &owner) {
+        rehome_sessions(owner);
+    } else {
+        owner.context_service.leave_context(*session);
+        serve_again(owner, session);
+    }
+    return {.success = true};
+}
+
+void MasterServer::serve_again(ProjectServer& project, std::shared_ptr<Session> session) {
+    // A compile landing on unchanged text has the client re-pull what it
+    // holds.
+    if(session->serving == ServingMode::Escalated) {
+        project.ast.request_compile(std::move(session));
+    } else {
+        on_serving_rows_changed.emit();
+    }
 }
 
 std::vector<protocol::SymbolInformation> MasterServer::workspace_symbol(llvm::StringRef query) {

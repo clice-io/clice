@@ -104,6 +104,7 @@ test("occurrence switch", async ({ session }) => {
 
         const current = await client.currentContext(defUri);
         expect(current.context!.occurrence).toBe(occ);
+        expect(current.automatic).toBe(false);
     }
 });
 

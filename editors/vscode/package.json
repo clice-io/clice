@@ -105,6 +105,10 @@
         "title": "Clice: Show Current Compilation Context"
       },
       {
+        "command": "clice.resetContext",
+        "title": "Clice: Use Automatic Compilation Context"
+      },
+      {
         "command": "clice.queryContexts",
         "title": "Clice: Query Compilation Contexts"
       },
@@ -214,7 +218,7 @@
         {
           "id": "clice.contexts",
           "name": "Compilation Contexts",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "resourceLangId == c || resourceLangId == cpp || resourceLangId == cuda-cpp"
         }
       ]
     },
@@ -238,6 +242,10 @@
         },
         {
           "command": "clice.showCurrentContext",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.resetContext",
           "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
         },
         {

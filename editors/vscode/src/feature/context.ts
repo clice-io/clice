@@ -17,6 +17,13 @@ function isCppEditor(editor: vscode.TextEditor | undefined): editor is vscode.Te
     return language === "c" || language === "cpp" || language === "cuda-cpp";
 }
 
+function statusText(current: ContextItem | null, automatic: boolean): string {
+    if (!current) {
+        return "$(list-tree) auto";
+    }
+    return `$(list-tree) ${current.label}${automatic ? " (auto)" : ""}`;
+}
+
 function sameContext(a: ContextItem, b: ContextItem | null | undefined): boolean {
     if (!b) {
         return false;
@@ -98,7 +105,7 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
     /// undefined when a newer request superseded this one and owns the UI.
     async refresh(
         editor: vscode.TextEditor | undefined,
-    ): Promise<{ current: ContextItem | null } | null | undefined> {
+    ): Promise<CurrentContextResult | null | undefined> {
         this.generation += 1;
         const generation = this.generation;
         if (!isCppEditor(editor)) {
@@ -125,7 +132,7 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
             this.epoch = query.epoch;
             this.current = current.context;
             this.emitter.fire();
-            return { current: this.current };
+            return current;
         } catch {
             // Server not ready; leave the view empty.
             if (generation !== this.generation) {
@@ -180,36 +187,25 @@ class ContextTreeProvider implements vscode.TreeDataProvider<ContextTreeItem> {
     }
 }
 
-/** Re-sync an open document with the server (didClose + didOpen) so the
- * editor re-requests every language feature — tokens, links, hints — and
- * the recompile publishes fresh diagnostics. Used after a context switch:
- * the pull-based server only re-targets the session. The language-id
- * round-trip is the only stable way to force a full re-sync; buffer
- * content and unsaved edits survive it. */
-export async function resyncDocument(uri: string) {
-    const doc = vscode.workspace.textDocuments.find(
-        (candidate) => candidate.uri.toString() === uri,
-    );
-    if (!doc) {
-        return;
+/** After a context switch the server recompiles the unchanged text and
+ * has the client re-pull tokens, hints and folds; the outline alone VS
+ * Code caches by document version and provider set. A provider answering
+ * nothing, registered anew, makes the outline ask again. */
+class OutlineRefresher implements vscode.Disposable {
+    private registration: vscode.Disposable | undefined;
+
+    refresh() {
+        this.registration?.dispose();
+        this.registration = vscode.languages.registerDocumentSymbolProvider(
+            [{ language: "c" }, { language: "cpp" }, { language: "cuda-cpp" }],
+            { provideDocumentSymbols: () => [] },
+        );
     }
-    const language = doc.languageId;
-    resyncing.add(uri);
-    try {
-        await vscode.languages.setTextDocumentLanguage(doc, "plaintext");
-        await vscode.languages.setTextDocumentLanguage(doc, language);
-    } catch {
-        // The document was closed mid-round-trip; nothing left to resync,
-        // and the caller's UI refresh must still run.
-    } finally {
-        resyncing.delete(uri);
+
+    dispose() {
+        this.registration?.dispose();
     }
 }
-
-/** Documents mid-resync: their transient plaintext hop must not be
- * mistaken by detectCxxFragment for a fragment awaiting detection — the
- * detector would race the restore and pin a c/cuda-cpp file to cpp. */
-const resyncing = new Set<string>();
 
 export function registerCompilationContext(client: ClientHandle, ext: vscode.ExtensionContext) {
     const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -217,6 +213,18 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
     status.tooltip = "clice: active compilation context (click to switch)";
 
     const tree = new ContextTreeProvider(client);
+    const outline = new OutlineRefresher();
+    outline.refresh();
+
+    function showStatus(editor: vscode.TextEditor | undefined, current: CurrentContextResult) {
+        // The active editor may have moved on while the request was in
+        // flight; the label must not describe a different document.
+        if (vscode.window.activeTextEditor !== editor) {
+            return;
+        }
+        status.text = statusText(current.context, current.automatic);
+        status.show();
+    }
 
     async function refresh(editor: vscode.TextEditor | undefined) {
         const result = await tree.refresh(editor);
@@ -228,13 +236,13 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
             status.hide();
             return;
         }
-        // The active editor may have moved on while the request was in
-        // flight; the label must not describe a different document.
-        if (vscode.window.activeTextEditor !== editor) {
-            return;
-        }
-        status.text = `$(list-tree) ${result.current?.label ?? "auto"}`;
-        status.show();
+        showStatus(editor, result);
+    }
+
+    /// The context in use changed with the text unchanged.
+    async function contextChanged() {
+        outline.refresh();
+        await refresh(vscode.window.activeTextEditor);
     }
 
     async function applyContext(picked: ContextItem, epoch?: number, targetUri?: string) {
@@ -272,18 +280,22 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
             );
         } else if (!switched.success) {
             vscode.window.showWarningMessage("clice: failed to switch compilation context");
-        } else {
-            // The server is pull-based: the switch only re-targets the
-            // session, and the refresh is the client's job.
-            await resyncDocument(uri);
-            // Editors with automatic feature pulls disabled stop at the
-            // reopen (didOpen alone compiles nothing); one cheap explicit
-            // pull guarantees diagnostics come back regardless.
-            void vscode.commands
-                .executeCommand("vscode.executeDocumentSymbolProvider", vscode.Uri.parse(uri))
-                .then(undefined, () => undefined);
         }
-        await refresh(vscode.window.activeTextEditor);
+        await contextChanged();
+    }
+
+    async function reset(targetUri?: string) {
+        const uri = targetUri ?? vscode.window.activeTextEditor?.document.uri.toString();
+        if (!uri) {
+            return;
+        }
+        try {
+            await client.sendRequest<SwitchContextResult>("clice/resetContext", { uri });
+        } catch {
+            vscode.window.showWarningMessage("clice: server not ready");
+            return;
+        }
+        await contextChanged();
     }
 
     async function select() {
@@ -292,6 +304,16 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
             return;
         }
         const uri = editor.document.uri.toString();
+        let automatic: boolean;
+        try {
+            const current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
+                uri,
+            });
+            automatic = current.automatic;
+        } catch {
+            vscode.window.showWarningMessage("clice: server not ready");
+            return;
+        }
 
         let loaded: ContextItem[] = [];
         let total = Number.POSITIVE_INFINITY;
@@ -331,12 +353,23 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
             type ContextPick = vscode.QuickPickItem & {
                 context?: ContextItem;
                 loadMore?: boolean;
+                reset?: boolean;
             };
-            const items: ContextPick[] = loaded.map((context) => ({
-                label: context.label,
-                description: context.description,
-                context,
-            }));
+            const items: ContextPick[] = [];
+            if (!automatic) {
+                items.push({
+                    label: "$(discard) Automatic",
+                    description: "let clice pick the context",
+                    reset: true,
+                });
+            }
+            items.push(
+                ...loaded.map((context) => ({
+                    label: context.label,
+                    description: context.description,
+                    context,
+                })),
+            );
             if (loaded.length < total) {
                 items.push({
                     label: `$(ellipsis) Load more (${loaded.length}/${total})`,
@@ -349,6 +382,10 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
                 placeHolder: "Compilation context to use for this file",
             });
             if (!chosen) {
+                return;
+            }
+            if (chosen.reset) {
+                await reset(uri);
                 return;
             }
             if (!chosen.context) {
@@ -364,11 +401,13 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
     // some C++ TU (it has compilation contexts), flip its language so the
     // whole toolchain attaches. Which files count is the server's call —
     // the query is the whole check, one cheap lookup per plain-text open.
+    // A file is flipped once: a language change reopens the document, and
+    // one the user set back to plain text stays so.
+    const detected = new Set<string>();
     async function detectCxxFragment(document: vscode.TextDocument) {
         const uri = document.uri.toString();
-        const awaitingDetection = () =>
-            !document.isClosed && document.languageId === "plaintext" && !resyncing.has(uri);
-        if (!awaitingDetection()) {
+        const awaitingDetection = () => !document.isClosed && document.languageId === "plaintext";
+        if (detected.has(uri) || !awaitingDetection()) {
             return;
         }
         try {
@@ -376,10 +415,10 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
                 uri,
             });
             // The document may have moved on while the query was in flight:
-            // closed, re-languaged by the user, or entered a resync whose
-            // plaintext hop must not be pinned to cpp.
+            // closed, or re-languaged by the user.
             if (query.total > 0 && awaitingDetection()) {
                 await vscode.languages.setTextDocumentLanguage(document, "cpp");
+                detected.add(uri);
             }
         } catch {
             // Server not ready — leave the document as-is.
@@ -402,17 +441,12 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         }
         const context = result.context;
         if (!context) {
-            vscode.window.showInformationMessage(
-                "clice: automatic compilation context (no explicit selection)",
-            );
+            vscode.window.showInformationMessage("clice: no compilation context for this file");
             return;
         }
-        const occurrence =
-            context.occurrence !== undefined && context.occurrence > 0
-                ? ` (occurrence #${context.occurrence + 1})`
-                : "";
+        const chosen = result.automatic ? "picked automatically" : "chosen";
         vscode.window.showInformationMessage(
-            `clice: ${context.label}${occurrence} — ${context.description}`,
+            `clice: ${context.label} — ${context.description} (${chosen})`,
         );
     }
 
@@ -421,12 +455,48 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         await vscode.commands.executeCommand("clice.contexts.focus");
     }
 
+    async function updateStatus(editor: vscode.TextEditor | undefined) {
+        if (!isCppEditor(editor)) {
+            return;
+        }
+        const uri = editor.document.uri.toString();
+        let current: CurrentContextResult;
+        try {
+            current = await client.sendRequest<CurrentContextResult>("clice/currentContext", {
+                uri,
+            });
+        } catch {
+            // Server not ready; the next refresh shows the context.
+            return;
+        }
+        if (tree.activeUri() !== uri || current.epoch !== tree.epoch) {
+            await refresh(editor);
+            return;
+        }
+        showStatus(editor, current);
+    }
+
     ext.subscriptions.push(
         status,
+        outline,
+        // A compile of the active file can change what it compiles under —
+        // a trial's verdict, a choice the server dropped — and the listing
+        // with it; a save anywhere can change the listing.
+        vscode.languages.onDidChangeDiagnostics((event) => {
+            const editor = vscode.window.activeTextEditor;
+            if (
+                editor &&
+                event.uris.some((uri) => uri.toString() === editor.document.uri.toString())
+            ) {
+                void updateStatus(editor);
+            }
+        }),
+        vscode.workspace.onDidSaveTextDocument(() => void refresh(vscode.window.activeTextEditor)),
         vscode.workspace.onDidOpenTextDocument((document) => void detectCxxFragment(document)),
         vscode.window.registerTreeDataProvider("clice.contexts", tree),
         vscode.commands.registerCommand("clice.switchContext", select),
         vscode.commands.registerCommand("clice.showCurrentContext", showCurrent),
+        vscode.commands.registerCommand("clice.resetContext", () => reset()),
         vscode.commands.registerCommand("clice.queryContexts", query),
         vscode.commands.registerCommand("clice.applyContext", applyContext),
         vscode.commands.registerCommand("clice.loadMoreContexts", () => tree.loadMore()),

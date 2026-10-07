@@ -8,6 +8,7 @@ module clice;
 
 import :command.argument_parser;
 import :feature.feature;
+import :project.command_resolver;
 import :project.configuration;
 import :project.hosting;
 import :server.ast_family;
@@ -65,6 +66,62 @@ static std::string flags_label(Project& ws, ConfigID config) {
     return desc;
 }
 
+/// The command `host` lends the header `path_id` under its entry `entry`,
+/// edited by the rules matching either file.
+static ConfigID lent_config(Project& ws, Fid path_id, Fid host, const Candidate& entry) {
+    auto host_path = ws.file_table.resolve(host);
+    CanonicalRef edit_paths[] = {host_path, ws.file_table.resolve(path_id)};
+    return ws.build
+        .resolve(path_id, entry.config, CommandSource::IncludeGraph, edit_paths, host_path)
+        .config;
+}
+
+/// The command the file's own entry `entry` compiles it as.
+static ConfigID own_config(Project& ws, Fid path_id, ConfigID entry) {
+    auto path = ws.file_table.resolve(path_id);
+    return ws.build.resolve(path_id, entry, CommandSource::CDBExact, path, path).config;
+}
+
+/// The listing's item for `host` lending the command `applied`: named by
+/// the host, the configuration's distinguishing flags when the host has
+/// several, and the place it enters the header at when it does at more
+/// than one.
+static ext::ContextItem host_item(Project& ws,
+                                  Fid host,
+                                  ConfigID applied,
+                                  bool several_configs,
+                                  std::optional<std::uint32_t> occurrence) {
+    auto shown = ws.file_table.display(host);
+    ext::ContextItem item;
+    item.label = llvm::sys::path::filename(shown).str();
+    if(several_configs) {
+        if(auto desc = flags_label(ws, applied); !desc.empty()) {
+            item.label = std::format("{} [{}]", item.label, desc);
+        }
+        item.command_hash = ws.cdb.entry_hash_hex(applied);
+    }
+    if(occurrence) {
+        item.label = std::format("{} (#{})", item.label, *occurrence + 1);
+        item.occurrence = occurrence;
+    }
+    item.description = shown;
+    item.uri = feature::to_uri(shown);
+    return item;
+}
+
+/// The listing's item for the file's own entry `index`, compiling as
+/// `applied`.
+static ext::ContextItem own_item(Project& ws, Fid path_id, std::size_t index, ConfigID applied) {
+    auto desc = flags_label(ws, applied);
+    ext::ContextItem item;
+    item.label = desc.empty() ? std::format("config #{}", index) : desc;
+    item.description =
+        ws.file_table.display(CanonicalPath(Spelling::absolute(ws.cdb.config(applied).directory)));
+    item.uri = feature::to_uri(ws.file_table.display(path_id));
+    item.command_hash = ws.cdb.entry_hash_hex(applied);
+    return item;
+}
+
 std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     auto& ws = project;
     auto path = ws.file_table.resolve(path_id);
@@ -80,57 +137,27 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     bool dedup_hosts = editor.commands.header_mode(path_id) == HeaderMode::SelfContained;
 
     for(auto host_id: ranked_hosts(ws, path_id)) {
-        auto commands = host_commands(ws, path_id, host_id);
-        auto host_path = ws.file_table.resolve(host_id);
-        auto host_shown = ws.file_table.display(host_id);
-        auto host_uri = feature::to_uri(host_shown);
-
-        // A multi-configuration host contributes one context per
-        // CDB entry: each configuration compiles the header under
-        // different preprocessor state. Hashes are those of the command
-        // the header actually compiles with — the host's, edited by the
-        // rules matching either file.
-        CanonicalRef edit_paths[] = {host_path, path};
+        // A multi-configuration host contributes one context per CDB
+        // entry, and a host entering the header more than once one per
+        // place it does: each compiles the header under different
+        // preprocessor state.
         auto occurrences = count_occurrences(ws, host_id, path_id);
         if(occurrences == 0) {
             continue;
         }
-
+        auto commands = host_commands(ws, path_id, host_id);
         for(auto& entry: commands) {
-            auto applied = ws.build
-                               .resolve(path_id,
-                                        entry.config,
-                                        CommandSource::IncludeGraph,
-                                        edit_paths,
-                                        host_path)
-                               .config;
-            auto hash = ws.cdb.entry_hash_hex(applied);
-            if(dedup_hosts && !seen_configs.insert(hash).second)
+            auto applied = lent_config(ws, path_id, host_id, entry);
+            if(dedup_hosts && !seen_configs.insert(ws.cdb.entry_hash_hex(applied)).second) {
                 continue;
-
-            ext::ContextItem item;
-            item.label = llvm::sys::path::filename(host_shown).str();
-            if(commands.size() > 1) {
-                auto desc = flags_label(ws, applied);
-                if(!desc.empty()) {
-                    item.label = std::format("{} [{}]", item.label, desc);
-                }
-                item.command_hash = hash;
             }
-            item.description = host_shown;
-            item.uri = host_uri;
-
-            // A guard-less header can be included several times by
-            // one host — each occurrence is a distinct context.
-            if(occurrences > 1) {
-                for(std::uint32_t n = 0; n < occurrences; ++n) {
-                    auto occ_item = item;
-                    occ_item.label = std::format("{} (#{})", item.label, n + 1);
-                    occ_item.occurrence = n;
-                    all_items.push_back(std::move(occ_item));
-                }
-            } else {
-                all_items.push_back(std::move(item));
+            if(occurrences == 1) {
+                all_items.push_back(
+                    host_item(ws, host_id, applied, commands.size() > 1, std::nullopt));
+                continue;
+            }
+            for(std::uint32_t n = 0; n < occurrences; n += 1) {
+                all_items.push_back(host_item(ws, host_id, applied, commands.size() > 1, n));
             }
         }
     }
@@ -140,24 +167,11 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     // switchContext would then reject. Offered even when hosts
     // exist, so a host override can be switched back to the file's
     // own command.
-    if(auto entries = ws.build.entries(path_id); !entries.empty()) {
-        auto uri = feature::to_uri(ws.file_table.display(path_id));
-        for(std::size_t i = 0; i < entries.size(); i += 1) {
-            auto applied =
-                ws.build.resolve(path_id, entries[i].config, CommandSource::CDBExact, path, path)
-                    .config;
-            auto hash = ws.cdb.entry_hash_hex(applied);
-            if(!seen_configs.insert(hash).second)
-                continue;
-
-            auto desc = flags_label(ws, applied);
-            ext::ContextItem item;
-            item.label = desc.empty() ? std::format("config #{}", i) : desc;
-            item.description = ws.file_table.display(
-                CanonicalPath(Spelling::absolute(ws.cdb.config(applied).directory)));
-            item.uri = uri;
-            item.command_hash = std::move(hash);
-            all_items.push_back(std::move(item));
+    auto entries = ws.build.entries(path_id);
+    for(std::size_t i = 0; i < entries.size(); i += 1) {
+        auto applied = own_config(ws, path_id, entries[i].config);
+        if(seen_configs.insert(ws.cdb.entry_hash_hex(applied)).second) {
+            all_items.push_back(own_item(ws, path_id, i, applied));
         }
     }
 
@@ -166,131 +180,109 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
 
 ext::CurrentContextResult ContextService::current_context(const Session* session) {
     ext::CurrentContextResult result;
-    const Selection* choice = session ? editor.selection(session->path_id) : nullptr;
-    if(choice && choice->host_path_id.valid()) {
-        auto shown = project.file_table.display(choice->host_path_id);
-        ext::ContextItem item;
-        item.label = llvm::sys::path::filename(shown).str();
-        if(choice->occurrence.value_or(0) > 0) {
-            item.label = std::format("{} (#{})", item.label, *choice->occurrence + 1);
-        }
-        item.description = shown;
-        item.uri = feature::to_uri(shown);
-        item.occurrence = choice->occurrence;
-        if(!choice->command_hash.empty()) {
-            item.command_hash = choice->command_hash;
-        }
-        result.context = std::move(item);
-    } else if(choice && !choice->command_hash.empty()) {
-        auto& ws = project;
-        ext::ContextItem item;
-        item.uri = feature::to_uri(project.file_table.display(session->path_id));
-        item.command_hash = choice->command_hash;
-        item.label = std::format("config {}", choice->command_hash.substr(0, 8));
-        auto path = ws.file_table.resolve(session->path_id);
-        for(auto& entry: ws.build.entries(session->path_id)) {
-            auto applied =
-                ws.build
-                    .resolve(session->path_id, entry.config, CommandSource::CDBExact, path, path)
-                    .config;
-            if(ws.cdb.entry_hash_hex(applied) == choice->command_hash) {
-                auto desc = flags_label(ws, applied);
-                if(!desc.empty()) {
-                    item.label = std::move(desc);
-                }
-                item.description = ws.file_table.display(
-                    CanonicalPath(Spelling::absolute(ws.cdb.config(applied).directory)));
-                break;
+    if(!session) {
+        return result;
+    }
+    auto& ws = project;
+    auto path_id = session->path_id;
+    auto path = ws.file_table.resolve(path_id);
+    const Selection* choice = editor.selection(path_id);
+    result.automatic = choice == nullptr;
+
+    auto lent =
+        [&](Fid host, llvm::StringRef hash, llvm::StringRef base, std::uint32_t occurrence) {
+            auto commands = host_commands(ws, path_id, host);
+            if(commands.empty()) {
+                return;
             }
+            auto host_path = ws.file_table.resolve(host);
+            CanonicalRef edit_paths[] = {host_path, path};
+            auto entry =
+                pick_pinned_config(ws, path_id, commands, edit_paths, host_path, hash, base);
+            auto several = count_occurrences(ws, host, path_id) > 1;
+            result.context = host_item(ws,
+                                       host,
+                                       lent_config(ws, path_id, host, entry),
+                                       commands.size() > 1,
+                                       several ? std::optional(occurrence) : std::nullopt);
+        };
+    auto own = [&](llvm::StringRef hash, llvm::StringRef base) {
+        auto commands = ws.build.commands(path_id);
+        if(commands.empty()) {
+            return;
         }
-        result.context = std::move(item);
+        auto entry = pick_pinned_config(ws, path_id, commands, path, path, hash, base);
+        auto index = llvm::find_if(
+                         commands,
+                         [&](const Candidate& command) { return command.config == entry.config; }) -
+                     commands.begin();
+        result.context = own_item(ws, path_id, index, own_config(ws, path_id, entry.config));
+    };
+
+    // The choice, else what resolve_command picks: the file's own command
+    // — listed only when it is an entry, not a rule's default — then the
+    // host of its resolved context or the default one.
+    if(choice && choice->host_path_id.valid()) {
+        lent(choice->host_path_id,
+             choice->command_hash,
+             choice->base_hash,
+             choice->occurrence.value_or(0));
+    } else if(choice) {
+        own(choice->command_hash, choice->base_hash);
+    } else if(ws.build.unit(path_id)) {
+        if(!ws.build.entries(path_id).empty()) {
+            own({}, {});
+        }
+    } else if(const auto* context = editor.header_context(path_id)) {
+        lent(context->host_path_id, {}, {}, context->occurrence);
+    } else if(auto host = default_host(ws, path_id)) {
+        lent(host->file, {}, {}, 0);
     }
     return result;
 }
 
 kota::task<ext::SwitchContextResult>
-    ContextService::switch_context(Fid path_id,
-                                   Session* session,
+    ContextService::switch_context(Session& session,
                                    Fid context_path_id,
                                    const ext::SwitchContextParams& params) {
     auto& ws = project;
-    auto path = ws.file_table.resolve(path_id);
-
+    auto path_id = session.path_id;
     ext::SwitchContextResult result;
 
-    // A choice made against an outdated listing may reference
-    // contexts that no longer exist — make the client re-query.
-    if(params.epoch.has_value() && *params.epoch != ws.context_epoch) {
-        result.stale = true;
-        co_return result;
-    }
-
-    if(!session) {
-        co_return result;
-    }
-
-    // Validate that `hash` names a real candidate of `entry_file` under the
-    // edits of `paths` (the host and this file for a host pin) and resolve
-    // the matched candidate's base entry hash — the identity that stays
-    // unique when rules collapse two applied hashes onto one value.
-    auto find_command = [&](Fid entry_file,
-                            llvm::ArrayRef<CanonicalRef> paths,
-                            llvm::StringRef hash) -> std::optional<std::string> {
-        auto entry_path = ws.file_table.resolve(entry_file);
-        for(auto& entry: ws.build.commands(entry_file)) {
-            auto applied =
-                ws.build.resolve(entry_file, entry.config, entry.source, paths, entry_path).config;
-            if(ws.cdb.entry_hash_hex(applied) == hash) {
+    // The base entry hash of the one of `commands` listed as `listed(entry)`
+    // under the picked hash: the identity that stays unique when rules
+    // collapse two applied hashes onto one value. The caller offered only
+    // listed items.
+    auto base_of = [&](llvm::ArrayRef<Candidate> commands, auto listed) -> std::string {
+        for(auto& entry: commands) {
+            if(ws.cdb.entry_hash_hex(listed(entry)) == *params.command_hash) {
                 return ws.cdb.entry_hash_hex(entry.config);
             }
         }
-        return std::nullopt;
+        std::unreachable();
     };
 
+    // Of the listed items only the file's own entries name the file itself,
+    // each with its command hash.
     Selection saved;
-    if(context_path_id == path_id && params.command_hash.has_value()) {
-        // Pin one of the file's own CDB entries.
-        auto base = find_command(path_id, path, *params.command_hash);
-        if(!base) {
-            co_return result;
-        }
+    if(context_path_id == path_id) {
         saved.command_hash = *params.command_hash;
-        saved.base_hash = std::move(*base);
+        saved.base_hash = base_of(ws.build.commands(path_id), [&](const Candidate& entry) {
+            return own_config(ws, path_id, entry.config);
+        });
     } else {
-        // Pin a host source for a header: it must have a compile
-        // command, actually (transitively) include this header, and —
-        // for multi-configuration hosts — own the pinned entry.
-        if(ws.build.commands(context_path_id).empty()) {
-            co_return result;
-        }
-        auto occurrences = count_occurrences(ws, context_path_id, path_id);
-        if(occurrences == 0) {
-            co_return result;
-        }
-        std::optional<std::string> base;
-        if(params.command_hash.has_value()) {
-            CanonicalRef edit_paths[] = {ws.file_table.resolve(context_path_id), path};
-            base = find_command(context_path_id, edit_paths, *params.command_hash);
-            if(!base) {
-                co_return result;
-            }
-        }
-        if(params.occurrence.has_value() && *params.occurrence >= occurrences) {
-            co_return result;
-        }
         saved.host_path_id = context_path_id;
         saved.occurrence = params.occurrence;
-        saved.command_hash = params.command_hash.value_or("");
-        saved.base_hash = base.value_or("");
+        if(params.command_hash.has_value()) {
+            saved.command_hash = *params.command_hash;
+            saved.base_hash =
+                base_of(host_commands(ws, path_id, context_path_id), [&](const Candidate& entry) {
+                    return lent_config(ws, path_id, context_path_id, entry);
+                });
+        }
     }
 
-    editor.drop_header_context(path_id);
-    // The new context is a different compilation identity: supersede any
-    // in-flight compile and drop the state earned under the old one. It
-    // also needs its own self-containment trial — a different host can
-    // change the macro environment.
-    ast.switch_identity(*session);
-    editor.commands.forget_self_contained(path_id);
+    leave_context(session);
 
     // The table entry is the active choice; persist it across sessions:
     // the ticket resolves once a write batch whose snapshot covers this
@@ -318,6 +310,16 @@ kota::task<ext::SwitchContextResult>
 
     result.success = true;
     co_return result;
+}
+
+void ContextService::leave_context(Session& session) {
+    editor.drop_header_context(session.path_id);
+    // The new context is a different compilation identity: supersede any
+    // in-flight compile and drop the state earned under the old one. It
+    // also needs its own self-containment trial — a different host can
+    // change the macro environment.
+    ast.switch_identity(session);
+    editor.commands.forget_self_contained(session.path_id);
 }
 
 ext::ListConfigurationsResult ContextService::list_configurations() const {

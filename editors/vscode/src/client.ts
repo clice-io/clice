@@ -34,7 +34,13 @@ export class ClientHandle {
         return this.client.isRunning();
     }
 
+    /// Rejects while the client is not running: a LanguageClient that was
+    /// never started starts itself on its first request, past the
+    /// settings validation startServer runs first.
     sendRequest<R>(method: string, param: unknown): Promise<R> {
+        if (!this.client.isRunning()) {
+            return Promise.reject(new Error(`clice is not running (${method})`));
+        }
         return this.client.sendRequest<R>(method, param);
     }
 

@@ -94,7 +94,9 @@ public:
 
     /// Effective self-containment mode for a header. X-macro style
     /// extensions are non-self-contained by construction; otherwise use
-    /// the persisted verdict. Only NeedsContext is ever persisted — a
+    /// the persisted verdict. Entering or leaving SelfContained moves
+    /// Project::context_epoch: the header's context listing merges hosts
+    /// only then (ContextService::contexts). Only NeedsContext is ever persisted — a
     /// "self-contained" impression is session-local and re-evaluated when
     /// compile inputs change, so it can never go stale.
     HeaderMode header_mode(Fid path_id) const;

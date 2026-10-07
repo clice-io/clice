@@ -160,6 +160,15 @@ public:
                                                         Fid context_path_id,
                                                         ext::SwitchContextParams params);
 
+    /// clice/currentContext: the context the document of `session`
+    /// compiles under in `project`, the one serving it.
+    ext::CurrentContextResult current_context(ProjectServer& project, const Session* session);
+
+    /// clice/resetContext: drop the file's choice in every project and
+    /// serve it under the automatic context — moving it back to the project
+    /// it routes to when the choice had moved it.
+    ext::SwitchContextResult reset_context(Fid path_id);
+
     /// workspace/symbol over every project: each project's ranked matches,
     /// interleaved rank by rank, a symbol two projects index listed once.
     std::vector<protocol::SymbolInformation> workspace_symbol(llvm::StringRef query);
@@ -296,6 +305,11 @@ private:
     /// Move the open documents of `from` routing now sends elsewhere,
     /// buffer and version intact.
     void rehome_sessions(ProjectServer& from);
+
+    /// The client still shows what the document's old context gave it,
+    /// and no request of its own replaces it: compile it again, or have an
+    /// index-served one's features pulled again.
+    void serve_again(ProjectServer& project, std::shared_ptr<Session> session);
 
     /// The project each open document was routed to.
     llvm::DenseMap<Fid, ProjectServer*> owners;
