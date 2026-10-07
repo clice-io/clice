@@ -163,23 +163,17 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path
     if(!vfs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
-    // The editor compiles such a header under a synthesized preamble, a
-    // cache artifact a read-only reader cannot produce; the host's bare
-    // command would be a different compile.
-    auto needs_context = [&](Fid file) {
-        auto* choice = ctx.contexts.selection(file);
-        return ctx.contexts.commands.header_mode(file) == HeaderMode::NeedsContext ||
-               (choice && choice->host_path_id.valid() && choice->occurrence.has_value());
-    };
-    auto file = ctx.project.file_table.intern(path);
-    if(needs_context(file)) {
+    auto& files = ctx.project.file_table;
+    auto file = files.intern(path);
+    CompileCommandResult result{.file = files.display(file)};
+    auto resolution = ctx.contexts.resolve_command(file, result.directory, result.arguments);
+    // The command names in-memory files the synthesized context serves to
+    // an editor compile; the host's bare command would be a different one.
+    if(resolution.synthesized) {
         return std::unexpected(std::format(
             "{} compiles only under a synthesized header context, which needs an editor session",
             path));
     }
-    auto& files = ctx.project.file_table;
-    CompileCommandResult result{.file = files.display(file)};
-    auto resolution = ctx.contexts.resolve_command(file, result.directory, result.arguments);
     result.directory = files.display(CanonicalPath(Spelling::absolute(result.directory)));
     auto& ref = resolution.ref;
     if(auto resolved = ctx.project.cdb.toolchain().resolve(ref.config, ref.input); !resolved) {

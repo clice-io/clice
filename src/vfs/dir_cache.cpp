@@ -28,21 +28,36 @@ llvm::SmallString<64> fold(llvm::StringRef name) {
     return folded;
 }
 
+/// Whether the entry `name` opens in `listing` is a directory; nullopt
+/// when it opens none.
+std::optional<bool> entry_is_directory(const Listing& listing, llvm::StringRef name) {
+    if(auto it = listing.entries.find(name); it != listing.entries.end()) {
+        return it->second;
+    }
+    if constexpr(!case_insensitive) {
+        return std::nullopt;
+    }
+    if(llvm::isASCII(name) && !listing.folded.contains(fold(name))) {
+        return std::nullopt;
+    }
+    llvm::SmallString<256> path(listing.dir);
+    llvm::sys::path::append(path, name);
+    auto found = status(path);
+    if(!found) {
+        return std::nullopt;
+    }
+    return found->type == llvm::sys::fs::file_type::directory_file;
+}
+
 }  // namespace
 
 bool Listing::contains(llvm::StringRef name) const {
-    if(entries.contains(name)) {
-        return true;
-    }
-    if constexpr(!case_insensitive) {
-        return false;
-    }
-    if(llvm::isASCII(name) && !folded.contains(fold(name))) {
-        return false;
-    }
-    llvm::SmallString<256> path(dir);
-    llvm::sys::path::append(path, name);
-    return vfs::exists(path);
+    return entry_is_directory(*this, name).has_value();
+}
+
+bool Listing::contains_file(llvm::StringRef name) const {
+    auto directory = entry_is_directory(*this, name);
+    return directory && !*directory;
 }
 
 std::shared_ptr<const Listing> list(llvm::StringRef dir) {

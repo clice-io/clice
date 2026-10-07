@@ -276,6 +276,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
                 for(const auto& site: query.sites(located.symbol.hash, located.site.file, kind)) {
                     if(site.file.valid() && site.file != path_id && is_header_path(site.path) &&
+                       !is_context_header_path(site.path) &&
                        seen.insert(project.file_table.resolve(site.file)).second) {
                         headers.push_back(project.file_table.resolve(site.file));
                     }

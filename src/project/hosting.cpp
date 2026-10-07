@@ -14,15 +14,9 @@ namespace {
 
 namespace types = clang::driver::types;
 
-/// Whether the suffix names a header — or nothing clang knows, which a
-/// file under a header search directory usually is (`.inc`, `.ipp`).
-bool header_suffix(llvm::StringRef path) {
-    auto type = suffix_type(path);
-    return type == types::TY_INVALID || types::onlyPrecompileType(type);
-}
-
 /// The language a command compiles its unit as — a `-x` in the entry or
-/// a rule's append included, else the unit's suffix.
+/// a rule's append included, else the unit's suffix as its driver reads
+/// it (`g++` takes a `.c` as C++).
 types::ID language_of(const CommandRef& command) {
     return types::lookupTypeForTypeSpecifier(command.input.value);
 }
@@ -32,13 +26,14 @@ CommandRef effective(Project& project, Fid unit, const Candidate& command) {
     return project.build.resolve(unit, command.config, command.source, path, path);
 }
 
-/// Whether the file at `path` can be part of a translation unit compiled
-/// as `language`. A source only in its own: rendering the borrowed
-/// command for it would otherwise force `-x`, and a `.cpp` compiled as
-/// CUDA or a `.m` as C is not the file. A header has latitude: a `.h`
-/// fits any, a C++ header every language built on C++ (Objective-C++,
-/// CUDA, HIP), a `.cuh` CUDA.
-bool compatible(llvm::StringRef path, types::ID language) {
+/// Whether the file at `path` can be part of the translation unit `unit`
+/// compiled as `language`. A source only in its own, or in the one the
+/// unit's command gives the unit's own suffix (`g++` takes a `.c` as
+/// C++): rendering the borrowed command for it would otherwise force
+/// `-x`, and a `.cpp` compiled as CUDA or a `.m` as C is not the file. A
+/// header has latitude: a `.h` fits any, a C++ header every language
+/// built on C++ (Objective-C++, CUDA, HIP), a `.cuh` CUDA.
+bool compatible(llvm::StringRef path, llvm::StringRef unit, types::ID language) {
     auto file = suffix_type(path);
     if(file == types::TY_INVALID) {
         return path::extension(path) != ".cuh" || types::isCuda(language) || types::isHIP(language);
@@ -49,16 +44,27 @@ bool compatible(llvm::StringRef path, types::ID language) {
     if(types::onlyPrecompileType(file) && types::isCXX(file)) {
         return types::isCXX(language);
     }
-    return file == language;
+    return file == language ||
+           (file == suffix_type(unit) && language == types::lookupCXXTypeForCType(file));
 }
 
-std::size_t shared_prefix(llvm::StringRef a, llvm::StringRef b) {
-    std::size_t common = 0;
-    auto n = std::min(a.size(), b.size());
-    while(common < n && a[common] == b[common]) {
-        common += 1;
+/// How far `other` sits from `path` in the directory tree: how much of
+/// `path` lies past the directories the two share, then how many
+/// directories deeper `other` goes below them.
+std::pair<std::size_t, std::size_t> tree_distance(llvm::StringRef path, llvm::StringRef other) {
+    std::size_t shared = 0;
+    auto n = std::min(path.size(), other.size());
+    while(shared < n && path[shared] == other[shared]) {
+        shared += 1;
     }
-    return common;
+    auto separator = [](char c) {
+        return path::is_separator(c);
+    };
+    while(shared > 0 && !separator(path[shared - 1])) {
+        shared -= 1;
+    }
+    return {path.size() - shared,
+            static_cast<std::size_t>(llvm::count_if(other.substr(shared), separator))};
 }
 
 const LenderIndex& lender_index(Project& project) {
@@ -99,12 +105,12 @@ const LenderIndex& lender_index(Project& project) {
 std::optional<Lender> command_lender(Project& project, Fid file) {
     auto& files = project.file_table;
     auto path = files.resolve(file);
-    bool header = header_suffix(path);
+    bool header = is_header_path(path);
     auto dir = path::parent_path(path);
     auto stem = path::stem(path);
     auto& index = lender_index(project);
     auto fits = [&](const LenderIndex::Command& command) {
-        return compatible(path, command.language);
+        return compatible(path, files.resolve(command.lender.unit), command.language);
     };
 
     // Every unit with its first command of the family, in path order.
@@ -151,17 +157,18 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
         }
     }
 
-    // The closest unit by path: the longest shared prefix, then by name.
+    // The closest unit in the directory tree, then by name.
     return *std::ranges::min_element(units, {}, [&](const Lender& lender) {
-        return std::tuple(path.size() - shared_prefix(unit_path(lender), path), unit_path(lender));
+        return std::tuple(tree_distance(path, unit_path(lender)), unit_path(lender));
     });
 }
 
 llvm::SmallVector<Candidate, 2> host_commands(Project& project, Fid header, Fid host) {
     auto header_path = project.file_table.resolve(header);
+    auto host_path = project.file_table.resolve(host);
     llvm::SmallVector<Candidate, 2> fitting;
     for(auto& command: project.build.commands(host)) {
-        if(compatible(header_path, language_of(effective(project, host, command)))) {
+        if(compatible(header_path, host_path, language_of(effective(project, host, command)))) {
             fitting.push_back(command);
         }
     }
@@ -182,7 +189,8 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
         }
     }
 
-    auto score = [&](Fid host) -> std::tuple<std::size_t, int, int, std::size_t> {
+    auto score =
+        [&](Fid host) -> std::tuple<std::size_t, int, int, std::pair<std::size_t, std::size_t>> {
         auto host_path = files.resolve(host);
         // A host compiled from a database the header's rules name comes
         // first; one living on a default command comes after every
@@ -193,12 +201,7 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
         }
         int stem_match = llvm::sys::path::stem(host_path) == header_stem ? 0 : 1;
         int same_dir = llvm::sys::path::parent_path(host_path) == header_dir ? 0 : 1;
-        // Longer shared prefix means "closer" in the tree; measured against
-        // the header's own length so every candidate shares one baseline.
-        return {source_rank,
-                stem_match,
-                same_dir,
-                header_path.size() - shared_prefix(host_path, header_path)};
+        return {source_rank, stem_match, same_dir, tree_distance(header_path, host_path)};
     };
     std::ranges::sort(hosts, [&](Fid a, Fid b) {
         auto sa = score(a), sb = score(b);

@@ -179,6 +179,11 @@ public:
     /// host's to index, not this unit's.
     bool from_context(clang::FileID fid);
 
+    /// Whether the declaration opens before the main file and closes past
+    /// its start: the class, enumeration, namespace or function a fragment
+    /// compiled in its includer's context sits inside.
+    bool encloses_main_file(const clang::Decl* decl);
+
     /// Get the include location of the file id, i.e. where the file
     /// was introduced by `#include`.
     auto include_location(clang::FileID fid) -> clang::SourceLocation;

@@ -6,6 +6,7 @@ module clice;
 
 import :command.search_config;
 import :index.rename;
+import :project.command_resolver;
 import :project.hosting;
 import :sched.index.pump;
 import :semantic.symbol;
@@ -145,31 +146,44 @@ std::optional<index::IndexQuery::Cursor>
     return query.symbol_at(path_id, position.line, position.character);
 }
 
-/// The language selectors of a file's own command — its first entry, or
-/// the default command claiming it: what the last -x forces, if any (the
-/// driver override beats every suffix heuristic), and the last -std
-/// value. Rules applied, like the resolve path's effective command.
+/// The command a file compiles with — among a multi-configuration
+/// file's or host's entries the pinned one, else the first, or the default
+/// command claiming it — rules applied, like the resolve path's effective
+/// command: whether it compiles the file as C, whether an -x forces that
+/// (the driver override beats every suffix heuristic), and the last -std
+/// value.
 struct CommandLang {
     CommandSource source;
-    std::optional<bool> forces_c;
+    bool is_c = false;
+    bool language_forced = false;
     std::string standard;
 };
 
-static std::optional<CommandLang> command_lang(Project& project, Fid file) {
+static std::optional<CommandLang> command_lang(Project& project,
+                                               Fid file,
+                                               llvm::ArrayRef<CanonicalRef> paths,
+                                               const Selection* pin) {
     auto path = project.file_table.resolve(file);
     auto commands = project.build.commands(file);
     if(commands.empty()) {
         return std::nullopt;
     }
-    auto& command = commands.front();
-    auto applied = project.build.resolve(file, command.config, command.source, path, path).config;
+    auto command = pick_pinned_config(project,
+                                      file,
+                                      commands,
+                                      paths,
+                                      path,
+                                      pin ? llvm::StringRef(pin->command_hash) : "",
+                                      pin ? llvm::StringRef(pin->base_hash) : "");
+    auto ref = project.build.resolve(file, command.config, command.source, paths, path);
 
-    CommandLang result{.source = command.source};
-    auto language = project.cdb.forced_language(applied);
-    if(!language.empty()) {
-        result.forces_c = language == "c" || language == "c-header";
-    }
-    for(auto& arg: project.cdb.config(applied).args) {
+    llvm::StringRef language = ref.input.value;
+    CommandLang result{
+        .source = command.source,
+        .is_c = language == "c" || language == "c-header",
+        .language_forced = !project.cdb.forced_language(ref.config).empty(),
+    };
+    for(auto& arg: project.cdb.config(ref.config).args) {
         if(arg.opt_id == option::OPT_std_EQ && arg.values.size() == 1) {
             result.standard = arg.values[0];
         }
@@ -194,31 +208,28 @@ Fid Features::host_of(Fid path_id) const {
 
 const clang::LangOptions& Features::index_lang_options(const Session& session) {
     auto path = project.file_table.resolve(session.path_id);
-    auto own = command_lang(project, session.path_id);
+    const auto* pin = contexts.selection(session.path_id);
+    bool host_pin = pin && pin->host_path_id.valid();
+    auto own = command_lang(project, session.path_id, path, host_pin ? nullptr : pin);
     // A file's entry is its command; a default command yields to the host
     // a header borrows from, in resolve_command's order.
-    if(own && own->forces_c && own->source == CommandSource::CDBExact) {
-        return feature::index_lang_options("", *own->forces_c, own->standard);
+    if(own && own->language_forced && own->source == CommandSource::CDBExact) {
+        return feature::index_lang_options("", own->is_c, own->standard);
     }
 
     // A header's active context (the user's persisted choice, else the
     // resolved host) names the view being read; its command beats the
     // contributor union the way it does for the AST after an escalation.
-    Fid host = host_of(session.path_id);
-    if(host.valid()) {
-        llvm::StringRef host_path = project.file_table.resolve(host);
-        auto host_lang = command_lang(project, host);
-        if(host_lang && host_lang->forces_c) {
-            return feature::index_lang_options("", *host_lang->forces_c, host_lang->standard);
+    if(Fid host = host_of(session.path_id); host.valid()) {
+        CanonicalRef edit_paths[] = {project.file_table.resolve(host), path};
+        auto host_lang = command_lang(project, host, edit_paths, host_pin ? pin : nullptr);
+        if(host_lang) {
+            return feature::index_lang_options("", host_lang->is_c, host_lang->standard);
         }
-        return feature::index_lang_options(path,
-                                           host_path.ends_with(".c"),
-                                           host_lang ? llvm::StringRef(host_lang->standard)
-                                                     : llvm::StringRef());
     }
 
-    if(own && own->forces_c) {
-        return feature::index_lang_options("", *own->forces_c, own->standard);
+    if(own && own->language_forced) {
+        return feature::index_lang_options("", own->is_c, own->standard);
     }
 
     auto& contributions = project.project_index.contributions;

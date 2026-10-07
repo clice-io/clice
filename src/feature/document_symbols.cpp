@@ -180,7 +180,8 @@ private:
 
         DocumentSymbol* symbol = add_symbol(*named, name_range, named->getSourceRange());
         if(!symbol) {
-            return false;
+            // A fragment's members outline at its top level.
+            return unit.encloses_main_file(decl);
         }
 
         frames.push_back({subtree_end, cursor});

@@ -110,12 +110,15 @@ constexpr inline ConfigID invalid_config = ConfigID(~0u);
 /// unknown suffixes alike.
 clang::driver::types::ID suffix_type(llvm::StringRef path);
 
-/// Whether clang types the file as a C or C++ header by its extension.
+/// Whether the extension names a header — or nothing clang knows, which a
+/// file only ever included usually is: a `.inc` or `.cuh`, the standard
+/// library's extensionless headers.
 bool is_header_path(llvm::StringRef path);
 
 /// Whether the extension marks a fragment only ever included into a
-/// translation unit — a `.def` list, a `.inc`, `.inl`, `.tpp` or `.ipp`
-/// body — which compiles only under its includer's context.
+/// translation unit — a `.def` list, a `.inc`, `.inl`, `.tpp`, `.ipp`,
+/// `.tcc` or `.txx` body — which compiles only under its includer's
+/// context.
 bool is_context_header_path(llvm::StringRef path);
 
 /// The language dimension of a command for one input file: the clang

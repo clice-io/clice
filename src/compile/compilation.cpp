@@ -139,8 +139,7 @@ std::unique_ptr<clang::CompilerInvocation>
     // A header compiled under a source's command (`-x c++` buys a parse
     // instead of a precompiled-header job) is still a header: no "#pragma
     // once in main file", no unused warnings for its static functions.
-    if(auto file = front_opts.Inputs[0].getFile();
-       is_header_path(file) || is_context_header_path(file)) {
+    if(is_header_path(front_opts.Inputs[0].getFile())) {
         lang_opts.IsHeaderFile = true;
     }
 
@@ -182,7 +181,8 @@ public:
         clang::MultiplexConsumer(std::move(consumer)), unit(unit) {}
 
     void collect_decl(clang::Decl* decl) {
-        if(unit.file_id(unit.expansion_location(decl->getLocation())) != unit.main_file()) {
+        if(unit.file_id(unit.expansion_location(decl->getLocation())) != unit.main_file() &&
+           !unit.encloses_main_file(decl)) {
             return;
         }
 

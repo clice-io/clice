@@ -515,6 +515,22 @@ test.skipIf(process.platform !== "linux")(
     },
 );
 
+test("refuses synthesized contexts", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("list.def", "X(alpha)\n");
+    ws.write("lone.def", "int lone;\n");
+    ws.write("main.cpp", '#define X(name) int name;\n#include "list.def"\nint main() {}\n');
+    ws.writeCDB(["main.cpp"]);
+    ws.pinCacheDir();
+    expect((await runIndex(ws)).status).toBe(0);
+
+    const included = await query(ws, "compileCommand", "--path", "list.def");
+    expect(included.status).toBe(1);
+    expect(included.error).toContain("synthesized header context");
+    const lone = await query(ws, "compileCommand", "--path", "lone.def");
+    expect(lone.status, lone.error).toBe(0);
+});
+
 test("rejects bad questions", async ({ session }) => {
     const ws = writeProject(session);
     expect((await runIndex(ws)).status).toBe(0);

@@ -90,13 +90,13 @@ llvm::SmallVector<FileEvent> take_disk_events(FileTable& files);
 /// services (sessions, editor context, background indexer).
 ///
 /// Effect algebra: the sets are not disjoint, and stronger effects subsume
-/// weaker ones on the same file — mark_ast_dirty implies the trial reset
-/// that reset_trial asks for, and one event may push a file into several sets
-/// (DiskChanged emits both reset_trial and reset_header_mode for the
-/// changed file). Execution is idempotent per effect, so the overlap is harmless;
-/// what matters is that each set can also occur ALONE (reset_trial without
-/// mark_ast_dirty re-runs the trial on a clean AST), which is why they are
-/// separate vocabulary rather than severity levels of one list.
+/// weaker ones on the same file — mark_ast_dirty implies forgetting the
+/// self-containment impression, which reset_header_mode extends to a
+/// persisted verdict — and one event may push a file into several sets.
+/// Execution is idempotent per effect, so the overlap is harmless; what
+/// matters is that each set can also occur ALONE (reset_header_mode for a
+/// closed header has no AST to dirty), which is why they are separate
+/// vocabulary rather than severity levels of one list.
 struct DirtySet {
     /// Compile inputs changed: ast_dirty + trial_done=false + forget the
     /// cached self-containment verdict.
@@ -105,11 +105,9 @@ struct DirtySet {
     /// recompile only, without re-running the header trial or touching the
     /// self-containment verdict.
     llvm::SmallVector<Fid> mark_lost;
-    /// Re-run the header trial only (trial_done=false); the AST itself is
-    /// not stale.
-    llvm::SmallVector<Fid> reset_trial;
-    /// The header's content (or its preamble chain) changed: drop its
-    /// persisted self-containment verdict so the next compile re-earns it.
+    /// A header's content other than its open buffer, or its include chain,
+    /// changed: drop its self-containment verdict so the next compile
+    /// re-earns it.
     /// Executed by the command resolver, which owns the verdicts.
     llvm::SmallVector<Fid> reset_header_mode;
     /// Closed files whose own content changed: their index rows describe
@@ -199,10 +197,10 @@ public:
     bool reschedule_indexing = false;
 
     bool empty() const {
-        return mark_ast_dirty.empty() && mark_lost.empty() && reset_trial.empty() &&
-               reset_header_mode.empty() && reindex_content_changed.empty() &&
-               reindex_deps_only.empty() && clear_reindex.empty() && drop_index.empty() &&
-               drop_context.empty() && !recheck_contexts && !reschedule_indexing;
+        return mark_ast_dirty.empty() && mark_lost.empty() && reset_header_mode.empty() &&
+               reindex_content_changed.empty() && reindex_deps_only.empty() &&
+               clear_reindex.empty() && drop_index.empty() && drop_context.empty() &&
+               !recheck_contexts && !reschedule_indexing;
     }
 };
 

@@ -198,6 +198,7 @@ ZEST_CASE(DiskChangeSparesSession) {
     auto saved = project.file_table.intern(Spelling::absolute(tmp.path("a.h")));
     auto session = store.open(saved);
     store.apply_open(*session, "int x;", 1);
+    project.file_table.disk.read(saved);
 
     CommandResolver commands(project);
     ContextsBlob blob;
@@ -207,15 +208,37 @@ ZEST_CASE(DiskChangeSparesSession) {
     auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
     // The open file's own compile reads its buffer, never its disk: it is
-    // not stale — only its self-containment verdict needs re-evaluation —
+    // not stale, nor is the self-containment verdict scored on that buffer,
     // while its disk rows are.
-    ZASSERT(dirty.reset_trial == llvm::SmallVector<Fid>{saved});
-    ZASSERT(dirty.reset_header_mode == llvm::SmallVector<Fid>{saved});
+    ZASSERT(dirty.reset_header_mode.empty());
     ZASSERT(dirty.mark_ast_dirty.empty());
     ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
     ZASSERT(dirty.drop_context.empty());
     ZASSERT(dirty.recheck_contexts);
     ZASSERT(dirty.reschedule_indexing);
+}
+
+ZEST_CASE(DiskChangeBesideBuffer) {
+    TempDir tmp;
+    tmp.touch("a.h", "int y;");
+
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto changed = project.file_table.intern(Spelling::absolute(tmp.path("a.h")));
+    auto session = store.open(changed);
+    store.apply_open(*session, "int x;", 1);
+    project.file_table.disk.read(changed);
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(changed));
+
+    // Bytes from elsewhere replace the buffer the verdict was scored on.
+    ZASSERT(dirty.reset_header_mode == llvm::SmallVector<Fid>{changed});
 }
 
 ZEST_CASE(CascadeSplitsOpenClosed) {
@@ -488,9 +511,9 @@ ZEST_CASE(CrashMarksLostDirty) {
     llvm::SmallVector<Fid> expected{first, second};
     llvm::sort(expected);
     ZASSERT(dirty.mark_lost == expected);
-    // A crash loses build products, not compile inputs: no trial reset.
+    // A crash loses build products, not compile inputs: no verdict reset.
     ZASSERT(dirty.mark_ast_dirty.empty());
-    ZASSERT(dirty.reset_trial.empty());
+    ZASSERT(dirty.reset_header_mode.empty());
 }
 
 ZEST_CASE(EvictionMarksLost) {
@@ -510,7 +533,7 @@ ZEST_CASE(EvictionMarksLost) {
     // Same loss as a crash, scoped to one document.
     ZASSERT(dirty.mark_lost == llvm::SmallVector<Fid>{file});
     ZASSERT(dirty.mark_ast_dirty.empty());
-    ZASSERT(dirty.reset_trial.empty());
+    ZASSERT(dirty.reset_header_mode.empty());
 }
 
 ZEST_CASE(BatchChangesDeduplicate) {
@@ -528,7 +551,7 @@ ZEST_CASE(BatchChangesDeduplicate) {
     FileEvent events[] = {FileEvent::disk_changed(saved), FileEvent::disk_changed(saved)};
     auto dirty = invalidator.apply(events);
 
-    ZASSERT(dirty.reset_trial == llvm::SmallVector<Fid>{saved});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
 }
 
 ZEST_CASE(DiskChangeClosedCascades) {
@@ -556,7 +579,7 @@ ZEST_CASE(DiskChangeClosedCascades) {
     ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
     ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
     ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
-    ZASSERT(dirty.reset_trial == llvm::SmallVector<Fid>{header});
+    ZASSERT(dirty.reset_header_mode == llvm::SmallVector<Fid>{header});
     ZASSERT(dirty.recheck_contexts);
     ZASSERT(dirty.reschedule_indexing);
 }

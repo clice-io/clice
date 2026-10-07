@@ -141,10 +141,13 @@ void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
 }
 
 void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
-    // The file's own self-containment may have changed; re-evaluate on its
-    // next compile.
-    dirty.reset_header_mode.push_back(path_id);
-    dirty.reset_trial.push_back(path_id);
+    // A header's verdict was scored on the bytes it compiled: the disk's
+    // while closed, its buffer while open — which a save of that buffer
+    // leaves as they were, and a change from elsewhere does not.
+    auto session = store.find(path_id);
+    if(!session || project.file_table.disk.seen_hash(path_id) != session->hash) {
+        dirty.reset_header_mode.push_back(path_id);
+    }
 
     // Taken before the rescan below, which rewrites only the file's own
     // outgoing edges, never the includers this walks. A file the scan did
@@ -407,7 +410,6 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
 
     dedup(dirty.mark_ast_dirty);
     dedup(dirty.mark_lost);
-    dedup(dirty.reset_trial);
     dedup(dirty.reset_header_mode);
     dedup(dirty.reindex_content_changed);
     dedup(dirty.reindex_deps_only);

@@ -521,6 +521,26 @@ int t;
 )");
 }
 
+ZEST_CASE(SnapshotOnlyWhenNamed) {
+    // A header its chain includes once embeds no copy of itself: saving
+    // it leaves the context alone.
+    llvm::StringMap<std::string> mapping = {
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", R"(#include "target.h"
+)"};
+
+    auto result = synthesize_context({host},
+                                     "/proj/target.h",
+                                     map_resolver(mapping),
+                                     std::nullopt,
+                                     llvm::StringRef("int t;\n"));
+    ZASSERT(result);
+    ZEXPECT(!result->snapshot);
+    ZEXPECT(result->files.size() == 2u);
+}
+
 };  // ZEST_SUITE(PreambleSynthesis)
 
 }  // namespace

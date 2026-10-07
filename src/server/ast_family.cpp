@@ -278,6 +278,18 @@ bool ASTFamily::compile_barred(const Session& session) {
 
 void ASTFamily::saved(Session& session) {
     session.quarantine->on_save();
+    // Typing never re-runs the self-containment trial, yet an edit can
+    // make a header lean on its includer: a save showing what an includer
+    // would provide, or saving a buffer whose compile has not landed yet,
+    // runs it again.
+    if(contexts.commands.header_mode(session.path_id) == HeaderMode::SelfContained) {
+        if(auto projection = projections.projection_at(session.path_id, session.version);
+           !projection || missing_context_errors(projection->output->diagnostics) > 0) {
+            contexts.commands.forget_self_contained(session.path_id);
+            session.trial_done = false;
+            invalidate(session.path_id);
+        }
+    }
     // The modules it is and imports, directly or through other modules,
     // retry with it: a crashed build is refused until a consumer holds a
     // license (see depend_modules), a failed one until what it read or
@@ -641,6 +653,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // includer context, the second send re-compiles with a synthesized
     // prefix. The trial's diagnostics are never published.
     bool artifact_retried = false;
+    std::size_t trial_misses = 0;
     for(int attempt = 0; attempt < 2; attempt += 1) {
         worker::CompileParams params;
         params.path = file_path;
@@ -954,21 +967,24 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // changes erase it) so queryContext can dedup identical-flag hosts
         // once the verdict is actually earned, never on a guess.
         if(trial_round) {
-            auto& diagnostics = result.value().diagnostics;
             session->trial_done = true;
-            contexts.commands.record_header_mode(path_id, HeaderMode::SelfContained);
-
-            if(indicates_missing_context(diagnostics)) {
+            trial_misses = missing_context_errors(result.value().diagnostics);
+            if(trial_misses == 0) {
+                contexts.commands.record_header_mode(path_id, HeaderMode::SelfContained);
+            } else {
                 LOG_INFO("Header {} needs includer context, re-compiling with prefix", file_path);
-                // Scored on the buffer: a restart keeps it only for the
-                // same text on disk.
-                contexts.commands.record_header_mode(path_id,
-                                                     HeaderMode::NeedsContext,
-                                                     session->hash);
-                contexts.drop_header_context(path_id);
-                adopted_pch.reset();
+                // In memory only until the includer's context proves to
+                // supply what the trial missed.
+                contexts.commands.record_header_mode(path_id, HeaderMode::NeedsContext);
                 continue;
             }
+        } else if(synthesized && trial_misses > 0 &&
+                  missing_context_errors(result.value().diagnostics) < trial_misses) {
+            // Scored on the buffer: a restart keeps it only for the same
+            // text on disk. A context that misses as much (a database
+            // without the include directories the includer needs too) is
+            // no verdict to keep.
+            contexts.commands.record_header_mode(path_id, HeaderMode::NeedsContext, session->hash);
         }
 
         // The landing: build the whole package off to the side, then
@@ -1014,6 +1030,9 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                ? with_preamble(std::move(diagnostics), *preamble_state, file_path)
                                : std::move(diagnostics),
             .line_limit = suffix_line_limit,
+            .unmatched_host = resolution.unmatched_host.valid()
+                                  ? project.file_table.display(resolution.unmatched_host)
+                                  : std::string(),
         };
 
         auto& entry = projections.entries[path_id];

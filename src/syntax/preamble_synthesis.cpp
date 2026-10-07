@@ -9,20 +9,6 @@ import :syntax.scan;
 
 namespace clice {
 
-/// Emit a #line marker resetting location to line 1 of `path`.
-/// Backslashes and quotes are escaped so Windows paths survive the
-/// round-trip through the preprocessor's string literal parsing.
-static void append_line_marker(std::string& out, llvm::StringRef path) {
-    out += R"(#line 1 ")";
-    for(char c: path) {
-        if(c == '\\' || c == '"') {
-            out += '\\';
-        }
-        out += c;
-    }
-    out += "\"\n";
-}
-
 /// Emit `path` as a quoted include/marker operand, escaping backslashes
 /// and quotes so Windows paths survive string-literal parsing.
 static void append_quoted_path(std::string& out, llvm::StringRef path) {
@@ -68,17 +54,12 @@ static std::optional<std::size_t> find_match(llvm::ArrayRef<ScanResult::IncludeI
 }
 
 /// Append a #line marker for line `line` (1-based) of `path`.
-static void append_line_marker_at(std::string& out, llvm::StringRef path, std::uint32_t line) {
+static void append_line_marker(std::string& out, llvm::StringRef path, std::uint32_t line) {
     out += "#line ";
     out += std::to_string(line);
-    out += " \"";
-    for(char c: path) {
-        if(c == '\\' || c == '"') {
-            out += '\\';
-        }
-        out += c;
-    }
-    out += "\"\n";
+    out += ' ';
+    append_quoted_path(out, path);
+    out += '\n';
 }
 
 /// Emit content[from, to) with every include of the target itself — a
@@ -86,8 +67,9 @@ static void append_line_marker_at(std::string& out, llvm::StringRef path, std::u
 /// (keeping the line count) when there is none. Every other directive is
 /// kept verbatim: each fragment sits in the directory of the file it was
 /// cut from, so its includes, `__has_include` probes and macro-spelled
-/// includes resolve there as they do in that file.
-static void emit_fragment(std::string& out,
+/// includes resolve there as they do in that file. Returns whether the
+/// fragment names the snapshot.
+static bool emit_fragment(std::string& out,
                           llvm::StringRef content,
                           std::uint32_t from,
                           std::uint32_t to,
@@ -96,6 +78,7 @@ static void emit_fragment(std::string& out,
                           llvm::StringRef target_path,
                           llvm::StringRef snapshot_path) {
     std::uint32_t pos = from;
+    bool names_snapshot = false;
     for(std::size_t j = 0; j < includes.size(); j += 1) {
         auto& include = includes[j];
         if(include.name_offset < from || include.offset >= to) {
@@ -108,6 +91,7 @@ static void emit_fragment(std::string& out,
             out += content.substr(pos, include.name_offset - pos);
             append_quoted_path(out, snapshot_path);
             pos = include.name_offset + include.name_length;
+            names_snapshot = true;
             continue;
         }
         auto line_start = content.rfind('\n', include.offset);
@@ -124,20 +108,27 @@ static void emit_fragment(std::string& out,
     if(!out.ends_with('\n')) {
         out += '\n';
     }
+    return names_snapshot;
 }
 
-/// Add a synthesized file to the context under a name derived from its
-/// content, in `directory`, and return that path. The dot-prefixed name
-/// cannot collide with a real header anyone includes.
-static std::string add_file(SynthesizedContext& context,
-                            llvm::StringRef directory,
-                            std::string content) {
+/// The path of a synthesized file with `content` in `directory`: named by
+/// the content, the dot-prefixed name cannot collide with a real header
+/// anyone includes.
+static std::string synthesized_path(llvm::StringRef directory, llvm::StringRef content) {
     llvm::SmallString<256> path(directory);
     llvm::sys::path::append(path,
                             llvm::sys::path::Style::posix,
                             std::format(".clice-{:016x}.h", llvm::xxh3_64bits(content)));
-    context.files.emplace_back(std::string(path), std::move(content));
     return std::string(path);
+}
+
+/// Add a synthesized file to the context and return its path.
+static std::string add_file(SynthesizedContext& context,
+                            llvm::StringRef directory,
+                            std::string content) {
+    auto path = synthesized_path(directory, content);
+    context.files.emplace_back(path, std::move(content));
+    return path;
 }
 
 /// Emit an include of a synthesized file, on its own line.
@@ -157,7 +148,7 @@ std::optional<SynthesizedContext>
     std::string snapshot_path;
     if(target_content) {
         snapshot_path =
-            add_file(context, llvm::sys::path::parent_path(target_path), target_content->str());
+            synthesized_path(llvm::sys::path::parent_path(target_path), *target_content);
     }
 
     // Each chain file cut at its include of the next one: the text before
@@ -200,15 +191,15 @@ std::optional<SynthesizedContext>
         // condition is still evaluated by the compiler, so the fragment's
         // semantics hold.
         auto& head = before.emplace_back();
-        append_line_marker(head, entry.path);
-        emit_fragment(head,
-                      entry.content,
-                      0,
-                      cut,
-                      scan_result.includes,
-                      resolved,
-                      target_path,
-                      snapshot_path);
+        append_line_marker(head, entry.path, 1);
+        context.snapshot |= emit_fragment(head,
+                                          entry.content,
+                                          0,
+                                          cut,
+                                          scan_result.includes,
+                                          resolved,
+                                          target_path,
+                                          snapshot_path);
         for(std::uint16_t d = depth; d > 0; d -= 1) {
             head += "#endif\n";
         }
@@ -226,15 +217,15 @@ std::optional<SynthesizedContext>
         }
         auto resume_line =
             static_cast<std::uint32_t>(entry.content.substr(0, resume).count('\n')) + 1;
-        append_line_marker_at(tail, entry.path, resume_line);
-        emit_fragment(tail,
-                      entry.content,
-                      resume,
-                      entry.content.size(),
-                      scan_result.includes,
-                      resolved,
-                      target_path,
-                      snapshot_path);
+        append_line_marker(tail, entry.path, resume_line);
+        context.snapshot |= emit_fragment(tail,
+                                          entry.content,
+                                          resume,
+                                          entry.content.size(),
+                                          scan_result.includes,
+                                          resolved,
+                                          target_path,
+                                          snapshot_path);
     }
 
     // The fragments nest the way the chain does: each one ends by
@@ -257,6 +248,9 @@ std::optional<SynthesizedContext>
         context.suffix =
             add_file(context, llvm::sys::path::parent_path(chain[i].path), std::move(tail));
     }
+    if(context.snapshot) {
+        context.files.emplace(context.files.begin(), snapshot_path, target_content->str());
+    }
     return context;
 }
 
@@ -267,16 +261,7 @@ void SynthesizedContext::append_suffix_include(std::string& text) const {
     if(!text.ends_with('\n')) {
         text += '\n';
     }
-    text += "#include \"";
-    // Escape like the line markers: Windows separators must survive the
-    // preprocessor's string literal parsing.
-    for(char c: suffix) {
-        if(c == '\\' || c == '"') {
-            text += '\\';
-        }
-        text += c;
-    }
-    text += "\"\n";
+    append_include(text, suffix);
 }
 
 }  // namespace clice
