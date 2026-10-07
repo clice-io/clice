@@ -69,18 +69,17 @@ public:
     /// and for a member call those its object binds best (`front()` or
     /// `front() const`). Full overload resolution needs conversion rules
     /// (Sema territory); arity and the object's qualifiers are the safe,
-    /// conversion-free subset of it. A dependent
-    /// operator (`a == b`) gets no candidates: instantiation adds the operands'
-    /// associated operators and the built-in ones, so the operators its
-    /// definition happened to see say nothing, and differ between the
-    /// units including it.
+    /// conversion-free subset of it. A dependent operator (`a == b`) gets
+    /// no candidates: instantiation adds the operands' associated operators
+    /// and the built-in ones, so the operators its definition happened to
+    /// see say nothing, and differ between the units including it.
     llvm::SmallVector<const clang::NamedDecl*, 4> lookup(const clang::CallExpr* expr);
 
     /// Resolve the base type through pseudo-instantiation, then look the
     /// member up in the resolved record (e.g. `this->foo()` inherited from
-    /// `Base<T>`). A base that is itself a dependent member access, call or
-    /// subscript (`box.inner.leaf`, `rows[0].size`) is resolved to the type
-    /// it evaluates to first.
+    /// `Base<T>`). A base that is itself a dependent member access, call,
+    /// subscript or `auto` variable (`box.inner.leaf`, `rows[0].size`) is
+    /// resolved to the type it evaluates to first.
     lookup_result lookup(const clang::CXXDependentScopeMemberExpr* expr);
 
     lookup_result lookup(const clang::UnresolvedUsingValueDecl* decl) {

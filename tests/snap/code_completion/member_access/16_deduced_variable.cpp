@@ -7,7 +7,8 @@
 ///
 /// `auto& row = rows[0]; row.` lists the members of `Vec<T>`. The
 /// declarator applies as in a real deduction: `const auto&` makes the
-/// object const, and a by-value `auto` drops the initializer's const.
+/// object const, a by-value `auto` drops the initializer's const, `auto&&`
+/// and `decltype(auto)` keep it, and `auto*` takes the pointee.
 
 // The member accesses dangle; the statements stay semicolon-terminated so a
 // later marker is not dragged into recovery.
@@ -21,13 +22,17 @@ struct Vec {
 };
 
 template <typename T>
-void bar(Vec<Vec<T>> rows, const Vec<Vec<T>>& fixed) {
+void bar(Vec<Vec<T>> rows, const Vec<Vec<T>>& fixed, Vec<Vec<T>*> pointers) {
     auto& row = rows[0];
     row.§(reference);
     const auto& view = rows[0];
     view.§(const_reference);
     auto copy = fixed[0];
     copy.§(value);
-    auto&& forwarded = rows[0];
+    auto&& forwarded = fixed[0];
     forwarded.§(forwarding);
+    decltype(auto) exact = fixed[0];
+    exact.§(decltype_auto);
+    auto* pointer = pointers[0];
+    pointer->§(pointer);
 }

@@ -934,33 +934,54 @@ public:
     /// The type a dependent expression evaluates to, resolved: a name, a
     /// member access or a call takes the found declaration's type — the
     /// callee's return type for a call — with the bindings of the lookup
-    /// that found it substituted in, and a subscript what it yields. Null
-    /// for forms that name nothing.
-    clang::QualType type_of(const clang::Expr* expr) {
-        expr = expr->IgnoreParens();
+    /// that found it substituted in, a subscript what it yields, and an
+    /// `auto` variable what its initializer deduces it to. A data member
+    /// has its declared type, the one `decltype` names, unless
+    /// `through_object`: the expression's type carries the cv-qualifiers of
+    /// the object it is accessed through. Null for forms that name nothing.
+    clang::QualType type_of(const clang::Expr* expr, bool through_object = false) {
+        expr = expr->IgnoreParenImpCasts();
         auto frames = stack.size();
         clang::QualType type;
+        unsigned object_quals = 0;
         if(auto* call = llvm::dyn_cast<clang::CallExpr>(expr)) {
             type = call_type(call);
         } else if(auto* subscript = llvm::dyn_cast<clang::ArraySubscriptExpr>(expr)) {
             type = subscript_type(subscript);
-        } else if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(referenced_decl(expr))) {
-            type = value->getType();
-            /// A function parameter pack (`Box<Ts>... boxes`) is declared
-            /// with the expansion; a use of it has the pattern's type.
-            if(auto* PET = type->getAs<clang::PackExpansionType>()) {
-                type = PET->getPattern();
-            }
-            auto* var = llvm::dyn_cast<clang::VarDecl>(value);
-            if(auto* AT = type->getContainedAutoType();
-               AT && AT->getDeducedKind() != clang::DeducedKind::Deduced && var && var->getInit()) {
-                type = deduce_auto(type, var->getInit());
+        } else {
+            const clang::Decl* decl = nullptr;
+            if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(expr)) {
+                auto object = member_object(DSME);
+                if(through_object && !object.isNull()) {
+                    object_quals = resolve_object(object).getCVRQualifiers();
+                }
+                decl = preferred(lookup_member(object, DSME->getMember()));
             } else {
-                type = substitute(type);
+                decl = referenced_decl(expr);
+            }
+
+            if(auto* value = llvm::dyn_cast_or_null<clang::ValueDecl>(decl)) {
+                type = value->getType();
+                /// A function parameter pack (`Box<Ts>... boxes`) is declared
+                /// with the expansion; a use of it has the pattern's type.
+                if(auto* PET = type->getAs<clang::PackExpansionType>()) {
+                    type = PET->getPattern();
+                }
+                auto* var = llvm::dyn_cast<clang::VarDecl>(value);
+                type =
+                    substitute(var && var->getInit() && undeduced(type) ? deduce_auto(var) : type);
+                if(auto* field = llvm::dyn_cast<clang::FieldDecl>(value);
+                   !field || field->isMutable()) {
+                    object_quals = 0;
+                }
             }
         }
         stack.truncate(frames);
-        return type.isNull() ? type : resolve(type);
+        if(type.isNull()) {
+            return type;
+        }
+        type = resolve(type);
+        return type->isReferenceType() ? type : type.withCVRQualifiers(object_quals);
     }
 
     /// What `expr` evaluates to. Clang leaves the type unknown for a member
@@ -970,36 +991,78 @@ public:
     /// written one, for lookup to resolve.
     clang::QualType expr_type(const clang::Expr* expr) {
         auto type = expr->getType();
-        if(type->isSpecificBuiltinType(clang::BuiltinType::Dependent) ||
-           type->isUndeducedAutoType()) {
-            return type_of(expr);
+        if(type->isSpecificBuiltinType(clang::BuiltinType::Dependent) || undeduced(type)) {
+            return type_of(expr, /*through_object=*/true);
         }
         return type;
     }
 
-    /// What a variable declared `declared` (`auto`, `const auto&`, `auto*`)
-    /// deduces to from `init`, by the rules of a function template
-    /// parameter of that type: a value drops the initializer's
-    /// cv-qualifiers, a reference keeps them, and `auto&&` binds an lvalue
-    /// as an lvalue reference. Null when the initializer does not resolve
-    /// or the declarator wraps `auto` in anything else.
-    clang::QualType deduce_auto(clang::QualType declared, const clang::Expr* init) {
-        auto source = expr_type(init);
-        if(source.isNull()) {
-            return source;
+    /// Whether `type` holds an `auto` no deduction filled in: a dependent
+    /// initializer leaves it so until instantiation.
+    static bool undeduced(clang::QualType type) {
+        auto* AT = type->getContainedAutoType();
+        return AT && AT->getDeducedKind() != clang::DeducedKind::Deduced;
+    }
+
+    /// What the `auto` variable `var` deduces to from its initializer, by
+    /// the rules of a function template parameter of its declared type: a
+    /// value drops the initializer's cv-qualifiers and decays an array, a
+    /// reference keeps them, and `auto&&` binds an lvalue as an lvalue
+    /// reference. `decltype(auto)` takes the initializer's type as is.
+    /// Null when the initializer does not resolve or the declarator wraps
+    /// `auto` in anything but pointers and references.
+    clang::QualType deduce_auto(const clang::VarDecl* var) {
+        /// The initializer can name the variable again through another
+        /// specialization (`Depth<N>::value` initialized from
+        /// `Depth<N - 1>::value`).
+        if(!deducing.insert(var).second) {
+            return clang::QualType();
         }
+
+        /// Direct initialization deduces from its one expression; a braced
+        /// list after `=` makes an `initializer_list`, which is not modeled.
+        const clang::Expr* init = var->getInit();
+        if(auto* list = llvm::dyn_cast<clang::ParenListExpr>(init)) {
+            init = list->getNumExprs() == 1 ? list->getExpr(0) : nullptr;
+        } else if(auto* list = llvm::dyn_cast<clang::InitListExpr>(init)) {
+            bool direct = var->getInitStyle() == clang::VarDecl::ListInit;
+            init = direct && list->getNumInits() == 1 ? list->getInit(0) : nullptr;
+        }
+
+        clang::QualType type;
+        if(auto source = init ? expr_type(init) : clang::QualType(); !source.isNull()) {
+            auto declared = var->getType();
+            type = declared->getContainedAutoType()->isDecltypeAuto()
+                       ? source
+                       : replace_auto(declared, deduced_argument(declared, init, source));
+        }
+        deducing.erase(var);
+        return type;
+    }
+
+    /// What `auto` stands for in `declared` given an initializer `init` of
+    /// type `source`.
+    clang::QualType deduced_argument(clang::QualType declared,
+                                     const clang::Expr* init,
+                                     clang::QualType source) {
         auto argument = source.getNonReferenceType();
         if(auto* RRT = declared->getAs<clang::RValueReferenceType>()) {
+            /// Clang marks every dependent call and subscript an lvalue;
+            /// what they return says which they are.
+            bool lvalue =
+                llvm::isa<clang::CallExpr, clang::ArraySubscriptExpr>(init->IgnoreParens())
+                    ? source->isLValueReferenceType()
+                    : init->isLValue();
             auto pointee = RRT->getPointeeType();
-            if(llvm::isa<clang::AutoType>(pointee) && !pointee.hasLocalQualifiers() &&
-               (init->isLValue() || source->isLValueReferenceType())) {
+            if(lvalue && llvm::isa<clang::AutoType>(pointee) && !pointee.hasLocalQualifiers()) {
                 return context.getLValueReferenceType(argument);
             }
+            return argument;
         }
-        if(!declared->isReferenceType()) {
-            argument = argument.getUnqualifiedType();
+        if(declared->isReferenceType()) {
+            return argument;
         }
-        return replace_auto(declared, argument);
+        return context.getAdjustedParameterType(argument.getUnqualifiedType());
     }
 
     /// `declared` with its `auto` replaced by `argument`, each pointer of
@@ -1077,11 +1140,12 @@ public:
     /// type they all return (`map::operator[]` takes a `const key_type&` or
     /// a `key_type&&`, and returns `mapped_type&` either way). Null when
     /// they disagree, or there are none.
-    clang::QualType common_return_type(llvm::ArrayRef<const clang::NamedDecl*> candidates,
-                                       llvm::ArrayRef<clang::TemplateArgumentLoc> explicit_args) {
+    clang::QualType
+        common_return_type(llvm::ArrayRef<const clang::NamedDecl*> candidates,
+                           llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments) {
         clang::QualType common;
         for(auto* candidate: candidates) {
-            auto type = return_type(candidate, explicit_args);
+            auto type = return_type(candidate, template_arguments);
             if(type.isNull() || (!common.isNull() && !context.hasSameType(type, common))) {
                 return clang::QualType();
             }
@@ -1096,7 +1160,7 @@ public:
     /// left to deduction from the call's arguments, which is not modeled,
     /// leaves the call untyped.
     clang::QualType return_type(const clang::NamedDecl* candidate,
-                                llvm::ArrayRef<clang::TemplateArgumentLoc> explicit_args) {
+                                llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments) {
         auto* function = as_function(candidate);
         if(!function) {
             return clang::QualType();
@@ -1115,7 +1179,7 @@ public:
         auto* params = FTD->getTemplateParameters();
         llvm::SmallVector<clang::TemplateArgument, 4> bound;
         if(!params->hasParameterPack()) {
-            for(auto& argument: explicit_args) {
+            for(auto& argument: template_arguments) {
                 bound.push_back(argument.getArgument());
             }
         }
@@ -1179,21 +1243,18 @@ public:
                 return PT->getPointeeType();
             }
             auto frames = stack.size();
-            const clang::CXXMethodDecl* method = nullptr;
-            for(auto* candidate: lookup(type, arrow)) {
-                if((method = llvm::dyn_cast<clang::CXXMethodDecl>(candidate))) {
-                    break;
-                }
-            }
-            if(!method) {
-                stack.truncate(frames);
-                return clang::QualType();
-            }
+            auto members = lookup(type, arrow);
+            llvm::SmallVector<const clang::NamedDecl*, 4> candidates(members.begin(),
+                                                                     members.end());
+            select_by_object(candidates, type);
             /// The lookup leaves its deduction frames in place, so a return
             /// type written in the class's own parameters (`T*`, `pointer`)
             /// comes back with the specialization's arguments filled in.
-            type = substitute(method->getReturnType());
+            type = common_return_type(candidates, {});
             stack.truncate(frames);
+            if(type.isNull()) {
+                return type;
+            }
         }
         return clang::QualType();
     }
@@ -1201,7 +1262,8 @@ public:
     /// The object `type` denotes once resolved: an alias may resolve to a
     /// reference (`vector<T>::reference`), an expression never has one.
     clang::QualType resolve_object(clang::QualType type) {
-        return resolve(type).getNonReferenceType();
+        auto resolved = resolve(type);
+        return resolved.isNull() ? resolved : resolved.getNonReferenceType();
     }
 
     /// What a member access on a base of type `base` names a member of:
@@ -1213,9 +1275,8 @@ public:
         return arrow_target(base);
     }
 
-    /// A dependent member access. Clang leaves the base type unknown when
-    /// the base is itself a dependent member access, call or subscript
-    /// (`box.inner.leaf`); that base is evaluated (see expr_type).
+    /// What the dependent member access `expr` names a member of: its base
+    /// evaluated (see expr_type), or `this` for an implicit access.
     clang::QualType member_object(const clang::CXXDependentScopeMemberExpr* expr) {
         auto base = expr->isImplicitAccess() ? expr->getBaseType() : expr_type(expr->getBase());
         return member_object(base, expr->isArrow());
@@ -1274,7 +1335,10 @@ public:
             return;
         }
         auto* first = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(as_function(candidates.front()));
-        auto same_object_parameter = [&](const clang::NamedDecl* decl) {
+        if(!first) {
+            return;
+        }
+        auto differs_only_in_cv = [&](const clang::NamedDecl* decl) {
             auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(as_function(decl));
             return method && method->isImplicitObjectMemberFunction() &&
                    method->getRefQualifier() == first->getRefQualifier() &&
@@ -1285,7 +1349,7 @@ public:
                            return context.hasSameType(lhs->getType(), rhs->getType());
                        });
         };
-        if(!first || !std::ranges::all_of(candidates, same_object_parameter)) {
+        if(!std::ranges::all_of(candidates, differs_only_in_cv)) {
             return;
         }
 
@@ -1608,8 +1672,9 @@ private:
                 break;
             }
 
-            /// `decltype(e)` of an unparenthesized name, member access or call
-            /// is the named declaration's type (the callee's return type).
+            /// `decltype(e)` of an unparenthesized name, member access, call
+            /// or subscript is the named declaration's type (the callee's
+            /// return type, `operator[]`'s for a subscript).
             /// Looking those up is resolution; substitution only sees
             /// through a plain variable.
             case clang::Type::Decltype: {
@@ -2729,6 +2794,7 @@ private:
     llvm::DenseMap<const void*, clang::QualType>& resolved;
     llvm::SmallPtrSet<const void*, 8> active_resolutions;
     llvm::DenseSet<std::pair<const void*, void*>> active_ctd_lookups;
+    llvm::SmallPtrSet<const clang::VarDecl*, 4> deducing;
     unsigned depth = 0;
     unsigned steps = 0;
     unsigned probing = 0;
@@ -2786,8 +2852,8 @@ clang::TagDecl* TemplateResolver::resolve_tag(clang::QualType type) {
 
 clang::QualType TemplateResolver::member_object(const clang::Expr* base, bool arrow) {
     PseudoInstantiator instantiator(context, resolved);
-    auto object = instantiator.member_object(instantiator.expr_type(base), arrow);
-    return object.isNull() ? object : instantiator.resolve_object(object);
+    return instantiator.resolve_object(
+        instantiator.member_object(instantiator.expr_type(base), arrow));
 }
 
 TemplateResolver::lookup_result

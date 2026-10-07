@@ -4,58 +4,109 @@ input_file: go_to_definition/14_def_dependent_expression.cpp
 ---
 call:
   definition:
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:9-16:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:9-17:13" }
   declaration:
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:9-16:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:9-17:13" }
   references:
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:9-16:13" }
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "21:12-21:16" }
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "22:17-22:21" }
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "24:8-24:12" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:9-17:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "24:12-24:16" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "25:17-25:21" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "29:8-29:12" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "31:9-31:13" }
   callHierarchy:
-    - { name: "push", kind: Method, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:4-16:29", selection: "16:9-16:13" }
+    - { name: "push", kind: Method, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:4-17:29", selection: "17:9-17:13" }
   incomingCalls:
-    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "20:0-25:1", selection: "20:5-20:10", fromRanges: ["21:12-21:16", "22:17-22:21", "24:8-24:12"] }
+    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "23:0-32:1", selection: "23:5-23:10", fromRanges: ["24:12-24:16", "25:17-25:21", "29:8-29:12", "31:9-31:13"] }
+
+const_overload:
+  definition:
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:13-16:18" }
+  declaration:
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:13-16:18" }
+  references:
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:13-16:18" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "26:10-26:15" }
+  callHierarchy:
+    - { name: "front", kind: Method, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:4-16:26", selection: "16:13-16:18" }
+  incomingCalls:
+    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "23:0-32:1", selection: "23:5-23:10", fromRanges: ["26:10-26:15"] }
 
 deduced:
   definition:
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:9-16:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:9-17:13" }
   declaration:
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:9-16:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:9-17:13" }
   references:
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:9-16:13" }
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "21:12-21:16" }
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "22:17-22:21" }
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "24:8-24:12" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:9-17:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "24:12-24:16" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "25:17-25:21" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "29:8-29:12" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "31:9-31:13" }
   callHierarchy:
-    - { name: "push", kind: Method, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:4-16:29", selection: "16:9-16:13" }
+    - { name: "push", kind: Method, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:4-17:29", selection: "17:9-17:13" }
   incomingCalls:
-    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "20:0-25:1", selection: "20:5-20:10", fromRanges: ["21:12-21:16", "22:17-22:21", "24:8-24:12"] }
+    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "23:0-32:1", selection: "23:5-23:10", fromRanges: ["24:12-24:16", "25:17-25:21", "29:8-29:12", "31:9-31:13"] }
+
+direct_init:
+  definition:
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:9-17:13" }
+  declaration:
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:9-17:13" }
+  references:
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:9-17:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "24:12-24:16" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "25:17-25:21" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "29:8-29:12" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "31:9-31:13" }
+  callHierarchy:
+    - { name: "push", kind: Method, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:4-17:29", selection: "17:9-17:13" }
+  incomingCalls:
+    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "23:0-32:1", selection: "23:5-23:10", fromRanges: ["24:12-24:16", "25:17-25:21", "29:8-29:12", "31:9-31:13"] }
 
 overload:
   definition:
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "14:7-14:12" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "15:7-15:12" }
   declaration:
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "14:7-14:12" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "15:7-15:12" }
   references:
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "14:7-14:12" }
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "22:9-22:14" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "15:7-15:12" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "25:9-25:14" }
   callHierarchy:
-    - { name: "front", kind: Method, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "14:4-14:14", selection: "14:7-14:12" }
+    - { name: "front", kind: Method, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "15:4-15:14", selection: "15:7-15:12" }
   incomingCalls:
-    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "20:0-25:1", selection: "20:5-20:10", fromRanges: ["22:9-22:14"] }
+    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "23:0-32:1", selection: "23:5-23:10", fromRanges: ["25:9-25:14"] }
+
+parameters:
+  definition:
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "18:9-18:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "19:9-19:13" }
+  declaration:
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "18:9-18:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "19:9-19:13" }
+  references:
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "18:9-18:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "19:9-19:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "27:9-27:13" }
+  callHierarchy:
+    - { name: "take", kind: Method, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "18:4-18:24", selection: "18:9-18:13" }
+    - { name: "take", kind: Method, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "19:4-19:31", selection: "19:9-19:13" }
+  incomingCalls:
+    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "23:0-32:1", selection: "23:5-23:10", fromRanges: ["27:9-27:13"] }
+  incomingCalls:
+    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "23:0-32:1", selection: "23:5-23:10", fromRanges: ["27:9-27:13"] }
 
 subscript:
   definition:
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:9-16:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:9-17:13" }
   declaration:
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:9-16:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:9-17:13" }
   references:
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:9-16:13" }
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "21:12-21:16" }
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "22:17-22:21" }
-    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "24:8-24:12" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:9-17:13" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "24:12-24:16" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "25:17-25:21" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "29:8-29:12" }
+    - { file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "31:9-31:13" }
   callHierarchy:
-    - { name: "push", kind: Method, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "16:4-16:29", selection: "16:9-16:13" }
+    - { name: "push", kind: Method, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "17:4-17:29", selection: "17:9-17:13" }
   incomingCalls:
-    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "20:0-25:1", selection: "20:5-20:10", fromRanges: ["21:12-21:16", "22:17-22:21", "24:8-24:12"] }
+    - { name: "drain", kind: Function, file: "${WS}/go_to_definition/14_def_dependent_expression.cpp", range: "23:0-32:1", selection: "23:5-23:10", fromRanges: ["24:12-24:16", "25:17-25:21", "29:8-29:12", "31:9-31:13"] }

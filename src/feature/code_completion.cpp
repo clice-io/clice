@@ -399,7 +399,8 @@ public:
             /// as a member access, but without a base expression: its base
             /// type is the aggregate being initialized.
             auto* base = context.getBaseExpr();
-            auto object = context.getBaseType();
+            auto reported = context.getBaseType();
+            auto object = reported;
             if(base) {
                 if(!base->isTypeDependent()) {
                     return false;
@@ -408,13 +409,11 @@ public:
                 if(object.isNull()) {
                     return false;
                 }
-            } else if(!object->isDependentType()) {
+            } else if(!reported->isDependentType()) {
                 return false;
             }
             auto* tag = resolver.resolve_tag(object);
-            if(!tag ||
-               same(tag,
-                    clang::HeuristicResolver(ast).resolveTypeToTagDecl(context.getBaseType()))) {
+            if(!tag || same(tag, clang::HeuristicResolver(ast).resolveTypeToTagDecl(reported))) {
                 return false;
             }
             auto* record = llvm::dyn_cast_or_null<clang::CXXRecordDecl>(definition(tag));

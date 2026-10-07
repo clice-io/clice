@@ -9,8 +9,8 @@
 /// `rows[0].` on a `Vec<Vec<T>>` lists the members of `Vec<T>`, followed
 /// through the container's `reference` alias the way the standard containers
 /// declare it. Where a member has a `const` overload, the constness of the
-/// object picks the one called, and `->` on a returned iterator reaches the
-/// element.
+/// object picks the one called, a data member reached through a const object
+/// counting as const, and `->` on a returned iterator reaches the element.
 
 // The member accesses dangle; the statements stay semicolon-terminated so a
 // later marker is not dragged into recovery.
@@ -48,9 +48,15 @@ struct Vec {
 };
 
 template <typename T>
-void bar(Vec<Vec<T>> rows, const Vec<Vec<T>>& fixed) {
+struct Grid {
+    Vec<Vec<T>> rows;
+};
+
+template <typename T>
+void bar(Vec<Vec<T>> rows, const Vec<Vec<T>>& fixed, const Grid<T>& grid) {
     rows[0].§(subscript);
     rows.front().§(call);
     fixed[0].§(const_object);
+    grid.rows.front().§(const_member);
     rows.begin()->§(iterator);
 }

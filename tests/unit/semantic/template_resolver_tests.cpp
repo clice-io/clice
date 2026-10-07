@@ -4917,6 +4917,7 @@ ZEST_CASE(BrokenCodeSweep) {
             void f() {
                 auto x = undeclared_function(member);
                 member.no_such_member();
+                member.get()[0][1].leaf;
             }
         };
 
