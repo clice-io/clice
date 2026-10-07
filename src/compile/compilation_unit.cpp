@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :compile.implement;
+import :compile.tokens;
 import :semantic.display;
 import :vfs.file_system;
 import :vfs.path;
@@ -312,34 +313,38 @@ auto CompilationUnitRef::create_location(clang::FileID fid, std::uint32_t offset
     return self->SM().getComposedLoc(fid, offset);
 }
 
-auto CompilationUnitRef::spelled_tokens(clang::FileID fid) -> TokenRange {
-    return self->buffer->spelledTokens(fid);
+const static TokenMap& token_map(CompilationUnitRef::Self* self) {
+    assert(self->tokens && "only a Content compile collects tokens");
+    return *self->tokens;
+}
+
+auto CompilationUnitRef::spelled_tokens() -> TokenRange {
+    return token_map(self).spelled();
 }
 
 auto CompilationUnitRef::spelled_tokens(clang::SourceRange range) -> TokenRange {
-    auto tokens = self->buffer->spelledForExpanded(self->buffer->expandedTokens(range));
-    if(!tokens) {
-        return {};
-    }
-
-    return *tokens;
+    return token_map(self).spelled_for(range);
 }
 
 auto CompilationUnitRef::spelled_tokens_touch(clang::SourceLocation location) -> TokenRange {
-    return clang::syntax::spelledTokensTouching(location, *self->buffer);
+    return token_map(self).spelled_touching(location);
+}
+
+auto CompilationUnitRef::preprocessed_away() -> const std::vector<bool>& {
+    return token_map(self).preprocessed_away();
 }
 
 auto CompilationUnitRef::expanded_tokens() -> TokenRange {
-    return self->buffer->expandedTokens();
+    return token_map(self).expanded();
 }
 
 auto CompilationUnitRef::expanded_tokens(clang::SourceRange range) -> TokenRange {
-    return self->buffer->expandedTokens(range);
+    return token_map(self).expanded(range);
 }
 
-auto CompilationUnitRef::expansions_overlapping(TokenRange spelled_tokens)
-    -> std::vector<clang::syntax::TokenBuffer::Expansion> {
-    return self->buffer->expansionsOverlapping(spelled_tokens);
+auto CompilationUnitRef::expansions_overlapping(TokenRange spelled)
+    -> llvm::ArrayRef<MacroExpansion> {
+    return token_map(self).expansions_overlapping(spelled);
 }
 
 auto CompilationUnitRef::token_length(clang::SourceLocation location) -> std::uint32_t {
@@ -529,10 +534,6 @@ const Semantics& CompilationUnitRef::semantics() {
 
 clang::ASTContext& CompilationUnitRef::context() {
     return self->instance->getASTContext();
-}
-
-clang::syntax::TokenBuffer& CompilationUnitRef::token_buffer() {
-    return *self->buffer;
 }
 
 CompilationUnit::~CompilationUnit() {

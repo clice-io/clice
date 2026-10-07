@@ -131,10 +131,6 @@ struct CompilationParams {
     /// Run clang-tidy over the parse with this frozen configuration.
     std::optional<tidy::TidyParams> tidy;
 
-    /// Whether to collect the syntax::TokenBuffer during the run. Features
-    /// need it; measurement paths turn it off to isolate its cost.
-    bool collect_tokens = true;
-
     /// Output file path.
     llvm::SmallString<128> output_file;
 

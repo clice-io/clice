@@ -11,6 +11,7 @@ import :command.invocation;
 import :compile.compilation;
 import :compile.diagnostic;
 import :compile.implement;
+import :compile.tokens;
 import :semantic.decls;
 import :support.logging;
 
@@ -319,11 +320,8 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
         self.configure_tidy(*params.tidy);
     }
 
-    std::optional<clang::syntax::TokenCollector> token_collector;
-    if(params.collect_tokens && !instance.hasCodeCompletionConsumer()) {
-        /// It is not necessary to collect tokens if we are running code completion.
-        /// And in fact will cause assertion failure.
-        token_collector.emplace(instance.getPreprocessor());
+    if(params.kind == CompilationKind::Content) {
+        self.tokens.emplace(instance.getPreprocessor());
     }
 
     if(auto error = self.action->Execute()) {
@@ -349,8 +347,8 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
         return CompilationStatus::Cancelled;
     }
 
-    if(token_collector) {
-        self.buffer = std::move(*token_collector).consume();
+    if(self.tokens) {
+        self.tokens->finish();
     }
 
     self.run_tidy();

@@ -48,7 +48,7 @@ struct QualifiedName {
 /// None for a member named through `.` or `->`: the object's class
 /// declares it, not a header.
 std::optional<QualifiedName> qualified_name_at(CompilationUnitRef unit, std::uint32_t offset) {
-    auto tokens = unit.spelled_tokens(unit.main_file());
+    auto tokens = unit.spelled_tokens();
     auto& SM = unit.context().getSourceManager();
     auto offset_of = [&](const clang::syntax::Token& token) {
         return unit.file_offset(token.location());

@@ -77,7 +77,7 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
     // Attribute specifiers right before the declaration (`[[deprecated]]`
     // on a line of its own, or a macro spelling one) lie outside its
     // range.
-    auto tokens = unit.spelled_tokens(main);
+    auto tokens = unit.spelled_tokens();
     auto& SM = unit.context().getSourceManager();
     auto token_at = [&](std::uint32_t offset) {
         return std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {

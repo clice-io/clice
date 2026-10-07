@@ -109,20 +109,19 @@ void expand_macro(CompilationUnitRef unit,
     auto& SM = unit.context().getSourceManager();
     const auto& options = unit.lang_options();
     auto content = unit.main_content();
-    auto spelled = unit.spelled_tokens(main);
+    auto spelled = unit.spelled_tokens();
     for(const auto& expansion: unit.expansions_overlapping(touching)) {
-        // Directives are mappings too, from their `#`. A name the raw lexer
-        // must clean, one starting with a line splice, stays raw.
-        if(expansion.Spelled.empty() ||
-           !llvm::is_contained({clang::tok::identifier, clang::tok::raw_identifier},
-                               expansion.Spelled.front().kind())) {
+        // A name the raw lexer must clean, one starting with a line splice,
+        // stays raw.
+        if(!llvm::is_contained({clang::tok::identifier, clang::tok::raw_identifier},
+                               expansion.spelled.front().kind())) {
             continue;
         }
-        const auto& name = expansion.Spelled.front();
+        const auto& name = expansion.spelled.front();
         auto begin = unit.file_offset(name.location());
-        auto end = unit.file_offset(expansion.Spelled.back().endLocation());
-        auto first = static_cast<std::size_t>(expansion.Spelled.begin() - spelled.begin());
-        auto last = first + expansion.Spelled.size();
+        auto end = unit.file_offset(expansion.spelled.back().endLocation());
+        auto first = static_cast<std::size_t>(expansion.spelled.begin() - spelled.begin());
+        auto last = first + expansion.spelled.size();
         auto gap = [&](std::size_t index) {
             return content.slice(unit.file_offset(spelled[index - 1].endLocation()),
                                  unit.file_offset(spelled[index].location()));
@@ -145,7 +144,7 @@ void expand_macro(CompilationUnitRef unit,
             return;
         }
 
-        auto expanded = expansion.Expanded;
+        auto expanded = expansion.expanded;
         std::string text;
         for(auto [index, token]: llvm::enumerate(expanded)) {
             if(index > 0) {

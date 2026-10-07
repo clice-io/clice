@@ -101,7 +101,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         declarator = declarator->getLocallyUnqualifiedSingleStepDesugaredType();
     }
     if(llvm::isa<clang::PointerType, clang::MemberPointerType>(declarator)) {
-        auto tokens = unit.spelled_tokens(unit.main_file());
+        auto tokens = unit.spelled_tokens();
         const auto* at = llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
             return unit.file_offset(token.location()) < range->begin;
         });
@@ -109,9 +109,13 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         while(first != tokens.begin() && is_cv(*std::prev(first))) {
             first -= 1;
         }
+        auto starts_expansion = [&](const clang::syntax::Token& token) {
+            auto expansions = unit.expansions_overlapping(llvm::ArrayRef(token));
+            return !expansions.empty() && expansions.front().spelled.begin() == &token;
+        };
         for(const auto* it = first; it != tokens.begin(); it -= 1) {
             const auto& token = *std::prev(it);
-            if(is_cv(token) || unit.token_buffer().expansionStartingAt(&token)) {
+            if(is_cv(token) || starts_expansion(token)) {
                 return;
             }
             if(!is_specifier(token)) {

@@ -280,7 +280,7 @@ auto synthesize_documentation(const clang::NamedDecl* decl) -> std::string {
 /// Generate a hover info given the declaration.
 auto decl_hover(const clang::NamedDecl* decl,
                 const display::Options& options,
-                const clang::syntax::TokenBuffer& tb) -> HoverInfo {
+                CompilationUnitRef unit) -> HoverInfo {
     HoverInfo info;
     auto& context = decl->getASTContext();
 
@@ -355,7 +355,9 @@ auto decl_hover(const clang::NamedDecl* decl,
         }
     }
 
-    info.definition = display::definition(decl, options, &tb);
+    info.definition = display::definition(decl, options, [&](clang::SourceRange range) {
+        return unit.expanded_tokens(range).size();
+    });
     if(decls::is_exported(decl)) {
         info.definition.insert(0, "export ");
     }
@@ -789,15 +791,15 @@ auto macro_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::optional
         if(macro.kind == MacroRef::Kind::Ref) {
             for(auto& expansion:
                 unit.expansions_overlapping(unit.spelled_tokens_touch(macro.loc))) {
-                if(expansion.Spelled.empty() || expansion.Spelled.front().location() != macro.loc ||
-                   expansion.Expanded.empty()) {
+                if(expansion.spelled.front().location() != macro.loc ||
+                   expansion.expanded.empty()) {
                     continue;
                 }
                 /// A conditional reference (#ifdef) never reaches here: it
                 /// expands nothing, so no expansion starts at its token.
                 std::string preview;
                 constexpr std::size_t preview_limit = 1024;
-                for(const auto& token: expansion.Expanded) {
+                for(const auto& token: expansion.expanded) {
                     if(!preview.empty()) {
                         preview += ' ';
                     }
@@ -1421,7 +1423,7 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
         if(const SelectionTree::Node* node = tree.common_ancestor()) {
             auto targets = decls_at(unit, tokens);
             if(const auto* decl = pick_decl_to_use(targets)) {
-                info = decl_hover(decl, display_options, unit.token_buffer());
+                info = decl_hover(decl, display_options, unit);
 
                 /// Layout info only shown when hovering on the field/class
                 /// itself.

@@ -263,9 +263,10 @@ clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
 
 struct SemanticsOptions {
     /// Traverse only the main file's top-level decls — the shape features
-    /// consume, cached on the unit. Without it the whole TU is traversed,
-    /// the transient shape the full index projection uses; token ownership
-    /// still only covers the main file's spelled tokens.
+    /// consume, cached on the unit, owning the main file's spelled tokens.
+    /// Without it the whole TU is traversed, the transient shape the full
+    /// index projection uses; it reads no tokens, so it builds on a compile
+    /// that collected none.
     bool main_file_only = true;
 
     /// Also traverse template instantiations, flagged in_instantiation:
@@ -346,11 +347,11 @@ public:
         return nodes[index];
     }
 
-    /// The spelled tokens of the main file (a view into the unit's
-    /// TokenBuffer, not a copy). They cover the whole file even under a
-    /// preamble PCH — what the PCH consumes is the preamble's AST and
-    /// directives (those travel through the pch.idx envelope instead), not its
-    /// spelling.
+    /// The spelled tokens of the main file (a view into the unit's tokens,
+    /// not a copy); empty for the whole-TU shape. They cover the whole file
+    /// even under a preamble PCH — what the PCH consumes is the preamble's
+    /// AST and directives (those travel through the pch.idx envelope
+    /// instead), not its spelling.
     llvm::ArrayRef<clang::syntax::Token> spelled_tokens() const {
         return tokens;
     }
