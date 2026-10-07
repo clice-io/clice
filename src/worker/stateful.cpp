@@ -24,18 +24,6 @@ using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::BincodePeer::RequestContext;
 namespace protocol = kota::ipc::protocol;
 
-namespace {
-
-/// What a compile reports in place of an index it could not hand over.
-protocol::Diagnostic index_unavailable(llvm::StringRef cause) {
-    return feature::file_warning(std::format(
-        "{}; features that read the file's own index, such as references within it, are "
-        "unavailable",
-        cause));
-}
-
-}  // namespace
-
 struct DocumentEntry {
     int version = 0;
     std::string text;

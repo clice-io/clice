@@ -19,6 +19,7 @@ import :support.logging;
 import :support.timer;
 import :vfs.file_system;
 import :vfs.path;
+import :worker.common;
 import :worker.protocol;
 import :worker.serialize;
 
@@ -1012,10 +1013,10 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 next->index =
                     std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(std::move(*read)));
             } else {
-                LOG_WARN("Reading the index of {} from {} failed: {}",
-                         file_path,
-                         transfer->tmp_path,
-                         read.error().message());
+                result.value().diagnostics.push_back(
+                    index_unavailable(std::format("reading this file's index from {} failed: {}",
+                                                  transfer->tmp_path,
+                                                  read.error().message())));
             }
         } else if(!index_data.empty()) {
             next->index = std::make_shared<index::TUIndex>(
