@@ -257,6 +257,11 @@ public:
     /// selection, else the default.
     std::string requested_configuration;
 
+    /// The client talks over stdio, so it runs on this host and the
+    /// processId it names is a process here; a socket client may run on
+    /// another machine.
+    bool client_on_host = false;
+
 private:
     /// A project over `root`, its cross-project queries wired to the
     /// others.

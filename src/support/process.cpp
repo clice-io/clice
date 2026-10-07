@@ -12,9 +12,11 @@ module;
 #include <windows.h>
 #elif defined(__APPLE__)
 #include <pthread.h>
+#include <signal.h>
 #include <sys/event.h>
 #include <unistd.h>
 #else
+#include <signal.h>
 #include <sys/prctl.h>
 #include <unistd.h>
 #endif

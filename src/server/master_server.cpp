@@ -1067,6 +1067,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             server.schedule_shutdown();
         });
 
+        server.client_on_host = true;
         kota::ipc::JSONPeer lsp_peer(loop, std::move(final_transport));
         LSPClient lsp_client(server, lsp_peer);
 
