@@ -258,6 +258,10 @@ struct TURunParams {
     bool index = false;
     bool tidy = false;
 
+    /// Variant identities the master stores for the files this TU is
+    /// expected to include, sorted (see index::TUIndexOptions).
+    std::vector<std::uint64_t> known_variants;
+
     /// Frozen clang-tidy configuration (see tidy::TidyParams); meaningful
     /// only when `tidy` is set.
     std::string tidy_checks;

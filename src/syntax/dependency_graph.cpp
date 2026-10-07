@@ -218,6 +218,43 @@ llvm::ArrayRef<Fid> DependencyGraph::get_includers(Fid path_id) const {
     return {};
 }
 
+llvm::DenseSet<Fid> DependencyGraph::include_closure(Fid unit) const {
+    llvm::DenseSet<Fid> closure;
+    walk_closure(unit, closure, [](Fid) { return false; });
+    return closure;
+}
+
+bool DependencyGraph::walk_closure(Fid unit,
+                                   llvm::DenseSet<Fid>& seen,
+                                   llvm::function_ref<bool(Fid)> stop) const {
+    seen.insert(unit);
+    llvm::SmallVector<Fid, 64> queue{unit};
+    auto visit = [&](Fid fid) {
+        if(seen.insert(fid).second) {
+            queue.push_back(fid);
+        }
+    };
+    while(!queue.empty()) {
+        auto current = queue.pop_back_val();
+        if(stop(current)) {
+            return true;
+        }
+        if(auto it = file_configs.find(current); it != file_configs.end()) {
+            for(auto config_id: it->second) {
+                for(auto edge: get_includes(current, config_id)) {
+                    visit(edge.fid);
+                }
+            }
+        }
+        if(auto it = forced_includes.find(current); it != forced_includes.end()) {
+            for(auto header: it->second) {
+                visit(header);
+            }
+        }
+    }
+    return false;
+}
+
 std::uint32_t DependencyGraph::count_includes(Fid includer, Fid target) const {
     std::uint32_t most = 0;
     auto it = file_configs.find(includer);
@@ -297,32 +334,8 @@ bool DependencyGraph::reaches_import(Fid path_id) const {
     if(import_candidates.empty()) {
         return false;
     }
-    llvm::DenseSet<Fid> visited{path_id};
-    llvm::SmallVector<Fid, 64> queue{path_id};
-    auto visit = [&](Fid fid) {
-        if(visited.insert(fid).second) {
-            queue.push_back(fid);
-        }
-    };
-    while(!queue.empty()) {
-        auto current = queue.pop_back_val();
-        if(import_candidates.contains(current)) {
-            return true;
-        }
-        if(auto it = file_configs.find(current); it != file_configs.end()) {
-            for(auto config_id: it->second) {
-                for(auto edge: get_includes(current, config_id)) {
-                    visit(edge.fid);
-                }
-            }
-        }
-        if(auto it = forced_includes.find(current); it != forced_includes.end()) {
-            for(auto header: it->second) {
-                visit(header);
-            }
-        }
-    }
-    return false;
+    llvm::DenseSet<Fid> seen;
+    return walk_closure(path_id, seen, [&](Fid fid) { return import_candidates.contains(fid); });
 }
 
 void DependencyGraph::reset() {

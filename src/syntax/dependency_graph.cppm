@@ -77,6 +77,11 @@ public:
     /// Get the union of included fids across all configs for a file.
     llvm::SmallVector<Fid> get_all_includes(Fid path_id) const;
 
+    /// Every file a compile of `unit` is expected to read, `unit` included:
+    /// the include edges under every configuration, transitively, and the
+    /// headers its commands force in.
+    llvm::DenseSet<Fid> include_closure(Fid unit) const;
+
     /// How many directives of `includer` include `target`, under the
     /// configuration with the most: one edge per directive.
     std::uint32_t count_includes(Fid includer, Fid target) const;
@@ -227,6 +232,13 @@ private:
     /// The roots above `path_id`, climbing from forced headers to their
     /// units when `through_forced` is set.
     llvm::SmallVector<Fid, 4> find_roots(Fid path_id, bool through_forced) const;
+
+    /// Walk the include closure of `unit` (see include_closure), adding
+    /// each file to `seen`, until `stop` holds for one; returns whether it
+    /// did.
+    bool walk_closure(Fid unit,
+                      llvm::DenseSet<Fid>& seen,
+                      llvm::function_ref<bool(Fid)> stop) const;
 };
 
 /// Detailed report from a dependency scan.

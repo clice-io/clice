@@ -863,11 +863,7 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
                         const SymbolIdentity& identity,
                         llvm::StringRef path,
                         std::uint32_t reference_files) {
-        // A function's locals (parameters, local variables and classes)
-        // and a template's parameters are no one's search target; an open
-        // session's table holds them, the project table never does.
         if(!is_searchable_kind(identity.kind) || identity.name.empty() ||
-           identity.scope == SymbolScope::FileLocal ||
            has_flag(identity.flags, SymbolFlags::Unnamed) || seen.contains(hash)) {
             return;
         }
@@ -924,15 +920,16 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
     }
     if(live) {
         live->each_session_index([&](const TUIndex& state) {
-            state.iterate_symbols(
-                [&](SymbolHash hash, const SymbolIdentity& identity, llvm::StringRef) {
-                    llvm::StringRef path;
-                    if(identity.file != no_file) {
-                        path = state.path(identity.file);
-                    }
-                    consider(hash, identity, path, references_of(hash));
-                    return true;
-                });
+            state.iterate_symbols([&](SymbolHash hash,
+                                      const SymbolIdentity& identity,
+                                      llvm::ArrayRef<std::uint32_t>) {
+                llvm::StringRef path;
+                if(identity.file != no_file) {
+                    path = state.path(identity.file);
+                }
+                consider(hash, identity, path, references_of(hash));
+                return true;
+            });
             return true;
         });
     }

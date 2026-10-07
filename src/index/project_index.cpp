@@ -83,11 +83,6 @@ struct GlobalBlob {
 
 using BlobView = kota::codec::fbs::table_view<GlobalBlob>;
 
-llvm::StringRef slice(llvm::StringRef arena, llvm::ArrayRef<std::uint32_t> ends, std::uint32_t i) {
-    auto begin = i == 0 ? 0 : ends[i - 1];
-    return arena.slice(begin, ends[i]);
-}
-
 }  // namespace
 
 /// The bound global blob: its columns, and its path table mapped to the
@@ -144,23 +139,15 @@ struct ProjectIndex::Base {
     }
 
     llvm::StringRef name(std::uint32_t doc) const {
-        return slice(names, name_ends, doc);
+        return back_to_back(names, name_ends, doc);
     }
 
     llvm::StringRef arguments(std::uint32_t doc) const {
-        return slice(args, args_ends, doc);
-    }
-
-    /// The `i`th of the images stored back to back in `arena`.
-    static llvm::ArrayRef<std::uint8_t> image(llvm::ArrayRef<std::uint8_t> arena,
-                                              llvm::ArrayRef<std::uint32_t> ends,
-                                              std::uint32_t i) {
-        auto begin = i == 0 ? 0 : ends[i - 1];
-        return arena.slice(begin, ends[i] - begin);
+        return back_to_back(args, args_ends, doc);
     }
 
     llvm::ArrayRef<std::uint8_t> image(std::uint32_t doc) const {
-        return image(bitmaps, bitmap_ends, doc);
+        return back_to_back(bitmaps, bitmap_ends, doc);
     }
 
     std::optional<Bitmap> bitmap(std::uint32_t doc) const {
@@ -180,7 +167,7 @@ struct ProjectIndex::Base {
         if(it == contributed_index.end()) {
             return std::nullopt;
         }
-        auto bytes = image(contributors, contributor_ends, it->second);
+        auto bytes = back_to_back(contributors, contributor_ends, it->second);
         return view_bitmap(bytes.data(), bytes.size());
     }
 
@@ -599,62 +586,22 @@ Symbol& ProjectIndex::touch(SymbolHash hash) {
     return row;
 }
 
-bool ProjectIndex::merge(const TUIndex& index,
+void ProjectIndex::merge(const TUIndex& index,
                          llvm::ArrayRef<Fid> file_ids_map,
                          llvm::SmallVectorImpl<SymbolHash>* added) {
-    // Decode and bound every reference bitmap before touching the table:
-    // merged bits persist in the global blob while the result's recorded
-    // versions all match the disk, so a malformed image normalized to
-    // empty — or a silently dropped out-of-range id, whose relations would
-    // sit in a shard the symbol's fan-out never visits — would lose
-    // reference files with nothing ever rebuilding them. Either rejects
-    // the whole result instead — and the reject must leave no partial
-    // names or bits behind, hence the staging.
-    struct StagedSymbol {
-        SymbolHash hash;
-        SymbolIdentity identity;
-        Bitmap references;
-    };
-
-    std::vector<StagedSymbol> staged;
-    bool valid = true;
-    index.iterate_symbols(
-        [&](SymbolHash hash, const SymbolIdentity& identity, llvm::StringRef bitmap) {
-            if(identity.scope != SymbolScope::External) {
-                return true;
-            }
-            if(reserved_key(hash) || reserved_key(identity.parent)) {
-                valid = false;
-                return false;
-            }
-            Bitmap references;
-            if(!bitmap.empty()) {
-                auto decoded = read_bitmap(bitmap.data(), bitmap.size());
-                if(!decoded) {
-                    valid = false;
-                    return false;
-                }
-                references = std::move(*decoded);
-            }
-            if(!references.isEmpty() && references.maximum() >= file_ids_map.size()) {
-                valid = false;
-                return false;
-            }
-            if(identity.file != no_file && identity.file >= file_ids_map.size()) {
-                valid = false;
-                return false;
-            }
-            staged.push_back({hash, identity, std::move(references)});
-            return true;
-        });
-    if(!valid) {
-        return false;
-    }
-
     // Units may spell one symbol differently (`X<int>` against
     // `X<signed int>`, a conversion to a typedef): the shortest spelling
     // wins, then the smaller one, so the table reads the same whatever the
-    // merge order.
+    // merge order — among the units that send the symbol.
+    //
+    // FIXME: what a symbol is can depend on the unit's command — its
+    // spelling, SystemHeader under -isystem against -I, Deprecated under a
+    // deployment target — and nothing represents that dependence: the
+    // table folds whatever units send, and a unit whose every file holding
+    // the symbol's rows is a stored variant sends nothing of it
+    // (TUIndexOptions::known_variants), so the first unit to store the
+    // variant decides. Such facts want one explicit, per-context record
+    // instead of a fold.
     auto prefer = [](std::string& current, llvm::StringRef incoming) {
         if(incoming.empty() ||
            (!current.empty() && (incoming.size() > current.size() ||
@@ -664,7 +611,12 @@ bool ProjectIndex::merge(const TUIndex& index,
         current = incoming.str();
         return true;
     };
-    for(auto& [hash, identity, references]: staged) {
+    index.iterate_symbols([&](SymbolHash hash,
+                              const SymbolIdentity& identity,
+                              llvm::ArrayRef<std::uint32_t> references) {
+        if(identity.scope != SymbolScope::External) {
+            return true;
+        }
         bool known = identity_of(hash).has_value();
         auto& target = touch(hash);
         bool changed_row = !known;
@@ -694,9 +646,8 @@ bool ProjectIndex::merge(const TUIndex& index,
         if(changed_row && added) {
             added->push_back(hash);
         }
-    }
-
-    return true;
+        return true;
+    });
 }
 
 void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& files) {
