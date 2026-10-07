@@ -11,6 +11,7 @@ import :sched.families.pcm;
 import :sched.families.turun;
 import :support.logging;
 import :support.timer;
+import :vfs.file_system;
 import :worker.protocol;
 
 namespace clice {
@@ -168,12 +169,34 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         params.known_variants = store.known_variants(path_id);
     }
 
+    std::optional<CacheStore::PendingEntry> transfer;
+    if(plan.index && project.store) {
+        transfer = project.store->begin_transfer();
+        params.index_output_path = transfer->tmp_path;
+    }
+
     ScopedTimer timer;
     auto result = co_await pool.send_stateless(params, worker::Priority::Low, ctx.token());
     if(result.has_value() && result.value().success) {
         auto run_ms = timer.ms();
         auto& value = result.value();
-        if(plan.index && value.tu_index_data.empty()) {
+        llvm::StringRef index_bytes = value.tu_index_data;
+        // Declared after `transfer`: the mapping must close before the
+        // entry removes the file, which Windows refuses while it is mapped.
+        std::unique_ptr<llvm::MemoryBuffer> transferred;
+        if(value.index_in_file) {
+            auto read = vfs::read(transfer->tmp_path, vfs::Read::Mapped);
+            if(!read) {
+                landed[path_id] = {.verdict = Verdict::Failed,
+                                   .error = std::format("reading the index from {} failed: {}",
+                                                        transfer->tmp_path,
+                                                        read.error().message())};
+                co_return RoundOutcome::Failed;
+            }
+            transferred = std::move(*read);
+            index_bytes = transferred->getBuffer();
+        }
+        if(plan.index && index_bytes.empty()) {
             landed[path_id] = {.verdict = Verdict::Failed,
                                .error = "the worker returned no TUIndex"};
             co_return RoundOutcome::Failed;
@@ -181,7 +204,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         Outcome outcome;
         outcome.verdict = Verdict::Completed;
         outcome.tidy_diagnostics = std::move(value.tidy_diagnostics);
-        outcome.perf = {.bytes = value.tu_index_data.size(), .index_ms = run_ms, .merge_ms = 0};
+        outcome.perf = {.bytes = index_bytes.size(), .index_ms = run_ms, .merge_ms = 0};
         if(plan.index) {
             // Merge guard: a newer content-level invalidation during this
             // build (or a removal clearing the entry) means this result
@@ -195,7 +218,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                 co_return RoundOutcome::Stale;
             }
             ScopedTimer merge_timer;
-            auto report = store.merge(value.tu_index_data.data(), value.tu_index_data.size());
+            auto report = store.merge(index_bytes.data(), index_bytes.size());
             if(!report) {
                 if(report.error() == IndexStore::MergeError::Outdated) {
                     send_in_full.insert(path_id);
