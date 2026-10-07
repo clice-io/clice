@@ -14,6 +14,7 @@ import :server.master_server;
 import :support.anomaly;
 import :support.environment;
 import :support.logging;
+import :support.process;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -64,8 +65,9 @@ MasterServer::~MasterServer() {
     lifecycle = ServerLifecycle::Exited;
     projects.clear();
     // A server never shut down (a unit test) still ends the file table's
-    // turns.
+    // turns and its watch on the client.
     polling.cancel();
+    client_watch.cancel();
     logging::set_notify_hook(nullptr);
 }
 
@@ -844,26 +846,56 @@ void MasterServer::schedule_shutdown() {
     shutdown_source.cancel();
 }
 
-kota::task<> MasterServer::shutdown_and_cleanup() {
+kota::task<> MasterServer::drain() {
+    if(!drain_started) {
+        drain_started = true;
+        draining.spawn(drain_task());
+    }
+    co_await drained.wait();
+}
+
+kota::task<> MasterServer::drain_task() {
     // A client that went away skipped the shutdown request; no project may
     // start from here on (a retirement finishing below would serve the
     // folders again, see make_project).
     lifecycle = ServerLifecycle::ShuttingDown;
+    co_await pool.stop();
     polling.cancel();
     co_await polling.join();
     co_await bg_tasks.join();
     for(auto& project: projects) {
         co_await project->shutdown();
     }
+    drained.set();
+}
+
+kota::task<> MasterServer::shutdown_and_cleanup() {
+    co_await drain();
+    co_await draining.join();
+    client_watch.cancel();
+    co_await client_watch.join();
     for(auto& project: projects) {
         project->close();
     }
     lifecycle = ServerLifecycle::Exited;
 }
 
+void MasterServer::watch_client(std::uint32_t pid) {
+    client_watch.spawn(client_task(pid));
+}
+
+kota::task<> MasterServer::client_task(std::uint32_t pid) {
+    while(process_alive(pid)) {
+        co_await kota::sleep(std::chrono::seconds(2), loop);
+    }
+    LOG_INFO("Client process {} exited; shutting down", pid);
+    schedule_shutdown();
+}
+
 /// Runs `serving` until the shutdown token fires or it ends on its own. A
-/// cancelled request still waits for its worker's answer, so the pool stops
-/// — killing a worker that would never answer — before `serving` is joined.
+/// cancelled request still waits for its worker's answer, so the server
+/// drains — its pool stops first, killing a worker that would never answer
+/// — before `serving` is joined.
 static kota::task<> serve_until_shutdown(MasterServer& server, kota::task<> serving) {
     auto watch = [](MasterServer& server, kota::task<> serving) -> kota::task<> {
         co_await kota::with_token(std::move(serving), server.shutdown_token());
@@ -872,9 +904,69 @@ static kota::task<> serve_until_shutdown(MasterServer& server, kota::task<> serv
     kota::task_group<> group;
     group.spawn(watch(server, std::move(serving)));
     co_await server.shutdown_token().wait().catch_cancel();
-    co_await server.pool.stop();
+    co_await server.drain();
     co_await group.join();
 }
+
+/// Serves until the client, the transport or a signal ends it, then shuts
+/// the server down. A termination signal takes the path of an LSP exit.
+static kota::task<> serve(MasterServer& server, kota::task<> serving) {
+    bool terminating = false;
+    auto terminate = [&server] {
+        LOG_INFO("Termination signal received; shutting down");
+        server.schedule_shutdown();
+    };
+    kota::task_group<> signals;
+    signals.spawn(watch_termination(SIGTERM, terminating, terminate));
+    signals.spawn(watch_termination(SIGINT, terminating, terminate));
+#ifndef _WIN32
+    signals.spawn(watch_termination(SIGHUP, terminating, terminate));
+#endif
+    co_await serve_until_shutdown(server, std::move(serving));
+    co_await server.shutdown_and_cleanup();
+    signals.cancel();
+    co_await signals.join();
+}
+
+/// The client's transport, reporting the end of its input as soon as the
+/// read sees it: a client that went away without `exit` must not wait for
+/// the request handlers a hung worker keeps running.
+class InputEndWatch final : public kota::ipc::Transport {
+public:
+    InputEndWatch(std::unique_ptr<kota::ipc::Transport> inner, std::function<void()> on_end) :
+        inner(std::move(inner)), on_end(std::move(on_end)) {}
+
+    kota::task<std::string, kota::ipc::ReadError> read_message() override {
+        auto message = co_await inner->read_message();
+        if(message.has_error()) {
+            if(message.error().kind != kota::ipc::ReadError::Kind::Oversized) {
+                on_end();
+            }
+            co_await kota::fail(std::move(message).error());
+        }
+        co_return std::move(*message);
+    }
+
+    kota::task<void, kota::ipc::Error> write_message(std::string_view payload) override {
+        co_await inner->write_message(payload).or_fail();
+    }
+
+    kota::task<void, kota::ipc::Error> close_output() override {
+        co_await inner->close_output().or_fail();
+    }
+
+    kota::ipc::Result<void> close() override {
+        return inner->close();
+    }
+
+    std::size_t remote_max_payload() const noexcept override {
+        return inner->remote_max_payload();
+    }
+
+private:
+    std::unique_ptr<kota::ipc::Transport> inner;
+    std::function<void()> on_end;
+};
 
 struct Connection {
     std::unique_ptr<kota::ipc::JSONPeer> peer;
@@ -971,7 +1063,11 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             final_transport =
                 std::make_unique<kota::ipc::RecordingTransport>(std::move(final_transport), record);
         }
+        final_transport = std::make_unique<InputEndWatch>(std::move(final_transport), [&server] {
+            server.schedule_shutdown();
+        });
 
+        server.client_on_host = true;
         kota::ipc::JSONPeer lsp_peer(loop, std::move(final_transport));
         LSPClient lsp_client(server, lsp_peer);
 
@@ -984,8 +1080,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
                 if(!root.empty()) {
                     server.initialize(Spelling(root, Spelling::cwd()));
                 }
-                co_await serve_until_shutdown(server, peer.run());
-                co_await server.shutdown_and_cleanup();
+                co_await serve(server, peer.run());
             }(server, lsp_peer, ws));
         loop.run();
         return 0;
@@ -1009,10 +1104,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             if(!root.empty()) {
                 server.initialize(Spelling(root, Spelling::cwd()));
             }
-            co_await serve_until_shutdown(
-                server,
-                accept_connections(server, std::move(acceptor), connections));
-            co_await server.shutdown_and_cleanup();
+            co_await serve(server, accept_connections(server, std::move(acceptor), connections));
         }(server, std::move(*acceptor), connections, ws));
         loop.run();
         return 0;

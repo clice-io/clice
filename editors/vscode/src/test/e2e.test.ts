@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import * as cp from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -10,6 +11,7 @@ import type { CurrentContextResult, QueryContextResult } from "@clice/tools/prot
 };
 
 import { inactiveRuns } from "../feature/inactive";
+import { exited, retire } from "../process";
 import { resolveExecutable } from "../setting";
 
 // E2E smoke tests against a real clice binary. The binary path comes from
@@ -142,6 +144,36 @@ if (process.platform !== "win32") {
         });
     });
 }
+
+// A previous server must be gone before the next one starts: it holds the
+// workspace's index lock until it has saved.
+suite("server retirement", function () {
+    // The extension host's executable runs scripts as plain Node.
+    const stub = (script: string) =>
+        cp.spawn(process.execPath, ["-e", script], {
+            env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+        });
+
+    test("waits for a server that exits", async function () {
+        const server = stub("setTimeout(() => process.exit(0), 300)");
+        const lines: string[] = [];
+        await retire(server, { exit: 10_000, term: 10_000 }, (line) => {
+            lines.push(line);
+        });
+        assert.ok(exited(server));
+        assert.deepStrictEqual(lines, []);
+    });
+
+    test("kills a server that does not exit", async function () {
+        const server = stub("process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)");
+        const lines: string[] = [];
+        await retire(server, { exit: 2_000, term: 500 }, (line) => {
+            lines.push(line);
+        });
+        assert.ok(exited(server));
+        assert.strictEqual(lines.length, process.platform === "win32" ? 1 : 2);
+    });
+});
 
 suite("clice E2E", function () {
     // The bundled variant runs the server staged under clice/ by .vscode-test.mjs;

@@ -61,6 +61,11 @@ struct WorkerPoolFixture {
         pool.low_limit = low;
     }
 
+    /// As stop() leaves the pool before its workers are reaped.
+    void mark_stopped() {
+        pool.stop_scope.cancel();
+    }
+
     /// Arm a busy slot with a live cancellation source, as a resumed
     /// sender would; cancel_low_priority only victimizes armed slots.
     std::shared_ptr<kota::cancellation_source> arm_cancel_source(std::size_t idx) {
@@ -1249,6 +1254,15 @@ ZEST_CASE(LowGrowthHasCeiling) {
     f.pool.foreground_pulse();
     f.tick_scaling(1.0);
     ZEXPECT(f.saturated_cycles() == 0u);
+}
+
+ZEST_CASE(StoppedPoolSchedulesNothing) {
+    WorkerPoolFixture f;
+    f.add_stateless();
+    f.add_stateless();
+    ZEXPECT(f.pool.schedulable_stateless() == 2u);
+    f.mark_stopped();
+    ZEXPECT(f.pool.schedulable_stateless() == 0u);
 }
 
 };  // ZEST_SUITE(WorkerPoolScheduling)

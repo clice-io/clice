@@ -37,7 +37,7 @@ test.for(MODES)("initialize hostile params %s", async (mode, { session }) => {
     const wsUri = workspace.uri();
     const hostileParams = {
         ...params,
-        processId: 12345,
+        processId: process.pid,
         rootPath: workspace.root,
         rootUri: wsUri,
         workspaceFolders: [{ uri: wsUri, name: "test" }],

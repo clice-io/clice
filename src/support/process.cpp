@@ -12,7 +12,12 @@ module;
 #include <windows.h>
 #elif defined(__APPLE__)
 #include <pthread.h>
+#include <signal.h>
+#include <sys/event.h>
+#include <unistd.h>
 #else
+#include <signal.h>
+#include <sys/prctl.h>
 #include <unistd.h>
 #endif
 
@@ -66,6 +71,69 @@ void lower_thread_priority() {
     // kept busy by the user's own build it starves a TU past the build
     // deadline, which then blames the file for a hang.
     [[maybe_unused]] auto niceness = ::nice(10);
+#endif
+}
+
+kota::task<> watch_termination(int signum, bool& requested, std::function<void()> stop) {
+    auto watcher = kota::signal::create();
+    if(!watcher || watcher->start(signum).has_error()) {
+        co_return;
+    }
+    while(true) {
+        co_await watcher->wait();
+        if(!requested) {
+            requested = true;
+            stop();
+        } else if(signum == SIGINT) {
+            std::_Exit(130);
+        }
+    }
+}
+
+bool process_alive(std::uint32_t pid) {
+#ifdef _WIN32
+    auto process = OpenProcess(SYNCHRONIZE, FALSE, pid);
+    if(!process) {
+        return GetLastError() == ERROR_ACCESS_DENIED;
+    }
+    bool alive = WaitForSingleObject(process, 0) == WAIT_TIMEOUT;
+    CloseHandle(process);
+    return alive;
+#else
+    return ::kill(static_cast<pid_t>(pid), 0) == 0 || errno == EPERM;
+#endif
+}
+
+void exit_with_parent(std::uint32_t parent) {
+#ifdef _WIN32
+    auto process = OpenProcess(SYNCHRONIZE, FALSE, parent);
+    if(!process) {
+        std::_Exit(1);
+    }
+    std::thread([process] {
+        WaitForSingleObject(process, INFINITE);
+        std::_Exit(1);
+    }).detach();
+#elif defined(__APPLE__)
+    auto queue = ::kqueue();
+    struct kevent change;
+    EV_SET(&change, parent, EVFILT_PROC, EV_ADD, NOTE_EXIT, 0, nullptr);
+    if(queue == -1 || ::kevent(queue, &change, 1, nullptr, 0, nullptr) == -1 ||
+       ::getppid() != static_cast<pid_t>(parent)) {
+        std::_Exit(1);
+    }
+    std::thread([queue] {
+        struct kevent event;
+        while(::kevent(queue, nullptr, 0, &event, 1, nullptr) == -1 && errno == EINTR) {}
+        std::_Exit(1);
+    }).detach();
+#else
+    // The death signal follows the thread that spawned this process; the
+    // check after arming it catches a parent that died before.
+    ::prctl(PR_SET_PDEATHSIG, SIGKILL);
+    if(::getppid() != static_cast<pid_t>(parent)) {
+        std::_Exit(1);
+    }
 #endif
 }
 

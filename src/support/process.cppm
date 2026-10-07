@@ -23,4 +23,17 @@ void release_free_memory();
 /// that ends with the background work it runs.
 void lower_thread_priority();
 
+/// Watch `signum` for good. The first delivery of any watched signal (the
+/// shared `requested` flag) calls `stop` for a graceful stop. A second
+/// Ctrl-C exits at once; a repeated SIGTERM or SIGHUP does not: supervisors
+/// send it more than once (GNU timeout signals the child, then its whole
+/// process group) and escalate with SIGKILL themselves.
+kota::task<> watch_termination(int signum, bool& requested, std::function<void()> stop);
+
+/// Whether a process with this id exists.
+bool process_alive(std::uint32_t pid);
+
+/// End this process the moment `parent` exits, or now when it already has.
+void exit_with_parent(std::uint32_t parent);
+
 }  // namespace clice
