@@ -49,7 +49,7 @@ public:
         }
     };
 
-    /// Register a module interface unit: module name -> fid.
+    /// Register a unit providing a module: module name -> fid.
     void add_module(llvm::StringRef module_name, Fid path_id);
 
     /// Re-register a file's module declaration after a save: the file
@@ -61,9 +61,9 @@ public:
     /// Look up all fids that provide a given module (may have multiple candidates).
     llvm::ArrayRef<Fid> lookup_module(llvm::StringRef module_name) const;
 
-    /// The module a file provides as an interface unit; empty for every
-    /// other file. Borrowed from the graph: copy it before a suspension
-    /// that could re-declare the file.
+    /// The module a file provides to importers (see
+    /// ScanResult::provided_module); empty for every other file. Borrowed from the graph:
+    /// copy it before a suspension that could re-declare the file.
     llvm::StringRef module_of(Fid path_id) const;
 
     /// Set the direct include list for a (file, config) pair.

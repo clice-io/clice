@@ -122,8 +122,9 @@ ScanResult scan_quick(llvm::StringRef content) {
                     }
                 }
 
+                result.is_implementation_unit =
+                    dir.Kind == dds::cxx_module_decl && !module_name.contains(':');
                 result.module_name = std::move(module_name);
-                result.is_interface_unit = (dir.Kind == dds::cxx_export_module_decl);
                 break;
             }
             default: {
@@ -359,7 +360,7 @@ void scan_with_preprocessor(
     auto& pp = instance->getPreprocessor();
     if(pp.isInNamedModule()) {
         result.module_name = pp.getNamedModuleName();
-        result.is_interface_unit = pp.isInNamedInterfaceUnit();
+        result.is_implementation_unit = pp.isInImplementationUnit();
     }
 
     action->EndSourceFile();

@@ -498,7 +498,7 @@ struct FileScanner {
     /// Record `path_id`'s scan of the bytes hashing to `hash` under
     /// `context`. A file it includes or forces in that the scan reaches
     /// for the first time gets its context and goes to `reach`. Returns
-    /// the module a unit provides as an interface, empty for every other
+    /// the module a unit provides to importers, empty for every other
     /// file.
     std::string record(Fid path_id,
                        ScanContext context,
@@ -636,13 +636,11 @@ struct FileScanner {
         return it->second;
     }
 
-    /// The module a unit provides as an interface. A declaration inside
+    /// The module a unit provides to importers. A declaration inside
     /// preprocessor conditionals is beyond the lexical scan: a
     /// preprocessor run under the unit's own group command resolves it —
     /// only its flags (a define unguarding the declaration) can.
     std::string module_of(Fid path_id, ScanContext context, ScanResult& scan, std::uint64_t hash) {
-        auto module = scan.module_name;
-        bool interface = scan.is_interface_unit;
         if(scan.need_preprocess) {
             if(auto observed = vfs::read_observed(files.resolve(path_id))) {
                 // The preprocessor must consume the bytes that produced
@@ -662,18 +660,10 @@ struct FileScanner {
                 auto declared = scan_module_decl(rendered,
                                                  cdb.config(group.config).directory,
                                                  observed->content->getBuffer());
-                module = std::move(declared.module_name);
-                interface = declared.is_interface_unit;
+                return declared.provided_module().str();
             }
         }
-        // Interface units only: an implementation unit (`module foo;`)
-        // must never satisfy lookup_module — importers would edge to it
-        // and try to build it as an interface — nor claim a PCM node of
-        // its own.
-        if(!interface) {
-            module.clear();
-        }
-        return module;
+        return scan.provided_module().str();
     }
 
     CompilationDatabase& cdb;

@@ -171,19 +171,12 @@ private:
         return {Family::PCM, path_id.raw};
     }
 
-    /// What a precise scan says about a unit's modules.
-    struct Imports {
-        std::vector<std::string> modules;
-        std::string module_name;
-        bool is_interface_unit = false;
-    };
-
     /// A buffer's last precise scan and what it ran against.
     struct ScanMemo {
         std::uint64_t directives = 0;
         std::uint64_t arguments = 0;
         std::uint64_t epoch = 0;
-        Imports imports;
+        std::vector<std::string> imports;
     };
 
     TaskGraph& graph;
@@ -210,7 +203,7 @@ private:
 
     /// A module build that failed on errors in the user's code: the cache
     /// key it ran under and what it read and looked for, its own source
-    /// and the interfaces it imported included.
+    /// and the modules it imported included.
     struct Failure {
         std::string key;
         DepsSnapshot deps;

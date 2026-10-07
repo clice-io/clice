@@ -94,6 +94,37 @@ test("partition chain", async ({ session }) => {
     expect(diags.length, `Expected no diagnostics, got: ${JSON.stringify(diags)}`).toBe(0);
 });
 
+/// Internal partitions (`module M:part;`) import other partitions and are
+/// imported by the other units of M, among them an implementation unit,
+/// which imports the primary interface implicitly.
+test("internal partitions", async ({ session }) => {
+    const { client } = await session("modules/internal_partitions");
+    for (const file of [
+        "detail.cppm",
+        "util.cppm",
+        "api.cppm",
+        "lib.cppm",
+        "impl.cpp",
+        "main.cpp",
+    ]) {
+        const [uri] = await client.openAndWait(file);
+        const diags = client.diagnostics.get(uri) ?? [];
+        expect(diags.length, `${file}: ${JSON.stringify(diags)}`).toBe(0);
+    }
+});
+
+test("internal partition definition", async ({ session }) => {
+    const { client } = await session("modules/internal_partitions");
+    // `import :util;` on line 1 of impl.cpp.
+    const [uri] = await client.openAndWait("impl.cpp");
+    expect(await client.waitForIndex(uri, "Lib:util"), "Index not ready").toBe(true);
+    const locs = await definitionUris(client, uri, 1, 8);
+    expect(
+        locs.some((u) => u.endsWith("util.cppm")),
+        JSON.stringify(locs),
+    ).toBe(true);
+});
+
 /// Re-exported symbols (export import) should be accessible through the wrapper.
 test("re export", async ({ session }) => {
     const { client } = await session("modules/re_export");

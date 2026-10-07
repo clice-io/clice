@@ -66,7 +66,7 @@ ZEST_SUITE(ModuleScan) {
 ZEST_CASE(PrimaryModuleInterface) {
     auto result = scan_quick("export module mylib;");
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
     ZEXPECT(!result.need_preprocess);
 }
 
@@ -74,7 +74,8 @@ ZEST_CASE(PrimaryModuleInterface) {
 ZEST_CASE(ModuleImplementationUnit) {
     auto result = scan_quick("module mylib;");
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(!result.is_interface_unit);
+    ZEXPECT(result.is_implementation_unit);
+    ZEXPECT(result.provided_module().empty());
     ZEXPECT(!result.need_preprocess);
 }
 
@@ -82,35 +83,36 @@ ZEST_CASE(ModuleImplementationUnit) {
 ZEST_CASE(DottedModuleName) {
     auto result = scan_quick("export module std.io;");
     ZEXPECT(result.module_name == "std.io");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
 }
 
 // Deeply dotted module name: export module a.b.c.d;
 ZEST_CASE(DeeplyDottedModuleName) {
     auto result = scan_quick("export module a.b.c.d;");
     ZEXPECT(result.module_name == "a.b.c.d");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
 }
 
 // Module partition interface: export module M:P;
 ZEST_CASE(PartitionInterface) {
     auto result = scan_quick("export module mylib:core;");
     ZEXPECT(result.module_name == "mylib:core");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
 }
 
-// Module partition implementation: module M:P;
-ZEST_CASE(PartitionImplementation) {
+// Internal partition: module M:P;
+ZEST_CASE(InternalPartition) {
     auto result = scan_quick("module mylib:core;");
     ZEXPECT(result.module_name == "mylib:core");
-    ZEXPECT(!result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
+    ZEXPECT(result.provided_module() == "mylib:core");
 }
 
 // Dotted module name + partition: export module a.b:p;
 ZEST_CASE(DottedModuleWithPartition) {
     auto result = scan_quick("export module a.b:p;");
     ZEXPECT(result.module_name == "a.b:p");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
 }
 
 // Global module fragment with includes before module declaration.
@@ -122,7 +124,7 @@ module;
 export module mylib;
 )");
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
     ZASSERT(result.includes.size() == 2u);
     ZEXPECT(result.includes[0].path == "stdlib.h");
     ZEXPECT(result.includes[0].is_angled);
@@ -177,7 +179,7 @@ module;
 export module mylib;
 )");
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
     ZEXPECT(!result.need_preprocess);
 }
 
@@ -205,7 +207,7 @@ module : private;
 int f() { return 42; }
 )");
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
 }
 
 };  // ZEST_SUITE(ModuleScan)
@@ -223,7 +225,7 @@ export module mylib;
 )");
     auto result = f.decl();
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
 }
 
 ZEST_CASE(ConditionalWithDefine) {
@@ -246,7 +248,7 @@ export module mylib;
                          {"-DUSE_MODULES"});
     auto result = f2.decl();
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
 }
 
 ZEST_CASE(ConditionalIfExpr) {
@@ -269,7 +271,7 @@ export module mylib;
                          {"-DENABLE_MODULES=1"});
     auto result = f2.decl();
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
 }
 
 ZEST_CASE(GMFWithConditional) {
@@ -285,7 +287,7 @@ export module mylib;
 )");
     auto result = f.decl();
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
 }
 
 ZEST_CASE(ImplementationUnit) {
@@ -295,7 +297,7 @@ module mylib;
 )");
     auto result = f.decl();
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(!result.is_interface_unit);
+    ZEXPECT(result.is_implementation_unit);
 }
 
 ZEST_CASE(DottedName) {
@@ -305,7 +307,7 @@ export module std.io;
 )");
     auto result = f.decl();
     ZEXPECT(result.module_name == "std.io");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
 }
 
 ZEST_CASE(Partition) {
@@ -315,7 +317,17 @@ export module mylib:core;
 )");
     auto result = f.decl();
     ZEXPECT(result.module_name == "mylib:core");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
+}
+
+ZEST_CASE(InternalPartition) {
+    ModuleScanFixture f(R"(
+#[main.cppm]
+module mylib:core;
+)");
+    auto result = f.decl();
+    ZEXPECT(result.module_name == "mylib:core");
+    ZEXPECT(!result.is_implementation_unit);
 }
 
 ZEST_CASE(NoModule) {
@@ -325,7 +337,7 @@ int main() { return 0; }
 )");
     auto result = f.decl();
     ZEXPECT(result.module_name.empty());
-    ZEXPECT(!result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
     ZEXPECT(result.modules.empty());
 }
 
@@ -345,7 +357,7 @@ import other;
 )");
     auto result = f.precise();
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
     ZASSERT(result.modules.size() == 1u);
     ZEXPECT(result.modules[0] == "other");
 }
@@ -423,7 +435,7 @@ import other;
 )");
     auto result = f.precise();
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(!result.is_interface_unit);
+    ZEXPECT(result.is_implementation_unit);
     ZASSERT(result.modules.size() == 1u);
     ZEXPECT(result.modules[0] == "other");
 }
@@ -437,6 +449,7 @@ import :utils;
 )");
     auto result = f.precise();
     ZEXPECT(result.module_name == "mylib");
+    ZEXPECT(result.is_implementation_unit);
     ZASSERT(result.modules.size() == 1u);
     ZEXPECT(result.modules[0] == "mylib:utils");
 }
@@ -513,7 +526,7 @@ import dep;
 )");
     auto result = f.precise();
     ZEXPECT(result.module_name == "mylib");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
     ZASSERT(result.modules.size() == 1u);
     ZEXPECT(result.modules[0] == "dep");
 }
@@ -550,7 +563,7 @@ int x;
 )");
     auto result = f.precise();
     ZEXPECT(result.module_name.empty());
-    ZEXPECT(!result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
     ZEXPECT(result.modules.empty());
 }
 
@@ -563,13 +576,13 @@ import :core;
 )");
     auto result = f.precise();
     ZEXPECT(result.module_name == "mylib:ui");
-    ZEXPECT(result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
     ZASSERT(result.modules.size() == 1u);
     ZEXPECT(result.modules[0] == "mylib:core");
 }
 
-// Partition implementation importing another partition.
-ZEST_CASE(PartitionImplImportingPartition) {
+// Internal partition importing another partition.
+ZEST_CASE(InternalPartitionImport) {
     ModuleScanFixture f(R"(
 #[impl.cpp]
 module mylib:detail;
@@ -577,7 +590,7 @@ import :core;
 )");
     auto result = f.precise();
     ZEXPECT(result.module_name == "mylib:detail");
-    ZEXPECT(!result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
     ZASSERT(result.modules.size() == 1u);
     ZEXPECT(result.modules[0] == "mylib:core");
 }

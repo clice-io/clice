@@ -100,7 +100,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         params.synthesized = resolved.synthesized->files;
     }
 
-    // A module interface unit waits on its own PCM node — that round
+    // A unit providing a module waits on its own PCM node — that round
     // builds the transitive imports and registers their artifacts. An
     // ordinary TU waits on its imports the same way: the fill_pcm_deps
     // snapshot below would otherwise race a cold build and parse without

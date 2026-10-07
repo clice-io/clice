@@ -182,7 +182,7 @@ int main() {
 
     ZEXPECT(result.includes.empty());
     ZEXPECT(result.module_name.empty());
-    ZEXPECT(!result.is_interface_unit);
+    ZEXPECT(!result.is_implementation_unit);
     ZEXPECT(!result.need_preprocess);
 }
 
