@@ -18,6 +18,9 @@ struct Vec {
     void push(const T& value);
     void take(int count);
     void take(long count) const;
+    void pick();
+    template <typename U>
+    void pick() const;
 };
 
 template <typename T>
@@ -26,6 +29,7 @@ void drain(Vec<Vec<T>> rows, const Vec<Vec<T>>& fixed, T value) {
     rows.§(overload)front().§(call)push(value);
     fixed.§(const_overload)front();
     rows.§(parameters)take(1);
+    rows.template §(template_overload)pick<int>();
     auto& row = rows[0];
     row.§(deduced)push(value);
     auto copy(rows[0]);

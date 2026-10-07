@@ -50,6 +50,7 @@ struct Vec {
 template <typename T>
 struct Grid {
     Vec<Vec<T>> rows;
+    mutable Vec<Vec<T>> cache;
 };
 
 template <typename T>
@@ -58,5 +59,6 @@ void bar(Vec<Vec<T>> rows, const Vec<Vec<T>>& fixed, const Grid<T>& grid) {
     rows.front().§(call);
     fixed[0].§(const_object);
     grid.rows.front().§(const_member);
+    grid.cache.front().§(mutable_member);
     rows.begin()->§(iterator);
 }

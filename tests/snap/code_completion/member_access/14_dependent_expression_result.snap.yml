@@ -3,42 +3,51 @@ created_at: 2026-10-07
 input_file: member_access/14_dependent_expression_result.cpp
 ---
 call:
-- { label: "Vec", kind: Class, edit: "57:17-57:17" }
-- { label: "begin", kind: Method, detail: "()", description: "iterator", edit: "57:17-57:17" }
-- { label: "front", kind: Method, detail: "()", description: "reference", edit: "57:17-57:17" }
-- { label: "operator[]", kind: Method, detail: "(int index)", description: "reference", edit: "57:17-57:17" }
-- { label: "push_back", kind: Method, detail: "(const T &value)", description: "void", edit: "57:17-57:17" }
-- { label: "size", kind: Method, detail: "()", description: "int", edit: "57:17-57:17" }
-- { label: "template", kind: Keyword, edit: "57:17-57:17" }
+- { label: "Vec", kind: Class, edit: "58:17-58:17" }
+- { label: "begin", kind: Method, detail: "()", description: "iterator", edit: "58:17-58:17" }
+- { label: "front", kind: Method, detail: "()", description: "reference", edit: "58:17-58:17" }
+- { label: "operator[]", kind: Method, detail: "(int index)", description: "reference", edit: "58:17-58:17" }
+- { label: "push_back", kind: Method, detail: "(const T &value)", description: "void", edit: "58:17-58:17" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "58:17-58:17" }
+- { label: "template", kind: Keyword, edit: "58:17-58:17" }
 
 const_member:
-- { label: "Vec", kind: Class, edit: "59:22-59:22" }
-- { label: "front", kind: Method, detail: "()", description: "const_reference", edit: "59:22-59:22" }
-- { label: "operator[]", kind: Method, detail: "(int index)", description: "const_reference", edit: "59:22-59:22" }
-- { label: "size", kind: Method, detail: "()", description: "int", edit: "59:22-59:22" }
-- { label: "template", kind: Keyword, edit: "59:22-59:22" }
+- { label: "Vec", kind: Class, edit: "60:22-60:22" }
+- { label: "front", kind: Method, detail: "()", description: "const_reference", edit: "60:22-60:22" }
+- { label: "operator[]", kind: Method, detail: "(int index)", description: "const_reference", edit: "60:22-60:22" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "60:22-60:22" }
+- { label: "template", kind: Keyword, edit: "60:22-60:22" }
 
 const_object:
-- { label: "Vec", kind: Class, edit: "58:13-58:13" }
-- { label: "front", kind: Method, detail: "()", description: "const_reference", edit: "58:13-58:13" }
-- { label: "operator[]", kind: Method, detail: "(int index)", description: "const_reference", edit: "58:13-58:13" }
-- { label: "size", kind: Method, detail: "()", description: "int", edit: "58:13-58:13" }
-- { label: "template", kind: Keyword, edit: "58:13-58:13" }
+- { label: "Vec", kind: Class, edit: "59:13-59:13" }
+- { label: "front", kind: Method, detail: "()", description: "const_reference", edit: "59:13-59:13" }
+- { label: "operator[]", kind: Method, detail: "(int index)", description: "const_reference", edit: "59:13-59:13" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "59:13-59:13" }
+- { label: "template", kind: Keyword, edit: "59:13-59:13" }
 
 iterator:
-- { label: "Vec", kind: Class, edit: "60:18-60:18" }
-- { label: "begin", kind: Method, detail: "()", description: "iterator", edit: "60:18-60:18" }
-- { label: "front", kind: Method, detail: "()", description: "reference", edit: "60:18-60:18" }
-- { label: "operator[]", kind: Method, detail: "(int index)", description: "reference", edit: "60:18-60:18" }
-- { label: "push_back", kind: Method, detail: "(const T &value)", description: "void", edit: "60:18-60:18" }
-- { label: "size", kind: Method, detail: "()", description: "int", edit: "60:18-60:18" }
-- { label: "template", kind: Keyword, edit: "60:18-60:18" }
+- { label: "Vec", kind: Class, edit: "62:18-62:18" }
+- { label: "begin", kind: Method, detail: "()", description: "iterator", edit: "62:18-62:18" }
+- { label: "front", kind: Method, detail: "()", description: "reference", edit: "62:18-62:18" }
+- { label: "operator[]", kind: Method, detail: "(int index)", description: "reference", edit: "62:18-62:18" }
+- { label: "push_back", kind: Method, detail: "(const T &value)", description: "void", edit: "62:18-62:18" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "62:18-62:18" }
+- { label: "template", kind: Keyword, edit: "62:18-62:18" }
+
+mutable_member:
+- { label: "Vec", kind: Class, edit: "61:23-61:23" }
+- { label: "begin", kind: Method, detail: "()", description: "iterator", edit: "61:23-61:23" }
+- { label: "front", kind: Method, detail: "()", description: "reference", edit: "61:23-61:23" }
+- { label: "operator[]", kind: Method, detail: "(int index)", description: "reference", edit: "61:23-61:23" }
+- { label: "push_back", kind: Method, detail: "(const T &value)", description: "void", edit: "61:23-61:23" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "61:23-61:23" }
+- { label: "template", kind: Keyword, edit: "61:23-61:23" }
 
 subscript:
-- { label: "Vec", kind: Class, edit: "56:12-56:12" }
-- { label: "begin", kind: Method, detail: "()", description: "iterator", edit: "56:12-56:12" }
-- { label: "front", kind: Method, detail: "()", description: "reference", edit: "56:12-56:12" }
-- { label: "operator[]", kind: Method, detail: "(int index)", description: "reference", edit: "56:12-56:12" }
-- { label: "push_back", kind: Method, detail: "(const T &value)", description: "void", edit: "56:12-56:12" }
-- { label: "size", kind: Method, detail: "()", description: "int", edit: "56:12-56:12" }
-- { label: "template", kind: Keyword, edit: "56:12-56:12" }
+- { label: "Vec", kind: Class, edit: "57:12-57:12" }
+- { label: "begin", kind: Method, detail: "()", description: "iterator", edit: "57:12-57:12" }
+- { label: "front", kind: Method, detail: "()", description: "reference", edit: "57:12-57:12" }
+- { label: "operator[]", kind: Method, detail: "(int index)", description: "reference", edit: "57:12-57:12" }
+- { label: "push_back", kind: Method, detail: "(const T &value)", description: "void", edit: "57:12-57:12" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "57:12-57:12" }
+- { label: "template", kind: Keyword, edit: "57:12-57:12" }

@@ -25,6 +25,7 @@ struct Vec {
 template <typename T>
 struct Grid {
     Vec<T> cells;
+    Vec<T> spare[2];
 };
 
 template <typename T>
@@ -46,4 +47,6 @@ void bar(Vec<Vec<T>> rows,
     pointer->§(pointer);
     decltype(auto) declared = grid.cells;
     declared.§(decltype_member);
+    auto decayed = grid.spare;
+    decayed->§(decayed_array);
 }

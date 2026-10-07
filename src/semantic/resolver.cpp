@@ -970,9 +970,10 @@ public:
                 auto* var = llvm::dyn_cast<clang::VarDecl>(value);
                 type =
                     var && var->getInit() && undeduced(type) ? deduce_auto(var) : substitute(type);
-                if(auto* field = llvm::dyn_cast<clang::FieldDecl>(value);
-                   !field || field->isMutable()) {
+                if(auto* field = llvm::dyn_cast<clang::FieldDecl>(value); !field) {
                     object_quals = 0;
+                } else if(field->isMutable()) {
+                    object_quals &= ~clang::Qualifiers::Const;
                 }
             }
         }
@@ -980,14 +981,7 @@ public:
         if(type.isNull()) {
             return type;
         }
-        /// The substitution put the type in the caller's terms; resolving it
-        /// under the frames of an enclosing lookup would bind them a second
-        /// time where the caller names that lookup's own template
-        /// (`Holder<W<T>>::member` inside `Holder<T>`).
-        InstantiationStack enclosing;
-        std::swap(enclosing, stack);
         type = resolve(type);
-        std::swap(enclosing, stack);
         return type->isReferenceType() ? type : type.withCVRQualifiers(object_quals);
     }
 
@@ -1078,7 +1072,8 @@ public:
                 return context.getLValueReferenceType(argument);
             }
         } else if(!declared->isReferenceType()) {
-            argument = context.getAdjustedParameterType(argument.getUnqualifiedType());
+            /// Decayed first: an array's qualifiers are its elements'.
+            argument = context.getAdjustedParameterType(argument).getUnqualifiedType();
         }
         return replace_auto(declared, argument);
     }
@@ -1360,6 +1355,8 @@ public:
             auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(as_function(decl));
             return method && method->isImplicitObjectMemberFunction() &&
                    method->getRefQualifier() == first->getRefQualifier() &&
+                   !method->getDescribedFunctionTemplate() ==
+                       !first->getDescribedFunctionTemplate() &&
                    std::ranges::equal(
                        method->parameters(),
                        first->parameters(),
