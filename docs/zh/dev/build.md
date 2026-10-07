@@ -43,10 +43,10 @@ npx bazel build //:bin/clice //:bin/unit_tests
 
 构建类型即 `bazel/clice.bazelrc` 中定义的配置：
 
-| 配置                      | 作用                               |
-| ------------------------- | ---------------------------------- |
-| `--config=RelWithDebInfo` | 默认配置：开启优化，带调试信息     |
-| `--config=Debug`          | 不开启优化，启用 Address Sanitizer |
+| 配置                      | 作用                                      |
+| ------------------------- | ----------------------------------------- |
+| `--config=RelWithDebInfo` | 默认配置：开启优化，带调试信息            |
+| `--config=Debug`          | 轻度优化（`-O1`），启用 Address Sanitizer |
 
 `--` 之后的选项会经由 `pixi run build` 传给 Bazel，例如 `pixi run build RelWithDebInfo -- //:package`。
 
