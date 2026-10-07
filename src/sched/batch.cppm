@@ -43,8 +43,8 @@ struct BatchOptions {
 struct BatchResult {
     int exit_code = 0;
 
-    /// A signal interrupted the run; progress was saved and a rerun
-    /// resumes from it.
+    /// A signal interrupted the run; the saved progress (all of it unless
+    /// `unsaved`) lets a rerun resume.
     bool interrupted = false;
 
     /// The run reached its final summary (early failures skip it).

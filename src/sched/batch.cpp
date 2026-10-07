@@ -77,19 +77,10 @@ kota::task<> watch_signal(int signum, kota::cancellation_source& stop, bool& sto
     }
 }
 
-/// Periodically checkpoint the cache store manifest (the store itself is
-/// passive) and persist the index, so a crash on a long run loses at most
-/// one interval of work: the pump saves only at round end, and a round
-/// covers the whole workspace on a cold run.
 kota::task<> checkpoint_task(BatchStack& stack) {
-    constexpr auto interval = std::chrono::minutes(5);
     while(true) {
-        co_await kota::sleep(interval);
-        if(stack.project.store) {
-            co_await kota::queue([&stack] { stack.project.store->checkpoint(); });
-        }
-        stack.sched.pump.claim_report(
-            co_await stack.sched.store.save(stack.sched.pump.save_debt()));
+        co_await kota::sleep(SchedulingStack::checkpoint_interval());
+        co_await stack.sched.checkpoint();
     }
 }
 
@@ -257,7 +248,11 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     BatchLifetime lifetime(stack);
     lifetime.aux.spawn(progress_ticker(stack, options));
     co_await kota::with_token(wait_until_indexed(stack.sched.pump), lifetime.token());
-    if(co_await lifetime.finish()) {
+    auto interrupted = co_await lifetime.finish();
+    // The shutdown save was the last retry for failed writes; whatever is
+    // still dirty never reached disk and a rerun cannot resume from it.
+    result.unsaved = stack.sched.store.has_unsaved_state();
+    if(interrupted) {
         result.interrupted = true;
         result.exit_code = 130;
         co_return;
@@ -279,9 +274,6 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
         result.failed.emplace_back(project.file_table.display(file));
     }
     std::ranges::sort(result.failed);
-    // The shutdown save was the last retry for failed writes; whatever is
-    // still dirty never reached disk and a rerun cannot resume from it.
-    result.unsaved = stack.sched.store.has_unsaved_state();
     if(!result.failed.empty() || result.unsaved) {
         result.exit_code = 1;
     }

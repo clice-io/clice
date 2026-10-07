@@ -194,12 +194,11 @@ private:
     kota::task<> metadata_flush_task();
     bool metadata_flush_scheduled = false;
 
-    /// Periodically checkpoint the cache store manifest so last-accessed
-    /// times survive crashes (the store itself is passive by design).
-    kota::task<> cache_checkpoint_task();
+    /// The periodic SchedulingStack::checkpoint().
+    kota::task<> checkpoint_task();
 
     /// Drop pch_cache metadata for blobs the store's LRU evicted from
-    /// disk (see cache_checkpoint_task).
+    /// disk (see checkpoint_task).
     void drain_store_evictions();
 
     /// The file tracker's default-sources loop: each tick hands the

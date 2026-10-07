@@ -183,7 +183,13 @@ int run_indexing(Spelling root,
         .on_progress = report_progress,
     });
     if(result.interrupted) {
-        driver::println("Indexing interrupted; progress saved. Rerun `clice index` to resume.");
+        if(result.unsaved) {
+            driver::println(
+                "Indexing interrupted; part of the progress could not be persisted "
+                "(see the log). Rerun `clice index` to resume.");
+        } else {
+            driver::println("Indexing interrupted; progress saved. Rerun `clice index` to resume.");
+        }
         return result.exit_code;
     }
     if(!result.completed) {

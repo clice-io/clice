@@ -79,6 +79,15 @@ llvm::SmallVector<Fid> IndexPump::save_debt() const {
     return debt;
 }
 
+kota::task<> IndexPump::persist(IndexStore::SearchRebuild search) {
+    auto report = co_await store.save(save_debt(), search);
+    bool retry = report.owes_retry;
+    claim_report(report);
+    if(retry) {
+        claim_report(co_await store.save(save_debt(), search));
+    }
+}
+
 kota::task<> IndexPump::await_attempt(Fid server_path_id) {
     auto pending = ledger.peek(server_path_id);
     if(!pending) {
@@ -495,8 +504,8 @@ kota::task<> IndexPump::run_background_indexing() {
              total - dispatched,
              total,
              timer.ms());
-    claim_report(
-        co_await store.save(save_debt(), /*settle=*/index_queue_pos >= index_queue.size()));
+    co_await persist(index_queue_pos >= index_queue.size() ? IndexStore::SearchRebuild::Settled
+                                                           : IndexStore::SearchRebuild::Behind);
     // The round's merge buffers are freed by now; glibc would keep their
     // pages, and the master its round's peak, for the rest of the session.
     co_await kota::queue([] { release_free_memory(); });
