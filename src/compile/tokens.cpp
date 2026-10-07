@@ -99,18 +99,28 @@ TokenMap::TokenMap(clang::Preprocessor& pp) : pp(pp), SM(pp.getSourceManager()) 
 }
 
 void TokenMap::record(const clang::Token& token) {
+    if(token.isAnnotation() && !token.is(clang::tok::annot_module_name)) {
+        return;
+    }
+    if(token.is(clang::tok::eod)) {
+        return;
+    }
+    auto index = static_cast<std::uint32_t>(expanded_tokens.size());
+    if(pp.isInPrimaryFile()) {
+        if(main_segments.empty() || main_segments.back().second != index) {
+            main_segments.emplace_back(index, index);
+        }
+        main_segments.back().second += 1;
+    }
     if(token.is(clang::tok::annot_module_name)) {
         auto range = clang::CharSourceRange::getTokenRange(token.getAnnotationRange());
         auto text = clang::Lexer::getSourceText(range, SM, pp.getLangOpts());
         expanded_tokens.emplace_back(token.getLocation(),
                                      static_cast<unsigned>(text.size()),
                                      token.getKind());
-        return;
+    } else {
+        expanded_tokens.emplace_back(token);
     }
-    if(token.isAnnotation() || token.is(clang::tok::eod)) {
-        return;
-    }
-    expanded_tokens.emplace_back(token);
 }
 
 void TokenMap::record_invocation(clang::SourceRange range) {
@@ -137,9 +147,10 @@ void TokenMap::record_invocation(clang::SourceRange range) {
 void TokenMap::finish() {
     spelled_tokens = clang::syntax::tokenize(SM.getMainFileID(), SM, pp.getLangOpts());
 
-    expanded_index.reserve(expanded_tokens.size());
-    for(auto [index, token]: llvm::enumerate(expanded_tokens)) {
-        expanded_index[token.location()] = static_cast<std::uint32_t>(index);
+    for(auto [begin, end]: main_segments) {
+        for(auto index = begin; index < end; index += 1) {
+            expanded_index[expanded_tokens[index].location()] = index;
+        }
     }
 
     // An invocation's expanded tokens are the run that expands from its
@@ -152,29 +163,31 @@ void TokenMap::finish() {
     }
     llvm::ArrayRef<clang::syntax::Token> stream = expanded_tokens;
     std::vector<std::pair<std::uint32_t, std::uint32_t>> runs(invocations.size());
-    for(std::uint32_t index = 0; index < stream.size();) {
-        auto location = stream[index].location();
-        if(location.isFileID()) {
-            index += 1;
-            continue;
-        }
-        // The tokens of one macro FileID share where they expand from.
-        auto fid = SM.getFileID(location);
-        auto limit = SM.getComposedLoc(fid, SM.getFileIDSize(fid));
-        auto end = index + 1;
-        while(end < stream.size() && location <= stream[end].location() &&
-              stream[end].location() <= limit) {
-            end += 1;
-        }
-        if(auto it = by_begin.find(SM.getExpansionLoc(location)); it != by_begin.end()) {
-            auto& run = runs[it->second];
-            if(run.second == 0) {
-                run = {index, end};
-            } else if(run.second == index) {
-                run.second = end;
+    for(auto [segment_begin, segment_end]: main_segments) {
+        for(auto index = segment_begin; index < segment_end;) {
+            auto location = stream[index].location();
+            if(location.isFileID()) {
+                index += 1;
+                continue;
             }
+            // The tokens of one macro FileID share where they expand from.
+            auto fid = SM.getFileID(location);
+            auto limit = SM.getComposedLoc(fid, SM.getFileIDSize(fid));
+            auto end = index + 1;
+            while(end < segment_end && location <= stream[end].location() &&
+                  stream[end].location() <= limit) {
+                end += 1;
+            }
+            if(auto it = by_begin.find(SM.getExpansionLoc(location)); it != by_begin.end()) {
+                auto& run = runs[it->second];
+                if(run.second == 0) {
+                    run = {index, end};
+                } else if(run.second == index) {
+                    run.second = end;
+                }
+            }
+            index = end;
         }
-        index = end;
     }
 
     llvm::ArrayRef<clang::syntax::Token> spelled = spelled_tokens;
@@ -199,9 +212,11 @@ void TokenMap::finish() {
     // A spelled token survives preprocessing when the parser saw it or it
     // is part of an invocation that expanded to something.
     away.assign(spelled_tokens.size(), true);
-    for(auto& token: expanded_tokens) {
-        if(const auto* written = spelled_at(token.location())) {
-            away[written - spelled.data()] = false;
+    for(auto [begin, end]: main_segments) {
+        for(auto& token: stream.slice(begin, end - begin)) {
+            if(const auto* written = spelled_at(token.location())) {
+                away[written - spelled.data()] = false;
+            }
         }
     }
     for(auto& expansion: expansions) {
@@ -310,7 +325,8 @@ llvm::ArrayRef<clang::syntax::Token> TokenMap::expanded(clang::SourceRange range
     if(range.isInvalid()) {
         return {};
     }
-    // The AST's ranges start and end at expanded tokens.
+    // The AST's ranges of the main file start and end at expanded tokens it
+    // lexed.
     auto begin = expanded_index.find(range.getBegin());
     auto end = expanded_index.find(range.getEnd());
     if(begin != expanded_index.end() && end != expanded_index.end()) {
