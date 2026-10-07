@@ -10,7 +10,6 @@ import :tests.unit.test.test;
 namespace clice::testing {
 namespace {
 
-using index::read_bitmap;
 using index::view_bitmap;
 using index::write_bitmap;
 
@@ -18,13 +17,9 @@ std::optional<Bitmap> view_of(const std::vector<std::byte>& image) {
     return view_bitmap(image.data(), image.size());
 }
 
-std::optional<Bitmap> read_of(const std::vector<std::byte>& image) {
-    return read_bitmap(image.data(), image.size());
-}
-
 ZEST_SUITE(BitmapImage) {
 
-ZEST_CASE(ViewMatchesRead) {  // Array containers alone (no run cookie, offsets stored), one run
+ZEST_CASE(ViewMatchesBitmap) {  // Array containers alone (no run cookie, offsets stored), one run
     // container (too few containers to store offsets), and bitset, run
     // and array containers together (offsets stored).
     Bitmap arrays;
@@ -44,10 +39,8 @@ ZEST_CASE(ViewMatchesRead) {  // Array containers alone (no run cookie, offsets 
     for(const auto* bitmap: {&arrays, &runs, &mixed}) {
         auto image = write_bitmap(*bitmap);
         auto view = view_of(image);
-        auto read = read_of(image);
         ZASSERT(view);
-        ZASSERT(read);
-        ZEXPECT(*view == *read);
+        ZEXPECT(*view == *bitmap);
         ZEXPECT(view->cardinality() == bitmap->cardinality());
         ZEXPECT(view->contains(bitmap->minimum()));
         ZEXPECT((*view & arrays) == (*bitmap & arrays));
@@ -81,20 +74,23 @@ ZEST_CASE(ViewRejectsMalformed) {
     truncated.pop_back();
     ZEXPECT(!view_of(truncated).has_value());
 
-    // The bounded reader walks the payload and ignores the offset; the
-    // in-place reader follows it.
+    // The bounded reader walks the payload and ignores the offset, so
+    // the image stays valid to it; the in-place reader follows the offset.
     auto skewed = image;
     skewed[12] = std::byte{0xff};
-    ZEXPECT(read_of(skewed));
+    auto* walked = roaring::api::roaring_bitmap_portable_deserialize_safe(
+        reinterpret_cast<const char*>(skewed.data()),
+        skewed.size());
+    ZEXPECT(walked != nullptr);
+    roaring::api::roaring_bitmap_free(walked);
     ZEXPECT(!view_of(skewed).has_value());
     auto rewound = image;
     rewound[12] = std::byte{0};
     ZEXPECT(!view_of(rewound).has_value());
 
-    // Values out of order fail the structural check of both readers.
+    // Values out of order fail the structural check.
     auto unsorted = image;
     std::swap(unsorted[16], unsorted[20]);
-    ZEXPECT(!read_of(unsorted).has_value());
     ZEXPECT(!view_of(unsorted).has_value());
 }
 

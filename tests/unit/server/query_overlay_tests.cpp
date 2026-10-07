@@ -5,7 +5,6 @@ module;
 module clice;
 
 import :index.query;
-import :index.serialization;
 import :index.shard;
 import :index.tu_index;
 import :project.command_resolver;
@@ -18,6 +17,7 @@ import :sched.index.pump;
 import :server.ast_projection;
 import :server.live_sources;
 import :server.session_store;
+import :tests.unit.test.envelope_mirror;
 import :tests.unit.test.temp_dir;
 import :tests.unit.test.test;
 import :tests.unit.test.tester;
@@ -83,8 +83,9 @@ void open_with_overlay(std::source_location location = std::source_location::cur
 
     auto& entry = projections.entries[path_id];
     auto projection = std::make_shared<ASTProjection>();
-    projection->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit, true))));
+    projection->index = std::make_shared<index::TUIndex>(
+        index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(
+            index::build_tu_index(*unit, {.main_file_only = true}))));
     projection->pch_key = "key";
     entry.projection = std::move(projection);
     entry.current = true;
@@ -94,14 +95,15 @@ index::SymbolHash hash_of(llvm::StringRef name,
                           std::source_location location = std::source_location::current()) {
     index::SymbolHash hash = 0;
     std::uint32_t count = 0;
-    full_index.iterate_symbols(
-        [&](index::SymbolHash symbol_id, const index::SymbolIdentity& symbol, llvm::StringRef) {
-            if(symbol.name == name) {
-                hash = symbol_id;
-                count += 1;
-            }
-            return true;
-        });
+    full_index.iterate_symbols([&](index::SymbolHash symbol_id,
+                                   const index::SymbolIdentity& symbol,
+                                   llvm::ArrayRef<std::uint32_t>) {
+        if(symbol.name == name) {
+            hash = symbol_id;
+            count += 1;
+        }
+        return true;
+    });
     ZEXPECT(count == 1);
     return hash;
 }
@@ -121,7 +123,7 @@ void merge_disk_index() {
     for(std::uint32_t i = 0; i < full_index.path_count(); i += 1) {
         file_ids_map.push_back(project.file_table.intern(Spelling::absolute(full_index.path(i))));
     }
-    ZASSERT(project.project_index.merge(full_index, file_ids_map));
+    project.project_index.merge(full_index, file_ids_map);
 
     for(std::uint32_t section = 0; section < full_index.section_count(); section += 1) {
         auto local_id = full_index.section_path(section);
@@ -134,21 +136,10 @@ void merge_disk_index() {
 /// row of its buffer lives behind the PCH. `loaded` is what the freshness
 /// gate keys on; an unloaded index means "compile not settled".
 index::TUIndex empty_session_index() {
-    // Field order MUST mirror the envelope layout (tu_index.cpp).
-    struct EnvelopeMirror {
-        std::uint32_t format_version = index::index_format_version;
-        std::int64_t built_at = 1;
-        std::vector<std::string> paths;
-    };
-
     EnvelopeMirror mirror;
+    mirror.built_at = 1;
     mirror.paths = {main_path};
-    auto bytes = kota::codec::fbs::to_bytes(mirror);
-    if(!bytes) {
-        return {};
-    }
-    return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(
-        llvm::StringRef(reinterpret_cast<const char*>(bytes->data()), bytes->size())));
+    return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(mirror.bytes()));
 }
 
 void install_empty_index(std::source_location location = std::source_location::current()) {

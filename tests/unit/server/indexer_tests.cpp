@@ -26,6 +26,7 @@ import :server.editor_context;
 import :syntax.dependency_graph;
 import :tests.unit.server.worker_test_helpers;
 import :tests.unit.test.cdb_helper;
+import :tests.unit.test.envelope_mirror;
 import :tests.unit.test.temp_dir;
 import :tests.unit.test.test;
 import :vfs.cache_store;
@@ -192,8 +193,12 @@ struct IndexedTU {
     std::string tu_path;  ///< The TU's canonical path inside the index.
 };
 
-/// Index a real on-disk file in-process into its envelope bytes.
-IndexedTU index_file(TempDir& tmp, llvm::StringRef file, std::vector<std::string> extra_args = {}) {
+/// Index a real on-disk file in-process into its envelope bytes, the
+/// sections of `known` variants left empty.
+IndexedTU index_file(TempDir& tmp,
+                     llvm::StringRef file,
+                     std::vector<std::string> extra_args = {},
+                     llvm::ArrayRef<std::uint64_t> known = {}) {
     std::string resource = std::string(resource_dir());
     std::vector<std::string> args =
         {"clang++", "-fsyntax-only", "-resource-dir", resource, "-c", std::string(file)};
@@ -211,7 +216,7 @@ IndexedTU index_file(TempDir& tmp, llvm::StringRef file, std::vector<std::string
         return {};
     }
     IndexedTU result;
-    result.data = index::build_tu_index(unit);
+    result.data = index::build_tu_index(unit, {.known_variants = known});
     auto view = index::TUIndex::from_bytes(result.data);
     if(!view.loaded()) {
         return {};
@@ -221,71 +226,11 @@ IndexedTU index_file(TempDir& tmp, llvm::StringRef file, std::vector<std::string
 }
 
 /// Re-encode an envelope with its consumed-content hash column dropped,
-/// as a file behind a PCM ships it. Field order MUST mirror the envelope
-/// layout (tu_index.cpp).
+/// as a file behind a PCM ships it.
 std::string strip_path_hashes(llvm::StringRef data) {
-    struct SymbolMirror {
-        std::string name;
-        std::string args;
-        std::uint64_t parent = 0;
-        std::uint8_t kind = 0;
-        std::uint8_t scope = 0;
-        std::uint16_t flags = 0;
-        std::uint32_t file = index::no_file;
-        std::vector<std::byte> reference_files;
-    };
-
-    struct SectionMirror {
-        std::uint32_t path_id = 0;
-        std::uint64_t hash = 0;
-        std::vector<std::uint8_t> blob;
-    };
-
-    struct EnvelopeMirror {
-        std::uint32_t format_version = index::index_format_version;
-        std::int64_t built_at = 0;
-        std::vector<std::string> paths;
-        std::vector<std::uint64_t> path_hashes;
-        std::vector<index::IncludeNode> nodes;
-        llvm::DenseMap<std::uint64_t, SymbolMirror> symbols{};
-        std::vector<SectionMirror> sections;
-    };
-
-    auto view = index::TUIndex::from_bytes(data);
-    EnvelopeMirror mirror;
-    mirror.built_at = view.built_at();
-    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
-        mirror.paths.emplace_back(view.path(i));
-    }
-    for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
-        mirror.nodes.push_back(view.node(i));
-    }
-    view.iterate_symbols(
-        [&](index::SymbolHash hash, const index::SymbolIdentity& id, llvm::StringRef bitmap) {
-            auto& symbol = mirror.symbols[hash];
-            symbol.name = std::string(id.name);
-            symbol.args = std::string(id.args);
-            symbol.parent = id.parent;
-            symbol.kind = id.kind.value();
-            symbol.scope = static_cast<std::uint8_t>(id.scope);
-            symbol.flags = static_cast<std::uint16_t>(id.flags);
-            symbol.file = id.file;
-            const auto* begin = reinterpret_cast<const std::byte*>(bitmap.data());
-            symbol.reference_files.assign(begin, begin + bitmap.size());
-            return true;
-        });
-    for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
-        auto blob = view.section_blob(i);
-        mirror.sections.push_back({view.section_path(i),
-                                   view.section_hash(i),
-                                   std::vector<std::uint8_t>(blob.begin(), blob.end())});
-    }
-
-    auto bytes = kota::codec::fbs::to_bytes(mirror);
-    if(!bytes) {
-        return {};
-    }
-    return std::string(bytes->begin(), bytes->end());
+    auto mirror = EnvelopeMirror::of(index::TUIndex::from_bytes(data));
+    mirror.path_hashes.clear();
+    return mirror.bytes();
 }
 
 /// A structurally valid blob of `text`'s content generation carrying an
@@ -722,6 +667,70 @@ ZEST_CASE(SharedHeaderVariants) {
     merge(fresh.data.data(), fresh.data.size());
     ZASSERT(shard.variants().size() == std::size_t(2));
     ZASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(3));
+}
+
+ZEST_CASE(KnownVariantByHash) {
+    TempDir tmp;
+    tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 1; }\n");
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
+    tmp.touch("b.cpp", "#include \"shared.h\"\nint b() { return shared_fn(); }\n");
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
+    auto header_section = [&](const index::TUIndex& view) {
+        std::uint32_t found = view.section_count();
+        for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
+            if(llvm::sys::path::filename(view.path(view.section_path(i))) == "shared.h") {
+                found = i;
+            }
+        }
+        ZASSERT(found < view.section_count());
+        return found;
+    };
+
+    auto a = index_file(tmp, tmp.path("a.cpp"));
+    ZASSERT(!a.data.empty());
+    auto a_view = index::TUIndex::from_bytes(a.data);
+    auto variant = a_view.section_hash(header_section(a_view));
+
+    // A result naming a variant the store does not hold commits nothing:
+    // the file must run again.
+    auto early = index_file(tmp, tmp.path("b.cpp"), {}, {variant});
+    auto outdated = index_store.merge(early.data.data(), early.data.size());
+    ZASSERT(!outdated);
+    ZEXPECT(outdated.error() == IndexStore::MergeError::Outdated);
+    auto b_id = project.file_table.intern(Spelling::absolute(early.tu_path));
+    ZEXPECT(!project.project_index.manifests.contains(b_id));
+
+    // Once the store holds it, the bare hash counts as the file's
+    // contribution like the bytes would.
+    ZASSERT(merge(a.data.data(), a.data.size()));
+    auto b =
+        index_file(tmp, tmp.path("b.cpp"), {}, project.project_index.shards[header_id].variants());
+    auto b_view = index::TUIndex::from_bytes(b.data);
+    ZASSERT(b_view.section_blob(header_section(b_view)).empty());
+    ZASSERT(merge(b.data.data(), b.data.size()));
+    ZEXPECT(project.project_index.manifests.contains(b_id));
+    ZEXPECT(project.project_index.shards[header_id].variants().size() == std::size_t(1));
+    ZEXPECT(project.project_index.contributions.lookup(header_id).size() == std::size_t(2));
+}
+
+ZEST_CASE(KnownVariantsFromManifest) {
+    // Without a scanned include graph, the files a TU's last manifest names
+    // still offer their stored variants.
+    TempDir tmp;
+    tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 1; }\n");
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
+    auto a = index_file(tmp, tmp.path("a.cpp"));
+    ZASSERT(merge(a.data.data(), a.data.size()));
+
+    auto a_id = project.file_table.intern(Spelling::absolute(a.tu_path));
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
+    std::vector<std::uint64_t> expected = project.project_index.shards[header_id].variants();
+    llvm::append_range(expected, project.project_index.shards[a_id].variants());
+    llvm::sort(expected);
+    ZEXPECT(index_store.known_variants(a_id) == expected);
+
+    auto other = project.file_table.intern(Spelling::absolute(tmp.path("other.cpp")));
+    ZEXPECT(index_store.known_variants(other).empty());
 }
 
 ZEST_CASE(HeaderRegenerationReplaces) {
@@ -3587,6 +3596,66 @@ ZEST_CASE(ModuleLintScanParity) {
 }
 
 };  // ZEST_SUITE(TURunLint)
+
+ZEST_SUITE(TURunIndex) {
+
+ZEST_CASE(OutdatedRerunsInFull) {
+    // Two headers with the same bytes share one variant identity. Only
+    // x1.h stores it, so b.cpp's x2.h section matches a known hash while
+    // its own file stores nothing: that result must not land, and the
+    // rerun sends every section.
+    TempDir tmp;
+    tmp.touch("x1.h", "#pragma once\nint f();\n");
+    tmp.touch("x2.h", "#pragma once\nint f();\n");
+    tmp.touch("a.cpp", "#include \"x1.h\"\nint a() { return f(); }\n");
+    tmp.touch("b.cpp", "#include \"x1.h\"\n#include \"x2.h\"\nint b() { return f(); }\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("a.cpp"), {}},
+                  {tmp.root, tmp.path("b.cpp"), {}},
+    }));
+    scan_all(f.project.cdb, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto a = index_file(tmp, tmp.path("a.cpp"));
+    ZASSERT(f.merge(a.data.data(), a.data.size()));
+    auto x2_id = f.project.file_table.intern(Spelling::absolute(tmp.path("x2.h")));
+    ZASSERT(!f.project.project_index.shards.contains(x2_id));
+
+    auto b_id = f.project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
+    std::vector<TURunFamily::Verdict> verdicts;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        for(int run = 0; run < 2; run += 1) {
+            TURunFamily::Plan plan;
+            plan.index = true;
+            verdicts.push_back((co_await f.turun.run(b_id, std::move(plan), {})).verdict);
+        }
+
+        co_await f.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    using enum TURunFamily::Verdict;
+    ZEXPECT(verdicts == (std::vector<TURunFamily::Verdict>{Preempted, Completed}));
+    ZEXPECT(f.project.project_index.shards.contains(x2_id));
+}
+
+};  // ZEST_SUITE(TURunIndex)
 
 }  // namespace
 }  // namespace clice::testing
