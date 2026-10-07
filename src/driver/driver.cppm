@@ -56,7 +56,9 @@ inline void write_output(std::FILE* stream, std::string_view text) {
     }
     int error = errno;
 #ifndef _WIN32
-    if(error == EPIPE) {
+    // A socket reader (Node's stdio pipes are socketpairs) that went away
+    // with output still unread fails the write with ECONNRESET instead.
+    if(error == EPIPE || error == ECONNRESET) {
         std::signal(SIGPIPE, SIG_DFL);
         std::raise(SIGPIPE);
     }
