@@ -102,6 +102,7 @@ private:
 
     clang::Preprocessor& pp;
     const clang::SourceManager& SM;
+    clang::FileID main_fid;
     clang::SourceLocation main_begin;
     clang::SourceLocation main_end;
 

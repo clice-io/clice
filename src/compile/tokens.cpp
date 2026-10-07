@@ -91,9 +91,9 @@ struct TokenMap::Hooks : clang::PPCallbacks {
 };
 
 TokenMap::TokenMap(clang::Preprocessor& pp) : pp(pp), SM(pp.getSourceManager()) {
-    auto main = SM.getMainFileID();
-    main_begin = SM.getLocForStartOfFile(main);
-    main_end = SM.getLocForEndOfFile(main);
+    main_fid = SM.getMainFileID();
+    main_begin = SM.getLocForStartOfFile(main_fid);
+    main_end = SM.getLocForEndOfFile(main_fid);
     pp.setTokenWatcher([this](const clang::Token& token) { record(token); });
     pp.addPPCallbacks(std::make_unique<Hooks>(*this));
 }
@@ -105,8 +105,10 @@ void TokenMap::record(const clang::Token& token) {
     if(token.is(clang::tok::eod)) {
         return;
     }
+    // Past the main file's end no file lexer is left: the eof is its own.
     auto index = static_cast<std::uint32_t>(expanded_tokens.size());
-    if(pp.isInPrimaryFile()) {
+    auto* lexer = pp.getCurrentFileLexer();
+    if(!lexer || lexer->getFileID() == main_fid) {
         if(main_segments.empty() || main_segments.back().second != index) {
             main_segments.emplace_back(index, index);
         }
@@ -145,7 +147,7 @@ void TokenMap::record_invocation(clang::SourceRange range) {
 }
 
 void TokenMap::finish() {
-    spelled_tokens = clang::syntax::tokenize(SM.getMainFileID(), SM, pp.getLangOpts());
+    spelled_tokens = clang::syntax::tokenize(main_fid, SM, pp.getLangOpts());
 
     for(auto [begin, end]: main_segments) {
         for(auto index = begin; index < end; index += 1) {
