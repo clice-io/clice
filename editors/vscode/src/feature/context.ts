@@ -17,13 +17,6 @@ function isCppEditor(editor: vscode.TextEditor | undefined): editor is vscode.Te
     return language === "c" || language === "cpp" || language === "cuda-cpp";
 }
 
-function statusText(current: ContextItem | null, automatic: boolean): string {
-    if (!current) {
-        return "$(list-tree) auto";
-    }
-    return `$(list-tree) ${current.label}${automatic ? " (auto)" : ""}`;
-}
-
 function sameContext(a: ContextItem, b: ContextItem | null | undefined): boolean {
     if (!b) {
         return false;
@@ -210,7 +203,6 @@ class OutlineRefresher implements vscode.Disposable {
 export function registerCompilationContext(client: ClientHandle, ext: vscode.ExtensionContext) {
     const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     status.command = "clice.switchContext";
-    status.tooltip = "clice: active compilation context (click to switch)";
 
     const tree = new ContextTreeProvider(client);
     const outline = new OutlineRefresher();
@@ -222,7 +214,11 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         if (vscode.window.activeTextEditor !== editor) {
             return;
         }
-        status.text = statusText(current.context, current.automatic);
+        // The item's label can run to every flag of a command; the bar only
+        // says who picked the context, the tooltip names it.
+        status.text = current.automatic ? "$(list-tree) auto" : "$(list-tree) selected";
+        const named = current.context ? `${current.context.label} — ` : "";
+        status.tooltip = `clice: compilation context ${named}${current.automatic ? "picked automatically" : "chosen"} (click to switch)`;
         status.show();
     }
 
