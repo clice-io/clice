@@ -1048,7 +1048,7 @@ public:
         /// parenthesized, which names the lvalue the expression is.
         bool parenthesized = llvm::isa<clang::ParenExpr>(init);
         clang::QualType source;
-        if(evaluated || decltype_auto) {
+        if(evaluated || (decltype_auto && !parenthesized)) {
             source = type_of(init, /*through_object=*/!decltype_auto || parenthesized);
         }
         /// An evaluated type is in the caller's terms already; the written
@@ -1390,7 +1390,7 @@ public:
             }
         }
         auto removed = std::ranges::remove_if(candidates, [&](const clang::NamedDecl* decl) {
-            return added(decl) != best;
+            return best < 0 || added(decl) != best;
         });
         candidates.erase(removed.begin(), removed.end());
     }
