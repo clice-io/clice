@@ -159,15 +159,20 @@ INDIRECT
 
 ZEST_CASE(PragmaExpansions) {
     add_main("main.cpp", R"cpp(
-#define WIDTH 4
-#define COUNT 2
-void f(int* a) {
-#pragma clang loop vectorize_width(WIDTH) interleave_count(COUNT)
-    for(int i = 0; i < 64; i += 1) a[i] = 0;
+#define THREADS 4
+void f() {
+#pragma omp parallel num_threads(THREADS)
+    {}
 }
 )cpp");
-    ZASSERT(compile());
-    ZEXPECT(expansions() == "[WIDTH => 4][COUNT => 2]");
+    prepare();
+    owned_args.insert(owned_args.end() - 1, "-fopenmp");
+    params.arguments.clear();
+    for(auto& arg: owned_args) {
+        params.arguments.push_back(arg.c_str());
+    }
+    ZASSERT(try_compile());
+    ZEXPECT(expansions() == "[THREADS => 4]");
 }
 
 ZEST_CASE(BuiltinMacroArgument) {
