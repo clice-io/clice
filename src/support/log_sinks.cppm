@@ -6,6 +6,18 @@ module clice:support.log_sinks;
 
 namespace clice::logging {
 
+/// How switching an fd to non-blocking writes went.
+enum class PipeSwitch : std::uint8_t {
+    /// Switched, or the fd needs no switch.
+    Done,
+    /// Windows refuses while the pipe holds bytes its reader has not taken
+    /// yet (ERROR_PIPE_BUSY); the switch can succeed once it has.
+    Busy,
+    /// The fd needs the treatment but cannot have it: writing to it could
+    /// still wedge the caller, so every line is shed without touching it.
+    Refused,
+};
+
 /// A stderr sink that buffers, then drops — never blocks.
 ///
 /// fd 2's reader is the editor/client. Every client we support drains it,
@@ -43,7 +55,7 @@ public:
     /// The fd needed the non-blocking switch but refused it: the sink
     /// sheds everything rather than risk blocking the caller.
     bool inoperative() const {
-        return disabled;
+        return pipe == PipeSwitch::Refused;
     }
 
 protected:
@@ -64,17 +76,11 @@ private:
     /// Evict whole oldest lines until the backlog fits its budget.
     void shed_over_capacity();
 
-    /// Whether the fd may be written: retries a switch the pipe refused
-    /// as busy.
-    bool switched();
+    /// True once the fd may be written.
+    bool retry_switch();
 
     int fd;
-    /// The fd needs non-blocking treatment but could not be switched:
-    /// every line is shed without touching the fd.
-    bool disabled = false;
-    /// The pipe was busy when switched: nothing is written until a retry
-    /// succeeds.
-    bool switch_pending = false;
+    PipeSwitch pipe = PipeSwitch::Done;
     std::size_t capacity;
     /// Gap report in flight, held OUTSIDE the backlog: eviction can never
     /// lose the count, and it is delivered ahead of everything — the gap

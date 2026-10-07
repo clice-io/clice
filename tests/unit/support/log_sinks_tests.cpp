@@ -34,9 +34,7 @@ spdlog::details::log_msg info_msg(std::string_view text) {
 ZEST_SUITE(StderrSink) {
 
 ZEST_CASE(BusyPipeSwitchesLater) {
-    // Windows refuses PIPE_NOWAIT while the pipe holds a byte the reader
-    // has not taken, as at process start: the line waits, and the switch
-    // goes through once the reader has caught up.
+    // The byte stands in for mimalloc's newline at process start.
     int fds[2] = {-1, -1};
     ZASSERT(::_pipe(fds, 65536, _O_BINARY) == 0);
     ZASSERT(::_write(fds[1], "\n", 1) == 1);
@@ -48,6 +46,7 @@ ZEST_CASE(BusyPipeSwitchesLater) {
     char byte = 0;
     ZASSERT(::_read(fds[0], &byte, 1) == 1);
     sink.log(info_msg("after the read"));
+    ::_close(fds[1]);
 
     std::string out;
     char buf[4096];
@@ -58,9 +57,7 @@ ZEST_CASE(BusyPipeSwitchesLater) {
     }
     ZEXPECT(out.find("while busy") < out.find("after the read"));
     ZEXPECT(sink.dropped() == 0);
-
     ::_close(fds[0]);
-    ::_close(fds[1]);
 }
 
 };  // ZEST_SUITE(StderrSink)

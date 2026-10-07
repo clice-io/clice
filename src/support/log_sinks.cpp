@@ -70,32 +70,20 @@ bool externally_drained(int fd) {
 #endif
 }
 
-/// How switching an fd to non-blocking writes went.
-enum class Switch : std::uint8_t {
-    Done,
-    /// Windows refuses while the pipe holds bytes its reader has not taken
-    /// yet (ERROR_PIPE_BUSY); the switch can succeed once it has.
-    Busy,
-    /// The fd needs the treatment but cannot have it: writing to it could
-    /// still wedge the caller.
-    Refused,
-};
-
-Switch set_pipe_nonblocking(int fd) {
+PipeSwitch set_pipe_nonblocking(int fd) {
 #ifdef _WIN32
     HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
     DWORD mode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
     if(::SetNamedPipeHandleState(handle, &mode, nullptr, nullptr)) {
-        return Switch::Done;
+        return PipeSwitch::Done;
     }
-    return ::GetLastError() == ERROR_PIPE_BUSY ? Switch::Busy : Switch::Refused;
+    return ::GetLastError() == ERROR_PIPE_BUSY ? PipeSwitch::Busy : PipeSwitch::Refused;
 #else
-    if(int flags = ::fcntl(fd, F_GETFL); flags >= 0) {
-        if(::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0) {
-            return Switch::Done;
-        }
+    if(int flags = ::fcntl(fd, F_GETFL);
+       flags >= 0 && ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0) {
+        return PipeSwitch::Done;
     }
-    return Switch::Refused;
+    return PipeSwitch::Refused;
 #endif
 }
 
@@ -105,17 +93,15 @@ StderrSink::StderrSink(int fd, std::size_t capacity) : fd(fd), capacity(capacity
     // A pipe that cannot be switched must never be written: a blocking
     // write to it is exactly the wedge this sink exists to prevent.
     if(externally_drained(fd)) {
-        auto result = set_pipe_nonblocking(fd);
-        disabled = result == Switch::Refused;
-        switch_pending = result == Switch::Busy;
+        pipe = set_pipe_nonblocking(fd);
     }
 }
 
-bool StderrSink::switched() {
-    if(switch_pending && set_pipe_nonblocking(fd) == Switch::Done) {
-        switch_pending = false;
+bool StderrSink::retry_switch() {
+    if(pipe == PipeSwitch::Busy) {
+        pipe = set_pipe_nonblocking(fd);
     }
-    return !switch_pending;
+    return pipe == PipeSwitch::Done;
 }
 
 void StderrSink::stage_note_if_due() {
@@ -181,12 +167,12 @@ void StderrSink::shed_over_capacity() {
 }
 
 void StderrSink::sink_it_(const spdlog::details::log_msg& msg) {
-    if(disabled) {
+    bool writable = retry_switch();
+    if(pipe == PipeSwitch::Refused) {
         dropped_total.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
-    bool writable = switched();
     if(writable) {
         stage_note_if_due();
         pump();
@@ -208,7 +194,7 @@ void StderrSink::sink_it_(const spdlog::details::log_msg& msg) {
 }
 
 void StderrSink::flush_() {
-    if(disabled || !switched()) {
+    if(!retry_switch()) {
         return;
     }
     stage_note_if_due();
