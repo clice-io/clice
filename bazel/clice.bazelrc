@@ -30,6 +30,10 @@ common --@mimalloc//:skip_collect_on_exit=true
 common -c opt --copt=-g --symlink_prefix=build/RelWithDebInfo/
 common:RelWithDebInfo -c opt
 common:Debug -c dbg --features=asan --symlink_prefix=build/Debug/
+# At -O1, as xclang builds the ASan libclang. clang's inline functions are
+# compiled into both; the link keeps one copy, picked by link order, and
+# libclang's own calls go to it: an -O0 copy slows them ~10x.
+common:Debug --copt=-O1
 
 # libclang is ThinLTO bitcode, whose code generation every link redoes
 # (minutes) unless lld's cache has it; xclang creates the directory, which
