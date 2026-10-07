@@ -775,15 +775,15 @@ struct InterfaceMacro {
     std::string directive;
 };
 
-/// A TU-local function or variable a module's headers use that headers of
-/// other wrapped modules use too.
+/// A TU-local function or variable a module's headers use whose name
+/// headers of other wrapped modules use too, of one entity or another.
 struct InterfaceSharedLocal {
     std::string name;
 
-    /// The header declaring it.
+    /// The header declaring the one this module uses.
     std::string file;
 
-    /// The other wrapped modules whose headers use it.
+    /// The other wrapped modules whose headers use one of that name.
     std::vector<std::string> modules;
 };
 

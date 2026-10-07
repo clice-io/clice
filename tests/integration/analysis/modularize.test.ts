@@ -534,13 +534,16 @@ test("modules sharing a TU-local entity", async ({ session }) => {
     const ws = await writeProject(session, false, (project) => {
         // Static as <emmintrin.h>'s intrinsics, which simdjson and CRoaring both
         // call from their inline code; alpha reaches fake_simd through
-        // fake_simd2 alone.
+        // fake_simd2 alone, and fake_noise from a helper nothing calls.
         project.write(
             "third/libc/csimd.h",
             lines(
                 "#pragma once",
                 "static inline int fake_simd(int v) { return v; }",
                 "static inline int fake_simd2(int v) { return fake_simd(v) * 2; }",
+                "static inline int fake_noise(int v) { return v; }",
+                "static inline int fake_seed() { return 7; }",
+                "static const int fake_value = fake_seed();",
             ),
         );
         project.write(
@@ -548,7 +551,9 @@ test("modules sharing a TU-local entity", async ({ session }) => {
             lines(
                 "#pragma once",
                 "#include <csimd.h>",
-                "inline int alpha_simd(int v) { return fake_simd2(v); }",
+                "static int alpha_unused(int v) { return fake_noise(v); }",
+                "static inline int helper(int v) { return v; }",
+                "inline int alpha_simd(int v) { return fake_simd2(v) + helper(fake_value); }",
             ),
         );
         project.write(
@@ -556,7 +561,8 @@ test("modules sharing a TU-local entity", async ({ session }) => {
             lines(
                 "#pragma once",
                 "#include <csimd.h>",
-                "inline int beta_simd(int v) { return fake_simd(v); }",
+                "static inline int helper(int v) { return v + 1; }",
+                "inline int beta_simd(int v) { return fake_simd(v) + fake_noise(helper(fake_value)); }",
             ),
         );
         project.write(
@@ -570,14 +576,20 @@ test("modules sharing a TU-local entity", async ({ session }) => {
         );
     });
     const all = await interfaces(ws);
-    const shared = { name: "fake_simd", file: "third/libc/csimd.h" };
-    expect(all.get("alpha")!.sharedLocals).toEqual([{ ...shared, modules: ["beta"] }]);
-    expect(all.get("beta")!.sharedLocals).toEqual([{ ...shared, modules: ["alpha"] }]);
+    const shared = (module: string, other: string) =>
+        [
+            ["fake_seed", "third/libc/csimd.h"],
+            ["fake_simd", "third/libc/csimd.h"],
+            ["fake_value", "third/libc/csimd.h"],
+            ["helper", `third/${module}/${module}/simd.h`],
+        ].map(([name, file]) => ({ name, file, modules: [other] }));
+    expect(all.get("alpha")!.sharedLocals).toEqual(shared("alpha", "beta"));
+    expect(all.get("beta")!.sharedLocals).toEqual(shared("beta", "alpha"));
 
     const run = await modularize(ws);
     expect(run.status, `stdout: ${run.stdout}\nstderr: ${run.stderr}`).toBe(0);
     expect((JSON.parse(run.stdout) as { wrapping: Plan }).wrapping.warnings).toEqual([
-        "alpha and beta both use TU-local fake_simd (third/libc/csimd.h): an importer using the code of both can define each twice under one name; wrap them as one module",
+        "alpha and beta both use TU-local helper (third/alpha/alpha/simd.h, third/beta/beta/simd.h); fake_seed, fake_simd, fake_value (third/libc/csimd.h): an importer using the code of both can define each twice under one name; wrap them as one module",
     ]);
 });
 
