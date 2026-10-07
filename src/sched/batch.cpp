@@ -19,6 +19,7 @@ import :sched.index.pump;
 import :sched.stack;
 import :support.anomaly;
 import :support.logging;
+import :support.process;
 import :support.timer;
 import :vfs.cache_store;
 import :vfs.file_system;
@@ -51,29 +52,6 @@ struct BatchStack {
 kota::task<> wait_until_indexed(const IndexPump& pump) {
     while(!pump.is_idle()) {
         co_await kota::sleep(200);
-    }
-}
-
-/// The first signal — of either watched kind, hence the shared flag —
-/// asks for a graceful stop: in-flight files are abandoned, finished ones
-/// are persisted, and a rerun resumes from there. A second Ctrl-C exits
-/// immediately; a repeated SIGTERM does not: supervisors send it more than
-/// once (GNU timeout signals the child, then its whole process group) and
-/// escalate with SIGKILL themselves.
-kota::task<> watch_signal(int signum, kota::cancellation_source& stop, bool& stop_requested) {
-    auto watcher = kota::signal::create();
-    if(!watcher || watcher->start(signum).has_error()) {
-        co_return;
-    }
-    while(true) {
-        co_await watcher->wait();
-        if(!stop_requested) {
-            stop_requested = true;
-            LOG_INFO("Interrupted; saving indexing progress");
-            stop.cancel();
-        } else if(signum == SIGINT) {
-            std::_Exit(130);
-        }
     }
 }
 
@@ -125,8 +103,18 @@ struct BatchLifetime {
     kota::task_group<> aux;
 
     explicit BatchLifetime(BatchStack& stack) : stack(stack) {
-        aux.spawn(watch_signal(SIGINT, stop, stop_requested));
-        aux.spawn(watch_signal(SIGTERM, stop, stop_requested));
+        // Every signal stops gracefully: in-flight files are abandoned,
+        // finished ones are persisted, and a rerun resumes from there. A
+        // closed terminal sends SIGHUP.
+        auto interrupt = [this] {
+            LOG_INFO("Interrupted; saving indexing progress");
+            stop.cancel();
+        };
+        aux.spawn(watch_termination(SIGINT, stop_requested, interrupt));
+        aux.spawn(watch_termination(SIGTERM, stop_requested, interrupt));
+#ifndef _WIN32
+        aux.spawn(watch_termination(SIGHUP, stop_requested, interrupt));
+#endif
         aux.spawn(checkpoint_task(stack));
         aux.spawn(stack.files.disk.end_turns(stack.loop));
     }

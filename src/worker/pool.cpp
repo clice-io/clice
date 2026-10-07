@@ -74,6 +74,12 @@ std::size_t WorkerPool::alive_stateless() const {
 }
 
 std::size_t WorkerPool::schedulable_stateless() const {
+    // A stopped pool serves nothing more, though its slots read Alive until
+    // the workers are reaped: a dispatcher counting them would feed its
+    // whole queue into instant failures.
+    if(stop_scope.cancelled()) {
+        return 0;
+    }
     return std::ranges::count_if(stateless_workers, [](const WorkerProcess& w) {
         return w.state == SlotState::Alive && !w.retiring;
     });
@@ -123,6 +129,8 @@ std::optional<WorkerPool::SpawnedProcess> WorkerPool::spawn_process(const std::s
     }
     opts.args.push_back("--worker-name");
     opts.args.push_back(name);
+    opts.args.push_back("--master-pid");
+    opts.args.push_back(std::to_string(llvm::sys::Process::getProcessId()));
     if(!log_dir.empty()) {
         opts.args.push_back("--log-dir");
         opts.args.push_back(log_dir);

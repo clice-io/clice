@@ -2,9 +2,14 @@ module;
 
 #include "modules/prelude.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 module clice;
 
 import :driver.driver;
+import :support.process;
 import :worker.stateful;
 import :worker.stateless;
 
@@ -35,6 +40,11 @@ struct WorkerOptions {
 
     DecoKV(style = KVStyle::JoinedOrSeparate, names = {"--log-dir", "--log-dir="}, required = false)
     <std::string> log_dir;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           names = {"--master-pid", "--master-pid="},
+           required = false)
+    <std::uint32_t> master_pid;
 };
 
 }  // namespace
@@ -42,6 +52,15 @@ struct WorkerOptions {
 void add_worker(kota::deco::cli::SubCommander& root) {
     auto cmd = kota::deco::cli::command<WorkerOptions>("clice worker [OPTIONS]");
     cmd.match_all([](WorkerOptions opts) {
+        // A worker lives and dies with its master: an orphan answers no one
+        // and nothing stops it when it hangs. Its own process group keeps a
+        // terminal's Ctrl-C and SIGHUP for the master, which stops it.
+        if(opts.master_pid) {
+            exit_with_parent(*opts.master_pid);
+        }
+#ifndef _WIN32
+        ::setpgid(0, 0);
+#endif
         auto name = opts.worker_name.value_or("worker");
         auto log_dir = opts.log_dir.value_or("");
         if(opts.stateful) {

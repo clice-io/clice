@@ -270,6 +270,9 @@ void LSPClient::register_lifecycle() {
             }
         }
         srv.change_folders({}, std::move(roots));
+        if(params.process_id && srv.client_on_host) {
+            srv.watch_client(static_cast<std::uint32_t>(*params.process_id));
+        }
 
         if(params.capabilities.workspace.has_value()) {
             auto& ws_caps = *params.capabilities.workspace;
@@ -469,9 +472,12 @@ void LSPClient::register_lifecycle() {
             this->server.pool.foreground_pulse();
             this->server.lifecycle = ServerLifecycle::ShuttingDown;
             LOG_INFO("Shutdown requested");
-            return []() -> RequestResult<protocol::ShutdownParams> {
+            // Clients kill a server soon after `exit`, Zed at once: the
+            // index is committed before the reply that lets them send it.
+            return [](MasterServer& server) -> RequestResult<protocol::ShutdownParams> {
+                co_await server.drain();
                 co_return nullptr;
-            }();
+            }(this->server);
         });
 
     peer.on_notification([this]([[maybe_unused]] const protocol::ExitParams& params) {
