@@ -41,7 +41,8 @@ struct HostTree {
     std::uint64_t commands_epoch = 0;
 
     /// Project::commands_epoch and context_epoch when the last run, failed
-    /// or not, started: one is not repeated before either moves.
+    /// or not, started, counting a taken tree's own bump of the latter: one
+    /// is not repeated before either moves.
     std::pair<std::uint64_t, std::uint64_t> last_run;
 };
 

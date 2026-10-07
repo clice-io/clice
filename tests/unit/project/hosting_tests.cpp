@@ -514,6 +514,32 @@ ZEST_CASE(StaleTreeFallsBack) {
     ZEXPECT(host->lines.empty());
 };
 
+ZEST_CASE(RepeatedHeaderChangeStales) {
+    /// The header's guard decided its second include: once the header
+    /// changes the tree cannot tell; a header included once keeps it.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"t.h\"\n#include \"t.h\"\n#include \"u.h\"\n";
+    auto main = p.write("main.cpp", main_text);
+    auto t = p.write("t.h", "int t;\n");
+    auto u = p.write("u.h", "int u;\n");
+    p.project.dep_graph.set_includes(main, 0, {{t}, {t}, {u}});
+    p.project.dep_graph.build_reverse_map();
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.nodes = {
+        {.file = p.version(t, "#pragma once\nint t;\n"), .line = 1},
+        {.file = p.version(t, "#pragma once\nint t;\n"), .line = 2, .skipped = true},
+        {.file = p.version(u, "#pragma once\nint u;\n"), .line = 3},
+    };
+    p.project.project_index.manifests[main] = std::move(manifest);
+
+    ZEXPECT(!enterings(p.project, main, t).has_value());
+    auto once = enterings(p.project, main, u);
+    ZASSERT(once);
+    ZEXPECT(once->size() == 1u);
+};
+
 };  // ZEST_SUITE(Hosting)
 
 }  // namespace
