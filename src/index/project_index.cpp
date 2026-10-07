@@ -672,6 +672,7 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
             referenced.insert(fv);
         }
         referenced.insert(manifest.absent.begin(), manifest.absent.end());
+        referenced.insert(manifest.imports.begin(), manifest.imports.end());
     }
 
     GlobalBlob blob;
@@ -864,6 +865,11 @@ bool ProjectIndex::import_manifest(TUManifest& manifest) const {
             return false;
         }
     }
+    for(auto& fv: manifest.imports) {
+        if(!import(fv.raw)) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -877,6 +883,9 @@ TUManifest ProjectIndex::export_manifest(const TUManifest& manifest) {
         fv.raw = persisted_id(fv);
     }
     for(auto& fv: exported.absent) {
+        fv.raw = persisted_id(fv);
+    }
+    for(auto& fv: exported.imports) {
         fv.raw = persisted_id(fv);
     }
     return exported;
@@ -906,6 +915,9 @@ llvm::SmallVector<Fid> ProjectIndex::apply_manifest(const FileTable& files,
     manifest.absent.erase(llvm::unique(manifest.absent), manifest.absent.end());
     for(auto fv: manifest.absent) {
         probed[files.version(fv).fid].insert(tu_path_id);
+    }
+    for(auto fv: manifest.imports) {
+        importers[files.version(fv).fid].insert(tu_path_id);
     }
     manifests[tu_path_id] = std::move(manifest);
 
@@ -938,6 +950,18 @@ llvm::SmallVector<Fid> ProjectIndex::remove_manifest(const FileTable& files, Fid
         probe_it->second.erase(tu_path_id);
         if(probe_it->second.empty()) {
             probed.erase(probe_it);
+        }
+    }
+    // Modules built at different times may have read different versions
+    // of one file: the first of them already erased it.
+    for(auto fv: it->second.imports) {
+        auto importer_it = importers.find(files.version(fv).fid);
+        if(importer_it == importers.end()) {
+            continue;
+        }
+        importer_it->second.erase(tu_path_id);
+        if(importer_it->second.empty()) {
+            importers.erase(importer_it);
         }
     }
     manifests.erase(it);

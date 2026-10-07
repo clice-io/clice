@@ -17,27 +17,6 @@ import :worker.protocol;
 
 namespace clice {
 
-/// Append the entries of `parts` that `into` lacks. Every import's
-/// snapshot already carries its own imports', so a plain concatenation
-/// repeats a module's inputs once per import path to it — exponentially
-/// many over a deep partition graph.
-static void merge_deps(DepsSnapshot& into, llvm::ArrayRef<const DepsSnapshot*> parts) {
-    auto key = [](const DepState& dep) {
-        return std::tuple(dep.path_id.raw, dep.version.raw, std::uint8_t(dep.missing));
-    };
-    llvm::DenseSet<std::tuple<std::uint32_t, std::uint32_t, std::uint8_t>> seen;
-    for(auto& dep: into) {
-        seen.insert(key(dep));
-    }
-    for(auto* part: parts) {
-        for(auto& dep: *part) {
-            if(seen.insert(key(dep)).second) {
-                into.push_back(dep);
-            }
-        }
-    }
-}
-
 PCMFamily::PCMFamily(TaskGraph& graph,
                      Project& project,
                      CommandResolver& commands,
@@ -286,14 +265,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // PCM embeds what it read of them — and theirs already carry their own
     // imports', so the snapshot is transitive. Taken before the build: an
     // eviction landing during it must not drop them.
-    llvm::SmallVector<const DepsSnapshot*> parts;
-    for(auto dep: deps.resolved) {
-        if(auto it = project.pcm_cache.find(dep); it != project.pcm_cache.end()) {
-            parts.push_back(&it->second.deps);
-        }
-    }
-    DepsSnapshot imported;
-    merge_deps(imported, parts);
+    auto imported = project.module_inputs(deps.resolved);
 
     // The interest class is read at dispatch time: a foreground requester
     // may have joined after this round started. The advisory token rides

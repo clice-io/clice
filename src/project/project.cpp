@@ -222,6 +222,23 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
     return snap;
 }
 
+void merge_deps(DepsSnapshot& into, llvm::ArrayRef<const DepsSnapshot*> parts) {
+    auto key = [](const DepState& dep) {
+        return std::tuple(dep.path_id.raw, dep.version.raw, std::uint8_t(dep.missing));
+    };
+    llvm::DenseSet<std::tuple<std::uint32_t, std::uint32_t, std::uint8_t>> seen;
+    for(auto& dep: into) {
+        seen.insert(key(dep));
+    }
+    for(auto* part: parts) {
+        for(auto& dep: *part) {
+            if(seen.insert(key(dep)).second) {
+                into.push_back(dep);
+            }
+        }
+    }
+}
+
 bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
     auto changed = [&](const DepState& dep) {
         // Gone at build time: reappearing is the change; still-missing
@@ -269,6 +286,18 @@ const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
         }
     }
     return state;
+}
+
+DepsSnapshot Project::module_inputs(llvm::ArrayRef<Fid> modules) const {
+    llvm::SmallVector<const DepsSnapshot*> parts;
+    for(auto module: modules) {
+        if(auto it = pcm_cache.find(module); it != pcm_cache.end()) {
+            parts.push_back(&it->second.deps);
+        }
+    }
+    DepsSnapshot inputs;
+    merge_deps(inputs, parts);
+    return inputs;
 }
 
 void Project::fill_pcm_deps(std::unordered_map<std::string, std::string>& pcms,

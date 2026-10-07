@@ -106,3 +106,22 @@ test("source deleted while down withdrawn", async ({ session }) => {
     expect(await client.workspaceSymbols("only_in_b")).toEqual([]);
     expect(await client.workspaceSymbols("main")).toHaveLength(1);
 });
+
+/// An importer's index reads the module's interface without entering its
+/// file; a change to the module reindexes it all the same.
+test("module change reindexes importer", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write("m.cppm", "export module m;\nexport int alpha() { return 1; }\n");
+    ws.write("closed.cpp", "import m;\nint use() { return alpha(); }\n");
+    ws.writeCDB(["m.cppm", "closed.cpp"], { std: "c++20" });
+    expect(await batchIndex(ws), "the first run indexes both units").toBe(2);
+
+    await sleep(MTIME_GRANULARITY);
+    ws.write("m.cppm", "export module m;\nexport int alpha() { return 1; }\n");
+    expect(await batchIndex(ws), "a same-content touch reindexes nothing").toBe(0);
+
+    await sleep(MTIME_GRANULARITY);
+    ws.write("m.cppm", "export module m;\nexport int alpha() { return 2; }\n");
+    expect(await batchIndex(ws), "the module and its importer reindex").toBe(2);
+});

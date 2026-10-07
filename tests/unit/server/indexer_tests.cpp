@@ -59,7 +59,7 @@ struct IndexerFixture {
 
     /// Merge a worker result and claim its report, as the TURun round does.
     bool merge(const void* data, std::size_t size) {
-        auto report = index_store.merge(data, size);
+        auto report = index_store.merge(data, size, {});
         if(report) {
             pump.claim_report(*report);
         }
@@ -694,7 +694,7 @@ ZEST_CASE(KnownVariantByHash) {
     // A result naming a variant the store does not hold commits nothing:
     // the file must run again.
     auto early = index_file(tmp, tmp.path("b.cpp"), {}, {variant});
-    auto outdated = index_store.merge(early.data.data(), early.data.size());
+    auto outdated = index_store.merge(early.data.data(), early.data.size(), {});
     ZASSERT(!outdated);
     ZEXPECT(outdated.error() == IndexStore::MergeError::Outdated);
     auto b_id = project.file_table.intern(Spelling::absolute(early.tu_path));

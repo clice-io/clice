@@ -263,6 +263,20 @@ ZEST_CASE(RepeatedAbsentPlace) {
     ZASSERT(project.probed.empty());
 }
 
+ZEST_CASE(TwoImportedVersions) {
+    // Modules built at different times read two versions of one header.
+    clice::FileTable pool;
+    index::ProjectIndex project;
+    index::TUManifest manifest;
+    manifest.tu_fv = pool.intern_version(Fid{10}, 0x1);
+    manifest.imports = {pool.intern_version(Fid{1}, 0x2), pool.intern_version(Fid{1}, 0x3)};
+
+    project.apply_manifest(pool, Fid{10}, std::move(manifest));
+    ZASSERT(project.importers[Fid{1}].contains(Fid{10}));
+    project.remove_manifest(pool, Fid{10});
+    ZASSERT(project.importers.empty());
+}
+
 ZEST_CASE(GlobalRoundTripWithRealMerge) {
     add_main("main.cpp", R"(
         int global_value = 42;

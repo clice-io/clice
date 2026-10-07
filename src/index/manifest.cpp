@@ -37,6 +37,8 @@ struct ManifestBlob {
 
     std::vector<std::uint32_t> absent;
 
+    std::vector<std::uint32_t> imports;
+
     /// TUManifest::local_fanout as columns: the symbols ascending, each
     /// one's contribution indices back to back.
     std::vector<std::uint64_t> local_symbols;
@@ -102,6 +104,9 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
 
     for(auto fv: manifest.absent) {
         blob.absent.push_back(fv.raw);
+    }
+    for(auto fv: manifest.imports) {
+        blob.imports.push_back(fv.raw);
     }
 
     for(auto& fanout: manifest.local_fanout) {
@@ -187,6 +192,9 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
 
     for(auto fv: blob.absent) {
         manifest.absent.push_back(VersionID{fv});
+    }
+    for(auto fv: blob.imports) {
+        manifest.imports.push_back(VersionID{fv});
     }
 
     if(blob.local_file_ends.size() != blob.local_symbols.size() ||
