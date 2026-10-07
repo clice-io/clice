@@ -637,6 +637,42 @@ void impl() {}
     ZASSERT(graph.lookup_module("my.mod:part").size() == 1u);
 }
 
+ZEST_CASE(InternalPartitionProvidesModule) {
+    TempDir tmp;
+    tmp.touch("src/lib.cppm", "export module lib;\n");
+    tmp.touch("src/detail.cppm", "module lib:detail;\n");
+    tmp.touch("src/guarded.cppm", R"(#ifdef GUARDED
+module lib:guarded;
+#endif
+)");
+    tmp.touch("src/impl.cpp", "module lib;\nimport :detail;\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+
+    auto json = build_cdb_json({
+        {tmp.root, tmp.path("src/lib.cppm"),     {}           },
+        {tmp.root, tmp.path("src/detail.cppm"),  {}           },
+        {tmp.root, tmp.path("src/guarded.cppm"), {"-DGUARDED"}},
+        {tmp.root, tmp.path("src/impl.cpp"),     {}           },
+    });
+    write_cdb(tmp, cdb, json);
+    scan_all(cdb, graph);
+
+    auto provider = [&](llvm::StringRef name) -> std::string {
+        auto ids = graph.lookup_module(name);
+        return ids.size() == 1 ? cdb.files().resolve(ids[0]).str() : "";
+    };
+    ZEXPECT(llvm::sys::fs::equivalent(provider("lib"), tmp.path("src/lib.cppm")));
+    ZEXPECT(llvm::sys::fs::equivalent(provider("lib:detail"), tmp.path("src/detail.cppm")));
+    ZEXPECT(llvm::sys::fs::equivalent(provider("lib:guarded"), tmp.path("src/guarded.cppm")));
+    ZEXPECT(graph.module_count() == 3u);
+
+    auto impl = file_table.intern(Spelling::absolute(tmp.path("src/impl.cpp")));
+    ZEXPECT(graph.module_of(impl).empty());
+}
+
 ZEST_CASE(DiamondIncludes) {
     TempDir tmp;
     tmp.touch("inc/common.h", R"(int common = 1;)");

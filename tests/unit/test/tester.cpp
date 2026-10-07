@@ -186,6 +186,9 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
         }
 
         auto result = scan_precise(argv, TestVFS::root(), {}, nullptr, vfs);
+        if(result.provided_module().empty()) {
+            continue;
+        }
         modules.push_back(
             {mod.filename, mod.content, result.module_name, std::move(result.modules)});
     }

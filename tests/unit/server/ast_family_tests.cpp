@@ -495,6 +495,73 @@ ZEST_CASE(BufferImportBuildsPCM) {
     ZEXPECT(stack.project.pcm_cache.contains(mod_ids[0]));
 }
 
+ZEST_CASE(DiamondDepsDeduplicated) {
+    // top reaches base through left and through right: its PCM's inputs
+    // name base's source once.
+    TempDir tmp;
+    tmp.touch("base.cppm", "export module base;\nexport int b() { return 1; }\n");
+    tmp.touch("left.cppm", "export module left;\nimport base;\nexport int l() { return b(); }\n");
+    tmp.touch("right.cppm", "export module right;\nimport base;\nexport int r() { return b(); }\n");
+    tmp.touch("top.cppm",
+              "export module top;\nimport left;\nimport right;\n"
+              "export int t() { return l() + r(); }\n");
+    tmp.touch("main.cpp", "int main() { return 0; }\n");
+    auto src = tmp.path("main.cpp");
+
+    Stack stack;
+    write_cdb(tmp,
+              stack.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("base.cppm"),  {}},
+                  {tmp.root, tmp.path("left.cppm"),  {}},
+                  {tmp.root, tmp.path("right.cppm"), {}},
+                  {tmp.root, tmp.path("top.cppm"),   {}},
+                  {tmp.root, src,                    {}},
+    }));
+    scan_all(stack.project.cdb, stack.project.dep_graph);
+    stack.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ZASSERT(store);
+    store->register_namespace({.name = "pch",
+                               .extension = ".pch",
+                               .aux_extension = ".pch.idx",
+                               .policy = CachePolicy::LRU,
+                               .max_bytes = 1ull << 30});
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
+    stack.project.store.emplace(std::move(*store));
+
+    auto session = stack.open(src, "import top;\nint main() { return t(); }\n");
+
+    bool ok = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 1;
+        ZASSERT(stack.pool.start(opts));
+
+        ok = co_await stack.ast.ensure_compiled(session);
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    ZASSERT(ok);
+
+    auto top = stack.project.dep_graph.lookup_module("top");
+    ZASSERT(!top.empty());
+    auto entry = stack.project.pcm_cache.find(top[0]);
+    ZASSERT(entry != stack.project.pcm_cache.end());
+    auto base = stack.project.file_table.intern(Spelling::absolute(tmp.path("base.cppm")));
+    auto& deps = entry->second.deps;
+    ZEXPECT(llvm::count_if(deps, [&](const DepState& dep) { return dep.path_id == base; }) == 1);
+}
+
 ZEST_CASE(ImportScanPerUnit) {
     // In a project with modules only a unit that can import pays the
     // precise scan, and an edit off its directive lines reuses it.

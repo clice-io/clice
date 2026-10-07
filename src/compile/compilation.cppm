@@ -102,10 +102,6 @@ struct PCHInfo {
 };
 
 struct ModuleInfo {
-    /// Whether this module is an interface unit.
-    /// i.e. has export module declaration.
-    bool isInterfaceUnit = false;
-
     /// Module name.
     std::string name;
 

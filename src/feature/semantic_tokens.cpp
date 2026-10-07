@@ -505,7 +505,7 @@ private:
                     /// separators stay unpainted, matching the import side.
                     anchor_offset(module->keyword.begin, {SymbolKind::Keyword, 0});
                     Classified name{SymbolKind::Module,
-                                    unit.is_module_interface_unit()
+                                    unit.defines_module()
                                         ? SymbolModifiers::to_mask(SymbolModifiers::Definition)
                                         : 0};
                     for(auto& part: module->name_parts) {

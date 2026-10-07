@@ -572,9 +572,9 @@ void run_feature(FileEntry& entry,
         }
         for(const auto& pcm: pcms) {
             // Like the server path, withhold the PCM of the module this
-            // file itself declares — attaching it would redeclare the
+            // file itself provides — attaching it would redeclare the
             // module the compile is defining.
-            if(file.scan.is_interface_unit && pcm.getKey() == file.scan.module_name) {
+            if(pcm.getKey() == file.scan.provided_module()) {
                 continue;
             }
             params.pcms.try_emplace(pcm.getKey(), pcm.getValue());
@@ -863,20 +863,20 @@ int run_inspect(const InspectOptions& opts) {
     };
 
     // Serial module builder (directory mode): scan for module declarations
-    // and build each interface unit's PCM in dependency order, so importing
-    // files in the unit compile like they do against the server's module
-    // pipeline. A dependency cycle leaves its modules unbuilt and surfaces
-    // as ordinary compile errors on the importers.
+    // and build the PCM of each unit providing a module in dependency
+    // order, so importing files in the unit compile like they do against
+    // the server's module pipeline. A dependency cycle leaves its modules
+    // unbuilt and surfaces as ordinary compile errors on the importers.
     llvm::StringMap<std::string> pcms;
     std::vector<std::string> pcm_files;
     if(is_dir) {
         bool has_modules = false;
         for(auto& source: sources) {
             source.scan = scan_quick(source.source.content);
-            has_modules |= source.scan.is_interface_unit || source.scan.need_preprocess;
+            has_modules |= !source.scan.provided_module().empty() || source.scan.need_preprocess;
         }
 
-        llvm::StringMap<SourceFile*> interfaces;
+        llvm::StringMap<SourceFile*> providers;
         if(has_modules) {
             // Preprocessing scans run over the stripped unit through an
             // in-memory overlay.
@@ -905,22 +905,23 @@ int run_inspect(const InspectOptions& opts) {
 
             // A module declaration behind #if/#ifdef is invisible to the
             // quick scan (need_preprocess); evaluate the conditionals to
-            // learn whether the file really declares an interface.
+            // learn which module the file really provides.
             for(auto& source: sources) {
                 if(!source.scan.need_preprocess) {
                     continue;
                 }
                 if(auto result = scan_with(source, scan_module_decl)) {
                     source.scan.module_name = std::move(result->module_name);
-                    source.scan.is_interface_unit = result->is_interface_unit;
+                    source.scan.is_implementation_unit = result->is_implementation_unit;
                 }
             }
 
             for(auto& source: sources) {
-                if(!source.scan.is_interface_unit || source.scan.module_name.empty()) {
+                auto module = source.scan.provided_module();
+                if(module.empty()) {
                     continue;
                 }
-                auto [it, inserted] = interfaces.try_emplace(source.scan.module_name, &source);
+                auto [it, inserted] = providers.try_emplace(module, &source);
                 if(!inserted) {
                     output.files.find(source.rel)->second.error = "duplicate_module";
                 }
@@ -929,7 +930,7 @@ int run_inspect(const InspectOptions& opts) {
             // The quick scan only detects module declarations; imports can
             // be macro-formed, so dependency edges come from the
             // preprocessing scan.
-            for(const auto& entry: interfaces) {
+            for(const auto& entry: providers) {
                 SourceFile& source = *entry.second;
                 if(auto result = scan_with(source, scan_precise)) {
                     source.scan.modules = std::move(result->modules);
@@ -943,9 +944,9 @@ int run_inspect(const InspectOptions& opts) {
                 if(!visited.insert(name).second) {
                     return;
                 }
-                SourceFile& source = *interfaces.find(name)->second;
+                SourceFile& source = *providers.find(name)->second;
                 for(auto& dep: source.scan.modules) {
-                    if(interfaces.contains(dep)) {
+                    if(providers.contains(dep)) {
                         self(self, dep);
                     }
                 }
@@ -983,7 +984,7 @@ int run_inspect(const InspectOptions& opts) {
                 }
                 pcms.try_emplace(name, *tmp);
             };
-            for(const auto& entry: interfaces) {
+            for(const auto& entry: providers) {
                 build(build, entry.getKey());
             }
         }

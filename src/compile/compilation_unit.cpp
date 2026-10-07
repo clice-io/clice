@@ -360,8 +360,9 @@ auto CompilationUnitRef::module_name() -> llvm::StringRef {
     return self->instance->getPreprocessor().getNamedModuleName();
 }
 
-bool CompilationUnitRef::is_module_interface_unit() {
-    return self->instance->getPreprocessor().isInNamedInterfaceUnit();
+bool CompilationUnitRef::defines_module() {
+    auto& pp = self->instance->getPreprocessor();
+    return pp.isInNamedModule() && !pp.isInImplementationUnit();
 }
 
 auto CompilationUnitRef::diagnostics() -> std::vector<Diagnostic>& {

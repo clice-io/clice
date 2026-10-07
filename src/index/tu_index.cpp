@@ -565,11 +565,11 @@ public:
             }
         }
 
-        // The module declaration of this unit: Definition in the interface
-        // unit, Reference in an implementation unit. The declaration has no
-        // AST node or PP location; the semantics' lexical scan located and
-        // cross-checked its written tokens. The occurrence spans the written
-        // name, partition included.
+        // The module declaration of this unit: Definition in an interface
+        // unit or a partition, Reference in an implementation unit. The
+        // declaration has no AST node or PP location; the semantics' lexical
+        // scan located and cross-checked its written tokens. The occurrence
+        // spans the written name, partition included.
         if(!unit.is_named_module()) {
             return;
         }
@@ -584,8 +584,7 @@ public:
             emit(module_name,
                  unit.main_file(),
                  module.name_range(),
-                 unit.is_module_interface_unit() ? RelationKind::Definition
-                                                 : RelationKind::Reference);
+                 unit.defines_module() ? RelationKind::Definition : RelationKind::Reference);
             break;
         }
     }

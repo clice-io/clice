@@ -956,6 +956,20 @@ ZEST_CASE(ModulePartitionName) {
     ZASSERT(found_definition);
 }
 
+ZEST_CASE(InternalPartitionName) {
+    build_index(R"(module §(m)⟦§(m)foo:part⟧;)");
+
+    // An internal partition defines the partition it declares.
+    auto occs = select("m");
+    ZASSERT(!occs.empty());
+    ZASSERT(occs.front().range == range("m"));
+
+    auto& index = tu_index.main_file_index;
+    auto it = index.relations.find(occs.front().target);
+    ZASSERT(it != index.relations.end());
+    ZEXPECT(llvm::any_of(it->second, [](auto& r) { return r.kind == RelationKind::Definition; }));
+}
+
 ZEST_CASE(ImplementationUnitReference) {
     add_files("main.cpp", R"(
 #[foo.cppm]

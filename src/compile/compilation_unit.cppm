@@ -27,7 +27,7 @@ enum class CompilationKind : std::uint8_t {
     /// From building preamble for the source file.
     Preamble,
 
-    /// From building precompiled module for the module interface unit.
+    /// From building the precompiled module of a unit providing a module.
     ModuleInterface,
 
     /// From building normal AST for source file(except preamble), main file and top level
@@ -251,16 +251,18 @@ public:
     /// such cleaning.
     auto token_spelling(clang::SourceLocation location) -> std::string;
 
-    /// Get the C++20 named module name if any.
     /// Whether this unit is a named module (interface or implementation).
     /// Must be checked before module_name(): the preprocessor asserts on
     /// name access for non-module units.
     bool is_named_module();
 
+    /// The C++20 named module name, partition included.
     auto module_name() -> llvm::StringRef;
 
-    /// Return whether this unit it module interface unit.
-    bool is_module_interface_unit();
+    /// Whether this unit's module declaration defines the name it declares:
+    /// an interface unit's or a partition's, internal ones included. An
+    /// implementation unit's (`module M;`) names a module defined elsewhere.
+    bool defines_module();
 
     /// Return all diagnostics in the process of compilation.
     auto diagnostics() -> std::vector<Diagnostic>&;

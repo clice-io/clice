@@ -17,6 +17,27 @@ import :worker.protocol;
 
 namespace clice {
 
+/// Append the entries of `parts` that `into` lacks. Every import's
+/// snapshot already carries its own imports', so a plain concatenation
+/// repeats a module's inputs once per import path to it — exponentially
+/// many over a deep partition graph.
+static void merge_deps(DepsSnapshot& into, llvm::ArrayRef<const DepsSnapshot*> parts) {
+    auto key = [](const DepState& dep) {
+        return std::tuple(dep.path_id.raw, dep.version.raw, std::uint8_t(dep.missing));
+    };
+    llvm::DenseSet<std::tuple<std::uint32_t, std::uint32_t, std::uint8_t>> seen;
+    for(auto& dep: into) {
+        seen.insert(key(dep));
+    }
+    for(auto* part: parts) {
+        for(auto& dep: *part) {
+            if(seen.insert(key(dep)).second) {
+                into.push_back(dep);
+            }
+        }
+    }
+}
+
 PCMFamily::PCMFamily(TaskGraph& graph,
                      Project& project,
                      CommandResolver& commands,
@@ -75,7 +96,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
     auto arguments_hash = llvm::xxh3_64bits(joined);
     auto epoch = project.context_epoch;
 
-    Imports imports;
+    std::vector<std::string> imports;
     auto memo = content ? scan_memos.find(path_id) : scan_memos.end();
     if(memo != scan_memos.end() && memo->second.directives == directives &&
        memo->second.arguments == arguments_hash && memo->second.epoch == epoch) {
@@ -97,9 +118,11 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
         import_scans += 1;
         auto scanned = co_await kota::queue(
             [&] { return scan_precise(arguments, directory, content, nullptr, std::move(vfs)); });
-        imports = {.modules = std::move(scanned.modules),
-                   .module_name = std::move(scanned.module_name),
-                   .is_interface_unit = scanned.is_interface_unit};
+        imports = std::move(scanned.modules);
+        // An implementation unit imports its own module implicitly.
+        if(scanned.is_implementation_unit) {
+            imports.push_back(std::move(scanned.module_name));
+        }
         if(content) {
             scan_memos[path_id] = {.directives = directives,
                                    .arguments = arguments_hash,
@@ -113,7 +136,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
     // name's first provider re-dirty this unit through the ordinary
     // cascade later — no side bookkeeping of who failed against it.
     ModuleDeps deps;
-    auto add = [&](llvm::StringRef name) {
+    for(auto& name: imports) {
         auto mod_ids = dep_graph.lookup_module(name);
         if(mod_ids.empty()) {
             deps.declared.push_back(unresolved_node(name));
@@ -121,17 +144,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
             deps.resolved.push_back(mod_ids[0]);
             deps.declared.push_back(node(mod_ids[0]));
         }
-    };
-
-    for(auto& mod_name: imports.modules) {
-        add(mod_name);
     }
-
-    // Module implementation units implicitly depend on their interface unit.
-    if(!imports.module_name.empty() && !imports.is_interface_unit) {
-        add(imports.module_name);
-    }
-
     co_return deps;
 }
 
@@ -269,16 +282,18 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // cached from a previous (now-invalidated) build.
     project.fill_pcm_deps(bp.pcms, path_id);
 
-    // The interfaces it imports are inputs as much as its own text — the
+    // The modules it imports are inputs as much as its own text — the
     // PCM embeds what it read of them — and theirs already carry their own
     // imports', so the snapshot is transitive. Taken before the build: an
     // eviction landing during it must not drop them.
-    DepsSnapshot imported;
+    llvm::SmallVector<const DepsSnapshot*> parts;
     for(auto dep: deps.resolved) {
         if(auto it = project.pcm_cache.find(dep); it != project.pcm_cache.end()) {
-            imported.append(it->second.deps.begin(), it->second.deps.end());
+            parts.push_back(&it->second.deps);
         }
     }
+    DepsSnapshot imported;
+    merge_deps(imported, parts);
 
     // The interest class is read at dispatch time: a foreground requester
     // may have joined after this round started. The advisory token rides
@@ -307,7 +322,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     auto inputs = [&] {
         auto snapshot =
             capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
-        snapshot.append(imported.begin(), imported.end());
+        merge_deps(snapshot, {&imported});
         return snapshot;
     };
     if(!result.has_value() || !result.value().success) {

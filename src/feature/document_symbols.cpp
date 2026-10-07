@@ -282,11 +282,10 @@ private:
         level->push_back(std::move(symbol));
     }
 
-    /// The module an interface unit defines; an implementation unit's
-    /// declaration only names a module defined elsewhere.
+    /// The module or partition the unit defines.
     void add_module(const LexicalInfo::ModuleDeclaration& module) {
         if(module.kind != LexicalInfo::ModuleDeclaration::Kind::Declaration ||
-           !unit.is_module_interface_unit()) {
+           !unit.defines_module()) {
             return;
         }
         auto name = module.name_range();

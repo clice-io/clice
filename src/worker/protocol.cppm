@@ -230,7 +230,7 @@ struct BuildPCHParams {
     std::string index_output_path;
 };
 
-/// Build a module interface's PCM.
+/// Build the PCM of a unit providing a module.
 struct BuildPCMParams {
     std::string file;
     std::string directory;
