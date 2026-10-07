@@ -67,6 +67,9 @@ std::unique_ptr<clang::CompilerInvocation>
     }
     self.remapped_buffers = std::move(params.buffers);
     self.synthesized = std::move(params.synthesized);
+    if(params.kind != CompilationKind::Preamble) {
+        llvm::append_range(pp_opts.Includes, params.forced_includes);
+    }
 
     auto [pch, bound] = params.pch;
     pp_opts.ImplicitPCHInclude = std::move(pch);

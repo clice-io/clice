@@ -136,7 +136,9 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        const std::vector<std::string>& arguments,
                                        const SynthesizedContext* synthesized) {
     auto path = project.file_table.resolve(path_id);
-    auto bound = compute_preamble_bound(text);
+    // The part of the prefix inside braces comes after the preamble, which
+    // the header's own directives would otherwise precede.
+    auto bound = synthesized && !synthesized->open.empty() ? 0 : compute_preamble_bound(text);
     if(bound == 0 && !synthesized) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts land here too: they borrow
@@ -616,6 +618,55 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
     co_return true;
 }
 
+kota::task<bool> ASTFamily::fetch_include_tree(Fid host) {
+    auto& files = project.file_table;
+    worker::IncludeTreeParams params;
+    params.file = files.resolve(host).str();
+    params.workspace = project.config.workspace_root.str();
+    contexts.commands.resolve_command(host, params.directory, params.arguments);
+    auto started = std::pair(project.commands_epoch, project.context_epoch);
+    // The tree does not depend on the header's buffer: an edit superseding
+    // the round must not cancel the run, or typing would restart it.
+    auto result = co_await pool.send_stateless(params, worker::Priority::High);
+    if(!result.has_value()) {
+        LOG_INFO("No include tree for {}: {}", params.file, result.error().message);
+        // A host whose preprocessing kills the worker would kill one per
+        // edit; any other failure is not the host's.
+        if(result.error().code == worker::dispatch_errc::worker_crashed) {
+            project.include_trees[host].last_run = started;
+        }
+        co_return false;
+    }
+    if(!result.value().success) {
+        LOG_INFO("No include tree for {}: {}", params.file, result.value().error);
+        project.include_trees[host].last_run = started;
+        co_return false;
+    }
+    auto& tree = result.value();
+    llvm::SmallVector<VersionID> versions;
+    for(std::size_t i = 0; i < tree.paths.size(); i += 1) {
+        auto fid = files.intern(Spelling::absolute(tree.paths[i]));
+        auto hash = tree.path_hashes[i];
+        if(hash != 0) {
+            files.disk.consumed(fid, hash);
+        }
+        versions.push_back(files.intern_version(fid, hash));
+    }
+    for(auto& node: tree.nodes) {
+        node.file = versions[node.file].raw;
+    }
+    // The tree can move the host's contexts: the listings it changes are
+    // stale.
+    project.context_epoch += 1;
+    project.include_trees[host] = {
+        .root = versions.back(),
+        .nodes = std::move(tree.nodes),
+        .commands_epoch = started.first,
+        .last_run = {started.first, started.second + 1},
+    };
+    co_return true;
+}
+
 kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // The session is resolved at round start: a didClose between spawn
     // and entry leaves nothing to compile.
@@ -663,6 +714,33 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.text = session->text;
         params.workspace = project.config.workspace_root.str();
         auto resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
+        // A context cut along the lexical chain may name directives the
+        // host's compile never enters: once a tree can tell — another
+        // header's run took it, the index caught up — or one is taken,
+        // unless one was since the disk or the commands last changed,
+        // resolve again: under it, another host may come first.
+        llvm::SmallVector<Fid, 2> retried;
+        while(resolution.tree_wanted.valid() &&
+              !llvm::is_contained(retried, resolution.tree_wanted)) {
+            auto host = resolution.tree_wanted;
+            retried.push_back(host);
+            if(!enterings(project, host, path_id)) {
+                auto it = project.include_trees.find(host);
+                bool ran =
+                    it != project.include_trees.end() &&
+                    it->second.last_run == std::pair(project.commands_epoch, project.context_epoch);
+                if(ran || !co_await fetch_include_tree(host)) {
+                    break;
+                }
+            }
+            contexts.drop_header_context(path_id);
+            if(session->generation != gen) {
+                co_return RoundOutcome::Stale;
+            }
+            params.directory.clear();
+            params.arguments.clear();
+            resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
+        }
         auto source = resolution.source;
         auto* synthesized = resolution.synthesized.get();
 

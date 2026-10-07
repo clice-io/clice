@@ -112,9 +112,9 @@ One of the core uses of dependency scanning is finding host source files for hea
 1. Starting from the target header, traverse upward via the reverse include index
 2. Find all root files that transitively include the target header (files not included by any other file)
 3. Filter for source files that have compilation commands in the CDB as candidate hosts
-4. Select the first candidate host with a valid include chain as the default host
+4. Select the first candidate host whose compile enters the header as the default host
 
-The include chain lookup uses BFS to guarantee the shortest path is found. The compilation context system then uses this include chain to synthesize the header's compilation environment.
+Where the candidate's include tree is known — from its index entry, or from preprocessing it in the editor — it tells where the compile enters the header and through which files; otherwise BFS over the lexical graph finds the shortest include chain. The compilation context system then uses that chain to synthesize the header's compilation environment.
 
 ### Precise Scanning and Background Indexing as Supplements
 

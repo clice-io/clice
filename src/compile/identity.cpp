@@ -336,7 +336,7 @@ std::uint64_t EntityTable::entity(llvm::StringRef name, clang::SourceLocation de
         auto [fid, offset] = unit.decompose_location(definition);
         if(!unit.is_builtin_file(fid)) {
             add_file(hasher, fid);
-            hasher.add(static_cast<std::uint64_t>(offset));
+            hasher.add(static_cast<std::uint64_t>(unit.source_offset(fid, offset)));
         }
     }
     return hasher.finish();
@@ -1050,7 +1050,7 @@ void EntityTable::add_location(Hasher& hasher, clang::SourceLocation location) {
     }
     auto [fid, offset] = unit.decompose_location(unit.expansion_location(location));
     add_file(hasher, fid);
-    hasher.add(static_cast<std::uint64_t>(offset));
+    hasher.add(static_cast<std::uint64_t>(unit.source_offset(fid, offset)));
     add_macro_history(hasher, location);
 }
 
@@ -1074,7 +1074,9 @@ void EntityTable::add_macro_history(Hasher& hasher, clang::SourceLocation locati
         }
         auto [spelling_fid, spelling_offset] = unit.decompose_location(spelling);
         hasher.add(
-            static_cast<std::uint64_t>(unit.is_builtin_file(spelling_fid) ? 0 : spelling_offset));
+            static_cast<std::uint64_t>(unit.is_builtin_file(spelling_fid)
+                                           ? 0
+                                           : unit.source_offset(spelling_fid, spelling_offset)));
     }
 }
 

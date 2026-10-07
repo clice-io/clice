@@ -137,6 +137,43 @@ ZEST_CASE(VerdictPersistenceMarksDirty) {
     ZASSERT(project.artifacts_dirty);
 }
 
+ZEST_CASE(UnmatchedChainWantsTree) {
+    /// The scan resolved shared.h's include under b.cpp's directories;
+    /// a.cpp ranks first, but under its directories the include reaches
+    /// another config.h. The resolution names the host whose chain it
+    /// could not follow, and asks for that host's include tree.
+    TempDir tmp;
+    tmp.touch("common/shared.h", "#pragma once\n#include <config.h>\n");
+    tmp.touch("config_a/config.h", "#pragma once\n");
+    tmp.touch("config_b/config.h", "#pragma once\n");
+    tmp.touch("a.cpp", "#include \"shared.h\"\n");
+    tmp.touch("b.cpp", "#include \"shared.h\"\n");
+    tmp.touch("build/compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("b.cpp"), {"-Iconfig_b", "-Icommon"}},
+                  {tmp.root, tmp.path("a.cpp"), {"-Iconfig_a", "-Icommon"}},
+    }));
+    FileTable files;
+    Project project{files};
+    CommandResolver resolver(project);
+    project.config.rules.push_back(ConfigRule{.compile_commands = {"build"}});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+    for(auto source: project.build.declared_sources()) {
+        project.cdb.load(source);
+    }
+    project.rebuild_dependency_graph();
+
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("config_b/config.h")));
+    auto a = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
+    resolver.record_header_mode(header, HeaderMode::NeedsContext);
+    std::string directory;
+    std::vector<std::string> arguments;
+    auto resolution = resolver.resolve_command(header, directory, arguments);
+    ZEXPECT(resolution.unmatched_host == a);
+    ZEXPECT(resolution.tree_wanted == a);
+}
+
 };  // ZEST_SUITE(CommandResolver)
 
 }  // namespace

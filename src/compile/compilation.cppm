@@ -170,17 +170,24 @@ struct CompilationParams {
     /// to cancel old compilation task.
     std::shared_ptr<std::atomic_bool> stop = std::make_shared<std::atomic_bool>(false);
 
-    /// Paths of the files add_synthesized served, see
-    /// CompilationUnitRef::synthesized.
-    llvm::StringSet<> synthesized;
+    /// The files add_synthesized served, by path, with what their text
+    /// was cut from; see CompilationUnitRef::synthesized.
+    llvm::StringMap<SynthesizedOrigin> synthesized;
+
+    /// Synthesized files entered after the command's -includes by every
+    /// compile but a preamble's (SynthesizedFile::forced).
+    std::vector<std::string> forced_includes;
 
     /// Serve files the command names from memory: a header context's
     /// synthesized fragments.
     void add_synthesized(const SynthesizedFiles& files) {
-        for(auto& [file, content]: files) {
-            add_remapped_file(file, content);
+        for(auto& file: files) {
+            add_remapped_file(file.path, file.content);
             // Named the way CompilationUnitRef::file_path names it.
-            synthesized.insert(CanonicalPath(Spelling::absolute(file)).str());
+            synthesized[CanonicalPath(Spelling::absolute(file.path)).str()] = file.origin;
+            if(file.origin.forced) {
+                forced_includes.push_back(file.path);
+            }
         }
     }
 

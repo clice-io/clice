@@ -68,7 +68,7 @@ struct CompilationUnitRef::Self {
     llvm::StringMap<std::unique_ptr<llvm::MemoryBuffer>> remapped_buffers;
 
     /// See CompilationParams::synthesized.
-    llvm::StringSet<> synthesized;
+    llvm::StringMap<SynthesizedOrigin> synthesized;
 
     /// Every place a failed include or `__has_include` lookup looked, see
     /// CompilationUnitRef::absent.

@@ -69,6 +69,12 @@ struct Resolution {
     /// The host whose includer context the header needed but whose include
     /// chain the synthesis could not follow: the command fell back past it.
     Fid unmatched_host;
+
+    /// The host whose include tree could change this resolution: the
+    /// synthesis followed the lexical chain from it, for want of a tree
+    /// telling where its compile enters the header (see enterings), or
+    /// could not follow the chain at all.
+    Fid tree_wanted;
 };
 
 /// Composes a file's final compile command from the project on disk.

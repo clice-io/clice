@@ -13,9 +13,9 @@ export interface ContextItem {
     /// compile configurations).
     uri: string;
 
-    /// For header contexts: which include of the header in its direct
-    /// includer this context represents (0-based, in directive order).
-    /// Present only when the header is included more than once.
+    /// For header contexts: which place the host's compile enters the
+    /// header this context represents (0-based, in the order it does).
+    /// Present only when it enters the header more than once.
     occurrence?: number;
 
     /// For source compile configurations: canonical hash identifying the

@@ -9,6 +9,7 @@ import :compile.diagnostic;
 import :compile.directive;
 import :semantic.resolver;
 import :semantic.symbol;
+import :syntax.preamble_synthesis;
 import :syntax.token;
 
 namespace clice {
@@ -165,10 +166,13 @@ public:
     bool borrows_context();
 
     /// The path of the file `fid` stands for: its own, or for a synthesized
-    /// fragment the file it was cut from, which the fragment's opening
-    /// #line marker names (the snapshot of the header, which carries none,
-    /// its own).
+    /// file the one its text was cut from.
     auto source_path(clang::FileID fid) -> llvm::StringRef;
+
+    /// Where `offset` in `fid` lies in source_path(fid): the same offset
+    /// but in a synthesized file, whose text runs copy the file at other
+    /// offsets.
+    std::uint32_t source_offset(clang::FileID fid, std::uint32_t offset);
 
     /// Whether the file is the compile's own source: the main file, or
     /// under a borrowed includer context a fragment cut from the host.
@@ -184,6 +188,11 @@ public:
     /// compiled in its includer's context sits inside.
     bool encloses_main_file(const clang::Decl* decl);
 
+private:
+    /// What the synthesized file `fid` was cut from; null for any other.
+    const SynthesizedOrigin* origin(clang::FileID fid);
+
+public:
     /// Get the include location of the file id, i.e. where the file
     /// was introduced by `#include`.
     auto include_location(clang::FileID fid) -> clang::SourceLocation;

@@ -204,12 +204,20 @@ auto CompilationUnitRef::include_location(clang::FileID fid) -> clang::SourceLoc
     return self->SM().getIncludeLoc(fid);
 }
 
-bool CompilationUnitRef::synthesized(clang::FileID fid) {
+const SynthesizedOrigin* CompilationUnitRef::origin(clang::FileID fid) {
     if(!borrows_context()) {
-        return false;
+        return nullptr;
     }
     auto entry = self->SM().getFileEntryRefForID(fid);
-    return entry && self->synthesized.contains(file_path(*entry));
+    if(!entry) {
+        return nullptr;
+    }
+    auto it = self->synthesized.find(file_path(*entry));
+    return it != self->synthesized.end() ? &it->second : nullptr;
+}
+
+bool CompilationUnitRef::synthesized(clang::FileID fid) {
+    return origin(fid) != nullptr;
 }
 
 bool CompilationUnitRef::borrows_context() {
@@ -217,19 +225,25 @@ bool CompilationUnitRef::borrows_context() {
 }
 
 auto CompilationUnitRef::source_path(clang::FileID fid) -> llvm::StringRef {
-    if(!synthesized(fid)) {
-        return file_path(fid);
+    if(auto* found = origin(fid)) {
+        return found->source;
     }
-    // The fragment's own marker precedes the cut file's text, whose
-    // #line directives would rename what follows them.
-    auto& SM = self->SM();
-    auto text = SM.getBufferData(fid);
-    auto marker = text.find("#line ");
-    if(marker == llvm::StringRef::npos) {
-        return file_path(fid);
+    return file_path(fid);
+}
+
+std::uint32_t CompilationUnitRef::source_offset(clang::FileID fid, std::uint32_t offset) {
+    auto* found = origin(fid);
+    if(!found) {
+        return offset;
     }
-    auto after = text.find('\n', marker) + 1;
-    return SM.getPresumedLoc(SM.getComposedLoc(fid, after)).getFilename();
+    auto run =
+        llvm::upper_bound(found->runs, offset, [](std::uint32_t offset, const SourceRun& run) {
+            return offset < run.offset;
+        });
+    assert(run != found->runs.begin() && offset - std::prev(run)->offset < std::prev(run)->length &&
+           "a position the context did not copy from its file");
+    run = std::prev(run);
+    return run->source_offset + (offset - run->offset);
 }
 
 bool CompilationUnitRef::host_source(clang::FileID fid) {
@@ -245,7 +259,10 @@ bool CompilationUnitRef::host_source(clang::FileID fid) {
         self->host.emplace();
         auto& SM = self->SM();
         auto predefines = self->instance->getPreprocessor().getPredefinesFileID();
-        for(auto path: self->synthesized.keys()) {
+        for(auto& [path, cut]: self->synthesized) {
+            if(cut.forced) {
+                continue;
+            }
             auto entry = SM.getFileManager().getOptionalFileRef(path);
             if(!entry) {
                 continue;
