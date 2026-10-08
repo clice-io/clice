@@ -17,5 +17,7 @@ int tally(int limit) {
     count--;
     (count) = count * 2;
     next = count = limit;
-    return count;
+    int §(spare)spare;
+    spare = count;
+    return count + spare;
 }

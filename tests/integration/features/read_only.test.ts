@@ -68,6 +68,14 @@ test("index serves unedited reads", async ({ session }) => {
     expect(defs?.length ?? 0).toBeGreaterThan(0);
     expect(defs![0]!.uri.endsWith("header.h")).toBe(true);
 
+    // `x` in `return add(x, x)`.
+    const highlights = await client.documentHighlightAt(uri, 4, 15);
+    expect(highlights?.map((h) => [h.range.start.line, h.range.start.character, h.kind])).toEqual([
+        [3, 14, proto.DocumentHighlightKind.Text],
+        [4, 15, proto.DocumentHighlightKind.Read],
+        [4, 18, proto.DocumentHighlightKind.Read],
+    ]);
+
     // Pinned degradations of the read-only surface.
     const hints = await client.inlayHints(uri, {
         start: { line: 0, character: 0 },

@@ -10,6 +10,8 @@ class_decl:
   - { range: "19:10-19:17", kind: Read }
   - { range: "21:0-21:7", kind: Read }
   - { range: "22:11-22:18", kind: Read }
+  - { range: "25:11-25:18", kind: Read }
+  - { range: "26:13-26:20", kind: Read }
 
 ctor_call:
   - { range: "12:4-12:11", kind: Text }
@@ -21,10 +23,17 @@ ctor_decl:
   - { range: "17:9-17:16", kind: Text }
   - { range: "22:18-22:19", kind: Read }
 
+dtor_call:
+  - { range: "13:4-13:12", kind: Text }
+  - { range: "19:9-19:17", kind: Text }
+  - { range: "26:12-26:20", kind: Read }
+
 dtor_decl:
   - { range: "13:4-13:12", kind: Text }
   - { range: "19:9-19:17", kind: Text }
+  - { range: "26:12-26:20", kind: Read }
 
 dtor_def:
   - { range: "13:4-13:12", kind: Text }
   - { range: "19:9-19:17", kind: Text }
+  - { range: "26:12-26:20", kind: Read }

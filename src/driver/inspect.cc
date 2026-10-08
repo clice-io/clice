@@ -323,13 +323,10 @@ std::optional<kota::codec::RawValue>
     auto envelope = index::build_tu_index(unit);
     auto tu = index::TUIndex::from_bytes(envelope);
     const index::Shard& rows = tu.shard_of(tu.path_count() - 1);
-    auto named =
-        index::named_at(rows, offset, [&](index::SymbolHash hash) -> std::optional<SymbolKind> {
-            if(auto symbol = tu.find_symbol(hash)) {
-                return symbol->kind;
-            }
-            return std::nullopt;
-        });
+    auto named = index::named_at(rows, offset, [&](index::SymbolHash hash) {
+        auto symbol = tu.find_symbol(hash);
+        return symbol && symbol->kind == SymbolKind::Macro;
+    });
     if(!named) {
         return to_raw_json(std::vector<index::Highlight>{});
     }

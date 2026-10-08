@@ -22,10 +22,6 @@ using llvm::dyn_cast_or_null;
 // For now, inlay hints are always anchored at the left or right of their range.
 enum class HintSide : std::uint8_t { Left, Right };
 
-bool is_expanded_from_param_pack(const clang::ParmVarDecl* param) {
-    return decls::underlying_pack_type(param) != nullptr;
-}
-
 // for a ParmVarDecl from a function declaration, returns the corresponding
 // ParmVarDecl from the definition if possible, nullptr otherwise.
 const clang::ParmVarDecl* param_definition(const clang::ParmVarDecl* param) {
@@ -290,7 +286,7 @@ private:
     NameVec choose_param_names(llvm::ArrayRef<const clang::ParmVarDecl*> params) {
         NameVec param_names;
         for(const auto* param: params) {
-            if(is_expanded_from_param_pack(param)) {
+            if(decls::underlying_pack_type(param)) {
                 // If we haven't resolved a pack paramater (e.g. foo(Args... args)) to a
                 // non-pack parameter, then hinting as foo(args: 1, args: 2, args: 3) is
                 // unlikely to be useful.

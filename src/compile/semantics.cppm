@@ -446,8 +446,8 @@ llvm::SmallVector<NameOccurrence, 2>
 /// increment or decrement (overloaded operators included), or an argument
 /// bound to a mutable lvalue reference parameter (the ones inlay hints mark
 /// with `&`) other than a forwarding reference, which binds anything. The
-/// object of a member access or call, an operator's left operand and an
-/// address taken are not written.
+/// object of a member access or call, the left operand of any other
+/// operator and an address taken are not written.
 bool is_written(const Semantics& semantics, std::uint32_t index);
 
 }  // namespace clice

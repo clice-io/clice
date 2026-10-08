@@ -123,7 +123,7 @@ void dedup_sites(std::vector<Site>& sites) {
 
 std::optional<Named> named_at(const Shard& rows,
                               std::uint32_t offset,
-                              llvm::function_ref<std::optional<SymbolKind>(SymbolHash)> kind_of) {
+                              llvm::function_ref<bool(SymbolHash)> is_macro) {
     llvm::SmallVector<Occurrence, 2> candidates;
     rows.lookup(offset, [&](const Occurrence& occurrence) {
         if(!candidates.empty() && !(candidates.front().range == occurrence.range)) {
@@ -137,7 +137,7 @@ std::optional<Named> named_at(const Shard& rows,
     }
     Named named{.range = candidates.front().range};
     for(auto& candidate: candidates) {
-        if(kind_of(candidate.target) != SymbolKind::Macro) {
+        if(!is_macro(candidate.target)) {
             named.symbols.push_back(candidate.target);
         }
     }
@@ -346,11 +346,9 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     }
     std::optional<Cursor> cursor;
     auto hit = [&](const Shard& rows) {
-        auto named = named_at(rows, offset, [&](SymbolHash hash) -> std::optional<SymbolKind> {
-            if(auto info = symbol_info(hash, file)) {
-                return info->kind;
-            }
-            return std::nullopt;
+        auto named = named_at(rows, offset, [&](SymbolHash hash) {
+            auto info = symbol_info(hash, file);
+            return info && info->kind == SymbolKind::Macro;
         });
         if(!named) {
             return false;

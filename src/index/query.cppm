@@ -134,20 +134,20 @@ void dedup_sites(std::vector<Site>& sites);
 /// (`operator` of `operator Foo*`, whose `Foo` is the class's).
 bool covers(const Site& row, const Site& cursor);
 
-/// The symbols one row set names at `offset`, and the range naming them:
-/// the occurrences sharing the first range the lookup meets. A module
-/// imported through a macro sits under the macro's own occurrence — the
-/// name spells what the macro expanded to, and the macro itself is
-/// reached at its definition — so a macro gives way to the symbols it
-/// shares its range with. `kind_of` tells a symbol's kind.
 struct Named {
     LocalSourceRange range;
     llvm::SmallVector<SymbolHash, 1> symbols;
 };
 
+/// The symbols one row set names at `offset`, and the range naming them:
+/// the occurrences sharing the first range the lookup meets. A module
+/// imported through a macro sits under the macro's own occurrence — the
+/// name spells what the macro expanded to, and the macro itself is
+/// reached at its definition — so a macro gives way to the symbols it
+/// shares its range with.
 std::optional<Named> named_at(const Shard& rows,
                               std::uint32_t offset,
-                              llvm::function_ref<std::optional<SymbolKind>(SymbolHash)> kind_of);
+                              llvm::function_ref<bool(SymbolHash)> is_macro);
 
 /// How the code at a highlighted name accesses its symbol.
 enum class HighlightKind : std::uint8_t {

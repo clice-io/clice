@@ -2,8 +2,7 @@
 ///
 /// - status: supported
 ///
-/// An argument bound to a non-const lvalue reference parameter is a write,
-/// where the `&` inlay hint marks it
+/// An argument bound to a non-const lvalue reference parameter is a write
 ///
 /// A const reference or a by-value parameter reads the argument, and so does
 /// taking its address. A forwarding reference (`T&&`, `auto&&`) binds

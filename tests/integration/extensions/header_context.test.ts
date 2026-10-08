@@ -149,12 +149,18 @@ test("document highlight in context", async ({ session }) => {
     await client.openAndWait("main.cpp");
     const [utilsUri] = await client.openAndWait("utils.h");
 
-    const highlights = await client.documentHighlightAt(utilsUri, 6, 18); // 'Point'
-    expect(highlights).toEqual([
+    const point = await client.documentHighlightAt(utilsUri, 6, 18); // 'Point'
+    expect(point).toEqual([
         {
             range: { start: { line: 6, character: 16 }, end: { line: 6, character: 21 } },
             kind: proto.DocumentHighlightKind.Read,
         },
+    ]);
+
+    const param = await client.documentHighlightAt(utilsUri, 7, 20); // 'p'
+    expect(param?.map((h) => [h.range.start.line, h.range.start.character, h.kind])).toEqual([
+        [6, 22, proto.DocumentHighlightKind.Text],
+        [7, 20, proto.DocumentHighlightKind.Read],
     ]);
 });
 

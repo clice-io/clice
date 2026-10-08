@@ -7,8 +7,8 @@
 ///
 /// A designated initializer or a constructor's member initializer names the
 /// field it initializes without writing it: initialization is not an
-/// assignment. Fields of an anonymous union or struct highlight like any
-/// other field.
+/// assignment. Fields of an anonymous union highlight like any other
+/// field.
 
 struct Point {
     int §(x)x;

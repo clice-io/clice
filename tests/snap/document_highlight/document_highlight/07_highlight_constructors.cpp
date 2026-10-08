@@ -22,3 +22,7 @@ Session::~§(dtor_def)Session() {}
 Session open() {
     return Session§(ctor_call)(7);
 }
+
+void close(Session& session) {
+    session.§(dtor_call)~Session();
+}

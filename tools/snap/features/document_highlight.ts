@@ -2,13 +2,6 @@ import * as proto from "vscode-languageserver-protocol";
 import { markerPoints } from "../annotation.ts";
 import { enumName, fmtRange, OffsetConverter, sortedMarkers, type Feature } from "../render.ts";
 
-/// The highlights at each `§`-marker, one block per marker in range order:
-///
-///     name:
-///       - { range: "3:4-3:9", kind: Write }
-///
-///     other: none
-
 interface HighlightEntry {
     start: proto.Position;
     end: proto.Position;
@@ -31,14 +24,7 @@ function formatHighlights(items: [string, HighlightEntry[]][]): string[] {
             continue;
         }
         out.push(`${name}:`);
-        const sorted = [...entries].sort(
-            (a, b) =>
-                a.start.line - b.start.line ||
-                a.start.character - b.start.character ||
-                a.end.line - b.end.line ||
-                a.end.character - b.end.character,
-        );
-        for (const entry of sorted) {
+        for (const entry of entries) {
             out.push(
                 `  - { range: "${fmtRange({ start: entry.start, end: entry.end })}", kind: ${entry.kind} }`,
             );
@@ -47,6 +33,13 @@ function formatHighlights(items: [string, HighlightEntry[]][]): string[] {
     return out;
 }
 
+/// The highlights at each `§`-marker, one block per marker, its highlights
+/// in reply order — clice sorts them by range:
+///
+///     name:
+///       - { range: "3:4-3:9", kind: Write }
+///
+///     other: none
 export const documentHighlight: Feature = {
     shape: "point",
     fromInspect(entry, ctx) {
@@ -70,14 +63,16 @@ export const documentHighlight: Feature = {
             const reply = (await client.documentHighlightAt(uri, line, character)) ?? [];
             items.push([
                 name,
-                reply.map((highlight) => ({
-                    start: highlight.range.start,
-                    end: highlight.range.end,
-                    kind: enumName(
-                        proto.DocumentHighlightKind,
-                        highlight.kind ?? proto.DocumentHighlightKind.Text,
-                    ),
-                })),
+                reply.map((highlight) => {
+                    if (highlight.kind === undefined) {
+                        throw new Error("clice always sets the highlight kind");
+                    }
+                    return {
+                        start: highlight.range.start,
+                        end: highlight.range.end,
+                        kind: enumName(proto.DocumentHighlightKind, highlight.kind),
+                    };
+                }),
             ]);
         }
         return formatHighlights(items);
