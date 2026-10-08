@@ -73,6 +73,8 @@ inline void append_token(std::vector<SemanticToken>& tokens,
 struct LexicalClass {
     SymbolKind kind = SymbolKind::Invalid;
 
+    std::uint32_t modifiers = 0;
+
     /// Whether the token reads as a word (identifier or keyword) — the
     /// directive state machines classify e.g. the name after `#` or
     /// `#define` only for word-like tokens.
@@ -135,6 +137,35 @@ inline LexicalClass classify_lexical_kind(clang::tok::TokenKind kind, llvm::Stri
         case clang::tok::kw___int64:
         case clang::tok::kw___int128: {
             result.kind = SymbolKind::Primitive;
+            result.identifier_like = true;
+            break;
+        }
+
+        /// Keywords that transfer control, so editors can color them apart
+        /// from specifiers like `virtual` or `const`. `default` stays plain:
+        /// `default:` and `= default` are the same token here.
+        case clang::tok::kw_if:
+        case clang::tok::kw_else:
+        case clang::tok::kw_switch:
+        case clang::tok::kw_case:
+        case clang::tok::kw_for:
+        case clang::tok::kw_while:
+        case clang::tok::kw_do:
+        case clang::tok::kw_break:
+        case clang::tok::kw_continue:
+        case clang::tok::kw_return:
+        case clang::tok::kw_goto:
+        case clang::tok::kw_try:
+        case clang::tok::kw_catch:
+        case clang::tok::kw_throw:
+        case clang::tok::kw_co_await:
+        case clang::tok::kw_co_return:
+        case clang::tok::kw_co_yield:
+        case clang::tok::kw___try:
+        case clang::tok::kw___finally:
+        case clang::tok::kw___leave: {
+            result.kind = SymbolKind::Keyword;
+            result.modifiers = SymbolModifiers::to_mask(SymbolModifiers::ControlFlow);
             result.identifier_like = true;
             break;
         }

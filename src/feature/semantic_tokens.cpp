@@ -298,7 +298,7 @@ private:
     Classified classify_lexical(const clang::syntax::Token& token, std::uint32_t offset) {
         auto lexical_class =
             classify_lexical_kind(token.kind(), content.substr(offset, token.length()));
-        Classified lexical{lexical_class.kind, 0};
+        Classified lexical{lexical_class.kind, lexical_class.modifiers};
         bool is_identifier_like = lexical_class.identifier_like;
 
         /// Move the directive state machine to classify tokens in a PP directive.
@@ -313,7 +313,7 @@ private:
             case DirectiveContext::AfterHash: {
                 /// The directive name right after `#`, e.g. `include`, `if`.
                 if(is_identifier_like) {
-                    lexical.kind = SymbolKind::Directive;
+                    lexical = {SymbolKind::Directive, 0};
                 }
 
                 auto spelling = content.substr(offset, token.length());
@@ -354,7 +354,7 @@ private:
                 /// defines under a PCH, where no MacroDefine node exists
                 /// (the preamble's directives live in the PCH compile).
                 if(is_identifier_like) {
-                    lexical.kind = SymbolKind::Macro;
+                    lexical = {SymbolKind::Macro, 0};
                 }
                 directive_context = DirectiveContext::InDirective;
                 break;

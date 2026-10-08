@@ -49,6 +49,7 @@ const SYMBOL_MODIFIERS = [
     "FileScope",
     "GlobalScope",
     "Inactive",
+    "ControlFlow",
 ];
 
 export function rawSemanticTokenPieces(result: unknown, stripped: Buffer): TokenPiece[] {

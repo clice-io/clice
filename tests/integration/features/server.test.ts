@@ -74,6 +74,7 @@ test("semantic token modifier legend", ({ client }) => {
         "fileScope",
         "globalScope",
         "inactive",
+        "controlFlow",
     ]);
 });
 

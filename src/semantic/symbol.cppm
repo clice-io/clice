@@ -152,6 +152,9 @@ struct SymbolModifiers {
 
         /// Represents that the token sits in a preprocessor-inactive region.
         Inactive = 22,
+
+        /// Represents that the keyword transfers control (e.g. `if`, `return`).
+        ControlFlow = 23,
     };
 
     constexpr static std::uint32_t to_mask(Kind kind) {

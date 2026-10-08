@@ -68,10 +68,12 @@ void expect_tokens_match_ast() {
                                        decls,
                                        resolver());
 
-    // The index knows Declaration/Definition; every other AST modifier
-    // (Readonly, Static, Virtual, ...) is a pinned degradation.
+    // The index knows Declaration/Definition, and ControlFlow is lexical;
+    // every other AST modifier (Readonly, Static, Virtual, ...) is a pinned
+    // degradation.
     auto pinned = SymbolModifiers::to_mask(SymbolModifiers::Declaration) |
-                  SymbolModifiers::to_mask(SymbolModifiers::Definition);
+                  SymbolModifiers::to_mask(SymbolModifiers::Definition) |
+                  SymbolModifiers::to_mask(SymbolModifiers::ControlFlow);
 
     ZASSERT(projected.size() == ast.size());
     for(std::size_t i = 0; i < ast.size(); i += 1) {

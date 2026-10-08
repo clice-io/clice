@@ -266,7 +266,7 @@ auto index_semantic_tokens(llvm::StringRef content,
             kind = profile.keywords.get(spelling).getTokenID();
         }
         auto lexical_class = classify_lexical_kind(kind, spelling);
-        Classified lexical{lexical_class.kind, 0};
+        Classified lexical{lexical_class.kind, lexical_class.modifiers};
 
         // The contextual `module` and `import` open a module declaration
         // or an import at the start of a line, behind `export` at most,
