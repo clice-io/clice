@@ -134,6 +134,28 @@ ZEST_CASE(DropErasesEntry) {
     ZASSERT(!stack.ast.projections.current(pid));
 }
 
+ZEST_CASE(ClosedSessionSkipsCompile) {
+    // A caller still holding a closed session asks for its AST: the join
+    // ends at once instead of driving rounds that find no session.
+    Stack stack;
+    auto session = stack.open("/proj/a.cpp", "int x;\n");
+    stack.sessions.close(session->path_id);
+    stack.ast.drop(session->path_id);
+
+    bool compiled = true;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        compiled = co_await stack.ast.ensure_compiled(session);
+        co_await stack.graph.shutdown();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    ZEXPECT(done);
+    ZEXPECT(!compiled);
+}
+
 ZEST_CASE(SwitchIdentityResets) {
     Stack stack;
     auto session = stack.open("/proj/h.h", "int x;\n");
@@ -1544,6 +1566,57 @@ ZEST_CASE(AnswerClearsQueryRecord) {
         ZEXPECT(result.value().data != "null");
         ZEXPECT(!a->quarantine->crashed(hover));
         ZEXPECT(published == before + 1);
+
+        co_await stack.ast.stop();
+        co_await stack.graph.shutdown();
+        co_await stack.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    stack.loop.schedule(task);
+    stack.loop.run();
+    ZEXPECT(done);
+}
+
+ZEST_CASE(CloseDuringQueryEnds) {
+    // The document closes while its query is in flight, and the worker,
+    // already told to evict it, answers document_unloaded: the query ends
+    // ContentModified instead of compiling the closed session again.
+    TempDir tmp;
+    tmp.touch("a.cpp", "");
+
+    Stack stack;
+    auto a = stack.open(tmp.path("a.cpp"), "int alpha = 1;\n");
+    auto path_id = a->path_id;
+
+    bool modified = false;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 0;
+        opts.stateful_count = 1;
+        ZASSERT(stack.pool.start(opts));
+
+        ZASSERT(co_await stack.ast.ensure_compiled(a));
+        stack.pool.notify_stateful(
+            path_id.raw,
+            worker::EvictParams{std::string(stack.project.file_table.resolve(path_id))});
+
+        auto ticket = Ticket::take(a);
+        kota::task_group<> group;
+        auto hover = [&]() -> kota::task<> {
+            auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
+                                                          ticket,
+                                                          protocol::Position{0, 5});
+            modified = !result.has_value() && result.error().code == content_modified_code;
+        };
+        group.spawn(hover());
+        ZASSERT(stack.pool.foreground_busy());
+        stack.sessions.close(path_id);
+        stack.ast.drop(path_id);
+        co_await group.join();
+        ZEXPECT(modified);
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();
