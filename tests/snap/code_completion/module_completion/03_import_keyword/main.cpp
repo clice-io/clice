@@ -1,4 +1,4 @@
-/// # Import keyword in an implementation unit
+/// # Import keyword in implementation units
 ///
 /// - status: supported
 /// - diagnostics: expected
