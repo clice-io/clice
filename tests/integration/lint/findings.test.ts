@@ -82,6 +82,25 @@ test("nolint comments count in headers", async ({ session }) => {
     expect(lines[0]).toContain("common.h:3:");
 });
 
+test("compiler warnings report under their check", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write(".clang-tidy", 'Checks: "-*,modernize-use-nullptr"\n');
+    ws.write("main.cpp", "int main() { int unused; return 0; }\n");
+    ws.writeCDB(["main.cpp"], { extraArgs: ["-Wunused-variable"] });
+
+    const quiet = await runLint(ws);
+    expect(quiet.status, `stderr: ${quiet.stderr}`).toBe(0);
+    expect(findings(quiet.stdout)).toEqual([]);
+
+    ws.write(".clang-tidy", 'Checks: "-*,modernize-use-nullptr,clang-diagnostic-unused-variable"\n');
+    const run = await runLint(ws);
+    expect(run.status, `stderr: ${run.stderr}`).toBe(1);
+    const lines = findings(run.stdout);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("[clang-diagnostic-unused-variable]");
+});
+
 test("lint rule keeps files out", async ({ session }) => {
     const ws = session.tmpdir();
     writeRules(ws);

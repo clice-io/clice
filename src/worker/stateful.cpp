@@ -281,6 +281,7 @@ RequestResult<worker::CompileParams>
             use_artifacts(cp, doc->pch, doc->pcms);
             cp.add_remapped_file(params.path, doc->text);
             cp.add_synthesized(params.synthesized);
+            cp.tidy = params.tidy;
             cp.stop = stop;
 
             doc->unit = compile(cp);

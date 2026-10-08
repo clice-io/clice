@@ -1078,6 +1078,7 @@ std::vector<const clang::FunctionDecl*>
 
 auto code_actions(CompilationUnitRef unit, LocalSourceRange selection) -> std::vector<CodeAction> {
     std::vector<CodeAction> out;
+    action::fix_its(unit, selection, out);
     action::add_include(unit, selection, out);
 
     auto path = unit.file_path(unit.main_file());

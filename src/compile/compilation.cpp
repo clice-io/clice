@@ -154,30 +154,37 @@ std::unique_ptr<clang::CompilerInvocation>
     return invocation;
 }
 
-void CompilationUnitRef::Self::configure_tidy(tidy::TidyParams tidy_params) {
-    checker = tidy::configure(*instance, tidy_params);
-    tidy_traverse_headers =
-        tidy_params.whole_tu || !tidy_params.header_filter.empty() || tidy_params.system_headers;
-}
-
 void CompilationUnitRef::Self::run_tidy() {
-    if(checker) {
-        // AST traversals should exclude the preamble, to avoid performance cliffs.
-        // TODO: is it okay to affect the unit-level traversal scope here?
-        // A configuration that reports on headers keeps the default
-        // whole-TU scope instead: the header filters are applied to the
-        // produced diagnostics at collection time.
-        auto& Ctx = instance->getASTContext();
-        if(!tidy_traverse_headers) {
-            Ctx.setTraversalScope(top_level_decls);
-        }
-        checker->finder.matchAST(Ctx);
-
-        /// XXX: This is messy: clang-tidy checks flush some diagnostics at EOF.
-        /// However Action->EndSourceFile() would destroy the ASTContext!
-        /// So just inform the preprocessor of EOF, while keeping everything alive.
-        instance->getPreprocessor().EndSourceFile();
+    if(!checker) {
+        return;
     }
+    // The editor matches the main file's declarations alone: the
+    // preamble's would cost a walk over every header. The unit's later
+    // readers see the whole TU again, and the parent map built over the
+    // restricted scope goes with it.
+    auto& context = instance->getASTContext();
+    if(!checker->batch) {
+        context.setTraversalScope(top_level_decls);
+    }
+    // Checks re-lex through the preprocessor (modernize-use-trailing-return-type
+    // does): what the directive collector records meanwhile is no directive
+    // of the file.
+    auto collected = std::move(directives);
+
+    // Tests crash the pass over a main file holding CLICE_TEST_TIDY_CRASH.
+    const static auto crash = llvm::sys::Process::GetEnv("CLICE_TEST_TIDY_CRASH");
+    if(crash && SM().getBufferData(SM().getMainFileID()).contains(*crash)) {
+        LLVM_BUILTIN_TRAP;
+    }
+
+    checker->finder.matchAST(context);
+
+    /// XXX: This is messy: clang-tidy checks flush some diagnostics at EOF.
+    /// However Action->EndSourceFile() would destroy the ASTContext!
+    /// So just inform the preprocessor of EOF, while keeping everything alive.
+    instance->getPreprocessor().EndSourceFile();
+    directives = std::move(collected);
+    context.setTraversalScope({context.getTranslationUnitDecl()});
 }
 
 namespace {
@@ -326,12 +333,14 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
 
     /// FIXME: include-fixer, etc?
 
+    /// The checks' PPCallbacks go first: the preamble replay reaches the
+    /// callbacks registered before it (see tidy::configure).
+    if(params.tidy) {
+        self.checker = tidy::configure(instance, *params.tidy);
+    }
+
     /// Add PPCallbacks to collect preprocessing information.
     self.collect_directives();
-
-    if(params.tidy) {
-        self.configure_tidy(*params.tidy);
-    }
 
     if(params.kind == CompilationKind::Content) {
         self.tokens.emplace(instance.getPreprocessor());

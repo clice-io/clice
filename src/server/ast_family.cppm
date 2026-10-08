@@ -293,6 +293,9 @@ private:
 /// past Count.
 enum class EvidenceKind : std::uint8_t {
     Compile,
+    /// The compile's clang-tidy pass: a crash under it retries the compile
+    /// without the pass.
+    Tidy,
     PCH,
     PCM,
     DocumentLink,

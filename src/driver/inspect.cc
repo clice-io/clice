@@ -192,7 +192,7 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
 struct RawCodeAction {
     std::string title;
     std::string kind;
-    std::vector<feature::TextReplacement> edits;
+    std::vector<TextReplacement> edits;
     /// The definitions a host-source request would place; the request
     /// itself stays unresolved here, having no host and no index.
     std::optional<std::vector<std::string>> host_definitions;
@@ -571,6 +571,8 @@ bool participates(const FeatureSpec& spec, const SourceFile& file) {
 /// cross-file fixtures compile like the server's view of the workspace.
 /// With `participant` false only the compile runs: the file's errors still
 /// reach the fixture diagnostics gate, but no feature output is produced.
+/// With `clang_tidy` the compile runs the file's clang-tidy configuration
+/// as the server's does.
 void run_feature(FileEntry& entry,
                  const FeatureSpec& spec,
                  const SourceFile& file,
@@ -578,6 +580,7 @@ void run_feature(FileEntry& entry,
                  const llvm::StringMap<std::string>& pcms,
                  const FileCommand& command,
                  llvm::StringRef config,
+                 bool clang_tidy,
                  bool participant) {
     const AnnotatedSource& source = file.source;
 
@@ -606,6 +609,9 @@ void run_feature(FileEntry& entry,
     CompilationParams params;
     params.kind = CompilationKind::Content;
     prepare(params);
+    if(clang_tidy) {
+        params.tidy = tidy::resolve_tidy_params(file.abs).params;
+    }
 
     auto unit = clice::compile(params);
     if(!unit.completed()) {
@@ -1026,7 +1032,15 @@ int run_inspect(const InspectOptions& opts) {
         if(!command) {
             continue;
         }
-        run_feature(entry, *spec, source, sources, pcms, *command, config, participant);
+        run_feature(entry,
+                    *spec,
+                    source,
+                    sources,
+                    pcms,
+                    *command,
+                    config,
+                    project.config.diagnostics.clang_tidy,
+                    participant);
     }
 
     for(auto& path: pcm_files) {

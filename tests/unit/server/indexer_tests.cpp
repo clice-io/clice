@@ -3685,9 +3685,11 @@ ZEST_CASE(ModuleLintScanParity) {
     f.pcm.register_runner();
 
     TURunFamily::Plan plan;
-    plan.tidy = true;
-    plan.tidy_params.checks = "-*,bugprone-integer-division";
-    plan.tidy_params.extra_args = {"-DUSE_M"};
+    plan.tidy = tidy::TidyParams{
+        .checks = "-*,bugprone-integer-division",
+        .extra_args = {"-DUSE_M"},
+        .batch = true,
+    };
 
     auto n_id = f.project.file_table.intern(Spelling::absolute(tmp.path("n.cppm")));
     TURunFamily::Outcome outcome;

@@ -58,6 +58,10 @@ void expand_macro(CompilationUnitRef unit,
 /// Anchored on an unresolved name the compiler diagnosed at the selection.
 void add_include(CompilationUnitRef unit, LocalSourceRange selection, std::vector<CodeAction>& out);
 
+/// The fixes the diagnostics on the selection carry, the compiler's and
+/// clang-tidy's: each diagnostic's own and those of its notes.
+void fix_its(CompilationUnitRef unit, LocalSourceRange selection, std::vector<CodeAction>& out);
+
 IncludeInsertion include_insertion(CompilationUnitRef unit);
 
 /// The main-file byte range a source range spells; nullopt when either

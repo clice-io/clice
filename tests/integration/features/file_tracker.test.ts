@@ -483,8 +483,12 @@ test("requests look at workspace files only", async ({ session }) => {
         '#include <installed.h>\n#include "local.h"\nint main() { return INSTALLED + LOCAL; }\n',
     );
     workspace.writeCDB(["main.cpp"], { extraArgs: sysrootArgs(workspace) });
+    // clang-tidy's configuration lookups would add their own looks.
     await client.initialize(workspace, {
-        initializationOptions: { project: { enable_indexing: false } },
+        initializationOptions: {
+            project: { enable_indexing: false },
+            diagnostics: { clang_tidy: false },
+        },
     });
     const [main] = await client.openAndWait("main.cpp");
     client.assertNoErrors(main);

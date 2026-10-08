@@ -151,7 +151,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
     /// none: half an edit set would corrupt the buffer.
     auto emit = [&](std::string title,
                     protocol::CodeActionKind kind,
-                    llvm::ArrayRef<feature::TextReplacement> replacements) {
+                    llvm::ArrayRef<TextReplacement> replacements) {
         std::vector<protocol::TextEdit> edits;
         for(const auto& replacement: replacements) {
             auto converted = map.to_range(replacement.range);

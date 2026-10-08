@@ -153,6 +153,9 @@ void TokenMap::record_invocation(clang::SourceRange range) {
 }
 
 void TokenMap::finish() {
+    // The stream is complete: a clang-tidy check re-lexing through the
+    // preprocessor would grow it past the slices taken below.
+    pp.setTokenWatcher(nullptr);
     spelled_tokens = clang::syntax::tokenize(main_fid, SM, pp.getLangOpts());
 
     // Every token, a header's included: the main file's nodes have ranges

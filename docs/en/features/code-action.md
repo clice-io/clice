@@ -5,7 +5,7 @@
      markers by hand — edit the fixture spec headers and run
      `node tools/docs/feature.ts update`. -->
 
-clice offers code actions on a selection: refactorings that generate or reshape code from what the compiler knows about it, and quick fixes for names no header declares. Every action is computed to completion when it is offered, so applying one never waits on a second request; edits carry the document version they were computed for, and an editor refuses them once the buffer moved on. The same actions run headless through `clice inspect code_action`.
+clice offers code actions on a selection: refactorings that generate or reshape code from what the compiler knows about it, quick fixes for names no header declares, and the fixes the compiler and clang-tidy attach to their diagnostics. Every action is computed to completion when it is offered, so applying one never waits on a second request; edits carry the document version they were computed for, and an editor refuses them once the buffer moved on. The same actions run headless through `clice inspect code_action`.
 
 An action anchors on the innermost construct the selection covers — a method declaration, a class name, a `switch`, an `auto` — so the list stays short: a click on a method name offers what applies to that method, a click on the class name what applies to the class.
 
@@ -648,6 +648,13 @@ tests/snap/code_action/include/05_trailing_includes.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- END GENERATED ITEMS -->
+
+## Diagnostic Fixes
+
+A diagnostic under the selection offers its fix as a quick fix, the compiler's and clang-tidy's alike. A fix that would edit inside a macro definition or another file is not offered.
+
+<!-- BEGIN GENERATED ITEMS: fix -->
 <!-- END GENERATED ITEMS -->
 
 ## Reordering Definitions

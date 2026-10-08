@@ -51,6 +51,7 @@ CrashSubject crash_subject(std::uint8_t kind) {
     }
     switch(static_cast<EvidenceKind>(kind)) {
         case EvidenceKind::Compile: return {"compiling", "Semantic features are"};
+        case EvidenceKind::Tidy: return {"running clang-tidy on", "clang-tidy is"};
         case EvidenceKind::PCH:
             return {"building the precompiled preamble of", "Semantic features are"};
         case EvidenceKind::PCM: return {"building a module imported by", "The module is"};
@@ -332,6 +333,12 @@ bool ASTFamily::compile_barred(const Session& session) {
 
 void ASTFamily::saved(Session& session) {
     session.quarantine->on_save();
+    // An AST compiled while a clang-tidy crash barred the pass stays
+    // current until the next edit: the save that retries the pass
+    // recompiles.
+    if(session.quarantine->crashed(evidence_kind(EvidenceKind::Tidy))) {
+        invalidate(session.path_id);
+    }
     // Typing never re-runs the self-containment trial, yet an edit can
     // make a header lean on its includer: a save showing what an includer
     // would provide, or saving a buffer whose compile has not landed yet,
@@ -758,6 +765,21 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     bool pch_licensed = session->quarantine->crashed(pch_kind);
     Quarantine::Attempt pch_attempt(*session->quarantine, pch_kind);
 
+    // clang-tidy runs where `clice lint` checks, unless a crash of its is
+    // on trial or bars it, or the compile retries a crash it is acquitted
+    // of (on a retracted preamble, or after the document's own); the places
+    // resolving its configuration looked at join the deps.
+    auto tidy_kind = evidence_kind(EvidenceKind::Tidy);
+    std::optional<Quarantine::Attempt> tidy_attempt;
+    std::optional<tidy::TidyResolution> tidy_config;
+    if(project.config.diagnostics.clang_tidy &&
+       project.build.lintable(project.file_table.resolve(path_id)) && !session->tidy_crash &&
+       session->crashed_pch.empty() && !session->quarantine->crashed(compile_kind) &&
+       !session->quarantine->barred(tidy_kind, Quarantine::Clock::now())) {
+        tidy_attempt.emplace(*session->quarantine, tidy_kind);
+        tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
+    }
+
     // At most two worker sends: a header with unknown self-containment
     // compiles without a prefix first; if the diagnostics indicate missing
     // includer context, the second send re-compiles with a synthesized
@@ -770,6 +792,9 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.version = session->version;
         params.text = session->text;
         params.workspace = project.config.workspace_root.str();
+        if(tidy_config) {
+            params.tidy = tidy_config->params;
+        }
         auto resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
         // A context cut along the lexical chain may name directives the
         // host's compile never enters: once a tree can tell — another
@@ -965,6 +990,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // death on the rebuilt pair is the document's own.
         bool consuming_pch = adopted_pch.has_value();
         bool pch_crashed = false;
+        bool tidy_crashed = false;
         auto interrupt = std::make_unique<kota::cancellation_source>();
         auto interrupt_token = interrupt->token();
         auto* own_interrupt = interrupt.get();
@@ -993,12 +1019,27 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                                       {.token = interrupt_token});
             },
             [&](const kota::ipc::Error& error) {
+                // The checks run in the parse (their preprocessor
+                // callbacks) and after it: they are the first suspect,
+                // tried by a compile without them. One that crashes as
+                // well acquits them.
+                if(params.tidy) {
+                    tidy_crashed = true;
+                    session->tidy_crash = error;
+                    return;
+                }
+                session->tidy_crash.reset();
                 if(consuming_pch && session->crashed_pch != *adopted_pch) {
                     pch_crashed = true;
                 } else {
                     record_crash(session, compile_kind, error);
                 }
             });
+
+        if(tidy_crashed) {
+            LOG_WARN("Compile crashed with clang-tidy on for {}; retrying without it", file_path);
+            co_return RoundOutcome::Stale;
+        }
 
         if(pch_crashed) {
             LOG_WARN("Compile crashed consuming PCH pair {} for {}; retracting the pair",
@@ -1203,6 +1244,13 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             pch.forget_failure(*entry.projection->failed_pch_key);
         }
         entry.projection = std::move(next);
+        if(tidy_config) {
+            llvm::append_range(result.value().deps, tidy_config->files);
+            session->quarantine->on_land(tidy_kind);
+        } else if(session->tidy_crash) {
+            record_crash(session, tidy_kind, *session->tidy_crash);
+            session->tidy_crash.reset();
+        }
         entry.deps =
             capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
         entry.current = current;

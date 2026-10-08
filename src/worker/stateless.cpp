@@ -275,16 +275,16 @@ static auto byte_position(CompilationUnitRef unit, const Diagnostic& diagnostic)
 /// pass broken code. Notes follow their finding in the stream and attach
 /// to it.
 static void collect_tidy_diagnostics(CompilationUnitRef unit,
-                                     const worker::TURunParams& params,
+                                     const tidy::TidyParams& params,
                                      std::vector<worker::TidyDiagnostic>& out) {
     auto main_fid = unit.main_file();
     std::optional<llvm::Regex> keep;
-    if(!params.tidy_header_filter.empty()) {
-        keep.emplace(params.tidy_header_filter);
+    if(!params.header_filter.empty()) {
+        keep.emplace(params.header_filter);
     }
     std::optional<llvm::Regex> drop;
-    if(!params.tidy_exclude_header_filter.empty()) {
-        drop.emplace(params.tidy_exclude_header_filter);
+    if(!params.exclude_header_filter.empty()) {
+        drop.emplace(params.exclude_header_filter);
     }
 
     bool last_kept = false;
@@ -316,7 +316,7 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
         }
         auto file = unit.file_path(raw.fid);
         if(raw.fid != main_fid && !clang_error) {
-            if(raw.in_system && !params.tidy_system_headers) {
+            if(raw.in_system && !params.system_headers) {
                 continue;
             }
             // Matched like clang-tidy does: against the name the lookup
@@ -388,21 +388,10 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     cp.workspace = params.workspace;
     cp.add_synthesized(params.synthesized);
     use_artifacts(cp, {}, params.pcms);
-    if(params.tidy) {
-        // The command-affecting extra args are already in params.arguments
-        // (applied at driver resolution); the copies here feed the
-        // engine's warning-options path only.
-        cp.tidy = tidy::TidyParams{.checks = params.tidy_checks,
-                                   .fast_only = false,
-                                   .options = params.tidy_options,
-                                   .warnings_as_errors = params.tidy_warnings_as_errors,
-                                   .header_filter = params.tidy_header_filter,
-                                   .exclude_header_filter = params.tidy_exclude_header_filter,
-                                   .system_headers = params.tidy_system_headers,
-                                   .extra_args = params.tidy_extra_args,
-                                   .extra_args_before = params.tidy_extra_args_before,
-                                   .whole_tu = true};
-    }
+    // The command-affecting extra args are already in params.arguments
+    // (applied at driver resolution); the plan's copies feed the engine's
+    // warning-options path only.
+    cp.tidy = params.tidy;
     cp.stop = stop;
 
     ScopedTimer compile_timer;
@@ -431,7 +420,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     }
     auto index_ms = index_timer.ms();
     if(params.tidy) {
-        collect_tidy_diagnostics(unit, params, result.tidy_diagnostics);
+        collect_tidy_diagnostics(unit, *params.tidy, result.tidy_diagnostics);
     }
 
     // AST teardown for a large TU is material work that belongs to this

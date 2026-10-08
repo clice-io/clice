@@ -20,10 +20,6 @@ struct TidyParams {
     /// to the built-in default set.
     std::string checks;
 
-    /// Restrict the run to checks classified fast — the interactive
-    /// path's latency guard. Batch lint runs everything configured.
-    bool fast_only = true;
-
     /// Check options (the .clang-tidy CheckOptions map).
     std::vector<std::pair<std::string, std::string>> options;
 
@@ -41,6 +37,11 @@ struct TidyParams {
     /// Also report findings in system headers.
     bool system_headers = false;
 
+    /// What the checks take for headers and for sources by extension;
+    /// empty keeps clang-tidy's defaults.
+    std::vector<std::string> header_file_extensions;
+    std::vector<std::string> implementation_file_extensions;
+
     /// Extra compiler args from the configuration. -W<group> flags are
     /// consumed engine-side by apply_warning_options so the Checks gate
     /// applies (the clangd approach, see tidy.cpp); a batch lint run
@@ -50,18 +51,31 @@ struct TidyParams {
     std::vector<std::string> extra_args;
     std::vector<std::string> extra_args_before;
 
-    /// Traverse the whole TU and honor NOLINT comments in every file, as
-    /// clang-tidy does — the batch lint shape. Off is the interactive
-    /// shape: the main file's top-level declarations only, suppression
-    /// comments read only there.
-    bool whole_tu = false;
+    /// The batch lint shape, clang-tidy's own: every configured check,
+    /// the whole TU traversed, suppression comments honored in every
+    /// file, header findings kept for the consumer's header filter, and a
+    /// compiler warning a finding only when Checks enables its
+    /// clang-diagnostic-* name. Off is the editor shape, clangd's: checks
+    /// classified fast only, minus those unusable on code mid-edit, over
+    /// the main file's top-level declarations, suppression comments read
+    /// there only.
+    bool batch = false;
+};
+
+/// The effective clang-tidy configuration for a file, and the places the
+/// resolution looked for a .clang-tidy: those it read, by the hash of
+/// their text, and those it found none at — a change at any of them can
+/// change the configuration.
+struct TidyResolution {
+    TidyParams params;
+    std::vector<DepFile> files;
 };
 
 /// Resolve the effective clang-tidy configuration for `file` from its
 /// nearest .clang-tidy files (clang-tidy's own search and inheritance
-/// semantics). Files without any configuration return empty checks — the
-/// consumer's default set applies.
-TidyParams resolve_tidy_params(llvm::StringRef file);
+/// semantics). Files without any configuration resolve to empty checks —
+/// the consumer's default set applies.
+TidyResolution resolve_tidy_params(llvm::StringRef file);
 
 /// The plan's compilation-affecting extra args, split for clang-tidy's
 /// own insertion points on the driver command: extra_args_before prepend

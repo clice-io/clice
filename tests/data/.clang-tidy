@@ -1,0 +1,4 @@
+# Test workspaces live inside the repository: this file ends the
+# .clang-tidy lookup before the repository's own configuration, so they get
+# the default checks, like a workspace without one.
+Checks: ''

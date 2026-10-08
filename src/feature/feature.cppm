@@ -121,6 +121,20 @@ struct HoverOptions {
     <bool> show_aka = true;
 };
 
+/// Corresponds to the `[diagnostics]` section in clice.toml.
+struct DiagnosticsOptions {
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Run clang-tidy on open files and offer its fixes, with "
+                         "the checks the nearest `.clang-tidy` configures (a "
+                         "small default set without one). Checks too slow for "
+                         "an editor, and those unreliable on code being edited, "
+                         "are left out; files `clice lint` does not check get "
+                         "none. `NOLINT` comments also silence compiler warnings "
+                         "only while this runs.")
+    <bool> clang_tidy = true;
+};
+
 /// Contains detailed information about a symbol. Especially useful when
 /// generating hover responses. It can be rendered as a hover panel, or
 /// embedding clients can use the structured information to provide their own
@@ -413,6 +427,14 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
                               std::uint32_t resume_offset = 0,
                               std::uint32_t end_offset = UINT32_MAX);
 
+/// The unit's diagnostics as the editor is shown them, each with the
+/// notes that follow it: the suppressed ones left out, and a clang-tidy
+/// finding repeated at one place (an alias check, a template instantiated
+/// twice) reported once.
+void for_each_diagnostic(
+    CompilationUnitRef unit,
+    llvm::function_ref<void(const Diagnostic& main, llvm::ArrayRef<Diagnostic> notes)> visit);
+
 auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::Diagnostic>;
 
@@ -449,13 +471,6 @@ auto document_format(llvm::StringRef file,
                      std::optional<LocalSourceRange> range,
                      PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::TextEdit>;
-
-/// One replacement of the main file's text, in byte offsets of the text
-/// the action was computed against.
-struct TextReplacement {
-    LocalSourceRange range;
-    std::string text;
-};
 
 /// The kinds the actions produce: the advertised capability, and what a
 /// request's `only` filter is matched against.

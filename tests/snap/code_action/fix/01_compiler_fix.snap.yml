@@ -1,0 +1,7 @@
+---
+created_at: 2026-10-08
+input_file: fix/01_compiler_fix.cpp
+---
+semicolon:
+- [quickfix] insert ';'
+  10:13-10:13 => ";"

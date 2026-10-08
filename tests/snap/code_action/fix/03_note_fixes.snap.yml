@@ -1,0 +1,10 @@
+---
+created_at: 2026-10-08
+input_file: fix/03_note_fixes.cpp
+---
+assign:
+- [quickfix] place parentheses around the assignment to silence this warning
+  7:7-7:7 => "("
+  7:12-7:12 => ")"
+- [quickfix] use '==' to turn this assignment into an equality comparison
+  7:9-7:10 => "=="
