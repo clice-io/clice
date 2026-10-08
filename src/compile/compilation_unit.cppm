@@ -252,6 +252,10 @@ public:
     /// `spelled`, a range of spelled_tokens().
     auto expansions_overlapping(TokenRange spelled) -> llvm::ArrayRef<MacroExpansion>;
 
+    /// The index into spelled_tokens() of the token expanded_tokens()[index]
+    /// stands for, if any (see TokenMap::origin).
+    auto expanded_token_origin(std::uint32_t index) -> std::optional<std::uint32_t>;
+
     /// Get the token length.
     auto token_length(clang::SourceLocation location) -> std::uint32_t;
 

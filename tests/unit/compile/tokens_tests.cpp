@@ -83,6 +83,25 @@ std::string expansions() {
     return out;
 }
 
+/// Each expanded token but the eof, with the spelled token it stands for
+/// (`?` for none).
+std::string origins() {
+    auto& SM = unit->context().getSourceManager();
+    auto spelled = unit->spelled_tokens();
+    std::string out;
+    for(auto [index, token]: llvm::enumerate(unit->expanded_tokens())) {
+        if(token.kind() == clang::tok::eof) {
+            continue;
+        }
+        auto origin = unit->expanded_token_origin(static_cast<std::uint32_t>(index));
+        out += std::format("{}{}:{}",
+                           out.empty() ? "" : " ",
+                           token.text(SM),
+                           origin ? spelled[*origin].text(SM) : "?");
+    }
+    return out;
+}
+
 ZEST_CASE(PreprocessedAway) {
     add_main("main.cpp", R"cpp(
 #define EMPTY
@@ -190,6 +209,49 @@ int v = __has_cpp_attribute(ATTR);
     ZEXPECT(spelled_for(result.text(SM)) == "__has_cpp_attribute");
     ZEXPECT(text(expansions[1].spelled) == "ATTR");
     ZEXPECT(expansions[1].expanded.empty());
+}
+
+ZEST_CASE(MacroOrigins) {
+    add_main("main.cpp", R"cpp(
+int a;
+#define TWICE(x) (x + x)
+#define ID(x) x
+#define ONE 1
+int v = TWICE(a) + ONE;
+int w = ID(ID(a));
+)cpp");
+    ZASSERT(compile());
+    ZEXPECT(origins() ==
+            "int:int a:a ;:; int:int v:v =:= (:TWICE a:TWICE +:TWICE a:a ):TWICE +:+ 1:ONE ;:; "
+            "int:int w:w =:= a:a ;:;");
+}
+
+ZEST_CASE(RereadArguments) {
+    add_main("main.cpp", R"cpp(
+#define FIRST(a, ...) a
+#define REST(a, ...) __VA_ARGS__
+#define LOG(...) log(FIRST(__VA_ARGS__), __VA_ARGS__)
+#define BOTH(...) log(REST(__VA_ARGS__), __VA_ARGS__)
+void log(int, int, int);
+int x, y;
+void f() {
+    LOG(x, y);
+    BOTH(x, y);
+}
+)cpp");
+    ZASSERT(compile());
+    ZEXPECT(origins() ==
+            "void:void log:log (:( int:int ,:, int:int ,:, int:int ):) ;:; int:int x:x ,:, y:y ;:; "
+            "void:void f:f (:( ):) {:{ "
+            "log:LOG (:LOG x:x ,:LOG x:LOG ,:, y:y ):LOG ;:; "
+            "log:BOTH (:BOTH y:y ,:BOTH x:x ,:, y:BOTH ):BOTH ;:; }:}");
+}
+
+ZEST_CASE(HeaderOrigins) {
+    add_file("header.h", "#define HM int hm;\nint h;\nHM\n");
+    add_main("main.cpp", "int m;\n#include \"header.h\"\n");
+    ZASSERT(compile());
+    ZEXPECT(origins() == "int:int m:m ;:; int:? h:? ;:? int:? hm:? ;:?");
 }
 
 ZEST_CASE(TouchingFileEnd) {

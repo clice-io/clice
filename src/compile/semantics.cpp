@@ -90,127 +90,6 @@ bool should_ignore_token(const clang::syntax::Token& token) {
 
 namespace {
 
-// An IntervalSet maintains a set of disjoint subranges of an array.
-//
-// Initially, it contains the entire array.
-//           [-----------------------------------------------------------]
-//
-// When a range is erased(), it will typically split the array in two.
-//  claim:                     [--------------------]
-//  after:   [----------------]                      [-------------------]
-//
-// erase() returns the segments actually erased. Given the state above:
-//  claim:          [---------------------------------------]
-//  out:            [---------]                      [------]
-//  after:   [-----]                                         [-----------]
-//
-// It is used to track (expanded) tokens not yet associated with an AST node.
-// On traversing an AST node, its token range is erased from the unclaimed set.
-// The tokens actually removed are owned by that node.
-class IntervalSet {
-public:
-    using Token = clang::syntax::Token;
-    using TokenRange = llvm::ArrayRef<Token>;
-
-    IntervalSet(TokenRange range) {
-        unclaimed_ranges.insert(range);
-    }
-
-    // Removes the elements of Claim from the set, modifying or removing ranges
-    // that overlap it.
-    // Returns the continuous subranges of Claim that were actually removed.
-    llvm::SmallVector<TokenRange> erase(TokenRange claim) {
-        llvm::SmallVector<TokenRange> out;
-        if(claim.empty())
-            return out;
-
-        // General case:
-        // Claim:                   [-----------------]
-        // unclaimed_ranges: [-A-] [-B-] [-C-] [-D-] [-E-] [-F-] [-G-]
-        // Overlap:               ^first                  ^second
-        // Ranges C and D are fully included. Ranges B and E must be trimmed.
-        auto overlap =
-            std::make_pair(unclaimed_ranges.lower_bound({claim.begin(), claim.begin()}),  // C
-                           unclaimed_ranges.lower_bound({claim.end(), claim.end()}));     // F
-        // Rewind to cover B.
-        if(overlap.first != unclaimed_ranges.begin()) {
-            --overlap.first;
-            // ...unless B isn't selected at all.
-            if(overlap.first->end() <= claim.begin()) {
-                ++overlap.first;
-            }
-        }
-
-        if(overlap.first == overlap.second) {
-            return out;
-        }
-
-        // First, copy all overlapping ranges into the output.
-        auto out_first = out.insert(out.end(), overlap.first, overlap.second);
-        // If any of the overlapping ranges were sliced by the claim, split them:
-        //  - restrict the returned range to the claimed part
-        //  - save the unclaimed part so it can be reinserted
-        TokenRange remaining_head, remaining_tail;
-        if(claim.begin() > out_first->begin()) {
-            remaining_head = {out_first->begin(), claim.begin()};
-            *out_first = {claim.begin(), out_first->end()};
-        }
-        if(claim.end() < out.back().end()) {
-            remaining_tail = {claim.end(), out.back().end()};
-            out.back() = {out.back().begin(), claim.end()};
-        }
-
-        // Erase all the overlapping ranges (invalidating all iterators).
-        unclaimed_ranges.erase(overlap.first, overlap.second);
-        // Reinsert ranges that were merely trimmed.
-        if(!remaining_head.empty()) {
-            unclaimed_ranges.insert(remaining_head);
-        }
-        if(!remaining_tail.empty()) {
-            unclaimed_ranges.insert(remaining_tail);
-        }
-
-        return out;
-    }
-
-private:
-    struct range_less {
-        bool operator()(TokenRange L, TokenRange R) const {
-            return L.begin() < R.begin();
-        }
-    };
-
-    // Disjoint sorted unclaimed ranges of expanded tokens.
-    std::set<TokenRange, range_less> unclaimed_ranges;
-};
-
-// Determine whether 'Target' is the first expansion of the macro
-// argument whose top-level spelling location is 'SpellingLoc'.
-bool is_first_expansion(clang::FileID target,
-                        clang::SourceLocation spelling_loc,
-                        const clang::SourceManager& source_manager) {
-    clang::SourceLocation prev = spelling_loc;
-    while(true) {
-        // If the arg is expanded multiple times, getMacroArgExpandedLocation()
-        // returns the first expansion.
-        clang::SourceLocation next = source_manager.getMacroArgExpandedLocation(prev);
-        // So if we reach the target, target is the first-expansion of the
-        // first-expansion ...
-        if(source_manager.getFileID(next) == target) {
-            return true;
-        }
-
-        // Otherwise, if the FileID stops changing, we've reached the innermost
-        // macro expansion, and Target was on a different branch.
-        if(source_manager.getFileID(next) == source_manager.getFileID(prev)) {
-            return false;
-        }
-
-        prev = next;
-    }
-    return false;
-}
-
 bool is_implicit(const clang::Stmt* statement) {
     // Some Stmts are implicit and shouldn't be traversed, but there's no
     // "implicit" attribute on Stmt/Expr.
@@ -285,14 +164,10 @@ clang::SourceRange claimed_source_range(const SemanticNode& node) {
 }  // namespace
 
 // Builds the Semantics of the main file: one full traversal of its AST,
-// claiming expanded tokens innermost-first, then attributing every claimed
-// expanded token to the spelled main-file token it came from:
-//   - tokens written in the main file attribute to themselves
-//   - tokens from an #included file attribute to the include's filename token
-//   - macro-argument tokens (first expansion) attribute to the argument tokens
-//   - other macro tokens attribute to the macro name at the expansion point
-// Finally the preprocessor directives (macros, includes, imports) are appended
-// as nodes of their own, owning their name tokens.
+// claiming expanded tokens innermost-first; a node owns the spelled tokens
+// its claimed tokens stand for (TokenMap::origin). Finally the preprocessor
+// directives (macros, includes, imports) are appended as nodes of their own,
+// owning their name tokens.
 //
 // The traversal maintains a parent stack. Nodes claim their tokens when they
 // pop, so children get to claim parts of their range first, and parents only
@@ -592,9 +467,7 @@ private:
     using Base = RecursiveASTVisitor<SemanticsBuilder>;
 
     SemanticsBuilder(Semantics& semantics, CompilationUnitRef unit, SemanticsOptions options) :
-        semantics(semantics), unit(unit), options(options), SM(unit.context().getSourceManager()),
-        unclaimed_expanded_tokens(options.main_file_only ? unit.expanded_tokens()
-                                                         : IntervalSet::TokenRange()) {
+        semantics(semantics), unit(unit), options(options), SM(unit.context().getSourceManager()) {
         main_fid = unit.main_file();
         main_file_range =
             clang::SourceRange(SM.getLocForStartOfFile(main_fid), SM.getLocForEndOfFile(main_fid));
@@ -605,6 +478,7 @@ private:
         if(options.main_file_only) {
             semantics.tokens = unit.spelled_tokens();
             semantics.pp_ignored = &unit.preprocessed_away();
+            claimed.resize(unit.expanded_tokens().size());
         }
 
         stack.push_back(Semantics::invalid);
@@ -781,8 +655,7 @@ private:
         return range;
     }
 
-    // Claim all unclaimed expanded tokens in S for node `self`, and attribute
-    // each claimed token back to the main file.
+    // Claim all unclaimed expanded tokens in S for node `self`.
     //
     // The whole-TU shape only feeds the index projection, which never queries
     // token ownership — skip the claim machinery entirely. This matters: the
@@ -800,136 +673,38 @@ private:
             return;
         }
 
-        for(const auto& claimed: unclaimed_expanded_tokens.erase(unit.expanded_tokens(S))) {
-            attribute_tokens(claimed, self);
-        }
-    }
-
-    // Attribute a consecutive range of claimed expanded tokens to spelled
-    // main-file tokens: main-file tokens map to themselves, #included files
-    // map to the include, macro args map to the spelled argument (first
-    // expansion only), and other macro tokens map to the macro name.
-    void attribute_tokens(llvm::ArrayRef<clang::syntax::Token> expanded_tokens,
-                          std::uint32_t self) {
-        if(expanded_tokens.empty()) {
+        auto tokens = unit.expanded_tokens(S);
+        if(tokens.empty()) {
             return;
         }
-
-        // The eof token is used as a sentinel.
-        // In general, source range from an AST node should not claim the eof token,
-        // but it could occur for unmatched-bracket cases.
-        if(expanded_tokens.back().kind() == clang::tok::eof) {
-            expanded_tokens = expanded_tokens.drop_back();
-        }
-
-        while(!expanded_tokens.empty()) {
-            // Take consecutive tokens from the same context together for efficiency.
-            clang::SourceLocation start = expanded_tokens.front().location();
-            clang::FileID fid = SM.getFileID(start);
-            // Comparing SourceLocations against bounds is cheaper than getFileID().
-            // A file ID owns its one-past-the-end location too: the parentheses
-            // clang synthesizes around a braced macro argument (`F(T{1, 2})`)
-            // sit there.
-            clang::SourceLocation limit = SM.getComposedLoc(fid, SM.getFileIDSize(fid));
-            auto batch = expanded_tokens.take_while([&](const clang::syntax::Token& T) {
-                return T.location() >= start && T.location() <= limit;
-            });
-            assert(!batch.empty());
-            expanded_tokens = expanded_tokens.drop_front(batch.size());
-
-            attribute_batch(fid, batch, self);
-        }
-    }
-
-    // Attribute a consecutive range of tokens from a single file ID.
-    void attribute_batch(clang::FileID fid,
-                         llvm::ArrayRef<clang::syntax::Token> batch,
-                         std::uint32_t self) {
-        assert(!batch.empty());
-        clang::SourceLocation start_loc = batch.front().location();
-
-        // Handle tokens written directly in the main file.
-        if(fid == main_fid) {
-            add_range_entries(*offset_in_main_file(batch.front().location()),
-                              *offset_in_main_file(batch.back().location()),
-                              self);
-            return;
-        }
-
-        // Handle tokens in another file #included into the main file.
-        // Attribute them to the #include's filename token, non-exclusively.
-        if(start_loc.isFileID()) {
-            for(clang::SourceLocation loc = batch.front().location(); loc.isValid();
-                loc = SM.getIncludeLoc(SM.getFileID(loc))) {
-                if(auto offset = offset_in_main_file(loc)) {
-                    // FIXME: use whole #include directive, not just the filename string.
-                    add_token_entry(*offset, self);
-                    return;
-                }
-            }
-            return;
-        }
-
-        assert(start_loc.isMacroID());
-        // Handle tokens that were passed as a macro argument.
-        clang::SourceLocation arg_start = SM.getTopMacroCallerLoc(start_loc);
-        if(auto arg_offset = offset_in_main_file(arg_start)) {
-            if(is_first_expansion(fid, arg_start, SM)) {
-                clang::SourceLocation arg_end = SM.getTopMacroCallerLoc(batch.back().location());
-                if(auto arg_end_offset = offset_in_main_file(arg_end)) {
-                    add_range_entries(*arg_offset, *arg_end_offset, self);
-                    return;
-                }
-            }
-            /* else: fall through and treat as part of the macro body */
-        }
-
-        // Handle tokens produced by non-argument macro expansion.
-        // Attribute them to the macro name, non-exclusively.
-        if(auto expansion_offset = offset_in_main_file(get_expansion_start(start_loc))) {
-            // FIXME: also check ( and ) for function-like macros?
-            add_token_entry(*expansion_offset, self);
-        }
-    }
-
-    // The index of the first spelled token with offset >= `offset`.
-    std::uint32_t first_token_at(unsigned offset) const {
-        auto count = static_cast<std::uint32_t>(semantics.tokens.size());
-        auto range = std::views::iota(0u, count);
-        auto it = std::ranges::partition_point(range, [&](std::uint32_t i) {
-            return semantics.token_offset(i) < offset;
-        });
-        return static_cast<std::uint32_t>(it - range.begin());
-    }
-
-    // Add ownership entries for every countable spelled token whose offset
-    // lies in the closed range [begin, end].
-    void add_range_entries(unsigned begin, unsigned end, std::uint32_t self) {
-        assert(begin <= end);
-        auto count = static_cast<std::uint32_t>(semantics.tokens.size());
-        for(auto i = first_token_at(begin); i < count && semantics.token_offset(i) <= end; i++) {
-            if(!should_ignore_token(semantics.tokens[i]) && !(*semantics.pp_ignored)[i]) {
-                entries.emplace_back(i, self);
+        auto begin = static_cast<unsigned>(tokens.data() - unit.expanded_tokens().data());
+        auto end = begin + static_cast<unsigned>(tokens.size());
+        for(auto index = claimed.find_first_unset_in(begin, end); index != -1;
+            index = claimed.find_first_unset_in(index + 1, end)) {
+            claimed.set(index);
+            if(auto spelled = unit.expanded_token_origin(index)) {
+                add_token_entry(*spelled, self);
             }
         }
     }
 
-    // Add one ownership entry for the spelled token exactly at `offset`, if any.
-    void add_token_entry(unsigned offset, std::uint32_t self) {
-        auto i = first_token_at(offset);
-        if(i < semantics.tokens.size() && semantics.token_offset(i) == offset) {
-            if(!should_ignore_token(semantics.tokens[i]) && !(*semantics.pp_ignored)[i]) {
-                entries.emplace_back(i, self);
-            }
+    // Add an ownership entry for spelled token `index` unless it is one a
+    // selection does not count.
+    void add_token_entry(std::uint32_t index, std::uint32_t self) {
+        if(!should_ignore_token(semantics.tokens[index]) && !(*semantics.pp_ignored)[index]) {
+            entries.emplace_back(index, self);
         }
     }
 
     // Add one ownership entry at `offset` regardless of the selection ignore
     // set — preprocessor nodes own their directive tokens.
     void add_directive_entry(unsigned offset, std::uint32_t self) {
-        auto i = first_token_at(offset);
-        if(i < semantics.tokens.size() && semantics.token_offset(i) == offset) {
-            entries.emplace_back(i, self);
+        auto indices = std::views::iota(0u, static_cast<std::uint32_t>(semantics.tokens.size()));
+        auto it = std::ranges::partition_point(indices, [&](std::uint32_t i) {
+            return semantics.token_offset(i) < offset;
+        });
+        if(it != indices.end() && semantics.token_offset(*it) == offset) {
+            entries.emplace_back(*it, self);
         }
     }
 
@@ -943,13 +718,6 @@ private:
         }
 
         return location.getRawEncoding() - main_file_range.getBegin().getRawEncoding();
-    }
-
-    clang::SourceLocation get_expansion_start(clang::SourceLocation location) const {
-        while(location.isMacroID()) {
-            location = SM.getImmediateExpansionRange(location).getBegin();
-        }
-        return location;
     }
 
     // Cross-check the lexically scanned module declarations against the
@@ -1097,23 +865,40 @@ private:
         }
     }
 
-    // Sort the accumulated entries into the CSR layout and count per-node
-    // ownership.
+    // Lay the accumulated entries out by token (CSR), each token's owners
+    // ascending and distinct, and count per-node ownership.
     void finalize() {
-        std::ranges::sort(entries);
-        auto duplicates = std::ranges::unique(entries);
-        entries.erase(duplicates.begin(), duplicates.end());
-
-        semantics.owner_begin.assign(semantics.tokens.size() + 1, 0);
-        semantics.owner_nodes.reserve(entries.size());
+        auto& offsets = semantics.owner_begin;
+        auto& owners = semantics.owner_nodes;
+        offsets.assign(semantics.tokens.size() + 1, 0);
         for(auto [token, node]: entries) {
-            semantics.owner_begin[token + 1]++;
-            semantics.owner_nodes.push_back(node);
-            semantics.nodes[node].owned++;
+            offsets[token + 1] += 1;
         }
-        for(std::size_t i = 1; i < semantics.owner_begin.size(); i++) {
-            semantics.owner_begin[i] += semantics.owner_begin[i - 1];
+        std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
+        owners.resize(entries.size());
+        auto next = offsets;
+        for(auto [token, node]: entries) {
+            owners[next[token]] = node;
+            next[token] += 1;
         }
+
+        // A node claiming a macro's tokens owns its name once.
+        std::uint32_t kept = 0;
+        std::uint32_t start = 0;
+        for(std::size_t token = 0; token + 1 < offsets.size(); token += 1) {
+            auto stop = offsets[token + 1];
+            auto bucket = std::span(owners).subspan(start, stop - start);
+            std::ranges::sort(bucket);
+            offsets[token] = kept;
+            for(auto node: llvm::make_range(bucket.begin(), std::ranges::unique(bucket).begin())) {
+                owners[kept] = node;
+                kept += 1;
+                semantics.nodes[node].owned += 1;
+            }
+            start = stop;
+        }
+        offsets.back() = kept;
+        owners.resize(kept);
     }
 
     Semantics& semantics;
@@ -1122,7 +907,10 @@ private:
     clang::SourceManager& SM;
     clang::FileID main_fid;
     clang::SourceRange main_file_range;
-    IntervalSet unclaimed_expanded_tokens;
+
+    /// Per expanded token, whether a node claimed it.
+    llvm::BitVector claimed;
+
     llvm::SmallVector<std::uint32_t, 64> stack;
 
     /// Depth of enclosing instantiation subtrees; nodes pushed while it is
@@ -1132,7 +920,8 @@ private:
     /// The source ranges of the binary operators popped so far.
     llvm::DenseMap<const clang::Expr*, clang::SourceRange> operator_ranges;
 
-    /// (spelled token index, owning node index) pairs, sorted in finalize().
+    /// (spelled token index, owning node index) pairs, laid out in
+    /// finalize().
     std::vector<std::pair<std::uint32_t, std::uint32_t>> entries;
 };
 
