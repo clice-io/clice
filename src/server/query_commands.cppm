@@ -39,7 +39,7 @@ struct CompileCommandResult {
     /// "host" (a header compiled under an including source), "rule" (a
     /// rule's default command), "provisional" (borrowed from a nearby unit
     /// for a saved file the build counts as a provisional member),
-    /// "inferred" (borrowed for a file the build does not count) or
+    /// "inferred" (borrowed for a file outside the build) or
     /// "fallback" (nothing declared it).
     std::string source;
 

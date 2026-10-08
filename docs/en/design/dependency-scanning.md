@@ -53,7 +53,7 @@ Resolution results for angle-bracket includes (e.g., `<vector>`) can be cached a
 
 Rather than processing all files at once, scanning unfolds in waves:
 
-- **Wave 0**: Scan every translation unit of the build — the database's entries, the sources rules claim and the provisional members (see [Command Resolution](command-resolve.md#build)) — (parallel I/O + lexical scanning), and resolve each command's forced includes (`-include`) the way the compiler does -- the compile's working directory first, then the search paths as for a quoted include
+- **Wave 0**: Scan every translation unit of the build (parallel I/O + lexical scanning) — the database's entries, the sources rules claim and the provisional members (see [Command Resolution](command-resolve.md#build)) — and resolve each command's forced includes (`-include`) the way the compiler does -- the compile's working directory first, then the search paths as for a quoted include
 - **Path resolution**: Map discovered include names to file paths, identifying newly discovered headers
 - **Wave 1**: Scan the newly discovered headers, discovering their includes...
 - Repeat until no new files are found

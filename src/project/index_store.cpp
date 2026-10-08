@@ -67,7 +67,7 @@ struct CDBSnapshotEntry {
 struct CDBSnapshot {
     std::vector<CDBSnapshotEntry> entries;
 
-    /// The files recorded as provisional members (Build::admitted), sorted.
+    /// The files recorded as provisional members (Build::recorded), sorted.
     std::vector<std::string> provisional;
 };
 
@@ -154,7 +154,7 @@ CDBSnapshot build_cdb_snapshot(Project& project,
     for(auto tu: standalone_debt) {
         add_standalone(tu);
     }
-    for(auto file: project.build.admitted()) {
+    for(auto file: project.build.recorded()) {
         snapshot.provisional.push_back(
             project.project_index.portable(project.file_table.resolve(file)));
     }
@@ -838,11 +838,11 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     // point is too late for these bytes and returns in the report.
     std::string cdb_bytes;
     std::optional<std::size_t> cdb_index;
-    auto admitted = project.build.admitted_generation();
-    if(!batch.empty() || !removals.empty() || cdb_dirty || admitted != saved_admitted) {
+    auto records = project.build.recorded_generation();
+    if(!batch.empty() || !removals.empty() || cdb_dirty || records != serialized_records) {
         debt.append(report.reindex().begin(), report.reindex().end());
         cdb_bytes = serialize_cdb_snapshot(project, header_hosts, standalone_of(debt));
-        saved_admitted = admitted;
+        serialized_records = records;
         if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
             cdb_index = batch.size();
             batch.push_back({index::IndexBlobKind::CDB, "cdb", cdb_bytes});

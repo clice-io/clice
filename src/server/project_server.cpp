@@ -240,7 +240,7 @@ void ProjectServer::discover_around(Fid path_id) {
     }
 }
 
-void ProjectServer::admit(Fid path_id) {
+void ProjectServer::saved(Fid path_id) {
     // A header compiles through a host or a lender, never as a member; a
     // build tree or the cache holds no sources of the workspace's own.
     auto path = project.file_table.resolve(path_id);
@@ -251,14 +251,12 @@ void ProjectServer::admit(Fid path_id) {
     if(!project.config.project.cache_dir.empty()) {
         cache_dir = CanonicalPath(Spelling::absolute(project.config.project.cache_dir));
     }
-    if(!workspace_file(root, cache_dir, path) || !project.build.admit(path_id)) {
+    if(!workspace_file(root, cache_dir, path) || !project.build.record(path_id)) {
         return;
     }
     LOG_INFO("Recorded {} as a provisional member", path);
     dispatch({FileEvent::cdb_changed({})});
-    if(project.request_flush) {
-        project.request_flush();
-    }
+    schedule_metadata_flush();
 }
 
 std::shared_ptr<Session> ProjectServer::create_session(Fid path_id) {

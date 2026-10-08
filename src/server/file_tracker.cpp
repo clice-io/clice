@@ -46,16 +46,10 @@ FileTracker::FileTracker(Project& project, const SessionStore& store, CanonicalP
     }
 }
 
-/// Diff ids and event ids share the single file table.
-static void push_delta(const CDBDiff& diff, llvm::SmallVectorImpl<FileEvent>& events) {
-    if(diff.empty()) {
-        return;
+static void push_delta(CDBDiff diff, llvm::SmallVectorImpl<FileEvent>& events) {
+    if(!diff.empty()) {
+        events.push_back(FileEvent::cdb_changed(std::move(diff)));
     }
-    FileEvent::CDBDelta delta;
-    delta.added.assign(diff.added.begin(), diff.added.end());
-    delta.removed.assign(diff.removed.begin(), diff.removed.end());
-    delta.changed.assign(diff.changed.begin(), diff.changed.end());
-    events.push_back(FileEvent::cdb_changed(std::move(delta)));
 }
 
 llvm::SmallVector<FileEvent> FileTracker::tick_cdb(bool force) {

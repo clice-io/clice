@@ -82,8 +82,8 @@ public:
 
     /// After the editor saved a file routed here: record a source of the
     /// workspace the build does not declare as a provisional member
-    /// (Build::admit), the build following it as a database reload would.
-    void admit(Fid path_id);
+    /// (Build::record), the build following it as a database reload would.
+    void saved(Fid path_id);
 
     /// After a tick looked at the flags: weigh what the looks found of the
     /// project's databases (see FileTracker::tick_cdb) and dispatch the

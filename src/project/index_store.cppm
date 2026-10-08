@@ -194,7 +194,7 @@ public:
         /// across sessions instead of being dropped as unlisted and rebuilt.
         llvm::SmallVector<Spelling> sources;
 
-        /// The files recorded as provisional members (Build::admitted).
+        /// The files recorded as provisional members (Build::recorded).
         std::vector<Spelling> provisional;
     };
 
@@ -262,7 +262,7 @@ public:
     /// `clice index` must not report a durable index from this.
     bool has_unsaved_state() const {
         return !dirty_shards.empty() || !dirty_manifests.empty() || global_dirty || cdb_dirty ||
-               saved_admitted != project.build.admitted_generation() || !search_bytes.empty();
+               serialized_records != project.build.recorded_generation() || !search_bytes.empty();
     }
 
 private:
@@ -327,9 +327,9 @@ private:
     /// snapshot recompute entirely.
     bool cdb_dirty = false;
 
-    /// Build::admitted_generation as the CDB snapshot last serialized it:
+    /// Build::recorded_generation as the CDB snapshot last serialized it:
     /// a provisional member recorded since dirties no blob of its own.
-    std::uint64_t saved_admitted = 0;
+    std::uint64_t serialized_records = 0;
 
     /// Host source whose command each standalone-indexed header's retained
     /// rows borrowed, recorded when a merge lands and persisted in the CDB

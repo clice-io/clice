@@ -15,9 +15,9 @@ void Build::reset_active(llvm::StringRef configuration) {
     assert(configuration.empty() ? config.configurations().empty()
                                  : declares_configuration(config, configuration));
     claimed_sources.reset();
-    saved.clear();
+    records.clear();
     provisional.clear();
-    saved_generation += 1;
+    records_generation += 1;
     active = configuration.str();
 }
 
@@ -133,8 +133,8 @@ llvm::SmallVector<Candidate, 2> Build::commands(Fid file) {
     if(result.empty()) {
         if(auto id = default_command(files.resolve(file))) {
             result.push_back({.config = *id, .source = CommandSource::Default});
-        } else if(auto command = borrowed(file)) {
-            result.push_back({.config = *command, .source = CommandSource::Inferred});
+        } else if(auto it = provisional.find(file); it != provisional.end()) {
+            result.push_back({.config = it->second, .source = CommandSource::Inferred});
         }
     }
     return result;
@@ -327,35 +327,33 @@ std::vector<Fid> Build::members() {
     return result;
 }
 
-bool Build::admit(Fid file) {
-    if(!saved.insert(file).second) {
+bool Build::record(Fid file) {
+    if(!records.insert(file).second) {
         return false;
     }
-    saved_generation += 1;
+    records_generation += 1;
     return true;
 }
 
 void Build::forget(Fid file) {
-    if(saved.erase(file)) {
-        saved_generation += 1;
+    if(records.erase(file)) {
+        records_generation += 1;
     }
     provisional.erase(file);
 }
 
-std::optional<ConfigID> Build::borrowed(Fid file) const {
+std::optional<ConfigID> Build::borrow(Fid file, std::optional<ConfigID> command) {
+    assert(records.contains(file) && "only a recorded file borrows");
+    std::optional<ConfigID> before;
     if(auto it = provisional.find(file); it != provisional.end()) {
-        return it->second;
+        before = it->second;
     }
-    return std::nullopt;
-}
-
-void Build::borrow(Fid file, std::optional<ConfigID> command) {
-    assert(saved.contains(file) && "only a recorded file borrows");
     if(command) {
         provisional[file] = *command;
     } else {
         provisional.erase(file);
     }
+    return before;
 }
 
 ConfigID Build::lend(ConfigID command, CanonicalRef lender, CanonicalRef file) {
@@ -383,10 +381,11 @@ llvm::SmallVector<Fid> Build::refresh_default_sources(llvm::ArrayRef<CanonicalPa
 }
 
 bool Build::default_source(CanonicalRef path) {
-    // A header claims no translation unit of its own.
     if(is_source_path(path)) {
         return true;
     }
+    // A header claims no translation unit of its own; an extensionless file
+    // does when its rule's command forces a source language.
     if(suffix_type(path) != clang::driver::types::TY_INVALID || path::extension(path) == ".cuh") {
         return false;
     }

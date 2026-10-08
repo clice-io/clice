@@ -154,7 +154,7 @@ ZEST_CASE(ReloadProviderCascades) {
     ph.graph.declare({Family::TURun, retired.raw}, {PCMFamily::unresolved_node("m")});
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
 
-    FileEvent::CDBDelta delta;
+    CDBDiff delta;
     delta.added = {iface};
     delta.removed = {retired};
     FileEvent events[] = {FileEvent::cdb_changed(std::move(delta))};
@@ -780,7 +780,7 @@ ZEST_CASE(EntryChangeThenRemoval) {
     EditorContext resolver(project, commands, blob);
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
-    FileEvent::CDBDelta delta;
+    CDBDiff delta;
     delta.changed = {file};
     FileEvent events[] = {FileEvent::cdb_changed(std::move(delta)), FileEvent::disk_removed(file)};
     auto dirty = invalidator.apply(events);
@@ -814,7 +814,7 @@ ZEST_CASE(CDBAddedScansAndEnqueues) {
     EditorContext resolver(project, commands, blob);
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
-    FileEvent::CDBDelta delta;
+    CDBDiff delta;
     delta.added = {main_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
@@ -852,7 +852,7 @@ ZEST_CASE(CDBChangedSplitsOpenClosed) {
     EditorContext resolver(project, commands, blob);
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
-    FileEvent::CDBDelta delta;
+    CDBDiff delta;
     delta.changed = {open_id, closed_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
@@ -890,7 +890,7 @@ ZEST_CASE(CDBAddedOpenMarksDirty) {
     EditorContext resolver(project, commands, blob);
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
-    FileEvent::CDBDelta delta;
+    CDBDiff delta;
     delta.added = {file};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
@@ -922,7 +922,7 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
     resolver.header_contexts[other_header].host_path_id = Fid{};
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
-    FileEvent::CDBDelta delta;
+    CDBDiff delta;
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
@@ -959,7 +959,7 @@ ZEST_CASE(CDBDropsBorrowedIndex) {
     PCMHarness ph(project, resolver);
     ph.index.record_header_host(header, host);
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
-    FileEvent::CDBDelta delta;
+    CDBDiff delta;
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
@@ -989,7 +989,7 @@ ZEST_CASE(CDBBorrowersByServing) {
     ph.index.record_header_host(served, host);
     ph.index.record_header_host(compiled, host);
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
-    FileEvent::CDBDelta delta;
+    CDBDiff delta;
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
@@ -1023,7 +1023,7 @@ ZEST_CASE(CDBChangedCascadesModule) {
     store.open(open_user);
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
 
-    FileEvent::CDBDelta delta;
+    CDBDiff delta;
     delta.changed = {mod};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
@@ -1093,7 +1093,7 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
     EditorContext resolver(project, commands, blob);
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
-    FileEvent::CDBDelta delta;
+    CDBDiff delta;
     delta.removed = {gone_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
@@ -1133,7 +1133,7 @@ ZEST_CASE(CDBRemovedStillClaimed) {
     EditorContext resolver(project, commands, blob);
     PCMHarness ph(project, resolver);
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
-    FileEvent::CDBDelta delta;
+    CDBDiff delta;
     delta.removed = {gone_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 

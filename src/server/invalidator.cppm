@@ -28,7 +28,7 @@ struct FileEvent {
         DiskRemoved,
         /// The build's commands changed: a compilation database was
         /// reloaded, a source joined a default-command rule, or a saved
-        /// file was recorded as a provisional member (Build::admit). `cdb`
+        /// file was recorded as a provisional member (Build::record). `cdb`
         /// lists the files whose entries were added, removed or changed;
         /// the invalidator works out the provisional members' own changes.
         CDBChanged,
@@ -40,24 +40,12 @@ struct FileEvent {
         DocumentEvicted,
     };
 
-    /// CDBChanged payload: the reload's per-file delta, as master path-pool
-    /// ids. `changed` means the file kept an entry but its command differs.
-    struct CDBDelta {
-        llvm::SmallVector<Fid, 0> added;
-        llvm::SmallVector<Fid, 0> removed;
-        llvm::SmallVector<Fid, 0> changed;
-
-        bool empty() const {
-            return added.empty() && removed.empty() && changed.empty();
-        }
-    };
-
     Kind kind;
     Fid path_id;
     /// WorkerCrashed only: the crashed worker's lost documents.
     llvm::SmallVector<Fid> paths;
-    /// CDBChanged only: the reload delta.
-    CDBDelta cdb;
+    /// CDBChanged only: the delta its producer saw.
+    CDBDiff cdb;
 
     static FileEvent disk_changed(Fid path_id) {
         return {Kind::DiskChanged, path_id};
@@ -67,7 +55,7 @@ struct FileEvent {
         return {Kind::DiskRemoved, path_id};
     }
 
-    static FileEvent cdb_changed(CDBDelta delta) {
+    static FileEvent cdb_changed(CDBDiff delta) {
         FileEvent event{Kind::CDBChanged};
         event.cdb = std::move(delta);
         return event;

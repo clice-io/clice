@@ -271,32 +271,37 @@ struct Project {
     /// text still names it, and their own rescans own those edges.
     void forget_file(Fid path_id);
 
-    /// What rebuilding the dependency graph did to module providers, per
-    /// name: the provider import resolution selects (the candidate list's
-    /// head), not mere existence.
-    struct ProviderChanges {
-        /// Names that gained their first provider.
+    /// What rebuilding the dependency graph changed.
+    struct Rebuilt {
+        /// Module names that gained their first provider, by the provider
+        /// import resolution selects (the candidate list's head), not mere
+        /// existence.
         llvm::SmallVector<std::string> appeared;
 
         /// The previously selected providers of names whose selection moved
         /// to another file.
         llvm::SmallVector<Fid> replaced;
+
+        /// How the provisional members followed (see refresh_provisional).
+        CDBDiff provisional;
     };
 
     /// Rebuild the dependency graph from scratch against the current
     /// database: entry additions, removals and flag changes all funnel into
     /// one uniform rescan instead of per-entry graph surgery. Still cheap —
     /// per-file scan results are content-keyed in the file table, so
-    /// unchanged files re-resolve without a read or lex.
-    ProviderChanges rebuild_dependency_graph();
+    /// unchanged files re-resolve without a read or lex. The provisional
+    /// members then follow the rebuilt graph, which alone tells whether a
+    /// unit includes one, and the graph takes them in.
+    Rebuilt rebuild_dependency_graph();
 
-    /// Bring the provisional members (Build::admit) in line with the build:
+    /// Bring the provisional members (Build::record) in line with the build:
     /// drop the record of a file the build declares now, and give every
     /// other recorded file the command it borrows — its lender's, while it
-    /// has one and no host compiles it — reporting the files that joined
-    /// (`added`), borrow another command (`changed`) or left (`removed`),
-    /// as a database reload reports its entries. The only writer of the
-    /// borrowed commands.
+    /// has one and no declared unit includes it, by the dependency graph —
+    /// reporting the files that joined (`added`), borrow another command
+    /// (`changed`) or left (`removed`), as a database reload reports its
+    /// entries. The only writer of the borrowed commands.
     CDBDiff refresh_provisional();
 
     /// Persistence signal for the artifact validity metadata (PCH/PCM

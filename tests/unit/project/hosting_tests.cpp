@@ -385,8 +385,8 @@ ZEST_CASE(ProvisionalMembers) {
     auto unit = add("clang++", "src/b.cpp");
 
     auto saved = intern("src/a_new.cpp");
-    ZEXPECT(project.build.admit(saved));
-    ZEXPECT(!project.build.admit(saved));
+    ZEXPECT(project.build.record(saved));
+    ZEXPECT(!project.build.record(saved));
     ZEXPECT(project.refresh_provisional().added == llvm::SmallVector<Fid>{saved});
     ZEXPECT(project.build.unit(saved));
     auto commands = project.build.commands(saved);
@@ -394,12 +394,20 @@ ZEST_CASE(ProvisionalMembers) {
     ZEXPECT(commands.front().source == CommandSource::Inferred);
     ZEXPECT(project.build.members().back() == saved);
 
-    /// First by name in the directory, the member would lend if it lent.
+    /// `a_new.cpp` sorts first in the directory, yet `b.cpp` lends: a
+    /// provisional member lends to no one.
+    project.commands_epoch += 1;
     ZEXPECT(command_lender(project, intern("src/other.cpp"))->unit == unit.file);
+
+    /// A unit sorting before `b.cpp` lends instead: the member's command
+    /// changes with it.
+    add("clang++ -DSIBLING", "src/a.cpp");
+    project.commands_epoch += 1;
+    ZEXPECT(project.refresh_provisional().changed == llvm::SmallVector<Fid>{saved});
 
     /// No C unit lends to a `.c` yet: recorded, not a member until one does.
     auto c_file = intern("src/new.c");
-    project.build.admit(c_file);
+    project.build.record(c_file);
     ZEXPECT(project.refresh_provisional().empty());
     ZEXPECT(!project.build.unit(c_file));
     add("clang", "src/legacy.c");
@@ -408,16 +416,25 @@ ZEST_CASE(ProvisionalMembers) {
 
     /// A file a unit includes keeps compiling in its includer's context.
     auto included = intern("src/table.cpp");
-    project.build.admit(included);
+    project.build.record(included);
     project.dep_graph.set_includes(unit.file, 0, {{included}});
     project.dep_graph.build_reverse_map();
     ZEXPECT(project.refresh_provisional().empty());
     ZEXPECT(!project.build.unit(included));
 
+    /// Only a declared unit's include keeps a file out: one a provisional
+    /// member includes joins too, whichever of the two sorts first.
+    auto inner = intern("src/c_inner.cpp");
+    auto outer = intern("src/c_outer.cpp");
+    project.build.record(inner);
+    project.build.record(outer);
+    project.dep_graph.set_includes(outer, 0, {{inner}});
+    ZEXPECT(project.refresh_provisional().added == (llvm::SmallVector<Fid>{inner, outer}));
+
     /// An entry listing the file takes over; the record goes.
     add("clang++", "src/a_new.cpp");
     ZEXPECT(project.refresh_provisional().empty());
-    ZEXPECT(!project.build.admitted().contains(saved));
+    ZEXPECT(!project.build.recorded().contains(saved));
     ZEXPECT(project.build.commands(saved).front().source == CommandSource::CDBExact);
 };
 

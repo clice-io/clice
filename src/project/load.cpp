@@ -172,10 +172,9 @@ BuildLoad load_build(Project& project,
     // keeps its entry, and is back the moment the file is.
     for(auto& path: provisional) {
         if(vfs::is_file(path)) {
-            project.build.admit(project.file_table.intern(path));
+            project.build.record(project.file_table.intern(path));
         }
     }
-    project.refresh_provisional();
 
     load.members = project.build.members();
     if(load.members.empty()) {
@@ -210,6 +209,13 @@ BuildLoad load_build(Project& project,
              scan.total_files,
              scan.total_edges,
              scan.elapsed_ms);
+
+    // The recorded files join against the scanned graph, which alone tells
+    // whether a unit includes one, and the graph takes them in.
+    if(!project.refresh_provisional().empty()) {
+        project.rebuild_dependency_graph();
+        load.members = project.build.members();
+    }
     return load;
 }
 

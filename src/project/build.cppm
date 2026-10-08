@@ -135,7 +135,7 @@ public:
     /// declare: a provisional member while it has a lender and no host (see
     /// Project::refresh_provisional), until an entry or a rule claims it.
     /// False when it is recorded already.
-    bool admit(Fid file);
+    bool record(Fid file);
 
     /// Drop the record of `file`, and its borrowed command.
     void forget(Fid file);
@@ -143,21 +143,18 @@ public:
     /// The files the user saved that the build does not declare, unordered:
     /// persisted with the index, so the members they make outlive the
     /// session.
-    const llvm::DenseSet<Fid>& admitted() const {
-        return saved;
+    const llvm::DenseSet<Fid>& recorded() const {
+        return records;
     }
 
-    /// Moves whenever admitted() changes, so persistence can tell.
-    std::uint64_t admitted_generation() const {
-        return saved_generation;
+    /// Moves whenever recorded() changes, so persistence can tell.
+    std::uint64_t recorded_generation() const {
+        return records_generation;
     }
 
-    /// The command a recorded file borrows while it is a provisional member;
-    /// nullopt otherwise.
-    std::optional<ConfigID> borrowed(Fid file) const;
-
-    /// Set what borrowed() answers for a recorded file.
-    void borrow(Fid file, std::optional<ConfigID> command);
+    /// Set the command a recorded file borrows as a provisional member,
+    /// nullopt while it is none; returns the one it borrowed before.
+    std::optional<ConfigID> borrow(Fid file, std::optional<ConfigID> command);
 
     /// The command `file` borrows from `lender` compiling under `command`:
     /// the edits of the rules matching the lender but not the file applied,
@@ -262,8 +259,8 @@ private:
     FileTable& files;
     std::string active;
     std::optional<std::vector<Fid>> claimed_sources;
-    llvm::DenseSet<Fid> saved;
-    std::uint64_t saved_generation = 0;
+    llvm::DenseSet<Fid> records;
+    std::uint64_t records_generation = 0;
     llvm::DenseMap<Fid, ConfigID> provisional;
 };
 
@@ -277,8 +274,9 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk);
 /// (a directory holding CMakeCache.txt or build.ninja) left out.
 std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cache_dir);
 
-/// Whether a refactoring may edit `file`: it lies under `root` outside the
-/// directories workspace_sources leaves out, whatever its suffix.
+/// Whether `file` is the workspace's own — what a refactoring may edit and
+/// a save may record as a provisional member: it lies under `root` outside
+/// the directories workspace_sources leaves out, whatever its suffix.
 bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file);
 
 }  // namespace clice
