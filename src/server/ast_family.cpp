@@ -170,25 +170,30 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
 
     // The modules imported by the preamble, or by a file the command line
     // includes, are inputs of the PCH: it depends on what their PCMs were
-    // built from, and a module whose PCM becomes available or goes away
-    // keys a new PCH. A PCH loses the imports of a module unit's global
-    // module fragment: the module declaration past it takes the fragment
-    // for absent and hides what the fragment made visible. Such a
-    // preamble goes without one.
-    std::string available;
+    // built from, and keys on which PCMs those are — a module that gains or
+    // loses its PCM, or whose provider or command changes, starts a new
+    // PCH. A PCH loses the imports of a module unit's global module
+    // fragment: the module declaration past it takes the fragment for
+    // absent and hides what the fragment made visible. Such a preamble
+    // goes without one.
+    std::string pcm_keys;
     llvm::SmallVector<Fid> modules;
+    bool imported = false;
     for(auto [dep, offset]: llvm::zip_equal(imports.declared, imports.offsets)) {
         if(offset != 0 && offset >= bound) {
             continue;
         }
-        auto module = Fid{static_cast<std::uint32_t>(dep.key)};
-        bool built = !PCMFamily::is_unresolved(dep) && project.pcm_cache.contains(module);
-        available.push_back(built ? '1' : '0');
-        if(built) {
-            modules.push_back(module);
+        imported = true;
+        if(!PCMFamily::is_unresolved(dep)) {
+            auto module = Fid{static_cast<std::uint32_t>(dep.key)};
+            if(auto it = project.pcm_cache.find(module); it != project.pcm_cache.end()) {
+                pcm_keys += it->second.key;
+                modules.push_back(module);
+            }
         }
+        pcm_keys.push_back('\0');
     }
-    if(!available.empty() && imports.module_unit) {
+    if(imported && imports.module_unit) {
         LOG_DEBUG("No PCH for {}: its global module fragment imports", path);
         return {};
     }
@@ -212,7 +217,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                               path::parent_path(path),
                               preamble_text,
                               canonicalize(arguments, ArgsProfile::Frontend),
-                              available});
+                              pcm_keys});
     // The text first: freshness checks every dependency of the key.
     if(!is_preamble_complete(text, bound) && !pch.fresh(pch_key)) {
         // Preamble incomplete (user still typing) and nothing fresh to
@@ -241,7 +246,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                       .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
                       },
     };
-    if(!available.empty()) {
+    if(imported) {
         project.fill_pcm_deps(plan.request.pcms, path_id);
         plan.request.modules = std::move(modules);
     }
