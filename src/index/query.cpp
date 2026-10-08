@@ -726,21 +726,28 @@ std::vector<IndexQuery::PlacedHighlight>
     if(!source) {
         return {};
     }
-    llvm::SmallVector<const Shard*, 2> rows{source->rows};
+    std::vector<PlacedHighlight> result;
+    auto place = [&](llvm::ArrayRef<const Shard*> rows) {
+        for(auto& highlight: highlights(rows, cursor.symbols)) {
+            if(auto site = source->site(highlight.range)) {
+                result.push_back({.site = std::move(*site), .kind = highlight.kind});
+            }
+        }
+    };
+    // The preamble rows live only as long as the visit.
+    bool placed = false;
     if(source->kind == RowSource::Kind::SessionRows) {
         live->each_preamble([&](const RowSource& preamble) {
             if(preamble.file != cursor.site.file) {
                 return true;
             }
-            rows.push_back(preamble.rows);
+            place({source->rows, preamble.rows});
+            placed = true;
             return false;
         });
     }
-    std::vector<PlacedHighlight> result;
-    for(auto& highlight: highlights(rows, cursor.symbols)) {
-        if(auto site = source->site(highlight.range)) {
-            result.push_back({.site = std::move(*site), .kind = highlight.kind});
-        }
+    if(!placed) {
+        place({source->rows});
     }
     return result;
 }
