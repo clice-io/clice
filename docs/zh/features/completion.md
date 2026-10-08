@@ -118,7 +118,7 @@ tests/snap/code_completion/module_completion/01_import_modules/main.cpp
 
 **当前模块的分区**
 
-在模块单元中，当前模块自身的分区以 `:partition` 的形式补全，而模块本身和其他模块的分区都不会出现在候选项中
+在实现单元中，当前模块自身的分区以 `:partition` 的形式补全，而模块本身和其他模块的分区都不会出现在候选项中
 
 已以分号结尾的语句会保留该分号。
 
@@ -136,6 +136,20 @@ tests/snap/code_completion/module_completion/02_partition_imports/main.cpp
 
 ```snap
 tests/snap/code_completion/module_completion/03_import_keyword/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**接口单元中的分区**
+
+在接口单元中，只会补全模块的接口分区
+
+接口不能导出内部分区，它从内部分区导入的名称对该接口的导入方也未必可达，因此只有模块的其他单元才会补全内部分区。
+
+```snap
+tests/snap/code_completion/module_completion/04_interface_partitions/main.cpp
 ```
 
 <!-- END CAPABILITY -->

@@ -12,18 +12,31 @@ struct ScanResult {
     /// Module name (empty if not a module unit).
     std::string module_name;
 
+    /// Whether the module declaration exports, `export module`: the primary
+    /// interface or an interface partition.
+    bool is_interface_unit = false;
+
     /// Whether this is a module implementation unit, `module M;`, which
     /// imports M implicitly. A partition never is one — an internal
     /// partition (`module M:part;`) is imported by the other units of M
     /// like any interface.
-    bool is_implementation_unit = false;
+    bool is_implementation_unit() const {
+        return !module_name.empty() && !is_interface_unit && !module_name.contains(':');
+    }
+
+    /// Whether this is an internal partition, `module M:part;`: importable by
+    /// the units of M, but an interface unit that imports it may not export it
+    /// and leaves its names unreachable to importers.
+    bool is_internal_partition() const {
+        return !is_interface_unit && module_name.contains(':');
+    }
 
     /// The module importers find in this unit: the declared name, empty
     /// for an implementation unit, which must neither satisfy an import —
     /// the importer would build it as an interface — nor claim a PCM of its
     /// own.
     llvm::StringRef provided_module() const {
-        return is_implementation_unit ? llvm::StringRef() : llvm::StringRef(module_name);
+        return is_implementation_unit() ? llvm::StringRef() : llvm::StringRef(module_name);
     }
 
     /// Whether module declaration is inside conditional directive,
@@ -174,7 +187,7 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
 /// Much cheaper than `scan_precise()`: stops lexing as soon as the module
 /// declaration is found, so it only processes the file preamble (global module
 /// fragment + conditionals around the module declaration). Only populates
-/// `module_name` and `is_implementation_unit` in the returned ScanResult.
+/// `module_name` and `is_interface_unit` in the returned ScanResult.
 ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
                             llvm::StringRef directory,
                             std::optional<llvm::StringRef> content = std::nullopt,

@@ -123,7 +123,7 @@ tests/snap/code_completion/module_completion/01_import_modules/main.cpp
 
 **Partitions of the current module**
 
-In a module unit, the module's own partitions complete as `:partition`, while neither the module itself nor the partitions of other modules are offered
+In an implementation unit, the module's own partitions complete as `:partition`, while neither the module itself nor the partitions of other modules are offered
 
 A statement that already ends in a semicolon keeps it.
 
@@ -141,6 +141,20 @@ tests/snap/code_completion/module_completion/02_partition_imports/main.cpp
 
 ```snap
 tests/snap/code_completion/module_completion/03_import_keyword/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Partitions in interface units**
+
+In an interface unit, only the module's interface partitions complete
+
+An interface cannot export an internal partition, and names it imports from one may not reach the interface's importers, so internal partitions are offered only to the module's other units.
+
+```snap
+tests/snap/code_completion/module_completion/04_interface_partitions/main.cpp
 ```
 
 <!-- END CAPABILITY -->

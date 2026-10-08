@@ -8,6 +8,7 @@ import :syntax.completion;
 import :syntax.dependency_graph;
 import :syntax.include_resolver;
 import :syntax.lexer;
+import :syntax.scan;
 
 namespace clice {
 
@@ -171,11 +172,11 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
 
 std::vector<std::string> complete_module_import(const DependencyGraph& graph,
                                                 llvm::StringRef prefix,
-                                                llvm::StringRef module_name) {
+                                                const ScanResult& unit) {
     // TODO: the graph's declarations are only refreshed on file save;
     // unsaved new module files won't appear in completions until written
     // to disk.
-    auto [module, own_partition] = module_name.split(':');
+    auto [module, own_partition] = llvm::StringRef(unit.module_name).split(':');
     std::vector<std::string> results;
     for(auto& entry: graph.modules()) {
         if(entry.getValue().empty()) {
@@ -191,7 +192,8 @@ std::vector<std::string> complete_module_import(const DependencyGraph& graph,
             }
             name = owner.str();
         } else {
-            if(module.empty() || owner != module || partition == own_partition) {
+            if(module.empty() || owner != module || partition == own_partition ||
+               (unit.is_interface_unit && graph.internal_partition(entry.getValue().front()))) {
                 continue;
             }
             name = std::format(":{}", partition);

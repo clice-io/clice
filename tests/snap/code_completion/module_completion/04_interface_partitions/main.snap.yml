@@ -1,0 +1,6 @@
+---
+created_at: 2026-10-08
+input_file: module_completion/04_interface_partitions/main.cpp
+---
+partitions:
+- { label: ":core", kind: Module, edit: "12:7-12:8" }

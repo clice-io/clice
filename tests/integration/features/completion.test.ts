@@ -207,6 +207,22 @@ test("space trigger serves import", async ({ session }) => {
     expect(labels, `Expected 'A' in completion labels, got: ${labels.join(", ")}`).toContain("A");
 });
 
+/// A `:` typed after `import` lists the current module's partitions; an
+/// interface unit is offered its interface partitions only.
+test("colon trigger serves partitions", async ({ session }) => {
+    const { client } = await session("modules/internal_partitions");
+
+    const [impl] = await client.openAndWait("impl.cpp");
+    client.change(impl, 1, "module Lib;\nimport :");
+    const fromImpl = await client.completionAt(impl, 1, 8, { triggerCharacter: ":" });
+    expect(labelsOf(fromImpl)).toEqual([":api", ":detail", ":util"]);
+
+    const [lib] = await client.openAndWait("lib.cppm");
+    client.change(lib, 1, "export module Lib;\nexport import :");
+    const fromInterface = await client.completionAt(lib, 1, 15, { triggerCharacter: ":" });
+    expect(labelsOf(fromInterface)).toEqual([":api"]);
+});
+
 /// Space-triggered completion outside import lines returns no items.
 test("space trigger gated elsewhere", async ({ session }) => {
     const { client } = await session("modules/chained_modules");

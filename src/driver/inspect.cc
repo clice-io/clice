@@ -941,7 +941,7 @@ int run_inspect(const InspectOptions& opts) {
                 }
                 if(auto result = scan_with(source, scan_module_decl)) {
                     source.scan.module_name = std::move(result->module_name);
-                    source.scan.is_implementation_unit = result->is_implementation_unit;
+                    source.scan.is_interface_unit = result->is_interface_unit;
                 }
             }
 
