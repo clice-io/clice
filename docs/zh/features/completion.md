@@ -140,6 +140,20 @@ tests/snap/code_completion/module_completion/03_import_keyword/main.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**接口单元中的分区**
+
+在接口单元中，只会补全模块的接口分区
+
+接口不能导出内部分区，它从内部分区导入的名称对该接口的导入方也未必可达，因此只有模块的其他单元才会补全内部分区。
+
+```snap
+tests/snap/code_completion/module_completion/04_interface_partitions/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 - [x] 以空格字符触发（[#460](https://github.com/clice-io/clice/pull/460)）
