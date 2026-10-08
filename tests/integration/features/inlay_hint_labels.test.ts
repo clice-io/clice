@@ -53,11 +53,7 @@ test("plain label without inlay hint support", async ({ session }) => {
 });
 
 test("located parts with the hints", async ({ session }) => {
-    // VS Code's capability: it could resolve locations lazily, and gets them
-    // with the hints all the same.
-    const { client, hints } = await hintsFor(session, {
-        textDocument: { inlayHint: { resolveSupport: { properties: ["label.location"] } } },
-    });
+    const { client, hints } = await hintsFor(session, { textDocument: { inlayHint: {} } });
     const [prefix, widget] = parts(hints[0]!);
     expect(prefix).toEqual({ value: ": " });
     expectWidgetDeclaration(widget!);
