@@ -57,7 +57,13 @@ public:
     RawResult query(worker::QueryKind kind,
                     const Ticket& ticket,
                     std::optional<protocol::Position> position = {},
-                    std::optional<protocol::Range> range = {},
+                    kota::cancellation_token token = {});
+
+    /// The inlay hints of the open file's AST within `range` of the buffer
+    /// the ticket was taken on.
+    kota::task<std::vector<feature::InlayHint>, kota::ipc::Error>
+        inlay_hints(const Ticket& ticket,
+                    const protocol::Range& range,
                     kota::cancellation_token token = {});
 
     /// The main-file document links from the stateful worker holding the

@@ -19,6 +19,7 @@ import :project.command_resolver;
 import :project.configuration;
 import :project.load;
 import :project.project;
+import :semantic.symbol;
 import :syntax.annotation;
 import :syntax.scan;
 import :vfs.file_system;
@@ -180,13 +181,85 @@ std::optional<kota::codec::RawValue> run_document_links(CompilationUnitRef unit,
     return to_raw_json(feature::document_links(unit));
 }
 
+struct RawLocation {
+    std::string path;
+    kota::ipc::protocol::Range range;
+};
+
+struct RawInlayHintPart {
+    std::string value;
+    /// Where the piece links, for one naming a symbol the index places.
+    std::optional<RawLocation> location;
+};
+
+struct RawInlayHint {
+    std::uint32_t offset = 0;
+    feature::HintCategory kind;
+    std::vector<RawInlayHintPart> label;
+    bool padding_left = false;
+    bool padding_right = false;
+};
+
+/// Range payload for inlay hints: each label piece naming a symbol placed
+/// as the server places it, from the unit's own TU index standing in for
+/// the server's — a declaration, else the definition, the main file's rows
+/// first as an open buffer's are.
 std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
                                                      LocalSourceRange range,
                                                      llvm::StringRef config) {
-    return to_raw_json(
-        feature::inlay_hints(unit,
-                             range,
-                             *parse_feature_config<feature::InlayHintsOptions>(config)));
+    auto hints =
+        feature::inlay_hints(unit, range, *parse_feature_config<feature::InlayHintsOptions>(config));
+
+    std::string envelope;
+    index::TUIndex tu;
+    auto place = [&](index::SymbolHash symbol) -> std::optional<RawLocation> {
+        if(envelope.empty()) {
+            envelope = index::build_tu_index(unit);
+            tu = index::TUIndex::from_bytes(envelope);
+        }
+        auto main = tu.path_count() - 1;
+        for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
+            for(std::uint32_t i = 0; i < tu.path_count(); i += 1) {
+                auto path_id = i == 0 ? main : i - 1;
+                const auto& rows = tu.shard_of(path_id);
+                std::optional<LocalSourceRange> found;
+                rows.lookup(symbol, kind, [&](const index::Relation& relation) {
+                    found = relation.range;
+                    return false;
+                });
+                if(!found) {
+                    continue;
+                }
+                auto coords = index::shard_coordinates(rows);
+                auto begin = coords.position(found->begin);
+                auto end = coords.position(found->end);
+                return RawLocation{
+                    .path = tu.path(path_id).str(),
+                    .range = {.start = {.line = begin->line, .character = begin->utf16_column},
+                              .end = {.line = end->line, .character = end->utf16_column}},
+                };
+            }
+        }
+        return std::nullopt;
+    };
+
+    std::vector<RawInlayHint> out;
+    for(auto& hint: hints) {
+        RawInlayHint raw{
+            .offset = hint.offset,
+            .kind = hint.kind,
+            .padding_left = hint.padding_left,
+            .padding_right = hint.padding_right,
+        };
+        for(auto& part: hint.label) {
+            raw.label.push_back({.value = std::move(part.value)});
+            if(part.symbol) {
+                raw.label.back().location = place(part.symbol);
+            }
+        }
+        out.push_back(std::move(raw));
+    }
+    return to_raw_json(out);
 }
 
 std::optional<kota::codec::RawValue> run_selection_range(CompilationUnitRef unit,

@@ -1,0 +1,42 @@
+---
+created_at: 2026-10-08
+input_file: go_to_definition/16_def_decltype.cpp
+---
+nested:
+  definition:
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:7-8:13" }
+  declaration:
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:7-8:13" }
+  typeDefinition:
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:7-8:13" }
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "10:0-10:6" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:0-8:16", selection: "8:7-8:13" }
+
+operand:
+  definition:
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:7-8:13" }
+  declaration:
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:7-8:13" }
+  typeDefinition:
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:7-8:13" }
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "10:0-10:6" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:0-8:16", selection: "8:7-8:13" }
+
+trailing:
+  definition:
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:7-8:13" }
+  declaration:
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:7-8:13" }
+  typeDefinition:
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:7-8:13" }
+    - { file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "10:0-10:6" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_definition/16_def_decltype.cpp", range: "8:0-8:16", selection: "8:7-8:13" }

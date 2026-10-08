@@ -206,6 +206,11 @@ struct RelationKind {
         /// (`#include "Kinds.inc"` inside a switch), a name the fragment
         /// uses: the pasting file names it too.
         Pasted,
+        /// At a keyword standing for a type it does not spell — `auto`,
+        /// `decltype(auto)`, `decltype(expr)` — the declaration that type
+        /// names: navigation from the keyword reaches it, but the keyword
+        /// is no reference to it.
+        Deduced,
     };
 
     constexpr RelationKind() = default;

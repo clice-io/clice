@@ -108,3 +108,7 @@ auto §(19_fn_decltype_signature)convert(decltype(source) value) -> decltype(sou
     return value;
 }
 }
+
+namespace inner_placeholder {
+decltype(au§(20_decltype_auto_inner)to) value = 34L;
+}

@@ -19,6 +19,34 @@ import :support.timer;
 
 namespace clice::index {
 
+SymbolScope classify_scope(const clang::NamedDecl* decl) {
+    // A template parameter is named only inside its template, whatever
+    // linkage Clang derives for it from the enclosing context.
+    if(llvm::isa<clang::TemplateTypeParmDecl,
+                 clang::NonTypeTemplateParmDecl,
+                 clang::TemplateTemplateParmDecl>(decl)) {
+        return SymbolScope::FileLocal;
+    }
+    // Module linkage reaches the module's other units, as external
+    // linkage reaches every unit.
+    auto linkage = decl->getFormalLinkage();
+    if(linkage == clang::Linkage::Internal) {
+        return SymbolScope::TULocal;
+    }
+    if(linkage != clang::Linkage::None) {
+        return SymbolScope::External;
+    }
+    // A name without linkage still reaches as far as its scope does: an
+    // alias, an enumerator of an unnamed enum (every enumerator in C) or a
+    // member of an unnamed class is named from every file including its
+    // header. Only a function's own declarations and a prototype's
+    // parameters stay in their file.
+    if(decl->getParentFunctionOrMethod() || llvm::isa<clang::ParmVarDecl>(decl)) {
+        return SymbolScope::FileLocal;
+    }
+    return decl->isInAnonymousNamespace() ? SymbolScope::TULocal : SymbolScope::External;
+}
+
 namespace {
 
 /// One file's rows on the wire: a self-contained single-variant shard
@@ -106,34 +134,6 @@ struct PreambleExtras {
     llvm::ArrayRef<std::uint8_t> open_conditionals;
     llvm::StringRef diagnostics;
 };
-
-SymbolScope classify_scope(const clang::NamedDecl* decl) {
-    // A template parameter is named only inside its template, whatever
-    // linkage Clang derives for it from the enclosing context.
-    if(llvm::isa<clang::TemplateTypeParmDecl,
-                 clang::NonTypeTemplateParmDecl,
-                 clang::TemplateTemplateParmDecl>(decl)) {
-        return SymbolScope::FileLocal;
-    }
-    // Module linkage reaches the module's other units, as external
-    // linkage reaches every unit.
-    auto linkage = decl->getFormalLinkage();
-    if(linkage == clang::Linkage::Internal) {
-        return SymbolScope::TULocal;
-    }
-    if(linkage != clang::Linkage::None) {
-        return SymbolScope::External;
-    }
-    // A name without linkage still reaches as far as its scope does: an
-    // alias, an enumerator of an unnamed enum (every enumerator in C) or a
-    // member of an unnamed class is named from every file including its
-    // header. Only a function's own declarations and a prototype's
-    // parameters stay in their file.
-    if(decl->getParentFunctionOrMethod() || llvm::isa<clang::ParmVarDecl>(decl)) {
-        return SymbolScope::FileLocal;
-    }
-    return decl->isInAnonymousNamespace() ? SymbolScope::TULocal : SymbolScope::External;
-}
 
 NameForm name_form_of(clang::DeclarationName name) {
     switch(name.getNameKind()) {
@@ -861,7 +861,9 @@ public:
                 if(auto* def = CRD->getDefinition()) {
                     for(auto& base: CRD->bases()) {
                         // FIXME: Handle dependent base class.
-                        auto target = types::decl_of(base.getType());
+                        // Through any alias the base is written with: the
+                        // hierarchy relates classes.
+                        auto target = types::decl_of(base.getType().getCanonicalType());
                         /// A base that is a template parameter (`struct D : T`)
                         /// names no class until instantiation.
                         if(!target ||
@@ -926,6 +928,76 @@ public:
                 }
             }
             return;
+        }
+    }
+
+    /// A keyword standing for a type it does not spell — `auto`,
+    /// `decltype(auto)`, `decltype(expr)`, an abbreviated template's
+    /// `auto` — is an occurrence of the declarations that type names once
+    /// its pointers, references and arrays are stripped, as if the type
+    /// were written there, with a Deduced row: navigation from the keyword
+    /// reaches the type, references to the type never list the keyword.
+    void project_placeholder(const Semantics& semantics, std::uint32_t index) {
+        const auto& entry = semantics.node(index);
+        clang::SourceRange keyword;
+        if(const auto* loc = entry.node.get<clang::TypeLoc>()) {
+            if(auto auto_loc = loc->getAs<clang::AutoTypeLoc>()) {
+                keyword = auto_loc.isDecltypeAuto()
+                              ? clang::SourceRange(auto_loc.getNameLoc(), auto_loc.getRParenLoc())
+                              : clang::SourceRange(auto_loc.getNameLoc());
+            } else if(auto decltype_loc = loc->getAs<clang::DecltypeTypeLoc>()) {
+                keyword = decltype_loc.getDecltypeLoc();
+            } else if(auto param_loc = loc->getAs<clang::TemplateTypeParmTypeLoc>();
+                      param_loc && param_loc.getDecl()->isImplicit()) {
+                keyword = param_loc.getNameLoc();
+            }
+        } else if(const auto* function = entry.node.get<clang::FunctionDecl>()) {
+            if(const auto* proto = function->getType()->getAs<clang::FunctionProtoType>();
+               proto && proto->hasTrailingReturn()) {
+                keyword = function->getTypeSpecStartLoc();
+            }
+        }
+        // An init-capture's `auto` is implicit, at the captured name.
+        if(keyword.isInvalid() || entry.flags.in_instantiation) {
+            return;
+        }
+        auto location = unit.file_location(keyword.getBegin());
+        if(location != unit.spelling_location(keyword.getBegin())) {
+            return;
+        }
+        auto spelling = unit.token_spelling(location);
+        if(spelling != "auto" && spelling != "decltype") {
+            return;
+        }
+
+        auto owner = index;
+        while(!semantics.node(owner).node.get<clang::Decl>()) {
+            owner = semantics.node(owner).parent;
+        }
+        const auto* decl = semantics.node(owner).node.get<clang::Decl>();
+        auto type = types::deduced_type(entry.node.dyn_typed(), decl);
+        if(type.isNull()) {
+            return;
+        }
+        if(const auto* AT = llvm::dyn_cast<clang::AutoType>(type.getTypePtr());
+           AT && AT->getDeducedKind() != clang::DeducedKind::Deduced) {
+            // A dependent initializer leaves `auto` to instantiation.
+            const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
+            if(!var || !var->getInit()) {
+                return;
+            }
+            type = unit.resolver().deduce(var);
+        }
+
+        clang::SourceRange name(location, unit.file_location(keyword.getEnd()));
+        for(const auto* target: types::decls_of(types::unwrap(type), &unit.resolver())) {
+            // A closure type is declared by no name to reach.
+            if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(target);
+               record && record->isLambda()) {
+                continue;
+            }
+            add_occurrence(target, name);
+            add_self_relation(target, RelationKind::Deduced, name);
         }
     }
 
@@ -995,6 +1067,7 @@ public:
                 }
             }
 
+            project_placeholder(semantics, i);
             project_relations(semantics, i);
         }
 

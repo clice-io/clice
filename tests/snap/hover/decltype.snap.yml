@@ -171,3 +171,11 @@ Parameters:
 // In namespace signature_type
 auto convert(decltype(source) value) -> decltype(source)
 ```
+
+20_decltype_auto_inner: { range: "112:9-112:13" }
+### type `auto`  
+
+---
+```cpp
+long
+```

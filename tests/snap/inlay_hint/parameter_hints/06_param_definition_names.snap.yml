@@ -2,8 +2,8 @@
 created_at: 2026-07-31
 input_file: parameter_hints/06_param_definition_names.cpp
 ---
-- { pos: "14:11", kind: Parameter, label: "width:", padding_right: true }
-- { pos: "14:16", kind: Parameter, label: "height:", padding_right: true }
-- { pos: "15:9", kind: Parameter, label: "value:", padding_right: true }
-- { pos: "15:12", kind: Parameter, label: "count:", padding_right: true }
-- { pos: "17:10", kind: Parameter, label: "good:", padding_right: true }
+- { pos: "14:11", kind: Parameter, label: "width:", links: ["width ${WS}/parameter_hints/06_param_definition_names.cpp:20:16-20:21"], padding_right: true }
+- { pos: "14:16", kind: Parameter, label: "height:", links: ["height ${WS}/parameter_hints/06_param_definition_names.cpp:20:27-20:33"], padding_right: true }
+- { pos: "15:9", kind: Parameter, label: "value:", links: ["value ${WS}/parameter_hints/06_param_definition_names.cpp:9:14-9:20"], padding_right: true }
+- { pos: "15:12", kind: Parameter, label: "count:", links: ["count ${WS}/parameter_hints/06_param_definition_names.cpp:9:26-9:33"], padding_right: true }
+- { pos: "17:10", kind: Parameter, label: "good:", links: ["good ${WS}/parameter_hints/06_param_definition_names.cpp:11:14-11:18"], padding_right: true }

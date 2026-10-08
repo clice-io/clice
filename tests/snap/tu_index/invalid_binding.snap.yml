@@ -9,6 +9,7 @@ input_file: invalid_binding.cpp
 - { loc: "11:8", kind: Field, text: "first", relations: [Definition] }
 - { loc: "12:8", kind: Field, text: "second", relations: [Definition] }
 - { loc: "15:4", kind: Function, text: "fine", relations: [Definition] }
+- { loc: "16:4", kind: Struct, text: "auto", relations: [Deduced] }
 - { loc: "16:10", kind: Variable, text: "left", relations: [Definition] }
 - { loc: "16:16", kind: Variable, text: "right", relations: [Definition] }
 - { loc: "16:25", kind: Struct, text: "Pair", relations: [Reference] }

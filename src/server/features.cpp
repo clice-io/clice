@@ -16,6 +16,7 @@ import :server.features;
 import :server.format;
 import :server.lsp_projection;
 import :server.query_commands;
+import :server.uri;
 import :syntax.completion;
 import :syntax.include_resolver;
 import :syntax.scan;
@@ -583,7 +584,7 @@ Features::RawResult Features::hover(Ticket ticket,
     }
 
     auto raw =
-        co_await dispatcher.query(worker::QueryKind::Hover, ticket, position, {}, std::move(token));
+        co_await dispatcher.query(worker::QueryKind::Hover, ticket, position, std::move(token));
     if(raw.has_value() && to_lsp::is_null(raw.value()) && ast.projections.current(path_id)) {
         // The preamble region is the one place a null from the AST is not
         // authoritative — it is compiled into the PCH and invisible to
@@ -636,12 +637,18 @@ Features::RawResult Features::semantic_tokens(Ticket ticket, kota::cancellation_
     co_return co_await dispatcher.query(worker::QueryKind::SemanticTokens,
                                         ticket,
                                         {},
-                                        {},
                                         std::move(token));
+}
+
+/// The file anchoring a label piece's symbol: its own for a symbol other
+/// files cannot name, the hint's document otherwise.
+static Fid anchor_of(FileTable& files, const feature::InlayHintPart& piece, Fid document) {
+    return piece.anchor.empty() ? document : files.intern(Spelling::absolute(piece.anchor));
 }
 
 Features::RawResult Features::inlay_hints(Ticket ticket,
                                           const protocol::Range& range,
+                                          InlayHintLabels labels,
                                           kota::cancellation_token token) {
     auto& session = ticket.session;
     // Inlay hints are Sema products the index cannot project; a session
@@ -652,11 +659,58 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
         session->index_served = true;
         co_return serde_raw{"[]"};
     }
-    co_return co_await dispatcher.query(worker::QueryKind::InlayHints,
-                                        ticket,
-                                        {},
-                                        range,
-                                        std::move(token));
+    auto hints = co_await dispatcher.inlay_hints(ticket, range, std::move(token)).or_fail();
+    if(labels == InlayHintLabels::Text) {
+        co_return to_raw(feature::inlay_hints_to_protocol(hints, session->position_map()));
+    }
+    auto uri = feature::to_uri(project.file_table.display(session->path_id));
+    auto link = [&](const feature::InlayHint& hint, protocol::InlayHint& out) {
+        if(labels == InlayHintLabels::Deferred) {
+            out.data = to_lsp::inlay_hint_data(uri, hint.label);
+            return;
+        }
+        auto& parts = std::get<std::vector<protocol::InlayHintLabelPart>>(out.label);
+        for(auto [part, piece]: llvm::zip_equal(parts, hint.label)) {
+            if(piece.symbol) {
+                part.location = link_location(piece.symbol,
+                                              anchor_of(project.file_table, piece, session->path_id));
+            }
+        }
+    };
+    co_return to_raw(feature::inlay_hints_to_protocol(hints, session->position_map(), link));
+}
+
+Features::RawResult Features::resolve_inlay_hint(protocol::InlayHint hint) {
+    auto data = to_lsp::inlay_hint_data(hint.data);
+    auto* parts = std::get_if<std::vector<protocol::InlayHintLabelPart>>(&hint.label);
+    if(!data || !parts || parts->size() != data->label.size()) {
+        co_return to_raw(hint);
+    }
+    auto document = uri_to_path(data->uri);
+    auto path_id = document ? project.file_table.intern(*document) : Fid();
+    for(auto [part, piece]: llvm::zip_equal(*parts, data->label)) {
+        if(piece.symbol) {
+            part.location = link_location(piece.symbol, anchor_of(project.file_table, piece, path_id));
+        }
+    }
+    co_return to_raw(hint);
+}
+
+std::optional<protocol::Location> Features::link_location(index::SymbolHash symbol, Fid anchor) {
+    auto sites = gather(symbol, anchor, [&](const index::IndexQuery& from, index::SymbolHash named) {
+        std::vector<index::Site> found;
+        for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
+            if(auto site = from.first_site(named, anchor, kind)) {
+                found.push_back(std::move(*site));
+                break;
+            }
+        }
+        return found;
+    });
+    if(sites.empty()) {
+        return std::nullopt;
+    }
+    return to_lsp::location(sites.front());
 }
 
 Features::RawResult Features::folding_range(Ticket ticket,
@@ -717,7 +771,6 @@ Features::RawResult Features::document_symbol(Ticket ticket, kota::cancellation_
     }
     co_return co_await dispatcher.query(worker::QueryKind::DocumentSymbol,
                                         ticket,
-                                        {},
                                         {},
                                         std::move(token));
 }
@@ -1356,12 +1409,25 @@ Features::RawResult Features::type_definition(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(to_lsp::locations(
-        gather(cursor->symbols,
-               path_id,
-               [&](const index::IndexQuery& from, index::SymbolHash named) {
-                   return from.target_sites(named, path_id, RelationKind::TypeDefinition);
-               })));
+    std::vector<index::Site> sites;
+    for(auto symbol: cursor->symbols) {
+        // The type an `auto` stands for is its own type definition.
+        bool deduced = query.deduced(*cursor, symbol);
+        llvm::append_range(
+            sites,
+            gather(symbol, path_id, [&](const index::IndexQuery& from, index::SymbolHash named) {
+                if(!deduced) {
+                    return from.target_sites(named, path_id, RelationKind::TypeDefinition);
+                }
+                std::vector<index::Site> own;
+                if(auto located = from.resolve(named, path_id)) {
+                    own.push_back(std::move(located->site));
+                }
+                return own;
+            }));
+    }
+    index::dedup_sites(sites);
+    co_return to_raw(to_lsp::locations(sites));
 }
 
 Features::RawResult Features::implementation(Ticket ticket,

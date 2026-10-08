@@ -1037,7 +1037,6 @@ ZEST_CASE(ClientCancelSparesCompile) {
                 co_return co_await stack.dispatcher.query(worker::QueryKind::Hover,
                                                           Ticket::take(session),
                                                           protocol::Position{0, 4},
-                                                          {},
                                                           source.token());
             };
             auto r = co_await kota::with_token(hover(), source.token());

@@ -300,6 +300,7 @@ enum class EvidenceKind : std::uint8_t {
     PCM,
     DocumentLink,
     FoldingRange,
+    InlayHint,
     CodeAction,
     SelectionRange,
     Completion,

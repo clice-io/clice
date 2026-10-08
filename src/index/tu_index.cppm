@@ -17,6 +17,10 @@ class CompilationUnitRef;
 
 namespace clice::index {
 
+/// Which level of the multi-level symbol table stores a declaration's
+/// symbol.
+SymbolScope classify_scope(const clang::NamedDecl* decl);
+
 /// How build_tu_index shapes the envelope.
 struct TUIndexOptions {
     /// Keep only the rows in the main file.

@@ -117,7 +117,6 @@ inline bool is_transport_error(const protocol::Error& error) {
 enum class QueryKind : uint8_t {
     Hover,
     SemanticTokens,
-    InlayHints,
     DocumentSymbol,
 };
 
@@ -126,8 +125,7 @@ enum class QueryKind : uint8_t {
 struct QueryParams {
     QueryKind kind;
     std::string path;
-    uint32_t offset = 0;     ///< Byte offset for position-sensitive queries (Hover).
-    LocalSourceRange range;  ///< Byte range for range-sensitive queries (InlayHints).
+    uint32_t offset = 0;  ///< Byte offset for position-sensitive queries (Hover).
 
     /// The workspace config, carried whole on every request — the worker
     /// holds no config state and a config change simply shows up on the
@@ -441,6 +439,17 @@ struct SelectionRangeParams {
     std::vector<std::uint32_t> offsets;
 };
 
+/// Request the inlay hints of an open file's AST within a byte range of its
+/// text (see feature::inlay_hints).
+struct InlayHintParams {
+    std::string path;
+    LocalSourceRange range;
+
+    /// The workspace config, carried whole — the worker holds no config
+    /// state and a config change simply shows up on the next request.
+    Config config;
+};
+
 struct EvictParams {
     std::string path;
 };
@@ -498,6 +507,13 @@ struct RequestTraits<clice::worker::SelectionRangeParams> {
     /// Empty without an AST.
     using Result = std::vector<std::vector<clice::LocalSourceRange>>;
     constexpr inline static std::string_view method = "clice/worker/selectionRange";
+};
+
+template <>
+struct RequestTraits<clice::worker::InlayHintParams> {
+    /// Empty without an AST.
+    using Result = std::vector<clice::feature::InlayHint>;
+    constexpr inline static std::string_view method = "clice/worker/inlayHint";
 };
 
 template <>

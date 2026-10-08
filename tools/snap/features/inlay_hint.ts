@@ -1,27 +1,36 @@
 import * as proto from "vscode-languageserver-protocol";
 import { markerRanges } from "../annotation.ts";
+import type { CliceClient } from "../../client/client.ts";
 import {
     enumName,
     fmtPos,
+    fmtRange,
     markerSections,
     OffsetConverter,
     sortedMarkers,
     type Feature,
 } from "../render.ts";
-import { yamlStr } from "../snapshot.ts";
+import { normalizeFilePath, normalizeFileUri, yamlStr } from "../snapshot.ts";
 
 interface HintEntry {
     pos: string;
     kind: string;
     label: string;
+    /// The label pieces carrying a location, as `<piece> <file>:<range>`.
+    links: string[];
     paddingLeft: boolean;
     paddingRight: boolean;
+}
+
+interface RawInlayHintPart {
+    value: string;
+    location?: { path: string; range: proto.Range } | null;
 }
 
 interface RawInlayHint {
     offset: number;
     kind: string;
-    label: string;
+    label: RawInlayHintPart[];
     padding_left: boolean;
     padding_right: boolean;
 }
@@ -41,6 +50,9 @@ function formatInlayHints(hints: HintEntry[]): string[] {
         let line = `- { pos: "${hint.pos}"`;
         line += `, kind: ${hint.kind}`;
         line += `, label: ${yamlStr(hint.label)}`;
+        if (hint.links.length > 0) {
+            line += `, links: [${hint.links.map(yamlStr).join(", ")}]`;
+        }
         if (hint.paddingLeft) {
             line += ", padding_left: true";
         }
@@ -51,7 +63,7 @@ function formatInlayHints(hints: HintEntry[]): string[] {
     });
 }
 
-function adaptRaw(result: unknown, map: OffsetConverter): HintEntry[] {
+function adaptRaw(result: unknown, map: OffsetConverter, root: string): HintEntry[] {
     return (result as RawInlayHint[]).map((hint) => {
         const kind = LSP_INLAY_KIND[hint.kind];
         if (kind === undefined) {
@@ -60,18 +72,26 @@ function adaptRaw(result: unknown, map: OffsetConverter): HintEntry[] {
         return {
             pos: fmtPos(map.position(hint.offset)),
             kind,
-            label: hint.label,
+            label: hint.label.map((part) => part.value).join(""),
+            links: hint.label.flatMap((part) =>
+                part.location != null
+                    ? [
+                          `${part.value} ${normalizeFilePath(part.location.path, root)}:${fmtRange(part.location.range)}`,
+                      ]
+                    : [],
+            ),
             paddingLeft: hint.padding_left,
             paddingRight: hint.padding_right,
         };
     });
 }
 
-function adaptReply(hints: proto.InlayHint[]): HintEntry[] {
+function adaptReply(hints: proto.InlayHint[], root: string): HintEntry[] {
     return hints.map((hint) => {
         if (hint.kind === undefined) {
             throw new Error("clice always replies with an inlay hint kind");
         }
+        const parts = typeof hint.label === "string" ? [] : hint.label;
         return {
             pos: fmtPos(hint.position),
             kind: enumName(proto.InlayHintKind, hint.kind),
@@ -79,10 +99,30 @@ function adaptReply(hints: proto.InlayHint[]): HintEntry[] {
                 typeof hint.label === "string"
                     ? hint.label
                     : hint.label.map((part) => part.value).join(""),
+            links: parts.flatMap((part) =>
+                part.location !== undefined
+                    ? [
+                          `${part.value} ${normalizeFileUri(part.location.uri, root)}:${fmtRange(part.location.range)}`,
+                      ]
+                    : [],
+            ),
             paddingLeft: hint.paddingLeft ?? false,
             paddingRight: hint.paddingRight ?? false,
         };
     });
+}
+
+/// The hints as the editor holds them once it resolved each label naming
+/// symbols: the snap client resolves `label.location` lazily, as VS Code
+/// does.
+async function resolved(client: CliceClient, hints: proto.InlayHint[] | null) {
+    return Promise.all(
+        (hints ?? []).map((hint) =>
+            hint.data === undefined
+                ? hint
+                : client.sendRequest(proto.InlayHintResolveRequest.type, hint),
+        ),
+    );
 }
 
 export const inlayHint: Feature = {
@@ -93,10 +133,10 @@ export const inlayHint: Feature = {
         // section per marker; without them the whole document is requested.
         if (entry.markers != null) {
             return markerSections(sortedMarkers(entry.markers), (value) =>
-                formatInlayHints(adaptRaw(value, map)),
+                formatInlayHints(adaptRaw(value, map, ctx.root)),
             );
         }
-        return formatInlayHints(adaptRaw(entry.result, map));
+        return formatInlayHints(adaptRaw(entry.result, map, ctx.root));
     },
     async fromServer(client, uri, ctx) {
         const ranges = markerRanges(ctx.source);
@@ -105,7 +145,8 @@ export const inlayHint: Feature = {
                 start: { line: 0, character: 0 },
                 end: { line: ctx.source.content.split("\n").length, character: 0 },
             };
-            return formatInlayHints(adaptReply((await client.inlayHints(uri, wholeFile)) ?? []));
+            const hints = await resolved(client, await client.inlayHints(uri, wholeFile));
+            return formatInlayHints(adaptReply(hints, ctx.root));
         }
         const map = new OffsetConverter(ctx.stripped);
         const sections: [string, unknown][] = [];
@@ -114,10 +155,10 @@ export const inlayHint: Feature = {
                 start: map.position(begin),
                 end: map.position(end),
             };
-            sections.push([name, (await client.inlayHints(uri, range)) ?? []]);
+            sections.push([name, await resolved(client, await client.inlayHints(uri, range))]);
         }
         return markerSections(sections, (value) =>
-            formatInlayHints(adaptReply(value as proto.InlayHint[])),
+            formatInlayHints(adaptReply(value as proto.InlayHint[], ctx.root)),
         );
     },
 };

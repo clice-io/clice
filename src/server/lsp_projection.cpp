@@ -119,6 +119,54 @@ std::optional<index::SymbolHash> hierarchy_symbol(const std::optional<protocol::
     return hash;
 }
 
+protocol::LSPAny inlay_hint_data(llvm::StringRef uri,
+                                 llvm::ArrayRef<feature::InlayHintPart> label) {
+    kota::codec::dyn::Array parts;
+    for(const auto& part: label) {
+        if(!part.symbol) {
+            parts.push_back(nullptr);
+            continue;
+        }
+        kota::codec::dyn::Object target{
+            {"symbol", std::format("{}", part.symbol)}
+        };
+        if(!part.anchor.empty()) {
+            target.insert("anchor", part.anchor);
+        }
+        parts.push_back(std::move(target));
+    }
+    return kota::codec::dyn::Object{
+        {"uri",   uri.str()       },
+        {"parts", std::move(parts)},
+    };
+}
+
+std::optional<InlayHintData> inlay_hint_data(const std::optional<protocol::LSPAny>& data) {
+    const auto* object = data ? data->get_object() : nullptr;
+    const auto* uri = object ? object->find("uri") : nullptr;
+    const auto* parts = object ? object->find("parts") : nullptr;
+    if(!uri || !uri->get_string() || !parts || !parts->get_array()) {
+        return std::nullopt;
+    }
+    InlayHintData result{.uri = std::string(*uri->get_string())};
+    for(const auto& part: *parts->get_array()) {
+        auto& piece = result.label.emplace_back();
+        const auto* target = part.get_object();
+        if(!target) {
+            continue;
+        }
+        const auto* symbol = target->find("symbol");
+        if(!symbol || !symbol->get_string() ||
+           llvm::StringRef(*symbol->get_string()).getAsInteger(10, piece.symbol)) {
+            return std::nullopt;
+        }
+        if(const auto* anchor = target->find("anchor"); anchor && anchor->get_string()) {
+            piece.anchor = *anchor->get_string();
+        }
+    }
+    return result;
+}
+
 bool is_null(const kota::codec::RawValue& raw) {
     return raw.data == "null";
 }

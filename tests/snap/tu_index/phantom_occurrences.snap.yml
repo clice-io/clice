@@ -6,6 +6,7 @@ input_file: phantom_occurrences.cpp
 - { loc: "9:8", kind: Field, text: "first", relations: [Definition] }
 - { loc: "10:8", kind: Field, text: "second", relations: [Definition] }
 - { loc: "13:4", kind: Function, text: "use", relations: [Definition] }
+- { loc: "14:4", kind: Struct, text: "auto", relations: [Deduced] }
 - { loc: "14:10", kind: Variable, text: "left", relations: [Definition] }
 - { loc: "14:16", kind: Variable, text: "right", relations: [Definition] }
 - { loc: "14:25", kind: Struct, text: "Pair", relations: [Reference] }
@@ -15,6 +16,7 @@ input_file: phantom_occurrences.cpp
 - { loc: "19:4", kind: Function, text: "pack", relations: [Definition] }
 - { loc: "19:9", kind: Type, text: "T", relations: [Reference] }
 - { loc: "19:11", kind: Parameter, text: "source", relations: [Definition] }
+- { loc: "20:4", kind: Type, text: "auto", relations: [Deduced] }
 - { loc: "20:14", kind: Variable, text: "elements", relations: [Definition] }
 - { loc: "20:26", kind: Parameter, text: "source", relations: [Reference] }
 - { loc: "21:12", kind: Variable, text: "elements", relations: [Reference] }

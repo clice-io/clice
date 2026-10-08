@@ -37,37 +37,31 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         return;
     }
     // A structured binding's declared type must stay `auto`.
-    for(const auto* node = ctx.node.parent; node; node = node->parent) {
-        if(const auto* decl = node->get<clang::Decl>()) {
-            if(llvm::isa<clang::DecompositionDecl>(decl)) {
-                return;
-            }
-            break;
-        }
+    const auto* owner = ctx.node.owning_decl();
+    if(llvm::isa_and_present<clang::DecompositionDecl>(owner)) {
+        return;
     }
 
     auto inner = types::unwrap(*loc);
-    std::optional<clang::QualType> deduced;
     clang::SourceRange written;
     if(auto auto_loc = inner.getAs<clang::AutoTypeLoc>()) {
         if(auto_loc.isDecltypeAuto()) {
             return;
         }
         written = auto_loc.getLocalSourceRange();
-        deduced = types::deduced_type(unit.context(), auto_loc.getNameLoc());
     } else if(auto decltype_loc = inner.getAs<clang::DecltypeTypeLoc>()) {
         written = decltype_loc.getLocalSourceRange();
-        deduced = decltype_loc.getTypePtr()->getUnderlyingType();
     } else {
         return;
     }
-    if(!deduced || deduced->isNull() || (*deduced)->isDependentType()) {
+    auto deduced = types::deduced_type(clang::DynTypedNode::create(inner), owner);
+    if(deduced.isNull() || deduced->isDependentType()) {
         return;
     }
     // `auto&&` bound to an lvalue deduces a reference: the written `&&`
     // goes with the `auto`, or the result would be a reference to a
     // reference.
-    if((*deduced)->isReferenceType()) {
+    if(deduced->isReferenceType()) {
         const auto* parent = ctx.node.parent ? ctx.node.parent->get<clang::TypeLoc>() : nullptr;
         auto reference = parent ? parent->getAs<clang::RValueReferenceTypeLoc>()
                                 : clang::RValueReferenceTypeLoc();
@@ -82,7 +76,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
     }
     // Only a type spelled before its declarator can stand in for `auto`:
     // `int (*)(int)` has nowhere to put the name.
-    auto declaration = type_name(unit.context(), *deduced, &ctx.node.decl_context(), "x");
+    auto declaration = type_name(unit.context(), deduced, &ctx.node.decl_context(), "x");
     if(!declaration || !llvm::StringRef(*declaration).ends_with(" x")) {
         return;
     }
@@ -96,7 +90,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
     auto content = unit.main_content();
     // The deduced type prints through the sugar of another deduction and
     // of decltype, and a nullability attribute after the `*` it qualifies.
-    auto declarator = *deduced;
+    auto declarator = deduced;
     while(llvm::isa<clang::AutoType, clang::DecltypeType, clang::AttributedType>(declarator)) {
         declarator = declarator->getLocallyUnqualifiedSingleStepDesugaredType();
     }
@@ -129,8 +123,8 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
                 return;
             }
             // decltype of a const pointer has the qualifier already.
-            bool has = it->kind() == clang::tok::kw_const ? deduced->isConstQualified()
-                                                          : deduced->isVolatileQualified();
+            bool has = it->kind() == clang::tok::kw_const ? deduced.isConstQualified()
+                                                          : deduced.isVolatileQualified();
             if(!has) {
                 printed += ' ';
                 printed += clang::tok::getKeywordSpelling(it->kind());

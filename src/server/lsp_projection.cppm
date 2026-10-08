@@ -4,6 +4,7 @@ module;
 
 module clice:server.lsp_projection;
 
+import :feature.feature;
 import :index.query;
 import :index.site;
 import :index.types;
@@ -51,6 +52,21 @@ protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolRef& symbol,
 
 /// The symbol handle a prepared hierarchy item came back with, if intact.
 std::optional<index::SymbolHash> hierarchy_symbol(const std::optional<protocol::LSPAny>& data);
+
+/// What an inlay hint keeps for inlayHint/resolve: its document's URI and,
+/// per label piece, the symbol the piece names — a decimal string, like a
+/// hierarchy item's handle — with the file anchoring it; null for plain
+/// text.
+protocol::LSPAny inlay_hint_data(llvm::StringRef uri, llvm::ArrayRef<feature::InlayHintPart> label);
+
+struct InlayHintData {
+    std::string uri;
+    /// One per label piece, symbol 0 for plain text.
+    std::vector<feature::InlayHintPart> label;
+};
+
+/// What inlay_hint_data stored, if the client handed it back intact.
+std::optional<InlayHintData> inlay_hint_data(const std::optional<protocol::LSPAny>& data);
 
 /// Whether a worker's raw reply is the JSON null or the empty array —
 /// the only inspection ever made of a reply that is otherwise passed

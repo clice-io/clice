@@ -38,6 +38,10 @@ public:
     /// `operator->` chains for an arrow. Null when it does not resolve.
     clang::QualType member_object(const clang::Expr* base, bool arrow);
 
+    /// What an `auto` variable a dependent initializer left undeduced
+    /// deduces to, resolved. Null when the initializer does not resolve.
+    clang::QualType deduce(const clang::VarDecl* var);
+
     using lookup_result = clang::DeclContext::lookup_result;
 
     /// Look up the name in the given nested name specifier.

@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation_unit;
 import :compile.semantics;
 import :feature.feature;
+import :index.tu_index;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
@@ -101,6 +102,152 @@ struct Callee {
     // Loc is for calls through function pointers.
     const clang::FunctionDecl* decl = nullptr;
     clang::FunctionProtoTypeLoc loc;
+};
+
+/// A name a printed type spells, and the declaration a link on it reaches.
+struct SpelledName {
+    llvm::StringRef name;
+    const clang::NamedDecl* decl;
+};
+
+/// The names TypePrinter writes for declarations when it prints a type, in
+/// print order: classes, enums, aliases and templates, inside template
+/// arguments and qualifiers too. The walk follows the printer where it
+/// decides what is written — preferred names, defaulted arguments left out —
+/// and a name it misjudges is merely left unlinked.
+class SpelledNames {
+public:
+    llvm::SmallVector<SpelledName, 4> names;
+
+    void walk(clang::QualType type) {
+        if(type.isNull()) {
+            return;
+        }
+        const clang::Type* T = type.getTypePtr();
+        if(auto* typedef_type = llvm::dyn_cast<clang::TypedefType>(T)) {
+            qualifier(typedef_type->getQualifier());
+            add(typedef_type->getDecl(), typedef_type->getDecl());
+        } else if(auto* using_type = llvm::dyn_cast<clang::UsingType>(T)) {
+            qualifier(using_type->getQualifier());
+            add(using_type->getDecl(), using_type->getDecl()->getTargetDecl());
+        } else if(auto* tag = llvm::dyn_cast<clang::TagType>(T)) {
+            tag_type(tag);
+        } else if(auto* TST = llvm::dyn_cast<clang::TemplateSpecializationType>(T)) {
+            auto name = TST->getTemplateName();
+            qualifier(name.getQualifier());
+            if(auto* decl = name.getAsTemplateDecl()) {
+                add(decl, types::decl_of(type));
+            }
+            arguments(TST->template_arguments());
+        } else if(auto* param = llvm::dyn_cast<clang::TemplateTypeParmType>(T)) {
+            add(param->getDecl(), param->getDecl());
+        } else if(auto* subst = llvm::dyn_cast<clang::SubstTemplateTypeParmType>(T)) {
+            walk(subst->getReplacementType());
+        } else if(auto* deduced = llvm::dyn_cast<clang::DeducedType>(T)) {
+            walk(deduced->getDeducedType());
+        } else if(auto* member = llvm::dyn_cast<clang::MemberPointerType>(T)) {
+            walk(member->getPointeeType());
+            qualifier(member->getQualifier());
+        } else if(auto* function = llvm::dyn_cast<clang::FunctionProtoType>(T)) {
+            walk(function->getReturnType());
+            for(auto param: function->param_types()) {
+                walk(param);
+            }
+        } else if(auto* attributed = llvm::dyn_cast<clang::AttributedType>(T)) {
+            walk(attributed->getModifiedType());
+        } else if(auto* adjusted = llvm::dyn_cast<clang::AdjustedType>(T)) {
+            walk(adjusted->getAdjustedType());
+        } else if(auto* atomic = llvm::dyn_cast<clang::AtomicType>(T)) {
+            walk(atomic->getValueType());
+        } else if(auto* expansion = llvm::dyn_cast<clang::PackExpansionType>(T)) {
+            walk(expansion->getPattern());
+        } else if(llvm::isa<clang::PointerType, clang::ReferenceType>(T)) {
+            walk(T->getPointeeType());
+        } else if(auto* array = llvm::dyn_cast<clang::ArrayType>(T)) {
+            walk(array->getElementType());
+        } else if(llvm::isa<clang::ParenType, clang::MacroQualifiedType>(T)) {
+            walk(T->getLocallyUnqualifiedSingleStepDesugaredType());
+        }
+    }
+
+private:
+    void tag_type(const clang::TagType* tag) {
+        const auto* decl = tag->getDecl();
+        // The printer names a class by its preferred name when the class
+        // declares one for this very specialization (`string` for
+        // `basic_string<char>`).
+        for(const auto* preferred:
+            decl->getMostRecentDecl()->specific_attrs<clang::PreferredNameAttr>()) {
+            auto alias = preferred->getTypedefType();
+            if(clang::declaresSameEntity(alias->getAsCXXRecordDecl(), decl)) {
+                while(!llvm::isa<clang::TypedefType, clang::TemplateSpecializationType>(alias)) {
+                    alias = alias->getLocallyUnqualifiedSingleStepDesugaredType();
+                }
+                walk(alias);
+                return;
+            }
+        }
+        if(!tag->isCanonicalUnqualified()) {
+            qualifier(tag->getQualifier());
+        }
+        add(decl, decl);
+        if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
+            if(const auto* written = spec->getTemplateArgsAsWritten()) {
+                for(const auto& arg: written->arguments()) {
+                    argument(arg.getArgument());
+                }
+            } else {
+                arguments(spec->getTemplateArgs().asArray());
+            }
+        }
+    }
+
+    /// A qualifier's types print before the name; namespaces get no link.
+    void qualifier(clang::NestedNameSpecifier qualifier) {
+        if(qualifier.getKind() == clang::NestedNameSpecifier::Kind::Type) {
+            walk(clang::QualType(qualifier.getAsType(), 0));
+        }
+    }
+
+    /// Trailing arguments equal to their parameter's default are not
+    /// printed.
+    void arguments(llvm::ArrayRef<clang::TemplateArgument> args) {
+        while(!args.empty() && args.back().getIsDefaulted()) {
+            args = args.drop_back();
+        }
+        for(const auto& arg: args) {
+            argument(arg);
+        }
+    }
+
+    void argument(const clang::TemplateArgument& arg) {
+        switch(arg.getKind()) {
+            case clang::TemplateArgument::Type: walk(arg.getAsType()); break;
+            case clang::TemplateArgument::Template:
+            case clang::TemplateArgument::TemplateExpansion: {
+                if(auto* decl = arg.getAsTemplateOrTemplatePattern().getAsTemplateDecl()) {
+                    add(decl, decl);
+                }
+                break;
+            }
+            case clang::TemplateArgument::Pack: {
+                for(const auto& element: arg.pack_elements()) {
+                    argument(element);
+                }
+                break;
+            }
+            default: break;
+        }
+    }
+
+    /// `spelled` gives the name, `target` the declaration the link reaches.
+    void add(const clang::NamedDecl* spelled, const clang::NamedDecl* target) {
+        const auto* record = llvm::dyn_cast_if_present<clang::CXXRecordDecl>(target);
+        if(!target || !spelled->getIdentifier() || (record && record->isLambda())) {
+            return;
+        }
+        names.push_back({spelled->getName(), target});
+    }
 };
 
 /// Collects hints by walking the unit's cached Semantics node table — the
@@ -283,7 +430,9 @@ private:
 
     using NameVec = llvm::SmallVector<llvm::StringRef, 8>;
 
-    NameVec choose_param_names(llvm::ArrayRef<const clang::ParmVarDecl*> params) {
+    /// Each parameter's name, and the declaration spelling it.
+    NameVec choose_param_names(llvm::ArrayRef<const clang::ParmVarDecl*> params,
+                               llvm::SmallVectorImpl<const clang::ParmVarDecl*>& named) {
         NameVec param_names;
         for(const auto* param: params) {
             if(decls::underlying_pack_type(param)) {
@@ -291,6 +440,7 @@ private:
                 // non-pack parameter, then hinting as foo(args: 1, args: 2, args: 3) is
                 // unlikely to be useful.
                 param_names.emplace_back();
+                named.push_back(param);
             } else {
                 llvm::StringRef simple_name = display::identifier_of(param);
                 // If the parameter is unnamed in the declaration:
@@ -298,10 +448,12 @@ private:
                 if(simple_name.empty()) {
                     if(const auto* def = param_definition(param)) {
                         simple_name = display::identifier_of(def);
+                        param = def;
                     }
                 }
                 // Still unnamed: an empty entry, the hint is dropped later.
                 param_names.emplace_back(simple_name);
+                named.push_back(param);
             }
         }
 
@@ -332,7 +484,7 @@ private:
             }
         }
 
-        llvm::SmallVector<std::string> formatted_default_args;
+        llvm::SmallVector<std::vector<InlayHintPart>> formatted_default_args;
         bool has_non_default_args = false;
 
         llvm::ArrayRef<const clang::ParmVarDecl*> params, forwarded_params;
@@ -356,7 +508,8 @@ private:
             forwarded_params = {params.begin(), params.end()};
         }
 
-        NameVec param_names = choose_param_names(forwarded_params);
+        llvm::SmallVector<const clang::ParmVarDecl*, 8> named_params;
+        NameVec param_names = choose_param_names(forwarded_params, named_params);
 
         // Exclude setters (i.e. functions with one argument whose name begins with
         // "set"), and builtins like std::move/forward/... as their parameter name
@@ -390,42 +543,51 @@ private:
                     const bool too_long =
                         options.type_name_limit && text.size() > options.type_name_limit;
                     const auto abbrev = (too_long || text.contains("\n")) ? "..." : text;
+                    auto& element = formatted_default_args.emplace_back();
                     if(name_hint) {
-                        formatted_default_args.emplace_back(std::format("{0}: {1}", name, abbrev));
-                    } else {
-                        formatted_default_args.emplace_back(std::format("{0}", abbrev));
+                        append(element, linked(name, named_params[i]));
+                        append(element, plain(": "));
                     }
+                    append(element, plain(abbrev));
                 }
             } else if(name_hint || reference_hint) {
+                std::vector<InlayHintPart> label;
+                if(name_hint) {
+                    label.push_back(linked(name, named_params[i]));
+                }
                 add_inlay_hint(args[i]->getSourceRange(),
                                HintSide::Left,
                                HintCategory::Parameter,
                                reference_hint ? "&" : "",
-                               name_hint ? name : "",
+                               std::move(label),
                                ": ");
             }
         }
 
         if(!formatted_default_args.empty()) {
-            std::string hint;
-            llvm::raw_string_ostream os(hint);
-            llvm::ListSeparator sep(", ");
+            std::vector<InlayHintPart> hint;
+            std::size_t size = 0;
             for(auto&& element: formatted_default_args) {
-                os << sep;
-                if(options.type_name_limit &&
-                   hint.size() + element.size() >= options.type_name_limit) {
-                    os << "...";
+                if(!hint.empty()) {
+                    append(hint, plain(", "));
+                    size += 2;
+                }
+                auto element_size = text_size(element);
+                if(options.type_name_limit && size + element_size >= options.type_name_limit) {
+                    append(hint, plain("..."));
                     break;
                 }
-                os << element;
+                for(auto& part: element) {
+                    append(hint, std::move(part));
+                }
+                size += element_size;
             }
-            os.flush();
 
             add_inlay_hint(clang::SourceRange(rpunc_location),
                            HintSide::Left,
                            HintCategory::DefaultArgument,
                            has_non_default_args ? ", " : "",
-                           hint,
+                           std::move(hint),
                            "");
         }
     }
@@ -449,7 +611,12 @@ private:
             return;
         }
 
-        add_inlay_hint(*hint_range, HintSide::Right, HintCategory::BlockEnd, " // ", label, "");
+        add_inlay_hint(*hint_range,
+                       HintSide::Right,
+                       HintCategory::BlockEnd,
+                       " // ",
+                       {plain(label)},
+                       "");
     }
 
     void mark_block_end(const clang::Stmt* body, llvm::StringRef label, llvm::StringRef name = "") {
@@ -458,27 +625,112 @@ private:
         }
     }
 
+    static InlayHintPart plain(llvm::StringRef text) {
+        return {.value = text.str()};
+    }
+
+    /// A label piece reaching `decl`, as the index knows it.
+    InlayHintPart linked(llvm::StringRef text, const clang::NamedDecl* decl) {
+        // Only a written declaration has rows to reach.
+        if(decl->getLocation().isInvalid()) {
+            return plain(text);
+        }
+        if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(decl)) {
+            decl = written_param(param);
+        }
+        const auto* symbol = decls::normalize(decl);
+        InlayHintPart part{.value = text.str(), .symbol = unit.entity(symbol)};
+        if(index::classify_scope(symbol) != index::SymbolScope::External) {
+            part.anchor = unit.file_path(unit.file_id(unit.file_location(symbol->getLocation())));
+        }
+        return part;
+    }
+
+    /// The parameter of the written function an instantiated one stands
+    /// for: an instantiation's declarations have no rows of their own.
+    static const clang::ParmVarDecl* written_param(const clang::ParmVarDecl* param) {
+        const auto* function = llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext());
+        const auto* pattern = function ? function->getTemplateInstantiationPattern() : nullptr;
+        if(!pattern) {
+            return param;
+        }
+        // A pack expands to any number of parameters: past it, indices
+        // part ways.
+        auto index = param->getFunctionScopeIndex();
+        auto patterns = pattern->parameters().take_front(index + 1);
+        if(patterns.size() <= index ||
+           llvm::any_of(patterns, [](const auto* each) { return each->isParameterPack(); })) {
+            return param;
+        }
+        return patterns.back();
+    }
+
+    /// Append a piece, merging plain text into the plain text before it.
+    static void append(std::vector<InlayHintPart>& label, InlayHintPart part) {
+        if(part.value.empty()) {
+            return;
+        }
+        if(!label.empty() && !label.back().symbol && !part.symbol) {
+            label.back().value += part.value;
+            return;
+        }
+        label.push_back(std::move(part));
+    }
+
+    static std::size_t text_size(llvm::ArrayRef<InlayHintPart> label) {
+        std::size_t size = 0;
+        for(const auto& part: label) {
+            size += part.value.size();
+        }
+        return size;
+    }
+
+    /// The pieces of `text`, the printed form of `type`: a name the printer
+    /// wrote for a declaration links to it, the rest stays plain.
+    std::vector<InlayHintPart> type_label(clang::QualType type, llvm::StringRef text) {
+        SpelledNames spelled;
+        spelled.walk(type);
+        std::vector<InlayHintPart> label;
+        std::size_t cursor = 0;
+        for(const auto& [name, decl]: spelled.names) {
+            for(auto at = text.find(name, cursor); at != llvm::StringRef::npos;
+                at = text.find(name, at + 1)) {
+                auto end = at + name.size();
+                bool whole = (at == 0 || !clang::isAsciiIdentifierContinue(text[at - 1])) &&
+                             (end == text.size() || !clang::isAsciiIdentifierContinue(text[end]));
+                if(whole) {
+                    append(label, plain(text.slice(cursor, at)));
+                    append(label, linked(name, decl));
+                    cursor = end;
+                    break;
+                }
+            }
+        }
+        append(label, plain(text.substr(cursor)));
+        return label;
+    }
+
     // We pass HintSide rather than SourceLocation because we want to ensure
     // it is in the same file as the common file range.
     void add_inlay_hint(clang::SourceRange range,
                         HintSide side,
                         HintCategory kind,
                         llvm::StringRef prefix,
-                        llvm::StringRef label,
+                        std::vector<InlayHintPart> label,
                         llvm::StringRef suffix) {
         auto local_range = hint_range(range);
         if(!local_range) {
             return;
         }
 
-        add_inlay_hint(*local_range, side, kind, prefix, label, suffix);
+        add_inlay_hint(*local_range, side, kind, prefix, std::move(label), suffix);
     }
 
     void add_inlay_hint(LocalSourceRange range,
                         HintSide side,
                         HintCategory kind,
                         llvm::StringRef prefix,
-                        llvm::StringRef label,
+                        std::vector<InlayHintPart> label,
                         llvm::StringRef suffix) {
         // We shouldn't get as far as adding a hint if the category is disabled.
         // We'd like to disable as much of the analysis as possible above instead.
@@ -495,10 +747,14 @@ private:
         InlayHint hint{
             .offset = offset,
             .kind = kind,
-            .label = (prefix + label + suffix).str(),
             .padding_left = pad_left,
             .padding_right = pad_right,
         };
+        append(hint.label, plain(prefix));
+        for(auto& part: label) {
+            append(hint.label, std::move(part));
+        }
+        append(hint.label, plain(suffix));
         result.push_back(std::move(hint));
     }
 
@@ -516,6 +772,7 @@ private:
         if(type != desugared && !should_print(type_name)) {
             // If the desugared type is too long to display, fallback to the sugared
             // type.
+            desugared = type;
             type_name = display::type(unit.context(), type, display_options).text;
         }
 
@@ -524,18 +781,9 @@ private:
                            HintSide::Right,
                            HintCategory::Type,
                            prefix,
-                           type_name,
+                           type_label(desugared, type_name),
                            /*Suffix=*/"");
         }
-    }
-
-    void add_designator_hint(clang::SourceRange range, llvm::StringRef text) {
-        add_inlay_hint(range,
-                       HintSide::Left,
-                       HintCategory::Designator,
-                       /*Prefix=*/"",
-                       text,
-                       /*Suffix=*/"=");
     }
 
     /// Hint the unwritten designators of a syntactic init list, e.g. `.x`
@@ -551,8 +799,49 @@ private:
             if(it == designators.end() || has_param_name_comment(init, it->second)) {
                 continue;
             }
-            add_designator_hint(init->getSourceRange(), it->second);
+            add_inlay_hint(init->getSourceRange(),
+                           HintSide::Left,
+                           HintCategory::Designator,
+                           /*Prefix=*/"",
+                           designator_label(syntactic->getType(), it->second),
+                           /*Suffix=*/"=");
         }
+    }
+
+    /// The pieces of a designator such as `.inner.x` or `[2].x`: each field
+    /// name links to the field, looked up from the aggregate's type down.
+    std::vector<InlayHintPart> designator_label(clang::QualType aggregate,
+                                                llvm::StringRef designator) {
+        std::vector<InlayHintPart> label;
+        while(!designator.empty()) {
+            if(designator.consume_front("[")) {
+                auto index = designator.take_until([](char c) { return c == ']'; });
+                designator = designator.drop_front(index.size() + 1);
+                append(label, plain(("[" + index + "]").str()));
+                const auto* array = aggregate->getAsArrayTypeUnsafe();
+                aggregate = array ? array->getElementType() : clang::QualType();
+                continue;
+            }
+            designator.consume_front(".");
+            auto name = designator.take_until([](char c) { return c == '.' || c == '['; });
+            designator = designator.drop_front(name.size());
+            append(label, plain("."));
+            const auto* record = aggregate.isNull() ? nullptr : aggregate->getAsRecordDecl();
+            const clang::ValueDecl* field = nullptr;
+            if(record) {
+                auto& identifier = unit.context().Idents.get(name);
+                for(auto* found: record->lookup(&identifier)) {
+                    if(auto* indirect = llvm::dyn_cast<clang::IndirectFieldDecl>(found)) {
+                        field = indirect->getAnonField();
+                    } else if(auto* direct = llvm::dyn_cast<clang::FieldDecl>(found)) {
+                        field = direct;
+                    }
+                }
+            }
+            append(label, field ? linked(name, field) : plain(name));
+            aggregate = field ? field->getType() : clang::QualType();
+        }
+        return label;
     }
 
     void add_return_type_hint(const clang::FunctionDecl* decl, clang::SourceRange range) {
@@ -994,24 +1283,37 @@ auto inlay_hints(CompilationUnitRef unit, LocalSourceRange target, const InlayHi
     return raw_hints;
 }
 
-auto inlay_hints(CompilationUnitRef unit,
-                 LocalSourceRange target,
-                 const InlayHintsOptions& options,
-                 PositionEncoding encoding) -> std::vector<protocol::InlayHint> {
-    auto collected = inlay_hints(unit, target, options);
-    auto map = main_position_map(unit, encoding);
+auto inlay_hints_to_protocol(
+    llvm::ArrayRef<InlayHint> hints,
+    const PositionMap& map,
+    llvm::function_ref<void(const InlayHint&, protocol::InlayHint&)> link)
+    -> std::vector<protocol::InlayHint> {
+    std::vector<protocol::InlayHint> result;
+    result.reserve(hints.size());
 
-    std::vector<protocol::InlayHint> hints;
-    hints.reserve(collected.size());
-
-    for(const auto& hint: collected) {
+    for(const auto& hint: hints) {
         auto pos = map.to_position(hint.offset);
         if(!pos)
             continue;
-        protocol::InlayHint out{
-            .position = *pos,
-            .label = hint.label,
-        };
+        protocol::InlayHint out{.position = *pos};
+
+        bool linked = llvm::any_of(hint.label, [](const InlayHintPart& part) {
+            return part.symbol != 0;
+        });
+        if(linked && link) {
+            std::vector<protocol::InlayHintLabelPart> parts;
+            for(const auto& part: hint.label) {
+                parts.push_back({.value = part.value});
+            }
+            out.label = std::move(parts);
+            link(hint, out);
+        } else {
+            std::string label;
+            for(const auto& part: hint.label) {
+                label += part.value;
+            }
+            out.label = std::move(label);
+        }
 
         switch(hint.kind) {
             case HintCategory::Parameter:
@@ -1031,10 +1333,10 @@ auto inlay_hints(CompilationUnitRef unit,
             out.padding_right = true;
         }
 
-        hints.push_back(std::move(out));
+        result.push_back(std::move(out));
     }
 
-    return hints;
+    return result;
 }
 
 }  // namespace clice::feature

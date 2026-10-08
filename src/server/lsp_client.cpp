@@ -15,6 +15,7 @@ import :server.extension;
 import :server.file_tracker;
 import :server.format;
 import :server.lsp_client;
+import :server.lsp_projection;
 import :server.master_server;
 import :server.uri;
 import :support.anomaly;
@@ -292,6 +293,14 @@ void LSPClient::register_lifecycle() {
                            params.capabilities.text_document->diagnostic.has_value();
 
         if(params.capabilities.text_document.has_value() &&
+           params.capabilities.text_document->inlay_hint.has_value()) {
+            auto& resolve = params.capabilities.text_document->inlay_hint->resolve_support;
+            inlay_hint_labels = resolve && llvm::is_contained(resolve->properties, "label.location")
+                                    ? InlayHintLabels::Deferred
+                                    : InlayHintLabels::Located;
+        }
+
+        if(params.capabilities.text_document.has_value() &&
            params.capabilities.text_document->folding_range.has_value()) {
             line_folding_only = params.capabilities.text_document->folding_range->line_folding_only;
         }
@@ -356,7 +365,11 @@ void LSPClient::register_lifecycle() {
         caps.document_link_provider = protocol::DocumentLinkOptions{};
         caps.folding_range_provider = true;
         caps.selection_range_provider = true;
-        caps.inlay_hint_provider = true;
+        if(inlay_hint_labels == InlayHintLabels::Deferred) {
+            caps.inlay_hint_provider = protocol::InlayHintOptions{.resolve_provider = true};
+        } else {
+            caps.inlay_hint_provider = true;
+        }
         caps.call_hierarchy_provider = true;
         caps.type_hierarchy_provider = true;
         caps.workspace_symbol_provider = true;
@@ -702,9 +715,18 @@ void LSPClient::register_language_features() {
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
             return kota::outcome_error(unserved(path));
-        return holding(
-            project,
-            project->features.inlay_hints(Ticket::take(session), params.range, ctx.cancellation));
+        return holding(project,
+                       project->features.inlay_hints(Ticket::take(session),
+                                                     params.range,
+                                                     inlay_hint_labels,
+                                                     ctx.cancellation));
+    });
+
+    peer.on_request([this](RequestContext& ctx, const protocol::InlayHint& hint) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto data = to_lsp::inlay_hint_data(hint.data);
+        auto project = data ? resolve_uri(data->uri).project : this->server.projects.front();
+        return holding(project, project->features.resolve_inlay_hint(hint));
     });
 
     peer.on_request(

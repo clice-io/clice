@@ -300,6 +300,14 @@ clang::SourceRange SelectionTree::Node::source_range() const {
     return get_source_range(data);
 }
 
+const clang::Decl* SelectionTree::Node::owning_decl() const {
+    const Node* node = this;
+    while(!node->get<clang::Decl>()) {
+        node = node->parent;
+    }
+    return node->get<clang::Decl>();
+}
+
 const SelectionTree::Node& SelectionTree::Node::ignore_implicit() const {
     if(children.size() == 1 && children.front()->source_range() == source_range()) {
         return children.front()->ignore_implicit();

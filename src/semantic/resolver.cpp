@@ -2871,6 +2871,12 @@ clang::TagDecl* TemplateResolver::resolve_tag(clang::QualType type) {
     return instantiator.select_pattern(CTD, TST->template_arguments());
 }
 
+clang::QualType TemplateResolver::deduce(const clang::VarDecl* var) {
+    PseudoInstantiator instantiator(context, resolved);
+    auto type = instantiator.deduce_auto(var);
+    return type.isNull() ? type : instantiator.resolve(type);
+}
+
 clang::QualType TemplateResolver::member_object(const clang::Expr* base, bool arrow) {
     PseudoInstantiator instantiator(context, resolved);
     return instantiator.resolve_object(
