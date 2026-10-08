@@ -668,6 +668,9 @@ module lib:guarded;
     ZEXPECT(llvm::sys::fs::equivalent(provider("lib:detail"), tmp.path("src/detail.cppm")));
     ZEXPECT(llvm::sys::fs::equivalent(provider("lib:guarded"), tmp.path("src/guarded.cppm")));
     ZEXPECT(graph.module_count() == 3u);
+    ZEXPECT(!graph.internal_partition(graph.lookup_module("lib").front()));
+    ZEXPECT(graph.internal_partition(graph.lookup_module("lib:detail").front()));
+    ZEXPECT(graph.internal_partition(graph.lookup_module("lib:guarded").front()));
 
     auto impl = file_table.intern(Spelling::absolute(tmp.path("src/impl.cpp")));
     ZEXPECT(graph.module_of(impl).empty());
@@ -841,6 +844,33 @@ ZEST_CASE(RescanScansNewHeader) {
     rescan_dependency_graph(cdb, graph, main);
     ZEXPECT(graph.get_all_includes(b) == llvm::SmallVector<Fid>{c});
     ZEXPECT(graph.reaches_import(main));
+}
+
+ZEST_CASE(RescanTracksPartitionKind) {
+    TempDir tmp;
+    tmp.touch("src/part.cppm", "export module lib:part;\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("src/part.cppm"), {}}
+    }));
+    scan_all(cdb, graph);
+    auto part = file_table.intern(Spelling::absolute(tmp.path("src/part.cppm")));
+    ZEXPECT(!graph.internal_partition(part));
+
+    tmp.touch("src/part.cppm", "module lib:part;\n");
+    rescan_dependency_graph(cdb, graph, part);
+    ZEXPECT(graph.module_of(part) == "lib:part");
+    ZEXPECT(graph.internal_partition(part));
+
+    tmp.touch("src/part.cppm", "module lib;\n");
+    rescan_dependency_graph(cdb, graph, part);
+    ZEXPECT(graph.module_of(part).empty());
+    ZEXPECT(!graph.internal_partition(part));
 }
 
 ZEST_CASE(RescanResumesIncludeNext) {

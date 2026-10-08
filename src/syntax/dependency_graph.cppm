@@ -49,8 +49,9 @@ public:
         }
     };
 
-    /// Register a unit providing a module: module name -> fid.
-    void add_module(llvm::StringRef module_name, Fid path_id);
+    /// Register a unit providing a module: module name -> fid. `internal`
+    /// marks an internal partition (ScanResult::is_internal_partition).
+    void add_module(llvm::StringRef module_name, Fid path_id, bool internal = false);
 
     /// Re-register a file's module declaration after a save: the file
     /// leaves whatever module it declared before and, when `module_name`
@@ -65,6 +66,11 @@ public:
     /// ScanResult::provided_module); empty for every other file. Borrowed from the graph:
     /// copy it before a suspension that could re-declare the file.
     llvm::StringRef module_of(Fid path_id) const;
+
+    /// Whether the module the file provides is an internal partition.
+    bool internal_partition(Fid path_id) const {
+        return internal_partitions.contains(path_id);
+    }
 
     /// Set the direct include list for a (file, config) pair.
     void set_includes(Fid path_id,
@@ -199,6 +205,9 @@ private:
 
     /// The inverse of module_to_path, maintained by the same two writers.
     llvm::DenseMap<Fid, std::string> module_by_path;
+
+    /// The providers of internal partitions, maintained with module_by_path.
+    llvm::DenseSet<Fid> internal_partitions;
 
     /// See record_scan().
     llvm::DenseSet<Fid> import_candidates;

@@ -108,7 +108,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
                 .offsets = std::move(scanned.import_offsets),
                 .module_unit = !scanned.module_name.empty()};
         // An implementation unit imports its own module implicitly.
-        if(scanned.is_implementation_unit) {
+        if(scanned.is_implementation_unit()) {
             scan.imports.push_back(std::move(scanned.module_name));
             scan.offsets.push_back(std::numeric_limits<std::uint32_t>::max());
         }

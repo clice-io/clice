@@ -17,12 +17,17 @@ namespace clice {
 
 // DependencyGraph implementation
 
-void DependencyGraph::add_module(llvm::StringRef module_name, Fid path_id) {
+void DependencyGraph::add_module(llvm::StringRef module_name, Fid path_id, bool internal) {
     auto& ids = module_to_path[module_name];
     if(llvm::find(ids, path_id) == ids.end()) {
         ids.push_back(path_id);
     }
     module_by_path[path_id] = module_name.str();
+    if(internal) {
+        internal_partitions.insert(path_id);
+    } else {
+        internal_partitions.erase(path_id);
+    }
 }
 
 void DependencyGraph::update_module_decl(Fid path_id, llvm::StringRef module_name) {
@@ -42,6 +47,7 @@ void DependencyGraph::update_module_decl(Fid path_id, llvm::StringRef module_nam
         llvm::erase(entry.getValue(), path_id);
     }
     module_by_path.erase(path_id);
+    internal_partitions.erase(path_id);
     if(!module_name.empty()) {
         add_module(module_name, path_id);
     }
@@ -486,6 +492,12 @@ struct CachedInclude {
     std::optional<unsigned> found_dir_idx;
 };
 
+/// The module a unit provides to importers, empty for every other file.
+struct ProvidedModule {
+    std::string name;
+    bool internal = false;
+};
+
 /// The per-file step of every scan, the full one and a single file's
 /// rescan alike: a file's scan under one context becomes its module
 /// syntax, a unit's forced includes, and its include edges. The listings,
@@ -497,14 +509,12 @@ struct FileScanner {
 
     /// Record `path_id`'s scan of the bytes hashing to `hash` under
     /// `context`. A file it includes or forces in that the scan reaches
-    /// for the first time gets its context and goes to `reach`. Returns
-    /// the module a unit provides to importers, empty for every other
-    /// file.
-    std::string record(Fid path_id,
-                       ScanContext context,
-                       ScanResult scan,
-                       std::uint64_t hash,
-                       llvm::function_ref<void(Fid, ScanContext)> reach) {
+    /// for the first time gets its context and goes to `reach`.
+    ProvidedModule record(Fid path_id,
+                          ScanContext context,
+                          ScanResult scan,
+                          std::uint64_t hash,
+                          llvm::function_ref<void(Fid, ScanContext)> reach) {
         auto reached = [&](Fid target, std::optional<unsigned> found_dir_idx) {
             if(graph.contexts(target).empty()) {
                 ScanContext target_context{.group = context.group, .found_dir_idx = found_dir_idx};
@@ -514,7 +524,7 @@ struct FileScanner {
         };
 
         auto& search = search_of(context.group);
-        std::string module;
+        ProvidedModule module;
         if(context.unit) {
             module = module_of(path_id, context, scan, hash);
             for(auto& header: forced_of(context.group)) {
@@ -640,7 +650,8 @@ struct FileScanner {
     /// preprocessor conditionals is beyond the lexical scan: a
     /// preprocessor run under the unit's own group command resolves it —
     /// only its flags (a define unguarding the declaration) can.
-    std::string module_of(Fid path_id, ScanContext context, ScanResult& scan, std::uint64_t hash) {
+    ProvidedModule
+        module_of(Fid path_id, ScanContext context, ScanResult& scan, std::uint64_t hash) {
         if(scan.need_preprocess) {
             if(auto observed = vfs::read_observed(files.resolve(path_id))) {
                 // The preprocessor must consume the bytes that produced
@@ -660,10 +671,10 @@ struct FileScanner {
                 auto declared = scan_module_decl(rendered,
                                                  cdb.config(group.config).directory,
                                                  observed->content->getBuffer());
-                return declared.provided_module().str();
+                return {declared.provided_module().str(), declared.is_internal_partition()};
             }
         }
-        return scan.provided_module().str();
+        return {scan.provided_module().str(), scan.is_internal_partition()};
     }
 
     CompilationDatabase& cdb;
@@ -921,8 +932,8 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                                          std::move(scan_result.scan_result),
                                          scan_result.obs.hash,
                                          reach);
-            if(!module.empty()) {
-                graph.add_module(module, scan_result.path_id);
+            if(!module.name.empty()) {
+                graph.add_module(module.name, scan_result.path_id, module.internal);
             }
         }
 
@@ -1008,18 +1019,18 @@ void rescan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph, F
         // A unit provides what its commands declare, as on the full scan;
         // a name it keeps declaring keeps its place among the providers.
         bool unit = false;
-        llvm::SmallVector<std::string, 1> declared;
+        llvm::SmallVector<ProvidedModule, 1> declared;
         for(auto context: contexts) {
             auto module = scanner.record(fid, context, result, observed->obs.hash, reach);
             unit |= context.unit;
-            if(!module.empty()) {
+            if(!module.name.empty()) {
                 declared.push_back(std::move(module));
             }
         }
         if(unit) {
-            graph.update_module_decl(fid, declared.empty() ? "" : declared.front());
+            graph.update_module_decl(fid, declared.empty() ? "" : declared.front().name);
             for(auto& module: declared) {
-                graph.add_module(module, fid);
+                graph.add_module(module.name, fid, module.internal);
             }
         }
     };

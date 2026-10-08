@@ -848,9 +848,8 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             // NUL terminator a copy provides.
             llvm::StringRef text = session->text;
             auto declared = text.take_front(text.rfind('\n', pctx.replace.begin) + 1).str();
-            auto module_names = complete_module_import(project.dep_graph,
-                                                       pctx.prefix,
-                                                       scan_quick(declared).module_name);
+            auto module_names =
+                complete_module_import(project.dep_graph, pctx.prefix, scan_quick(declared));
             std::vector<protocol::CompletionItem> items;
             items.reserve(module_names.size());
             for(auto& name: module_names) {
