@@ -916,6 +916,21 @@ Features::RawResult Features::references(Ticket ticket,
         })));
 }
 
+Features::RawResult Features::document_highlight(Ticket ticket,
+                                                 Fid path_id,
+                                                 const protocol::Position& position) {
+    if(ticket.session) {
+        if(auto stop = co_await nav_gate(ticket)) {
+            co_return co_await stop_reply(std::move(*stop));
+        }
+    }
+    auto cursor = cursor_at(path_id, position);
+    if(!cursor) {
+        co_return serde_raw{"[]"};
+    }
+    co_return to_raw(to_lsp::document_highlights(query.document_highlights(*cursor)));
+}
+
 static kota::ipc::Error rename_refused(std::string message) {
     return kota::ipc::Error{static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
                             std::move(message)};

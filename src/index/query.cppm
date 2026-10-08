@@ -134,6 +134,41 @@ void dedup_sites(std::vector<Site>& sites);
 /// (`operator` of `operator Foo*`, whose `Foo` is the class's).
 bool covers(const Site& row, const Site& cursor);
 
+struct Named {
+    LocalSourceRange range;
+    llvm::SmallVector<SymbolHash, 1> symbols;
+};
+
+/// The symbols one row set names at `offset`, and the range naming them:
+/// the occurrences sharing the first range the lookup meets. A module
+/// imported through a macro sits under the macro's own occurrence — the
+/// name spells what the macro expanded to, and the macro itself is
+/// reached at its definition — so a macro gives way to the symbols it
+/// shares its range with.
+std::optional<Named> named_at(const Shard& rows,
+                              std::uint32_t offset,
+                              llvm::function_ref<bool(SymbolHash)> is_macro);
+
+/// How the code at a highlighted name accesses its symbol.
+enum class HighlightKind : std::uint8_t {
+    /// A declaration or definition.
+    Text,
+    Read,
+    Write,
+};
+
+struct Highlight {
+    LocalSourceRange range;
+    HighlightKind kind;
+};
+
+/// The rows of `symbols` in the row sets of one text, one highlight per
+/// range in range order: a Write row makes it Write, a reference Read, a
+/// declaration or definition Text — the strongest of them where several
+/// rows share a range.
+std::vector<Highlight> highlights(llvm::ArrayRef<const Shard*> rows,
+                                  llvm::ArrayRef<SymbolHash> symbols);
+
 /// Read-only queries over every index source: disk shards, open sessions'
 /// file indexes, PCH overlays and the buffers' own preamble rows. Holds no
 /// index data of its own — ProjectIndex owns the disk-derived index, the
@@ -280,6 +315,16 @@ public:
     /// declarations and definitions, deduplicated across the kinds — rows of
     /// different kinds can share one anchor.
     std::vector<Site> references(const Cursor& cursor, bool include_declaration) const;
+
+    struct PlacedHighlight {
+        Site site;
+        HighlightKind kind;
+    };
+
+    /// The highlights of the symbols under the cursor in the cursor's own
+    /// file, from the rows serving it — a session's preamble region
+    /// included.
+    std::vector<PlacedHighlight> document_highlights(const Cursor& cursor) const;
 
     /// One canonical site per distinct relation target — the two-hop query
     /// behind go-to-type-definition.

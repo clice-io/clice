@@ -54,11 +54,13 @@ import { renderMarkdownTable, rewriteRegions, type RegionMarkers } from "./gener
 
 // feature -> doc path (relative to repo root). Extend as more features
 // adopt fixture-generated docs. Several corpora may feed one doc page
-// (navigation.md aggregates the navigation and workspace_symbol corpora);
-// their fixtures must then use disjoint section keys.
+// (navigation.md aggregates the navigation, document_highlight and
+// workspace_symbol corpora); their fixtures must then use disjoint section
+// keys.
 const FEATURES: Record<string, string> = {
     code_action: "docs/en/features/code-action.md",
     code_completion: "docs/en/features/completion.md",
+    document_highlight: "docs/en/features/navigation.md",
     document_links: "docs/en/features/document-links.md",
     document_symbol: "docs/en/features/document-symbols.md",
     hover: "docs/en/features/hover.md",
@@ -78,7 +80,11 @@ const OVERVIEW_ROWS: { name: string; page: string; keys?: string[]; label?: stri
     { name: "Code Completion", page: "completion", keys: ["code_completion"] },
     { name: "Hover", page: "hover", keys: ["hover"] },
     { name: "Signature Help", page: "signature-help", keys: ["signature_help"] },
-    { name: "Code Navigation", page: "navigation", keys: ["navigation", "workspace_symbol"] },
+    {
+        name: "Code Navigation",
+        page: "navigation",
+        keys: ["navigation", "document_highlight", "workspace_symbol"],
+    },
     { name: "Document Links", page: "document-links", keys: ["document_links"] },
     { name: "Semantic Tokens", page: "semantic-tokens", keys: ["semantic_tokens"] },
     { name: "Inlay Hints", page: "inlay-hints", keys: ["inlay_hint"] },

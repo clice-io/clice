@@ -1,0 +1,7 @@
+---
+created_at: 2026-10-08
+input_file: forwarding_into_varargs.cpp
+---
+first:
+  - { range: "13:4-13:9", kind: Text }
+  - { range: "15:22-15:27", kind: Read }
