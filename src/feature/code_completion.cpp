@@ -808,6 +808,18 @@ public:
             }
         }
 
+        // Clang offers `import` at file scope of a module interface alone,
+        // yet an implementation unit imports past its module declaration
+        // just the same.
+        if(context.getKind() == clang::CodeCompletionContext::CCC_TopLevel &&
+           sema.CurContext->isTranslationUnit()) {
+            if(auto* module = sema.getCurrentModule();
+               module && (module->Kind == clang::Module::ModuleImplementationUnit ||
+                          module->Kind == clang::Module::ModulePartitionImplementation)) {
+                add({.label = "import", .kind = protocol::CompletionItemKind::Keyword});
+            }
+        }
+
         for(auto& entry: overloads) {
             if(entry.count > 1) {
                 protocol::CompletionItemLabelDetails details;

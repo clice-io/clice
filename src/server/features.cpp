@@ -18,6 +18,7 @@ import :server.lsp_projection;
 import :server.query_commands;
 import :syntax.completion;
 import :syntax.include_resolver;
+import :syntax.scan;
 import :vfs.dir_cache;
 import :vfs.file_system;
 import :worker.protocol;
@@ -841,8 +842,14 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             co_return to_raw(items);
         }
         if(pctx.kind == CompletionContext::Import) {
-            auto module_names = complete_module_import(project.dep_graph, pctx.prefix);
+            llvm::StringRef text = session->text;
+            auto module_names = complete_module_import(project.dep_graph,
+                                                       pctx.prefix,
+                                                       scan_quick(text).module_name);
 
+            // A statement closed already keeps its semicolon.
+            auto line_end = std::min(text.find_first_of("\r\n", pctx.replace.end), text.size());
+            bool closed = text.slice(pctx.replace.end, line_end).contains(';');
             std::vector<protocol::CompletionItem> items;
             items.reserve(module_names.size());
             for(auto& name: module_names) {
@@ -851,7 +858,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 item.kind = protocol::CompletionItemKind::Module;
                 item.text_edit = protocol::TextEdit{
                     .range = *map.to_range(pctx.replace),
-                    .new_text = name + ";",
+                    .new_text = closed ? name : name + ";",
                 };
                 items.push_back(std::move(item));
             }

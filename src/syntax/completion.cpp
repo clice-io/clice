@@ -138,12 +138,8 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
         return {};
     }
 
-    // Only complete while the statement is still open on this line.
-    auto line_end = text.find('\n', offset);
-    if(line_end == llvm::StringRef::npos) {
-        line_end = text.size();
-    }
-    if(text.slice(first.range.begin, line_end).contains(';')) {
+    // Only complete before the statement's semicolon.
+    if(text.slice(first.range.begin, offset).contains(';')) {
         return {};
     }
 
@@ -164,18 +160,37 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
 }
 
 std::vector<std::string> complete_module_import(const DependencyGraph& graph,
-                                                llvm::StringRef prefix) {
-    std::vector<std::string> results;
-    // FIXME: exclude the current file's own module name from results
-    // (self-import is never valid). Needs the requesting path_id passed in.
+                                                llvm::StringRef prefix,
+                                                llvm::StringRef module_name) {
     // TODO: the graph's declarations are only refreshed on file save;
     // unsaved new module files won't appear in completions until written
     // to disk.
+    auto [module, own_partition] = module_name.split(':');
+    std::vector<std::string> results;
     for(auto& entry: graph.modules()) {
-        if(!entry.getValue().empty() && entry.getKey().starts_with(prefix)) {
-            results.push_back(entry.getKey().str());
+        if(entry.getValue().empty()) {
+            continue;
+        }
+        // A partition is imported by its own module alone, by the partition
+        // name; a unit never imports its own module or itself.
+        auto [owner, partition] = entry.getKey().split(':');
+        std::string name;
+        if(partition.empty()) {
+            if(owner == module) {
+                continue;
+            }
+            name = owner.str();
+        } else {
+            if(module.empty() || owner != module || partition == own_partition) {
+                continue;
+            }
+            name = std::format(":{}", partition);
+        }
+        if(llvm::StringRef(name).starts_with(prefix)) {
+            results.push_back(std::move(name));
         }
     }
+    std::ranges::sort(results);
     return results;
 }
 

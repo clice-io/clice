@@ -1,0 +1,6 @@
+---
+created_at: 2026-10-08
+input_file: module_completion/03_import_keyword/main.cpp
+---
+keyword:
+- { label: "import", kind: Keyword, edit: "8:0-8:3" }
