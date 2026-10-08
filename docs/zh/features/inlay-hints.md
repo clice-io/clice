@@ -241,6 +241,18 @@ tests/snap/inlay_hint/parameter_hints/19_param_pack_constructors.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**默认实参的参数名**
+
+默认实参提示中的参数名会链接到对应的参数，与参数名提示相同
+
+```snap
+tests/snap/inlay_hint/parameter_hints/20_param_default_arguments.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 类型提示
@@ -392,6 +404,20 @@ tests/snap/inlay_hint/type_hints/12_type_conflicting_instantiations.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported clangd#1535 -->
+
+**可点击的类型名**
+
+类型提示中的每个类型名都链接到其声明：点击即跳转到定义，悬停则显示该类型的悬停卡片
+
+对于在定义之前已有声明的类，链接指向那个声明，从那里执行“跳转到定义”即可到达定义。模板实参各自单独链接；内置类型和标点符号保持为纯文本。
+
+```snap
+tests/snap/inlay_hint/type_hints/13_type_links/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 指派符提示
@@ -482,6 +508,18 @@ tests/snap/inlay_hint/designator_hints/07_designator_parenthesized.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**库中的数组类型**
+
+类似 `std::array` 的包装类型只有一个成员数组，指派符中不会出现这个成员
+
+```snap
+tests/snap/inlay_hint/designator_hints/08_designator_library_array.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 其他提示类型
@@ -567,10 +605,10 @@ log(2);
 - 请求按范围限定：请求范围之外的提示会被丢弃。
 - 参数提示锚定在实参左侧；类型提示和指派符提示锚定在声明一侧，通过 LSP 的间距标志控制间距，而不嵌入空格。
 - 内容完全相同的重复提示（例如模板实例化产生的提示）会合并为一条。
+- 提示中的类型名、参数名和指派符字段都是链接：点击会跳转到所指符号的定义，悬停则显示该符号的悬停卡片。符号存在声明时，链接指向该声明，这样从链接处执行“跳转到定义”即可到达定义。延迟解析 `label.location` 的客户端（VS Code）会在鼠标指针移到提示上时，通过 `inlayHint/resolve` 获取链接；其他客户端随提示一起收到链接，不支持 LSP 3.17 内联提示的客户端则只收到纯文本。
 
 ## 其他已知不足
 
 - [ ] 通过 `InlayHintLabelPart` 为缩写类型提示提供可展开的标签部分（[clangd#2269](https://github.com/clangd/clangd/issues/2269)）
-- [ ] 可点击的类型名——在提示的类型上跳转到定义（[clangd#1535](https://github.com/clangd/clangd/issues/1535)）
 - [ ] 根据作用域缩写类型名——在 `namespace foo` 内显示 `Bar` 而不是 `foo::Bar`（[clangd#2270](https://github.com/clangd/clangd/issues/2270)）
 - [ ] 协程返回模板类型时丢失参数提示（[clangd#2437](https://github.com/clangd/clangd/issues/2437)）

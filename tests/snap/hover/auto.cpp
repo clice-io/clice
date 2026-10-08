@@ -165,3 +165,11 @@ template <typename T> §(26_undeduced_auto_return)auto create() {
 namespace non_type_placeholder {
 template <a§(27_template_auto_param)uto Value> void inspect() {}
 }
+
+namespace abbreviated_placeholder {
+void inspect(au§(28_abbreviated_param)to value) {}
+
+void use() {
+    inspect(29L);
+}
+}

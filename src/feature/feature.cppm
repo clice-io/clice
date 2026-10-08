@@ -335,10 +335,26 @@ enum class HintCategory : std::uint8_t {
     BlockEnd,
 };
 
+/// A piece of an inlay hint's label; the pieces in order are the label.
+struct InlayHintPart {
+    std::string value;
+
+    /// The symbol the piece names, which navigation and hover on the piece
+    /// reach; 0 for plain text.
+    index::SymbolHash symbol = 0;
+
+    /// A file holding the symbol's rows, for a symbol only its own file or
+    /// translation unit names (a parameter, an internal type); empty for one
+    /// every unit names.
+    std::string anchor;
+
+    friend auto operator<=>(const InlayHintPart&, const InlayHintPart&) = default;
+};
+
 struct InlayHint {
     std::uint32_t offset = 0;
     HintCategory kind = HintCategory::Type;
-    std::string label;
+    std::vector<InlayHintPart> label;
     bool padding_left = false;
     bool padding_right = false;
 };
@@ -420,10 +436,15 @@ auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols, const 
 auto inlay_hints(CompilationUnitRef unit,
                  LocalSourceRange target,
                  const InlayHintsOptions& options = {}) -> std::vector<InlayHint>;
-auto inlay_hints(CompilationUnitRef unit,
-                 LocalSourceRange target,
-                 const InlayHintsOptions& options,
-                 PositionEncoding encoding) -> std::vector<protocol::InlayHint>;
+
+/// Wire encoding of computed hints against the text they describe. A label
+/// naming a symbol keeps its pieces when `link` completes them — with the
+/// locations the client navigates by, or what resolving them later takes;
+/// without it, and for every other label, the label is one string.
+auto inlay_hints_to_protocol(llvm::ArrayRef<InlayHint> hints,
+                             const PositionMap& map,
+                             llvm::function_ref<void(const InlayHint&, protocol::InlayHint&)> link =
+                                 nullptr) -> std::vector<protocol::InlayHint>;
 
 /// Include-directive links of the main file, in byte offsets; the
 /// reply edge converts them with the session's line map.

@@ -1402,10 +1402,14 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
             /// Prefer the identifier token as a fallback highlighting range.
             highlight_range = token_range(token);
         } else if(token.kind() == clang::tok::kw_auto || token.kind() == clang::tok::kw_decltype) {
-            if(auto deduced = types::deduced_type(context, token.location())) {
-                info = deduced_type_hover(*deduced, token, context, display_options);
-                highlight_range = token_range(token);
-                break;
+            auto tree = SelectionTree::create_right(unit, token_range(token));
+            if(const auto* node = tree.common_ancestor()) {
+                if(auto deduced = types::deduced_type(node->data, node->owning_decl());
+                   !deduced.isNull()) {
+                    info = deduced_type_hover(deduced, token, context, display_options);
+                    highlight_range = token_range(token);
+                    break;
+                }
             }
 
             /// If we can't find interesting hover information for this

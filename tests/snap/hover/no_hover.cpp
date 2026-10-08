@@ -4,7 +4,7 @@
 
 void empty_body() {§(02_empty_braces)}
 
-decltype(au§(03_decltype_auto_inner)to) inferred = 1;
+int* allocated = new au§(03_new_auto)to(1);
 
 auto generic = [](a§(04_lambda_auto_param)uto value) {};
 

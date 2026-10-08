@@ -431,7 +431,8 @@ tests/snap/code_action/deduced_type/02_auto_return.cpp
 
 **Expand decltype**
 
-A `decltype` specifier expands to the type it denotes
+A `decltype` specifier expands to the type it denotes, through any
+`decltype` that type was itself declared with
 
 ```snap
 tests/snap/code_action/deduced_type/03_decltype.cpp
@@ -443,7 +444,7 @@ tests/snap/code_action/deduced_type/03_decltype.cpp
 
 **Unnameable types stay auto**
 
-Lambdas, dependent types and types the declaration cannot name are not expanded
+Lambdas, dependent types, structured bindings and types the declaration cannot name are not expanded
 
 A type cannot be named where it is local to another function, a member type the declaration has no access to, or the type of `sizeof` with no standard name for it declared yet (MSVC compatibility declares `size_t` implicitly).
 

@@ -2,5 +2,5 @@
 created_at: 2026-07-31
 input_file: designator_hints/05_designator_aggregates_only.cpp
 ---
-- { pos: "11:20", kind: Parameter, label: "amount:", padding_right: true }
-- { pos: "17:18", kind: Type, label: ".x=" }
+- { pos: "11:20", kind: Parameter, label: "amount:", links: ["amount ${WS}/designator_hints/05_designator_aggregates_only.cpp:7:22-7:28"], padding_right: true }
+- { pos: "17:18", kind: Type, label: ".x=", links: ["x ${WS}/designator_hints/05_designator_aggregates_only.cpp:14:8-14:9"] }

@@ -1,13 +1,16 @@
 /// # `auto`-deduced variables
 ///
-/// - status: unsupported
+/// - status: supported
+/// - verify: server
 ///
-/// Auto-deduced variables do not navigate to their deduced type definitions yet
+/// Go-to-type-definition on a variable declared `auto` reaches its deduced
+/// type, as on the `auto` keyword itself
 
 struct Widget {};
 
 Widget make_widget();
 
 void probe() {
-    auto widget = make_widget();  // go-to-type-def on widget → Widget
+    au§(keyword)to §(variable)widget = make_widget();
+    const auto& §(reference)ref = widget;
 }

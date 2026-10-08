@@ -1,14 +1,19 @@
 /// # Deduced `auto` type navigation
 ///
-/// - status: unsupported
-/// - issues: clangd#2055
+/// - status: supported
+/// - verify: server
 ///
-/// The `auto` keyword does not navigate to its deduced type yet
+/// Go-to-definition on `auto` reaches the type it was deduced to, as if the
+/// type were written in its place
+///
+/// Go-to-type-definition on the keyword reaches the same type, and
+/// find-references from it lists the type's uses. The keyword itself is no
+/// use of the type: find-references from the type does not list it.
 
-struct Widget {};
+struct §(type)Widget {};
 
 Widget make_widget();
 
 void use() {
-    auto widget = make_widget(); // go-to-def on auto → Widget
+    au§(auto_keyword)to widget = make_widget();
 }

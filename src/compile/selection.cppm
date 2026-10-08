@@ -112,6 +112,9 @@ public:
         /// the node itself.
         const clang::DeclContext& decl_context() const;
 
+        /// The declaration at or above this node; the tree's root is one.
+        const clang::Decl* owning_decl() const;
+
         /// If this node is a wrapper with no syntax (e.g. implicit cast), return
         /// its contents. (If multiple wrappers are present, unwraps all of them).
         const Node& ignore_implicit() const;

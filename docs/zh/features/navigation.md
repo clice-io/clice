@@ -142,11 +142,13 @@ tests/snap/navigation/go_to_definition/11_def_template_spec.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2055 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`auto` 推导类型导航**
 
-目前还无法从 `auto` 关键字跳转到其推导出的类型
+在 `auto` 上执行“跳转到定义”，会跳转到它推导出的类型，就像在该处直接写出了这个类型一样
+
+在该关键字上执行“跳转到类型定义”会到达同一个类型，从它发起“查找引用”会列出该类型的各处使用。关键字本身不算作对该类型的使用：从类型发起“查找引用”时不会列出它。
 
 ```snap
 tests/snap/navigation/go_to_definition/12_def_auto_keyword.cpp
@@ -178,6 +180,74 @@ tests/snap/navigation/go_to_definition/13_def_overload_candidates.cpp
 
 ```snap
 tests/snap/navigation/go_to_definition/14_def_dependent_expression.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2055 -->
+
+**指针和引用形式的 `auto`**
+
+导航会剥去推导类型外层的指针、引用和数组：`auto*`、`const auto&`、`auto&&`、`decltype(auto)` 以及推导为指针的 `auto` 都会跳转到对应的类
+
+结构化绑定（structured bindings）的 `auto` 跳转到被分解对象的类型。
+
+```snap
+tests/snap/navigation/go_to_definition/15_def_auto_declarators.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`decltype` 类型导航**
+
+在 `decltype` 上执行“跳转到定义”，会跳转到其操作数所对应的类型；如果该类型本身也是用 `decltype` 声明的，会沿着它继续追溯
+
+```snap
+tests/snap/navigation/go_to_definition/16_def_decltype.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**推导出的模板和别名**
+
+推导为模板特化的 `auto` 跳转到该模板，或跳转到它选中的显式特化或偏特化；经由别名推导出的 `auto` 跳转到该别名
+
+内置类型和 Lambda 的闭包类型没有可跳转的声明，`new` 表达式中的 `auto` 也不会跳转到任何位置。展开为 `auto` 的宏则跳转到该宏本身。
+
+```snap
+tests/snap/navigation/go_to_definition/17_def_auto_templates.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`auto` 参数和返回类型**
+
+简写函数模板（abbreviated function template）参数中的 `auto` 跳转到其唯一一次实例化所用的类型；`auto` 返回类型则跳转到实际返回的类型
+
+如果模板以多种类型实例化，参数中的 `auto` 不会跳转到其中任何一个。尾置返回类型（trailing return type）开头的 `auto` 跳转到箭头之后的类型。
+
+```snap
+tests/snap/navigation/go_to_definition/18_def_auto_params_returns.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**未实例化模板中的 `auto`**
+
+在模板内部，初始化器依赖模板参数的 `auto` 会跳转到该初始化器在类模板上解析出的类型
+
+如果解析出的类型就是模板参数本身，无论模板如何实例化，都跳转到该模板参数。
+
+```snap
+tests/snap/navigation/go_to_definition/19_def_auto_dependent.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -704,11 +774,11 @@ tests/snap/navigation/go_to_type_definition/02_typedef_field.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **由 `auto` 推导类型的变量**
 
-由 auto 推导类型的变量目前还无法跳转到其推导出的类型定义
+对以 `auto` 声明的变量执行“跳转到类型定义”，会跳转到其推导出的类型，与在 `auto` 关键字上执行时相同
 
 ```snap
 tests/snap/navigation/go_to_type_definition/03_typedef_auto.cpp
@@ -1043,6 +1113,8 @@ tests/snap/navigation/type_hierarchy/01_types_prepare.cpp
 **超类型**
 
 超类型列出类的所有直接基类，包括多重继承中派生类型的每个基类
+
+通过别名写出的基类，会列出该别名所指的类。
 
 ```snap
 tests/snap/navigation/type_hierarchy/02_types_supertypes.cpp

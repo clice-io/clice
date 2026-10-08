@@ -423,6 +423,19 @@ void StatefulWorker::register_handlers() {
                            });
     });
 
+    // === InlayHint ===
+    peer.on_request(
+        [this](RequestContext& ctx,
+               const worker::InlayHintParams& params) -> RequestResult<worker::InlayHintParams> {
+            return with_ast_or(
+                "InlayHint",
+                params,
+                std::vector<feature::InlayHint>{},
+                [&](DocumentEntry& doc) {
+                    return feature::inlay_hints(doc.unit, params.range, params.config.inlay_hints);
+                });
+        });
+
     // === Evict ===
     peer.on_notification([this](const worker::EvictParams& params) {
         LOG_DEBUG("Evict notification: path={}", params.path);
@@ -459,16 +472,6 @@ void StatefulWorker::register_handlers() {
                     return to_raw(feature::semantic_tokens(doc.unit,
                                                            regions,
                                                            feature::PositionEncoding::UTF16));
-                });
-            case K::InlayHints:
-                return with_ast(kind, params, [&](DocumentEntry& doc) {
-                    auto range = params.range;
-                    if(range.begin == static_cast<uint32_t>(-1))
-                        range = LocalSourceRange{0, static_cast<uint32_t>(doc.text.size())};
-                    return to_raw(feature::inlay_hints(doc.unit,
-                                                       range,
-                                                       params.config.inlay_hints,
-                                                       feature::PositionEncoding::UTF16));
                 });
             case K::DocumentSymbol:
                 return with_ast(kind, params, [&](DocumentEntry& doc) {

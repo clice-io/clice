@@ -5,6 +5,7 @@ module;
 module clice:server.lsp_client;
 
 import :feature.feature;
+import :server.features;
 import :server.session;
 import :support.signal;
 import :vfs.file_table;
@@ -101,6 +102,10 @@ private:
     bool diagnostic_refresh = false;
 
     bool line_folding_only = false;
+
+    /// How the client takes inlay hint labels naming symbols, from its
+    /// textDocument.inlayHint capability.
+    InlayHintLabels inlay_hint_labels = InlayHintLabels::Text;
 
     /// The client pulls diagnostics (the textDocument.diagnostic
     /// capability): an open document's are answered to its pulls and never

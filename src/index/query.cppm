@@ -15,6 +15,10 @@ import :vfs.file_table;
 
 namespace clice::index {
 
+/// The coordinates a shard's rows are expressed in: its stored text, or
+/// the line table of the pure-ASCII text it leaves out.
+Coordinates shard_coordinates(const Shard& shard);
+
 /// One readable row set with its own coordinate system, as the federation
 /// hands it to a visitor.
 struct RowSource {
@@ -329,6 +333,11 @@ public:
     /// One canonical site per distinct relation target — the two-hop query
     /// behind go-to-type-definition.
     std::vector<Site> target_sites(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// Whether the cursor stands on a keyword standing for `symbol` — an
+    /// `auto` or `decltype` the type names, not a name of it (a Deduced
+    /// row of the rows serving the cursor's file).
+    bool deduced(const Cursor& cursor, SymbolHash symbol) const;
 
     /// Sites implementing the symbol: derived types for a class-like
     /// symbol, overrides otherwise — through every override that only

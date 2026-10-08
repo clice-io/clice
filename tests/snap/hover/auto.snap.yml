@@ -217,3 +217,11 @@ Wrapper<long>
 ```cpp
 /* not deduced */
 ```
+
+28_abbreviated_param: { range: "169:13-169:17" }
+### type `auto`  
+
+---
+```cpp
+long
+```

@@ -30,8 +30,9 @@ auto decl_of(clang::QualType type, TemplateResolver* resolver = nullptr) -> cons
 auto unwrap(clang::TypeLoc type, bool unwrap_function_type = true) -> clang::TypeLoc;
 
 /// The element type behind every pointer, reference and array layer
-/// written in a type, e.g. `const int` for `const int*(&)[3]`. A layer
-/// behind a type alias stays: the alias is what the type names.
+/// written in a type, e.g. `const int` for `const int*(&)[3]`, seeing
+/// through what a deduced `auto` or a `decltype` stands for. A layer behind
+/// a type alias stays: the alias is what the type names.
 auto unwrap(clang::QualType type) -> clang::QualType;
 
 /// The destructor a variable or temporary of `type` runs, if a non-trivial
@@ -42,9 +43,17 @@ auto destructor_of(clang::QualType type) -> const clang::CXXDestructorDecl*;
 /// template arguments as written for class template specializations.
 auto declared_type(const clang::TypeDecl* decl) -> clang::QualType;
 
-/// Compute the type deduced for the `auto` or `decltype` written at the
-/// given location, if it has been deduced.
-auto deduced_type(clang::ASTContext& context, clang::SourceLocation loc)
-    -> std::optional<clang::QualType>;
+/// The type a placeholder stands for. `written` is the node owning its
+/// keyword and `owner` the declaration at or above it, never null:
+/// - an `auto` or `decltype(auto)` of a declarator, the type deduced for it;
+///   of a return type (`operator auto` included), the deduced return type;
+/// - a `decltype(expr)`, the type it names;
+/// - the `auto` of an abbreviated template's parameter, the type the
+///   template's only instantiation took;
+/// - a function whose leading `auto` announces a trailing return type,
+///   that type.
+/// An `auto` no deduction filled in stays the undeduced `auto` type; null
+/// where `written` holds none of these or no single instantiation exists.
+auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clang::QualType;
 
 }  // namespace clice::types

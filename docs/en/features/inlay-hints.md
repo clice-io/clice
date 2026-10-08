@@ -248,6 +248,19 @@ tests/snap/inlay_hint/parameter_hints/19_param_pack_constructors.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Default argument names**
+
+The parameter names in a default-argument hint link to their parameters,
+as parameter name hints do
+
+```snap
+tests/snap/inlay_hint/parameter_hints/20_param_default_arguments.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Type Hints
@@ -399,6 +412,23 @@ tests/snap/inlay_hint/type_hints/12_type_conflicting_instantiations.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported clangd#1535 -->
+
+**Clickable type names**
+
+Each type name in a type hint links to its declaration: clicking it goes
+to the definition, hovering it shows the type's card
+
+A class declared ahead of its definition links to that declaration, from
+which go-to-definition reaches the definition. Template arguments link one
+by one; builtin types and punctuation stay plain text.
+
+```snap
+tests/snap/inlay_hint/type_hints/13_type_links/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Designator Hints
@@ -489,6 +519,18 @@ tests/snap/inlay_hint/designator_hints/07_designator_parenthesized.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Library arrays**
+
+The lone member array of a `std::array`-like wrapper stays out of the designator
+
+```snap
+tests/snap/inlay_hint/designator_hints/08_designator_library_array.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Other Hint Kinds
@@ -574,10 +616,10 @@ The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializatio
 - Requests are range-scoped: hints outside the requested range are discarded.
 - Parameter hints anchor to the left of their argument; type and designator hints anchor to their declaration side with LSP padding flags instead of embedded spaces.
 - Identical duplicate hints (e.g. from template instantiations) collapse into one.
+- Type names, parameter names and designated fields in a hint are links: clicking one goes to the definition of what it names, and hovering it shows that symbol's card. A link points at a declaration of the symbol when one exists, so that go-to-definition from it reaches the definition. Clients that resolve `label.location` lazily (VS Code) receive the links through `inlayHint/resolve` when the pointer reaches the hint; other clients receive them with the hints, and clients without LSP 3.17 inlay hint support receive plain text.
 
 ## Other Known Gaps
 
 - [ ] Abbreviated type hints with expandable label parts via `InlayHintLabelPart` ([clangd#2269](https://github.com/clangd/clangd/issues/2269))
-- [ ] Clickable type names — go-to-definition on the hinted type ([clangd#1535](https://github.com/clangd/clangd/issues/1535))
 - [ ] Scope-aware type shortening — print `Bar` instead of `foo::Bar` inside `namespace foo` ([clangd#2270](https://github.com/clangd/clangd/issues/2270))
 - [ ] Parameter hints lost when a coroutine returns a template type ([clangd#2437](https://github.com/clangd/clangd/issues/2437))

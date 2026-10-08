@@ -419,7 +419,7 @@ tests/snap/code_action/deduced_type/02_auto_return.cpp
 
 **展开 decltype**
 
-`decltype` 说明符会展开为它所表示的类型
+`decltype` 说明符会展开为它所表示的类型；如果该类型本身也是用 `decltype` 声明的，会沿着它继续展开
 
 ```snap
 tests/snap/code_action/deduced_type/03_decltype.cpp
@@ -431,7 +431,7 @@ tests/snap/code_action/deduced_type/03_decltype.cpp
 
 **无法命名的类型保持 auto**
 
-Lambda、依赖类型以及在该声明中无法命名的类型不会展开
+Lambda、依赖类型、结构化绑定（structured bindings）以及在该声明中无法命名的类型不会展开
 
 以下类型无法命名：另一个函数内部的局部类型、声明无权访问的成员类型，以及标准名字尚未声明时 `sizeof` 的类型（MSVC 兼容模式会隐式声明 `size_t`）。
 

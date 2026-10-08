@@ -143,7 +143,6 @@ Outcome Dispatcher::land(const Ticket& ticket,
 Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
                                         const Ticket& ticket,
                                         std::optional<protocol::Position> position,
-                                        std::optional<protocol::Range> range,
                                         kota::cancellation_token token) {
     auto& session = *ticket.session;
     auto path_id = session.path_id;
@@ -175,12 +174,8 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
     wp.path = path;
     wp.config = project.config;
 
-    auto map = session.position_map();
     if(position) {
-        wp.offset = map.to_offset_clamped(*position);
-    }
-    if(range) {
-        wp.range = map.to_offset_range(*range);
+        wp.offset = session.position_map().to_offset_clamped(*position);
     }
 
     bool unanswered = false;
@@ -249,6 +244,21 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
                  timer.ms_f());
     }
     co_return std::move(result);
+}
+
+kota::task<std::vector<feature::InlayHint>, kota::ipc::Error>
+    Dispatcher::inlay_hints(const Ticket& ticket,
+                            const protocol::Range& range,
+                            kota::cancellation_token token) {
+    // Clamped against the buffer the ticket was taken on: a buffer that
+    // moves before the reply lands turns the reply into ContentModified.
+    auto offsets = ticket.session->position_map().to_offset_range(range);
+    auto path = std::string(project.file_table.resolve(ticket.session->path_id));
+    co_return co_await typed(ticket,
+                             EvidenceKind::InlayHint,
+                             "InlayHint",
+                             worker::InlayHintParams{std::move(path), offsets, project.config},
+                             std::move(token));
 }
 
 kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>

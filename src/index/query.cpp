@@ -15,14 +15,14 @@ import :vfs.file_system;
 
 namespace clice::index {
 
-namespace {
-
 Coordinates shard_coordinates(const Shard& shard) {
     if(!shard.content().empty()) {
         return {shard.content(), shard.line_starts()};
     }
     return {shard.content_size(), shard.line_starts(), shard.crlf_lines()};
 }
+
+namespace {
 
 std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
     if(content.empty() || offset >= content.size())
@@ -758,6 +758,32 @@ std::vector<Site> IndexQuery::target_sites(SymbolHash hash, Fid anchor, Relation
         result.push_back(located.site);
     }
     return result;
+}
+
+bool IndexQuery::deduced(const Cursor& cursor, SymbolHash symbol) const {
+    auto source = serving(cursor.site.file);
+    if(!source) {
+        return false;
+    }
+    bool found = false;
+    auto hit = [&](const Shard& rows) {
+        rows.lookup(symbol, RelationKind::Deduced, [&](const Relation& relation) {
+            found = relation.range == cursor.site.range;
+            return !found;
+        });
+        return found;
+    };
+    if(hit(*source->rows) || source->kind != RowSource::Kind::SessionRows) {
+        return found;
+    }
+    live->each_preamble([&](const RowSource& preamble) {
+        if(preamble.file != cursor.site.file) {
+            return true;
+        }
+        hit(*preamble.rows);
+        return false;
+    });
+    return found;
 }
 
 std::vector<Site> IndexQuery::implementation(SymbolHash hash, Fid anchor) const {

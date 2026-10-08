@@ -9,6 +9,7 @@ import :index.query;
 import :project.project;
 import :sched.index.pump;
 import :server.dispatcher;
+import :server.lsp_projection;
 import :server.session;
 import :server.session_store;
 
@@ -18,6 +19,17 @@ class ASTFamily;
 struct EditorContext;
 
 namespace protocol = kota::ipc::protocol;
+
+/// How a client takes an inlay hint label naming a symbol.
+enum class InlayHintLabels : std::uint8_t {
+    /// One string: the client declares no LSP 3.17 inlay hint support.
+    Text,
+    /// Pieces whose locations inlayHint/resolve supplies: the client
+    /// resolves `label.location` lazily.
+    Deferred,
+    /// Pieces with their locations.
+    Located,
+};
 
 /// The server's language features, each assembled from its providers.
 ///
@@ -120,7 +132,15 @@ public:
     RawResult semantic_tokens(Ticket ticket, kota::cancellation_token token = {});
     RawResult inlay_hints(Ticket ticket,
                           const protocol::Range& range,
+                          InlayHintLabels labels,
                           kota::cancellation_token token = {});
+
+    /// inlayHint/resolve: the locations of the label pieces a Deferred
+    /// reply named in `data`, through the index like go-to-definition.
+    /// The hint comes back as it was when the client mangled the data.
+    RawResult resolve_inlay_hint(protocol::InlayHint hint,
+                                 std::optional<to_lsp::InlayHintData> data,
+                                 Fid document);
     RawResult folding_range(Ticket ticket,
                             bool line_folding_only,
                             kota::cancellation_token token = {});
@@ -368,6 +388,11 @@ private:
         Fid anchor,
         llvm::function_ref<std::vector<index::Site>(const index::IndexQuery&, index::SymbolHash)>
             ask);
+
+    /// Where a label piece naming `symbol` points. The client runs
+    /// go-to-definition there, so a declaration when one exists — the
+    /// definition answers it — else the definition, which answers itself.
+    std::optional<protocol::Location> link_location(index::SymbolHash symbol, Fid anchor);
 
     ASTFamily& ast;
     Dispatcher& dispatcher;

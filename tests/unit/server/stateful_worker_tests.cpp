@@ -496,9 +496,7 @@ ZEST_CASE(InlayHintsWithoutCompile) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::QueryParams params;
-        params.kind = worker::QueryKind::InlayHints;
-        params.path = "/tmp/nonexistent.cpp";
+        worker::InlayHintParams params{.path = "/tmp/nonexistent.cpp"};
 
         auto result = co_await w.peer->send_request(params);
         ZASSERT(!result.has_value());

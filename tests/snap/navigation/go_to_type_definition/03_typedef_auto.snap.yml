@@ -1,0 +1,37 @@
+---
+created_at: 2026-10-08
+input_file: go_to_type_definition/03_typedef_auto.cpp
+---
+keyword:
+  definition:
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "8:7-8:13" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "8:7-8:13" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "8:7-8:13" }
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "10:0-10:6" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "8:0-8:16", selection: "8:7-8:13" }
+
+reference:
+  definition:
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "14:16-14:19" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "14:16-14:19" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "14:16-14:19" }
+
+variable:
+  definition:
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "13:9-13:15" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "13:9-13:15" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "8:7-8:13" }
+  references:
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "13:9-13:15" }
+    - { file: "${WS}/go_to_type_definition/03_typedef_auto.cpp", range: "14:22-14:28" }

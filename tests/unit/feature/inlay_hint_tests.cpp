@@ -17,13 +17,10 @@ namespace clice::testing {
 
 namespace {
 
-namespace lsp = kota::ipc::lsp;
-namespace protocol = kota::ipc::protocol;
-
 ZEST_SUITE(inlay_hint, Tester) {
 
-std::vector<protocol::InlayHint> hints;
-llvm::DenseMap<std::uint32_t, protocol::InlayHint> hints_map;
+std::vector<feature::InlayHint> hints;
+llvm::DenseMap<std::uint32_t, feature::InlayHint> hints_map;
 
 void run(llvm::StringRef code,
          const feature::InlayHintsOptions& options = {},
@@ -32,12 +29,11 @@ void run(llvm::StringRef code,
     ZASSERT(compile_with_pch("-std=c++23"));
 
     LocalSourceRange range = LocalSourceRange(0, unit->main_content().size());
-    hints = feature::inlay_hints(*unit, range, options, feature::PositionEncoding::UTF8);
+    hints = feature::inlay_hints(*unit, range, options);
 
     hints_map.clear();
-    auto map = feature::main_position_map(*unit, feature::PositionEncoding::UTF8);
     for(auto& hint: hints) {
-        hints_map[*map.to_offset(hint.position)] = hint;
+        hints_map[hint.offset] = hint;
     }
 
     if(!unit->diagnostics().empty()) {
@@ -62,13 +58,8 @@ void EXPECT_HINT(llvm::StringRef pos,
     ZASSERT(it != hints_map.end());
 
     std::string label;
-    if(auto* plain = std::get_if<std::string>(&it->second.label)) {
-        label = *plain;
-    } else {
-        for(const auto& part:
-            std::get<std::vector<protocol::InlayHintLabelPart>>(it->second.label)) {
-            label += part.value;
-        }
+    for(const auto& part: it->second.label) {
+        label += part.value;
     }
     ZASSERT(label == name);
 };

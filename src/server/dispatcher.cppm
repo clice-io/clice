@@ -46,8 +46,8 @@ public:
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
     /// An AST query to the stateful worker holding the file's AST, once the
-    /// family compiled it. Position-sensitive queries (hover, goto) pass a
-    /// Position; range-sensitive ones (inlay hints) a Range.
+    /// family compiled it. Position-sensitive queries (hover) pass a
+    /// Position.
     /// `token`, on every dispatch: the LSP request's cancellation token.
     /// Passing it into the worker send turns a client $/cancelRequest into
     /// a wire cancel — the worker stops the parse at the next top-level
@@ -57,7 +57,13 @@ public:
     RawResult query(worker::QueryKind kind,
                     const Ticket& ticket,
                     std::optional<protocol::Position> position = {},
-                    std::optional<protocol::Range> range = {},
+                    kota::cancellation_token token = {});
+
+    /// The inlay hints of the open file's AST within `range` of the buffer
+    /// the ticket was taken on.
+    kota::task<std::vector<feature::InlayHint>, kota::ipc::Error>
+        inlay_hints(const Ticket& ticket,
+                    const protocol::Range& range,
                     kota::cancellation_token token = {});
 
     /// The main-file document links from the stateful worker holding the
