@@ -248,7 +248,8 @@ the explicit or partial specialization it selects; one deduced through an
 alias reaches the alias
 
 A builtin type or a lambda's closure type has no declaration to reach, and
-the `auto` of a `new` expression navigates nowhere.
+the `auto` of a `new` expression navigates nowhere. A macro spelling `auto`
+navigates to the macro.
 
 ```snap
 tests/snap/navigation/go_to_definition/17_def_auto_templates.cpp
@@ -280,6 +281,9 @@ tests/snap/navigation/go_to_definition/18_def_auto_params_returns.cpp
 Inside a template, an `auto` whose initializer depends on a template
 parameter reaches the type the initializer resolves to on the class
 template
+
+A type that is the template parameter itself reaches the parameter, however
+the template is instantiated.
 
 ```snap
 tests/snap/navigation/go_to_definition/19_def_auto_dependent.cpp
@@ -1243,6 +1247,8 @@ tests/snap/navigation/type_hierarchy/01_types_prepare.cpp
 
 Supertypes list every direct base of a class, including each base of a
 multiple-inheritance derived type
+
+A base written through an alias lists the class the alias names.
 
 ```snap
 tests/snap/navigation/type_hierarchy/02_types_supertypes.cpp

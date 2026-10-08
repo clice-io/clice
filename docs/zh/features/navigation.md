@@ -216,7 +216,7 @@ tests/snap/navigation/go_to_definition/16_def_decltype.cpp
 
 推导为模板特化的 `auto` 跳转到该模板，或跳转到它选中的显式特化或偏特化；经由别名推导出的 `auto` 跳转到该别名
 
-内置类型和 Lambda 的闭包类型没有可跳转的声明，`new` 表达式中的 `auto` 也不会跳转到任何位置。
+内置类型和 Lambda 的闭包类型没有可跳转的声明，`new` 表达式中的 `auto` 也不会跳转到任何位置。展开为 `auto` 的宏则跳转到该宏本身。
 
 ```snap
 tests/snap/navigation/go_to_definition/17_def_auto_templates.cpp
@@ -243,6 +243,8 @@ tests/snap/navigation/go_to_definition/18_def_auto_params_returns.cpp
 **未实例化模板中的 `auto`**
 
 在模板内部，初始化器依赖模板参数的 `auto` 会跳转到该初始化器在类模板上解析出的类型
+
+如果解析出的类型就是模板参数本身，无论模板如何实例化，都跳转到该模板参数。
 
 ```snap
 tests/snap/navigation/go_to_definition/19_def_auto_dependent.cpp
@@ -1111,6 +1113,8 @@ tests/snap/navigation/type_hierarchy/01_types_prepare.cpp
 **超类型**
 
 超类型列出类的所有直接基类，包括多重继承中派生类型的每个基类
+
+通过别名写出的基类，会列出该别名所指的类。
 
 ```snap
 tests/snap/navigation/type_hierarchy/02_types_supertypes.cpp
