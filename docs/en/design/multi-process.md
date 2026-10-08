@@ -143,7 +143,9 @@ A first crash right after an edit stays silent, since it most likely comes from 
 
 Background indexing follows the same rule without a warning: a file whose own index run crashes its worker is skipped until it changes.
 
-A precompiled preamble or a module whose build fails on errors in the code is not built again while nothing it read or looked for has changed: the documents using it compile without it and report the errors. It is built again once one of those files changes, once the preamble's text or the compile flags change, and whenever a document using it is saved.
+A module whose build fails on errors in the code is not built again while nothing it read or looked for has changed: the documents importing it compile without it and report the errors. It is built again once one of those files changes, once the compile flags change, and whenever a document importing it is saved.
+
+A precompiled preamble is built in spite of errors in the code, and the documents using it report them along with their own. Such a preamble is built again once one of the files it read or looked for changes, and whenever a document using it is saved.
 
 ### Worker Restarts
 
