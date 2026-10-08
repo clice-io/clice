@@ -38,6 +38,24 @@ std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites) {
     return result;
 }
 
+std::vector<protocol::DocumentHighlight>
+    document_highlights(llvm::ArrayRef<index::IndexQuery::PlacedHighlight> highlights) {
+    auto kind_of = [](index::HighlightKind kind) {
+        switch(kind) {
+            case index::HighlightKind::Text: return protocol::DocumentHighlightKind::Text;
+            case index::HighlightKind::Read: return protocol::DocumentHighlightKind::Read;
+            case index::HighlightKind::Write: return protocol::DocumentHighlightKind::Write;
+        }
+        std::unreachable();
+    };
+    std::vector<protocol::DocumentHighlight> result;
+    result.reserve(highlights.size());
+    for(const auto& highlight: highlights) {
+        result.push_back({.range = range(highlight.site), .kind = kind_of(highlight.kind)});
+    }
+    return result;
+}
+
 protocol::SymbolKind symbol_kind(SymbolKind kind) {
     switch(kind) {
         case SymbolKind::Type: return protocol::SymbolKind::TypeParameter;

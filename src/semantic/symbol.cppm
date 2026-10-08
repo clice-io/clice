@@ -184,6 +184,8 @@ struct RelationKind {
         Reference,
         WeakReference,
         Read,
+        /// A reference that modifies what it names (is_written), recorded
+        /// next to the Reference row of the same name.
         Write,
         Interface,
         Implementation,

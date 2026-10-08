@@ -4,6 +4,7 @@ module;
 
 module clice:server.lsp_projection;
 
+import :index.query;
 import :index.site;
 import :index.types;
 import :semantic.symbol;
@@ -23,6 +24,9 @@ protocol::Location location(const index::Site& site);
 std::vector<protocol::Location> locations(llvm::ArrayRef<index::Site> sites);
 
 std::vector<protocol::Range> ranges(llvm::ArrayRef<index::Site> sites);
+
+std::vector<protocol::DocumentHighlight>
+    document_highlights(llvm::ArrayRef<index::IndexQuery::PlacedHighlight> highlights);
 
 /// The navigation surfaces' SymbolKind policy: the outline's exhaustive
 /// table, with the kinds these surfaces display differently overridden.

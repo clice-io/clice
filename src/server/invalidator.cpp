@@ -275,14 +275,21 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             }
             case FileEvent::Kind::CDBChanged: {
                 lenders_changed();
-                auto& delta = event.cdb;
+                // With nothing reloaded the graph is the build's: only a
+                // file just recorded may join, against it.
+                auto delta = event.cdb;
                 if(delta.empty()) {
-                    break;
+                    delta = project.refresh_provisional();
+                    if(delta.empty()) {
+                        break;
+                    }
                 }
 
                 // The producer already reloaded the CDB; derived state must
-                // follow.
+                // follow. The provisional members join, change command or
+                // leave the way an entry does.
                 auto providers = project.rebuild_dependency_graph();
+                delta.append(providers.provisional);
 
                 // A module name that just gained its first provider: its
                 // sentinel's dependents are the TUs that scanned it

@@ -12,6 +12,7 @@ import :compile.compilation;
 import :config.config;
 import :driver.driver;
 import :feature.feature;
+import :index.query;
 import :index.shard;
 import :index.tu_index;
 import :project.command_resolver;
@@ -37,10 +38,10 @@ struct InspectOptions {
 
     DecoInput(meta_var = "<FEATURE> <PATH>",
               help =
-                  "Feature to run (code_action, code_completion, document_links, "
-                  "document_symbol, folding_range, hover, inlay_hint, selection_range, "
-                  "semantic_tokens, signature_help, tu_index) and a source file or "
-                  "directory",
+                  "Feature to run (code_action, code_completion, document_highlight, "
+                  "document_links, document_symbol, folding_range, hover, inlay_hint, "
+                  "selection_range, semantic_tokens, signature_help, tu_index) and a "
+                  "source file or directory",
               required = false)
     <std::vector<std::string>> inputs;
 
@@ -319,6 +320,25 @@ std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
     return to_raw_json(out);
 }
 
+/// Marker payload for document_highlight: the unit's own TU index stands
+/// in for the server's file index, the cursor resolved by the same rule.
+std::optional<kota::codec::RawValue>
+    run_document_highlight(CompilationUnitRef unit,
+                           std::uint32_t offset,
+                           [[maybe_unused]] llvm::StringRef config) {
+    auto envelope = index::build_tu_index(unit);
+    auto tu = index::TUIndex::from_bytes(envelope);
+    const index::Shard& rows = tu.shard_of(tu.path_count() - 1);
+    auto named = index::named_at(rows, offset, [&](index::SymbolHash hash) {
+        auto symbol = tu.find_symbol(hash);
+        return symbol && symbol->kind == SymbolKind::Macro;
+    });
+    if(!named) {
+        return to_raw_json(std::vector<index::Highlight>{});
+    }
+    return to_raw_json(index::highlights({&rows}, named->symbols));
+}
+
 /// A feature runs in exactly one shape: whole-document (`run`), once per
 /// `§` point against a shared unit (`run_at`), once per `§⟦...⟧` range
 /// with a whole-document default (`run_over`), once per `§` point (an
@@ -354,6 +374,7 @@ constexpr std::array features = {
     FeatureSpec{.name = "code_completion",
                 .run_complete = run_code_completion,
                 .check_config = check_feature_config<feature::CodeCompletionOptions>},
+    FeatureSpec{.name = "document_highlight", .run_at = run_document_highlight},
     FeatureSpec{.name = "document_links", .run = run_document_links},
     FeatureSpec{.name = "document_symbol", .run = run_document_symbols},
     FeatureSpec{.name = "folding_range", .run = run_folding_ranges},

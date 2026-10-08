@@ -15,6 +15,9 @@ void Build::reset_active(llvm::StringRef configuration) {
     assert(configuration.empty() ? config.configurations().empty()
                                  : declares_configuration(config, configuration));
     claimed_sources.reset();
+    records.clear();
+    provisional.clear();
+    records_generation += 1;
     active = configuration.str();
 }
 
@@ -130,6 +133,8 @@ llvm::SmallVector<Candidate, 2> Build::commands(Fid file) {
     if(result.empty()) {
         if(auto id = default_command(files.resolve(file))) {
             result.push_back({.config = *id, .source = CommandSource::Default});
+        } else if(auto it = provisional.find(file); it != provisional.end()) {
+            result.push_back({.config = it->second, .source = CommandSource::Inferred});
         }
     }
     return result;
@@ -144,7 +149,10 @@ Edits Build::edits(llvm::ArrayRef<CanonicalRef> paths) const {
             }
         }
     }
+    return edits_of(matched);
+}
 
+Edits Build::edits_of(llvm::ArrayRef<const CompiledRule*> matched) const {
     Edits result;
     for(auto& rule: config.compiled_rules) {
         if(!llvm::is_contained(matched, &rule)) {
@@ -313,7 +321,47 @@ std::vector<Fid> Build::members() {
             result.push_back(file);
         }
     }
+    auto borrowing = llvm::to_vector(llvm::make_first_range(provisional));
+    std::ranges::sort(borrowing, {}, [&](Fid file) { return files.resolve(file); });
+    llvm::append_range(result, borrowing);
     return result;
+}
+
+bool Build::record(Fid file) {
+    if(!records.insert(file).second) {
+        return false;
+    }
+    records_generation += 1;
+    return true;
+}
+
+void Build::forget(Fid file) {
+    if(records.erase(file)) {
+        records_generation += 1;
+    }
+    provisional.erase(file);
+}
+
+std::optional<ConfigID> Build::borrow(Fid file, std::optional<ConfigID> command) {
+    assert(records.contains(file) && "only a recorded file borrows");
+    std::optional<ConfigID> before;
+    if(auto it = provisional.find(file); it != provisional.end()) {
+        before = it->second;
+    }
+    if(command) {
+        provisional[file] = *command;
+    } else {
+        provisional.erase(file);
+    }
+    return before;
+}
+
+ConfigID Build::lend(ConfigID command, CanonicalRef lender, CanonicalRef file) {
+    auto own = matching(file);
+    auto matched = matching(lender);
+    llvm::erase_if(matched,
+                   [&](const CompiledRule* rule) { return llvm::is_contained(own, rule); });
+    return cdb.apply_rules(command, edits_of(matched).options());
 }
 
 llvm::SmallVector<Fid> Build::refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked) {
@@ -333,15 +381,12 @@ llvm::SmallVector<Fid> Build::refresh_default_sources(llvm::ArrayRef<CanonicalPa
 }
 
 bool Build::default_source(CanonicalRef path) {
-    namespace types = clang::driver::types;
-    // Every C-family input clang compiles as a unit, preprocessed and module
-    // interface files included; a header claims no translation unit of its
-    // own.
-    auto type = suffix_type(path);
-    if(type != types::TY_INVALID) {
-        return types::isDerivedFromC(type) && !types::onlyPrecompileType(type);
+    if(is_source_path(path)) {
+        return true;
     }
-    if(path::extension(path) == ".cuh") {
+    // A header claims no translation unit of its own; an extensionless file
+    // does when its rule's command forces a source language.
+    if(suffix_type(path) != clang::driver::types::TY_INVALID || path::extension(path) == ".cuh") {
         return false;
     }
     auto* rule = default_rule(path);
@@ -357,6 +402,10 @@ bool Build::default_source(CanonicalRef path) {
 }
 
 bool Build::unit(Fid file) {
+    return declared(file) || provisional.contains(file);
+}
+
+bool Build::declared(Fid file) {
     if(!entries(file).empty()) {
         return true;
     }

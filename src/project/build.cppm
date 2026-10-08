@@ -11,8 +11,9 @@ import :vfs.file_table;
 namespace clice {
 
 /// A command a file compiles under: one of its database entries
-/// (CDBExact) or, for a file without entries that a rule's default command
-/// claims, that command (Default).
+/// (CDBExact); for a file without entries that a rule's default command
+/// claims, that command (Default); for a provisional member, the command it
+/// borrows (Inferred).
 struct Candidate {
     ConfigID config;
     CommandSource source;
@@ -35,9 +36,10 @@ struct Edits {
 
 /// The build: which of the database's entries and which hand-written
 /// commands apply to a file under the active configuration, and how the
-/// rules edit them — a pure function of the configuration and the
-/// database, the one place that knows rule priority. The database stores
-/// entries per source in file order and nothing else consults the rules.
+/// rules edit them — a function of the configuration, the database and
+/// the files recorded as provisional members, the one place that knows
+/// rule priority. The database stores entries per source in file order
+/// and nothing else consults the rules.
 class Build {
 public:
     Build(Config& config, CompilationDatabase& cdb, FileTable& files) :
@@ -50,8 +52,9 @@ public:
     }
 
     /// Activate a configuration — a declared tag, or empty when the rules
-    /// declare none (see resolve_configuration) — and forget the enumerated
-    /// default sources.
+    /// declare none (see resolve_configuration) — and forget what the
+    /// previous one enumerated and recorded: the default sources and the
+    /// provisional members.
     void reset_active(llvm::StringRef configuration);
 
     /// Whether an active rule declares a command source — a database or a
@@ -85,9 +88,10 @@ public:
     llvm::SmallVector<CompilationEntry, 2> entries(Fid file) const;
 
     /// The commands a file compiles under, in build order: its entries, or
-    /// the default command of the first matching rule that declares one.
-    /// The first is the default selection; empty when the file has neither
-    /// — such a file is never a header's host.
+    /// the default command of the first matching rule that declares one, or
+    /// the command a provisional member borrows. The first is the default
+    /// selection; empty when the file has none — such a file is never a
+    /// header's host.
     llvm::SmallVector<Candidate, 2> commands(Fid file);
 
     /// The edits the rules matching any of `paths` contribute, in
@@ -123,8 +127,40 @@ public:
 
     /// Every translation unit of the build: files with entries, plus the
     /// source files on disk that a default-command rule matches — enumerated
-    /// once per active configuration and again by refresh_default_sources.
+    /// once per active configuration and again by refresh_default_sources —
+    /// then the provisional members.
     std::vector<Fid> members();
+
+    /// Record that the user saved `file`, a source the build does not
+    /// declare: a provisional member while it has a lender and no host (see
+    /// Project::refresh_provisional), until an entry or a rule claims it.
+    /// False when it is recorded already.
+    bool record(Fid file);
+
+    /// Drop the record of `file`, and its borrowed command.
+    void forget(Fid file);
+
+    /// The files the user saved that the build does not declare, unordered:
+    /// persisted with the index, so the members they make outlive the
+    /// session.
+    const llvm::DenseSet<Fid>& recorded() const {
+        return records;
+    }
+
+    /// Moves whenever recorded() changes, so persistence can tell.
+    std::uint64_t recorded_generation() const {
+        return records_generation;
+    }
+
+    /// Set the command a recorded file borrows as a provisional member,
+    /// nullopt while it is none; returns the one it borrowed before.
+    std::optional<ConfigID> borrow(Fid file, std::optional<ConfigID> command);
+
+    /// The command `file` borrows from `lender` compiling under `command`:
+    /// the edits of the rules matching the lender but not the file applied,
+    /// so rendering it as the file's own command, which applies the file's
+    /// rules, edits it for both, each rule once.
+    ConfigID lend(ConfigID command, CanonicalRef lender, CanonicalRef file);
 
     /// The directories the default-command rules claim sources under, none
     /// inside another, and the cache directory a walk of them skips.
@@ -153,12 +189,16 @@ public:
     /// that host.
     llvm::SmallVector<CommandRef> units(llvm::ArrayRef<Fid> members);
 
-    /// Whether `file` is a translation unit of its own: it has a database
-    /// entry, or a default-command rule claims it and it is a source — the
-    /// members() filter for one file, so commands() is never empty for a
-    /// unit. A header claims no unit; its default command is the resolver's
-    /// last resort after host inference, never its own command.
+    /// Whether `file` is a translation unit of its own: declared() or a
+    /// provisional member — the members() filter for one file, so
+    /// commands() is never empty for a unit. A header claims no unit; its
+    /// default command is the resolver's last resort after host inference,
+    /// never its own command.
     bool unit(Fid file);
+
+    /// Whether the build declares `file` a unit: it has a database entry,
+    /// or a default-command rule claims it and it is a source.
+    bool declared(Fid file);
 
     /// Whether a file joins the background index: no matching active rule
     /// says `index = false`.
@@ -174,6 +214,9 @@ public:
 
 private:
     llvm::SmallVector<const CompiledRule*> matching(CanonicalRef path) const;
+
+    /// The edits of `matched` rules, in declaration order.
+    Edits edits_of(llvm::ArrayRef<const CompiledRule*> matched) const;
 
     /// Whether a file sits inside the workspace and every matching active
     /// rule keeps `field` on: the lint and format sets.
@@ -216,6 +259,9 @@ private:
     FileTable& files;
     std::string active;
     std::optional<std::vector<Fid>> claimed_sources;
+    llvm::DenseSet<Fid> records;
+    std::uint64_t records_generation = 0;
+    llvm::DenseMap<Fid, ConfigID> provisional;
 };
 
 /// Every file under the walk's roots, version control metadata and the
@@ -228,8 +274,9 @@ std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk);
 /// (a directory holding CMakeCache.txt or build.ninja) left out.
 std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cache_dir);
 
-/// Whether a refactoring may edit `file`: it lies under `root` outside the
-/// directories workspace_sources leaves out, whatever its suffix.
+/// Whether `file` is the workspace's own — what a refactoring may edit and
+/// a save may record as a provisional member: it lies under `root` outside
+/// the directories workspace_sources leaves out, whatever its suffix.
 bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file);
 
 }  // namespace clice

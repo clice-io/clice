@@ -1,0 +1,27 @@
+---
+created_at: 2026-10-08
+input_file: document_highlight/06_highlight_macros.cpp
+---
+arg:
+  - { range: "16:4-16:9", kind: Text }
+  - { range: "20:4-20:9", kind: Write }
+  - { range: "20:18-20:23", kind: Read }
+  - { range: "22:4-22:15", kind: Write }
+
+macro_def:
+  - { range: "12:8-12:13", kind: Text }
+  - { range: "19:7-19:12", kind: Read }
+  - { range: "23:11-23:16", kind: Read }
+  - { range: "26:7-26:12", kind: Read }
+
+macro_use:
+  - { range: "12:8-12:13", kind: Text }
+  - { range: "19:7-19:12", kind: Read }
+  - { range: "23:11-23:16", kind: Read }
+  - { range: "26:7-26:12", kind: Read }
+
+total:
+  - { range: "16:4-16:9", kind: Text }
+  - { range: "20:4-20:9", kind: Write }
+  - { range: "20:18-20:23", kind: Read }
+  - { range: "22:4-22:15", kind: Write }

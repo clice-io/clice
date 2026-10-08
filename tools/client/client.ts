@@ -975,6 +975,13 @@ export class CliceClient {
         });
     }
 
+    documentHighlightAt(uri: string, line: number, character: number) {
+        return this.sendRequest(
+            proto.DocumentHighlightRequest.type,
+            this.textDocumentPosition(uri, line, character),
+        );
+    }
+
     prepareRenameAt(uri: string, line: number, character: number) {
         return this.sendRequest(
             proto.PrepareRenameRequest.type,

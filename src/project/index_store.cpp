@@ -66,6 +66,9 @@ struct CDBSnapshotEntry {
 
 struct CDBSnapshot {
     std::vector<CDBSnapshotEntry> entries;
+
+    /// The files recorded as provisional members (Build::recorded), sorted.
+    std::vector<std::string> provisional;
 };
 
 /// clice.toml rules change the effective indexing command without touching
@@ -151,8 +154,13 @@ CDBSnapshot build_cdb_snapshot(Project& project,
     for(auto tu: standalone_debt) {
         add_standalone(tu);
     }
+    for(auto file: project.build.recorded()) {
+        snapshot.provisional.push_back(
+            project.project_index.portable(project.file_table.resolve(file)));
+    }
     // Deterministic bytes: save() decides "unchanged" by byte equality.
     std::ranges::sort(snapshot.entries, {}, &CDBSnapshotEntry::file);
+    std::ranges::sort(snapshot.provisional);
     return snapshot;
 }
 
@@ -830,9 +838,11 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     // point is too late for these bytes and returns in the report.
     std::string cdb_bytes;
     std::optional<std::size_t> cdb_index;
-    if(!batch.empty() || !removals.empty() || cdb_dirty) {
+    auto records = project.build.recorded_generation();
+    if(!batch.empty() || !removals.empty() || cdb_dirty || records != serialized_records) {
         debt.append(report.reindex().begin(), report.reindex().end());
         cdb_bytes = serialize_cdb_snapshot(project, header_hosts, standalone_of(debt));
+        serialized_records = records;
         if(!cdb_bytes.empty() && cdb_bytes != persisted_cdb_snapshot) {
             cdb_index = batch.size();
             batch.push_back({index::IndexBlobKind::CDB, "cdb", cdb_bytes});
@@ -1606,26 +1616,29 @@ void IndexStore::retire_excluded(Report& report) {
     }
 }
 
-llvm::SmallVector<Spelling> IndexStore::remembered_sources() {
-    llvm::SmallVector<Spelling> sources;
+IndexStore::Remembered IndexStore::remembered() {
+    Remembered result;
     if(!project.index_db) {
-        return sources;
+        return result;
     }
     auto blob = project.index_db->read(index::IndexBlobKind::CDB, "cdb");
     CDBSnapshot persisted;
     if(!blob ||
        !kota::codec::json::from_string(std::string_view(blob.buffer->getBuffer()), persisted)) {
-        return sources;
+        return result;
     }
     for(auto& entry: persisted.entries) {
         for(auto& source: entry.sources) {
             auto absolute = project.project_index.local(source);
-            if(!llvm::is_contained(sources, absolute)) {
-                sources.push_back(std::move(absolute));
+            if(!llvm::is_contained(result.sources, absolute)) {
+                result.sources.push_back(std::move(absolute));
             }
         }
     }
-    return sources;
+    for(auto& file: persisted.provisional) {
+        result.provisional.push_back(project.project_index.local(file));
+    }
+    return result;
 }
 
 void IndexStore::reconcile_cdb_snapshot(Report& report) {
@@ -1735,11 +1748,12 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             host_selected = selected_hash(project, host_id);
         }
         if(old.rules != rules || old.selected != entry.selected) {
-            // The default command that claimed it is gone and no host
+            // The command that claimed it — a rule's default command, or the
+            // one a provisional member borrowed — is gone and no host
             // vouches for it: the build stopped compiling it, so its rows
             // leave rather than being rebuilt under the builtin fallback.
             if(!old.selected.empty() && entry.selected.empty() && old.host.empty()) {
-                LOG_INFO("No rule claims {} any more; dropping its index",
+                LOG_INFO("The build no longer compiles {}; dropping its index",
                          project.file_table.resolve(server_id));
                 drop_index_into(server_id, report);
                 retired.insert(server_id);

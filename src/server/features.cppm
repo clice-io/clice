@@ -174,6 +174,7 @@ public:
                          Fid path_id,
                          const protocol::Position& position,
                          bool include_declaration);
+    RawResult document_highlight(Ticket ticket, Fid path_id, const protocol::Position& position);
     RawResult declaration(Ticket ticket, Fid path_id, const protocol::Position& position);
     RawResult type_definition(Ticket ticket, Fid path_id, const protocol::Position& position);
     RawResult implementation(Ticket ticket, Fid path_id, const protocol::Position& position);

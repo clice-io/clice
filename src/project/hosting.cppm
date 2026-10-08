@@ -82,9 +82,10 @@ struct Lender {
 };
 
 /// The commands the build's units can lend — every command of every
-/// member, by unit path — and the header search directories they cover,
-/// by identity, as indexes into `commands`. Rebuilt when Project::commands_epoch
-/// moves, so a resolution scans no unit.
+/// member but the borrowed ones, by unit path — and the header search
+/// directories they cover, by identity, as indexes into `commands`.
+/// Rebuilt when Project::commands_epoch moves, so a resolution scans no
+/// unit.
 struct LenderIndex {
     struct Command {
         Lender lender;
@@ -98,14 +99,14 @@ struct LenderIndex {
 };
 
 /// The lender of a file with neither an entry nor a host
-/// (CommandSource::Inferred), among the units the build compiles in a
+/// (CommandSource::Inferred), among the units the build declares in a
 /// language the file can be part of (a `.h` matches any, a `.c` borrows
-/// C++ only from a `.c` unit compiled as C++): one in the file's
-/// directory — same stem first, then by name — with its first command;
-/// else, for a header, the unit whose command's header search
-/// directories contain it, nearest directory first, with that command;
-/// else the unit closest by path. Nullopt when the build has no such
-/// unit.
+/// C++ only from a `.c` unit compiled as C++, a C++ source and a C++
+/// module unit borrow from each other): one in the file's directory —
+/// same stem first, then by name — with its first command; else, for a
+/// header, the unit whose command's header search directories contain
+/// it, nearest directory first, with that command; else the unit closest
+/// by path. Nullopt when the build has no such unit.
 std::optional<Lender> command_lender(Project& project, Fid file);
 
 /// The host a header compiles under when nothing is pinned: the first

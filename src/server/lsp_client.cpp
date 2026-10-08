@@ -344,6 +344,7 @@ void LSPClient::register_lifecycle() {
         caps.references_provider = protocol::ReferenceOptions{
             .work_done_progress = false,
         };
+        caps.document_highlight_provider = true;
         // RenameOptions only for a client that declared prepareSupport.
         auto& text_document = params.capabilities.text_document;
         if(text_document && text_document->rename && text_document->rename->prepare_support) {
@@ -835,6 +836,15 @@ void LSPClient::register_language_features() {
                                                         params.position,
                                                         params.context.include_declaration));
         });
+
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentHighlightParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        return holding(
+            project,
+            project->features.document_highlight(Ticket::take(session), path_id, params.position));
+    });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::PrepareRenameParams& params) -> RawResult {

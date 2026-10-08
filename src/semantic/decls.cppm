@@ -56,6 +56,19 @@ auto underlying_pack_type(const clang::ParmVarDecl* param) -> const clang::Templ
 auto resolve_forwarding_params(const clang::FunctionDecl* decl, unsigned max_depth = 10)
     -> llvm::SmallVector<const clang::ParmVarDecl*>;
 
+/// Whether an argument for `param` is used through a mutable lvalue
+/// reference, given `forwarded`, the parameter resolve_forwarding_params
+/// resolves it to (`param` itself outside a pack). The argument's
+/// eventual use is what counts, approximated as follows:
+/// 1. the value category can only change from rvalue to lvalue during
+///    forwarding, so `param` and `forwarded` both being lvalue references
+///    means the category was preserved;
+/// 2. an argument copied or cast somewhere along the chain can only reach
+///    an rvalue or const lvalue reference parameter, so a mutable lvalue
+///    reference at the end means it never was.
+/// A pack parameter left unresolved says nothing about the eventual use.
+bool binds_mutable_reference(const clang::ParmVarDecl* param, const clang::ParmVarDecl* forwarded);
+
 /// Given a callee expression, if the call is through a function pointer,
 /// try to find the declaration of the corresponding function pointer
 /// type, so that we can recover argument names from it.

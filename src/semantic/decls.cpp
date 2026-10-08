@@ -438,15 +438,14 @@ private:
     // inspects the given callee with the given args to check whether it
     // contains Parameters, and sets Info accordingly.
     void handleCall(clang::FunctionDecl* Callee, typename clang::CallExpr::arg_range Args) {
-        // Skip functions with less parameters, they can't be the target.
-        if(Callee->parameters().size() < Parameters.size())
-            return;
         if(llvm::any_of(Args,
                         [](const clang::Expr* E) { return isa<clang::PackExpansionExpr>(E); })) {
             return;
         }
         auto PackLocation = findPack(Args);
-        if(!PackLocation)
+        // A callee whose parameters end before the pack's arguments do (a
+        // C variadic `...` takes the rest) can't be the target.
+        if(!PackLocation || *PackLocation + Parameters.size() > Callee->getNumParams())
             return;
         llvm::ArrayRef<clang::ParmVarDecl*> MatchingParams =
             Callee->parameters().slice(*PackLocation, Parameters.size());
@@ -635,6 +634,13 @@ auto resolve_forwarding_params(const clang::FunctionDecl* D, unsigned MaxDepth)
         return Result;
     }
     return {params.begin(), params.end()};
+}
+
+bool binds_mutable_reference(const clang::ParmVarDecl* param, const clang::ParmVarDecl* forwarded) {
+    auto forwarded_type = forwarded->getType();
+    return param->getType()->isLValueReferenceType() && forwarded_type->isLValueReferenceType() &&
+           !forwarded_type.getNonReferenceType().isConstQualified() &&
+           !underlying_pack_type(forwarded);
 }
 
 auto proto_type_loc(clang::Expr* expr) -> clang::FunctionProtoTypeLoc {

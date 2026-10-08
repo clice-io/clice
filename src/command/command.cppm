@@ -115,6 +115,10 @@ clang::driver::types::ID suffix_type(llvm::StringRef path);
 /// library's extensionless headers.
 bool is_header_path(llvm::StringRef path);
 
+/// Whether the extension names a translation unit of a C-family language:
+/// a source, preprocessed or a module interface, never a header.
+bool is_source_path(llvm::StringRef path);
+
 /// Whether the extension marks a fragment only ever included into a
 /// translation unit — a `.def` list, a `.inc`, `.inl`, `.tpp`, `.ipp`,
 /// `.tcc` or `.txx` body — which compiles only under its includer's
@@ -148,7 +152,8 @@ enum class CommandSource : std::uint8_t {
     Default,
     /// Borrowed from a unit of the build near the file — a sibling, one
     /// whose header search reaches it, or the closest by path — for a file
-    /// with neither an entry nor a host (see command_donor).
+    /// with neither an entry nor a host, a provisional member's included
+    /// (see command_lender).
     Inferred,
 };
 
@@ -255,21 +260,28 @@ unsigned family_visibility(CompilerFamily family);
 /// Owned copy of a rendered argv (worker IPC and other string-owning edges).
 std::vector<std::string> to_strings(llvm::ArrayRef<const char*> argv);
 
-/// Per-file delta of a compilation database reload. Path ids are the shared
-/// file table's fids (stable across reloads).
+/// Per-file delta of the build's commands — a compilation database
+/// reload's, and the provisional members' and rule sources' that follow
+/// it. Path ids are the shared file table's fids (stable across reloads).
 struct CDBDiff {
     /// Files present only after the reload (gained their first entry).
-    llvm::SmallVector<Fid> added;
+    llvm::SmallVector<Fid, 0> added;
 
     /// Files present only before the reload (lost all their entries).
-    llvm::SmallVector<Fid> removed;
+    llvm::SmallVector<Fid, 0> removed;
 
     /// Files present on both sides whose sequence of command hashes differs
     /// — a reorder counts, since the first entry is the default selection.
-    llvm::SmallVector<Fid> changed;
+    llvm::SmallVector<Fid, 0> changed;
 
     bool empty() const {
         return added.empty() && removed.empty() && changed.empty();
+    }
+
+    void append(const CDBDiff& other) {
+        added.append(other.added);
+        removed.append(other.removed);
+        changed.append(other.changed);
     }
 };
 

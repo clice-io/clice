@@ -24,10 +24,6 @@ Coordinates shard_coordinates(const Shard& shard) {
     return {shard.content_size(), shard.line_starts(), shard.crlf_lines()};
 }
 
-LocalSourceRange to_local(const Occurrence& occurrence) {
-    return {occurrence.range.begin, occurrence.range.end};
-}
-
 std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
     if(content.empty() || offset >= content.size())
         return {};
@@ -123,6 +119,62 @@ void dedup_sites(std::vector<Site>& sites) {
         return site_key(lhs) == site_key(rhs);
     });
     sites.erase(dup.begin(), dup.end());
+}
+
+std::optional<Named> named_at(const Shard& rows,
+                              std::uint32_t offset,
+                              llvm::function_ref<bool(SymbolHash)> is_macro) {
+    llvm::SmallVector<Occurrence, 2> candidates;
+    rows.lookup(offset, [&](const Occurrence& occurrence) {
+        if(!candidates.empty() && !(candidates.front().range == occurrence.range)) {
+            return false;
+        }
+        candidates.push_back(occurrence);
+        return true;
+    });
+    if(candidates.empty()) {
+        return std::nullopt;
+    }
+    Named named{.range = candidates.front().range};
+    for(auto& candidate: candidates) {
+        if(!is_macro(candidate.target)) {
+            named.symbols.push_back(candidate.target);
+        }
+    }
+    if(named.symbols.empty()) {
+        named.symbols.push_back(candidates.front().target);
+    }
+    return named;
+}
+
+std::vector<Highlight> highlights(llvm::ArrayRef<const Shard*> rows,
+                                  llvm::ArrayRef<SymbolHash> symbols) {
+    constexpr std::pair<RelationKind::Kind, HighlightKind> kinds[] = {
+        {RelationKind::Declaration,   HighlightKind::Text },
+        {RelationKind::Definition,    HighlightKind::Text },
+        {RelationKind::Reference,     HighlightKind::Read },
+        {RelationKind::WeakReference, HighlightKind::Read },
+        {RelationKind::Write,         HighlightKind::Write},
+    };
+    std::vector<Highlight> result;
+    for(auto* shard: rows) {
+        for(auto symbol: symbols) {
+            for(auto [relation, kind]: kinds) {
+                shard->lookup(symbol, relation, [&](const Relation& row) {
+                    result.push_back({.range = row.range, .kind = kind});
+                    return true;
+                });
+            }
+        }
+    }
+    // The strongest kind of a range sorts first and survives the dedup.
+    std::ranges::sort(result, [](const Highlight& lhs, const Highlight& rhs) {
+        return std::tuple(lhs.range.begin, lhs.range.end, rhs.kind) <
+               std::tuple(rhs.range.begin, rhs.range.end, lhs.kind);
+    });
+    auto duplicates = std::ranges::unique(result, {}, &Highlight::range);
+    result.erase(duplicates.begin(), duplicates.end());
+    return result;
 }
 
 bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
@@ -294,37 +346,20 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     }
     std::optional<Cursor> cursor;
     auto hit = [&](const Shard& rows) {
-        llvm::SmallVector<Occurrence, 2> candidates;
-        rows.lookup(offset, [&](const Occurrence& occurrence) {
-            if(!candidates.empty() && !(candidates.front().range == occurrence.range)) {
-                return false;
-            }
-            candidates.push_back(occurrence);
-            return true;
+        auto named = named_at(rows, offset, [&](SymbolHash hash) {
+            auto info = symbol_info(hash, file);
+            return info && info->kind == SymbolKind::Macro;
         });
-        if(candidates.empty()) {
+        if(!named) {
             return false;
         }
         auto site =
             RowSource{.file = file, .path = source->path, .rows = &rows, .coords = source->coords}
-                .site(to_local(candidates.front()));
+                .site(named->range);
         if(!site) {
             return false;
         }
-        // A module imported through a macro sits under the macro's own
-        // occurrence: the name spells what the macro expanded to, and the
-        // macro itself is reached at its definition.
-        Cursor found{.site = *site};
-        for(auto& candidate: candidates) {
-            auto info = symbol_info(candidate.target, file);
-            if(!info || info->kind != SymbolKind::Macro) {
-                found.symbols.push_back(candidate.target);
-            }
-        }
-        if(found.symbols.empty()) {
-            found.symbols.push_back(candidates.front().target);
-        }
-        cursor = std::move(found);
+        cursor = Cursor{.symbols = std::move(named->symbols), .site = *site};
         return true;
     };
     if(hit(*source->rows)) {
@@ -682,6 +717,38 @@ std::vector<Site> IndexQuery::references(const Cursor& cursor, bool include_decl
              cursor.site.path,
              result.size(),
              timer.ms_f());
+    return result;
+}
+
+std::vector<IndexQuery::PlacedHighlight>
+    IndexQuery::document_highlights(const Cursor& cursor) const {
+    auto source = serving(cursor.site.file);
+    if(!source) {
+        return {};
+    }
+    std::vector<PlacedHighlight> result;
+    auto place = [&](llvm::ArrayRef<const Shard*> rows) {
+        for(auto& highlight: highlights(rows, cursor.symbols)) {
+            if(auto site = source->site(highlight.range)) {
+                result.push_back({.site = std::move(*site), .kind = highlight.kind});
+            }
+        }
+    };
+    // The preamble rows live only as long as the visit.
+    bool placed = false;
+    if(source->kind == RowSource::Kind::SessionRows) {
+        live->each_preamble([&](const RowSource& preamble) {
+            if(preamble.file != cursor.site.file) {
+                return true;
+            }
+            place({source->rows, preamble.rows});
+            placed = true;
+            return false;
+        });
+    }
+    if(!placed) {
+        place({source->rows});
+    }
     return result;
 }
 

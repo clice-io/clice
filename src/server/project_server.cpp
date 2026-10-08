@@ -8,7 +8,9 @@ module;
 
 module clice;
 
+import :command.command;
 import :index.writer_lock;
+import :project.build;
 import :sched.bootstrap;
 import :server.control_server;
 import :server.file_tracker;
@@ -236,6 +238,25 @@ void ProjectServer::discover_around(Fid path_id) {
     if(!events.empty()) {
         dispatch(events);
     }
+}
+
+void ProjectServer::saved(Fid path_id) {
+    // A header compiles through a host or a lender, never as a member; a
+    // build tree or the cache holds no sources of the workspace's own.
+    auto path = project.file_table.resolve(path_id);
+    if(root.empty() || !is_source_path(path) || project.build.declared(path_id)) {
+        return;
+    }
+    CanonicalPath cache_dir;
+    if(!project.config.project.cache_dir.empty()) {
+        cache_dir = CanonicalPath(Spelling::absolute(project.config.project.cache_dir));
+    }
+    if(!workspace_file(root, cache_dir, path) || !project.build.record(path_id)) {
+        return;
+    }
+    LOG_INFO("Recorded {} as a provisional member", path);
+    dispatch({FileEvent::cdb_changed({})});
+    schedule_metadata_flush();
 }
 
 std::shared_ptr<Session> ProjectServer::create_session(Fid path_id) {

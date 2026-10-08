@@ -115,7 +115,12 @@ std::optional<LoadedIndex> load_index(Project& project,
         return std::nullopt;
     }
     if(with_build) {
-        load_build(project, root, project.build.active_configuration(), store.remembered_sources());
+        auto remembered = store.remembered();
+        load_build(project,
+                   root,
+                   project.build.active_configuration(),
+                   remembered.sources,
+                   remembered.provisional);
     }
     return result;
 }

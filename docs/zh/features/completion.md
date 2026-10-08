@@ -108,10 +108,34 @@ tests/snap/code_completion/include_path_completion/03_closing_delimiter.cpp
 
 在 `import` 之后补全已知模块名，并插入结尾的分号
 
-已包含结尾分号的语句视为完整语句，不再提供模块名候选项。
-
 ```snap
 tests/snap/code_completion/module_completion/01_import_modules/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**当前模块的分区**
+
+在模块单元中，当前模块自身的分区以 `:partition` 的形式补全，而模块本身和其他模块的分区都不会出现在候选项中
+
+已以分号结尾的语句会保留该分号。
+
+```snap
+tests/snap/code_completion/module_completion/02_partition_imports/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**实现单元中的 import 关键字**
+
+在模块实现单元的文件作用域中，`import` 的补全方式与在接口单元中相同
+
+```snap
+tests/snap/code_completion/module_completion/03_import_keyword/main.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -125,16 +149,6 @@ tests/snap/code_completion/module_completion/01_import_modules/main.cpp
   其余空格立即返回空结果。这与 TypeScript/Haxe 语言扩展采用的模式相同
   （[vscode#67714](https://github.com/microsoft/vscode/issues/67714)）。
 
-- [ ] 从结果中排除当前模块（模块导入自身是无效的）— **FIXME**
-- [ ] 在同一模块内导入分区
-
-  ```cpp
-  // inside module foo
-  import :^  // suggest :core, :io (only foo's own partitions)
-  ```
-
-  注意：`import M:part;` 不是合法的 C++ 语法——分区只能在同一模块内通过简写形式 `import :part;` 导入。
-
 - [ ] 按点分层补全
 
   ```cpp
@@ -143,7 +157,6 @@ tests/snap/code_completion/module_completion/01_import_modules/main.cpp
 
   注意：模块名称中的点是一种命名约定，并不表示语言层面的层级关系，但由点触发的补全仍能改善用户体验。
 
-- [ ] 过滤掉其他模块中未导出的（内部）分区
 - [ ] 导入头文件单元
 
   ```cpp
@@ -160,13 +173,6 @@ tests/snap/code_completion/module_completion/01_import_modules/main.cpp
 ## 模块声明
 
 在模块声明上下文（`module` / `export module`）中进行补全。
-
-- [ ] `import` / `module` 关键字补全
-
-  ```cpp
-  imp^  // suggest "import" keyword
-  mod^  // suggest "module" keyword
-  ```
 
 - [ ] 在 `module` / `export module` 后补全模块名称
 

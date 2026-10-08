@@ -35,6 +35,9 @@ struct PreambleCompletionContext {
     /// What a chosen candidate replaces: the name under the cursor — of an
     /// include, its last path component — typed part and untyped rest.
     LocalSourceRange replace;
+
+    /// An import statement that ends in its semicolon already.
+    bool closed = false;
 };
 
 /// Detect whether the cursor is inside a #include or import directive.
@@ -47,10 +50,13 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
 /// access.
 bool follows_access_operator(llvm::StringRef text, std::uint32_t offset);
 
-/// The names of the graph's provided modules that start with `prefix`,
-/// suitable for `import` completion.
+/// The names an `import` in a unit of `module_name` (empty outside a
+/// module unit) can take that start with `prefix`: the graph's other
+/// provided modules, and the partitions of the unit's own module but its
+/// own, spelled `:partition`.
 std::vector<std::string> complete_module_import(const DependencyGraph& graph,
-                                                llvm::StringRef prefix);
+                                                llvm::StringRef prefix,
+                                                llvm::StringRef module_name);
 
 /// Entry in the include path completion result.
 struct IncludeCandidate {

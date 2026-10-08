@@ -113,11 +113,34 @@ Triggered when cursor is after `import` or `export import`.
 Known module names complete after `import`, with the closing semicolon
 inserted
 
-A statement that already contains its closing semicolon is complete and
-offers no module names.
-
 ```snap
 tests/snap/code_completion/module_completion/01_import_modules/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Partitions of the current module**
+
+In a module unit, the module's own partitions complete as `:partition`, while neither the module itself nor the partitions of other modules are offered
+
+A statement that already ends in a semicolon keeps it.
+
+```snap
+tests/snap/code_completion/module_completion/02_partition_imports/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Import keyword in implementation units**
+
+`import` completes at file scope of a module implementation unit as it does in an interface
+
+```snap
+tests/snap/code_completion/module_completion/03_import_keyword/main.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -132,16 +155,6 @@ tests/snap/code_completion/module_completion/01_import_modules/main.cpp
   spaces return empty immediately. This follows the same pattern used by
   TypeScript/Haxe language extensions ([vscode#67714](https://github.com/microsoft/vscode/issues/67714)).
 
-- [ ] Exclude self-module from results (self-import is invalid) — **FIXME**
-- [ ] Partition import within the same module
-
-  ```cpp
-  // inside module foo
-  import :^  // suggest :core, :io (only foo's own partitions)
-  ```
-
-  Note: `import M:part;` is not valid C++ — partitions can only be imported via the short form `import :part;` from within the same module.
-
 - [ ] Hierarchical dot-completion
 
   ```cpp
@@ -150,7 +163,6 @@ tests/snap/code_completion/module_completion/01_import_modules/main.cpp
 
   Note: dots in module names are a naming convention, not language-level hierarchy, but dot-triggered completion is still valuable UX.
 
-- [ ] Filter out non-exported (internal) partitions of other modules
 - [ ] Header unit import
 
   ```cpp
@@ -167,13 +179,6 @@ tests/snap/code_completion/module_completion/01_import_modules/main.cpp
 ## Module declarations
 
 Completion within module declaration contexts (`module` / `export module`).
-
-- [ ] `import` / `module` keyword completion
-
-  ```cpp
-  imp^  // suggest "import" keyword
-  mod^  // suggest "module" keyword
-  ```
 
 - [ ] Module name completion after `module` / `export module`
 

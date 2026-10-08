@@ -22,10 +22,6 @@ using llvm::dyn_cast_or_null;
 // For now, inlay hints are always anchored at the left or right of their range.
 enum class HintSide : std::uint8_t { Left, Right };
 
-bool is_expanded_from_param_pack(const clang::ParmVarDecl* param) {
-    return decls::underlying_pack_type(param) != nullptr;
-}
-
 // for a ParmVarDecl from a function declaration, returns the corresponding
 // ParmVarDecl from the definition if possible, nullptr otherwise.
 const clang::ParmVarDecl* param_definition(const clang::ParmVarDecl* param) {
@@ -285,43 +281,12 @@ private:
         return true;
     }
 
-    bool should_hint_reference(const clang::ParmVarDecl* param,
-                               const clang::ParmVarDecl* forwarded_param) {
-        // We add a & hint only when the argument is passed as mutable reference.
-        // For parameters that are not part of an expanded pack, this is
-        // straightforward. For expanded pack parameters, it's likely that they will
-        // be forwarded to another function. In this situation, we only want to add
-        // the reference hint if the argument is actually being used via mutable
-        // reference. This means we need to check
-        // 1. whether the value category of the argument is preserved, i.e. each
-        //    pack expansion uses std::forward correctly.
-        // 2. whether the argument is ever copied/cast instead of passed
-        //    by-reference
-        // Instead of checking this explicitly, we use the following proxy:
-        // 1. the value category can only change from rvalue to lvalue during
-        //    forwarding, so checking whether both the parameter of the forwarding
-        //    function and the forwarded function are lvalue references detects such
-        //    a conversion.
-        // 2. if the argument is copied/cast somewhere in the chain of forwarding
-        //    calls, it can only be passed on to an rvalue reference or const lvalue
-        //    reference parameter. Thus if the forwarded parameter is a mutable
-        //    lvalue reference, it cannot have been copied/cast to on the way.
-        // Additionally, we should not add a reference hint if the forwarded
-        // parameter was only partially resolved, i.e. points to an expanded pack
-        // parameter, since we do not know how it will be used eventually.
-        auto type = param->getType();
-        auto forwarded_type = forwarded_param->getType();
-        return type->isLValueReferenceType() && forwarded_type->isLValueReferenceType() &&
-               !forwarded_type.getNonReferenceType().isConstQualified() &&
-               !is_expanded_from_param_pack(forwarded_param);
-    }
-
     using NameVec = llvm::SmallVector<llvm::StringRef, 8>;
 
     NameVec choose_param_names(llvm::ArrayRef<const clang::ParmVarDecl*> params) {
         NameVec param_names;
         for(const auto* param: params) {
-            if(is_expanded_from_param_pack(param)) {
+            if(decls::underlying_pack_type(param)) {
                 // If we haven't resolved a pack paramater (e.g. foo(Args... args)) to a
                 // non-pack parameter, then hinting as foo(args: 1, args: 2, args: 3) is
                 // unlikely to be useful.
@@ -410,7 +375,8 @@ private:
             llvm::StringRef name = param_names[i];
             const bool name_hint = should_hint_name(args[i], name) && options.parameters;
             const bool reference_hint =
-                should_hint_reference(params[i], forwarded_params[i]) && options.parameters;
+                decls::binds_mutable_reference(params[i], forwarded_params[i]) &&
+                options.parameters;
 
             const bool is_default = llvm::isa<clang::CXXDefaultArgExpr>(args[i]);
             has_non_default_args |= !is_default;

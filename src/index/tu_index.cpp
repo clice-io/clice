@@ -982,6 +982,10 @@ public:
                 // occurrence inside it.
                 add_self_relation(occurrence.decl, occurrence.kind, name);
 
+                if(occurrence.kind.is_one_of(RelationKind::Reference) && is_written(semantics, i)) {
+                    add_self_relation(occurrence.decl, RelationKind::Write, name);
+                }
+
                 if(!occurrence.kind.is_one_of(RelationKind::Declaration,
                                               RelationKind::Definition,
                                               RelationKind::WeakReference)) {

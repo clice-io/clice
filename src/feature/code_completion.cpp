@@ -644,6 +644,30 @@ public:
 
         bool keyword_snippets = options.enable_keyword_snippet && client.snippets;
         llvm::StringSet<> plain_patterns;
+        auto add_pattern = [&](const clang::CodeCompletionString& pattern) {
+            auto label = pattern.getAllTypedText();
+            auto head = pattern_text(pattern, /*whole=*/false);
+            if(keyword_snippets) {
+                auto snippet = build_snippet(pattern);
+                bool has_snippet = !snippet.empty();
+                add({
+                    .label = label,
+                    .kind = protocol::CompletionItemKind::Snippet,
+                    .insert =
+                        has_snippet ? std::move(snippet) : pattern_text(pattern, /*whole=*/true),
+                    .snippet = has_snippet,
+                    .signature = pattern_tail(pattern),
+                });
+            } else if(plain_patterns.insert(head).second) {
+                // Without its placeholders a pattern is its keyword;
+                // the variants of one statement collapse.
+                add({
+                    .label = label,
+                    .kind = protocol::CompletionItemKind::Keyword,
+                    .insert = head,
+                });
+            }
+        };
 
         for(auto& candidate: llvm::make_range(candidates, candidates + candidate_count)) {
             switch(candidate.Kind) {
@@ -654,8 +678,6 @@ public:
 
                 case clang::CodeCompletionResult::RK_Pattern: {
                     auto& pattern = *candidate.Pattern;
-                    auto label = pattern.getAllTypedText();
-                    auto head = pattern_text(pattern, /*whole=*/false);
                     // A pattern carrying a method is an override declaration
                     // in a class body, or in a method body a call of the
                     // overridden method — a duplicate of the method's own
@@ -665,32 +687,13 @@ public:
                             break;
                         }
                         add({
-                            .label = label,
+                            .label = pattern.getAllTypedText(),
                             .kind = protocol::CompletionItemKind::Method,
-                            .insert = head + ";",
+                            .insert = pattern_text(pattern, /*whole=*/false) + ";",
                         });
                         break;
                     }
-                    if(keyword_snippets) {
-                        auto snippet = build_snippet(pattern);
-                        bool has_snippet = !snippet.empty();
-                        add({
-                            .label = label,
-                            .kind = protocol::CompletionItemKind::Snippet,
-                            .insert = has_snippet ? std::move(snippet)
-                                                  : pattern_text(pattern, /*whole=*/true),
-                            .snippet = has_snippet,
-                            .signature = pattern_tail(pattern),
-                        });
-                    } else if(plain_patterns.insert(head).second) {
-                        // Without its placeholders a pattern is its keyword;
-                        // the variants of one statement collapse.
-                        add({
-                            .label = label,
-                            .kind = protocol::CompletionItemKind::Keyword,
-                            .insert = head,
-                        });
-                    }
+                    add_pattern(pattern);
                     break;
                 }
 
@@ -805,6 +808,23 @@ public:
                     add(item);
                     break;
                 }
+            }
+        }
+
+        // SemaCodeComplete's `import name;` pattern skips implementation
+        // units, which import past their module declaration just the same.
+        if(context.getKind() == clang::CodeCompletionContext::CCC_TopLevel &&
+           sema.CurContext->isTranslationUnit()) {
+            if(auto* module = sema.getCurrentModule();
+               module && (module->Kind == clang::Module::ModuleImplementationUnit ||
+                          module->Kind == clang::Module::ModulePartitionImplementation)) {
+                clang::CodeCompletionBuilder builder(getAllocator(), getCodeCompletionTUInfo());
+                builder.AddTypedTextChunk("import");
+                builder.AddChunk(clang::CodeCompletionString::CK_HorizontalSpace);
+                builder.AddPlaceholderChunk("name");
+                builder.AddChunk(clang::CodeCompletionString::CK_SemiColon);
+                builder.AddChunk(clang::CodeCompletionString::CK_VerticalSpace);
+                add_pattern(*builder.TakeString());
             }
         }
 

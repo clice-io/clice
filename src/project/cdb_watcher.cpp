@@ -87,13 +87,6 @@ static void push_moved(llvm::ArrayRef<Fid> files,
     }
 }
 
-/// Deltas of one tick merge: the invalidator rebuilds the graph per event.
-static void append(CDBDiff& into, const CDBDiff& from) {
-    into.added.append(from.added);
-    into.removed.append(from.removed);
-    into.changed.append(from.changed);
-}
-
 void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta) {
     auto current = looked(tracked);
     if(!force) {
@@ -149,11 +142,11 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
     if(flips) {
         push_moved(shared, before, default_sources(shared), diff->changed);
     }
-    append(delta, *diff);
+    delta.append(*diff);
 }
 
 void CDBWatcher::discover_into(Fid path_id, CDBDiff& found) {
-    if(project.build.declares_sources() || !project.build.commands(path_id).empty()) {
+    if(project.build.declares_sources() || !project.build.entries(path_id).empty()) {
         return;
     }
     auto path = project.file_table.resolve(path_id);
@@ -171,7 +164,7 @@ void CDBWatcher::discover_into(Fid path_id, CDBDiff& found) {
         auto id = registered ? *registered : project.cdb.add_source(database);
         if(auto diff = project.cdb.reload_and_diff(id)) {
             LOG_INFO("Found compilation database: {}", database);
-            append(found, *diff);
+            found.append(*diff);
         }
         if(!registered) {
             track(id);
@@ -207,7 +200,7 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
     want(listed);
     for(auto path_id: open_files) {
         auto path = project.file_table.resolve(path_id);
-        if(project.build.commands(path_id).empty() && path::under(path, root)) {
+        if(project.build.entries(path_id).empty() && path::under(path, root)) {
             want(database_places_above(path.parent(), root));
         }
     }
