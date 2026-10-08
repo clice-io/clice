@@ -1276,30 +1276,130 @@ tests/snap/navigation/module_navigation/04_module_dotted/main.cpp
 
 ## 文档高亮
 
-高亮显示当前文件中对光标所在符号的所有引用（`textDocument/documentHighlight`）。
+高亮显示当前文件中对光标所在符号的所有引用（`textDocument/documentHighlight`）。高亮与查找引用来自同一份索引，因此覆盖的名称与查找引用相同，在只读模式下同样可用；每处高亮都会标明该处代码是写入、读取还是声明该符号。
 
 <!-- BEGIN GENERATED ITEMS: document_highlight -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **文档引用高亮**
 
-文档高亮尚未实现，因此声明和使用处都不会高亮显示
+当前文件中光标所在符号的每一处名称都会高亮显示，包括它的声明和定义
 
 ```snap
-tests/snap/navigation/document_highlight/01_highlight_references.cpp
+tests/snap/document_highlight/document_highlight/01_highlight_references.cpp
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**符号高亮的读写分类**
+**读写访问**
 
-文档高亮尚不报告读写访问类型
+高亮区分写入和读取：赋值、复合赋值、自增或自减都会写入该名称
+
+其余用法都是读取。声明既不算读取也不算写入，无论是否带初始化器，都按普通文本高亮显示。
 
 ```snap
-tests/snap/navigation/document_highlight/02_highlight_read_write.cpp
+tests/snap/document_highlight/document_highlight/02_highlight_read_write.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**通过可变引用传递的实参**
+
+绑定到非 const 左值引用形参的实参算作写入，也就是 `&` 内联提示所标记的位置
+
+const 引用形参或按值传递的形参读取实参，对实参取地址同样算作读取。转发引用（forwarding reference，`T&&`、`auto&&`）可以绑定任何实参，也算作读取，除非可变参数转发函数把实参继续传给可变引用形参。
+
+```snap
+tests/snap/document_highlight/document_highlight/03_highlight_reference_arguments.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**通过重载运算符写入**
+
+类重载的赋值、复合赋值、自增和自减运算符与内置运算符一样，会写入左操作数
+
+其他运算符读取左操作数。如果运算符以可变引用接收右操作数（流提取运算符就是如此），右操作数算作写入。运算符本身在其声明处以及每个使用它的表达式中高亮显示。
+
+```snap
+tests/snap/document_highlight/document_highlight/04_highlight_overloaded_operators.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**字段与成员访问**
+
+通过 `object.member` 写入时，写入的是成员，对象本身只被读取
+
+指定初始化器或构造函数的成员初始化器会指明它所初始化的字段，但不算作写入：初始化不是赋值。匿名联合体或结构体的字段与其他字段一样高亮显示。
+
+```snap
+tests/snap/document_highlight/document_highlight/05_highlight_members.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**宏名称与宏参数**
+
+宏在其定义、展开处、检测它的条件编译指令以及它的 `#undef` 处高亮显示
+
+写在宏参数中的名称在书写位置高亮；由宏的替换文本拼出的名称则高亮整个宏调用。
+
+```snap
+tests/snap/document_highlight/document_highlight/06_highlight_macros.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**类名、构造函数与析构函数**
+
+类在其名称指代它的每一处高亮显示，析构函数的 `~Name` 中也是如此；构造函数或析构函数高亮显示自身的声明和使用处
+
+构造表达式如果没有写出构造函数名称（`Session(7)` 写出的是类名），则通过它的圆括号关联到构造函数。
+
+```snap
+tests/snap/document_highlight/document_highlight/07_highlight_constructors.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模板与特化**
+
+模板在其自身的声明和每个使用处高亮显示；显式特化或偏特化是独立的符号
+
+模板参数在其所属模板内高亮显示。在模板内部，经由依赖类型访问的成员会与它可能指代的那些成员一同高亮。
+
+```snap
+tests/snap/document_highlight/document_highlight/08_highlight_templates.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Lambda 捕获与结构化绑定**
+
+被 Lambda 捕获的变量在捕获列表和 Lambda 体中高亮显示；初始化捕获是独立的变量
+
+结构化绑定引入的每个名称都是独立的符号。
+
+```snap
+tests/snap/document_highlight/document_highlight/09_highlight_lambdas_bindings.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1311,7 +1411,19 @@ tests/snap/navigation/document_highlight/02_highlight_read_write.cpp
 控制流关键字尚无相关的文档高亮
 
 ```snap
-tests/snap/navigation/document_highlight/03_highlight_control_flow.cpp
+tests/snap/document_highlight/document_highlight/10_highlight_control_flow.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模块单元中的高亮**
+
+高亮可用于模块单元，也可用于从模块导入的名称，包括模块名称本身
+
+```snap
+tests/snap/document_highlight/document_highlight/11_highlight_module_unit/main.cpp
 ```
 
 <!-- END CAPABILITY -->
