@@ -38,7 +38,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
     }
     // A structured binding's declared type must stay `auto`.
     const auto* owner = ctx.node.owning_decl();
-    if(llvm::isa_and_present<clang::DecompositionDecl>(owner)) {
+    if(llvm::isa<clang::DecompositionDecl>(owner)) {
         return;
     }
 

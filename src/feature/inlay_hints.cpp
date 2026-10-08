@@ -8,6 +8,7 @@ import :compile.compilation_unit;
 import :compile.semantics;
 import :feature.feature;
 import :index.tu_index;
+import :index.types;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
@@ -115,8 +116,7 @@ struct SpelledName {
 /// arguments and qualifiers too. The walk follows the printer where it
 /// decides what is written — preferred names, defaulted arguments left out —
 /// and a name it misjudges is merely left unlinked.
-class SpelledNames {
-public:
+struct SpelledNames {
     llvm::SmallVector<SpelledName, 4> names;
 
     void walk(clang::QualType type) {
@@ -440,7 +440,6 @@ private:
                 // non-pack parameter, then hinting as foo(args: 1, args: 2, args: 3) is
                 // unlikely to be useful.
                 param_names.emplace_back();
-                named.push_back(param);
             } else {
                 llvm::StringRef simple_name = display::identifier_of(param);
                 // If the parameter is unnamed in the declaration:
@@ -453,8 +452,8 @@ private:
                 }
                 // Still unnamed: an empty entry, the hint is dropped later.
                 param_names.emplace_back(simple_name);
-                named.push_back(param);
             }
+            named.push_back(param);
         }
 
         // Standard library functions often have parameter names that start
@@ -762,17 +761,17 @@ private:
         if(!options.deduced_types || type.isNull())
             return;
 
-        auto desugared = display::maybe_desugar(unit.context(), type);
-        std::string type_name = display::type(unit.context(), desugared, display_options).text;
+        auto printed = display::maybe_desugar(unit.context(), type);
+        std::string type_name = display::type(unit.context(), printed, display_options).text;
 
         auto should_print = [&](llvm::StringRef TypeName) {
             return options.type_name_limit == 0 || TypeName.size() < options.type_name_limit;
         };
 
-        if(type != desugared && !should_print(type_name)) {
+        if(type != printed && !should_print(type_name)) {
             // If the desugared type is too long to display, fallback to the sugared
             // type.
-            desugared = type;
+            printed = type;
             type_name = display::type(unit.context(), type, display_options).text;
         }
 
@@ -781,7 +780,7 @@ private:
                            HintSide::Right,
                            HintCategory::Type,
                            prefix,
-                           type_label(desugared, type_name),
+                           type_label(printed, type_name),
                            /*Suffix=*/"");
         }
     }

@@ -63,6 +63,10 @@ function formatInlayHints(hints: HintEntry[]): string[] {
     });
 }
 
+function linkEntry(value: string, file: string, range: proto.Range): string {
+    return `${value} ${file}:${fmtRange(range)}`;
+}
+
 function adaptRaw(result: unknown, map: OffsetConverter, root: string): HintEntry[] {
     return (result as RawInlayHint[]).map((hint) => {
         const kind = LSP_INLAY_KIND[hint.kind];
@@ -76,7 +80,11 @@ function adaptRaw(result: unknown, map: OffsetConverter, root: string): HintEntr
             links: hint.label.flatMap((part) =>
                 part.location != null
                     ? [
-                          `${part.value} ${normalizeFilePath(part.location.path, root)}:${fmtRange(part.location.range)}`,
+                          linkEntry(
+                              part.value,
+                              normalizeFilePath(part.location.path, root),
+                              part.location.range,
+                          ),
                       ]
                     : [],
             ),
@@ -91,18 +99,20 @@ function adaptReply(hints: proto.InlayHint[], root: string): HintEntry[] {
         if (hint.kind === undefined) {
             throw new Error("clice always replies with an inlay hint kind");
         }
-        const parts = typeof hint.label === "string" ? [] : hint.label;
+        const parts: proto.InlayHintLabelPart[] =
+            typeof hint.label === "string" ? [{ value: hint.label }] : hint.label;
         return {
             pos: fmtPos(hint.position),
             kind: enumName(proto.InlayHintKind, hint.kind),
-            label:
-                typeof hint.label === "string"
-                    ? hint.label
-                    : hint.label.map((part) => part.value).join(""),
+            label: parts.map((part) => part.value).join(""),
             links: parts.flatMap((part) =>
-                part.location !== undefined
+                part.location != null
                     ? [
-                          `${part.value} ${normalizeFileUri(part.location.uri, root)}:${fmtRange(part.location.range)}`,
+                          linkEntry(
+                              part.value,
+                              normalizeFileUri(part.location.uri, root),
+                              part.location.range,
+                          ),
                       ]
                     : [],
             ),

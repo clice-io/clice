@@ -4,4 +4,8 @@ input_file: deduced_type/03_decltype.cpp
 ---
 dt:
 - [refactor.rewrite] Replace 'decltype(value())' with 'int'
-  9:4-9:21 => "int"
+  10:4-10:21 => "int"
+
+nested:
+- [refactor.rewrite] Replace 'decltype(x)' with 'int'
+  11:4-11:15 => "int"

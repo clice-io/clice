@@ -16,7 +16,6 @@ import :server.features;
 import :server.format;
 import :server.lsp_projection;
 import :server.query_commands;
-import :server.uri;
 import :syntax.completion;
 import :syntax.include_resolver;
 import :syntax.scan;
@@ -687,18 +686,17 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
     co_return to_raw(feature::inlay_hints_to_protocol(hints, session->position_map(), link));
 }
 
-Features::RawResult Features::resolve_inlay_hint(protocol::InlayHint hint) {
-    auto data = to_lsp::inlay_hint_data(hint.data);
+Features::RawResult Features::resolve_inlay_hint(protocol::InlayHint hint,
+                                                 std::optional<to_lsp::InlayHintData> data,
+                                                 Fid document) {
     auto* parts = std::get_if<std::vector<protocol::InlayHintLabelPart>>(&hint.label);
     if(!data || !parts || parts->size() != data->label.size()) {
         co_return to_raw(hint);
     }
-    auto document = uri_to_path(data->uri);
-    auto path_id = document ? project.file_table.intern(*document) : Fid();
     for(auto [part, piece]: llvm::zip_equal(*parts, data->label)) {
         if(piece.symbol) {
             part.location =
-                link_location(piece.symbol, anchor_of(project.file_table, piece, path_id));
+                link_location(piece.symbol, anchor_of(project.file_table, piece, document));
         }
     }
     co_return to_raw(hint);
@@ -707,14 +705,12 @@ Features::RawResult Features::resolve_inlay_hint(protocol::InlayHint hint) {
 std::optional<protocol::Location> Features::link_location(index::SymbolHash symbol, Fid anchor) {
     auto sites =
         gather(symbol, anchor, [&](const index::IndexQuery& from, index::SymbolHash named) {
-            std::vector<index::Site> found;
             for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
                 if(auto site = from.first_site(named, anchor, kind)) {
-                    found.push_back(std::move(*site));
-                    break;
+                    return std::vector{std::move(*site)};
                 }
             }
-            return found;
+            return std::vector<index::Site>{};
         });
     if(sites.empty()) {
         return std::nullopt;

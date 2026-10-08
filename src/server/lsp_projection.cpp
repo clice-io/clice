@@ -141,7 +141,7 @@ protocol::LSPAny inlay_hint_data(llvm::StringRef uri,
     };
 }
 
-std::optional<InlayHintData> inlay_hint_data(const std::optional<protocol::LSPAny>& data) {
+std::optional<InlayHintData> parse_inlay_hint_data(const std::optional<protocol::LSPAny>& data) {
     const auto* object = data ? data->get_object() : nullptr;
     const auto* uri = object ? object->find("uri") : nullptr;
     const auto* parts = object ? object->find("parts") : nullptr;

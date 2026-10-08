@@ -21,4 +21,5 @@ const Widget* find(int id);
 void use() {
     auto pair = make_pair();
     auto found = find(1);
+    resize(2);
 }

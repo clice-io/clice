@@ -9,6 +9,7 @@ import :index.query;
 import :project.project;
 import :sched.index.pump;
 import :server.dispatcher;
+import :server.lsp_projection;
 import :server.session;
 import :server.session_store;
 
@@ -135,8 +136,11 @@ public:
                           kota::cancellation_token token = {});
 
     /// inlayHint/resolve: the locations of the label pieces a Deferred
-    /// reply named, through the index like go-to-definition.
-    RawResult resolve_inlay_hint(protocol::InlayHint hint);
+    /// reply named in `data`, through the index like go-to-definition.
+    /// The hint comes back as it was when the client mangled the data.
+    RawResult resolve_inlay_hint(protocol::InlayHint hint,
+                                 std::optional<to_lsp::InlayHintData> data,
+                                 Fid document);
     RawResult folding_range(Ticket ticket,
                             bool line_folding_only,
                             kota::cancellation_token token = {});

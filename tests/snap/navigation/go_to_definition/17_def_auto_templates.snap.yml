@@ -4,14 +4,14 @@ input_file: go_to_definition/17_def_auto_templates.cpp
 ---
 alias:
   definition:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "21:6-21:12" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "22:6-22:12" }
   declaration:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "21:6-21:12" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "22:6-22:12" }
   typeDefinition:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "21:6-21:12" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "22:6-22:12" }
   references:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "21:6-21:12" }
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "26:0-26:6" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "22:6-22:12" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "27:0-27:6" }
 
 builtin: none
 
@@ -19,43 +19,62 @@ closure: none
 
 explicit_specialization:
   definition:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "16:7-16:10" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "17:7-17:10" }
   declaration:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "16:7-16:10" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "17:7-17:10" }
   typeDefinition:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "16:7-16:10" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "17:7-17:10" }
   references:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "16:7-16:10" }
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "24:0-24:3" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "17:7-17:10" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "25:0-25:3" }
   typeHierarchy:
-    - { name: "Box<char>", kind: Struct, file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "15:0-16:19", selection: "16:7-16:10" }
+    - { name: "Box<char>", kind: Struct, file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "16:0-17:19", selection: "17:7-17:10" }
+
+init_capture:
+  definition:
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "39:5-39:9" }
+  declaration:
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "39:5-39:9" }
+  typeDefinition:
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "14:7-14:10" }
+  references:
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "39:5-39:9" }
+
+macro:
+  definition:
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "29:8-29:12" }
+  declaration:
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "29:8-29:12" }
+  references:
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "29:8-29:12" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "40:4-40:8" }
 
 new_expression: none
 
 partial_specialization:
   definition:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "19:7-19:10" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "20:7-20:10" }
   declaration:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "19:7-19:10" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "20:7-20:10" }
   typeDefinition:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "19:7-19:10" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "20:7-20:10" }
   references:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "19:7-19:10" }
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "25:0-25:3" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "20:7-20:10" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "26:0-26:3" }
   typeHierarchy:
-    - { name: "Box<T *>", kind: Struct, file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "18:0-19:17", selection: "19:7-19:10" }
+    - { name: "Box<T *>", kind: Struct, file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "19:0-20:17", selection: "20:7-20:10" }
 
 primary:
   definition:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "13:7-13:10" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "14:7-14:10" }
   declaration:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "13:7-13:10" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "14:7-14:10" }
   typeDefinition:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "13:7-13:10" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "14:7-14:10" }
   references:
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "13:7-13:10" }
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "21:15-21:18" }
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "23:0-23:3" }
-    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "35:4-35:7" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "14:7-14:10" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "22:15-22:18" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "24:0-24:3" }
+    - { file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "38:4-38:7" }
   typeHierarchy:
-    - { name: "Box", kind: Struct, file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "13:0-13:13", selection: "13:7-13:10" }
+    - { name: "Box", kind: Struct, file: "${WS}/go_to_definition/17_def_auto_templates.cpp", range: "14:0-14:13", selection: "14:7-14:10" }

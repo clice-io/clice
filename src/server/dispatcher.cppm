@@ -46,8 +46,8 @@ public:
     using RawResult = kota::task<kota::codec::RawValue, kota::ipc::Error>;
 
     /// An AST query to the stateful worker holding the file's AST, once the
-    /// family compiled it. Position-sensitive queries (hover, goto) pass a
-    /// Position; range-sensitive ones (inlay hints) a Range.
+    /// family compiled it. Position-sensitive queries (hover) pass a
+    /// Position.
     /// `token`, on every dispatch: the LSP request's cancellation token.
     /// Passing it into the worker send turns a client $/cancelRequest into
     /// a wire cancel — the worker stops the parse at the next top-level

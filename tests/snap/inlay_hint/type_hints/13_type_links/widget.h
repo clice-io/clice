@@ -7,3 +7,5 @@ struct Widget {
 };
 
 struct Gadget {};
+
+void resize(int width);

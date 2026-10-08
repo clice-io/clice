@@ -4,25 +4,26 @@ input_file: go_to_definition/19_def_auto_dependent.cpp
 ---
 dependent_call:
   definition:
-    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "10:7-10:11" }
+    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "13:7-13:11" }
   declaration:
-    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "10:7-10:11" }
+    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "13:7-13:11" }
   typeDefinition:
-    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "10:7-10:11" }
+    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "13:7-13:11" }
   references:
-    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "10:7-10:11" }
-    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "12:4-12:8" }
-    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "16:10-16:14" }
+    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "13:7-13:11" }
+    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "15:4-15:8" }
+    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "19:10-19:14" }
+    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "26:11-26:15" }
   typeHierarchy:
-    - { name: "Node", kind: Struct, file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "10:0-13:1", selection: "10:7-10:11" }
+    - { name: "Node", kind: Struct, file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "13:0-16:1", selection: "13:7-13:11" }
 
 dependent_member:
   definition:
-    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "15:19-15:20" }
+    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "18:19-18:20" }
   declaration:
-    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "15:19-15:20" }
+    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "18:19-18:20" }
   typeDefinition:
-    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "15:19-15:20" }
+    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "18:19-18:20" }
   references:
-    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "15:19-15:20" }
-    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "16:15-16:16" }
+    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "18:19-18:20" }
+    - { file: "${WS}/go_to_definition/19_def_auto_dependent.cpp", range: "19:15-19:16" }

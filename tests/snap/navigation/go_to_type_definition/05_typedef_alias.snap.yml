@@ -11,17 +11,38 @@ alias:
     - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "9:7-9:11" }
   references:
     - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "11:6-11:12" }
-    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "15:8-15:14" }
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "20:8-20:14" }
+
+boxed:
+  definition:
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "20:50-20:55" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "20:50-20:55" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "18:6-18:11" }
+  references:
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "20:50-20:55" }
 
 legacy:
   definition:
-    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "15:36-15:42" }
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "20:36-20:42" }
   declaration:
-    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "15:36-15:42" }
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "20:36-20:42" }
   typeDefinition:
     - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "13:13-13:25" }
   references:
-    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "15:36-15:42" }
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "20:36-20:42" }
+
+template_alias:
+  definition:
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "18:6-18:11" }
+  declaration:
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "18:6-18:11" }
+  typeDefinition:
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "16:7-16:10" }
+  references:
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "18:6-18:11" }
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "20:44-20:49" }
 
 underlying:
   definition:
@@ -37,10 +58,10 @@ underlying:
 
 var:
   definition:
-    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "15:15-15:21" }
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "20:15-20:21" }
   declaration:
-    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "15:15-15:21" }
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "20:15-20:21" }
   typeDefinition:
     - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "11:6-11:12" }
   references:
-    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "15:15-15:21" }
+    - { file: "${WS}/go_to_type_definition/05_typedef_alias.cpp", range: "20:15-20:21" }

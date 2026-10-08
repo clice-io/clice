@@ -44,7 +44,7 @@ auto destructor_of(clang::QualType type) -> const clang::CXXDestructorDecl*;
 auto declared_type(const clang::TypeDecl* decl) -> clang::QualType;
 
 /// The type a placeholder stands for. `written` is the node owning its
-/// keyword and `owner` the declaration at or above it:
+/// keyword and `owner` the declaration at or above it, never null:
 /// - an `auto` or `decltype(auto)` of a declarator, the type deduced for it;
 ///   of a return type (`operator auto` included), the deduced return type;
 /// - a `decltype(expr)`, the type it names;

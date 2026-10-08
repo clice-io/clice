@@ -311,7 +311,7 @@ auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clan
         }
     }
 
-    const auto* declarator = llvm::dyn_cast_if_present<clang::DeclaratorDecl>(owner);
+    const auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(owner);
     if(!declarator || !declarator->getTypeSourceInfo()) {
         return {};
     }
@@ -361,8 +361,12 @@ auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clan
         return declares(returned) ? deduced_return_type(function) : clang::QualType();
     }
 
-    return declares(declared) ? declarator->getType()->getContainedAutoType()->desugar()
-                              : clang::QualType();
+    if(!declares(declared)) {
+        return {};
+    }
+    // A structured binding of an array declares the array type itself.
+    const auto* type = declarator->getType()->getContainedAutoType();
+    return type ? type->desugar() : clang::QualType();
 }
 
 }  // namespace clice::types

@@ -66,7 +66,7 @@ struct InlayHintData {
 };
 
 /// What inlay_hint_data stored, if the client handed it back intact.
-std::optional<InlayHintData> inlay_hint_data(const std::optional<protocol::LSPAny>& data);
+std::optional<InlayHintData> parse_inlay_hint_data(const std::optional<protocol::LSPAny>& data);
 
 /// Whether a worker's raw reply is the JSON null or the empty array —
 /// the only inspection ever made of a reply that is otherwise passed

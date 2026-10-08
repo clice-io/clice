@@ -119,6 +119,8 @@ test("index navigates from auto", async ({ session }) => {
         expect(site?.uri.endsWith("widget.h")).toBe(true);
         expect(site?.range.start).toEqual({ line: 1, character: 7 });
     }
+    const hover = await client.hoverAt(uri, 3, 5);
+    expect(JSON.stringify(hover?.contents ?? "")).toContain("Widget");
     expect(ws.pchFiles()).toEqual([]);
 });
 

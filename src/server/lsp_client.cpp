@@ -724,9 +724,10 @@ void LSPClient::register_language_features() {
 
     peer.on_request([this](RequestContext& ctx, const protocol::InlayHint& hint) -> RawResult {
         this->server.pool.foreground_pulse();
-        auto data = to_lsp::inlay_hint_data(hint.data);
-        auto project = data ? resolve_uri(data->uri).project : this->server.projects.front();
-        return holding(project, project->features.resolve_inlay_hint(hint));
+        auto data = to_lsp::parse_inlay_hint_data(hint.data);
+        auto [path, path_id, session, project] = resolve_uri(data ? data->uri : "");
+        return holding(project,
+                       project->features.resolve_inlay_hint(hint, std::move(data), path_id));
     });
 
     peer.on_request(

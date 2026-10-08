@@ -8,7 +8,8 @@
 /// alias reaches the alias
 ///
 /// A builtin type or a lambda's closure type has no declaration to reach, and
-/// the `auto` of a `new` expression navigates nowhere.
+/// the `auto` of a `new` expression navigates nowhere. A macro spelling `auto`
+/// navigates to the macro.
 
 template <typename T>
 struct Box {};
@@ -26,6 +27,8 @@ Box<char> make_char_box();
 Box<int*> make_pointer_box();
 Handle make_handle();
 
+#define AUTO auto
+
 void use() {
     au§(primary)to plain = make_box();
     au§(explicit_specialization)to chars = make_char_box();
@@ -34,4 +37,6 @@ void use() {
     au§(builtin)to count = 1;
     au§(closure)to callback = [] {};
     Box<int>* allocated = new au§(new_expression)to(make_box());
+    [§(init_capture)copy = make_box()] {};
+    AU§(macro)TO spelled = make_box();
 }
