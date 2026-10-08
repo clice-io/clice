@@ -1,8 +1,6 @@
 /// How an inlay hint label naming a symbol reaches each kind of client: one
 /// string for a client without LSP 3.17 inlay hints, pieces with their
-/// locations for one that does not resolve them, pieces whose locations
-/// inlayHint/resolve supplies for one that resolves `label.location` (as VS
-/// Code does). The snap corpus pins the resolved form.
+/// locations for one with them. The snap corpus pins the located form.
 
 import * as proto from "vscode-languageserver-protocol";
 import type { CliceClient } from "@clice/tools/client";
@@ -50,41 +48,18 @@ function expectWidgetDeclaration(part: proto.InlayHintLabelPart) {
 }
 
 test("plain label without inlay hint support", async ({ session }) => {
-    const { client, hints } = await hintsFor(session, {});
+    const { hints } = await hintsFor(session, {});
     expect(hints[0]!.label).toBe(": Widget");
-    expect(hints[0]!.data).toBeUndefined();
-    expect(client.initResult!.capabilities.inlayHintProvider).toBe(true);
 });
 
-test("located parts without resolve support", async ({ session }) => {
-    const { client, hints } = await hintsFor(session, { textDocument: { inlayHint: {} } });
+test("located parts with the hints", async ({ session }) => {
+    // VS Code's capability: it could resolve locations lazily, and gets them
+    // with the hints all the same.
+    const { client, hints } = await hintsFor(session, {
+        textDocument: { inlayHint: { resolveSupport: { properties: ["label.location"] } } },
+    });
     const [prefix, widget] = parts(hints[0]!);
     expect(prefix).toEqual({ value: ": " });
     expectWidgetDeclaration(widget!);
-    expect(hints[0]!.data).toBeUndefined();
     expect(client.initResult!.capabilities.inlayHintProvider).toBe(true);
-});
-
-test("parts resolved lazily", async ({ session }) => {
-    const { client, hints } = await hintsFor(session, {
-        textDocument: { inlayHint: { resolveSupport: { properties: ["label.location"] } } },
-    });
-    expect(client.initResult!.capabilities.inlayHintProvider).toEqual({ resolveProvider: true });
-    const [, widget] = parts(hints[0]!);
-    expect(widget!.location).toBeUndefined();
-
-    const resolved = await client.sendRequest(proto.InlayHintResolveRequest.type, hints[0]!);
-    expectWidgetDeclaration(parts(resolved)[1]!);
-});
-
-test("malformed resolve data", async ({ session }) => {
-    const { client, hints } = await hintsFor(session, {
-        textDocument: { inlayHint: { resolveSupport: { properties: ["label.location"] } } },
-    });
-    const tampered = structuredClone(hints[0]!);
-    const data = tampered.data as { parts: ({ anchor?: string } | null)[] };
-    data.parts[1]!.anchor = "widget.h";
-
-    const resolved = await client.sendRequest(proto.InlayHintResolveRequest.type, tampered);
-    expect(parts(resolved)[1]!.location).toBeUndefined();
 });

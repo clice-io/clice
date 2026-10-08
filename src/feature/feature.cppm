@@ -438,13 +438,14 @@ auto inlay_hints(CompilationUnitRef unit,
                  const InlayHintsOptions& options = {}) -> std::vector<InlayHint>;
 
 /// Wire encoding of computed hints against the text they describe. A label
-/// naming a symbol keeps its pieces when `link` completes them — with the
-/// locations the client navigates by, or what resolving them later takes;
-/// without it, and for every other label, the label is one string.
-auto inlay_hints_to_protocol(llvm::ArrayRef<InlayHint> hints,
-                             const PositionMap& map,
-                             llvm::function_ref<void(const InlayHint&, protocol::InlayHint&)> link =
-                                 nullptr) -> std::vector<protocol::InlayHint>;
+/// naming a symbol keeps its pieces when `locate` gives the location each
+/// symbol's piece navigates to; without it, and for every other label, the
+/// label is one string.
+auto inlay_hints_to_protocol(
+    llvm::ArrayRef<InlayHint> hints,
+    const PositionMap& map,
+    llvm::function_ref<std::optional<protocol::Location>(const InlayHintPart&)> locate = nullptr)
+    -> std::vector<protocol::InlayHint>;
 
 /// Include-directive links of the main file, in byte offsets; the
 /// reply edge converts them with the session's line map.

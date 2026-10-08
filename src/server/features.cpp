@@ -639,15 +639,9 @@ Features::RawResult Features::semantic_tokens(Ticket ticket, kota::cancellation_
                                         std::move(token));
 }
 
-/// The file anchoring a label piece's symbol: its own for a symbol other
-/// files cannot name, the hint's document otherwise.
-static Fid anchor_of(FileTable& files, const feature::InlayHintPart& piece, Fid document) {
-    return piece.anchor.empty() ? document : files.intern(Spelling::absolute(piece.anchor));
-}
-
 Features::RawResult Features::inlay_hints(Ticket ticket,
                                           const protocol::Range& range,
-                                          InlayHintLabels labels,
+                                          bool label_parts,
                                           kota::cancellation_token token) {
     auto& session = ticket.session;
     // Inlay hints are Sema products the index cannot project; a session
@@ -659,63 +653,39 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
         co_return serde_raw{"[]"};
     }
     auto hints = co_await dispatcher.inlay_hints(ticket, range, std::move(token)).or_fail();
-    if(labels == InlayHintLabels::Text) {
+    if(!label_parts) {
         co_return to_raw(feature::inlay_hints_to_protocol(hints, session->position_map()));
     }
-    auto uri = feature::to_uri(project.file_table.display(session->path_id));
     // A reply names the same few types and parameters over and over.
     llvm::DenseMap<std::pair<index::SymbolHash, Fid>, std::optional<protocol::Location>> located;
-    auto link = [&](const feature::InlayHint& hint, protocol::InlayHint& out) {
-        if(labels == InlayHintLabels::Deferred) {
-            out.data = to_lsp::inlay_hint_data(uri, hint.label);
-            return;
+    auto locate = [&](const feature::InlayHintPart& part) {
+        auto anchor = part.anchor.empty()
+                          ? session->path_id
+                          : project.file_table.intern(Spelling::absolute(part.anchor));
+        auto [it, inserted] = located.try_emplace({part.symbol, anchor});
+        if(!inserted) {
+            return it->second;
         }
-        auto& parts = std::get<std::vector<protocol::InlayHintLabelPart>>(out.label);
-        for(auto [part, piece]: llvm::zip_equal(parts, hint.label)) {
-            if(!piece.symbol) {
-                continue;
-            }
-            auto anchor = anchor_of(project.file_table, piece, session->path_id);
-            auto [it, inserted] = located.try_emplace({piece.symbol, anchor});
-            if(inserted) {
-                it->second = link_location(piece.symbol, anchor);
-            }
-            part.location = it->second;
+        // The client runs go-to-definition at the location, so a declaration
+        // when one exists — the definition answers it — else the definition,
+        // which answers itself.
+        auto sites =
+            gather(part.symbol,
+                   anchor,
+                   [&](const index::IndexQuery& from, index::SymbolHash named) {
+                       for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
+                           if(auto site = from.first_site(named, anchor, kind)) {
+                               return std::vector{std::move(*site)};
+                           }
+                       }
+                       return std::vector<index::Site>{};
+                   });
+        if(!sites.empty()) {
+            it->second = to_lsp::location(sites.front());
         }
+        return it->second;
     };
-    co_return to_raw(feature::inlay_hints_to_protocol(hints, session->position_map(), link));
-}
-
-Features::RawResult Features::resolve_inlay_hint(protocol::InlayHint hint,
-                                                 std::optional<to_lsp::InlayHintData> data,
-                                                 Fid document) {
-    auto* parts = std::get_if<std::vector<protocol::InlayHintLabelPart>>(&hint.label);
-    if(!data || !parts || parts->size() != data->label.size()) {
-        co_return to_raw(hint);
-    }
-    for(auto [part, piece]: llvm::zip_equal(*parts, data->label)) {
-        if(piece.symbol) {
-            part.location =
-                link_location(piece.symbol, anchor_of(project.file_table, piece, document));
-        }
-    }
-    co_return to_raw(hint);
-}
-
-std::optional<protocol::Location> Features::link_location(index::SymbolHash symbol, Fid anchor) {
-    auto sites =
-        gather(symbol, anchor, [&](const index::IndexQuery& from, index::SymbolHash named) {
-            for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-                if(auto site = from.first_site(named, anchor, kind)) {
-                    return std::vector{std::move(*site)};
-                }
-            }
-            return std::vector<index::Site>{};
-        });
-    if(sites.empty()) {
-        return std::nullopt;
-    }
-    return to_lsp::location(sites.front());
+    co_return to_raw(feature::inlay_hints_to_protocol(hints, session->position_map(), locate));
 }
 
 Features::RawResult Features::folding_range(Ticket ticket,

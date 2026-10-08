@@ -1285,9 +1285,10 @@ auto inlay_hints(CompilationUnitRef unit, LocalSourceRange target, const InlayHi
     return raw_hints;
 }
 
-auto inlay_hints_to_protocol(llvm::ArrayRef<InlayHint> hints,
-                             const PositionMap& map,
-                             llvm::function_ref<void(const InlayHint&, protocol::InlayHint&)> link)
+auto inlay_hints_to_protocol(
+    llvm::ArrayRef<InlayHint> hints,
+    const PositionMap& map,
+    llvm::function_ref<std::optional<protocol::Location>(const InlayHintPart&)> locate)
     -> std::vector<protocol::InlayHint> {
     std::vector<protocol::InlayHint> result;
     result.reserve(hints.size());
@@ -1300,13 +1301,15 @@ auto inlay_hints_to_protocol(llvm::ArrayRef<InlayHint> hints,
 
         bool linked =
             llvm::any_of(hint.label, [](const InlayHintPart& part) { return part.symbol != 0; });
-        if(linked && link) {
+        if(linked && locate) {
             std::vector<protocol::InlayHintLabelPart> parts;
             for(const auto& part: hint.label) {
-                parts.push_back({.value = part.value});
+                auto& piece = parts.emplace_back(protocol::InlayHintLabelPart{.value = part.value});
+                if(part.symbol) {
+                    piece.location = locate(part);
+                }
             }
             out.label = std::move(parts);
-            link(hint, out);
         } else {
             std::string label;
             for(const auto& part: hint.label) {
