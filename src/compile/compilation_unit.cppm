@@ -7,6 +7,7 @@ module clice:compile.compilation_unit;
 import :compile.dep_file;
 import :compile.diagnostic;
 import :compile.directive;
+import :compile.tokens;
 import :semantic.resolver;
 import :semantic.symbol;
 import :syntax.preamble_synthesis;
@@ -217,30 +218,39 @@ public:
 
     using TokenRange = llvm::ArrayRef<clang::syntax::Token>;
 
-    /// Get the spelled tokens(raw token) of the file id.
-    auto spelled_tokens(clang::FileID fid) -> TokenRange;
+    /// The token accessors below serve a Content compile, the only kind that
+    /// collects tokens; they cover the main file. The spelled tokens are its
+    /// raw tokens, the whole file even under a preamble PCH.
+    auto spelled_tokens() -> TokenRange;
 
-    /// Return the spelled tokens corresponding to the range.
+    /// The spelled tokens the closed token range `range` was produced from,
+    /// when it maps onto them exactly (see TokenMap::spelled_for); empty
+    /// otherwise.
     auto spelled_tokens(clang::SourceRange range) -> TokenRange;
 
     /// The spelled tokens that overlap or touch a spelling location Loc.
     /// This always returns 0-2 tokens.
     auto spelled_tokens_touch(clang::SourceLocation location) -> TokenRange;
 
+    /// Per spelled token, whether it was preprocessed away to nothing.
+    auto preprocessed_away() -> const std::vector<bool>&;
+
     /// All tokens produced by the preprocessor after all macro replacements,
     /// directives, etc. Source locations found in the clang AST will always
     /// point to one of these tokens.
     /// Tokens are in TU order (per SourceManager::isBeforeInTranslationUnit()).
     /// FIXME: figure out how to handle token splitting, e.g. '>>' can be split
-    ///        into two '>' tokens by the parser. However, TokenBuffer currently
-    ///        keeps it as a single '>>' token.
+    ///        into two '>' tokens by the parser, but the stream keeps it as a
+    ///        single '>>' token.
     auto expanded_tokens() -> TokenRange;
 
-    /// Returns the subrange of expandedTokens() corresponding to the closed
-    /// token range R.
+    /// Returns the subrange of expanded_tokens() corresponding to the closed
+    /// token range `range`.
     auto expanded_tokens(clang::SourceRange range) -> TokenRange;
 
-    auto expansions_overlapping(TokenRange) -> std::vector<clang::syntax::TokenBuffer::Expansion>;
+    /// The main file's top-level macro expansions sharing a token with
+    /// `spelled`, a range of spelled_tokens().
+    auto expansions_overlapping(TokenRange spelled) -> llvm::ArrayRef<MacroExpansion>;
 
     /// Get the token length.
     auto token_length(clang::SourceLocation location) -> std::uint32_t;
@@ -274,8 +284,6 @@ public:
     clang::LangOptions& lang_options();
 
     clang::ASTContext& context();
-
-    clang::syntax::TokenBuffer& token_buffer();
 
     types::TemplateResolver& resolver();
 

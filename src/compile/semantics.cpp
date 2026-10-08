@@ -593,36 +593,18 @@ private:
 
     SemanticsBuilder(Semantics& semantics, CompilationUnitRef unit, SemanticsOptions options) :
         semantics(semantics), unit(unit), options(options), SM(unit.context().getSourceManager()),
-        unclaimed_expanded_tokens(unit.expanded_tokens()) {
+        unclaimed_expanded_tokens(options.main_file_only ? unit.expanded_tokens()
+                                                         : IntervalSet::TokenRange()) {
         main_fid = unit.main_file();
         main_file_range =
             clang::SourceRange(SM.getLocForStartOfFile(main_fid), SM.getLocForEndOfFile(main_fid));
-
-        semantics.tokens = unit.spelled_tokens(main_fid);
         semantics.file_begin = main_file_range.getBegin();
-        semantics.pp_ignored.resize(semantics.tokens.size(), false);
 
-        // Only relevant when token ownership is recorded at all.
+        // Token ownership serves the main file's features; the whole-TU
+        // shape reads no tokens.
         if(options.main_file_only) {
-            // claim_range() looks up every node's range. Indexed, a range
-            // bounded by expanded tokens resolves by location; otherwise
-            // each lookup binary-searches with isBeforeInTranslationUnit,
-            // whose cost grows with the macro expansions in the file.
-            unit.token_buffer().indexExpandedTokens();
-
-            // Tokens preprocessed to nothing (e.g. a disabled region or an
-            // empty macro invocation) never contribute to a selection.
-            for(const clang::syntax::TokenBuffer::Expansion& expansion:
-                unit.expansions_overlapping(semantics.tokens)) {
-                if(expansion.Expanded.empty()) {
-                    for(const clang::syntax::Token& token: expansion.Spelled) {
-                        std::size_t i = &token - semantics.tokens.data();
-                        if(i < semantics.pp_ignored.size()) {
-                            semantics.pp_ignored[i] = true;
-                        }
-                    }
-                }
-            }
+            semantics.tokens = unit.spelled_tokens();
+            semantics.pp_ignored = &unit.preprocessed_away();
         }
 
         stack.push_back(Semantics::invalid);
@@ -640,7 +622,7 @@ private:
     // although they do have children.
     bool should_skip_children(const clang::Stmt* X) const {
         // UserDefinedLiteral (e.g. 12_i) has two children (12 and _i).
-        // Unfortunately TokenBuffer sees 12_i as one token and can't split it.
+        // Unfortunately the token stream sees 12_i as one token and cannot split it.
         // So we treat UserDefinedLiteral as a leaf node, owning the token.
         return llvm::isa<clang::UserDefinedLiteral>(X);
     }
@@ -926,7 +908,7 @@ private:
         assert(begin <= end);
         auto count = static_cast<std::uint32_t>(semantics.tokens.size());
         for(auto i = first_token_at(begin); i < count && semantics.token_offset(i) <= end; i++) {
-            if(!should_ignore_token(semantics.tokens[i]) && !semantics.pp_ignored[i]) {
+            if(!should_ignore_token(semantics.tokens[i]) && !(*semantics.pp_ignored)[i]) {
                 entries.emplace_back(i, self);
             }
         }
@@ -936,7 +918,7 @@ private:
     void add_token_entry(unsigned offset, std::uint32_t self) {
         auto i = first_token_at(offset);
         if(i < semantics.tokens.size() && semantics.token_offset(i) == offset) {
-            if(!should_ignore_token(semantics.tokens[i]) && !semantics.pp_ignored[i]) {
+            if(!should_ignore_token(semantics.tokens[i]) && !(*semantics.pp_ignored)[i]) {
                 entries.emplace_back(i, self);
             }
         }
@@ -970,14 +952,6 @@ private:
         return location;
     }
 
-    // Whether a live spelled token starts exactly at `offset` (present and
-    // not preprocessed away).
-    bool token_alive_at(unsigned offset) const {
-        auto i = first_token_at(offset);
-        return i < semantics.tokens.size() && semantics.token_offset(i) == offset &&
-               !semantics.pp_ignored[i];
-    }
-
     // Cross-check the lexically scanned module declarations against the
     // compiled module before they become nodes: valid code cannot spell
     // these token patterns with another meaning, but invalid or disabled
@@ -998,6 +972,10 @@ private:
         if(auto def_loc = mod->DefinitionLoc; def_loc.isValid()) {
             definition_offset = offset_in_main_file(SM.getSpellingLoc(def_loc));
         }
+        std::optional<unsigned> private_offset;
+        if(auto* fragment = mod->getPrivateModuleFragment()) {
+            private_offset = offset_in_main_file(SM.getSpellingLoc(fragment->DefinitionLoc));
+        }
 
         std::erase_if(modules, [&](const LexicalInfo::ModuleDeclaration& module) {
             switch(module.kind) {
@@ -1008,15 +986,12 @@ private:
                 case LexicalInfo::ModuleDeclaration::Kind::GlobalFragment: return false;
 
                 // The DefinitionLoc anchor subsumes liveness: a duplicate in
-                // a disabled branch sits at a different offset.
+                // a disabled branch sits at a different offset. The private
+                // fragment's module is defined at its `private` keyword.
                 case LexicalInfo::ModuleDeclaration::Kind::Declaration:
                     return definition_offset != module.keyword.begin;
-
-                // The private fragment has no compiler-side location to
-                // anchor on; a disabled branch can spell the same tokens, so
-                // require the keyword's spelled token to be live.
                 case LexicalInfo::ModuleDeclaration::Kind::PrivateFragment:
-                    return !token_alive_at(module.keyword.begin);
+                    return private_offset != module.partition_parts.front().begin;
             }
             std::unreachable();
         });

@@ -263,9 +263,10 @@ clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
 
 struct SemanticsOptions {
     /// Traverse only the main file's top-level decls — the shape features
-    /// consume, cached on the unit. Without it everything the unit parsed
-    /// is traversed, the transient shape the full index projection uses;
-    /// token ownership still only covers the main file's spelled tokens.
+    /// consume, cached on the unit, owning the main file's spelled tokens.
+    /// Without it everything the unit parsed is traversed, the transient
+    /// shape the full index projection uses; it reads no tokens, so it
+    /// builds on a compile that collected none.
     bool main_file_only = true;
 
     /// Also traverse template instantiations, flagged in_instantiation:
@@ -346,11 +347,11 @@ public:
         return nodes[index];
     }
 
-    /// The spelled tokens of the main file (a view into the unit's
-    /// TokenBuffer, not a copy). They cover the whole file even under a
-    /// preamble PCH — what the PCH consumes is the preamble's AST and
-    /// directives (those travel through the pch.idx envelope instead), not its
-    /// spelling.
+    /// The spelled tokens of the main file (a view into the unit's tokens,
+    /// not a copy); empty for the whole-TU shape. They cover the whole file
+    /// even under a preamble PCH — what the PCH consumes is the preamble's
+    /// AST and directives (those travel through the pch.idx envelope
+    /// instead), not its spelling.
     llvm::ArrayRef<clang::syntax::Token> spelled_tokens() const {
         return tokens;
     }
@@ -363,7 +364,7 @@ public:
     /// Whether spelled token `index` was preprocessed away to nothing
     /// (a disabled region or an empty expansion).
     bool token_preprocessed_away(std::uint32_t index) const {
-        return pp_ignored[index];
+        return (*pp_ignored)[index];
     }
 
     /// The nodes owning spelled token `index`. Almost always a single node;
@@ -413,8 +414,9 @@ private:
     /// Start location of the main file, for O(1) offset computation.
     clang::SourceLocation file_begin;
 
-    /// Tokens preprocessed to nothing.
-    std::vector<bool> pp_ignored;
+    /// Per spelled token, whether it was preprocessed to nothing (a view
+    /// into the unit's tokens, like `tokens`).
+    const std::vector<bool>* pp_ignored = nullptr;
 
     /// CSR layout: the owners of token i are
     /// owner_nodes[owner_begin[i] .. owner_begin[i + 1]).

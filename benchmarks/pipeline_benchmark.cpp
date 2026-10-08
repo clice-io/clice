@@ -4,8 +4,9 @@
 ///
 /// Stages, mirroring the server's own build shapes:
 ///   read               source file I/O
-///   preprocess         PreprocessOnlyAction, TokenBuffer off
-///   preprocess_tokens  PreprocessOnlyAction, TokenBuffer on (delta = TokenBuffer cost)
+///   preprocess         PreprocessOnlyAction
+///   preprocess_tokens  PreprocessOnlyAction collecting the tokens a Content
+///                      compile does (delta = their cost)
 ///   parse              full parse without PCH + envelope build (the
 ///                      background-index worker shape)
 ///   pch_build          preamble PCH build + preamble envelope incl. disk
@@ -166,8 +167,11 @@ FileResult profile_file(llvm::StringRef file,
     for(bool collect_tokens: {false, true}) {
         auto& out_ms = collect_tokens ? result.preprocess_tokens_ms : result.preprocess_ms;
         ok = run_stage(runs, out_ms, [&] {
-            auto params = make_params(CompilationKind::Preprocess, arguments, file, content);
-            params.collect_tokens = collect_tokens;
+            auto params =
+                make_params(collect_tokens ? CompilationKind::Content : CompilationKind::Preprocess,
+                            arguments,
+                            file,
+                            content);
             auto unit = preprocess(params);
             // completed() only covers frontend execution; missing headers,
             // bad flags and ordinary source errors surface as diagnostics

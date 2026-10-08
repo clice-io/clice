@@ -983,19 +983,16 @@ auto template_param_type(const clang::NamedDecl* param, const Options& options) 
 
 auto definition(const clang::Decl* decl,
                 const Options& options,
-                const clang::syntax::TokenBuffer* tb) -> std::string {
+                llvm::function_ref<std::size_t(clang::SourceRange)> token_count) -> std::string {
     assert(decl);
     clang::PrintingPolicy policy = derive_policy(decl->getASTContext(), options);
-    if(tb) {
-        if(auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
-            if(auto* init = var->getInit()) {
-                /// Initializers might be huge and result in lots of memory allocations
-                /// in some catastrophic cases. Such long lists are not useful in hover
-                /// cards anyway.
-                if(tb->expandedTokens(init->getSourceRange()).size() > 200 ||
-                   printed_length(*init, policy) > 500) {
-                    policy.SuppressInitializers = true;
-                }
+    if(auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        if(auto* init = var->getInit()) {
+            /// Initializers might be huge and result in lots of memory allocations
+            /// in some catastrophic cases. Such long lists are not useful in hover
+            /// cards anyway.
+            if(token_count(init->getSourceRange()) > 200 || printed_length(*init, policy) > 500) {
+                policy.SuppressInitializers = true;
             }
         }
     }

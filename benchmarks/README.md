@@ -22,7 +22,7 @@ your question:
    (`//:benchmarks`), each answering one decision:
    - `scan_benchmark` — dependency-graph scan over a real CDB.
    - `pipeline_benchmark` — per-TU stage profile (preprocess with/without
-     TokenBuffer, parse, index build/serialize, preamble PCH build incl.
+     token collection, parse, index build/serialize, preamble PCH build incl.
      preamble indexing, reparse over PCH incl. interactive indexing), one
      result per file.
    - `pch_chain_benchmark` — monolithic vs chained PCH strategy (ported
@@ -106,7 +106,7 @@ clangd --check=benchmarks/workloads/llvm/clang/lib/Sema/SemaExpr.cpp \
 Read them side by side as: clangd "Built preamble in N s" vs our
 `pch_build`, clangd "Building AST" gap vs our `parse_pch`. Everything our
 `pch_build` spends beyond clangd's preamble number is the work clice adds
-to the critical path (TokenBuffer collection, preamble indexing).
+to the critical path (preamble indexing).
 
 ## Method rules
 
@@ -121,7 +121,7 @@ to the critical path (TokenBuffer collection, preamble indexing).
   ninja alongside a benchmark: page-cache-sensitive numbers wobble because
   WSL2 reclaims mmap'd cache aggressively.
 - **One variable at a time.** The pipeline stages and the A/B knobs
-  (`collect_tokens`, PCH on/off) exist so a comparison changes exactly one
+  (token collection, PCH on/off) exist so a comparison changes exactly one
   thing.
 
 ## Reference numbers

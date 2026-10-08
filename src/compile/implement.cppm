@@ -9,6 +9,7 @@ import :compile.compilation_unit;
 import :compile.diagnostic;
 import :compile.identity;
 import :compile.semantics;
+import :compile.tokens;
 
 namespace clice::tidy {
 
@@ -94,8 +95,8 @@ struct CompilationUnitRef::Self {
     /// Lazily built semantic map, see CompilationUnitRef::semantics().
     std::unique_ptr<Semantics> semantics_cache;
 
-    /// Token information collected during the preprocessing.
-    std::optional<clang::syntax::TokenBuffer> buffer;
+    /// The tokens a Content compile collects for the features.
+    std::optional<TokenMap> tokens;
 
     /// All directive information collected during the preprocessing.
     llvm::DenseMap<clang::FileID, Directive> directives;

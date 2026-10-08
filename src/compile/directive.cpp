@@ -251,9 +251,8 @@ public:
     }
 
     void PragmaDebug(clang::SourceLocation, llvm::StringRef command) override {
-        // `dump` leaves the rest of its line to the parser: directive tokens
-        // TokenBuffer cannot map back to the file (an unreachable there).
-        // Nothing here wants the dump printed.
+        // `dump` leaves the rest of its line to the parser, which prints
+        // it. Nothing here wants the dump printed.
         if(command == "dump") {
             unit->instance->getPreprocessor().DiscardUntilEndOfDirective();
         }

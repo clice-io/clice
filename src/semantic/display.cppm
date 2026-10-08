@@ -166,13 +166,13 @@ auto template_params(const clang::TemplateParameterList* params, const Options& 
 /// "template <...> class" for template template parameters.
 auto template_param_type(const clang::NamedDecl* param, const Options& options = {}) -> Type;
 
-/// Pretty-print the declaration itself. When a token buffer is given,
-/// initializers longer than 200 tokens are suppressed — such lists are
-/// not useful in a hover card and are catastrophically expensive to
-/// print.
+/// Pretty-print the declaration itself. Initializers longer than 200
+/// tokens, counted by `token_count` over a range, are suppressed — such
+/// lists are not useful in a hover card and are catastrophically expensive
+/// to print.
 auto definition(const clang::Decl* decl,
-                const Options& options = {},
-                const clang::syntax::TokenBuffer* tb = nullptr) -> std::string;
+                const Options& options,
+                llvm::function_ref<std::size_t(clang::SourceRange)> token_count) -> std::string;
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Type& type);
 

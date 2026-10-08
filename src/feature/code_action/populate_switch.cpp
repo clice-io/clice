@@ -91,7 +91,7 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
         if(!brace) {
             return;
         }
-        auto tokens = unit.spelled_tokens(unit.main_file());
+        auto tokens = unit.spelled_tokens();
         auto after = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
             return unit.file_offset(token.location()) <= brace->begin;
         });
