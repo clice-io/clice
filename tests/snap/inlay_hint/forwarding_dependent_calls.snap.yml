@@ -1,0 +1,6 @@
+---
+created_at: 2026-10-08
+input_file: forwarding_dependent_calls.cpp
+---
+- { pos: "25:15", kind: Parameter, label: "width:", links: ["width ${WS}/forwarding_dependent_calls.cpp:5:14-5:19"], padding_right: true }
+- { pos: "25:18", kind: Parameter, label: "height:", links: ["height ${WS}/forwarding_dependent_calls.cpp:5:25-5:31"], padding_right: true }

@@ -384,7 +384,8 @@ const clang::ParmVarDecl* passed_param(const clang::Expr* arg) {
         arg = construct->getArg(0)->IgnoreImplicitAsWritten();
     }
     if(auto* call = llvm::dyn_cast<clang::CallExpr>(arg)) {
-        if(auto* callee = call->getDirectCallee(); callee && is_std_forward(callee)) {
+        if(auto* callee = call->getDirectCallee();
+           callee && is_std_forward(callee) && call->getNumArgs() == 1) {
             arg = call->getArg(0)->IgnoreImplicitAsWritten();
         }
     }
@@ -401,6 +402,30 @@ auto expanded_pack(const clang::FunctionDecl* fn, llvm::ArrayRef<const clang::Pa
         return pack && underlying_pack_type(param) == pack;
     };
     return params.drop_until(expanded).take_while(expanded);
+}
+
+/// The function `call` calls; for a call left dependent on an overloaded
+/// name, the only candidate taking as many arguments.
+const clang::FunctionDecl* callee_of(const clang::CallExpr* call) {
+    if(auto* fn = call->getDirectCallee()) {
+        return fn;
+    }
+    auto* lookup = llvm::dyn_cast<clang::UnresolvedLookupExpr>(call->getCallee());
+    if(!lookup || lookup->requiresADL()) {
+        return nullptr;
+    }
+    const clang::FunctionDecl* unique = nullptr;
+    for(auto* candidate: lookup->decls()) {
+        auto* fn = llvm::dyn_cast<clang::FunctionDecl>(candidate);
+        if(!fn || fn->getNumParams() != call->getNumArgs()) {
+            continue;
+        }
+        if(unique) {
+            return nullptr;
+        }
+        unique = fn;
+    }
+    return unique;
 }
 
 /// Finds the first call in a function body that passes `pack`, parameters
@@ -421,7 +446,7 @@ struct PackForwardFinder : clang::RecursiveASTVisitor<PackForwardFinder> {
     llvm::ArrayRef<const clang::ParmVarDecl*> params;
 
     bool VisitCallExpr(clang::CallExpr* call) {
-        auto* fn = call->getDirectCallee();
+        auto* fn = callee_of(call);
         if(!fn) {
             return true;
         }
@@ -444,8 +469,15 @@ struct PackForwardFinder : clang::RecursiveASTVisitor<PackForwardFinder> {
 
     /// `args` bind `fn`'s parameters in order.
     void match(const clang::FunctionDecl* fn, llvm::ArrayRef<const clang::Expr*> args) {
-        // Arguments past the named parameters go to a C variadic `...`.
-        args = args.take_front(fn->getNumParams());
+        // Positions line up only when every parameter has its argument,
+        // defaults included; the arguments past them go to a C variadic
+        // `...`. A dependent call may bind otherwise (an explicit object
+        // left out of its arguments).
+        auto named = fn->getNumParams();
+        if(args.size() < named || (args.size() > named && !fn->isVariadic())) {
+            return;
+        }
+        args = args.take_front(named);
         // A written expansion, left in a dependent call, stands for any
         // number of arguments: the ones after it bind unknown parameters.
         if(llvm::any_of(args, llvm::IsaPred<clang::PackExpansionExpr>)) {
