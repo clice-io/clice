@@ -62,15 +62,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     params.file = file_path;
     params.workspace = project.config.workspace_root.str();
     params.index = plan.index;
-    params.tidy = plan.tidy;
-    params.tidy_checks = std::move(plan.tidy_params.checks);
-    params.tidy_options = std::move(plan.tidy_params.options);
-    params.tidy_warnings_as_errors = std::move(plan.tidy_params.warnings_as_errors);
-    params.tidy_header_filter = std::move(plan.tidy_params.header_filter);
-    params.tidy_exclude_header_filter = std::move(plan.tidy_params.exclude_header_filter);
-    params.tidy_system_headers = plan.tidy_params.system_headers;
-    params.tidy_extra_args = std::move(plan.tidy_params.extra_args);
-    params.tidy_extra_args_before = std::move(plan.tidy_params.extra_args_before);
+    params.tidy = std::move(plan.tidy);
     // Whole-TU runs stick to the build's commands; a synthesized one, or
     // one borrowed for a file outside the build, would fill the index (and
     // the lint report) with guesses. A lint plan's extra args join the
@@ -78,7 +70,10 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // interprets them (pass-throughs, --target) when it produces the
     // resolved line, and every later consumer of params.arguments
     // (dependency scan, worker parse) sees one truth.
-    auto extras = tidy::command_extra_args(params.tidy_extra_args, params.tidy_extra_args_before);
+    tidy::CommandExtraArgs extras;
+    if(params.tidy) {
+        extras = tidy::command_extra_args(params.tidy->extra_args, params.tidy->extra_args_before);
+    }
     auto resolved =
         commands.resolve_command(path_id,
                                  params.directory,

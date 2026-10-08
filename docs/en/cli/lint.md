@@ -38,8 +38,10 @@ lint = false
 ```
 
 Each translation unit takes its configuration from the nearest `.clang-tidy`,
-with the inheritance clang-tidy applies. `NOLINT`, `NOLINTNEXTLINE` and
-`NOLINTBEGIN`/`NOLINTEND` comments are honored in every file. A header is
+with the inheritance clang-tidy applies. A compiler warning is a finding only
+when `Checks` enables its `clang-diagnostic-<flag>` name, as in clang-tidy.
+`NOLINT`, `NOLINTNEXTLINE` and `NOLINTBEGIN`/`NOLINTEND` comments are honored
+in every file. A header is
 checked in every translation unit that includes it, as clang-tidy would; a
 finding several units report identically, notes included, appears once in
 the report, which is sorted by file and position and keeps the notes
@@ -49,7 +51,7 @@ clang-tidy attaches.
 
 Issues that affect the quality of clang-tidy diagnostics within a language server:
 
-- [ ] Suppress clang-tidy warnings from macros in system headers ([clangd#1587](https://github.com/clangd/clangd/issues/1587), [clangd#2000](https://github.com/clangd/clangd/issues/2000))
+- [x] Suppress clang-tidy warnings from macros in system headers ([clangd#1587](https://github.com/clangd/clangd/issues/1587), [clangd#2000](https://github.com/clangd/clangd/issues/2000))
 - [ ] Run checks on preprocessor directives in preamble (header guards, macros) ([clangd#2501](https://github.com/clangd/clangd/issues/2501), [clangd#160](https://github.com/clangd/clangd/issues/160))
 - [ ] Configurable diagnostic severity per check category ([clangd#1937](https://github.com/clangd/clangd/issues/1937))
 - [ ] Support loading clang-tidy plugins ([clangd#1458](https://github.com/clangd/clangd/issues/1458))
@@ -58,6 +60,6 @@ Issues that affect the quality of clang-tidy diagnostics within a language serve
 - [ ] Filter diagnostics by version control diff ([clangd#822](https://github.com/clangd/clangd/issues/822))
 - [x] NOLINT / NOLINTNEXTLINE / NOLINTBEGIN-END comment suppression
 - [ ] `Diagnostics.ClangTidy` configuration in `.clangd` config
-- [ ] Fast-check filtering for clang-tidy performance
-- [ ] Fix-it suggestions from clang-tidy as code actions
-- [ ] Diagnostic metadata: check name, documentation URL, source tag
+- [x] Fast-check filtering for clang-tidy performance
+- [x] Fix-it suggestions from clang-tidy as code actions
+- [x] Diagnostic metadata: check name, documentation URL, source tag

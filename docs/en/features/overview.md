@@ -27,7 +27,7 @@ Language Server Protocol features available when using clice as an editor backen
 | [Selection Ranges](./selection-ranges.md) | 10 supported                               |
 | [Formatting](./formatting.md)             | Implemented                                |
 | [Diagnostics](./diagnostics.md)           | Partial                                    |
-| [Code Action](./code-action.md)           | 57 supported                               |
+| [Code Action](./code-action.md)           | 60 supported                               |
 
 <!-- END GENERATED OVERVIEW -->
 

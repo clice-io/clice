@@ -21,6 +21,9 @@ llvm::StringRef diagnostic_source_name(DiagnosticSource source) {
 }
 
 llvm::StringRef DiagnosticID::diagnostic_code() const {
+    if(source == DiagnosticSource::ClangTidy) {
+        return name;
+    }
     switch(value) {
 #define DIAG(ENUM,                                                                                 \
              CLASS,                                                                                \
@@ -118,7 +121,9 @@ bool DiagnosticID::is_deprecated() const {
         diag::warn_vector_mode_deprecated,
     };
 
-    /// TODO: Add clang tidy
+    if(source == DiagnosticSource::ClangTidy) {
+        return name.starts_with("modernize-");
+    }
     return source == DiagnosticSource::Clang && deprecated_diags.contains(value);
 }
 
@@ -144,7 +149,9 @@ bool DiagnosticID::is_unused() const {
         diag::warn_unused_variable,
     };
 
-    /// TODO: Add clang tidy
+    if(source == DiagnosticSource::ClangTidy) {
+        return name.starts_with("misc-unused-");
+    }
     return source == DiagnosticSource::Clang && unused_diags.contains(value);
 }
 
@@ -242,6 +249,63 @@ public:
         };
     }
 
+    /// The replacements a diagnostic's fix-it hints spell, all of them or
+    /// none: one inside a macro expansion, but for one within a single
+    /// macro argument, which edits the argument, or in another file leaves
+    /// the fix unexpressed, and so do edits that overlap, which an editor
+    /// refuses (misc-unused-parameters removes both `f(1)` and its `1`
+    /// from `f(f(1))`).
+    auto fix(const clang::Diagnostic& diagnostic) -> std::vector<TextReplacement> {
+        auto& sm = unit->SM();
+        std::vector<TextReplacement> edits;
+        for(auto hint: diagnostic.getFixItHints()) {
+            auto& range = hint.RemoveRange;
+            auto begin = range.getBegin();
+            auto end = range.getEnd();
+            if(begin.isMacroID() && end.isMacroID() && sm.getFileID(begin) == sm.getFileID(end)) {
+                range = clang::CharSourceRange(
+                    {sm.getTopMacroCallerLoc(begin), sm.getTopMacroCallerLoc(end)},
+                    range.isTokenRange());
+            }
+            if(range.getBegin().isMacroID() || range.getEnd().isMacroID()) {
+                return {};
+            }
+            auto removed = file_range(range, unit.main_file());
+            if(!removed) {
+                return {};
+            }
+            std::string text = std::move(hint.CodeToInsert);
+            if(hint.InsertFromRange.isValid()) {
+                auto copied = file_range(hint.InsertFromRange, unit.main_file());
+                if(!copied) {
+                    return {};
+                }
+                text = unit.main_content().substr(copied->begin, copied->length());
+            }
+            // An editor applies insertions at one offset in their order.
+            auto at = edits.end();
+            if(hint.BeforePreviousInsertions) {
+                at = llvm::find_if(edits, [&](const TextReplacement& edit) {
+                    return edit.range.begin == removed->begin && edit.range.length() == 0;
+                });
+            }
+            edits.insert(at, {*removed, std::move(text)});
+        }
+        llvm::SmallVector<LocalSourceRange> ranges;
+        for(auto& edit: edits) {
+            ranges.push_back(edit.range);
+        }
+        llvm::sort(ranges, [](LocalSourceRange a, LocalSourceRange b) {
+            return std::pair(a.begin, a.end) < std::pair(b.begin, b.end);
+        });
+        for(auto [before, after]: llvm::zip(ranges, llvm::drop_begin(ranges))) {
+            if(after.begin < before.end) {
+                return {};
+            }
+        }
+        return edits;
+    }
+
     void BeginSourceFile(const clang::LangOptions&, const clang::Preprocessor*) override {}
 
     void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
@@ -280,6 +344,11 @@ public:
                 diagnostic.in_system = raw_diagnostic.getSourceManager().isInSystemHeader(
                     raw_diagnostic.getLocation());
             }
+        }
+
+        // One from the command line has no source to fix.
+        if(raw_diagnostic.hasSourceManager()) {
+            diagnostic.fix = fix(raw_diagnostic);
         }
 
         if(unit->checker) {

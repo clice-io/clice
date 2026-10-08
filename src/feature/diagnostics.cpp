@@ -62,9 +62,6 @@ public:
     /// main file; nullopt when it does not concern the main file.
     std::optional<protocol::Diagnostic> present(const Diagnostic& main,
                                                 llvm::ArrayRef<Diagnostic> notes) {
-        if(main.id.level == DiagnosticLevel::Ignored) {
-            return std::nullopt;
-        }
         // The header itself is the main file here; its own pragma is
         // exactly what makes it a system header for every includer.
         if(main.id.value == clang::diag::pp_pragma_sysheader_in_main_file &&
@@ -277,10 +274,10 @@ private:
 
 }  // namespace
 
-auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
-    -> std::vector<protocol::Diagnostic> {
-    Presenter presenter(unit, encoding);
-    std::vector<protocol::Diagnostic> result;
+void for_each_diagnostic(
+    CompilationUnitRef unit,
+    llvm::function_ref<void(const Diagnostic& main, llvm::ArrayRef<Diagnostic> notes)> visit) {
+    std::set<std::tuple<clang::FileID, std::uint32_t, std::uint32_t, llvm::StringRef>> findings;
     llvm::ArrayRef<Diagnostic> raw = unit.diagnostics();
     // Notes follow the diagnostic they belong to; one ahead of every
     // diagnostic belongs to none.
@@ -288,13 +285,26 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
         const auto& main = raw.front();
         auto notes = raw.drop_front().take_while(is_note);
         raw = raw.drop_front(notes.size() + 1);
-        if(is_note(main)) {
+        if(is_note(main) || main.id.level == DiagnosticLevel::Ignored) {
             continue;
         }
+        if(main.id.source == DiagnosticSource::ClangTidy &&
+           !findings.emplace(main.fid, main.range.begin, main.range.end, main.message).second) {
+            continue;
+        }
+        visit(main, notes);
+    }
+}
+
+auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
+    -> std::vector<protocol::Diagnostic> {
+    Presenter presenter(unit, encoding);
+    std::vector<protocol::Diagnostic> result;
+    for_each_diagnostic(unit, [&](const Diagnostic& main, llvm::ArrayRef<Diagnostic> notes) {
         if(auto diagnostic = presenter.present(main, notes)) {
             result.push_back(std::move(*diagnostic));
         }
-    }
+    });
     return result;
 }
 

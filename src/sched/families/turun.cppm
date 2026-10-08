@@ -45,10 +45,9 @@ public:
     /// The frozen product plan of one run.
     struct Plan {
         bool index = false;
-        bool tidy = false;
 
-        /// Frozen tidy configuration; meaningful only with `tidy` set.
-        tidy::TidyParams tidy_params;
+        /// A tidy pass under this frozen configuration.
+        std::optional<tidy::TidyParams> tidy;
     };
 
     enum class Verdict : std::uint8_t {

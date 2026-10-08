@@ -162,6 +162,9 @@ struct CompileParams {
 
     /// See TURunParams::index_output_path.
     std::string index_output_path;
+
+    /// Run clang-tidy over the parse with this frozen configuration.
+    std::optional<tidy::TidyParams> tidy;
 };
 
 /// Outcome of a stateful compile. Anything but `Done` is a non-result: the
@@ -264,9 +267,10 @@ struct TURunParams {
     /// PCM dependencies for TUs that import modules.
     std::unordered_map<std::string, std::string> pcms;
 
-    /// Products of the run.
+    /// Products of the run: the index, and a clang-tidy pass under this
+    /// frozen configuration.
     bool index = false;
-    bool tidy = false;
+    std::optional<tidy::TidyParams> tidy;
 
     /// Variant identities the master stores for the files this TU is
     /// expected to include, sorted (see index::TUIndexOptions).
@@ -275,17 +279,6 @@ struct TURunParams {
     /// Where the worker writes an index too large for an IPC message: a
     /// transfer path of the master's store, empty when it has none.
     std::string index_output_path;
-
-    /// Frozen clang-tidy configuration (see tidy::TidyParams); meaningful
-    /// only when `tidy` is set.
-    std::string tidy_checks;
-    std::vector<std::pair<std::string, std::string>> tidy_options;
-    std::string tidy_warnings_as_errors;
-    std::string tidy_header_filter;
-    std::string tidy_exclude_header_filter;
-    bool tidy_system_headers = false;
-    std::vector<std::string> tidy_extra_args;
-    std::vector<std::string> tidy_extra_args_before;
 };
 
 /// Code completion over unsaved buffer content.

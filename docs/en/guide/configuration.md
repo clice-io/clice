@@ -168,6 +168,24 @@ Longest interval in seconds between two background looks at a workspace file: th
 
 <!-- END GENERATED CONFIG -->
 
+## `[diagnostics]`
+
+The `[diagnostics]` section controls the diagnostics clice publishes for open files.
+
+<!-- BEGIN GENERATED CONFIG: diagnostics -->
+
+<div class="config-option">
+
+| Option       | Type   | Default |
+| ------------ | ------ | ------- |
+| `clang_tidy` | `bool` | `true`  |
+
+Run clang-tidy on open files and offer its fixes, with the checks the nearest `.clang-tidy` configures (a small default set without one). Checks too slow for an editor, and those unreliable on code being edited, are left out; files `clice lint` does not check get none. `NOLINT` comments also silence compiler warnings only while this runs.
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
 ## `[hover]`
 
 The `[hover]` section controls how hover cards render.

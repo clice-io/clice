@@ -299,10 +299,10 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintSweep
     auto file = stack.project.file_table.resolve(path_id);
     // A TU outside the lint set is here for the index only.
     TURunFamily::Plan plan;
-    plan.tidy = stack.project.build.lintable(file);
     plan.index = with_index && stack.project.build.indexed(file);
-    if(plan.tidy) {
-        plan.tidy_params = tidy::resolve_tidy_params(stack.project.file_table.spelling(path_id));
+    if(stack.project.build.lintable(file)) {
+        plan.tidy = tidy::resolve_tidy_params(stack.project.file_table.spelling(path_id)).params;
+        plan.tidy->batch = true;
     }
 
     // One retry: a lost run or a preemption says nothing about the TU, and

@@ -36,8 +36,8 @@
 
 ## Tags
 
-- [x] `Deprecated` tag for `-Wdeprecated` diagnostics
-- [x] `Unnecessary` tag for unused variable/parameter warnings
+- [x] `Deprecated` tag for `-Wdeprecated` diagnostics and `modernize-*` clang-tidy findings
+- [x] `Unnecessary` tag for unused variable/parameter warnings and `misc-unused-*` clang-tidy findings
 
 ## Publishing
 
@@ -45,6 +45,7 @@
 - [x] Clear diagnostics on file close
 - [x] Per-file diagnostic grouping (main file + headers)
 - [x] Diagnostic `code` field with Clang error codes
+- [x] `codeDescription` linking a clang-tidy finding to its check's documentation
 - [ ] `codeDescription` with links to Clang documentation
 - [x] Diagnostic `source` field distinguishing clang vs clang-tidy
 - [ ] Configurable debounce delay before computing diagnostics ([clangd#1471](https://github.com/clangd/clangd/issues/1471))
@@ -52,16 +53,17 @@
 
 ## Diagnostic Suppression
 
-- [x] `// NOLINT` comment suppression in `clice lint`
-- [x] `// NOLINTNEXTLINE` comment suppression in `clice lint`
-- [x] `// NOLINTBEGIN` / `// NOLINTEND` block suppression in `clice lint`
+- [x] `// NOLINT` comment suppression
+- [x] `// NOLINTNEXTLINE` comment suppression
+- [x] `// NOLINTBEGIN` / `// NOLINTEND` block suppression
+- [x] `NOLINT` comments silence compiler warnings too, while clang-tidy runs on the file
 - [ ] `NOLINT` for include-cleaner diagnostics ([clangd#1982](https://github.com/clangd/clangd/issues/1982))
 - [ ] Configurable severity per diagnostic category in config file ([clangd#1937](https://github.com/clangd/clangd/issues/1937))
 - [ ] Filter diagnostics by version control diff — only show warnings near changed lines ([clangd#822](https://github.com/clangd/clangd/issues/822))
 
 ## Diagnostic Actions
 
-- [ ] Automatic fix-its attached to diagnostics as code actions
+- [x] Fixes the compiler and clang-tidy attach to their diagnostics, offered as quick fixes
 
 ## Header Diagnostics
 
@@ -80,8 +82,11 @@
 
 ## clang-tidy Integration
 
-- [ ] clang-tidy diagnostics (gated by config)
-- [x] Suppress clang-tidy warnings originating in system-header macros in `clice lint` ([clangd#1587](https://github.com/clangd/clangd/issues/1587), [clangd#2000](https://github.com/clangd/clangd/issues/2000))
+- [x] clang-tidy diagnostics on open files, with the checks of the nearest `.clang-tidy` (a small default set without one), turned off by `[diagnostics] clang_tidy = false`
+- [x] Checks too slow for an editor, and those unreliable on code being edited, left out in the editor; `clice lint` runs them
+- [x] `.clang-tidy` edits apply to open files at their next compile
+- [x] A crash of a clang-tidy check pauses clang-tidy on that file, not its other features
+- [x] Suppress clang-tidy warnings originating in system-header macros ([clangd#1587](https://github.com/clangd/clangd/issues/1587), [clangd#2000](https://github.com/clangd/clangd/issues/2000))
 - [ ] Clang static analyzer support ([clangd#905](https://github.com/clangd/clangd/issues/905))
 - [ ] Version-specific clang-tidy documentation links ([clangd#2136](https://github.com/clangd/clangd/issues/2136))
 - [ ] Diagnostics for preprocessor directives that precede code ([clangd#2501](https://github.com/clangd/clangd/issues/2501))

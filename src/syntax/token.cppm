@@ -63,6 +63,13 @@ struct LocalSourceRange {
     }
 };
 
+/// One replacement of the main file's text, in byte offsets of the text
+/// it was computed against.
+struct TextReplacement {
+    LocalSourceRange range;
+    std::string text;
+};
+
 using TokenKind = clang::tok::TokenKind;
 
 struct Token {

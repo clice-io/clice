@@ -355,6 +355,10 @@ struct Config {
     <TrackerConfig> tracker;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     description = "The [diagnostics] section: diagnostic options.")
+    <feature::DiagnosticsOptions> diagnostics;
+
+    KOTATSU_ANNOTATE(defaulted = true,
                      description = "The [hover] section: hover rendering options.")
     <feature::HoverOptions> hover;
 

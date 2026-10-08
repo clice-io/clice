@@ -5,7 +5,7 @@
      markers by hand — edit the fixture spec headers and run
      `node tools/docs/feature.ts update`. -->
 
-clice offers code actions on a selection: refactorings that generate or reshape code from what the compiler knows about it, and quick fixes for names no header declares. Every action is computed to completion when it is offered, so applying one never waits on a second request; edits carry the document version they were computed for, and an editor refuses them once the buffer moved on. The same actions run headless through `clice inspect code_action`.
+clice offers code actions on a selection: refactorings that generate or reshape code from what the compiler knows about it, quick fixes for names no header declares, and the fixes the compiler and clang-tidy attach to their diagnostics. Every action is computed to completion when it is offered, so applying one never waits on a second request; edits carry the document version they were computed for, and an editor refuses them once the buffer moved on. The same actions run headless through `clice inspect code_action`.
 
 An action anchors on the innermost construct the selection covers — a method declaration, a class name, a `switch`, an `auto` — so the list stays short: a click on a method name offers what applies to that method, a click on the class name what applies to the class.
 
@@ -650,6 +650,54 @@ tests/snap/code_action/include/05_trailing_includes.cpp
 
 <!-- END GENERATED ITEMS -->
 
+## Diagnostic Fixes
+
+A diagnostic under the selection offers its fix as a quick fix, the compiler's and clang-tidy's alike. A fix that would edit inside a macro definition or another file is not offered.
+
+<!-- BEGIN GENERATED ITEMS: fix -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Compiler fix**
+
+A fix the compiler attaches to its diagnostic is offered as a quick fix
+
+The title spells out a single edit.
+
+```snap
+tests/snap/code_action/fix/01_compiler_fix.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**clang-tidy fix**
+
+A clang-tidy finding's fix is offered as a quick fix
+
+Without a `.clang-tidy` above the file, a small default set of checks runs.
+
+```snap
+tests/snap/code_action/fix/02_tidy_fix.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Fixes from notes**
+
+Each note that carries a fix offers it as a quick fix, titled by the note
+
+```snap
+tests/snap/code_action/fix/03_note_fixes.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## Reordering Definitions
 
 <!-- BEGIN GENERATED ITEMS: reorder -->
@@ -828,4 +876,4 @@ Generated text is formatted with the project's clang-format style when one appli
 
 ## Not Implemented
 
-Quick fixes from compiler and clang-tidy fix-it hints, extract function and variable, inline function and variable, moving a definition between header and source, converting an unscoped enum to a scoped one, and changing a function's signature across its callers.
+Extract function and variable, inline function and variable, moving a definition between header and source, converting an unscoped enum to a scoped one, and changing a function's signature across its callers.

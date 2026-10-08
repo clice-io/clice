@@ -14,7 +14,7 @@ import {
 } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
 import type { Workspace } from "@clice/tools/workspace";
-import { expect, test } from "../fixtures.ts";
+import { expect, test, type SessionFactory } from "../fixtures.ts";
 
 const NOTE = "clice's worker crashed";
 const HEALTHY = "int add(int a, int b) { return a + b; }\n";
@@ -34,6 +34,14 @@ function crashing(env: Record<string, string> = {}) {
         allowAnomaly: true,
         env: { CLICE_ANOMALY_NO_TRAP: "1", CLICE_TEST_PRAGMA_CRASH: "1", ...env },
     };
+}
+
+/// A workspace whose crashes are the compile's own: clang-tidy, whose
+/// crash a compile first retries without (clang_tidy.test.ts), stays off.
+function crashWorkspace(session: SessionFactory): Workspace {
+    const workspace = session.tmpdir();
+    workspace.write("clice.toml", "[diagnostics]\nclang_tidy = false\n");
+    return workspace;
 }
 
 function text(diagnostic: proto.Diagnostic): string {
@@ -76,7 +84,7 @@ async function settleCrashes(workspace: Workspace, tag: string, count: number): 
 }
 
 test("compile crash waits for save", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     workspace.write("poison.cpp", poison(0));
     workspace.writeCDB(["poison.cpp"]);
     const client = session.spawn(workspace, crashing());
@@ -109,7 +117,7 @@ test("compile crash waits for save", async ({ session }) => {
 });
 
 test("pull shows the crash note", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     workspace.write("poison.cpp", poison(0));
     workspace.writeCDB(["poison.cpp"]);
     const client = session.spawn(workspace, crashing());
@@ -124,7 +132,7 @@ test("pull shows the crash note", async ({ session }) => {
 });
 
 test("edit retries after a pause", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     workspace.write("poison.cpp", poison(0));
     workspace.writeCDB(["poison.cpp"]);
     const client = session.spawn(workspace, crashing());
@@ -152,7 +160,7 @@ test("edit retries after a pause", async ({ session }) => {
 });
 
 test("editing crash is bounded", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     workspace.write("poison.cpp", HEALTHY);
     workspace.writeCDB(["poison.cpp"]);
     const client = session.spawn(workspace, crashing());
@@ -191,7 +199,7 @@ test("editing crash is bounded", async ({ session }) => {
 });
 
 test("query crash pauses that feature", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     workspace.write("main.cpp", HEALTHY);
     workspace.writeCDB(["main.cpp"]);
     const hover = `query:Hover ${workspace.displayPath("main.cpp")}`;
@@ -219,7 +227,7 @@ test("query crash pauses that feature", async ({ session }) => {
 });
 
 test("completion crash pauses completion", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     const text = `${HEALTHY}int x = ad;\n`;
     workspace.write("main.cpp", text);
     workspace.writeCDB(["main.cpp"]);
@@ -239,7 +247,7 @@ test("completion crash pauses completion", async ({ session }) => {
 });
 
 test("preamble crash is shared", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     const preamble = `#pragma clang __debug crash\n${HEALTHY}`;
     workspace.write("poison.cpp", preamble);
     workspace.write("twin.cpp", preamble);
@@ -276,7 +284,7 @@ test("preamble crash is shared", async ({ session }) => {
 });
 
 test("module crash notes importers", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     workspace.copyFiles(path.join(DATA_DIR, "modules", "consumer_imports_module"));
     workspace.write("other.cpp", "import Math;\nint other() { return add(3, 4); }\n");
     workspace.write(
@@ -321,7 +329,7 @@ test("module crash notes importers", async ({ session }) => {
 });
 
 test("preamble crash heals with a header", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     workspace.write("poison.h", "#pragma once\nint known();\n");
     workspace.write("main.cpp", `#include "poison.h"\n${HEALTHY}`);
     workspace.writeCDB(["main.cpp"]);
@@ -346,7 +354,7 @@ test("preamble crash heals with a header", async ({ session }) => {
 });
 
 test("crash reading a preamble rebuilds it", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     workspace.write("header.h", "#pragma once\nint known();\n");
     workspace.write("main.cpp", `#include "header.h"\n${HEALTHY}`);
     workspace.writeCDB(["main.cpp"]);
@@ -367,7 +375,7 @@ test("crash reading a preamble rebuilds it", async ({ session }) => {
 });
 
 test("victims are not blamed", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     workspace.write("healthy.cpp", HEALTHY);
     workspace.write("poison.cpp", poison(0));
     workspace.writeCDB(["healthy.cpp", "poison.cpp"]);
@@ -407,7 +415,7 @@ test("victims are not blamed", async ({ session }) => {
 });
 
 test.skipIf(process.platform !== "linux")("shared deaths blame nobody", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     const names = ["a.cpp", "b.cpp", "c.cpp"];
     for (const name of names) {
         workspace.write(name, SLOW_SOURCE);
@@ -442,7 +450,7 @@ test.skipIf(process.platform !== "linux")("shared deaths blame nobody", async ({
 });
 
 test("reopen keeps the bar", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     workspace.write("poison.cpp", poison(0));
     workspace.writeCDB(["poison.cpp"]);
     const client = session.spawn(workspace, crashing());
@@ -473,7 +481,7 @@ test("reopen keeps the bar", async ({ session }) => {
 });
 
 test("hung compile is killed", async ({ session }) => {
-    const workspace = session.tmpdir();
+    const workspace = crashWorkspace(session);
     workspace.write(
         "hang.cpp",
         "constexpr long fib(long n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }\n" +

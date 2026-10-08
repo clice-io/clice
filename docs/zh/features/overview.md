@@ -27,7 +27,7 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节介绍已
 | [选择范围](./selection-ranges.md)  | 支持 10 项                                 |
 | [格式化](./formatting.md)          | 已实现                                     |
 | [诊断](./diagnostics.md)           | 部分支持                                   |
-| [代码操作](./code-action.md)       | 支持 57 项                                 |
+| [代码操作](./code-action.md)       | 支持 60 项                                 |
 
 <!-- END GENERATED OVERVIEW -->
 

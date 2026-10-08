@@ -46,7 +46,7 @@ ZEST_CASE(EditsNeedStyleFile) {
     TempDir tmp;
     auto file = tmp.path("main.cpp");
     llvm::StringRef code = "int f();\n";
-    std::vector<feature::TextReplacement> edits = {
+    std::vector<TextReplacement> edits = {
         {{8, 8}, "int  g( ) {}\n"}
     };
     auto unchanged = feature::format_edits(file, code, edits);

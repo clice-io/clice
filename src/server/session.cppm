@@ -123,6 +123,11 @@ struct Session {
     /// retraction rebuilds it, and a crash on it again is the document's
     /// own. Cleared by a compile that lands.
     std::string crashed_pch;
+
+    /// A worker death under this document's compile with clang-tidy on,
+    /// held while the compile retries without the pass: a landing blames
+    /// the pass, another crash the compile.
+    std::optional<kota::ipc::Error> tidy_crash;
 };
 
 /// A request's claim on the buffer it was asked about: the generation

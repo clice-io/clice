@@ -21,9 +21,11 @@ std::optional<bool> is_fast_tidy_check(llvm::StringRef check);
 
 class ClangTidyChecker;
 
-/// Configure to run clang-tidy on the given file.
+/// Configure to run clang-tidy on the given file; see
+/// CompilationParams::preamble_inactive_regions.
 std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
-                                            const TidyParams& params);
+                                            const TidyParams& params,
+                                            llvm::ArrayRef<std::uint32_t> preamble_inactive);
 
 class ClangTidyChecker {
 public:
@@ -36,8 +38,12 @@ public:
     /// The match finder to run clang-tidy on ASTs.
     clang::ast_matchers::MatchFinder finder;
 
-    /// TidyParams::whole_tu: suppression comments count in every file.
-    bool whole_tu = false;
+    /// See TidyParams::batch.
+    bool batch = false;
+
+    /// The check names the unit's diagnostics borrow.
+    llvm::BumpPtrAllocator allocator;
+    llvm::StringSaver names{allocator};
 
     ClangTidyChecker(std::unique_ptr<ClangTidyOptionsProvider> provider,
                      clang::ast_matchers::MatchFinder::MatchFinderOptions options);
@@ -122,12 +128,6 @@ struct CompilationUnitRef::Self {
 
     std::unique_ptr<tidy::ClangTidyChecker> checker;
 
-    /// The tidy configuration reports on headers (HeaderFilterRegex or
-    /// SystemHeaders) or asks for the whole TU, so the matcher traversal
-    /// must see their declarations — top_level_decls holds the main file
-    /// only.
-    bool tidy_traverse_headers = false;
-
     std::chrono::milliseconds build_at;
 
     auto& SM() {
@@ -147,8 +147,6 @@ public:
                           clang::DiagnosticConsumer* consumer);
 
     void collect_directives();
-
-    void configure_tidy(tidy::TidyParams tidy_params);
 
     // Must be called before EndSourceFile because the ast context can be destroyed later.
     void run_tidy();
