@@ -49,13 +49,13 @@ npm run package
 
 ## Neovim
 
-Neovim 扩展位于 `editors/nvim`，使用 Lua 编写，目前仍在持续开发。
+Neovim 集成位于 `editors/nvim`：
 
-- 将仓库路径加入 `runtimepath`，例如：`set rtp+=/path/to/clice/editors/nvim`
-- 或创建本地符号链接：`~/.config/nvim/pack/clice/start/clice` -> `<repo>/editors/nvim`
-- 确保能通过 `$PATH` 找到 `clice` 可执行文件
+- `lsp/clice.lua` 是 LSP 配置。nvim-lspconfig 自己的 `lsp/clice.lua` 就是同一份文件，因此这里的改动也要向那边提交 pull request；`lsp/.stylua.toml` 是 nvim-lspconfig 的格式化配置，确保两份文件完全一致。
+- `plugin/clice.lua` 淡化显示非活动预处理分支。
+- `tests/e2e.lua` 是以 headless 模式运行的冒烟测试：`pixi run -e editor nvim-e2e`。
 
-开发提示：代码库规模较小，可直接在 Neovim 中加载，并查看 `:messages`/LSP 日志；使用 `stylua` 进行格式化（已包含配置）。
+试用改动时，把该目录加入 `runtimepath`（`set rtp^=/path/to/clice/editors/nvim`），并调用 `vim.lsp.enable('clice')`；`:checkhealth vim.lsp` 会显示客户端及其日志的位置。
 
 ## Zed
 

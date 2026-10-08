@@ -15,11 +15,13 @@ Install the [clice extension](https://marketplace.visualstudio.com/items?itemNam
 
 ### Neovim
 
-clice ships an LSP config for Neovim ≥ 0.11 in [`editors/nvim`](https://github.com/clice-io/clice/tree/main/editors/nvim). Copy `doc/clice.lua` into your config's `lsp/` directory, then enable it:
+On Neovim 0.11 or later with [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) installed, enable clice:
 
 ```lua
 vim.lsp.enable('clice')
 ```
+
+nvim-lspconfig carries the config from [`editors/nvim`](https://github.com/clice-io/clice/tree/main/editors/nvim); without it, copy `lsp/clice.lua` from there into the `lsp/` directory of your config. The config adds commands that show and switch the compilation context of a buffer; the [README](https://github.com/clice-io/clice/tree/main/editors/nvim#readme) lists them, along with the features Neovim leaves to your config, such as inlay hints and completion.
 
 ### Zed
 

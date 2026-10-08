@@ -2,9 +2,10 @@
 --
 -- Usage: nvim -l editors/nvim/tests/e2e.lua <clice-executable> <fixture-dir>
 --
--- Starts clice through the shipped LSP config (../doc/clice.lua), opens
+-- Starts clice through the shipped LSP config (../lsp/clice.lua), opens
 -- the fixture's main file, waits for diagnostics, then checks that
--- hover, definition and completion respond with well-formed results.
+-- hover, definition and completion respond with well-formed results, and
+-- on a header that the compilation context commands work.
 
 local clice_path = arg[1]
 local fixture_dir = arg[2]
@@ -51,6 +52,7 @@ local scenarios = {
         index_symbol = 'calc',
         -- no definition_file: cross-file definition into headers is a
         -- known index gap.
+        context = 'main.cpp',
     },
 }
 
@@ -60,7 +62,7 @@ if not scenario then
 end
 
 local plugin_root = vim.fn.fnamemodify(arg[0], ':p:h:h')
-local config = dofile(plugin_root .. '/doc/clice.lua')
+local config = dofile(plugin_root .. '/lsp/clice.lua')
 config.name = 'clice'
 config.cmd = { clice_path, 'serve' }
 config.root_dir = fixture_dir
@@ -184,6 +186,53 @@ local completion = request('textDocument/completion', {
 local items = completion and (completion.items or completion)
 if not items or #items == 0 then
     fail 'completion returned no items'
+end
+
+if scenario.context then
+    -- Polls with a deadline of its own: vim.wait does not time out while
+    -- its condition keeps running sync requests that answer at once.
+    local function wait_for_context(automatic)
+        local deadline = vim.uv.hrtime() + 10e9
+        while vim.uv.hrtime() < deadline do
+            if request('clice/currentContext', text_document).automatic == automatic then
+                return true
+            end
+            vim.wait(200)
+        end
+        return false
+    end
+
+    local notified
+    vim.notify = function(msg)
+        notified = msg
+    end
+    step 'show context'
+    vim.cmd.LspCliceShowContext()
+    if not vim.wait(10000, function()
+        return notified ~= nil
+    end, 50) then
+        fail 'LspCliceShowContext showed nothing'
+    end
+    if not notified:find(scenario.context, 1, true) then
+        fail('LspCliceShowContext showed: ' .. notified)
+    end
+
+    step 'switch context'
+    vim.ui.select = function(items, opts, on_choice)
+        on_choice(vim.iter(items):find(function(item)
+            return opts.format_item(item):find(scenario.context, 1, true) ~= nil
+        end))
+    end
+    vim.cmd.LspCliceSwitchContext()
+    if not wait_for_context(false) then
+        fail 'LspCliceSwitchContext did not switch the context'
+    end
+
+    step 'reset context'
+    vim.cmd.LspCliceResetContext()
+    if not wait_for_context(true) then
+        fail 'LspCliceResetContext did not reset the context'
+    end
 end
 
 step 'shutdown'
