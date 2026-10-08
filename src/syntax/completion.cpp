@@ -138,7 +138,6 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
         return {};
     }
 
-    // Only complete before the statement's semicolon.
     if(text.slice(first.range.begin, offset).contains(';')) {
         return {};
     }
@@ -186,7 +185,7 @@ std::vector<std::string> complete_module_import(const DependencyGraph& graph,
             }
             name = std::format(":{}", partition);
         }
-        if(llvm::StringRef(name).starts_with(prefix)) {
+        if(name.starts_with(prefix)) {
             results.push_back(std::move(name));
         }
     }

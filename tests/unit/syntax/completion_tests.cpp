@@ -294,6 +294,18 @@ ZEST_CASE(OwnPartitionsOnly) {
     ZEXPECT(complete_module_import(modules, "foo:", "foo").empty());
 }
 
+ZEST_CASE(DottedModuleNames) {
+    clice::DependencyGraph modules;
+    modules.add_module("a", Fid{1});
+    modules.add_module("a.b", Fid{2});
+    modules.add_module("a.b:p", Fid{3});
+    modules.add_module("a.b:q", Fid{4});
+    modules.add_module("a:r", Fid{5});
+
+    auto names = complete_module_import(modules, "", "a.b:q");
+    ZEXPECT(names == std::vector<std::string>{":p", "a"});
+}
+
 };  // ZEST_SUITE(CompleteModuleImport)
 
 }  // namespace

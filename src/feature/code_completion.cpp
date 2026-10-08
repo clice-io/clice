@@ -808,9 +808,8 @@ public:
             }
         }
 
-        // Clang offers `import` at file scope of a module interface alone,
-        // yet an implementation unit imports past its module declaration
-        // just the same.
+        // SemaCodeComplete's `import name;` pattern skips implementation
+        // units, which import past their module declaration just the same.
         if(context.getKind() == clang::CodeCompletionContext::CCC_TopLevel &&
            sema.CurContext->isTranslationUnit()) {
             if(auto* module = sema.getCurrentModule();

@@ -842,14 +842,15 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             co_return to_raw(items);
         }
         if(pctx.kind == CompletionContext::Import) {
+            // The module declaration precedes every import, and the scan
+            // stops before the import being typed: the scanner rejects a
+            // buffer with an unclosed directive whole.
             llvm::StringRef text = session->text;
+            auto declared = text.take_front(text.rfind('\n', pctx.replace.begin) + 1);
             auto module_names = complete_module_import(project.dep_graph,
                                                        pctx.prefix,
-                                                       scan_quick(text).module_name);
-
-            // A statement closed already keeps its semicolon.
-            auto line_end = std::min(text.find_first_of("\r\n", pctx.replace.end), text.size());
-            bool closed = text.slice(pctx.replace.end, line_end).contains(';');
+                                                       scan_quick(declared).module_name);
+            bool closed = text.substr(pctx.replace.end).ltrim(" \t").starts_with(";");
             std::vector<protocol::CompletionItem> items;
             items.reserve(module_names.size());
             for(auto& name: module_names) {
