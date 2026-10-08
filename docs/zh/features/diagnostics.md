@@ -36,8 +36,8 @@
 
 ## 标签
 
-- [x] `-Wdeprecated` 诊断的 `Deprecated` 标签
-- [x] 未使用变量/参数警告的 `Unnecessary` 标签
+- [x] `-Wdeprecated` 诊断和 `modernize-*` clang-tidy 检查结果的 `Deprecated` 标签
+- [x] 未使用变量/参数警告和 `misc-unused-*` clang-tidy 检查结果的 `Unnecessary` 标签
 
 ## 发布
 
@@ -45,6 +45,7 @@
 - [x] 文件关闭时清除诊断
 - [x] 按文件对诊断分组（主文件和头文件）
 - [x] 诊断 `code` 字段包含 Clang 错误代码
+- [x] `codeDescription` 将 clang-tidy 检查结果链接到该检查的文档
 - [ ] `codeDescription` 中提供指向 Clang 文档的链接
 - [x] 诊断 `source` 字段区分 clang 与 clang-tidy
 - [ ] 可配置计算诊断前的防抖延迟（[clangd#1471](https://github.com/clangd/clangd/issues/1471)）
@@ -52,16 +53,17 @@
 
 ## 诊断抑制
 
-- [x] 使用 `// NOLINT` 注释抑制 `clice lint` 中的诊断
-- [x] 使用 `// NOLINTNEXTLINE` 注释抑制 `clice lint` 中的诊断
-- [x] `clice lint` 中的 `// NOLINTBEGIN` / `// NOLINTEND` 块级抑制
+- [x] 使用 `// NOLINT` 注释抑制诊断
+- [x] 使用 `// NOLINTNEXTLINE` 注释抑制诊断
+- [x] `// NOLINTBEGIN` / `// NOLINTEND` 块级抑制
+- [x] 文件运行 clang-tidy 时，`NOLINT` 注释也能屏蔽编译器警告
 - [ ] include-cleaner 诊断支持 `NOLINT`（[clangd#1982](https://github.com/clangd/clangd/issues/1982)）
 - [ ] 配置文件中可按诊断类别配置严重程度（[clangd#1937](https://github.com/clangd/clangd/issues/1937)）
 - [ ] 根据版本控制 diff 过滤诊断——仅显示变更行附近的警告（[clangd#822](https://github.com/clangd/clangd/issues/822)）
 
 ## 诊断操作
 
-- [ ] 将自动修复建议作为代码操作附加到诊断
+- [x] 编译器和 clang-tidy 附在诊断上的修复，作为快速修复提供
 
 ## 头文件诊断
 
@@ -80,8 +82,11 @@
 
 ## clang-tidy 集成
 
-- [ ] clang-tidy 诊断（由配置控制）
-- [x] 在 `clice lint` 中抑制源自系统头文件中宏的 clang-tidy 警告（[clangd#1587](https://github.com/clangd/clangd/issues/1587)、[clangd#2000](https://github.com/clangd/clangd/issues/2000)）
+- [x] 已打开文件的 clang-tidy 诊断，使用最近的 `.clang-tidy` 配置的检查（没有该文件时使用一小组默认检查），可通过 `[diagnostics] clang_tidy = false` 关闭
+- [x] 对编辑器来说过慢的检查，以及在编辑中的代码上不可靠的检查，不在编辑器中运行；`clice lint` 会运行它们
+- [x] 对 `.clang-tidy` 的修改会在已打开文件下次编译时生效
+- [x] 某个 clang-tidy 检查崩溃时，只暂停该文件的 clang-tidy，不影响它的其他功能
+- [x] 抑制源自系统头文件中宏的 clang-tidy 警告（[clangd#1587](https://github.com/clangd/clangd/issues/1587)、[clangd#2000](https://github.com/clangd/clangd/issues/2000)）
 - [ ] Clang 静态分析器支持（[clangd#905](https://github.com/clangd/clangd/issues/905)）
 - [ ] 特定版本的 clang-tidy 文档链接（[clangd#2136](https://github.com/clangd/clangd/issues/2136)）
 - [ ] 对位于代码之前的预处理指令进行诊断（[clangd#2501](https://github.com/clangd/clangd/issues/2501)）

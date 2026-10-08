@@ -252,7 +252,9 @@ public:
     /// The replacements a diagnostic's fix-it hints spell, all of them or
     /// none: one inside a macro expansion, but for one within a single
     /// macro argument, which edits the argument, or in another file leaves
-    /// the fix unexpressed.
+    /// the fix unexpressed, and so do edits that overlap, which an editor
+    /// refuses (misc-unused-parameters removes both `f(1)` and its `1`
+    /// from `f(f(1))`).
     auto fix(const clang::Diagnostic& diagnostic) -> std::vector<TextReplacement> {
         auto& sm = unit->SM();
         std::vector<TextReplacement> edits;
@@ -288,6 +290,18 @@ public:
                 });
             }
             edits.insert(at, {*removed, std::move(text)});
+        }
+        llvm::SmallVector<LocalSourceRange> ranges;
+        for(auto& edit: edits) {
+            ranges.push_back(edit.range);
+        }
+        llvm::sort(ranges, [](LocalSourceRange a, LocalSourceRange b) {
+            return std::pair(a.begin, a.end) < std::pair(b.begin, b.end);
+        });
+        for(auto [before, after]: llvm::zip(ranges, llvm::drop_begin(ranges))) {
+            if(after.begin < before.end) {
+                return {};
+            }
         }
         return edits;
     }

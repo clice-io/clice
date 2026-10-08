@@ -38,9 +38,9 @@ struct TidyParams {
     bool system_headers = false;
 
     /// What the checks take for headers and for sources by extension;
-    /// empty keeps clang-tidy's defaults.
-    std::vector<std::string> header_file_extensions;
-    std::vector<std::string> implementation_file_extensions;
+    /// unset keeps clang-tidy's defaults.
+    std::optional<std::vector<std::string>> header_file_extensions;
+    std::optional<std::vector<std::string>> implementation_file_extensions;
 
     /// Extra compiler args from the configuration. -W<group> flags are
     /// consumed engine-side by apply_warning_options so the Checks gate
@@ -144,6 +144,10 @@ struct CompilationParams {
 
     /// Run clang-tidy over the parse with this frozen configuration.
     std::optional<tidy::TidyParams> tidy;
+
+    /// Inactive regions of the consumed PCH's preamble share (flat
+    /// begin/end offset pairs): the `#include`s there were never entered.
+    std::vector<std::uint32_t> preamble_inactive_regions;
 
     /// Output file path.
     llvm::SmallString<128> output_file;

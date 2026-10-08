@@ -1,4 +1,4 @@
 # clice inspect runs snap fixtures where they are: this file ends the
 # .clang-tidy lookup before the repository's own configuration, so a fixture
 # gets the default checks, as in the server path's throwaway workspace.
-Checks: ''
+Checks: ""

@@ -28,21 +28,26 @@ bool is_inside_main_file(clang::SourceLocation loc, const clang::SourceManager& 
 /// tidy checks' callbacks: a compile against a PCH never preprocesses
 /// them. Include-aware checks look for them, and a fix inserting an
 /// include places it among them, or leaves out one the file already has.
-/// clangd's ReplayPreamble, read from the source: a directive whose file
-/// the PCH never included sat in an inactive branch, and one naming its
+/// clangd's ReplayPreamble, read from the source: the preamble's inactive
+/// regions tell the directives the PCH never entered, and one naming its
 /// file through a macro has no filename to replay.
 class PreambleReplay : public clang::PPCallbacks {
 public:
-    PreambleReplay(clang::Preprocessor& pp, clang::PPCallbacks& delegate, unsigned bound) :
-        pp(pp), delegate(delegate), bound(bound) {}
+    PreambleReplay(clang::Preprocessor& pp,
+                   clang::PPCallbacks& delegate,
+                   unsigned bound,
+                   llvm::ArrayRef<std::uint32_t> inactive) :
+        pp(pp), delegate(delegate), bound(bound), inactive(inactive) {}
 
     /// The preamble's includes follow the predefines buffer, the last
-    /// thing the compile enters before the main file's rest.
-    void FileChanged(clang::SourceLocation,
-                     FileChangeReason reason,
-                     clang::SrcMgr::CharacteristicKind,
-                     clang::FileID prev) override {
-        if(reason == ExitFile &&
+    /// thing the compile enters before the main file's rest; replayed once
+    /// every callback has left it, so they land in the main file's scope.
+    void LexedFileChanged(clang::FileID,
+                          LexedFileChangeReason reason,
+                          clang::SrcMgr::CharacteristicKind,
+                          clang::FileID prev,
+                          clang::SourceLocation) override {
+        if(reason == LexedFileChangeReason::ExitFile &&
            pp.getSourceManager().getBufferOrFake(prev).getBufferIdentifier() == "<built-in>") {
             replay();
         }
@@ -63,10 +68,11 @@ private:
         while(true) {
             clang::Token hash;
             lexer.LexFromRawLexer(hash);
-            if(sm.getFileOffset(hash.getLocation()) >= bound) {
+            auto offset = sm.getFileOffset(hash.getLocation());
+            if(offset >= bound) {
                 return;
             }
-            if(hash.isNot(clang::tok::hash) || !hash.isAtStartOfLine()) {
+            if(hash.isNot(clang::tok::hash) || !hash.isAtStartOfLine() || in_inactive(offset)) {
                 continue;
             }
             clang::Token keyword;
@@ -77,6 +83,15 @@ private:
                 replay_include(hash, keyword, text);
             }
         }
+    }
+
+    bool in_inactive(std::uint32_t offset) const {
+        for(std::size_t i = 0; i + 1 < inactive.size(); i += 2) {
+            if(inactive[i] <= offset && offset < inactive[i + 1]) {
+                return true;
+            }
+        }
+        return false;
     }
 
     void replay_include(const clang::Token& hash, clang::Token& keyword, llvm::StringRef text) {
@@ -107,9 +122,6 @@ private:
                                   nullptr,
                                   nullptr,
                                   nullptr);
-        if(!file || !pp.alreadyIncluded(*file)) {
-            return;
-        }
 
         pp.LookUpIdentifierInfo(keyword);
         clang::Token filename;
@@ -118,7 +130,7 @@ private:
         filename.setLocation(location);
         filename.setLength(written.size());
         filename.setLiteralData(written.data());
-        auto kind = pp.getHeaderSearchInfo().getFileDirFlavor(*file);
+        auto kind = file ? pp.getHeaderSearchInfo().getFileDirFlavor(*file) : clang::SrcMgr::C_User;
         delegate.InclusionDirective(
             hash.getLocation(),
             keyword,
@@ -131,12 +143,15 @@ private:
             /*SuggestedModule=*/nullptr,
             /*ModuleImported=*/false,
             kind);
-        delegate.FileSkipped(*file, filename, kind);
+        if(file) {
+            delegate.FileSkipped(*file, filename, kind);
+        }
     }
 
     clang::Preprocessor& pp;
     clang::PPCallbacks& delegate;
     unsigned bound;
+    std::vector<std::uint32_t> inactive;
 };
 
 /// The view of the disk a .clang-tidy resolution reads, recording each
@@ -326,10 +341,10 @@ tidy::ClangTidyOptions create_options(const TidyParams& params) {
     if(params.system_headers) {
         opts.SystemHeaders = true;
     }
-    if(!params.header_file_extensions.empty()) {
+    if(params.header_file_extensions) {
         opts.HeaderFileExtensions = params.header_file_extensions;
     }
-    if(!params.implementation_file_extensions.empty()) {
+    if(params.implementation_file_extensions) {
         opts.ImplementationFileExtensions = params.implementation_file_extensions;
     }
     if(!params.extra_args.empty()) {
@@ -527,7 +542,10 @@ clang::DiagnosticsEngine::Level
         // NOLINT comments)?
         return clang::DiagnosticsEngine::Ignored;
     }
-    if(!context.getOptions().SystemHeaders.value_or(false) && diag.hasSourceManager() &&
+    // The compiler settles its own diagnostics in system macros: an error
+    // there stays one.
+    if(!context.isCompilerDiagnostic(diag.getID()) &&
+       !context.getOptions().SystemHeaders.value_or(false) && diag.hasSourceManager() &&
        diag.getSourceManager().isInSystemMacro(diag.getLocation())) {
         return clang::DiagnosticsEngine::Ignored;
     }
@@ -558,7 +576,8 @@ void ClangTidyChecker::adjust_diag(Diagnostic& diag) {
 }
 
 std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
-                                            const TidyParams& params) {
+                                            const TidyParams& params,
+                                            llvm::ArrayRef<std::uint32_t> preamble_inactive) {
     auto& input = instance.getFrontendOpts().Inputs[0];
 
     if(!input.isFile()) {
@@ -637,7 +656,8 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     // reaches them alone, never the unit's own collectors added later.
     if(auto bound = instance.getPreprocessorOpts().PrecompiledPreambleBytes.first;
        bound != 0 && pp->getPPCallbacks()) {
-        pp->addPPCallbacks(std::make_unique<PreambleReplay>(*pp, *pp->getPPCallbacks(), bound));
+        pp->addPPCallbacks(
+            std::make_unique<PreambleReplay>(*pp, *pp->getPPCallbacks(), bound, preamble_inactive));
     }
     return checker;
 }
@@ -671,9 +691,8 @@ TidyResolution resolve_tidy_params(llvm::StringRef file) {
     params.header_filter = opts.HeaderFilterRegex.value_or(std::string());
     params.exclude_header_filter = opts.ExcludeHeaderFilterRegex.value_or(std::string());
     params.system_headers = opts.SystemHeaders.value_or(false);
-    params.header_file_extensions = opts.HeaderFileExtensions.value_or(std::vector<std::string>());
-    params.implementation_file_extensions =
-        opts.ImplementationFileExtensions.value_or(std::vector<std::string>());
+    params.header_file_extensions = opts.HeaderFileExtensions;
+    params.implementation_file_extensions = opts.ImplementationFileExtensions;
     params.extra_args = opts.ExtraArgs.value_or(std::vector<std::string>());
     params.extra_args_before = opts.ExtraArgsBefore.value_or(std::vector<std::string>());
     resolution.files = std::move(reads->files);

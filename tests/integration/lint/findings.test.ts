@@ -93,7 +93,10 @@ test("compiler warnings report under their check", async ({ session }) => {
     expect(quiet.status, `stderr: ${quiet.stderr}`).toBe(0);
     expect(findings(quiet.stdout)).toEqual([]);
 
-    ws.write(".clang-tidy", 'Checks: "-*,modernize-use-nullptr,clang-diagnostic-unused-variable"\n');
+    ws.write(
+        ".clang-tidy",
+        'Checks: "-*,modernize-use-nullptr,clang-diagnostic-unused-variable"\n',
+    );
     const run = await runLint(ws);
     expect(run.status, `stderr: ${run.stderr}`).toBe(1);
     const lines = findings(run.stdout);

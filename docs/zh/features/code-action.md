@@ -5,7 +5,7 @@
      markers by hand — edit the fixture spec headers and run
      `node tools/docs/feature.ts update`. -->
 
-clice 针对选区提供代码操作：一类是依据编译器已掌握的信息生成或改写代码的重构，另一类是为头文件未声明的名字提供的快速修复。每个操作在列出时就已完整算好，应用时无需再等一次请求；编辑内容带有计算时所依据的文档版本，缓冲区一旦变动，编辑器就会拒绝它们。同一批操作也可以通过 `clice inspect code_action` 以无头方式运行。
+clice 针对选区提供代码操作：依据编译器已掌握的信息生成或改写代码的重构、为头文件未声明的名字提供的快速修复，以及编译器和 clang-tidy 附在诊断上的修复。每个操作在列出时就已完整算好，应用时无需再等一次请求；编辑内容带有计算时所依据的文档版本，缓冲区一旦变动，编辑器就会拒绝它们。同一批操作也可以通过 `clice inspect code_action` 以无头方式运行。
 
 操作锚定在选区覆盖的最内层构造上——方法声明、类名、一个 `switch`、一个 `auto`——因此列表始终很短：点击方法名，列出的是适用于该方法的操作；点击类名，列出的则是适用于该类的操作。
 
@@ -635,6 +635,54 @@ tests/snap/code_action/include/05_trailing_includes.cpp
 
 <!-- END GENERATED ITEMS -->
 
+## 诊断修复
+
+选区下的诊断会把它的修复作为快速修复提供，编译器和 clang-tidy 的诊断都是如此。需要改动宏定义内部或其他文件的修复不会提供。
+
+<!-- BEGIN GENERATED ITEMS: fix -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**编译器修复**
+
+编译器附在诊断上的修复会作为快速修复提供
+
+只有一处编辑时，标题直接写出这处编辑。
+
+```snap
+tests/snap/code_action/fix/01_compiler_fix.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**clang-tidy 修复**
+
+clang-tidy 检查结果的修复会作为快速修复提供
+
+文件所在目录及其上级目录中没有 `.clang-tidy` 时，运行的是一小组默认检查。
+
+```snap
+tests/snap/code_action/fix/02_tidy_fix.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**来自 note 的修复**
+
+每条带有修复的 note 都会把它作为快速修复提供，标题取自该 note
+
+```snap
+tests/snap/code_action/fix/03_note_fixes.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## 重排定义
 
 <!-- BEGIN GENERATED ITEMS: reorder -->
@@ -810,4 +858,4 @@ tests/snap/code_action/constructor/07_move_only_fields.cpp
 
 ## 尚未实现
 
-由编译器和 clang-tidy 的 fix-it 提示生成的快速修复、提取函数与变量、内联函数与变量、在头文件与源文件之间移动定义、把无作用域枚举转换为有作用域枚举，以及在所有调用处修改函数签名。
+提取函数与变量、内联函数与变量、在头文件与源文件之间移动定义、把无作用域枚举转换为有作用域枚举，以及在所有调用处修改函数签名。

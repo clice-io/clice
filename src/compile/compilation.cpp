@@ -336,7 +336,7 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     /// The checks' PPCallbacks go first: the preamble replay reaches the
     /// callbacks registered before it (see tidy::configure).
     if(params.tidy) {
-        self.checker = tidy::configure(instance, *params.tidy);
+        self.checker = tidy::configure(instance, *params.tidy, params.preamble_inactive_regions);
     }
 
     /// Add PPCallbacks to collect preprocessing information.

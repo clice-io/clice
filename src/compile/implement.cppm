@@ -21,9 +21,11 @@ std::optional<bool> is_fast_tidy_check(llvm::StringRef check);
 
 class ClangTidyChecker;
 
-/// Configure to run clang-tidy on the given file.
+/// Configure to run clang-tidy on the given file; see
+/// CompilationParams::preamble_inactive_regions.
 std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
-                                            const TidyParams& params);
+                                            const TidyParams& params,
+                                            llvm::ArrayRef<std::uint32_t> preamble_inactive);
 
 class ClangTidyChecker {
 public:

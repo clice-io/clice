@@ -767,17 +767,20 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
     // clang-tidy runs where `clice lint` checks, unless a crash of its is
     // on trial or bars it, or the compile retries a crash it is acquitted
-    // of (on a retracted preamble, or after the document's own); the places
-    // resolving its configuration looked at join the deps.
+    // of (on a retracted preamble, or after the document's own). The places
+    // resolving its configuration looked at join the deps either way: a
+    // fix there is a change that retries a barred pass.
     auto tidy_kind = evidence_kind(EvidenceKind::Tidy);
-    std::optional<Quarantine::Attempt> tidy_attempt;
     std::optional<tidy::TidyResolution> tidy_config;
+    std::optional<Quarantine::Attempt> tidy_attempt;
     if(project.config.diagnostics.clang_tidy &&
-       project.build.lintable(project.file_table.resolve(path_id)) && !session->tidy_crash &&
-       session->crashed_pch.empty() && !session->quarantine->crashed(compile_kind) &&
-       !session->quarantine->barred(tidy_kind, Quarantine::Clock::now())) {
-        tidy_attempt.emplace(*session->quarantine, tidy_kind);
+       project.build.lintable(project.file_table.resolve(path_id))) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
+        if(!session->tidy_crash && session->crashed_pch.empty() &&
+           !session->quarantine->crashed(compile_kind) &&
+           !session->quarantine->barred(tidy_kind, Quarantine::Clock::now())) {
+            tidy_attempt.emplace(*session->quarantine, tidy_kind);
+        }
     }
 
     // At most two worker sends: a header with unknown self-containment
@@ -792,7 +795,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         params.version = session->version;
         params.text = session->text;
         params.workspace = project.config.workspace_root.str();
-        if(tidy_config) {
+        if(tidy_attempt) {
             params.tidy = tidy_config->params;
         }
         auto resolution = contexts.resolve_command(path_id, params.directory, params.arguments);
@@ -1246,6 +1249,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         entry.projection = std::move(next);
         if(tidy_config) {
             llvm::append_range(result.value().deps, tidy_config->files);
+        }
+        if(tidy_attempt) {
             session->quarantine->on_land(tidy_kind);
         } else if(session->tidy_crash) {
             record_crash(session, tidy_kind, *session->tidy_crash);

@@ -282,6 +282,7 @@ RequestResult<worker::CompileParams>
             cp.add_remapped_file(params.path, doc->text);
             cp.add_synthesized(params.synthesized);
             cp.tidy = params.tidy;
+            cp.preamble_inactive_regions = params.preamble_inactive_regions;
             cp.stop = stop;
 
             doc->unit = compile(cp);

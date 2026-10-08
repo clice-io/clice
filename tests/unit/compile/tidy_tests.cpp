@@ -19,8 +19,8 @@ using Sources = std::vector<std::pair<std::string, std::string>>;
 /// main.cpp of `sources` built for the features under `tidy`, with
 /// `flags` added to the command.
 CompilationUnit compile_main(const Sources& sources,
-                    tidy::TidyParams tidy,
-                    llvm::ArrayRef<const char*> flags = {}) {
+                             tidy::TidyParams tidy,
+                             llvm::ArrayRef<const char*> flags = {}) {
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     for(auto& [name, content]: sources) {
         vfs->add(name, content);
@@ -68,8 +68,10 @@ ZEST_CASE(ModulesLinked) {
 ZEST_CASE(PlannedCheckFires) {
     // The frozen plan owns the check set; the matcher walks the top-level
     // declarations only a Content build collects.
-    auto unit = compile_main({{"main.cpp", "double ratio(int a, int b) { return a / b; }\n"}},
-                    {.checks = "-*,bugprone-integer-division", .batch = true});
+    Sources sources = {
+        {"main.cpp", "double ratio(int a, int b) { return a / b; }\n"},
+    };
+    auto unit = compile_main(sources, {.checks = "-*,bugprone-integer-division", .batch = true});
     ZASSERT(unit.completed());
     ZEXPECT(findings(unit) == std::vector<std::string>{"bugprone-integer-division"});
 }
@@ -104,8 +106,9 @@ ZEST_CASE(HeaderNolint) {
         {"ratio.h",  "inline double ratio(int a, int b) { return a / b; }  // NOLINT\n"},
         {"main.cpp", "#include \"ratio.h\"\n"                                          },
     };
-    auto unit = compile_main(sources,
-                    {.checks = "-*,bugprone-integer-division", .header_filter = ".*", .batch = true});
+    auto unit = compile_main(
+        sources,
+        {.checks = "-*,bugprone-integer-division", .header_filter = ".*", .batch = true});
     ZASSERT(unit.completed());
     // A suppressed finding stays in the stream at the Ignored level.
     bool suppressed = false;
@@ -178,17 +181,21 @@ ZEST_CASE(CompilerWarningProvenance) {
     ZEXPECT(id->source == DiagnosticSource::ClangTidy);
     ZEXPECT(id->name == "clang-diagnostic-unused-variable");
 
-    auto other =
-        compile_main(sources, {.checks = "-*,bugprone-integer-division", .batch = true}, {"-Wunused-variable"});
+    auto other = compile_main(sources,
+                              {.checks = "-*,bugprone-integer-division", .batch = true},
+                              {"-Wunused-variable"});
     id = warning(other);
     ZASSERT(id);
     ZEXPECT(id->source == DiagnosticSource::Clang);
 }
 
 ZEST_CASE(NolintSilencesWarnings) {
-    auto unit = compile_main({{"main.cpp", "int f() { int unused; return 0; }  // NOLINT\n"}},
-                    {},
-                    {"-Wunused-variable"});
+    auto unit = compile_main(
+        {
+            {"main.cpp", "int f() { int unused; return 0; }  // NOLINT\n"}
+    },
+        {},
+        {"-Wunused-variable"});
     ZASSERT(unit.completed());
     bool silenced = false;
     for(auto& diag: unit.diagnostics()) {
@@ -198,9 +205,50 @@ ZEST_CASE(NolintSilencesWarnings) {
     ZASSERT(silenced);
 }
 
+ZEST_CASE(OverlappingFixDropped) {
+    Sources sources = {
+        {"main.cpp", "static int f(int unused) { return 0; }\nint g() { return f(f(1)); }\n"},
+    };
+    auto unit = compile_main(sources, {.checks = "-*,misc-unused-parameters"});
+    ZASSERT(unit.completed());
+    auto finding = llvm::find_if(unit.diagnostics(), [](const Diagnostic& diag) {
+        return diag.id.name == "misc-unused-parameters";
+    });
+    ZASSERT(finding != unit.diagnostics().end());
+    ZEXPECT(finding->fix.empty());
+}
+
+ZEST_CASE(SystemMacroErrorKept) {
+    Sources sources = {
+        {"sys.h",  "#pragma clang system_header\n#define INIT int *p = 1;\n"},
+        {"main.c", "#include \"sys.h\"\nvoid f(void) { INIT }\n"            },
+    };
+    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    for(auto& [name, content]: sources) {
+        vfs->add(name, content);
+    }
+    std::string main_path = TestVFS::path("main.c");
+    CompilationParams params;
+    params.kind = CompilationKind::Content;
+    params.tidy = tidy::TidyParams{};
+    params.vfs = vfs;
+    params.arguments = {"clang", "-ffreestanding", "-Xclang", "-undef", main_path.c_str()};
+    auto unit = compile(params);
+    ZASSERT(unit.completed());
+    // -Wint-conversion is an error by default; the compiler shows it in a
+    // system macro, and clang-tidy keeps out of it.
+    ZEXPECT(llvm::any_of(unit.diagnostics(), [](const Diagnostic& diag) {
+        return diag.id.level == DiagnosticLevel::Error;
+    }));
+}
+
 ZEST_CASE(FixItReplacements) {
     llvm::StringRef content = "int main() { return 0 }\n";
-    auto unit = compile_main({{"main.cpp", content.str()}}, {});
+    auto unit = compile_main(
+        {
+            {"main.cpp", content.str()}
+    },
+        {});
     ZASSERT(unit.completed());
     auto error = llvm::find_if(unit.diagnostics(), [](const Diagnostic& diag) {
         return diag.id.level == DiagnosticLevel::Error;
@@ -213,7 +261,11 @@ ZEST_CASE(FixItReplacements) {
 
     // A moved attribute inserts a copy of its own text.
     llvm::StringRef moved = "struct B {};\nstruct D : public [[]] B {};\n";
-    auto misplaced = compile_main({{"main.cpp", moved.str()}}, {});
+    auto misplaced = compile_main(
+        {
+            {"main.cpp", moved.str()}
+    },
+        {});
     error = llvm::find_if(misplaced.diagnostics(), [](const Diagnostic& diag) {
         return diag.id.level == DiagnosticLevel::Error;
     });

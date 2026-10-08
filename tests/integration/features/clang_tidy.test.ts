@@ -124,18 +124,22 @@ test("preamble includes reach the checks", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write(".clang-tidy", 'Checks: "-*,readability-duplicate-include"\n');
     workspace.write("a.h", "#pragma once\n");
-    workspace.write("main.cpp", '#include "a.h"\n#include "a.h"\nint main() { return 0; }\n');
+    workspace.write(
+        "main.cpp",
+        '#if 0\n#include "a.h"\n#endif\n#include "a.h"\nint x;\n#include "a.h"\n',
+    );
     workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
     const [uri, content] = await client.openAndWait("main.cpp");
 
-    // Underlined as the fix removes it, the newline ending line 0 first.
-    expect(published(client, uri)).toEqual(["0:readability-duplicate-include"]);
+    // The include past the preamble repeats the preamble's active one;
+    // underlined as the fix removes it, the newline ending line 4 first.
+    expect(published(client, uri)).toEqual(["4:readability-duplicate-include"]);
     const [finding] = client.diagnostics.get(uri)!;
-    expect(finding?.range.end).toEqual({ line: 1, character: 14 });
+    expect(finding?.range.end).toEqual({ line: 5, character: 14 });
     const [fix] = await quickFixes(client, uri, finding!.range);
     expect(applyTextEdits(content, editsFor(fix!, uri))).toBe(
-        '#include "a.h"\nint main() { return 0; }\n',
+        '#if 0\n#include "a.h"\n#endif\n#include "a.h"\nint x;\n',
     );
 });
 
