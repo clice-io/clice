@@ -161,11 +161,16 @@ tests/snap/navigation/go_to_definition/11_def_template_spec.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2055 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Deduced `auto` type navigation**
 
-The `auto` keyword does not navigate to its deduced type yet
+Go-to-definition on `auto` reaches the type it was deduced to, as if the
+type were written in its place
+
+Go-to-type-definition on the keyword reaches the same type, and
+find-references from it lists the type's uses. The keyword itself is no
+use of the type: find-references from the type does not list it.
 
 ```snap
 tests/snap/navigation/go_to_definition/12_def_auto_keyword.cpp
@@ -200,6 +205,84 @@ listed.
 
 ```snap
 tests/snap/navigation/go_to_definition/14_def_dependent_expression.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2055 -->
+
+**`auto` behind pointers and references**
+
+Pointers, references and arrays around the deduced type are stripped:
+`auto*`, `const auto&`, `auto&&`, `decltype(auto)` and an `auto` deduced
+as a pointer all reach the class
+
+The `auto` of a structured binding reaches the type of the object it
+decomposes.
+
+```snap
+tests/snap/navigation/go_to_definition/15_def_auto_declarators.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`decltype` type navigation**
+
+Go-to-definition on `decltype` reaches the type its operand names, through
+any `decltype` that type was itself declared with
+
+```snap
+tests/snap/navigation/go_to_definition/16_def_decltype.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Deduced templates and aliases**
+
+An `auto` deduced as a template specialization reaches the template, or
+the explicit or partial specialization it selects; one deduced through an
+alias reaches the alias
+
+A builtin type or a lambda's closure type has no declaration to reach, and
+the `auto` of a `new` expression navigates nowhere.
+
+```snap
+tests/snap/navigation/go_to_definition/17_def_auto_templates.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`auto` parameters and return types**
+
+The `auto` of an abbreviated template's parameter reaches the type of its
+only instantiation, and an `auto` return type the type returned
+
+A parameter whose template is instantiated with several types reaches
+none of them. The leading `auto` of a trailing return type reaches the
+type after the arrow.
+
+```snap
+tests/snap/navigation/go_to_definition/18_def_auto_params_returns.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`auto` in uninstantiated templates**
+
+Inside a template, an `auto` whose initializer depends on a template
+parameter reaches the type the initializer resolves to on the class
+template
+
+```snap
+tests/snap/navigation/go_to_definition/19_def_auto_dependent.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -786,11 +869,12 @@ tests/snap/navigation/go_to_type_definition/02_typedef_field.cpp
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`auto`-deduced variables**
 
-Auto-deduced variables do not navigate to their deduced type definitions yet
+Go-to-type-definition on a variable declared `auto` reaches its deduced
+type, as on the `auto` keyword itself
 
 ```snap
 tests/snap/navigation/go_to_type_definition/03_typedef_auto.cpp

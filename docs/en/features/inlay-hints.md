@@ -248,6 +248,19 @@ tests/snap/inlay_hint/parameter_hints/19_param_pack_constructors.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Default argument names**
+
+The parameter names in a default-argument hint link to their parameters,
+as parameter name hints do
+
+```snap
+tests/snap/inlay_hint/parameter_hints/20_param_default_arguments.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Type Hints
@@ -395,6 +408,23 @@ reveal the deduced type while exactly one instantiation exists
 
 ```snap
 tests/snap/inlay_hint/type_hints/12_type_conflicting_instantiations.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1535 -->
+
+**Clickable type names**
+
+Each type name in a type hint links to its declaration: clicking it goes
+to the definition, hovering it shows the type's card
+
+A class declared ahead of its definition links to that declaration, from
+which go-to-definition reaches the definition. Template arguments link one
+by one; builtin types and punctuation stay plain text.
+
+```snap
+tests/snap/inlay_hint/type_hints/13_type_links/main.cpp
 ```
 
 <!-- END CAPABILITY -->
