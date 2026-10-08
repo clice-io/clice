@@ -508,6 +508,18 @@ tests/snap/inlay_hint/designator_hints/07_designator_parenthesized.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**库中的数组类型**
+
+类似 `std::array` 的包装类型只有一个成员数组，指派符中不会出现这个成员
+
+```snap
+tests/snap/inlay_hint/designator_hints/08_designator_library_array.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 其他提示类型

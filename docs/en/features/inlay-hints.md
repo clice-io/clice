@@ -519,6 +519,18 @@ tests/snap/inlay_hint/designator_hints/07_designator_parenthesized.cpp
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Library arrays**
+
+The lone member array of a `std::array`-like wrapper stays out of the designator
+
+```snap
+tests/snap/inlay_hint/designator_hints/08_designator_library_array.cpp
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Other Hint Kinds
