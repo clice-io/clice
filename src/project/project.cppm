@@ -24,7 +24,7 @@ namespace clice {
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 13;
+constexpr inline std::uint32_t cache_format_version = 14;
 
 /// One dependency of a compilation artifact.
 ///
@@ -289,6 +289,15 @@ struct Project {
     /// per-file scan results are content-keyed in the file table, so
     /// unchanged files re-resolve without a read or lex.
     ProviderChanges rebuild_dependency_graph();
+
+    /// Bring the provisional members (Build::admit) in line with the build:
+    /// drop the record of a file the build declares now, and give every
+    /// other recorded file the command it borrows — its lender's, while it
+    /// has one and no host compiles it — reporting the files that joined
+    /// (`added`), borrow another command (`changed`) or left (`removed`),
+    /// as a database reload reports its entries. The only writer of the
+    /// borrowed commands.
+    CDBDiff refresh_provisional();
 
     /// Persistence signal for the artifact validity metadata (PCH/PCM
     /// records, header modes) the index database carries beyond the index

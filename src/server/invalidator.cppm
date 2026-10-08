@@ -26,8 +26,11 @@ struct FileEvent {
         DiskChanged,
         /// The file disappeared from disk (see DiskChanged).
         DiskRemoved,
-        /// The compilation database was reloaded; `cdb` lists the files
-        /// whose entries were added, removed or changed.
+        /// The build's commands changed: a compilation database was
+        /// reloaded, a source joined a default-command rule, or a saved
+        /// file was recorded as a provisional member (Build::admit). `cdb`
+        /// lists the files whose entries were added, removed or changed;
+        /// the invalidator works out the provisional members' own changes.
         CDBChanged,
         /// A stateful worker crashed; `paths` lists the documents it owned.
         WorkerCrashed,

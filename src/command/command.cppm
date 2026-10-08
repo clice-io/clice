@@ -115,6 +115,10 @@ clang::driver::types::ID suffix_type(llvm::StringRef path);
 /// library's extensionless headers.
 bool is_header_path(llvm::StringRef path);
 
+/// Whether the extension names a translation unit of a C-family language:
+/// a source, preprocessed or a module interface, never a header.
+bool is_source_path(llvm::StringRef path);
+
 /// Whether the extension marks a fragment only ever included into a
 /// translation unit — a `.def` list, a `.inc`, `.inl`, `.tpp`, `.ipp`,
 /// `.tcc` or `.txx` body — which compiles only under its includer's

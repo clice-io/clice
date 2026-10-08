@@ -646,6 +646,9 @@ void MasterServer::saved(Fid path_id) {
     }
     files.disk.look(closures);
     drain_disk_changes();
+    // After the drain: a file the graph did not know has had its includers
+    // rescanned, so a host that includes it is in sight.
+    owner_of(path_id).admit(path_id);
 }
 
 void MasterServer::start_polling() {

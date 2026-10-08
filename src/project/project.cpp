@@ -7,6 +7,7 @@ module;
 module clice;
 
 import :index.serialization;
+import :project.hosting;
 import :project.project;
 import :support.logging;
 import :vfs.file_system;
@@ -55,6 +56,33 @@ Project::ProviderChanges Project::rebuild_dependency_graph() {
         }
     }
     return changes;
+}
+
+CDBDiff Project::refresh_provisional() {
+    CDBDiff diff;
+    auto recorded = llvm::to_vector(build.admitted());
+    std::ranges::sort(recorded, {}, [&](Fid file) { return file_table.resolve(file); });
+    for(auto file: recorded) {
+        if(build.declared(file)) {
+            build.forget(file);
+            continue;
+        }
+        std::optional<ConfigID> command;
+        if(!default_host(*this, file)) {
+            if(auto lender = command_lender(*this, file)) {
+                command = build.lend(lender->config,
+                                     file_table.resolve(lender->unit),
+                                     file_table.resolve(file));
+            }
+        }
+        auto before = build.borrowed(file);
+        if(before == command) {
+            continue;
+        }
+        build.borrow(file, command);
+        (!before ? diff.added : !command ? diff.removed : diff.changed).push_back(file);
+    }
+    return diff;
 }
 
 static std::optional<Spelling> database_in(const Spelling& dir) {

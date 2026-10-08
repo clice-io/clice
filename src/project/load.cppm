@@ -20,15 +20,17 @@ struct BuildLoad {
 /// databases the rules declare (existing or not; the tracker watches for
 /// them), else the ones discovered under `root` plus `nearby`, the ones
 /// discovery would only meet later: the persisted index's (see
-/// IndexStore::remembered_sources) for the server, those above the
-/// inspected files for `clice inspect` (see compile_commands_above) —
-/// then enumerate the build's members and scan the dependency graph from
-/// them. The project's configuration is final. The one loading path of
-/// the server, the batch driver and `clice inspect`.
+/// IndexStore::remembered) for the server, those above the inspected
+/// files for `clice inspect` (see compile_commands_above) — record the
+/// `provisional` members the persisted index remembers, then enumerate
+/// the build's members and scan the dependency graph from them. The
+/// project's configuration is final. The one loading path of the server,
+/// the batch driver and `clice inspect`.
 BuildLoad load_build(Project& project,
                      CanonicalRef root,
                      llvm::StringRef configuration,
-                     llvm::ArrayRef<Spelling> nearby = {});
+                     llvm::ArrayRef<Spelling> nearby = {},
+                     llvm::ArrayRef<Spelling> provisional = {});
 
 /// What load_project found and did.
 struct ProjectLoad {

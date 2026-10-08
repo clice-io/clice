@@ -153,7 +153,7 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
 }
 
 void CDBWatcher::discover_into(Fid path_id, CDBDiff& found) {
-    if(project.build.declares_sources() || !project.build.commands(path_id).empty()) {
+    if(project.build.declares_sources() || !project.build.entries(path_id).empty()) {
         return;
     }
     auto path = project.file_table.resolve(path_id);
@@ -207,7 +207,7 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
     want(listed);
     for(auto path_id: open_files) {
         auto path = project.file_table.resolve(path_id);
-        if(project.build.commands(path_id).empty() && path::under(path, root)) {
+        if(project.build.entries(path_id).empty() && path::under(path, root)) {
             want(database_places_above(path.parent(), root));
         }
     }

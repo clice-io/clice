@@ -275,7 +275,14 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             }
             case FileEvent::Kind::CDBChanged: {
                 lenders_changed();
-                auto& delta = event.cdb;
+                // The provisional members follow the new lenders and
+                // entries, joining, changing command or leaving the way
+                // an entry does.
+                auto delta = event.cdb;
+                auto provisional = project.refresh_provisional();
+                delta.added.append(provisional.added.begin(), provisional.added.end());
+                delta.changed.append(provisional.changed.begin(), provisional.changed.end());
+                delta.removed.append(provisional.removed.begin(), provisional.removed.end());
                 if(delta.empty()) {
                     break;
                 }

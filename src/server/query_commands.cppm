@@ -37,8 +37,10 @@ struct CompileCommandResult {
 
     /// Where the command came from: "database" (the file's own entry),
     /// "host" (a header compiled under an including source), "rule" (a
-    /// rule's default command), "inferred" (borrowed from a nearby unit)
-    /// or "fallback" (nothing declared it).
+    /// rule's default command), "provisional" (borrowed from a nearby unit
+    /// for a saved file the build counts as a provisional member),
+    /// "inferred" (borrowed for a file the build does not count) or
+    /// "fallback" (nothing declared it).
     std::string source;
 
     /// Why querying the compiler failed, leaving `arguments` at driver

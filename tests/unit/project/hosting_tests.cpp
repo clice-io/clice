@@ -340,6 +340,87 @@ ZEST_CASE(LenderIgnoresCommandless) {
     ZEXPECT(!command_lender(project, header).has_value());
 };
 
+ZEST_CASE(LenderAcrossModules) {
+    /// A C++ source and a C++ module unit lend to each other: the first
+    /// module interface among `.cpp` units borrows their command, and an
+    /// implementation unit its interface's.
+    TempDir tmp;
+    tmp.touch("src/a.cpp", "");
+    tmp.touch("mods/m.cppm", "");
+    FileTable files;
+    Project project{files};
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"src/*.cpp"}, .default_command = std::string("clang++")});
+    project.config.rules.push_back(
+        ConfigRule{.patterns = {"mods/*.cppm"},
+                   .default_command = std::string("clang++ -std=c++20")});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+
+    auto intern = [&](llvm::StringRef file) {
+        return project.file_table.intern(Spelling::absolute(tmp.path(file)));
+    };
+    ZEXPECT(command_lender(project, intern("src/first.cppm"))->unit == intern("src/a.cpp"));
+    ZEXPECT(command_lender(project, intern("mods/m_impl.cpp"))->unit == intern("mods/m.cppm"));
+};
+
+ZEST_CASE(ProvisionalMembers) {
+    /// A recorded file is a member under its lender's command while it has
+    /// a lender and no host; it lends to no one, and an entry listing it
+    /// takes over from the record.
+    TempDir tmp;
+    FileTable files;
+    Project project{files};
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+    auto add = [&](llvm::StringRef driver, llvm::StringRef file) {
+        tmp.touch(file, "");
+        auto command = std::format("{} {}", driver, tmp.path(file));
+        return *project.cdb.add_command(tmp.root.str(), tmp.path(file), llvm::StringRef(command));
+    };
+    auto intern = [&](llvm::StringRef file) {
+        tmp.touch(file, "");
+        return project.file_table.intern(Spelling::absolute(tmp.path(file)));
+    };
+    auto unit = add("clang++", "src/b.cpp");
+
+    auto saved = intern("src/a_new.cpp");
+    ZEXPECT(project.build.admit(saved));
+    ZEXPECT(!project.build.admit(saved));
+    ZEXPECT(project.refresh_provisional().added == llvm::SmallVector<Fid>{saved});
+    ZEXPECT(project.build.unit(saved));
+    auto commands = project.build.commands(saved);
+    ZASSERT(commands.size() == 1u);
+    ZEXPECT(commands.front().source == CommandSource::Inferred);
+    ZEXPECT(project.build.members().back() == saved);
+
+    /// First by name in the directory, the member would lend if it lent.
+    ZEXPECT(command_lender(project, intern("src/other.cpp"))->unit == unit.file);
+
+    /// No C unit lends to a `.c` yet: recorded, not a member until one does.
+    auto c_file = intern("src/new.c");
+    project.build.admit(c_file);
+    ZEXPECT(project.refresh_provisional().empty());
+    ZEXPECT(!project.build.unit(c_file));
+    add("clang", "src/legacy.c");
+    project.commands_epoch += 1;
+    ZEXPECT(project.refresh_provisional().added == llvm::SmallVector<Fid>{c_file});
+
+    /// A file a unit includes keeps compiling in its includer's context.
+    auto included = intern("src/table.cpp");
+    project.build.admit(included);
+    project.dep_graph.set_includes(unit.file, 0, {{included}});
+    project.dep_graph.build_reverse_map();
+    ZEXPECT(project.refresh_provisional().empty());
+    ZEXPECT(!project.build.unit(included));
+
+    /// An entry listing the file takes over; the record goes.
+    add("clang++", "src/a_new.cpp");
+    ZEXPECT(project.refresh_provisional().empty());
+    ZEXPECT(!project.build.admitted().contains(saved));
+    ZEXPECT(project.build.commands(saved).front().source == CommandSource::CDBExact);
+};
+
 ZEST_CASE(EnteringsFollowTree) {
     /// The unit enters `bar.h` through `foo.h`; its own include of it
     /// comes later and finds the guard: the chain is the one the compile

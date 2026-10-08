@@ -15,6 +15,7 @@ import :support.logging;
 import :support.timer;
 import :syntax.dependency_graph;
 import :vfs.cache_store;
+import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -80,7 +81,8 @@ ProjectLoad load_project(Project& project,
         }
     }
 
-    auto nearby = store.remembered_sources();
+    auto remembered = store.remembered();
+    auto& nearby = remembered.sources;
     if(scan_tree) {
         project.build.reset_active(configuration);
         if(!project.build.declares_sources()) {
@@ -91,7 +93,7 @@ ProjectLoad load_project(Project& project,
             nearby.insert(nearby.end(), below.begin(), below.end());
         }
     }
-    auto load = load_build(project, root, configuration, nearby);
+    auto load = load_build(project, root, configuration, nearby, remembered.provisional);
     report.has_commands = !load.members.empty() || project.build.declares_sources();
     report.members = std::move(load.members);
     // Persisted index shards are CDB-independent; they load even with no
@@ -108,7 +110,8 @@ ProjectLoad load_project(Project& project,
 BuildLoad load_build(Project& project,
                      CanonicalRef root,
                      llvm::StringRef configuration,
-                     llvm::ArrayRef<Spelling> nearby) {
+                     llvm::ArrayRef<Spelling> nearby,
+                     llvm::ArrayRef<Spelling> provisional) {
     BuildLoad load;
     project.cdb.set_workspace_root(root);
     project.build.reset_active(configuration);
@@ -163,6 +166,16 @@ BuildLoad load_build(Project& project,
         }
     }
     LOG_PERF("startup", "phase=cdb_load entries={} elapsed_ms={}", entries, cdb_timer.ms());
+
+    // Only a restart forgets the record of a file gone since: during a
+    // session a deleted provisional member keeps it, as a vanished unit
+    // keeps its entry, and is back the moment the file is.
+    for(auto& path: provisional) {
+        if(vfs::is_file(path)) {
+            project.build.admit(project.file_table.intern(path));
+        }
+    }
+    project.refresh_provisional();
 
     load.members = project.build.members();
     if(load.members.empty()) {
