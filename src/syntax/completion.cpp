@@ -138,12 +138,7 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
         return {};
     }
 
-    // Only complete while the statement is still open on this line.
-    auto line_end = text.find('\n', offset);
-    if(line_end == llvm::StringRef::npos) {
-        line_end = text.size();
-    }
-    if(text.slice(first.range.begin, line_end).contains(';')) {
+    if(text.slice(first.range.begin, offset).contains(';')) {
         return {};
     }
 
@@ -158,24 +153,54 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
     while(end < text.size() && is_module_name_char(text[end])) {
         end += 1;
     }
+    // A semicolon before the cursor ended the statement above, so one on
+    // the rest of the line, past comments and attributes, closes this one.
+    bool closed = false;
+    for(auto token = lexer.advance(); !token.is_eof() && !token.is_at_start_of_line;
+        token = lexer.advance()) {
+        if(token.kind == clang::tok::semi) {
+            closed = true;
+            break;
+        }
+    }
     return {CompletionContext::Import,
             prefix.str(),
-            LocalSourceRange(offset - static_cast<std::uint32_t>(prefix.size()), end)};
+            LocalSourceRange(offset - static_cast<std::uint32_t>(prefix.size()), end),
+            closed};
 }
 
 std::vector<std::string> complete_module_import(const DependencyGraph& graph,
-                                                llvm::StringRef prefix) {
-    std::vector<std::string> results;
-    // FIXME: exclude the current file's own module name from results
-    // (self-import is never valid). Needs the requesting path_id passed in.
+                                                llvm::StringRef prefix,
+                                                llvm::StringRef module_name) {
     // TODO: the graph's declarations are only refreshed on file save;
     // unsaved new module files won't appear in completions until written
     // to disk.
+    auto [module, own_partition] = module_name.split(':');
+    std::vector<std::string> results;
     for(auto& entry: graph.modules()) {
-        if(!entry.getValue().empty() && entry.getKey().starts_with(prefix)) {
-            results.push_back(entry.getKey().str());
+        if(entry.getValue().empty()) {
+            continue;
+        }
+        // A partition is imported by its own module alone, by the partition
+        // name; a unit never imports its own module or itself.
+        auto [owner, partition] = entry.getKey().split(':');
+        std::string name;
+        if(partition.empty()) {
+            if(owner == module) {
+                continue;
+            }
+            name = owner.str();
+        } else {
+            if(module.empty() || owner != module || partition == own_partition) {
+                continue;
+            }
+            name = std::format(":{}", partition);
+        }
+        if(name.starts_with(prefix)) {
+            results.push_back(std::move(name));
         }
     }
+    std::ranges::sort(results);
     return results;
 }
 

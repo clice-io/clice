@@ -18,6 +18,7 @@ import :server.lsp_projection;
 import :server.query_commands;
 import :syntax.completion;
 import :syntax.include_resolver;
+import :syntax.scan;
 import :vfs.dir_cache;
 import :vfs.file_system;
 import :worker.protocol;
@@ -841,8 +842,15 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             co_return to_raw(items);
         }
         if(pctx.kind == CompletionContext::Import) {
-            auto module_names = complete_module_import(project.dep_graph, pctx.prefix);
-
+            // The module declaration precedes every import, and the scan
+            // stops before the import being typed: the scanner rejects a
+            // buffer with an unclosed directive whole. Its lexer needs the
+            // NUL terminator a copy provides.
+            llvm::StringRef text = session->text;
+            auto declared = text.take_front(text.rfind('\n', pctx.replace.begin) + 1).str();
+            auto module_names = complete_module_import(project.dep_graph,
+                                                       pctx.prefix,
+                                                       scan_quick(declared).module_name);
             std::vector<protocol::CompletionItem> items;
             items.reserve(module_names.size());
             for(auto& name: module_names) {
@@ -851,7 +859,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 item.kind = protocol::CompletionItemKind::Module;
                 item.text_edit = protocol::TextEdit{
                     .range = *map.to_range(pctx.replace),
-                    .new_text = name + ";",
+                    .new_text = pctx.closed ? name : name + ";",
                 };
                 items.push_back(std::move(item));
             }

@@ -110,8 +110,17 @@ ZEST_CASE(ExportImport) {
 }
 
 ZEST_CASE(ImportWithSemicolon) {
-    auto ctx = detect_completion_context("import std;\n", 7);
-    ZEXPECT(ctx.kind == CompletionContext::None);
+    auto ctx = detect_completion_context("import st;\n", 9);
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == "st");
+    ZEXPECT(ctx.closed);
+    ZEXPECT(detect_completion_context("import std;\n", 11).kind == CompletionContext::None);
+}
+
+ZEST_CASE(ImportClosedPastComments) {
+    ZEXPECT(detect_completion_context("import st /* x */ [[a]];", 9).closed);
+    ZEXPECT(!detect_completion_context("import st // a; b\nint x;", 9).closed);
+    ZEXPECT(!detect_completion_context("import st\nint x;", 9).closed);
 }
 
 ZEST_CASE(ImportEmpty) {
@@ -222,7 +231,7 @@ ZEST_CASE(PrefixMatch) {
     modules.add_module("std.net", Fid{3});
     modules.add_module("my_lib", Fid{4});
 
-    auto results = complete_module_import(modules, "std");
+    auto results = complete_module_import(modules, "std", "");
     ZEXPECT(results.size() == 3u);
     for(auto& name: results) {
         ZEXPECT(name.starts_with("std"));
@@ -234,7 +243,7 @@ ZEST_CASE(EmptyPrefix) {
     modules.add_module("std", Fid{1});
     modules.add_module("my_lib", Fid{2});
 
-    auto results = complete_module_import(modules, "");
+    auto results = complete_module_import(modules, "", "");
     ZEXPECT(results.size() == 2u);
 }
 
@@ -243,13 +252,13 @@ ZEST_CASE(NoMatch) {
     modules.add_module("std", Fid{1});
     modules.add_module("my_lib", Fid{2});
 
-    auto results = complete_module_import(modules, "xyz");
+    auto results = complete_module_import(modules, "xyz", "");
     ZEXPECT(results.empty());
 }
 
 ZEST_CASE(EmptyModules) {
     clice::DependencyGraph modules;
-    auto results = complete_module_import(modules, "std");
+    auto results = complete_module_import(modules, "std", "");
     ZEXPECT(results.empty());
 }
 
@@ -260,24 +269,10 @@ ZEST_CASE(DottedPrefix) {
     modules.add_module("std.core", Fid{3});
     modules.add_module("boost.asio", Fid{4});
 
-    auto results = complete_module_import(modules, "std.");
+    auto results = complete_module_import(modules, "std.", "");
     ZEXPECT(results.size() == 2u);
     for(auto& name: results) {
         ZEXPECT(name.starts_with("std."));
-    }
-}
-
-ZEST_CASE(PartitionPrefix) {
-    clice::DependencyGraph modules;
-    modules.add_module("foo", Fid{1});
-    modules.add_module("foo:core", Fid{2});
-    modules.add_module("foo:utils", Fid{3});
-    modules.add_module("bar:impl", Fid{4});
-
-    auto results = complete_module_import(modules, "foo:");
-    ZEXPECT(results.size() == 2u);
-    for(auto& name: results) {
-        ZEXPECT(name.starts_with("foo:"));
     }
 }
 
@@ -286,8 +281,36 @@ ZEST_CASE(PrefixIsFullName) {
     modules.add_module("std", Fid{1});
     modules.add_module("std.io", Fid{2});
 
-    auto results = complete_module_import(modules, "std");
+    auto results = complete_module_import(modules, "std", "");
     ZEXPECT(results.size() == 2u);
+}
+
+ZEST_CASE(OwnPartitionsOnly) {
+    clice::DependencyGraph modules;
+    modules.add_module("foo", Fid{1});
+    modules.add_module("foo:core", Fid{2});
+    modules.add_module("foo:utils", Fid{3});
+    modules.add_module("bar", Fid{4});
+    modules.add_module("bar:impl", Fid{5});
+
+    auto names = complete_module_import(modules, "", "foo");
+    ZEXPECT(names == std::vector<std::string>{":core", ":utils", "bar"});
+    auto partitions = complete_module_import(modules, ":", "foo:utils");
+    ZEXPECT(partitions == std::vector<std::string>{":core"});
+    ZEXPECT(complete_module_import(modules, ":", "").empty());
+    ZEXPECT(complete_module_import(modules, "foo:", "foo").empty());
+}
+
+ZEST_CASE(DottedModuleNames) {
+    clice::DependencyGraph modules;
+    modules.add_module("a", Fid{1});
+    modules.add_module("a.b", Fid{2});
+    modules.add_module("a.b:p", Fid{3});
+    modules.add_module("a.b:q", Fid{4});
+    modules.add_module("a:r", Fid{5});
+
+    auto names = complete_module_import(modules, "", "a.b:q");
+    ZEXPECT(names == std::vector<std::string>{":p", "a"});
 }
 
 };  // ZEST_SUITE(CompleteModuleImport)
