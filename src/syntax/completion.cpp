@@ -183,8 +183,7 @@ std::vector<std::string> complete_module_import(const DependencyGraph& graph,
             continue;
         }
         // A partition is imported by its own module alone, by the partition
-        // name, and never an internal one by an interface unit; a unit never
-        // imports its own module or itself.
+        // name; a unit never imports its own module or itself.
         auto [owner, partition] = entry.getKey().split(':');
         std::string name;
         if(partition.empty()) {

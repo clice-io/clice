@@ -123,7 +123,7 @@ tests/snap/code_completion/module_completion/01_import_modules/main.cpp
 
 **Partitions of the current module**
 
-In a module unit, the module's own partitions complete as `:partition`, while neither the module itself nor the partitions of other modules are offered
+In an implementation unit, the module's own partitions complete as `:partition`, while neither the module itself nor the partitions of other modules are offered
 
 A statement that already ends in a semicolon keeps it.
 

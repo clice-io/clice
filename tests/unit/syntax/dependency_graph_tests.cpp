@@ -867,6 +867,14 @@ ZEST_CASE(RescanTracksPartitionKind) {
     ZEXPECT(graph.module_of(part) == "lib:part");
     ZEXPECT(graph.internal_partition(part));
 
+    tmp.touch("src/part.cppm", "export module lib:part;\n");
+    rescan_dependency_graph(cdb, graph, part);
+    ZEXPECT(!graph.internal_partition(part));
+
+    tmp.touch("src/part.cppm", "module lib:part;\n");
+    rescan_dependency_graph(cdb, graph, part);
+    ZEXPECT(graph.internal_partition(part));
+
     tmp.touch("src/part.cppm", "module lib;\n");
     rescan_dependency_graph(cdb, graph, part);
     ZEXPECT(graph.module_of(part).empty());

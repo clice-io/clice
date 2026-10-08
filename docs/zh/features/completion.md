@@ -118,7 +118,7 @@ tests/snap/code_completion/module_completion/01_import_modules/main.cpp
 
 **当前模块的分区**
 
-在模块单元中，当前模块自身的分区以 `:partition` 的形式补全，而模块本身和其他模块的分区都不会出现在候选项中
+在实现单元中，当前模块自身的分区以 `:partition` 的形式补全，而模块本身和其他模块的分区都不会出现在候选项中
 
 已以分号结尾的语句会保留该分号。
 
