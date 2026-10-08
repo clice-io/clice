@@ -83,6 +83,38 @@ std::string expansions() {
     return out;
 }
 
+/// Each expanded token but the eof, with the spelled token it stands for
+/// (`?` for none).
+std::string origins() {
+    auto& SM = unit->context().getSourceManager();
+    auto spelled = unit->spelled_tokens();
+    std::string out;
+    for(auto [index, token]: llvm::enumerate(unit->expanded_tokens())) {
+        if(token.kind() == clang::tok::eof) {
+            continue;
+        }
+        auto origin = unit->expanded_token_origin(static_cast<std::uint32_t>(index));
+        out += std::format("{}{}:{}",
+                           out.empty() ? "" : " ",
+                           token.text(SM),
+                           origin ? spelled[*origin].text(SM) : "?");
+    }
+    return out;
+}
+
+/// The main-file offset of the spelled token the `nth` expanded token
+/// spelled `spelling` stands for.
+std::optional<std::uint32_t> origin_offset(llvm::StringRef spelling, std::size_t nth) {
+    auto& token = expanded(spelling, nth);
+    auto index = static_cast<std::uint32_t>(&token - unit->expanded_tokens().data());
+    auto origin = unit->expanded_token_origin(index);
+    if(!origin) {
+        return std::nullopt;
+    }
+    auto& SM = unit->context().getSourceManager();
+    return SM.getFileOffset(unit->spelled_tokens()[*origin].location());
+}
+
 ZEST_CASE(PreprocessedAway) {
     add_main("main.cpp", R"cpp(
 #define EMPTY
@@ -190,6 +222,65 @@ int v = __has_cpp_attribute(ATTR);
     ZEXPECT(spelled_for(result.text(SM)) == "__has_cpp_attribute");
     ZEXPECT(text(expansions[1].spelled) == "ATTR");
     ZEXPECT(expansions[1].expanded.empty());
+}
+
+ZEST_CASE(MacroOrigins) {
+    add_main("main.cpp", R"cpp(
+int a;
+#define TWICE(x) (x + x)
+#define ID(x) x
+#define ONE 1
+int v = TWICE(§(twice)a) + ONE;
+int w = ID(ID(§(nested)a));
+)cpp");
+    ZASSERT(compile());
+    ZEXPECT(origins() ==
+            "int:int a:a ;:; int:int v:v =:= (:TWICE a:TWICE +:TWICE a:a ):TWICE +:+ 1:ONE ;:; "
+            "int:int w:w =:= a:a ;:;");
+    ZEXPECT(origin_offset("a", 2) == std::optional(point("twice")));
+    ZEXPECT(origin_offset("a", 3) == std::optional(point("nested")));
+}
+
+ZEST_CASE(RereadArguments) {
+    add_main("main.cpp", R"cpp(
+#define FIRST(a, ...) a
+#define REST(a, ...) __VA_ARGS__
+#define LOG(...) log(FIRST(__VA_ARGS__), __VA_ARGS__)
+#define BOTH(...) log(REST(__VA_ARGS__), __VA_ARGS__)
+void log(int, int, int);
+int x, y;
+void f() {
+    LOG(§(log_x)x, §(log_y)y);
+    BOTH(§(both_x)x, §(both_y)y);
+}
+)cpp");
+    ZASSERT(compile());
+    ZEXPECT(origins() ==
+            "void:void log:log (:( int:int ,:, int:int ,:, int:int ):) ;:; int:int x:x ,:, y:y ;:; "
+            "void:void f:f (:( ):) {:{ "
+            "log:LOG (:LOG x:x ,:LOG x:LOG ,:, y:y ):LOG ;:; "
+            "log:BOTH (:BOTH y:y ,:BOTH x:x ,:, y:BOTH ):BOTH ;:; }:}");
+    ZEXPECT(origin_offset("x", 1) == std::optional(point("log_x")));
+    ZEXPECT(origin_offset("y", 1) == std::optional(point("log_y")));
+    ZEXPECT(origin_offset("y", 2) == std::optional(point("both_y")));
+    ZEXPECT(origin_offset("x", 3) == std::optional(point("both_x")));
+}
+
+ZEST_CASE(HeaderOrigins) {
+    add_file("header.h", R"cpp(
+#define HM int hm;
+int h;
+HM
+)cpp");
+    add_main("main.cpp", R"cpp(
+int m;
+#include "header.h"
+)cpp");
+    ZASSERT(compile());
+    ZEXPECT(origins() == "int:int m:m ;:; int:? h:? ;:? int:? hm:? ;:?");
+    auto eof = static_cast<std::uint32_t>(unit->expanded_tokens().size() - 1);
+    ZEXPECT(unit->expanded_tokens()[eof].kind() == clang::tok::eof);
+    ZEXPECT(!unit->expanded_token_origin(eof));
 }
 
 ZEST_CASE(TouchingFileEnd) {

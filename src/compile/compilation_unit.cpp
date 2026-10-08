@@ -347,6 +347,11 @@ auto CompilationUnitRef::expansions_overlapping(TokenRange spelled)
     return token_map(self).expansions_overlapping(spelled);
 }
 
+auto CompilationUnitRef::expanded_token_origin(std::uint32_t index)
+    -> std::optional<std::uint32_t> {
+    return token_map(self).origin(index);
+}
+
 auto CompilationUnitRef::token_length(clang::SourceLocation location) -> std::uint32_t {
     return clang::Lexer::MeasureTokenLength(location, self->SM(), self->instance->getLangOpts());
 }

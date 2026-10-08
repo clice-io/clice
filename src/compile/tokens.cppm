@@ -73,12 +73,37 @@ public:
     llvm::ArrayRef<MacroExpansion>
         expansions_overlapping(llvm::ArrayRef<clang::syntax::Token> spelled) const;
 
+    /// The index into spelled() of the token expanded()[index] stands for,
+    /// the one a selection of it lands on:
+    ///  - a token written in the main file: itself;
+    ///  - a macro argument written in the main file: the argument token, at
+    ///    one expansion only when the macro expands it more than once;
+    ///  - any other token of an expansion in the main file: the name of the
+    ///    outermost invocation.
+    /// None for the rest: a header's tokens, its macros' expansions included.
+    std::optional<std::uint32_t> origin(std::uint32_t index) const {
+        if(index < origins_begin || index - origins_begin >= origins.size() ||
+           origins[index - origins_begin] == none) {
+            return std::nullopt;
+        }
+        return origins[index - origins_begin];
+    }
+
 private:
     struct Hooks;
+
+    constexpr static std::uint32_t none = static_cast<std::uint32_t>(-1);
 
     void record(const clang::Token& token);
 
     void record_invocation(clang::SourceRange range);
+
+    /// Sets the origins of expanded tokens [begin, end), a run of macro
+    /// FileID `fid` lexed from the main file; `name` is their invocation's.
+    void set_macro_origins(clang::FileID fid,
+                           std::uint32_t begin,
+                           std::uint32_t end,
+                           std::uint32_t name);
 
     bool in_main_file(clang::SourceLocation location) const {
         return location.isFileID() && main_begin <= location && location < main_end;
@@ -129,6 +154,11 @@ private:
 
     /// The expansions that produced tokens, in stream order.
     std::vector<std::uint32_t> producing;
+
+    /// The origins of the expanded tokens from the main file's first through
+    /// its last: origins[i] is that of expanded token origins_begin + i.
+    std::uint32_t origins_begin = 0;
+    std::vector<std::uint32_t> origins;
 };
 
 }  // namespace clice

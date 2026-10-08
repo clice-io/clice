@@ -368,7 +368,7 @@ public:
     }
 
     /// The nodes owning spelled token `index`. Almost always a single node;
-    /// macro names and include filenames may map to several.
+    /// macro names may map to several.
     llvm::ArrayRef<std::uint32_t> owners(std::uint32_t index) const {
         return llvm::ArrayRef(owner_nodes)
             .slice(owner_begin[index], owner_begin[index + 1] - owner_begin[index]);

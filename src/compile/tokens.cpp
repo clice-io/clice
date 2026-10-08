@@ -154,6 +154,7 @@ void TokenMap::record_invocation(clang::SourceRange range) {
 
 void TokenMap::finish() {
     spelled_tokens = clang::syntax::tokenize(main_fid, SM, pp.getLangOpts());
+    llvm::ArrayRef<clang::syntax::Token> spelled = spelled_tokens;
 
     // Every token, a header's included: the main file's nodes have ranges
     // in headers too, and a miss costs a search by isBeforeInTranslationUnit.
@@ -161,6 +162,15 @@ void TokenMap::finish() {
     for(auto [index, token]: llvm::enumerate(expanded_tokens)) {
         expanded_index[token.location()] = static_cast<std::uint32_t>(index);
     }
+
+    if(!main_segments.empty()) {
+        origins_begin = main_segments.front().first;
+        origins.assign(main_segments.back().second - origins_begin, none);
+    }
+
+    // A spelled token survives preprocessing when the parser saw it or it
+    // is part of an invocation that expanded to something.
+    away.assign(spelled_tokens.size(), true);
 
     // An invocation's expanded tokens are the run that expands from its
     // name, wherever it lands in the stream: pragma handlers lex theirs
@@ -172,14 +182,33 @@ void TokenMap::finish() {
     }
     llvm::ArrayRef<clang::syntax::Token> stream = expanded_tokens;
     std::vector<std::pair<std::uint32_t, std::uint32_t>> runs(invocations.size());
+    std::uint32_t cursor = 0;
+    clang::SourceLocation last_expansion;
+    std::uint32_t invocation = none;
+    std::uint32_t name = none;
     for(auto [segment_begin, segment_end]: main_segments) {
         for(auto index = segment_begin; index < segment_end;) {
             auto location = stream[index].location();
             if(location.isFileID()) {
+                // The main file's own tokens come in order; one that does not
+                // is searched for afresh.
+                if(cursor == spelled.size() || location < spelled[cursor].location()) {
+                    cursor = spelled_at_or_after(main_offset(location));
+                }
+                while(cursor < spelled.size() && spelled[cursor].location() < location) {
+                    cursor += 1;
+                }
+                if(cursor < spelled.size() && spelled[cursor].location() == location) {
+                    origins[index - origins_begin] = cursor;
+                    away[cursor] = false;
+                }
                 index += 1;
                 continue;
             }
-            // The tokens of one macro FileID share where they expand from.
+            // The tokens of one macro FileID share where they expand from. A
+            // FileID owns its one-past-the-end location too: the parentheses
+            // clang synthesizes around a braced macro argument (`F(T{1, 2})`)
+            // sit there.
             auto fid = SM.getFileID(location);
             auto limit = SM.getComposedLoc(fid, SM.getFileIDSize(fid));
             auto end = index + 1;
@@ -187,19 +216,30 @@ void TokenMap::finish() {
                   stream[end].location() <= limit) {
                 end += 1;
             }
-            if(auto it = by_begin.find(SM.getExpansionLoc(location)); it != by_begin.end()) {
-                auto& run = runs[it->second];
+            // The runs of one invocation follow each other.
+            auto expansion = SM.getExpansionLoc(location);
+            if(expansion != last_expansion) {
+                last_expansion = expansion;
+                auto it = by_begin.find(expansion);
+                invocation = it != by_begin.end() ? it->second : none;
+                // FIXME: the parentheses of a function-like invocation too?
+                const auto* named = spelled_at(expansion);
+                name = named ? static_cast<std::uint32_t>(named - spelled.data()) : none;
+            }
+            if(invocation != none) {
+                auto& run = runs[invocation];
                 if(run.second == 0) {
                     run = {index, end};
                 } else if(run.second == index) {
                     run.second = end;
                 }
             }
+
+            set_macro_origins(fid, index, end, name);
             index = end;
         }
     }
 
-    llvm::ArrayRef<clang::syntax::Token> spelled = spelled_tokens;
     expansions.reserve(invocations.size());
     for(auto [invocation, run]: llvm::zip_equal(invocations, runs)) {
         auto first = spelled_at_or_after(main_offset(invocation.getBegin()));
@@ -212,27 +252,55 @@ void TokenMap::finish() {
     for(auto [index, expansion]: llvm::enumerate(expansions)) {
         if(!expansion.expanded.empty()) {
             producing.push_back(static_cast<std::uint32_t>(index));
+            for(auto& token: expansion.spelled) {
+                away[&token - spelled.data()] = false;
+            }
         }
     }
     llvm::sort(producing, [&](std::uint32_t left, std::uint32_t right) {
         return expansions[left].expanded.begin() < expansions[right].expanded.begin();
     });
+}
 
-    // A spelled token survives preprocessing when the parser saw it or it
-    // is part of an invocation that expanded to something.
-    away.assign(spelled_tokens.size(), true);
-    for(auto [begin, end]: main_segments) {
-        for(auto& token: stream.slice(begin, end - begin)) {
-            if(const auto* written = spelled_at(token.location())) {
-                away[written - spelled.data()] = false;
-            }
-        }
+void TokenMap::set_macro_origins(clang::FileID fid,
+                                 std::uint32_t begin,
+                                 std::uint32_t end,
+                                 std::uint32_t name) {
+    std::ranges::fill(llvm::MutableArrayRef(origins).slice(begin - origins_begin, end - begin),
+                      name);
+    const auto& entry = SM.getSLocEntry(fid).getExpansion();
+    if(!entry.isMacroArgExpansion()) {
+        return;
     }
-    for(auto& expansion: expansions) {
-        if(!expansion.expanded.empty()) {
-            for(auto& token: expansion.spelled) {
-                away[&token - spelled.data()] = false;
-            }
+
+    // An argument maps onto its spelling token by token, through every
+    // macro it was passed down. Unwrapping the first level here spares a
+    // FileID lookup.
+    auto start = SM.getComposedLoc(fid, 0);
+    auto limit = SM.getComposedLoc(fid, SM.getFileIDSize(fid));
+    auto first = expanded_tokens[begin].location();
+    auto caller = SM.getTopMacroCallerLoc(
+        entry.getSpellingLoc().getLocWithOffset(first.getRawEncoding() - start.getRawEncoding()));
+    if(!in_main_file(caller)) {
+        return;
+    }
+    auto written = spelled_at_or_after(main_offset(caller));
+    for(auto index = begin; index < end; index += 1) {
+        auto at = caller.getLocWithOffset(expanded_tokens[index].location().getRawEncoding() -
+                                          first.getRawEncoding());
+        while(written < spelled_tokens.size() && spelled_tokens[written].location() < at) {
+            written += 1;
+        }
+        if(written == spelled_tokens.size() || spelled_tokens[written].location() != at) {
+            continue;
+        }
+        // One the macro expands more than once stands for itself only at the
+        // expansion getMacroArgExpandedLocation picks, so a single node owns
+        // it. The pick is per token: a nested macro rereading part of a
+        // `__VA_ARGS__` copy takes that part over.
+        auto picked = SM.getMacroArgExpandedLocation(at);
+        if(start <= picked && picked <= limit) {
+            origins[index - origins_begin] = written;
         }
     }
 }
