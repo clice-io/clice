@@ -844,9 +844,10 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
         if(pctx.kind == CompletionContext::Import) {
             // The module declaration precedes every import, and the scan
             // stops before the import being typed: the scanner rejects a
-            // buffer with an unclosed directive whole.
+            // buffer with an unclosed directive whole. Its lexer needs the
+            // NUL terminator a copy provides.
             llvm::StringRef text = session->text;
-            auto declared = text.take_front(text.rfind('\n', pctx.replace.begin) + 1);
+            auto declared = text.take_front(text.rfind('\n', pctx.replace.begin) + 1).str();
             auto module_names = complete_module_import(project.dep_graph,
                                                        pctx.prefix,
                                                        scan_quick(declared).module_name);
