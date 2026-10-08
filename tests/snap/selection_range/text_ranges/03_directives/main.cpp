@@ -6,6 +6,6 @@
 /// or the brackets of its macro body
 
 #include "§(header)config.h"
-#define SQUARE(x) ((§(body)x) * (x))
+#define SQUARE(x) ((§(body)x) * (x)) // the §(note)square
 
 int area = SQUARE(SIDE);

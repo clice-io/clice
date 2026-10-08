@@ -11,5 +11,6 @@ int value = 0;
 
 /** A §(block)documentation block. */
 int documented() {
-    return value; // a §(trailing)trailing note
+    int count = 0; ///< a §(member_doc)member note
+    return value + count; // a §(trailing)trailing note
 }

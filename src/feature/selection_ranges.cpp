@@ -64,14 +64,16 @@ LocalSourceRange trimmed(llvm::StringRef content, LocalSourceRange range) {
             static_cast<std::uint32_t>(range.begin + back + 1)};
 }
 
-/// A comment's text past its markers: `//`, `/*` and the `/` `*` `!` of
-/// documentation comments, a block's closing `*/`.
+/// A comment's text past its opening marker, documentation markers
+/// (`///`, `//!`, `/**`, `/*!`, each also with `<`) included, and before a
+/// block's closing `*/`.
 LocalSourceRange comment_text(llvm::StringRef content, LocalSourceRange comment) {
+    constexpr llvm::StringLiteral markers[] =
+        {"///<", "//!<", "/**<", "/*!<", "///", "//!", "/**", "/*!", "//", "/*"};
     auto text = content.slice(comment.begin, comment.end);
-    std::size_t begin = 2;
-    while(begin < text.size() && llvm::is_contained({'/', '*', '!'}, text[begin])) {
-        begin += 1;
-    }
+    std::size_t begin = llvm::find_if(markers, [&](llvm::StringRef marker) {
+                            return text.starts_with(marker);
+                        })->size();
     std::size_t end = text.size();
     if(text.starts_with("/*") && text.ends_with("*/")) {
         end = std::max(begin, end - 2);
@@ -190,6 +192,9 @@ void add_lexical(llvm::StringRef content,
         if(token.kind == clang::tok::comment) {
             steps.add(comment_text(content, token.range));
             steps.add(token.range);
+            if(directive) {
+                directive->end = token.range.end;
+            }
             bool joins = comments && token.is_at_start_of_line &&
                          content.slice(comments->end, token.range.begin).count('\n') == 1;
             if(joins) {
@@ -394,16 +399,34 @@ bool ends_statement(const SelectionTree::Node& node) {
     return statement && !llvm::isa<clang::Expr, clang::ReturnStmt, clang::CoreturnStmt>(statement);
 }
 
+/// The angle brackets of the explicit template arguments a name carries
+/// (`f<int>`, `object.f<int>`, dependent and unresolved names alike).
+template <typename... Names>
+std::optional<clang::SourceRange> explicit_arguments(const clang::Expr* expr) {
+    std::optional<clang::SourceRange> angles;
+    (
+        [&] {
+            if(const auto* name = llvm::dyn_cast<Names>(expr);
+               name && name->hasExplicitTemplateArgs()) {
+                angles = clang::SourceRange(name->getLAngleLoc(), name->getRAngleLoc());
+            }
+        }(),
+        ...);
+    return angles;
+}
+
 /// The angle brackets of a template's parameter list or a template-id.
 std::optional<clang::SourceRange> angles(const SelectionTree::Node& node) {
     if(const auto* loc = node.get<clang::TypeLoc>()) {
         if(auto id = loc->getAs<clang::TemplateSpecializationTypeLoc>()) {
             return clang::SourceRange(id.getLAngleLoc(), id.getRAngleLoc());
         }
-    } else if(const auto* expr = node.get<clang::DeclRefExpr>()) {
-        if(expr->hasExplicitTemplateArgs()) {
-            return clang::SourceRange(expr->getLAngleLoc(), expr->getRAngleLoc());
-        }
+    } else if(const auto* expr = node.get<clang::Expr>()) {
+        return explicit_arguments<clang::DeclRefExpr,
+                                  clang::MemberExpr,
+                                  clang::OverloadExpr,
+                                  clang::DependentScopeDeclRefExpr,
+                                  clang::CXXDependentScopeMemberExpr>(expr);
     } else if(const auto* decl = node.get<clang::Decl>()) {
         const clang::TemplateParameterList* params = nullptr;
         if(const auto* temp = llvm::dyn_cast<clang::TemplateDecl>(decl)) {

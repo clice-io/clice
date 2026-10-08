@@ -54,6 +54,9 @@ static kota::ipc::Error item_not_resolved(llvm::StringRef kind) {
                             std::format("Failed to resolve {} item", kind)};
 }
 
+/// The largest buffer the master lexes whole on its own thread.
+constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
+
 bool Features::ast_answerable(const Session& session) const {
     return ast.projections.index_current(session.path_id) && !ASTFamily::compile_barred(session);
 }
@@ -72,7 +75,6 @@ kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
         // An oversized buffer is not worth a synchronous main-thread lex;
         // the full-lex projections follow the investment policy instead of
         // the index slice. Row-backed answers serve at any size.
-        constexpr std::size_t full_lex_cap = 8 * 1024 * 1024;
         bool capped = options.full_lex && session.text.size() > full_lex_cap;
         if(!capped) {
             // The session's own rows when current (the quarantine fallback
@@ -736,6 +738,15 @@ Features::RawResult Features::selection_range(Ticket ticket,
         return to_raw(result);
     };
     auto lexical = [&] {
+        if(session->text.size() > full_lex_cap) {
+            std::vector<std::vector<LocalSourceRange>> points;
+            for(auto offset: offsets) {
+                points.push_back({
+                    {offset, offset}
+                });
+            }
+            return convert(points);
+        }
         return convert(feature::lexical_selection_ranges(session->text,
                                                          index_lang_options(*session),
                                                          offsets));

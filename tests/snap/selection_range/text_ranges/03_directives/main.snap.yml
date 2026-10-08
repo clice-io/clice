@@ -7,9 +7,14 @@ body:
   - { range: "8:19-8:22", text: "(x)" }
   - { range: "8:19-8:28", text: "(x) * (x)" }
   - { range: "8:18-8:29", text: "((x) * (x))" }
-  - { range: "8:0-8:29", text: "#define SQUARE(x) ((x) * (x))" }
+  - { range: "8:0-8:43", text: "#define SQUARE(x) ((x) * (x)) // the square" }
 
 header:
   - { range: "7:10-7:18", text: "config.h" }
   - { range: "7:9-7:19", text: "\"config.h\"" }
   - { range: "7:0-7:19", text: "#include \"config.h\"" }
+
+note:
+  - { range: "8:33-8:43", text: "the square" }
+  - { range: "8:30-8:43", text: "// the square" }
+  - { range: "8:0-8:43", text: "#define SQUARE(x) ((x) * (x)) // the square" }

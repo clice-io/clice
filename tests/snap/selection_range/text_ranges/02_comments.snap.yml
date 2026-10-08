@@ -6,14 +6,21 @@ block:
   - { range: "11:4-11:26", text: "A documentation block." }
   - { range: "11:0-11:29", text: "/** A documentation block. */" }
 
+member_doc:
+  - { range: "13:24-13:37", text: "a member note" }
+  - { range: "13:19-13:37", text: "///< a member note" }
+  - { range: "13:4-14:44", text: "int count = 0; ///< a member note return value +…" }
+  - { range: "12:17-15:1", text: "{ int count = 0; ///< a member note return value…" }
+  - { range: "12:0-15:1", text: "int documented() { int count = 0; ///< a member …" }
+
 run:
   - { range: "8:3-8:25", text: "the second line of it." }
   - { range: "8:0-8:25", text: "// the second line of it." }
   - { range: "7:0-8:25", text: "// The first line of a run, // the second line o…" }
 
 trailing:
-  - { range: "13:21-13:36", text: "a trailing note" }
-  - { range: "13:18-13:36", text: "// a trailing note" }
-  - { range: "13:4-13:36", text: "return value; // a trailing note" }
-  - { range: "12:17-14:1", text: "{ return value; // a trailing note }" }
-  - { range: "12:0-14:1", text: "int documented() { return value; // a trailing n…" }
+  - { range: "14:29-14:44", text: "a trailing note" }
+  - { range: "14:26-14:44", text: "// a trailing note" }
+  - { range: "13:4-14:44", text: "int count = 0; ///< a member note return value +…" }
+  - { range: "12:17-15:1", text: "{ int count = 0; ///< a member note return value…" }
+  - { range: "12:0-15:1", text: "int documented() { int count = 0; ///< a member …" }

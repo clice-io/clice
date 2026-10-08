@@ -21,3 +21,10 @@ Pair<int, §(type_arg)long> pair{1, 2};
 Pair<int, Pair<§(nested_arg)long, char>> nested{1, {2, 'c'}};
 
 int same = identity<§(call_arg)int>(3);
+
+struct Factory {
+    template <class T, class U>
+    T make(U seed);
+};
+
+long made = Factory{}.make<long, §(member_arg)int>(4);

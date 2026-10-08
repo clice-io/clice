@@ -10,6 +10,15 @@ call_arg:
   - { range: "22:0-22:27", text: "int same = identity<int>(3)" }
   - { range: "22:0-22:28", text: "int same = identity<int>(3);" }
 
+member_arg:
+  - { range: "29:33-29:36", text: "int" }
+  - { range: "29:27-29:36", text: "long, int" }
+  - { range: "29:26-29:37", text: "<long, int>" }
+  - { range: "29:12-29:37", text: "Factory{}.make<long, int>" }
+  - { range: "29:12-29:40", text: "Factory{}.make<long, int>(4)" }
+  - { range: "29:0-29:40", text: "long made = Factory{}.make<long, int>(4)" }
+  - { range: "29:0-29:41", text: "long made = Factory{}.make<long, int>(4);" }
+
 nested_arg:
   - { range: "20:15-20:19", text: "long" }
   - { range: "20:15-20:25", text: "long, char" }
