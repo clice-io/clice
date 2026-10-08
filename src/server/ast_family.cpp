@@ -59,6 +59,8 @@ CrashSubject crash_subject(std::uint8_t kind) {
         case EvidenceKind::FoldingRange:
             return {"computing folding ranges for", "Folding ranges are"};
         case EvidenceKind::CodeAction: return {"computing code actions for", "Code actions are"};
+        case EvidenceKind::SelectionRange:
+            return {"computing selection ranges for", "Selection ranges are"};
         case EvidenceKind::Completion: return {"completing code in", "Code completion is"};
         case EvidenceKind::SignatureHelp:
             return {"computing signature help in", "Signature help is"};

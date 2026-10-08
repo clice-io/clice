@@ -271,6 +271,18 @@ kota::task<std::optional<std::vector<feature::FoldingRange>>, kota::ipc::Error>
                              std::move(token));
 }
 
+kota::task<std::vector<std::vector<LocalSourceRange>>, kota::ipc::Error>
+    Dispatcher::selection_ranges(const Ticket& ticket,
+                                 std::vector<std::uint32_t> offsets,
+                                 kota::cancellation_token token) {
+    auto path = std::string(project.file_table.resolve(ticket.session->path_id));
+    co_return co_await typed(ticket,
+                             EvidenceKind::SelectionRange,
+                             "SelectionRange",
+                             worker::SelectionRangeParams{std::move(path), std::move(offsets)},
+                             std::move(token));
+}
+
 kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
     Dispatcher::code_actions(const Ticket& ticket,
                              const protocol::Range& range,

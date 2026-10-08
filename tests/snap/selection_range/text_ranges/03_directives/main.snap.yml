@@ -1,0 +1,15 @@
+---
+created_at: 2026-10-08
+input_file: text_ranges/03_directives/main.cpp
+---
+body:
+  - { range: "8:20-8:21", text: "x" }
+  - { range: "8:19-8:22", text: "(x)" }
+  - { range: "8:19-8:28", text: "(x) * (x)" }
+  - { range: "8:18-8:29", text: "((x) * (x))" }
+  - { range: "8:0-8:29", text: "#define SQUARE(x) ((x) * (x))" }
+
+header:
+  - { range: "7:10-7:18", text: "config.h" }
+  - { range: "7:9-7:19", text: "\"config.h\"" }
+  - { range: "7:0-7:19", text: "#include \"config.h\"" }

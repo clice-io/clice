@@ -376,6 +376,26 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
                                 const PositionMap& map,
                                 bool line_folding_only) -> std::vector<protocol::FoldingRange>;
 
+/// The ranges an expanding selection steps through from each offset of the
+/// main file, innermost first, each strictly containing the one before:
+/// the AST nodes around the offset merged with the ranges only the text
+/// shows — a literal's text, a comment, the inside of a bracket pair, a
+/// statement with its `;`, a directive line. An offset nothing covers gets
+/// the empty range at it.
+auto selection_ranges(CompilationUnitRef unit, llvm::ArrayRef<std::uint32_t> offsets)
+    -> std::vector<std::vector<LocalSourceRange>>;
+
+/// The ranges only the text shows, from a raw lex of `content`: what a
+/// document without an AST gets.
+auto lexical_selection_ranges(llvm::StringRef content,
+                              const clang::LangOptions& lang_opts,
+                              llvm::ArrayRef<std::uint32_t> offsets)
+    -> std::vector<std::vector<LocalSourceRange>>;
+
+/// Wire encoding of one offset's ranges as a chain of parents.
+auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges, const PositionMap& map)
+    -> protocol::SelectionRange;
+
 auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol>;
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol>;

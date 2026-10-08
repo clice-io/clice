@@ -1,0 +1,19 @@
+---
+created_at: 2026-10-08
+input_file: text_ranges/02_comments.cpp
+---
+block:
+  - { range: "11:4-11:26", text: "A documentation block." }
+  - { range: "11:0-11:29", text: "/** A documentation block. */" }
+
+run:
+  - { range: "8:3-8:25", text: "the second line of it." }
+  - { range: "8:0-8:25", text: "// the second line of it." }
+  - { range: "7:0-8:25", text: "// The first line of a run, // the second line o…" }
+
+trailing:
+  - { range: "13:21-13:36", text: "a trailing note" }
+  - { range: "13:18-13:36", text: "// a trailing note" }
+  - { range: "13:4-13:36", text: "return value; // a trailing note" }
+  - { range: "12:17-14:1", text: "{ return value; // a trailing note }" }
+  - { range: "12:0-14:1", text: "int documented() { return value; // a trailing n…" }

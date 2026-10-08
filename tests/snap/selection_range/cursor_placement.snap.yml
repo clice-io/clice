@@ -1,0 +1,33 @@
+---
+created_at: 2026-10-08
+input_file: cursor_placement.cpp
+---
+blank:
+  - { range: "6:21-11:1", text: "{ int result = helper(count); result = count; re…" }
+  - { range: "6:0-11:1", text: "int probe(int count) { int result = helper(count…" }
+
+name_paren:
+  - { range: "7:17-7:23", text: "helper" }
+  - { range: "7:17-7:30", text: "helper(count)" }
+  - { range: "7:4-7:30", text: "int result = helper(count)" }
+  - { range: "7:4-7:31", text: "int result = helper(count);" }
+  - { range: "7:4-10:18", text: "int result = helper(count); result = count; resu…" }
+  - { range: "6:21-11:1", text: "{ int result = helper(count); result = count; re…" }
+  - { range: "6:0-11:1", text: "int probe(int count) { int result = helper(count…" }
+
+name_semi:
+  - { range: "8:13-8:18", text: "count" }
+  - { range: "8:4-8:18", text: "result = count" }
+  - { range: "8:4-8:19", text: "result = count;" }
+  - { range: "7:4-10:18", text: "int result = helper(count); result = count; resu…" }
+  - { range: "6:21-11:1", text: "{ int result = helper(count); result = count; re…" }
+  - { range: "6:0-11:1", text: "int probe(int count) { int result = helper(count…" }
+
+punct_name:
+  - { range: "9:20-9:25", text: "count" }
+  - { range: "9:13-9:25", text: "result+count" }
+  - { range: "9:4-9:25", text: "result = result+count" }
+  - { range: "9:4-9:26", text: "result = result+count;" }
+  - { range: "7:4-10:18", text: "int result = helper(count); result = count; resu…" }
+  - { range: "6:21-11:1", text: "{ int result = helper(count); result = count; re…" }
+  - { range: "6:0-11:1", text: "int probe(int count) { int result = helper(count…" }

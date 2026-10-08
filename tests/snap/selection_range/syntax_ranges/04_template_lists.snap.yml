@@ -1,0 +1,27 @@
+---
+created_at: 2026-10-08
+input_file: syntax_ranges/04_template_lists.cpp
+---
+call_arg:
+  - { range: "20:20-20:23", text: "int" }
+  - { range: "20:19-20:24", text: "<int>" }
+  - { range: "20:11-20:24", text: "identity<int>" }
+  - { range: "20:11-20:27", text: "identity<int>(3)" }
+  - { range: "20:0-20:27", text: "int same = identity<int>(3)" }
+  - { range: "20:0-20:28", text: "int same = identity<int>(3);" }
+
+param:
+  - { range: "7:29-7:35", text: "Second" }
+  - { range: "7:23-7:35", text: "class Second" }
+  - { range: "7:10-7:35", text: "class First, class Second" }
+  - { range: "7:9-7:36", text: "<class First, class Second>" }
+  - { range: "7:0-11:1", text: "template <class First, class Second> struct Pair…" }
+  - { range: "7:0-11:2", text: "template <class First, class Second> struct Pair…" }
+
+type_arg:
+  - { range: "18:10-18:14", text: "long" }
+  - { range: "18:5-18:14", text: "int, long" }
+  - { range: "18:4-18:15", text: "<int, long>" }
+  - { range: "18:0-18:15", text: "Pair<int, long>" }
+  - { range: "18:0-18:26", text: "Pair<int, long> pair{1, 2}" }
+  - { range: "18:0-18:27", text: "Pair<int, long> pair{1, 2};" }

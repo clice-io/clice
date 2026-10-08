@@ -1,0 +1,23 @@
+---
+created_at: 2026-10-08
+input_file: syntax_ranges/01_expression_nesting.cpp
+---
+inner:
+  - { range: "8:19-8:25", text: "factor" }
+  - { range: "8:19-8:34", text: "factor + offset" }
+  - { range: "8:18-8:35", text: "(factor + offset)" }
+  - { range: "8:11-8:35", text: "base * (factor + offset)" }
+  - { range: "8:11-8:46", text: "base * (factor + offset) - base / 2" }
+  - { range: "8:4-8:46", text: "return base * (factor + offset) - base / 2" }
+  - { range: "8:4-8:47", text: "return base * (factor + offset) - base / 2;" }
+  - { range: "7:44-9:1", text: "{ return base * (factor + offset) - base / 2; }" }
+  - { range: "7:0-9:1", text: "int scale(int base, int factor, int offset) { re…" }
+
+outer:
+  - { range: "8:38-8:42", text: "base" }
+  - { range: "8:38-8:46", text: "base / 2" }
+  - { range: "8:11-8:46", text: "base * (factor + offset) - base / 2" }
+  - { range: "8:4-8:46", text: "return base * (factor + offset) - base / 2" }
+  - { range: "8:4-8:47", text: "return base * (factor + offset) - base / 2;" }
+  - { range: "7:44-9:1", text: "{ return base * (factor + offset) - base / 2; }" }
+  - { range: "7:0-9:1", text: "int scale(int base, int factor, int offset) { re…" }

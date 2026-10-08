@@ -298,6 +298,7 @@ enum class EvidenceKind : std::uint8_t {
     DocumentLink,
     FoldingRange,
     CodeAction,
+    SelectionRange,
     Completion,
     SignatureHelp,
     Format,

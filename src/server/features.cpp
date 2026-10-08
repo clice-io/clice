@@ -719,6 +719,41 @@ Features::RawResult Features::document_symbol(Ticket ticket, kota::cancellation_
                                         std::move(token));
 }
 
+Features::RawResult Features::selection_range(Ticket ticket,
+                                              std::vector<protocol::Position> positions,
+                                              kota::cancellation_token token) {
+    auto& session = ticket.session;
+    std::vector<std::uint32_t> offsets;
+    auto map = session->position_map();
+    for(const auto& position: positions) {
+        offsets.push_back(map.to_offset(position).value_or(session->text.size()));
+    }
+    auto convert = [&](llvm::ArrayRef<std::vector<LocalSourceRange>> chains) {
+        std::vector<protocol::SelectionRange> result;
+        for(const auto& chain: chains) {
+            result.push_back(feature::selection_range_to_protocol(chain, session->position_map()));
+        }
+        return to_raw(result);
+    };
+    auto lexical = [&] {
+        return convert(feature::lexical_selection_ranges(session->text,
+                                                         index_lang_options(*session),
+                                                         offsets));
+    };
+
+    switch(co_await pick_route(ticket, {})) {
+        case Route::Superseded: co_await kota::fail(content_modified());
+        case Route::Index:
+        case Route::Empty: co_return lexical();
+        case Route::Ast: break;
+    }
+    auto chains = co_await dispatcher.selection_ranges(ticket, offsets, std::move(token)).or_fail();
+    if(chains.empty()) {
+        co_return lexical();
+    }
+    co_return convert(chains);
+}
+
 Features::RawResult Features::completion(std::shared_ptr<Session> session,
                                          const protocol::Position& position,
                                          const feature::CompletionClient& client,
