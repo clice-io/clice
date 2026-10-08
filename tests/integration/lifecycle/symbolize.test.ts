@@ -60,7 +60,11 @@ test.skipIf(release === undefined)(
                 LLVM_DISABLE_SYMBOLIZATION: "1",
             },
         });
-        await client.initialize(workspace);
+        // One crash to read: with clang-tidy on, the compile would first
+        // retry without it and crash again.
+        await client.initialize(workspace, {
+            initializationOptions: { diagnostics: { clang_tidy: false } },
+        });
         const compile = `compile ${workspace.displayPath("poison.cpp")}`;
         const [uri] = client.open("poison.cpp");
         expect(await client.hoverAt(uri, 0, 5)).toBeNull();
