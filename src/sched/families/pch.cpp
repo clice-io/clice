@@ -177,6 +177,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     bp.content = std::move(request.content);
     bp.preamble_bound = request.preamble_bound;
     bp.synthesized = std::move(request.synthesized);
+    bp.pcms = std::move(request.pcms);
     bp.output_path = pending.tmp_path;
     bp.index_output_path = pending_idx.tmp_path;
 

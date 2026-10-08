@@ -45,6 +45,8 @@ public:
         std::uint32_t preamble_bound = 0;
         /// See worker::BuildPCHParams::synthesized.
         SynthesizedFiles synthesized;
+        /// See worker::BuildPCHParams::pcms.
+        std::unordered_map<std::string, std::string> pcms;
     };
 
     enum class Outcome : std::uint8_t {

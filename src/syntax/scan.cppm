@@ -68,6 +68,11 @@ struct ScanResult {
     /// Dependent module names.
     std::vector<std::string> modules;
 
+    /// Where each of `modules` is imported, as an offset in the main file:
+    /// an import in an included file sits at its #include, one in a file
+    /// the command line includes at 0.
+    std::vector<std::uint32_t> import_offsets;
+
     /// The lexer scan saw an import declaration. Detection only — the
     /// names stay uncollected (`modules` empty, see scan_quick): the flag
     /// marks files worth a precise scan when import identity matters.

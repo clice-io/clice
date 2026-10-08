@@ -246,6 +246,15 @@ public:
                 }
             }
         }
+        // A PCH records where the preprocessor made each import visible,
+        // and its reader drops the imports with no such place: Sema alone
+        // makes a C++20 import visible.
+        if(unit->kind == CompilationKind::Preamble) {
+            auto& pp = unit->instance->getPreprocessor();
+            for(auto* import: context.local_imports()) {
+                pp.makeModuleVisible(import->getImportedModule(), import->getLocation());
+            }
+        }
         clang::MultiplexConsumer::HandleTranslationUnit(context);
     }
 

@@ -462,6 +462,65 @@ test("unsaved include imports module", async ({ session }) => {
     client.assertCleanCompile(uri);
 });
 
+/// A preamble that imports keeps its PCH, rebuilt against a rebuilt module.
+test("preamble import keeps its pch", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    workspace.write("deps.h", "import A;\n");
+    const main = (call: string) => `#include "deps.h"\nint main() { return ${call}; }\n`;
+    workspace.write("main.cpp", main("a()"));
+    workspace.writeEntries(
+        [
+            ["a.cppm", []],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const stderr = () => client.drainedStderr().toString("utf8");
+    const builds = () => stderr().split("PCH built for").length - 1;
+
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertCleanCompile(uri);
+    expect(builds()).toBe(1);
+
+    workspace.write(
+        "a.cppm",
+        "export module A;\nexport int a() { return 1; }\nexport int b() { return 2; }\n",
+    );
+    client.save(workspace.uri("a.cppm"));
+    await client.waitForRecompile(uri);
+    client.change(uri, 1, main("a() + b()"));
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+    expect(builds()).toBe(2);
+    expect(stderr()).not.toContain("PCH build failed");
+});
+
+/// A PCH would lose the imports of a module unit's global module fragment.
+test("fragment import skips the pch", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    workspace.write("deps.h", "import A;\n");
+    workspace.write(
+        "m.cppm",
+        'module;\n#include "deps.h"\nexport module M;\nexport int m() { return a(); }\n',
+    );
+    workspace.writeEntries(
+        [
+            ["a.cppm", []],
+            ["m.cppm", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("m.cppm");
+    client.assertCleanCompile(uri);
+    const stderr = client.drainedStderr().toString("utf8");
+    expect(stderr).not.toContain("PCH built for");
+    expect(stderr).not.toContain("PCH build failed");
+});
+
 /// A module whose own import is missing breaks its importers' import too.
 test("nested missing module", async ({ session }) => {
     const { client, workspace } = session.tmp();

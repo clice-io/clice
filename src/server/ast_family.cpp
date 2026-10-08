@@ -134,7 +134,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        llvm::StringRef text,
                                        const std::string& directory,
                                        const std::vector<std::string>& arguments,
-                                       const SynthesizedContext* synthesized) {
+                                       const SynthesizedContext* synthesized,
+                                       const PCMFamily::ModuleDeps& imports) {
     auto path = project.file_table.resolve(path_id);
     // The part of the prefix inside braces comes after the preamble, which
     // the header's own directives would otherwise precede.
@@ -154,6 +155,32 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // content — through the fragments it includes, the whole chain's — so
     // the key tracks prefix changes automatically.
 
+    // The PCMs that the preamble's imports resolve to, and those of the
+    // files the command line includes, are inputs of the PCH: a rebuilt
+    // PCM, or one that became available, keys a new PCH. A PCH loses the
+    // imports of a module unit's global module fragment: the module
+    // declaration past it takes the fragment for absent and hides what
+    // the fragment made visible. Such a preamble goes without one.
+    std::string modules;
+    bool imported = false;
+    for(auto [dep, offset]: llvm::zip_equal(imports.declared, imports.offsets)) {
+        if(offset != 0 && offset >= bound) {
+            continue;
+        }
+        imported = true;
+        if(!PCMFamily::is_unresolved(dep)) {
+            auto it = project.pcm_cache.find(Fid{static_cast<std::uint32_t>(dep.key)});
+            if(it != project.pcm_cache.end()) {
+                modules += it->second.path;
+            }
+        }
+        modules.push_back('\0');
+    }
+    if(imported && imports.module_unit) {
+        LOG_DEBUG("No PCH for {}: its global module fragment imports", path);
+        return {};
+    }
+
     // Key the PCH by preamble text plus the frontend-relevant compile flags,
     // so files with the same preamble text but different flags (-D, -I, -std)
     // produce separate PCHs.  The source file path stays out of the key so
@@ -172,7 +199,8 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                               directory,
                               path::parent_path(path),
                               preamble_text,
-                              canonicalize(arguments, ArgsProfile::Frontend)});
+                              canonicalize(arguments, ArgsProfile::Frontend),
+                              modules});
     // The text first: freshness checks every dependency of the key.
     if(!is_preamble_complete(text, bound) && !pch.fresh(pch_key)) {
         // Preamble incomplete (user still typing) and nothing fresh to
@@ -188,7 +216,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
         }
         return plan;
     }
-    return {
+    PCHPlan plan{
         .verdict = PCHPlan::Verdict::Acquire,
         .request =
             {
@@ -201,6 +229,10 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                       .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
                       },
     };
+    if(imported) {
+        project.fill_pcm_deps(plan.request.pcms, path_id);
+    }
+    return plan;
 }
 
 ASTFamily::ASTFamily(Project& project,
@@ -512,12 +544,13 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
     co_return outcome == JoinOutcome::Success;
 }
 
-kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
-                                           const std::shared_ptr<Session>& session,
-                                           const Resolution& resolution,
-                                           llvm::StringRef directory,
-                                           const std::vector<std::string>& arguments,
-                                           llvm::StringRef text) {
+kota::task<std::optional<PCMFamily::ModuleDeps>>
+    ASTFamily::depend_modules(RoundContext& ctx,
+                              const std::shared_ptr<Session>& session,
+                              const Resolution& resolution,
+                              llvm::StringRef directory,
+                              const std::vector<std::string>& arguments,
+                              llvm::StringRef text) {
     auto path_id = session->path_id;
     // Imports come from the round's buffer snapshot under the round's own
     // resolved command — the same text and flags the parse will consume,
@@ -558,7 +591,7 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
     }
     if(deps.resolved.empty()) {
         session->quarantine->on_land(evidence_kind(EvidenceKind::PCM));
-        co_return true;
+        co_return deps;
     }
 
     // A module whose build crashed a worker is refused to every importer
@@ -608,14 +641,14 @@ kota::task<bool> ASTFamily::depend_modules(RoundContext& ctx,
                         licensed = false;
                     }
                     break;
-                case DependResult::Cancelled: co_return false;
+                case DependResult::Cancelled: co_return std::nullopt;
             }
         }
     }
     if(!crashed) {
         session->quarantine->on_land(kind);
     }
-    co_return true;
+    co_return deps;
 }
 
 kota::task<bool> ASTFamily::fetch_include_tree(Fid host) {
@@ -766,12 +799,13 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                            !header_context->synthesized &&
                            contexts.commands.header_mode(path_id) == HeaderMode::Unknown;
 
-        if(!co_await depend_modules(ctx,
-                                    session,
-                                    resolution,
-                                    params.directory,
-                                    params.arguments,
-                                    params.text)) {
+        auto imports = co_await depend_modules(ctx,
+                                               session,
+                                               resolution,
+                                               params.directory,
+                                               params.arguments,
+                                               params.text);
+        if(!imports) {
             co_return RoundOutcome::Stale;
         }
 
@@ -789,8 +823,12 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         std::optional<std::string> adopted_pch;
         std::optional<std::string> failed_pch;
         if(readonly != ReadonlyMode::On) {
-            auto plan =
-                plan_pch(path_id, params.text, params.directory, params.arguments, synthesized);
+            auto plan = plan_pch(path_id,
+                                 params.text,
+                                 params.directory,
+                                 params.arguments,
+                                 synthesized,
+                                 *imports);
             switch(plan.verdict) {
                 // No preamble left to crash on.
                 case PCHPlan::Verdict::None: session->quarantine->on_land(pch_kind); break;
@@ -1165,14 +1203,15 @@ kota::task<std::optional<std::string>>
                           std::uint64_t license_epoch,
                           const std::string& directory,
                           const std::vector<std::string>& arguments,
-                          const SynthesizedContext* synthesized) {
+                          const SynthesizedContext* synthesized,
+                          const PCMFamily::ModuleDeps& imports) {
     auto path_id = session->path_id;
     auto license = [&] {
         return session->generation == license_generation &&
                projections.epoch(path_id) == license_epoch;
     };
 
-    auto plan = plan_pch(path_id, text, directory, arguments, synthesized);
+    auto plan = plan_pch(path_id, text, directory, arguments, synthesized, imports);
     switch(plan.verdict) {
         case PCHPlan::Verdict::None:
             if(license()) {
@@ -1244,7 +1283,8 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
     if(synthesized) {
         synthesized->append_suffix_include(scan_text);
     }
-    if(!co_await pcm.prepare_deps(path_id, resolution, argv, directory, scan_text)) {
+    auto imports = co_await pcm.prepare_deps(path_id, resolution, argv, directory, scan_text);
+    if(!imports) {
         co_return false;
     }
 
@@ -1255,7 +1295,8 @@ kota::task<bool> ASTFamily::prepare_stateless_inputs(const Ticket& ticket,
                                            license_epoch,
                                            directory,
                                            arguments,
-                                           synthesized);
+                                           synthesized,
+                                           *imports);
         if(pch_key) {
             if(auto pch_it = project.pch_cache.find(*pch_key); pch_it != project.pch_cache.end()) {
                 inputs.pch = {pch_it->second.path, pch_it->second.bound};

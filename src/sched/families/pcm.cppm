@@ -31,6 +31,23 @@ public:
     /// Family::PCM instead.
     void register_runner();
 
+    /// A scan's module dependencies, split by what a consumer does with
+    /// them: `resolved` names module units to wait on; `declared` is the
+    /// full durable edge set — resolved units' nodes plus one sentinel
+    /// per unresolved name.
+    struct ModuleDeps {
+        llvm::SmallVector<Fid> resolved;
+        llvm::SmallVector<NodeId, 8> declared;
+
+        /// Where each of `declared` is imported (see
+        /// ScanResult::import_offsets); an implementation unit's import of
+        /// its own module comes past the end.
+        llvm::SmallVector<std::uint32_t, 8> offsets;
+
+        /// The unit declares a module.
+        bool module_unit = false;
+    };
+
     /// Re-validate on-disk PCM blobs and build the module dependencies of
     /// a request that compiles under `arguments` with `content` as the
     /// main file and the resolution's synthesized context served from
@@ -38,12 +55,13 @@ public:
     /// buffer's imports under the request's command). Building a
     /// dependency can itself evict another clean module's PCM under budget
     /// pressure, which reopens the window the revalidation just closed —
-    /// hence the bounded retry until the set is stable.
-    kota::task<bool> prepare_deps(Fid path_id,
-                                  const Resolution& resolution,
-                                  llvm::ArrayRef<const char*> arguments,
-                                  llvm::StringRef directory,
-                                  llvm::StringRef content);
+    /// hence the bounded retry until the set is stable. None when a
+    /// dependency failed to build.
+    kota::task<std::optional<ModuleDeps>> prepare_deps(Fid path_id,
+                                                       const Resolution& resolution,
+                                                       llvm::ArrayRef<const char*> arguments,
+                                                       llvm::StringRef directory,
+                                                       llvm::StringRef content);
 
     /// One pass of the on-disk revalidation: LRU eviction can remove a
     /// blob while its node is still clean, so evicted units are
@@ -80,15 +98,6 @@ public:
     void forget_buffer(Fid path_id) {
         scan_memos.erase(path_id);
     }
-
-    /// A scan's module dependencies, split by what a consumer does with
-    /// them: `resolved` names module units to wait on; `declared` is the
-    /// full durable edge set — resolved units' nodes plus one sentinel
-    /// per unresolved name.
-    struct ModuleDeps {
-        llvm::SmallVector<Fid> resolved;
-        llvm::SmallVector<NodeId, 8> declared;
-    };
 
     /// The graph identity of an import that resolves to nothing: a node
     /// that never runs a round and exists only to be edged at. When the
@@ -177,6 +186,8 @@ private:
         std::uint64_t arguments = 0;
         std::uint64_t epoch = 0;
         std::vector<std::string> imports;
+        std::vector<std::uint32_t> offsets;
+        bool module_unit = false;
     };
 
     TaskGraph& graph;
