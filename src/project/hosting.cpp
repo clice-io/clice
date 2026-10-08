@@ -26,13 +26,19 @@ CommandRef effective(Project& project, Fid unit, const Candidate& command) {
     return project.build.resolve(unit, command.config, command.source, path, path);
 }
 
+/// Whether `type` is C++ or a C++ module unit: the two share flags, so
+/// each lends to the other.
+bool cxx_or_module(types::ID type) {
+    return type == types::TY_CXX || type == types::TY_CXXModule;
+}
+
 /// Whether the file at `path` can be part of the translation unit `unit`
-/// compiled as `language`. A source only in its own, or in the one the
+/// compiled as `language`. A source only in its own, in the one the
 /// unit's command gives the unit's own suffix (`g++` takes a `.c` as
-/// C++): rendering the borrowed command for it would otherwise force
-/// `-x`, and a `.cpp` compiled as CUDA or a `.m` as C is not the file. A
-/// header has latitude: a `.h` fits any, a C++ header every language
-/// built on C++ (Objective-C++, CUDA, HIP), a `.cuh` CUDA.
+/// C++), or across C++ and its modules: a `.cpp` compiled as CUDA or a
+/// `.m` as C is not the file. A header has latitude: a `.h` fits any, a
+/// C++ header every language built on C++ (Objective-C++, CUDA, HIP), a
+/// `.cuh` CUDA.
 bool compatible(llvm::StringRef path, llvm::StringRef unit, types::ID language) {
     auto file = suffix_type(path);
     if(file == types::TY_INVALID) {
@@ -44,7 +50,7 @@ bool compatible(llvm::StringRef path, llvm::StringRef unit, types::ID language) 
     if(types::onlyPrecompileType(file) && types::isCXX(file)) {
         return types::isCXX(language);
     }
-    return file == language ||
+    return file == language || (cxx_or_module(file) && cxx_or_module(language)) ||
            (file == suffix_type(unit) && language == types::lookupCXXTypeForCType(file));
 }
 
@@ -156,8 +162,12 @@ const LenderIndex& lender_index(Project& project) {
     llvm::StringMap<CanonicalPath> identities;
     for(auto member: members) {
         // A member a rule claims with a default command that is no compile
-        // command has none.
+        // command has none; a provisional member's is borrowed, and never
+        // lent on.
         for(auto& command: project.build.commands(member)) {
+            if(command.source == CommandSource::Inferred) {
+                continue;
+            }
             auto ref = effective(project, member, command);
             auto position = static_cast<std::uint32_t>(index.commands.size());
             index.commands.push_back({

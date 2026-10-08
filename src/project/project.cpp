@@ -7,6 +7,7 @@ module;
 module clice;
 
 import :index.serialization;
+import :project.hosting;
 import :project.project;
 import :support.logging;
 import :vfs.file_system;
@@ -26,7 +27,7 @@ void Project::forget_file(Fid path_id) {
     context_epoch += 1;
 }
 
-Project::ProviderChanges Project::rebuild_dependency_graph() {
+Project::Rebuilt Project::rebuild_dependency_graph() {
     llvm::StringMap<Fid> selected;
     for(auto& entry: dep_graph.modules()) {
         if(!entry.getValue().empty()) {
@@ -37,12 +38,18 @@ Project::ProviderChanges Project::rebuild_dependency_graph() {
     // TODO: this scan runs synchronously on the event loop (same cost as
     // the startup scan); if it shows up on large projects, move it off the
     // dispatch path.
-    dep_graph.reset();
-    scan_dependency_graph(cdb, dep_graph, build.units(build.members()));
-    dep_graph.build_reverse_map();
+    auto scan = [&] {
+        dep_graph.reset();
+        scan_dependency_graph(cdb, dep_graph, build.units(build.members()));
+        dep_graph.build_reverse_map();
+    };
+    scan();
+    Rebuilt changes{.provisional = refresh_provisional()};
+    if(!changes.provisional.empty()) {
+        scan();
+    }
     context_epoch += 1;
 
-    ProviderChanges changes;
     for(auto& entry: dep_graph.modules()) {
         if(entry.getValue().empty()) {
             continue;
@@ -55,6 +62,36 @@ Project::ProviderChanges Project::rebuild_dependency_graph() {
         }
     }
     return changes;
+}
+
+CDBDiff Project::refresh_provisional() {
+    CDBDiff diff;
+    auto recorded = llvm::to_vector(build.recorded());
+    std::ranges::sort(recorded, {}, [&](Fid file) { return file_table.resolve(file); });
+    for(auto file: recorded) {
+        if(build.declared(file)) {
+            build.forget(file);
+            continue;
+        }
+        // A file a declared unit includes compiles in its includer's
+        // context, as the part of a unity build does.
+        auto hosted = llvm::any_of(dep_graph.find_host_sources(file),
+                                   [&](Fid root) { return root != file && build.declared(root); });
+        std::optional<ConfigID> command;
+        if(!hosted) {
+            if(auto lender = command_lender(*this, file)) {
+                command = build.lend(lender->config,
+                                     file_table.resolve(lender->unit),
+                                     file_table.resolve(file));
+            }
+        }
+        auto before = build.borrow(file, command);
+        if(before == command) {
+            continue;
+        }
+        (!before ? diff.added : !command ? diff.removed : diff.changed).push_back(file);
+    }
+    return diff;
 }
 
 static std::optional<Spelling> database_in(const Spelling& dir) {

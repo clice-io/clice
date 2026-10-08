@@ -736,6 +736,40 @@ ZEST_CASE(EditsAcrossHostAndHeader) {
     ZEXPECT(header_only[0].flags == (std::vector<std::string>{"-DB"}));
 };
 
+ZEST_CASE(LendMergesRules) {
+    /// A borrowed command carries the edits of the rules matching its lender
+    /// but not the borrower; rendered as the borrower's own it gains the
+    /// borrower's, so a rule matching both applies once.
+    TempDir tmp;
+    tmp.touch("src/a.cpp", "");
+    Config config;
+    config.rules.push_back(ConfigRule{.patterns = {"src/**"}, .append = {"-DLENDER"}});
+    config.rules.push_back(ConfigRule{.patterns = {"new/**"}, .append = {"-DOWN"}});
+    config.rules.push_back(ConfigRule{.patterns = {"**/*"}, .append = {"-DBOTH"}});
+    config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+
+    FileTable files;
+    CompilationDatabase cdb{files};
+    Build build{config, cdb, files};
+    build.reset_active("");
+    auto command = std::format("clang++ {}", tmp.path("src/a.cpp"));
+    auto lender = *cdb.add_command(tmp.root.str(), tmp.path("src/a.cpp"), llvm::StringRef(command));
+
+    CanonicalPath identity(Spelling::absolute(tmp.path("new/n.cpp")));
+    CanonicalRef file = identity;
+    auto lent = build.lend(lender.config, files.resolve(lender.file), file);
+    auto argv = cdb.render_driver(
+        build.resolve(files.intern(file), lent, CommandSource::Inferred, file, file));
+    auto count = [&](llvm::StringRef macro) {
+        return llvm::count_if(argv, [&](const char* arg) {
+            return llvm::StringRef(arg).contains(macro);
+        });
+    };
+    ZEXPECT(count("LENDER") == 1);
+    ZEXPECT(count("OWN") == 1);
+    ZEXPECT(count("BOTH") == 1);
+};
+
 };  // ZEST_SUITE(Build)
 
 }  // namespace

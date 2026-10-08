@@ -183,7 +183,9 @@ Outcome<CompileCommandResult> compile_command(Context& ctx, const Spelling& path
         case CommandSource::CDBExact: result.source = "database"; break;
         case CommandSource::IncludeGraph: result.source = "host"; break;
         case CommandSource::Default: result.source = "rule"; break;
-        case CommandSource::Inferred: result.source = "inferred"; break;
+        case CommandSource::Inferred:
+            result.source = ctx.project.build.unit(file) ? "provisional" : "inferred";
+            break;
         case CommandSource::Fallback: result.source = "fallback"; break;
     }
     return result;

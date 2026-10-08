@@ -298,9 +298,10 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         }
     }
 
-    // 2. The file's own command: a database entry, or the default command
-    //    of a source the build compiles as a unit. A header's default
-    //    command is only the last resort below, after host inference.
+    // 2. The file's own command: a database entry, the default command of
+    //    a source the build compiles as a unit, or the command a
+    //    provisional member borrows. A header's default command is only
+    //    the last resort below, after host inference.
     //    Multi-config projects honor the user's chosen entry, matched by
     //    entry hash so the choice survives reordering.
     tried.push_back("cdb");
@@ -333,13 +334,17 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         return settle(CommandSource::Default);
     }
 
-    // 5. A nearby unit's command: the file compiles as that unit's
-    //    language, under its command edited for both files.
+    // 5. A nearby unit's command, edited for both files as a provisional
+    //    member's is. A header compiles in that unit's language — a `.h`
+    //    as C++, not as a header job; a source in its own, which lending
+    //    only ever matches or crosses between C++ and its modules.
     tried.push_back("inferred");
     if(auto lender = command_lender(project, path_id)) {
         auto lender_path = project.file_table.resolve(lender->unit);
-        CanonicalRef edit_paths[] = {path, lender_path};
-        fill(lender->config, CommandSource::Inferred, edit_paths, lender_path);
+        fill(project.build.lend(lender->config, lender_path, path),
+             CommandSource::Inferred,
+             path,
+             is_header_path(path) ? lender_path : path);
         LOG_INFO("resolve_command: {} borrows the command of {}", path, lender_path);
         return settle(CommandSource::Inferred);
     }

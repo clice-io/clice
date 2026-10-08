@@ -53,7 +53,7 @@ Resolution results for angle-bracket includes (e.g., `<vector>`) can be cached a
 
 Rather than processing all files at once, scanning unfolds in waves:
 
-- **Wave 0**: Scan all source files in the compilation database (parallel I/O + lexical scanning), and resolve each command's forced includes (`-include`) the way the compiler does -- the compile's working directory first, then the search paths as for a quoted include
+- **Wave 0**: Scan every translation unit of the build (parallel I/O + lexical scanning) — the database's entries, the sources rules claim and the provisional members (see [Command Resolution](command-resolve.md#build)) — and resolve each command's forced includes (`-include`) the way the compiler does -- the compile's working directory first, then the search paths as for a quoted include
 - **Path resolution**: Map discovered include names to file paths, identifying newly discovered headers
 - **Wave 1**: Scan the newly discovered headers, discovering their includes...
 - Repeat until no new files are found
@@ -111,7 +111,7 @@ One of the core uses of dependency scanning is finding host source files for hea
 
 1. Starting from the target header, traverse upward via the reverse include index
 2. Find all root files that transitively include the target header (files not included by any other file)
-3. Filter for source files that have compilation commands in the CDB as candidate hosts
+3. Filter for the build's translation units as candidate hosts
 4. Select the first candidate host whose compile enters the header as the default host
 
 Where the candidate's include tree is known — from its index entry, or from preprocessing it in the editor — it tells where the compile enters the header and through which files; otherwise BFS over the lexical graph finds the shortest include chain. The compilation context system then uses that chain to synthesize the header's compilation environment.
