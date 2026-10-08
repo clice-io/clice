@@ -500,6 +500,30 @@ test("preamble import keeps its pch", async ({ session }) => {
     expect(stderr()).not.toContain("blamed PCH pair");
 });
 
+/// A preamble import that resolves to nothing gets its module once a
+/// provider appears.
+test("preamble import finds a provider", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("a.cppm", "int placeholder;\n");
+    workspace.write("deps.h", "import A;\n");
+    workspace.write("main.cpp", '#include "deps.h"\nint main() { return a(); }\n');
+    workspace.writeEntries(
+        [
+            ["a.cppm", []],
+            ["main.cpp", []],
+        ],
+        { std: "c++20" },
+    );
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(uri);
+
+    workspace.write("a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    client.save(workspace.uri("a.cppm"));
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+});
+
 /// A PCH would lose the imports of a module unit's global module fragment;
 /// a fragment that only includes keeps its PCH.
 test("fragment import skips the pch", async ({ session }) => {
