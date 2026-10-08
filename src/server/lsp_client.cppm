@@ -104,7 +104,7 @@ private:
 
     /// The client takes inlay hint labels in parts (LSP 3.17
     /// textDocument.inlayHint): the names in them link to their symbols.
-    bool inlay_hint_parts = false;
+    bool label_parts = false;
 
     /// The client pulls diagnostics (the textDocument.diagnostic
     /// capability): an open document's are answered to its pulls and never

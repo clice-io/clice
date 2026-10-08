@@ -1304,10 +1304,8 @@ auto inlay_hints_to_protocol(
         if(linked && locate) {
             std::vector<protocol::InlayHintLabelPart> parts;
             for(const auto& part: hint.label) {
-                auto& piece = parts.emplace_back(protocol::InlayHintLabelPart{.value = part.value});
-                if(part.symbol) {
-                    piece.location = locate(part);
-                }
+                parts.push_back(
+                    {.value = part.value, .location = part.symbol ? locate(part) : std::nullopt});
             }
             out.label = std::move(parts);
         } else {

@@ -291,8 +291,8 @@ void LSPClient::register_lifecycle() {
         pull_diagnostics = params.capabilities.text_document.has_value() &&
                            params.capabilities.text_document->diagnostic.has_value();
 
-        inlay_hint_parts = params.capabilities.text_document.has_value() &&
-                           params.capabilities.text_document->inlay_hint.has_value();
+        label_parts = params.capabilities.text_document.has_value() &&
+                      params.capabilities.text_document->inlay_hint.has_value();
 
         if(params.capabilities.text_document.has_value() &&
            params.capabilities.text_document->folding_range.has_value()) {
@@ -708,7 +708,7 @@ void LSPClient::register_language_features() {
             return holding(project,
                            project->features.inlay_hints(Ticket::take(session),
                                                          params.range,
-                                                         inlay_hint_parts,
+                                                         label_parts,
                                                          ctx.cancellation));
         });
 
