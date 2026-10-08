@@ -76,3 +76,15 @@ test("parts resolved lazily", async ({ session }) => {
     const resolved = await client.sendRequest(proto.InlayHintResolveRequest.type, hints[0]!);
     expectWidgetDeclaration(parts(resolved)[1]!);
 });
+
+test("malformed resolve data", async ({ session }) => {
+    const { client, hints } = await hintsFor(session, {
+        textDocument: { inlayHint: { resolveSupport: { properties: ["label.location"] } } },
+    });
+    const tampered = structuredClone(hints[0]!);
+    const data = tampered.data as { parts: ({ anchor?: string } | null)[] };
+    data.parts[1]!.anchor = "widget.h";
+
+    const resolved = await client.sendRequest(proto.InlayHintResolveRequest.type, tampered);
+    expect(parts(resolved)[1]!.location).toBeUndefined();
+});

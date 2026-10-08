@@ -354,11 +354,16 @@ auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clan
     };
 
     if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declarator)) {
-        /// `operator auto()` spells its placeholder in the name.
-        auto returned = llvm::isa<clang::CXXConversionDecl>(function)
-                            ? function->getNameInfo().getNamedTypeInfo()->getTypeLoc()
-                            : function->getFunctionTypeLoc().getReturnLoc();
-        return declares(returned) ? deduced_return_type(function) : clang::QualType();
+        /// `operator auto()` spells its placeholder in the name; a function
+        /// declared through an alias (`id<decltype(auto(0))()> f;`) has no
+        /// return type of its own written.
+        clang::TypeLoc returned;
+        if(llvm::isa<clang::CXXConversionDecl>(function)) {
+            returned = function->getNameInfo().getNamedTypeInfo()->getTypeLoc();
+        } else if(auto proto = function->getFunctionTypeLoc()) {
+            returned = proto.getReturnLoc();
+        }
+        return returned && declares(returned) ? deduced_return_type(function) : clang::QualType();
     }
 
     if(!declares(declared)) {

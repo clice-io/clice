@@ -133,9 +133,8 @@ struct SpelledNames {
         } else if(auto* tag = llvm::dyn_cast<clang::TagType>(T)) {
             tag_type(tag);
         } else if(auto* TST = llvm::dyn_cast<clang::TemplateSpecializationType>(T)) {
-            auto name = TST->getTemplateName();
-            qualifier(name.getQualifier());
-            if(auto* decl = name.getAsTemplateDecl()) {
+            // Its written qualifier does not print: scopes are suppressed.
+            if(auto* decl = TST->getTemplateName().getAsTemplateDecl()) {
                 add(decl, types::decl_of(type));
             }
             arguments(TST->template_arguments());
@@ -170,6 +169,13 @@ struct SpelledNames {
         }
     }
 
+    /// A qualifier's types print before the name; namespaces get no link.
+    void qualifier(clang::NestedNameSpecifier qualifier) {
+        if(qualifier.getKind() == clang::NestedNameSpecifier::Kind::Type) {
+            walk(clang::QualType(qualifier.getAsType(), 0));
+        }
+    }
+
 private:
     void tag_type(const clang::TagType* tag) {
         const auto* decl = tag->getDecl();
@@ -199,13 +205,6 @@ private:
             } else {
                 arguments(spec->getTemplateArgs().asArray());
             }
-        }
-    }
-
-    /// A qualifier's types print before the name; namespaces get no link.
-    void qualifier(clang::NestedNameSpecifier qualifier) {
-        if(qualifier.getKind() == clang::NestedNameSpecifier::Kind::Type) {
-            walk(clang::QualType(qualifier.getAsType(), 0));
         }
     }
 
@@ -688,6 +687,7 @@ private:
     /// wrote for a declaration links to it, the rest stays plain.
     std::vector<InlayHintPart> type_label(clang::QualType type, llvm::StringRef text) {
         SpelledNames spelled;
+        spelled.qualifier(display::restored_scope(type, display_options));
         spelled.walk(type);
         std::vector<InlayHintPart> label;
         std::size_t cursor = 0;
@@ -817,7 +817,10 @@ private:
                 auto index = designator.take_until([](char c) { return c == ']'; });
                 designator = designator.drop_front(index.size() + 1);
                 append(label, plain(("[" + index + "]").str()));
-                const auto* array = aggregate->getAsArrayTypeUnsafe();
+                // The lone member array of `std::array` stays undesignated:
+                // `[i]` then indexes the record itself.
+                const auto* array =
+                    aggregate.isNull() ? nullptr : aggregate->getAsArrayTypeUnsafe();
                 aggregate = array ? array->getElementType() : clang::QualType();
                 continue;
             }

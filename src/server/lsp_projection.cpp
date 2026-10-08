@@ -160,8 +160,12 @@ std::optional<InlayHintData> parse_inlay_hint_data(const std::optional<protocol:
            llvm::StringRef(*symbol->get_string()).getAsInteger(10, piece.symbol)) {
             return std::nullopt;
         }
-        if(const auto* anchor = target->find("anchor"); anchor && anchor->get_string()) {
-            piece.anchor = *anchor->get_string();
+        if(const auto* anchor = target->find("anchor")) {
+            auto path = anchor->get_string();
+            if(!path || !llvm::sys::path::is_absolute(*path)) {
+                return std::nullopt;
+            }
+            piece.anchor = *path;
         }
     }
     return result;

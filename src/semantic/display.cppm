@@ -134,6 +134,15 @@ auto local_scope(const clang::Decl* decl) -> std::string;
 /// namespace.
 auto namespace_scope(const clang::Decl* decl) -> std::string;
 
+/// The class scope type() writes back in front of `type` when the options
+/// suppress scopes. Class scopes carry meaning, but SuppressScope also drops
+/// two of them: the computed scope of a canonical tag (a deduced `auto`
+/// prints as its deduced, canonical type) and the written qualifier of a
+/// template-id. Every other node (typedefs, dependent names, written tag
+/// types) prints its written qualifier regardless of the policy — restoring
+/// theirs would duplicate it. Null when nothing is restored.
+auto restored_scope(clang::QualType type, const Options& options) -> clang::NestedNameSpecifier;
+
 /// Pretty-print a type, applying the option-gated quirks and the optional
 /// aka form.
 auto type(clang::ASTContext& context, clang::QualType type, const Options& options = {}) -> Type;
