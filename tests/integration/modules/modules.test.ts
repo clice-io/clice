@@ -7,6 +7,7 @@ import {
     locationsOf,
     MTIME_GRANULARITY,
     sleep,
+    waitUntil,
     withTimeout,
     type CliceClient,
 } from "@clice/tools/client";
@@ -482,11 +483,12 @@ test("preamble import keeps its pch", async ({ session }) => {
 
     const [uri] = await client.openAndWait("main.cpp");
     client.assertCleanCompile(uri);
+    await client.completionAt(uri, 1, 0);
     expect(builds()).toBe(1);
 
     workspace.write(
         "a.cppm",
-        "export module A;\nexport int a() { return 1; }\nexport int b() { return 2; }\n",
+        "export module A;\nexport int b() { return 2; }\nexport int a() { return 1; }\n",
     );
     client.save(workspace.uri("a.cppm"));
     await client.waitForRecompile(uri);
@@ -495,30 +497,45 @@ test("preamble import keeps its pch", async ({ session }) => {
     client.assertCleanCompile(uri);
     expect(builds()).toBe(2);
     expect(stderr()).not.toContain("PCH build failed");
+    expect(stderr()).not.toContain("blamed PCH pair");
 });
 
-/// A PCH would lose the imports of a module unit's global module fragment.
+/// A PCH would lose the imports of a module unit's global module fragment;
+/// a fragment that only includes keeps its PCH.
 test("fragment import skips the pch", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("a.cppm", "export module A;\nexport int a() { return 1; }\n");
     workspace.write("deps.h", "import A;\n");
+    workspace.write("plain.h", "inline int plain() { return 2; }\n");
     workspace.write(
         "m.cppm",
         'module;\n#include "deps.h"\nexport module M;\nexport int m() { return a(); }\n',
+    );
+    workspace.write(
+        "n.cppm",
+        'module;\n#include "plain.h"\nexport module N;\nexport int n() { return plain(); }\n',
     );
     workspace.writeEntries(
         [
             ["a.cppm", []],
             ["m.cppm", []],
+            ["n.cppm", []],
         ],
         { std: "c++20" },
     );
     await client.initialize(workspace);
-    const [uri] = await client.openAndWait("m.cppm");
-    client.assertCleanCompile(uri);
-    const stderr = client.drainedStderr().toString("utf8");
-    expect(stderr).not.toContain("PCH built for");
-    expect(stderr).not.toContain("PCH build failed");
+    const stderr = () => client.drainedStderr().toString("utf8");
+    const [m] = await client.openAndWait("m.cppm");
+    client.assertCleanCompile(m);
+    const [n] = await client.openAndWait("n.cppm");
+    client.assertCleanCompile(n);
+    await waitUntil(() => /PCH built for \S*n\.cppm/.test(stderr()), {
+        timeout: 10_000,
+        interval: 100,
+        description: "the plain fragment's PCH",
+    });
+    expect(stderr().split("PCH built for").length - 1).toBe(1);
+    expect(stderr()).not.toContain("PCH build failed");
 });
 
 /// A module whose own import is missing breaks its importers' import too.

@@ -54,6 +54,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
     bool may_import = dep_graph.reaches_import(path_id) ||
                       (resolution.host.valid() && dep_graph.reaches_import(resolution.host));
     std::uint64_t directives = 0;
+    std::uint32_t bound = 0;
     if(content) {
         // Directives the scan never saw may include anything, so past the
         // graph only a project without module syntax is sure.
@@ -62,6 +63,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
             lexical.has_module_syntax() || (dep_graph.has_import_candidates() &&
                                             !dep_graph.scanned(path_id, lexical.directives_hash));
         directives = lexical.directives_hash;
+        bound = compute_preamble_bound(*content);
     }
     if(!may_import) {
         co_return ModuleDeps{};
@@ -78,7 +80,8 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
     ScanMemo scan;
     auto memo = content ? scan_memos.find(path_id) : scan_memos.end();
     if(memo != scan_memos.end() && memo->second.directives == directives &&
-       memo->second.arguments == arguments_hash && memo->second.epoch == epoch) {
+       memo->second.bound == bound && memo->second.arguments == arguments_hash &&
+       memo->second.epoch == epoch) {
         scan = memo->second;
     } else {
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs;
@@ -98,6 +101,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
         auto scanned = co_await kota::queue(
             [&] { return scan_precise(arguments, directory, content, nullptr, std::move(vfs)); });
         scan = {.directives = directives,
+                .bound = bound,
                 .arguments = arguments_hash,
                 .epoch = epoch,
                 .imports = std::move(scanned.modules),

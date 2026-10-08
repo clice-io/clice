@@ -246,9 +246,9 @@ public:
                 }
             }
         }
-        // A PCH records where the preprocessor made each import visible,
-        // and its reader drops the imports with no such place: Sema alone
-        // makes a C++20 import visible.
+        // The PCH writer stores each import with the location where the
+        // preprocessor made its module visible, and the reader skips the
+        // imports without one; a C++20 import is made visible by Sema alone.
         if(unit->kind == CompilationKind::Preamble) {
             auto& pp = unit->instance->getPreprocessor();
             for(auto* import: context.local_imports()) {

@@ -287,13 +287,12 @@ public:
         result.modules.emplace_back(std::move(name));
 
         std::uint32_t offset = 0;
-        for(location = sources.getExpansionLoc(location); location.isValid();) {
-            auto fid = sources.getFileID(location);
-            if(fid == sources.getMainFileID()) {
-                offset = sources.getFileOffset(location);
+        for(auto loc = sources.getExpansionLoc(location); loc.isValid();
+            loc = sources.getIncludeLoc(sources.getFileID(loc))) {
+            if(sources.getFileID(loc) == sources.getMainFileID()) {
+                offset = sources.getFileOffset(loc);
                 break;
             }
-            location = sources.getIncludeLoc(fid);
         }
         result.import_offsets.push_back(offset);
     }

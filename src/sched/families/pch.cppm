@@ -47,6 +47,9 @@ public:
         SynthesizedFiles synthesized;
         /// See worker::BuildPCHParams::pcms.
         std::unordered_map<std::string, std::string> pcms;
+        /// The built modules the preamble imports, whose inputs the PCH
+        /// depends on.
+        llvm::SmallVector<Fid> modules;
     };
 
     enum class Outcome : std::uint8_t {

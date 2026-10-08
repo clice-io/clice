@@ -220,7 +220,8 @@ struct BuildPCHParams {
     std::string content;
     uint32_t preamble_bound = UINT32_MAX;
 
-    /// PCMs the preamble's imports load (module name -> artifact path).
+    /// Every built module's PCM (module name -> artifact path), where the
+    /// preamble's imports load theirs from.
     std::unordered_map<std::string, std::string> pcms;
 
     /// Tmp path allocated by the master's store; the master commits

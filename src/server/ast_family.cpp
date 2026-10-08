@@ -155,28 +155,27 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // content — through the fragments it includes, the whole chain's — so
     // the key tracks prefix changes automatically.
 
-    // The PCMs that the preamble's imports resolve to, and those of the
-    // files the command line includes, are inputs of the PCH: a rebuilt
-    // PCM, or one that became available, keys a new PCH. A PCH loses the
-    // imports of a module unit's global module fragment: the module
-    // declaration past it takes the fragment for absent and hides what
-    // the fragment made visible. Such a preamble goes without one.
-    std::string modules;
-    bool imported = false;
+    // The modules imported by the preamble, or by a file the command line
+    // includes, are inputs of the PCH: it depends on what their PCMs were
+    // built from, and a module whose PCM becomes available or goes away
+    // keys a new PCH. A PCH loses the imports of a module unit's global
+    // module fragment: the module declaration past it takes the fragment
+    // for absent and hides what the fragment made visible. Such a
+    // preamble goes without one.
+    std::string available;
+    llvm::SmallVector<Fid> modules;
     for(auto [dep, offset]: llvm::zip_equal(imports.declared, imports.offsets)) {
         if(offset != 0 && offset >= bound) {
             continue;
         }
-        imported = true;
-        if(!PCMFamily::is_unresolved(dep)) {
-            auto it = project.pcm_cache.find(Fid{static_cast<std::uint32_t>(dep.key)});
-            if(it != project.pcm_cache.end()) {
-                modules += it->second.path;
-            }
+        auto module = Fid{static_cast<std::uint32_t>(dep.key)};
+        bool built = !PCMFamily::is_unresolved(dep) && project.pcm_cache.contains(module);
+        available.push_back(built ? '1' : '0');
+        if(built) {
+            modules.push_back(module);
         }
-        modules.push_back('\0');
     }
-    if(imported && imports.module_unit) {
+    if(!available.empty() && imports.module_unit) {
         LOG_DEBUG("No PCH for {}: its global module fragment imports", path);
         return {};
     }
@@ -200,7 +199,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                               path::parent_path(path),
                               preamble_text,
                               canonicalize(arguments, ArgsProfile::Frontend),
-                              modules});
+                              available});
     // The text first: freshness checks every dependency of the key.
     if(!is_preamble_complete(text, bound) && !pch.fresh(pch_key)) {
         // Preamble incomplete (user still typing) and nothing fresh to
@@ -229,8 +228,9 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                       .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
                       },
     };
-    if(imported) {
+    if(!available.empty()) {
         project.fill_pcm_deps(plan.request.pcms, path_id);
+        plan.request.modules = std::move(modules);
     }
     return plan;
 }
@@ -830,7 +830,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                  synthesized,
                                  *imports);
             switch(plan.verdict) {
-                // No preamble left to crash on.
+                // No PCH build left to crash on.
                 case PCHPlan::Verdict::None: session->quarantine->on_land(pch_kind); break;
                 case PCHPlan::Verdict::Defer: adopted_pch = plan.previous; break;
                 case PCHPlan::Verdict::Acquire: {

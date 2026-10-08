@@ -232,8 +232,9 @@ private:
     bool is_stale(const Session& session);
 
     /// What a buffer state owes the PCH family: nothing (an empty
-    /// preamble with no injected prefix — a previously adopted key must
-    /// be cleared), a deferral (the preamble is mid-edit and nothing
+    /// preamble with no injected prefix, or a module unit's global module
+    /// fragment that imports — a previously adopted key must be cleared),
+    /// a deferral (the preamble is mid-edit and nothing
     /// fresh exists under its key: keep `previous`, the last adopted key,
     /// while its artifact is still built), or the acquisition of
     /// `request`.

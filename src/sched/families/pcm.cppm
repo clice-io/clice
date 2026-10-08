@@ -41,7 +41,7 @@ public:
 
         /// Where each of `declared` is imported (see
         /// ScanResult::import_offsets); an implementation unit's import of
-        /// its own module comes past the end.
+        /// its own module sits at UINT32_MAX, past any preamble.
         llvm::SmallVector<std::uint32_t, 8> offsets;
 
         /// The unit declares a module.
@@ -56,7 +56,7 @@ public:
     /// dependency can itself evict another clean module's PCM under budget
     /// pressure, which reopens the window the revalidation just closed —
     /// hence the bounded retry until the set is stable. None when a
-    /// dependency failed to build.
+    /// dependency did not build.
     kota::task<std::optional<ModuleDeps>> prepare_deps(Fid path_id,
                                                        const Resolution& resolution,
                                                        llvm::ArrayRef<const char*> arguments,
@@ -183,6 +183,10 @@ private:
     /// A buffer's last precise scan and what it ran against.
     struct ScanMemo {
         std::uint64_t directives = 0;
+        /// The preamble bound of the scanned text: the import offsets are
+        /// positions, which an edit moving the preamble without changing a
+        /// directive moves too.
+        std::uint32_t bound = 0;
         std::uint64_t arguments = 0;
         std::uint64_t epoch = 0;
         std::vector<std::string> imports;

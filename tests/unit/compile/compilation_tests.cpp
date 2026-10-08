@@ -17,6 +17,21 @@ namespace clice::testing {
 
 namespace {
 
+/// The C++20 command of `file` in `tmp`, added to `cdb` and rendered.
+std::vector<const char*> cxx20_command(CompilationDatabase& cdb,
+                                       const TempDir& tmp,
+                                       llvm::StringRef file) {
+    auto path = tmp.path(file);
+    cdb.add_command(tmp.root.str(), path, std::format("clang++ -std=c++20 {}", path));
+    auto& entry = cdb.candidate_entries(path).front();
+    CommandRef ref{entry.file,
+                   entry.config,
+                   cdb.input_kind(entry.config, path),
+                   CommandSource::CDBExact};
+    ZEXPECT(cdb.toolchain().resolve(ref.config, ref.input));
+    return cdb.render(ref);
+}
+
 ZEST_SUITE(Compiler, Tester) {
 
 ZEST_CASE(TopLevelDecls) {
@@ -394,24 +409,10 @@ export int a_value() { return b_value() + 1; }
     FileTable file_table;
     CompilationDatabase cdb{file_table};
 
-    auto render_entry = [&](llvm::StringRef file) {
-        auto& entry = cdb.candidate_entries(file).front();
-        CommandRef ref{entry.file,
-                       entry.config,
-                       cdb.input_kind(entry.config, file),
-                       CommandSource::CDBExact};
-        ZEXPECT(cdb.toolchain().resolve(ref.config, ref.input));
-        return cdb.render(ref);
-    };
-
     // Build PCM for mod_b.
-    cdb.add_command(tmp.root.str(),
-                    tmp.path("mod_b.cppm"),
-                    std::format("clang++ -std=c++20 {}", tmp.path("mod_b.cppm")));
-
     CompilationParams params_b;
     params_b.kind = CompilationKind::ModuleInterface;
-    params_b.arguments = render_entry(tmp.path("mod_b.cppm"));
+    params_b.arguments = cxx20_command(cdb, tmp, "mod_b.cppm");
 
     auto pcm_b_path = vfs::temp_file("mod_b", "pcm");
     ZASSERT(pcm_b_path.operator bool());
@@ -423,13 +424,9 @@ export int a_value() { return b_value() + 1; }
     ZASSERT(info_b.path == *pcm_b_path);
 
     // Build PCM for mod_a, passing B's PCM.
-    cdb.add_command(tmp.root.str(),
-                    tmp.path("mod_a.cppm"),
-                    std::format("clang++ -std=c++20 {}", tmp.path("mod_a.cppm")));
-
     CompilationParams params_a;
     params_a.kind = CompilationKind::ModuleInterface;
-    params_a.arguments = render_entry(tmp.path("mod_a.cppm"));
+    params_a.arguments = cxx20_command(cdb, tmp, "mod_a.cppm");
     params_a.pcms.try_emplace("mod_b", info_b.path);
 
     auto pcm_a_path = vfs::temp_file("mod_a", "pcm");
@@ -458,20 +455,10 @@ ZEST_CASE(PCHKeepsModuleImports) {
 
     FileTable file_table;
     CompilationDatabase cdb{file_table};
-    auto render_entry = [&](llvm::StringRef file) {
-        cdb.add_command(tmp.root.str(), file, std::format("clang++ -std=c++20 {}", file));
-        auto& entry = cdb.candidate_entries(file).front();
-        CommandRef ref{entry.file,
-                       entry.config,
-                       cdb.input_kind(entry.config, file),
-                       CommandSource::CDBExact};
-        ZEXPECT(cdb.toolchain().resolve(ref.config, ref.input));
-        return cdb.render(ref);
-    };
 
     CompilationParams module_params;
     module_params.kind = CompilationKind::ModuleInterface;
-    module_params.arguments = render_entry(tmp.path("b.cppm"));
+    module_params.arguments = cxx20_command(cdb, tmp, "b.cppm");
     auto pcm_path = vfs::temp_file("b", "pcm");
     ZASSERT(pcm_path.operator bool());
     module_params.output_file = *pcm_path;
@@ -480,7 +467,7 @@ ZEST_CASE(PCHKeepsModuleImports) {
 
     CompilationParams params;
     params.kind = CompilationKind::Preamble;
-    params.arguments = render_entry(tmp.path("main.cpp"));
+    params.arguments = cxx20_command(cdb, tmp, "main.cpp");
     params.pcms.try_emplace("B", *pcm_path);
     auto pch_path = vfs::temp_file("clice-test", "pch");
     ZASSERT(pch_path.operator bool());
@@ -490,9 +477,11 @@ ZEST_CASE(PCHKeepsModuleImports) {
     PCHInfo pch_info;
     ZASSERT(clice::compile(params, pch_info).completed());
 
+    // The PCH build moved the PCM paths out of the params.
     params.kind = CompilationKind::Content;
     params.output_file.clear();
     params.pch = {*pch_path, bound};
+    params.pcms["B"] = *pcm_path;
     params.buffers.clear();
     auto unit = clice::compile(params);
     ZASSERT(unit.completed());
