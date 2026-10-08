@@ -664,6 +664,8 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
         co_return to_raw(feature::inlay_hints_to_protocol(hints, session->position_map()));
     }
     auto uri = feature::to_uri(project.file_table.display(session->path_id));
+    // A reply names the same few types and parameters over and over.
+    llvm::DenseMap<std::pair<index::SymbolHash, Fid>, std::optional<protocol::Location>> located;
     auto link = [&](const feature::InlayHint& hint, protocol::InlayHint& out) {
         if(labels == InlayHintLabels::Deferred) {
             out.data = to_lsp::inlay_hint_data(uri, hint.label);
@@ -671,10 +673,15 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
         }
         auto& parts = std::get<std::vector<protocol::InlayHintLabelPart>>(out.label);
         for(auto [part, piece]: llvm::zip_equal(parts, hint.label)) {
-            if(piece.symbol) {
-                part.location = link_location(piece.symbol,
-                                              anchor_of(project.file_table, piece, session->path_id));
+            if(!piece.symbol) {
+                continue;
             }
+            auto anchor = anchor_of(project.file_table, piece, session->path_id);
+            auto [it, inserted] = located.try_emplace({piece.symbol, anchor});
+            if(inserted) {
+                it->second = link_location(piece.symbol, anchor);
+            }
+            part.location = it->second;
         }
     };
     co_return to_raw(feature::inlay_hints_to_protocol(hints, session->position_map(), link));

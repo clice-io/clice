@@ -1,4 +1,4 @@
-/// # `auto` deduced as templates and aliases
+/// # Deduced templates and aliases
 ///
 /// - status: supported
 /// - verify: server

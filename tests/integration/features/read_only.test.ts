@@ -98,6 +98,30 @@ test("index serves unedited reads", async ({ session }) => {
     expect(ws.pchFiles()).toEqual([]);
 });
 
+test("index navigates from auto", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("widget.h", "#pragma once\nstruct Widget {};\nWidget make();\n");
+    ws.write("main.cpp", '#include "widget.h"\n\nvoid use() {\n    auto widget = make();\n}\n');
+    ws.writeCDB(["main.cpp"]);
+    ws.pinCacheDir();
+    const client = session.spawn(ws);
+    await client.initialize(ws, { initializationOptions: AUTO });
+
+    const [uri] = client.open("main.cpp");
+    expect(await client.waitForIndex(uri, "use")).toBe(true);
+
+    // `auto` on line 3 stands for `Widget`, defined on line 1 of the header.
+    for (const located of [
+        await client.definitionAt(uri, 3, 5),
+        await client.typeDefinitionAt(uri, 3, 5),
+    ]) {
+        const [site] = (located ?? []) as proto.Location[];
+        expect(site?.uri.endsWith("widget.h")).toBe(true);
+        expect(site?.range.start).toEqual({ line: 1, character: 7 });
+    }
+    expect(ws.pchFiles()).toEqual([]);
+});
+
 test("oversized buffer keeps row answers", async ({ session }) => {
     const ws = session.tmpdir();
     // Past the 8 MiB full-lex cap only semantic tokens and folds follow
