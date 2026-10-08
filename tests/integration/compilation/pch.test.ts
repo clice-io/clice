@@ -1,7 +1,7 @@
 /// Integration tests for PCH (precompiled header) functionality in MasterServer.
 
 import * as fs from "node:fs";
-import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY, sleep, waitUntil } from "@clice/tools/client";
 import { cliceTest, expect, test as sessionTest } from "../fixtures.ts";
 
 const test = cliceTest("pch_test");
@@ -44,6 +44,12 @@ sessionTest("pch with errors waits for its inputs", async ({ session }) => {
     workspace.write("generated.h", "#pragma once\ninline int generated() { return 1; }\n");
     await client.waitForRecompile(uri);
     client.assertCleanCompile(uri);
+    await waitUntil(() => builds() >= 2, {
+        timeout: 10_000,
+        interval: 100,
+        description: "the rebuilt PCH",
+    });
+    expect(builds()).toBe(2);
 });
 
 /// A header that shows up in a search directory missing at the build is no
