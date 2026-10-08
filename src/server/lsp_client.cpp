@@ -709,18 +709,18 @@ void LSPClient::register_language_features() {
                        project->features.semantic_tokens(Ticket::take(session), ctx.cancellation));
     });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::InlayHintParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
-        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
-        if(!session)
-            return kota::outcome_error(unserved(path));
-        return holding(project,
-                       project->features.inlay_hints(Ticket::take(session),
-                                                     params.range,
-                                                     inlay_hint_labels,
-                                                     ctx.cancellation));
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::InlayHintParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            if(!session)
+                return kota::outcome_error(unserved(path));
+            return holding(project,
+                           project->features.inlay_hints(Ticket::take(session),
+                                                         params.range,
+                                                         inlay_hint_labels,
+                                                         ctx.cancellation));
+        });
 
     peer.on_request([this](RequestContext& ctx, const protocol::InlayHint& hint) -> RawResult {
         this->server.pool.foreground_pulse();

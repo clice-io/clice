@@ -424,17 +424,17 @@ void StatefulWorker::register_handlers() {
     });
 
     // === InlayHint ===
-    peer.on_request([this](RequestContext& ctx, const worker::InlayHintParams& params)
-                        -> RequestResult<worker::InlayHintParams> {
-        return with_ast_or("InlayHint",
-                           params,
-                           std::vector<feature::InlayHint>{},
-                           [&](DocumentEntry& doc) {
-                               return feature::inlay_hints(doc.unit,
-                                                           params.range,
-                                                           params.config.inlay_hints);
-                           });
-    });
+    peer.on_request(
+        [this](RequestContext& ctx,
+               const worker::InlayHintParams& params) -> RequestResult<worker::InlayHintParams> {
+            return with_ast_or(
+                "InlayHint",
+                params,
+                std::vector<feature::InlayHint>{},
+                [&](DocumentEntry& doc) {
+                    return feature::inlay_hints(doc.unit, params.range, params.config.inlay_hints);
+                });
+        });
 
     // === Evict ===
     peer.on_notification([this](const worker::EvictParams& params) {

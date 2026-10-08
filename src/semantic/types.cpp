@@ -295,12 +295,12 @@ auto deduced_param_type(const clang::ParmVarDecl* param, clang::TemplateTypeParm
 }  // namespace
 
 auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clang::QualType {
-    /// A DecltypeType's underlying type can be another DecltypeType! E.g.
-    ///   int I = 0;
-    ///   decltype(I) J = I;
-    ///   decltype(J) K = J;
     if(const auto* loc = written.get<clang::TypeLoc>()) {
         if(auto decltype_loc = loc->getAs<clang::DecltypeTypeLoc>()) {
+            /// A DecltypeType's underlying type can be another DecltypeType! E.g.
+            ///   int I = 0;
+            ///   decltype(I) J = I;
+            ///   decltype(J) K = J;
             clang::QualType deduced;
             const auto* type = decltype_loc.getTypePtr();
             while(type && !type->getUnderlyingType().isNull()) {
@@ -320,8 +320,8 @@ auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clan
     /// itself.
     if(written.get<clang::Decl>() == owner) {
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(owner);
-        const auto* proto = function ? function->getType()->getAs<clang::FunctionProtoType>()
-                                     : nullptr;
+        const auto* proto =
+            function ? function->getType()->getAs<clang::FunctionProtoType>() : nullptr;
         return proto && proto->hasTrailingReturn() ? deduced_return_type(function)
                                                    : clang::QualType();
     }
@@ -346,26 +346,23 @@ auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clan
     if(!auto_loc) {
         return {};
     }
+    /// The placeholder of `owner`'s own type, not one below it (`new auto`
+    /// in an initializer or a body).
+    auto declares = [&](clang::TypeLoc type) {
+        auto contained = type.getContainedAutoTypeLoc();
+        return contained && contained.getNameLoc() == auto_loc.getNameLoc();
+    };
 
     if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declarator)) {
         /// `operator auto()` spells its placeholder in the name.
-        auto returned = function->getFunctionTypeLoc().getReturnLoc();
-        if(llvm::isa<clang::CXXConversionDecl>(function)) {
-            returned = function->getNameInfo().getNamedTypeInfo()->getTypeLoc();
-        }
-        if(returned.getContainedAutoTypeLoc().getNameLoc() != auto_loc.getNameLoc()) {
-            return {};
-        }
-        return deduced_return_type(function);
+        auto returned = llvm::isa<clang::CXXConversionDecl>(function)
+                            ? function->getNameInfo().getNamedTypeInfo()->getTypeLoc()
+                            : function->getFunctionTypeLoc().getReturnLoc();
+        return declares(returned) ? deduced_return_type(function) : clang::QualType();
     }
 
-    if(declared.getContainedAutoTypeLoc().getNameLoc() != auto_loc.getNameLoc()) {
-        return {};
-    }
-    if(const auto* type = declarator->getType()->getContainedAutoType()) {
-        return type->desugar();
-    }
-    return {};
+    return declares(declared) ? declarator->getType()->getContainedAutoType()->desugar()
+                              : clang::QualType();
 }
 
 }  // namespace clice::types

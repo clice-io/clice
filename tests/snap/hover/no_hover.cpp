@@ -4,6 +4,8 @@
 
 void empty_body() {§(02_empty_braces)}
 
+int* allocated = new au§(03_new_auto)to(1);
+
 auto generic = [](a§(04_lambda_auto_param)uto value) {};
 
 §(05_static_assert)static_assert(true, "valid");

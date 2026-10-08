@@ -957,7 +957,6 @@ public:
                 keyword = function->getTypeSpecStartLoc();
             }
         }
-        // An init-capture's `auto` is implicit, at the captured name.
         if(keyword.isInvalid() || entry.flags.in_instantiation) {
             return;
         }
@@ -965,6 +964,7 @@ public:
         if(location != unit.spelling_location(keyword.getBegin())) {
             return;
         }
+        // An init-capture's `auto` is implicit, at the captured name.
         auto spelling = unit.token_spelling(location);
         if(spelling != "auto" && spelling != "decltype") {
             return;

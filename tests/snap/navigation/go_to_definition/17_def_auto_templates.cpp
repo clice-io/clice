@@ -7,7 +7,8 @@
 /// the explicit or partial specialization it selects; one deduced through an
 /// alias reaches the alias
 ///
-/// A builtin type or a lambda's closure type has no declaration to reach.
+/// A builtin type or a lambda's closure type has no declaration to reach, and
+/// the `auto` of a `new` expression navigates nowhere.
 
 template <typename T>
 struct Box {};
@@ -32,4 +33,5 @@ void use() {
     au§(alias)to handle = make_handle();
     au§(builtin)to count = 1;
     au§(closure)to callback = [] {};
+    Box<int>* allocated = new au§(new_expression)to(make_box());
 }

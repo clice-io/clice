@@ -207,8 +207,9 @@ struct RawInlayHint {
 std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
                                                      LocalSourceRange range,
                                                      llvm::StringRef config) {
-    auto hints =
-        feature::inlay_hints(unit, range, *parse_feature_config<feature::InlayHintsOptions>(config));
+    auto hints = feature::inlay_hints(unit,
+                                      range,
+                                      *parse_feature_config<feature::InlayHintsOptions>(config));
 
     std::string envelope;
     index::TUIndex tu;

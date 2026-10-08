@@ -117,7 +117,7 @@ function adaptReply(hints: proto.InlayHint[], root: string): HintEntry[] {
 /// does.
 async function resolved(client: CliceClient, hints: proto.InlayHint[] | null) {
     return Promise.all(
-        (hints ?? []).map((hint) =>
+        (hints ?? []).map(async (hint) =>
             hint.data === undefined
                 ? hint
                 : client.sendRequest(proto.InlayHintResolveRequest.type, hint),

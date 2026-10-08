@@ -697,23 +697,25 @@ Features::RawResult Features::resolve_inlay_hint(protocol::InlayHint hint) {
     auto path_id = document ? project.file_table.intern(*document) : Fid();
     for(auto [part, piece]: llvm::zip_equal(*parts, data->label)) {
         if(piece.symbol) {
-            part.location = link_location(piece.symbol, anchor_of(project.file_table, piece, path_id));
+            part.location =
+                link_location(piece.symbol, anchor_of(project.file_table, piece, path_id));
         }
     }
     co_return to_raw(hint);
 }
 
 std::optional<protocol::Location> Features::link_location(index::SymbolHash symbol, Fid anchor) {
-    auto sites = gather(symbol, anchor, [&](const index::IndexQuery& from, index::SymbolHash named) {
-        std::vector<index::Site> found;
-        for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
-            if(auto site = from.first_site(named, anchor, kind)) {
-                found.push_back(std::move(*site));
-                break;
+    auto sites =
+        gather(symbol, anchor, [&](const index::IndexQuery& from, index::SymbolHash named) {
+            std::vector<index::Site> found;
+            for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
+                if(auto site = from.first_site(named, anchor, kind)) {
+                    found.push_back(std::move(*site));
+                    break;
+                }
             }
-        }
-        return found;
-    });
+            return found;
+        });
     if(sites.empty()) {
         return std::nullopt;
     }

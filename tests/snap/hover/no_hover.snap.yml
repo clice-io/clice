@@ -6,6 +6,8 @@ input_file: no_hover.cpp
 
 02_empty_braces: NO HOVER
 
+03_new_auto: NO HOVER
+
 04_lambda_auto_param: NO HOVER
 
 05_static_assert: NO HOVER

@@ -648,7 +648,7 @@ private:
 
     /// The parameter of the written function an instantiated one stands
     /// for: an instantiation's declarations have no rows of their own.
-    static const clang::ParmVarDecl* written_param(const clang::ParmVarDecl* param) {
+    const static clang::ParmVarDecl* written_param(const clang::ParmVarDecl* param) {
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext());
         const auto* pattern = function ? function->getTemplateInstantiationPattern() : nullptr;
         if(!pattern) {
@@ -1283,10 +1283,9 @@ auto inlay_hints(CompilationUnitRef unit, LocalSourceRange target, const InlayHi
     return raw_hints;
 }
 
-auto inlay_hints_to_protocol(
-    llvm::ArrayRef<InlayHint> hints,
-    const PositionMap& map,
-    llvm::function_ref<void(const InlayHint&, protocol::InlayHint&)> link)
+auto inlay_hints_to_protocol(llvm::ArrayRef<InlayHint> hints,
+                             const PositionMap& map,
+                             llvm::function_ref<void(const InlayHint&, protocol::InlayHint&)> link)
     -> std::vector<protocol::InlayHint> {
     std::vector<protocol::InlayHint> result;
     result.reserve(hints.size());
@@ -1297,9 +1296,8 @@ auto inlay_hints_to_protocol(
             continue;
         protocol::InlayHint out{.position = *pos};
 
-        bool linked = llvm::any_of(hint.label, [](const InlayHintPart& part) {
-            return part.symbol != 0;
-        });
+        bool linked =
+            llvm::any_of(hint.label, [](const InlayHintPart& part) { return part.symbol != 0; });
         if(linked && link) {
             std::vector<protocol::InlayHintLabelPart> parts;
             for(const auto& part: hint.label) {

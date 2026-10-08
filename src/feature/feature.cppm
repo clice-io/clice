@@ -441,11 +441,10 @@ auto inlay_hints(CompilationUnitRef unit,
 /// naming a symbol keeps its pieces when `link` completes them — with the
 /// locations the client navigates by, or what resolving them later takes;
 /// without it, and for every other label, the label is one string.
-auto inlay_hints_to_protocol(
-    llvm::ArrayRef<InlayHint> hints,
-    const PositionMap& map,
-    llvm::function_ref<void(const InlayHint&, protocol::InlayHint&)> link = nullptr)
-    -> std::vector<protocol::InlayHint>;
+auto inlay_hints_to_protocol(llvm::ArrayRef<InlayHint> hints,
+                             const PositionMap& map,
+                             llvm::function_ref<void(const InlayHint&, protocol::InlayHint&)> link =
+                                 nullptr) -> std::vector<protocol::InlayHint>;
 
 /// Include-directive links of the main file, in byte offsets; the
 /// reply edge converts them with the session's line map.
