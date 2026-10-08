@@ -1347,6 +1347,7 @@ ZEST_CASE(StaleDepsNoAdopt) {
     TempDir tmp;
     tmp.touch("a.cpp", "");
     tmp.touch("dep.h", "int dep();\n");
+    tmp.touch("broken.pcm", "not a module file");
     auto src = tmp.path("a.cpp");
 
     Stack stack;
@@ -1363,7 +1364,8 @@ ZEST_CASE(StaleDepsNoAdopt) {
     auto second = make_session();
 
     std::string directory = tmp.path(".");
-    auto arguments = make_args(src);
+    auto arguments = make_args(src, "-std=c++20");
+    arguments.insert(arguments.begin() + 1, "-fmodule-file=broken=" + tmp.path("broken.pcm"));
 
     auto build = [&](const std::shared_ptr<Session>& session) {
         return ASTFamilyFixture::ensure_pch(stack.ast,
@@ -1387,9 +1389,10 @@ ZEST_CASE(StaleDepsNoAdopt) {
         ZASSERT((adopted && adopted->pch_key.has_value()));
         auto builder_key = *adopted->pch_key;
 
-        // The header the pair depends on changes into one that cannot
-        // compile: the pair is deps-stale and its rebuild fails.
-        tmp.touch("dep.h", "#error dep changed\n");
+        // The header the pair depends on changes into one importing a
+        // module that cannot load: the pair is deps-stale and its rebuild
+        // fails, as no PCH is written past a failed module load.
+        tmp.touch("dep.h", "import broken;\n");
 
         bool first_built = true;
         bool second_built = true;

@@ -1100,6 +1100,11 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             co_return RoundOutcome::Stale;
         }
 
+        auto& diagnostics = result.value().diagnostics;
+        if(preamble_state && preamble_state->matches_prefix(params.text)) {
+            diagnostics = with_preamble(std::move(diagnostics), *preamble_state, file_path);
+        }
+
         // Self-containment trial verdict. Scored once per settled input
         // state: trial_done is reset whenever compile inputs change for
         // reasons other than buffer edits, so a dependency change re-runs
@@ -1109,7 +1114,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // once the verdict is actually earned, never on a guess.
         if(trial_round) {
             session->trial_done = true;
-            trial_misses = missing_context_errors(result.value().diagnostics);
+            trial_misses = missing_context_errors(diagnostics);
             if(trial_misses == 0) {
                 contexts.commands.record_header_mode(path_id, HeaderMode::SelfContained);
             } else {
@@ -1120,7 +1125,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 continue;
             }
         } else if(synthesized && trial_misses > 0 &&
-                  missing_context_errors(result.value().diagnostics) < trial_misses) {
+                  missing_context_errors(diagnostics) < trial_misses) {
             // Scored on the buffer: a restart keeps it only for the same
             // text on disk. A context that misses as much (a database
             // without the include directories the includer needs too) is
@@ -1163,7 +1168,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                 next->index =
                     std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(std::move(*read)));
             } else {
-                result.value().diagnostics.push_back(
+                diagnostics.push_back(
                     index_unavailable(std::format("reading this file's index from {} failed: {}",
                                                   transfer->tmp_path,
                                                   read.error().message())));
@@ -1174,13 +1179,10 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         }
 
         LOG_PERF("request", "kind=Compile file={} total_ms={:.2f}", file_path, timer.ms_f());
-        auto& diagnostics = result.value().diagnostics;
         next->output = CompileOutput{
             .version = session->version,
             .source = source,
-            .diagnostics = preamble_state && preamble_state->matches_prefix(params.text)
-                               ? with_preamble(std::move(diagnostics), *preamble_state, file_path)
-                               : std::move(diagnostics),
+            .diagnostics = std::move(diagnostics),
             .line_limit = suffix_line_limit,
             .unmatched_host = resolution.unmatched_host.valid()
                                   ? project.file_table.display(resolution.unmatched_host)
