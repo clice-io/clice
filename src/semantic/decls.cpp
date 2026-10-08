@@ -637,6 +637,13 @@ auto resolve_forwarding_params(const clang::FunctionDecl* D, unsigned MaxDepth)
     return {params.begin(), params.end()};
 }
 
+bool binds_mutable_reference(const clang::ParmVarDecl* param, const clang::ParmVarDecl* forwarded) {
+    auto forwarded_type = forwarded->getType();
+    return param->getType()->isLValueReferenceType() && forwarded_type->isLValueReferenceType() &&
+           !forwarded_type.getNonReferenceType().isConstQualified() &&
+           !underlying_pack_type(forwarded);
+}
+
 auto proto_type_loc(clang::Expr* expr) -> clang::FunctionProtoTypeLoc {
     assert(expr);
     clang::TypeLoc target;

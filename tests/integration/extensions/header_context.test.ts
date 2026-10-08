@@ -143,6 +143,21 @@ test("full context flow", async ({ session }) => {
     ).toBe(0);
 });
 
+/// Document highlights in a header name what its includer's context declares.
+test("document highlight in context", async ({ session }) => {
+    const { client } = await session("header_context");
+    await client.openAndWait("main.cpp");
+    const [utilsUri] = await client.openAndWait("utils.h");
+
+    const highlights = await client.documentHighlightAt(utilsUri, 6, 18); // 'Point'
+    expect(highlights).toEqual([
+        {
+            range: { start: { line: 6, character: 16 }, end: { line: 6, character: 21 } },
+            kind: proto.DocumentHighlightKind.Read,
+        },
+    ]);
+});
+
 /// queryContext on a deeply nested header (main.cpp -> utils.h -> inner.h)
 /// should still find main.cpp as the host source.
 test("deep nested header context", async ({ session }) => {

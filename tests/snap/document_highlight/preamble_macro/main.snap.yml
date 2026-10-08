@@ -1,0 +1,13 @@
+---
+created_at: 2026-10-08
+input_file: preamble_macro/main.cpp
+---
+macro_def:
+  - { range: "5:8-5:15", kind: Text }
+  - { range: "8:11-8:18", kind: Read }
+  - { range: "8:36-8:43", kind: Read }
+
+macro_use:
+  - { range: "5:8-5:15", kind: Text }
+  - { range: "8:11-8:18", kind: Read }
+  - { range: "8:36-8:43", kind: Read }

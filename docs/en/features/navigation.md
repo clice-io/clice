@@ -1419,31 +1419,154 @@ tests/snap/navigation/module_navigation/04_module_dotted/main.cpp
 
 ## Document Highlight
 
-Highlight all references to the symbol under cursor within the current file (`textDocument/documentHighlight`).
+Highlight all references to the symbol under cursor within the current file (`textDocument/documentHighlight`). Highlights come from the same index as Find References, so they cover the same names and work in read-only mode too; each one tells whether the code there writes the symbol, reads it, or declares it.
 
 <!-- BEGIN GENERATED ITEMS: document_highlight -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Document reference highlights**
 
-Document highlights are not implemented, so declarations and uses are not
-highlighted
+Every name of the symbol under the cursor in the current file is
+highlighted, its declarations and definition included
 
 ```snap
-tests/snap/navigation/document_highlight/01_highlight_references.cpp
+tests/snap/document_highlight/document_highlight/01_highlight_references.cpp
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**Read/write classification for symbol highlights**
+**Read and write access**
 
-Document highlights do not report read and write access kinds yet
+Highlights tell writes from reads: an assignment, a compound assignment,
+an increment or a decrement writes the name
+
+Every other use reads it. A declaration is neither and highlights as
+plain text, with or without an initializer.
 
 ```snap
-tests/snap/navigation/document_highlight/02_highlight_read_write.cpp
+tests/snap/document_highlight/document_highlight/02_highlight_read_write.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Arguments passed by mutable reference**
+
+An argument bound to a non-const lvalue reference parameter is a write,
+where the `&` inlay hint marks it
+
+A const reference or a by-value parameter reads the argument, and so does
+taking its address. A forwarding reference (`T&&`, `auto&&`) binds
+anything and reads the argument too, unless a variadic forwarder passes
+it on to a mutable reference parameter.
+
+```snap
+tests/snap/document_highlight/document_highlight/03_highlight_reference_arguments.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Writes through overloaded operators**
+
+The overloaded assignment, compound assignment, increment and decrement
+operators of a class write their left operand like the built-in ones
+
+Other operators read it. Their right operand is a write when the
+operator takes it by mutable reference, as a stream extraction does.
+The operator itself highlights where it is declared and wherever an
+expression uses it.
+
+```snap
+tests/snap/document_highlight/document_highlight/04_highlight_overloaded_operators.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Fields and member access**
+
+Writing through `object.member` writes the member, while the object is
+only read
+
+A designated initializer or a constructor's member initializer names the
+field it initializes without writing it: initialization is not an
+assignment. Fields of an anonymous union or struct highlight like any
+other field.
+
+```snap
+tests/snap/document_highlight/document_highlight/05_highlight_members.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Macro names and arguments**
+
+A macro highlights at its definition, its expansions, the conditionals
+testing it and its `#undef`
+
+A name written in a macro argument highlights where it is written; a
+name the macro's replacement spells highlights the whole invocation.
+
+```snap
+tests/snap/document_highlight/document_highlight/06_highlight_macros.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Class names, constructors and destructors**
+
+A class highlights wherever its name refers to it, inside a destructor's
+`~Name` too; a constructor or destructor highlights its own declarations
+and uses
+
+A construction that spells no constructor name — `Session(7)` names the
+class — reaches the constructor through its parenthesis.
+
+```snap
+tests/snap/document_highlight/document_highlight/07_highlight_constructors.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Templates and specializations**
+
+A template highlights in its own declaration and wherever it is used; an
+explicit or partial specialization is a symbol of its own
+
+A template parameter highlights within its template. Inside a template,
+a member reached through a dependent type highlights together with the
+members it may name.
+
+```snap
+tests/snap/document_highlight/document_highlight/08_highlight_templates.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Lambda captures and structured bindings**
+
+A variable a lambda captures highlights in the capture list and the lambda
+body; an init capture is a variable of its own
+
+Each name a structured binding introduces is a symbol of its own.
+
+```snap
+tests/snap/document_highlight/document_highlight/09_highlight_lambdas_bindings.cpp
 ```
 
 <!-- END CAPABILITY -->
@@ -1455,7 +1578,20 @@ tests/snap/navigation/document_highlight/02_highlight_read_write.cpp
 Control-flow keywords have no related document highlights yet
 
 ```snap
-tests/snap/navigation/document_highlight/03_highlight_control_flow.cpp
+tests/snap/document_highlight/document_highlight/10_highlight_control_flow.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Highlights in module units**
+
+Highlights work in module units and on names imported from a module, the
+module name included
+
+```snap
+tests/snap/document_highlight/document_highlight/11_highlight_module_unit/main.cpp
 ```
 
 <!-- END CAPABILITY -->

@@ -88,8 +88,9 @@ inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
 /// carry their symbol table as columns, without a function's locals, and
 /// name the variants their receiver stores by hash alone; v27: an importer
 /// indexes only what it parsed, and its manifest lists what the modules it
-/// imports were built from).
-constexpr inline std::uint32_t index_format_version = 27;
+/// imports were built from; v28: references that modify what they name
+/// carry a Write row).
+constexpr inline std::uint32_t index_format_version = 28;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

@@ -1,0 +1,15 @@
+---
+created_at: 2026-10-08
+input_file: document_highlight/02_highlight_read_write.cpp
+---
+count:
+  - { range: "11:8-11:13", kind: Text }
+  - { range: "12:15-12:20", kind: Read }
+  - { range: "13:4-13:9", kind: Write }
+  - { range: "14:4-14:9", kind: Write }
+  - { range: "15:6-15:11", kind: Write }
+  - { range: "16:4-16:9", kind: Write }
+  - { range: "17:5-17:10", kind: Write }
+  - { range: "17:14-17:19", kind: Read }
+  - { range: "18:11-18:16", kind: Write }
+  - { range: "19:11-19:16", kind: Read }

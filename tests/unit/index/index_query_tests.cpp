@@ -162,6 +162,29 @@ ZEST_CASE(LocalReferencesClosed) {
     }
 }
 
+ZEST_CASE(HighlightsClosedFile) {
+    add_main("main.cpp", R"(
+        int tally() {
+            int §(decl)⟦count⟧ = 0;
+            §(write)⟦count⟧ += 1;
+            return §(read)⟦§(read)count⟧;
+        }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+
+    auto cursor = query.symbol_at(main_id, point("read"));
+    ZASSERT(cursor);
+    auto highlights = query.document_highlights(*cursor);
+    ZASSERT(highlights.size() == 3U);
+    ZEXPECT(highlights[0].site.range == range("decl"));
+    ZEXPECT(highlights[0].kind == index::HighlightKind::Text);
+    ZEXPECT(highlights[1].site.range == range("write"));
+    ZEXPECT(highlights[1].kind == index::HighlightKind::Write);
+    ZEXPECT(highlights[2].site.range == range("read"));
+    ZEXPECT(highlights[2].kind == index::HighlightKind::Read);
+}
+
 ZEST_CASE(InternalAcrossFiles) {
     add_file("header.h", R"(
         static int §(def)helper() { return 1; }

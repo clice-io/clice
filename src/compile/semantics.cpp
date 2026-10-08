@@ -1911,6 +1911,82 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semant
     return spelled(resolve_references(semantics, index, resolver));
 }
 
+bool is_written(const Semantics& semantics, std::uint32_t index) {
+    auto& entry = semantics.node(index);
+    auto* expr = entry.node.get<clang::Expr>();
+    if(!llvm::isa_and_present<clang::DeclRefExpr, clang::MemberExpr>(expr)) {
+        return false;
+    }
+
+    const clang::Stmt* parent = nullptr;
+    for(auto i = entry.parent; i != Semantics::invalid; i = semantics.node(i).parent) {
+        parent = semantics.node(i).node.get<clang::Stmt>();
+        if(!llvm::isa_and_present<clang::ParenExpr, clang::ImplicitCastExpr>(parent)) {
+            break;
+        }
+    }
+    if(!parent) {
+        return false;
+    }
+    auto is_expr = [&](const clang::Expr* operand) {
+        return operand->IgnoreParenImpCasts() == expr;
+    };
+
+    if(auto* op = llvm::dyn_cast<clang::BinaryOperator>(parent)) {
+        return op->isAssignmentOp() && is_expr(op->getLHS());
+    }
+    if(auto* op = llvm::dyn_cast<clang::UnaryOperator>(parent)) {
+        return op->isIncrementDecrementOp();
+    }
+
+    const clang::FunctionDecl* callee = nullptr;
+    llvm::ArrayRef<const clang::Expr*> args;
+    if(auto* call = llvm::dyn_cast<clang::CallExpr>(parent)) {
+        callee = call->getDirectCallee();
+        args = {call->getArgs(), call->getNumArgs()};
+    } else if(auto* construct = llvm::dyn_cast<clang::CXXConstructExpr>(parent)) {
+        callee = construct->getConstructor();
+        args = {construct->getArgs(), construct->getNumArgs()};
+    }
+
+    // The object a call is made on leads the arguments of an operator call
+    // and of a call to an explicit object member function; the parameters
+    // list it unless the callee is an implicit object member.
+    auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(callee);
+    bool explicit_object = method && method->isExplicitObjectMemberFunction();
+    std::size_t skipped_params = 0;
+    if(auto* call = llvm::dyn_cast<clang::CXXOperatorCallExpr>(parent)) {
+        auto op = call->getOperator();
+        if(is_expr(call->getArg(0))) {
+            return call->isAssignmentOp() || op == clang::OO_PlusPlus || op == clang::OO_MinusMinus;
+        }
+        args = args.drop_front();
+        if(!method || explicit_object) {
+            skipped_params = 1;
+        }
+    } else if(explicit_object) {
+        args = args.drop_front();
+        skipped_params = 1;
+    }
+
+    auto it = llvm::find_if(args, is_expr);
+    if(!callee || it == args.end()) {
+        return false;
+    }
+    auto position = skipped_params + (it - args.begin());
+    if(position >= callee->getNumParams()) {
+        return false;
+    }
+    auto* param = callee->getParamDecl(position);
+    auto* forwarded = param;
+    if(decls::underlying_pack_type(param)) {
+        forwarded = decls::resolve_forwarding_params(callee)[position];
+    }
+    // A reference collapsed from `T&&` or `auto&&` is not spelled as one.
+    return decls::binds_mutable_reference(param, forwarded) &&
+           forwarded->getType()->castAs<clang::LValueReferenceType>()->isSpelledAsLValue();
+}
+
 bool NameOccurrence::owns_whole_name() const {
     return decl->getDeclName().getNameKind() != clang::DeclarationName::CXXConversionFunctionName;
 }
