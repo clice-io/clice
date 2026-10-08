@@ -39,6 +39,14 @@ ZEST_CASE(StrayClosers) {
     ZEXPECT(steps_at("} f(a) ]", 4) == std::vector<std::string>{"a", "(a)"});
 }
 
+ZEST_CASE(DeepNestingCapped) {
+    std::string text = std::string(1000, '(') + "x" + std::string(1000, ')');
+    auto steps = steps_at(text, 1000);
+    ZEXPECT(steps.size() == 128U);
+    ZEXPECT(steps.front() == "x");
+    ZEXPECT(steps.back() == text);
+}
+
 };  // ZEST_SUITE(SelectionRange)
 
 }  // namespace

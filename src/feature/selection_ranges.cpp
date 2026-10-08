@@ -27,6 +27,10 @@ struct Steps {
     }
 };
 
+/// The most steps one offset gets. Only generated code nests deeper (a
+/// sum of thousands of terms); its middle steps go.
+constexpr std::size_t step_limit = 128;
+
 /// The steps innermost first, each strictly containing the one before. Of
 /// two ranges that overlap without nesting, the smaller one stays.
 std::vector<LocalSourceRange> nest(Steps steps) {
@@ -41,6 +45,9 @@ std::vector<LocalSourceRange> nest(Steps steps) {
     }
     if(chain.empty()) {
         chain.push_back({steps.offset, steps.offset});
+    }
+    if(chain.size() > step_limit) {
+        chain.erase(chain.begin() + step_limit / 2, chain.end() - step_limit / 2);
     }
     return chain;
 }
@@ -270,12 +277,12 @@ llvm::SmallVector<bool, 0> skipped_tokens(CompilationUnitRef unit, llvm::ArrayRe
     return skipped;
 }
 
-/// The selection the cursor stands in: the token it touches — a name or
-/// literal over punctuation, the right one of two alike — else the
-/// stretch between the tokens around it (a comment, blank space). Tokens
-/// the selection never counts (`;`, comments, preprocessed away) do not
-/// anchor it.
-std::optional<SelectionTree> selection_at(CompilationUnitRef unit, std::uint32_t offset) {
+/// The tokens the selection starts from: the one the cursor touches — a
+/// name or literal over punctuation, the right one of two alike — else
+/// the nearest on either side (the cursor is in blank space, a comment or
+/// a qualifier). The selection never counts `;`, comments, qualifiers and
+/// what was preprocessed away, so they anchor nothing.
+llvm::SmallVector<LocalSourceRange, 2> anchors(CompilationUnitRef unit, std::uint32_t offset) {
     const auto& semantics = unit.semantics();
     auto tokens = semantics.spelled_tokens();
     auto range_of = [&](std::uint32_t i) {
@@ -303,21 +310,44 @@ std::optional<SelectionTree> selection_at(CompilationUnitRef unit, std::uint32_t
         }
     }
     if(touched) {
-        return SelectionTree::create_right(unit, range_of(*touched));
+        return {range_of(*touched)};
     }
 
+    llvm::SmallVector<LocalSourceRange, 2> sides;
     auto before = first;
     while(before > 0 && !usable(before - 1)) {
         before -= 1;
+    }
+    if(before > 0) {
+        sides.push_back(range_of(before - 1));
     }
     auto after = first;
     while(after < count && !usable(after)) {
         after += 1;
     }
-    if(before == 0 || after == count) {
+    if(after < count) {
+        sides.push_back(range_of(after));
+    }
+    return sides;
+}
+
+/// The characters of a `>` split off a `>>` — the parser closes two
+/// template argument lists on one token — or nothing for any other
+/// location.
+std::optional<LocalSourceRange> split_half(CompilationUnitRef unit,
+                                           clang::SourceLocation location) {
+    if(!location.isMacroID()) {
         return std::nullopt;
     }
-    return SelectionTree::create_right(unit, {range_of(before - 1).begin, range_of(after).end});
+    auto range = unit.context().getSourceManager().getExpansionRange(location);
+    if(range.isTokenRange()) {
+        return std::nullopt;
+    }
+    auto [fid, begin] = unit.decompose_location(range.getBegin());
+    if(fid != unit.main_file()) {
+        return std::nullopt;
+    }
+    return LocalSourceRange{begin, unit.file_offset(range.getEnd())};
 }
 
 /// A node's range in the main file: the tokens a macro argument or a
@@ -325,6 +355,14 @@ std::optional<SelectionTree> selection_at(CompilationUnitRef unit, std::uint32_t
 std::optional<LocalSourceRange> main_file_range(CompilationUnitRef unit, clang::SourceRange range) {
     if(range.isInvalid()) {
         return std::nullopt;
+    }
+    if(auto half = split_half(unit, range.getEnd())) {
+        auto begin =
+            range.getBegin() == range.getEnd() ? half : main_file_range(unit, range.getBegin());
+        if(!begin) {
+            return std::nullopt;
+        }
+        return LocalSourceRange{begin->begin, half->end};
     }
     if(auto spelled = unit.spelled_tokens(range); !spelled.empty()) {
         return LocalSourceRange{
@@ -384,17 +422,14 @@ std::optional<clang::SourceRange> angles(const SelectionTree::Node& node) {
     return std::nullopt;
 }
 
-/// The ranges of the AST nodes around the cursor, each statement also with
-/// the `;` that ends it, each template-id and template parameter list
-/// also with the inside of its angle brackets.
+/// The ranges of the AST nodes around the cursor — the ancestors of each
+/// anchor that contain it — each statement also with the `;` that ends
+/// it, each template-id and template parameter list also with the inside
+/// of its angle brackets.
 void add_ast(CompilationUnitRef unit,
              llvm::StringRef content,
              llvm::ArrayRef<Token> tokens,
              Steps& steps) {
-    auto tree = selection_at(unit, steps.offset);
-    if(!tree) {
-        return;
-    }
     auto semicolon_after = [&](std::uint32_t end) -> std::optional<std::uint32_t> {
         auto it = std::ranges::find_if(
             std::ranges::lower_bound(tokens, end, {}, [](const Token& t) { return t.range.begin; }),
@@ -406,23 +441,26 @@ void add_ast(CompilationUnitRef unit,
         return it->range.end;
     };
 
-    for(const auto* node = tree->common_ancestor(); node && node->parent; node = node->parent) {
-        auto range = main_file_range(unit, node->source_range());
-        if(!range) {
-            continue;
-        }
-        steps.add(*range);
-        if(ends_statement(*node)) {
-            if(auto end = semicolon_after(range->end)) {
-                steps.add({range->begin, *end});
+    for(auto anchor: anchors(unit, steps.offset)) {
+        auto tree = SelectionTree::create_right(unit, anchor);
+        for(const auto* node = tree.common_ancestor(); node && node->parent; node = node->parent) {
+            auto range = main_file_range(unit, node->source_range());
+            if(!range) {
+                continue;
             }
-        }
-        if(auto brackets = angles(*node); brackets && brackets->isValid()) {
-            auto left = main_file_range(unit, brackets->getBegin());
-            auto right = main_file_range(unit, brackets->getEnd());
-            if(left && right) {
-                steps.add(trimmed(content, {left->end, right->begin}));
-                steps.add({left->begin, right->end});
+            steps.add(*range);
+            if(ends_statement(*node)) {
+                if(auto end = semicolon_after(range->end)) {
+                    steps.add({range->begin, *end});
+                }
+            }
+            if(auto brackets = angles(*node); brackets && brackets->isValid()) {
+                auto left = main_file_range(unit, brackets->getBegin());
+                auto right = main_file_range(unit, brackets->getEnd());
+                if(left && right) {
+                    steps.add(trimmed(content, {left->end, right->begin}));
+                    steps.add({left->begin, right->end});
+                }
             }
         }
     }

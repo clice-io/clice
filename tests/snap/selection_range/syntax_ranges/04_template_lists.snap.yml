@@ -3,12 +3,23 @@ created_at: 2026-10-08
 input_file: syntax_ranges/04_template_lists.cpp
 ---
 call_arg:
-  - { range: "20:20-20:23", text: "int" }
-  - { range: "20:19-20:24", text: "<int>" }
-  - { range: "20:11-20:24", text: "identity<int>" }
-  - { range: "20:11-20:27", text: "identity<int>(3)" }
-  - { range: "20:0-20:27", text: "int same = identity<int>(3)" }
-  - { range: "20:0-20:28", text: "int same = identity<int>(3);" }
+  - { range: "22:20-22:23", text: "int" }
+  - { range: "22:19-22:24", text: "<int>" }
+  - { range: "22:11-22:24", text: "identity<int>" }
+  - { range: "22:11-22:27", text: "identity<int>(3)" }
+  - { range: "22:0-22:27", text: "int same = identity<int>(3)" }
+  - { range: "22:0-22:28", text: "int same = identity<int>(3);" }
+
+nested_arg:
+  - { range: "20:15-20:19", text: "long" }
+  - { range: "20:15-20:25", text: "long, char" }
+  - { range: "20:14-20:26", text: "<long, char>" }
+  - { range: "20:10-20:26", text: "Pair<long, char>" }
+  - { range: "20:5-20:26", text: "int, Pair<long, char>" }
+  - { range: "20:4-20:27", text: "<int, Pair<long, char>>" }
+  - { range: "20:0-20:27", text: "Pair<int, Pair<long, char>>" }
+  - { range: "20:0-20:47", text: "Pair<int, Pair<long, char>> nested{1, {2, 'c'}}" }
+  - { range: "20:0-20:48", text: "Pair<int, Pair<long, char>> nested{1, {2, 'c'}};" }
 
 param:
   - { range: "7:29-7:35", text: "Second" }

@@ -726,7 +726,7 @@ Features::RawResult Features::selection_range(Ticket ticket,
     std::vector<std::uint32_t> offsets;
     auto map = session->position_map();
     for(const auto& position: positions) {
-        offsets.push_back(map.to_offset(position).value_or(session->text.size()));
+        offsets.push_back(map.to_offset_clamped(position));
     }
     auto convert = [&](llvm::ArrayRef<std::vector<LocalSourceRange>> chains) {
         std::vector<protocol::SelectionRange> result;
