@@ -140,6 +140,8 @@ Compute preamble boundary and hash
 
 Cache hit requires two conditions: the preamble hash matches the cached value (preamble content unchanged), and two-layer invalidation detection passes (dependency file contents unchanged). Both conditions must be satisfied simultaneously.
 
+A preamble that imports C++20 modules, itself or through the headers it includes, also depends on what those modules were built from: rebuilding one of them, or a missing one becoming available, rebuilds its PCH.
+
 PCH builds are executed by stateless worker processes (see [multi-process architecture](multi-process.md)). The worker uses Clang's Preamble compilation mode, processing only the preamble portion before the bound. Upon completion, it returns the PCH file path and list of dependency files.
 
 ### Concurrent Build Serialization
@@ -191,5 +193,7 @@ After loading the cache on startup, all PCH entries are validated through two-la
 - **Full rebuild**. Any content change in a dependency file triggers a full PCH rebuild, with no way to rebuild only the affected portion. The improvement direction is to adopt chained PCH (see FAQ), limiting the rebuild scope to the chain links after the point of change.
 
 - **Incomplete preamble completeness check**. The current completeness check only covers unclosed quotes and missing semicolons in `#include`/`import` directives. Other types of incomplete edits (e.g., typing a `#define` value) are not detected. The impact of building a PCH from such an incomplete preamble on subsequent compilation has not been thoroughly tested. Further investigation is needed into Clang's behavior when processing incomplete preprocessor directives, to determine whether the completeness check scope should be extended.
+
+- **No PCH for a global module fragment that imports**. A module unit whose global module fragment imports a module, typically through a header it includes, parses its whole preamble on every edit. Clang keeps no record in a PCH that the global module fragment was open, and the module declaration that follows the PCH would hide the modules the fragment imported. The improvement direction is a Clang change that restores the fragment when the PCH is loaded.
 
 - **No proactive recompilation after a header save**. Saving a header (or a change discovered by the file tracker) proactively marks dependent open files dirty, but recompilation stays pull-triggered: their diagnostics refresh on the next request against that file (e.g., hover, edit) rather than immediately. The improvement direction is to proactively trigger compilation for the affected open sessions (a hybrid push/pull model).

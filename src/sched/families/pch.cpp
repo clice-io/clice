@@ -177,8 +177,18 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     bp.content = std::move(request.content);
     bp.preamble_bound = request.preamble_bound;
     bp.synthesized = std::move(request.synthesized);
+    bp.pcms = std::move(request.pcms);
     bp.output_path = pending.tmp_path;
     bp.index_output_path = pending_idx.tmp_path;
+
+    // What the imported modules' PCMs were built from as the build starts:
+    // one rebuilt meanwhile stales the PCH.
+    auto imported = project.module_inputs(request.modules);
+    auto inputs = [&](const worker::ArtifactBuildResult& built) {
+        auto deps = capture_deps_snapshot(project.file_table, built.deps, built.build_at);
+        merge_deps(deps, {&imported});
+        return deps;
+    };
 
     LOG_DEBUG("Building PCH for {}, bound={}, key={}", bp.file, bp.preamble_bound, pch_key);
 
@@ -200,10 +210,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         if(expected_build_failure(result)) {
             LOG_WARN("PCH build failed for {}: {}", bp.file, build_failure_message(result));
             if(result.has_value()) {
-                build_failures.insert_or_assign(pch_key,
-                                                capture_deps_snapshot(project.file_table,
-                                                                      result.value().deps,
-                                                                      result.value().build_at));
+                build_failures.insert_or_assign(pch_key, inputs(result.value()));
             }
         } else {
             LOG_ANOMALY(PCHBuildFail,
@@ -282,8 +289,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     st.superseded = std::exchange(st.blob, std::move(blob));
     st.path = *committed.pch_path;
     st.bound = request.preamble_bound;
-    st.deps =
-        capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
+    st.deps = inputs(result.value());
     st.index_path = *committed.index_path;
     // Replace the previous blob's mapping (same key, rebuilt content);
     // in-flight holders of the old shared_ptr stay valid.

@@ -221,7 +221,8 @@ private:
 /// conditional tracking via preprocessor callbacks.
 class PreciseScanPPCallbacks : public clang::PPCallbacks {
 public:
-    explicit PreciseScanPPCallbacks(ScanResult& result) : result(result) {}
+    PreciseScanPPCallbacks(ScanResult& result, const clang::SourceManager& sources) :
+        result(result), sources(sources) {}
 
     void InclusionDirective(clang::SourceLocation,
                             const clang::Token& include_tok,
@@ -273,7 +274,7 @@ public:
         }
     }
 
-    void moduleImport(clang::SourceLocation,
+    void moduleImport(clang::SourceLocation location,
                       clang::ModuleIdPath names,
                       const clang::Module*) override {
         std::string name;
@@ -284,10 +285,21 @@ public:
             name += part.getIdentifierInfo()->getName();
         }
         result.modules.emplace_back(std::move(name));
+
+        std::uint32_t offset = 0;
+        for(auto loc = sources.getExpansionLoc(location); loc.isValid();
+            loc = sources.getIncludeLoc(sources.getFileID(loc))) {
+            if(sources.getFileID(loc) == sources.getMainFileID()) {
+                offset = sources.getFileOffset(loc);
+                break;
+            }
+        }
+        result.import_offsets.push_back(offset);
     }
 
 private:
     ScanResult& result;
+    const clang::SourceManager& sources;
     int conditional_depth = 0;
 };
 
@@ -384,19 +396,20 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         SharedScanCache* cache,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;
-    scan_with_preprocessor(arguments,
-                           directory,
-                           content,
-                           cache,
-                           std::move(vfs),
-                           result,
-                           [&](clang::CompilerInstance& instance, clang::FrontendAction& action) {
-                               instance.getPreprocessor().addPPCallbacks(
-                                   std::make_unique<PreciseScanPPCallbacks>(result));
-                               if(auto error = action.Execute()) {
-                                   llvm::consumeError(std::move(error));
-                               }
-                           });
+    scan_with_preprocessor(
+        arguments,
+        directory,
+        content,
+        cache,
+        std::move(vfs),
+        result,
+        [&](clang::CompilerInstance& instance, clang::FrontendAction& action) {
+            instance.getPreprocessor().addPPCallbacks(
+                std::make_unique<PreciseScanPPCallbacks>(result, instance.getSourceManager()));
+            if(auto error = action.Execute()) {
+                llvm::consumeError(std::move(error));
+            }
+        });
     return result;
 }
 

@@ -490,6 +490,29 @@ import dep;
     ZEXPECT(result.modules[0] == "dep");
 }
 
+ZEST_CASE(ImportOffsets) {
+    ModuleScanFixture f(R"(
+#[main.cpp]
+#include "deps.h"
+import direct;
+int main() { return 0; }
+#[deps.h]
+import dep;
+#[forced.h]
+import forced;
+)",
+                        {"-include", "forced.h"});
+    auto result = f.precise();
+    ZASSERT(result.modules.size() == 3u);
+    ZASSERT(result.import_offsets.size() == 3u);
+    ZEXPECT(result.modules[0] == "forced");
+    ZEXPECT(result.import_offsets[0] == 0u);
+    ZEXPECT(result.modules[1] == "dep");
+    ZEXPECT(result.import_offsets[1] == 9u);
+    ZEXPECT(result.modules[2] == "direct");
+    ZEXPECT(result.import_offsets[2] == 18u);
+}
+
 // Mixed named module imports and partition imports.
 ZEST_CASE(MixedNamedAndPartitionImports) {
     ModuleScanFixture f(R"(

@@ -1,7 +1,7 @@
 /// Integration tests for PCH (precompiled header) functionality in MasterServer.
 
 import * as fs from "node:fs";
-import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY, sleep, waitUntil } from "@clice/tools/client";
 import { cliceTest, expect, test as sessionTest } from "../fixtures.ts";
 
 const test = cliceTest("pch_test");
@@ -22,17 +22,16 @@ sessionTest("unchanged preamble keeps its pch", async ({ session }) => {
     expect(fs.statSync(pch!).mtimeMs, "the pch was rebuilt").toBe(built);
 });
 
-/// A preamble whose build fails is not rebuilt for body edits: the same
-/// inputs fail again. The missing header showing up is a new input.
-sessionTest("failed pch waits for its inputs", async ({ session }) => {
+/// A preamble with errors keeps its PCH, which body edits reuse. The
+/// missing header showing up is a new input.
+sessionTest("pch with errors waits for its inputs", async ({ session }) => {
     const { client, workspace } = session.tmp();
     const text = (n: number) =>
         `#include "generated.h"\nint main() { return generated() + ${n}; }\n`;
     workspace.write("main.cpp", text(0));
     workspace.writeCDB(["main.cpp"]);
     await client.initialize(workspace);
-    const failedBuilds = () =>
-        client.drainedStderr().toString("utf8").split("PCH build failed for").length - 1;
+    const builds = () => client.drainedStderr().toString("utf8").split("PCH built for").length - 1;
 
     const [uri] = await client.openAndWait("main.cpp");
     client.assertHasErrors(uri);
@@ -40,18 +39,22 @@ sessionTest("failed pch waits for its inputs", async ({ session }) => {
         client.change(uri, n, text(n));
         await client.waitForRecompile(uri);
     }
-    expect(failedBuilds()).toBe(1);
+    expect(builds()).toBe(1);
 
     workspace.write("generated.h", "#pragma once\ninline int generated() { return 1; }\n");
     await client.waitForRecompile(uri);
     client.assertCleanCompile(uri);
-    expect(workspace.pchFiles()).toHaveLength(1);
-    expect(failedBuilds()).toBe(1);
+    await waitUntil(() => builds() >= 2, {
+        timeout: 10_000,
+        interval: 100,
+        description: "the rebuilt PCH",
+    });
+    expect(builds()).toBe(2);
 });
 
 /// A header that shows up in a search directory missing at the build is no
-/// input the failed build recorded: a save retries it.
-sessionTest("failed pch retries on save", async ({ session }) => {
+/// input the PCH recorded: a save retries a preamble that had errors.
+sessionTest("pch with errors retries on save", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", '#include "generated.h"\nint main() { return generated(); }\n');
     workspace.writeCDB(["main.cpp"], { extraArgs: [`-I${workspace.path("gen")}`] });

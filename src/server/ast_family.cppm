@@ -209,17 +209,18 @@ private:
     /// revalidate on-disk PCM blobs, declare the Ast→PCM durable edges
     /// (scanner truth — they must survive a failed compile or fixing an
     /// import could never re-dirty this document), and wait on each
-    /// import through depend. False when cancelled: an import whose build
-    /// failed is left to the parse, which reports it on the import next to
-    /// the file's own diagnostics; one whose build crashed a worker also
-    /// lands in the session's quarantine, and is refused until the session
-    /// holds a license to retry it.
-    kota::task<bool> depend_modules(RoundContext& ctx,
-                                    const std::shared_ptr<Session>& session,
-                                    const Resolution& resolution,
-                                    llvm::StringRef directory,
-                                    const std::vector<std::string>& arguments,
-                                    llvm::StringRef text);
+    /// import through depend. Returns the imports, none when cancelled: an
+    /// import whose build failed is left to the parse, which reports it on
+    /// the import next to the file's own diagnostics; one whose build
+    /// crashed a worker also lands in the session's quarantine, and is
+    /// refused until the session holds a license to retry it.
+    kota::task<std::optional<PCMFamily::ModuleDeps>>
+        depend_modules(RoundContext& ctx,
+                       const std::shared_ptr<Session>& session,
+                       const Resolution& resolution,
+                       llvm::StringRef directory,
+                       const std::vector<std::string>& arguments,
+                       llvm::StringRef text);
 
     /// Preprocess `host` for its include tree (Project::include_trees), so
     /// a header context it lends follows the directives its compile really
@@ -231,8 +232,9 @@ private:
     bool is_stale(const Session& session);
 
     /// What a buffer state owes the PCH family: nothing (an empty
-    /// preamble with no injected prefix — a previously adopted key must
-    /// be cleared), a deferral (the preamble is mid-edit and nothing
+    /// preamble with no injected prefix, or a module unit's global module
+    /// fragment that imports — a previously adopted key must be cleared),
+    /// a deferral (the preamble is mid-edit and nothing
     /// fresh exists under its key: keep `previous`, the last adopted key,
     /// while its artifact is still built), or the acquisition of
     /// `request`.
@@ -248,7 +250,8 @@ private:
                      llvm::StringRef text,
                      const std::string& directory,
                      const std::vector<std::string>& arguments,
-                     const SynthesizedContext* synthesized);
+                     const SynthesizedContext* synthesized,
+                     const PCMFamily::ModuleDeps& imports);
 
     /// Revalidate or build the preamble PCH of `text` through the family
     /// and adopt its key under the request's license (see
@@ -260,7 +263,8 @@ private:
                                                       std::uint64_t license_epoch,
                                                       const std::string& directory,
                                                       const std::vector<std::string>& arguments,
-                                                      const SynthesizedContext* synthesized);
+                                                      const SynthesizedContext* synthesized,
+                                                      const PCMFamily::ModuleDeps& imports);
 
     friend struct testing::ASTFamilyFixture;
 

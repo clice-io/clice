@@ -77,6 +77,10 @@ std::unique_ptr<clang::CompilerInvocation>
     if(bound != 0) {
         pp_opts.PrecompiledPreambleBytes = {bound, false};
     }
+    // A preamble with errors still gets its PCH, and every parse loading
+    // it accepts it: without one, every edit parses the whole preamble
+    // again.
+    pp_opts.AllowPCHWithCompilerErrors = true;
 
     // `#pragma clang __debug crash` and its kin crash the compiler on
     // purpose. Tests keep them as a crash a file's content decides.
@@ -246,6 +250,15 @@ public:
                 }
             }
         }
+        // The PCH writer stores each import with the location where the
+        // preprocessor made its module visible, and the reader skips the
+        // imports without one; a C++20 import is made visible by Sema alone.
+        if(unit->kind == CompilationKind::Preamble) {
+            auto& pp = unit->instance->getPreprocessor();
+            for(auto* import: context.local_imports()) {
+                pp.makeModuleVisible(import->getImportedModule(), import->getLocation());
+            }
+        }
         clang::MultiplexConsumer::HandleTranslationUnit(context);
     }
 
@@ -333,11 +346,12 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     }
 
     /// If the output file is not empty, it represents that we are
-    /// generating a PCH or PCM. If error occurs, the AST must be
-    /// invalid to some extent, serialization of such AST may result
-    /// in crash frequently. So forbidden it here and return as error.
+    /// generating a PCH or PCM. A PCM build with errors fails. A PCH is
+    /// written in spite of its preamble's errors; clang writes none only
+    /// after a module failed to load.
     if(!instance.getFrontendOpts().OutputFile.empty() &&
-       instance.getDiagnostics().hasErrorOccurred()) {
+       (self.kind == CompilationKind::Preamble ? instance.hadModuleLoaderFatalFailure()
+                                               : instance.getDiagnostics().hasErrorOccurred())) {
         return CompilationStatus::FatalError;
     }
 

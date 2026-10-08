@@ -54,6 +54,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
     bool may_import = dep_graph.reaches_import(path_id) ||
                       (resolution.host.valid() && dep_graph.reaches_import(resolution.host));
     std::uint64_t directives = 0;
+    std::uint32_t bound = 0;
     if(content) {
         // Directives the scan never saw may include anything, so past the
         // graph only a project without module syntax is sure.
@@ -62,6 +63,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
             lexical.has_module_syntax() || (dep_graph.has_import_candidates() &&
                                             !dep_graph.scanned(path_id, lexical.directives_hash));
         directives = lexical.directives_hash;
+        bound = compute_preamble_bound(*content);
     }
     if(!may_import) {
         co_return ModuleDeps{};
@@ -75,11 +77,12 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
     auto arguments_hash = llvm::xxh3_64bits(joined);
     auto epoch = project.context_epoch;
 
-    std::vector<std::string> imports;
+    ScanMemo scan;
     auto memo = content ? scan_memos.find(path_id) : scan_memos.end();
     if(memo != scan_memos.end() && memo->second.directives == directives &&
-       memo->second.arguments == arguments_hash && memo->second.epoch == epoch) {
-        imports = memo->second.imports;
+       memo->second.bound == bound && memo->second.arguments == arguments_hash &&
+       memo->second.epoch == epoch) {
+        scan = memo->second;
     } else {
         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs;
         if(auto& synthesized = resolution.synthesized) {
@@ -97,16 +100,20 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
         import_scans += 1;
         auto scanned = co_await kota::queue(
             [&] { return scan_precise(arguments, directory, content, nullptr, std::move(vfs)); });
-        imports = std::move(scanned.modules);
+        scan = {.directives = directives,
+                .bound = bound,
+                .arguments = arguments_hash,
+                .epoch = epoch,
+                .imports = std::move(scanned.modules),
+                .offsets = std::move(scanned.import_offsets),
+                .module_unit = !scanned.module_name.empty()};
         // An implementation unit imports its own module implicitly.
         if(scanned.is_implementation_unit) {
-            imports.push_back(std::move(scanned.module_name));
+            scan.imports.push_back(std::move(scanned.module_name));
+            scan.offsets.push_back(std::numeric_limits<std::uint32_t>::max());
         }
         if(content) {
-            scan_memos[path_id] = {.directives = directives,
-                                   .arguments = arguments_hash,
-                                   .epoch = epoch,
-                                   .imports = imports};
+            scan_memos[path_id] = scan;
         }
     }
 
@@ -114,8 +121,11 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
     // unresolved name edges to its sentinel, which is what lets the
     // name's first provider re-dirty this unit through the ordinary
     // cascade later — no side bookkeeping of who failed against it.
-    ModuleDeps deps;
-    for(auto& name: imports) {
+    ModuleDeps deps{
+        .offsets = {scan.offsets.begin(), scan.offsets.end()},
+        .module_unit = scan.module_unit
+    };
+    for(auto& name: scan.imports) {
         auto mod_ids = dep_graph.lookup_module(name);
         if(mod_ids.empty()) {
             deps.declared.push_back(unresolved_node(name));
@@ -372,11 +382,12 @@ bool PCMFamily::revalidate_blobs() {
     return !evicted.empty();
 }
 
-kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
-                                         const Resolution& resolution,
-                                         llvm::ArrayRef<const char*> arguments,
-                                         llvm::StringRef directory,
-                                         llvm::StringRef content) {
+kota::task<std::optional<PCMFamily::ModuleDeps>>
+    PCMFamily::prepare_deps(Fid path_id,
+                            const Resolution& resolution,
+                            llvm::ArrayRef<const char*> arguments,
+                            llvm::StringRef directory,
+                            llvm::StringRef content) {
     // Resolved fresh on every call — a stale list must never outlive a
     // CDB change. The requester never runs a round here, but its
     // consumer edges must live in the graph: a saved module (or a
@@ -397,7 +408,7 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
         declare_deps(path_id, deps.declared);
     }
     if(deps.resolved.empty()) {
-        co_return true;
+        co_return deps;
     }
 
     for(int attempt = 0; attempt < 3; attempt += 1) {
@@ -418,10 +429,10 @@ kota::task<bool> PCMFamily::prepare_deps(Fid path_id,
             return outcome == JoinOutcome::Success;
         });
         if(!ok) {
-            co_return false;
+            co_return std::nullopt;
         }
     }
-    co_return true;
+    co_return deps;
 }
 
 bool PCMFamily::tracks(Fid path_id) const {

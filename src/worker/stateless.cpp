@@ -121,6 +121,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     cp.workspace = params.workspace;
     cp.add_remapped_file(params.file, params.content, params.preamble_bound);
     cp.add_synthesized(params.synthesized);
+    use_artifacts(cp, {}, params.pcms);
     cp.stop = stop;
 
     auto output = artifact_output("PCH", params.output_path, "clice-pch", "pch");
