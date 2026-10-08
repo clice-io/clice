@@ -11,7 +11,7 @@
 - `symbolSearch --query <query> [--limit <n>] [--kind <Kind,...>]` 列出名称查询匹配到的符号，最佳匹配排在最前，并附上各符号的种类、文件、行号、所属容器和 id。
 - `definition`、`readSymbol`、`references [--include-declaration]`、`callGraph [--direction callers|callees|both]` 和 `typeHierarchy [--direction supertypes|subtypes|both]` 回答关于单个符号的问题。符号由 `--name <query>`（一个名称查询，可用 `--path` 进一步缩小范围）、`--symbol <id>`（此前的答案所带的 `#<hex>` id；对于内部链接符号，例如 `static` 函数，还要同时用 `--path` 给出该答案中它所在的文件）或 `--path <file> --line <n>`（该行上定义的符号）指定。多个符号叫同一个名字时，会把它们一一列出并要求改用 id；没有符号与该名称完全一致时，同样会列出最接近的匹配。
 - `documentSymbols --path <file>` 给出该文件的大纲。
-- `compileCommand --path <file>` 给出编辑器编译该文件时会使用的命令，以及它的来源：文件自身的数据库条目、头文件的宿主源文件、规则的默认命令、根据邻近翻译单元推断出的命令，或内置的回退命令。给出的是经编译器解析后的命令，带有目标平台和系统头文件目录；询问编译器失败时，`toolchainError` 说明原因，命令则停留在未经解析的驱动命令。
+- `compileCommand --path <file>` 给出编辑器编译该文件时会使用的命令，以及它的来源：文件自身的数据库条目、头文件的宿主源文件、规则的默认命令、从邻近翻译单元借来的命令（借给临时成员时为 `provisional`，借给构建之外的文件时为 `inferred`），或内置的回退命令。给出的是经编译器解析后的命令，带有目标平台和系统头文件目录；询问编译器失败时，`toolchainError` 说明原因，命令则停留在未经解析的驱动命令。
 - `projectFiles [--filter all|source|header|module]` 列出构建涉及的文件；`fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` 和 `impactAnalysis --path <file>` 则沿包含关系图查询。
 
 问题中的路径可以相对于工作区，也可以是绝对路径，答案中的路径一律是绝对路径；行号从 1 开始。
