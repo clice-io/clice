@@ -140,7 +140,7 @@ Compute preamble boundary and hash
 
 Cache hit requires two conditions: the preamble hash matches the cached value (preamble content unchanged), and two-layer invalidation detection passes (dependency file contents unchanged). Both conditions must be satisfied simultaneously.
 
-A preamble that imports C++20 modules, itself or through the headers it includes, also keys its PCH on the module files those imports resolve to: rebuilding one of those modules, or a missing one becoming available, gives the preamble a new PCH.
+A preamble that imports C++20 modules, itself or through the headers it includes, also depends on what those modules were built from: rebuilding one of them, or a missing one becoming available, rebuilds its PCH.
 
 PCH builds are executed by stateless worker processes (see [multi-process architecture](multi-process.md)). The worker uses Clang's Preamble compilation mode, processing only the preamble portion before the bound. Upon completion, it returns the PCH file path and list of dependency files.
 
