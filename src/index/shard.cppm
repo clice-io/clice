@@ -6,6 +6,7 @@ module clice:index.shard;
 
 import :index.types;
 import :support.bitmap;
+import :syntax.position;
 
 namespace clice::index {
 
@@ -122,6 +123,10 @@ public:
 
     /// Which lines end in "\r\n" (ShardBlob::crlf_lines), read in place.
     std::span<const std::uint64_t> crlf_lines() const;
+
+    /// The positions of the text the rows were built from: over its stored
+    /// text, or its line table alone when it is pure ASCII.
+    PositionMap positions() const;
 
 private:
     explicit Shard(std::unique_ptr<llvm::MemoryBuffer> buffer);

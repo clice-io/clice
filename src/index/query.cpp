@@ -15,13 +15,6 @@ import :vfs.file_system;
 
 namespace clice::index {
 
-Coordinates shard_coordinates(const Shard& shard) {
-    if(!shard.content().empty()) {
-        return {shard.content(), shard.line_starts()};
-    }
-    return {shard.content_size(), shard.line_starts(), shard.crlf_lines()};
-}
-
 namespace {
 
 std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
@@ -65,7 +58,7 @@ auto site_key(const Site& site) {
 std::optional<Site> extent_of(const RowSource& source, const Relation& relation) {
     assert(RelationKind(relation.kind).isDeclOrDef());
     auto extent = std::bit_cast<LocalSourceRange>(relation.target_symbol);
-    if(extent.begin >= extent.end || extent.end > source.coords.size()) {
+    if(extent.begin >= extent.end || extent.end > source.positions.size()) {
         return std::nullopt;
     }
     return source.site(extent);
@@ -212,7 +205,7 @@ std::optional<RowSource> IndexQuery::serving(Fid file) const {
                      .file = file,
                      .path = files.display(file),
                      .rows = shard,
-                     .coords = shard_coordinates(*shard)};
+                     .positions = shard->positions()};
 }
 
 const Shard* IndexQuery::shard_matching(Fid file, llvm::StringRef text) const {
@@ -241,7 +234,7 @@ void IndexQuery::visit_overlay_files(const TUIndex& state,
                          .file = file,
                          .path = files.display(file),
                          .rows = &shard,
-                         .coords = shard_coordinates(shard)};
+                         .positions = shard.positions()};
         if(!visitor(source)) {
             return;
         }
@@ -353,9 +346,11 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
         if(!named) {
             return false;
         }
-        auto site =
-            RowSource{.file = file, .path = source->path, .rows = &rows, .coords = source->coords}
-                .site(named->range);
+        auto site = RowSource{.file = file,
+                              .path = source->path,
+                              .rows = &rows,
+                              .positions = source->positions}
+                        .site(named->range);
         if(!site) {
             return false;
         }
@@ -390,7 +385,8 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file,
     if(!source) {
         return std::nullopt;
     }
-    auto offset = source->coords.offset(line, utf16_column);
+    auto offset = source->positions.offset({.line = line, .character = utf16_column},
+                                           PositionEncoding::UTF16);
     if(!offset) {
         return std::nullopt;
     }
@@ -825,8 +821,8 @@ std::optional<llvm::StringRef>
     // open session served by its shard reads in buffer coordinates, so it
     // lands here too.
     if(source.kind == RowSource::Kind::SessionRows ||
-       source.kind == RowSource::Kind::PreambleRows || !source.coords.text().empty()) {
-        return source.coords.text();
+       source.kind == RowSource::Kind::PreambleRows || !source.positions.text().empty()) {
+        return source.positions.text();
     }
     return disk_text(source.path, *source.rows, storage);
 }
@@ -879,8 +875,8 @@ std::string IndexQuery::context_line(const Site& site) const {
     if(!site.file.valid()) {
         return {};
     }
-    if(auto source = serving(site.file); source && !source->coords.text().empty()) {
-        return extract_line(source->coords.text(), site.range.begin);
+    if(auto source = serving(site.file); source && !source->positions.text().empty()) {
+        return extract_line(source->positions.text(), site.range.begin);
     }
     auto* shard = index.shard(site.file);
     if(!shard) {
@@ -1106,7 +1102,7 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
             return {};
         }
         auto line = static_cast<std::uint32_t>(place.line - 1);
-        auto bounds = source->coords.line_bounds(line);
+        auto bounds = source->positions.line_bounds(line);
         if(!bounds) {
             return {};
         }

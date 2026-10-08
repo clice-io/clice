@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :feature.feature;
+import :syntax.position;
 import :tests.unit.test.temp_dir;
 import :tests.unit.test.test;
 
@@ -40,6 +41,21 @@ ZEST_CASE(IncludeSort) {
     llvm::StringRef code = "#include <vector>\n#include <algorithm>\n\nint main() {}\n";
     auto edits = feature::document_format("main.cpp", code, std::nullopt);
     ZASSERT(edits.size() != 0U);
+}
+
+ZEST_CASE(CRLFIncludeSort) {
+    llvm::StringRef code = "#include \"b.h\"\r\n#include \"a.h\"\r\nint x;\r\n";
+    auto edits = feature::document_format("main.cpp", code, std::nullopt);
+    ZASSERT(edits.size() != 0U);
+
+    auto lines = kota::ipc::lsp::line_starts(code);
+    PositionMap map(code, lines);
+    std::string result = code.str();
+    for(const auto& edit: llvm::reverse(edits)) {
+        auto range = map.offset_range(edit.range, PositionEncoding::UTF16);
+        result.replace(range.begin, range.length(), edit.new_text);
+    }
+    ZEXPECT(result == "#include \"a.h\"\r\n#include \"b.h\"\r\nint x;\r\n");
 }
 
 ZEST_CASE(EditsNeedStyleFile) {

@@ -20,8 +20,7 @@ constexpr std::uint32_t none = ~0u;
 
 /// 1-based line of `offset` in the content a shard's rows describe.
 std::uint32_t line_of(const index::Shard& shard, std::uint32_t offset) {
-    auto starts = shard.line_starts();
-    return static_cast<std::uint32_t>(std::ranges::upper_bound(starts, offset) - starts.begin());
+    return kota::ipc::lsp::line_of(shard.line_starts(), offset) + 1;
 }
 
 /// Whether naming an entity of this kind ties the naming file to the

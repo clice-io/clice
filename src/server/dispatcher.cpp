@@ -175,7 +175,7 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
     wp.config = project.config;
 
     if(position) {
-        wp.offset = session.position_map().to_offset_clamped(*position);
+        wp.offset = session.positions().offset_clamped(*position, PositionEncoding::UTF16);
     }
 
     bool unanswered = false;
@@ -252,7 +252,7 @@ kota::task<std::vector<feature::InlayHint>, kota::ipc::Error>
                             kota::cancellation_token token) {
     // Clamped against the buffer the ticket was taken on: a buffer that
     // moves before the reply lands turns the reply into ContentModified.
-    auto offsets = ticket.session->position_map().to_offset_range(range);
+    auto offsets = ticket.session->positions().offset_range(range, PositionEncoding::UTF16);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
                              EvidenceKind::InlayHint,
@@ -299,7 +299,7 @@ kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
                              kota::cancellation_token token) {
     // Clamped against the buffer the ticket was taken on: a buffer that
     // moves before the reply lands turns the reply into ContentModified.
-    auto selection = ticket.session->position_map().to_offset_range(range);
+    auto selection = ticket.session->positions().offset_range(range, PositionEncoding::UTF16);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
                              EvidenceKind::CodeAction,
@@ -331,7 +331,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
 
     wp.file = path;
     wp.text = session.text;
-    wp.offset = session.position_map().to_offset_clamped(position);
+    wp.offset = session.positions().offset_clamped(position, PositionEncoding::UTF16);
     auto resolution = contexts.resolve_command(path_id, wp.directory, wp.arguments);
     wp.config = project.config;
 
@@ -436,7 +436,7 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
     wp.text = session.text;
 
     if(range) {
-        wp.range = session.position_map().to_offset_range(*range);
+        wp.range = session.positions().offset_range(*range, PositionEncoding::UTF16);
     }
 
     ScopedTimer timer;

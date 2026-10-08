@@ -469,14 +469,12 @@ void StatefulWorker::register_handlers() {
                     auto scan =
                         feature::inactive_regions(doc.unit, doc.open_conditionals, doc.pch.second);
                     regions.insert(regions.end(), scan.regions.begin(), scan.regions.end());
-                    return to_raw(feature::semantic_tokens(doc.unit,
-                                                           regions,
-                                                           feature::PositionEncoding::UTF16));
+                    return to_raw(
+                        feature::semantic_tokens(doc.unit, regions, PositionEncoding::UTF16));
                 });
             case K::DocumentSymbol:
                 return with_ast(kind, params, [&](DocumentEntry& doc) {
-                    return to_raw(
-                        feature::document_symbols(doc.unit, feature::PositionEncoding::UTF16));
+                    return to_raw(feature::document_symbols(doc.unit, PositionEncoding::UTF16));
                 });
         }
         std::unreachable();

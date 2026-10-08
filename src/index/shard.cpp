@@ -944,7 +944,7 @@ void Shard::lookup(std::uint32_t offset,
     for(auto it = first; it != rows.end(); it += 1) {
         auto row = *it;
         auto range = table.rows.range_of(row);
-        if(!range.contains(offset)) {
+        if(!range.touches(offset)) {
             break;
         }
         if(!is_live(row)) {
@@ -1089,6 +1089,13 @@ std::span<const std::uint64_t> Shard::crlf_lines() const {
         return {};
     }
     return to_array_ref(root_of(*buffer)[&ShardBlob::crlf_lines]);
+}
+
+PositionMap Shard::positions() const {
+    if(!content().empty()) {
+        return {content(), line_starts()};
+    }
+    return {content_size(), line_starts(), crlf_lines()};
 }
 
 namespace {

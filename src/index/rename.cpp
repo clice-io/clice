@@ -42,7 +42,7 @@ struct Lines {
 
     /// A token's position: never inside a newline.
     LineColumn position(std::uint32_t offset) const {
-        return *Coordinates(text, starts).position(offset);
+        return *line_column(PositionMap(text, starts), offset);
     }
 
     std::string line_of(std::uint32_t offset) const {

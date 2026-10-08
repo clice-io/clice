@@ -4,8 +4,8 @@ module;
 
 module clice:server.session;
 
-import :feature.position;
 import :server.quarantine;
+import :syntax.position;
 import :vfs.file_table;
 
 namespace clice {
@@ -82,9 +82,8 @@ struct Session {
         non_ascii_lines = kota::ipc::lsp::non_ascii_lines(text);
     }
 
-    /// Positions in `text`, as the editor counts them.
-    feature::PositionMap position_map() const {
-        return {.content = text, .lines = line_starts, .non_ascii = non_ascii_lines};
+    PositionMap positions() const {
+        return {text, line_starts, non_ascii_lines};
     }
 
     /// Monotonic generation counter, incremented on every didChange and on close.
