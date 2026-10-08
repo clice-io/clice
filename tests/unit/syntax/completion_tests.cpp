@@ -113,7 +113,14 @@ ZEST_CASE(ImportWithSemicolon) {
     auto ctx = detect_completion_context("import st;\n", 9);
     ZEXPECT(ctx.kind == CompletionContext::Import);
     ZEXPECT(ctx.prefix == "st");
+    ZEXPECT(ctx.closed);
     ZEXPECT(detect_completion_context("import std;\n", 11).kind == CompletionContext::None);
+}
+
+ZEST_CASE(ImportClosedPastComments) {
+    ZEXPECT(detect_completion_context("import st /* x */ [[a]];", 9).closed);
+    ZEXPECT(!detect_completion_context("import st // a; b\nint x;", 9).closed);
+    ZEXPECT(!detect_completion_context("import st\nint x;", 9).closed);
 }
 
 ZEST_CASE(ImportEmpty) {

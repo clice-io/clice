@@ -35,6 +35,9 @@ struct PreambleCompletionContext {
     /// What a chosen candidate replaces: the name under the cursor — of an
     /// include, its last path component — typed part and untyped rest.
     LocalSourceRange replace;
+
+    /// An import statement that ends in its semicolon already.
+    bool closed = false;
 };
 
 /// Detect whether the cursor is inside a #include or import directive.

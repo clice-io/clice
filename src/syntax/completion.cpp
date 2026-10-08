@@ -153,9 +153,20 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
     while(end < text.size() && is_module_name_char(text[end])) {
         end += 1;
     }
+    // A semicolon before the cursor ended the statement above, so one on
+    // the rest of the line, past comments and attributes, closes this one.
+    bool closed = false;
+    for(auto token = lexer.advance(); !token.is_eof() && !token.is_at_start_of_line;
+        token = lexer.advance()) {
+        if(token.kind == clang::tok::semi) {
+            closed = true;
+            break;
+        }
+    }
     return {CompletionContext::Import,
             prefix.str(),
-            LocalSourceRange(offset - static_cast<std::uint32_t>(prefix.size()), end)};
+            LocalSourceRange(offset - static_cast<std::uint32_t>(prefix.size()), end),
+            closed};
 }
 
 std::vector<std::string> complete_module_import(const DependencyGraph& graph,

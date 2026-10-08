@@ -851,7 +851,6 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             auto module_names = complete_module_import(project.dep_graph,
                                                        pctx.prefix,
                                                        scan_quick(declared).module_name);
-            bool closed = text.substr(pctx.replace.end).ltrim(" \t").starts_with(";");
             std::vector<protocol::CompletionItem> items;
             items.reserve(module_names.size());
             for(auto& name: module_names) {
@@ -860,7 +859,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 item.kind = protocol::CompletionItemKind::Module;
                 item.text_edit = protocol::TextEdit{
                     .range = *map.to_range(pctx.replace),
-                    .new_text = closed ? name : name + ";",
+                    .new_text = pctx.closed ? name : name + ";",
                 };
                 items.push_back(std::move(item));
             }
