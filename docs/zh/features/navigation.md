@@ -1310,7 +1310,7 @@ tests/snap/document_highlight/document_highlight/02_highlight_read_write.cpp
 
 **通过可变引用传递的实参**
 
-绑定到非 const 左值引用形参的实参算作写入，也就是 `&` 内联提示所标记的位置
+绑定到非 const 左值引用形参的实参算作写入
 
 const 引用形参或按值传递的形参读取实参，对实参取地址同样算作读取。转发引用（forwarding reference，`T&&`、`auto&&`）可以绑定任何实参，也算作读取，除非可变参数转发函数把实参继续传给可变引用形参。
 
@@ -1326,7 +1326,7 @@ tests/snap/document_highlight/document_highlight/03_highlight_reference_argument
 
 类重载的赋值、复合赋值、自增和自减运算符与内置运算符一样，会写入左操作数
 
-其他运算符读取左操作数。如果运算符以可变引用接收右操作数（流提取运算符就是如此），右操作数算作写入。运算符本身在其声明处以及每个使用它的表达式中高亮显示。
+其他运算符读取左操作数；调用成员函数时，对象同样算作读取，显式对象形参（explicit object parameter）也不例外。如果运算符或成员函数以可变引用接收某个操作数或实参（流提取运算符就是如此），该操作数或实参算作写入。运算符本身在其声明处以及每个使用它的表达式中高亮显示。
 
 ```snap
 tests/snap/document_highlight/document_highlight/04_highlight_overloaded_operators.cpp
@@ -1340,7 +1340,7 @@ tests/snap/document_highlight/document_highlight/04_highlight_overloaded_operato
 
 通过 `object.member` 写入时，写入的是成员，对象本身只被读取
 
-指定初始化器或构造函数的成员初始化器会指明它所初始化的字段，但不算作写入：初始化不是赋值。匿名联合体或结构体的字段与其他字段一样高亮显示。
+指定初始化器或构造函数的成员初始化器会指明它所初始化的字段，但不算作写入：初始化不是赋值。匿名联合体的字段与其他字段一样高亮显示。
 
 ```snap
 tests/snap/document_highlight/document_highlight/05_highlight_members.cpp
@@ -1354,7 +1354,7 @@ tests/snap/document_highlight/document_highlight/05_highlight_members.cpp
 
 宏在其定义、展开处、检测它的条件编译指令以及它的 `#undef` 处高亮显示
 
-写在宏参数中的名称在书写位置高亮；由宏的替换文本拼出的名称则高亮整个宏调用。
+写在宏参数中的名称在书写位置高亮；由宏的替换文本拼出的名称则高亮整个宏调用。在另一个宏的替换文本中使用的宏，既不会在那里高亮，也不会在那个宏的调用处高亮。
 
 ```snap
 tests/snap/document_highlight/document_highlight/06_highlight_macros.cpp

@@ -1456,8 +1456,7 @@ tests/snap/document_highlight/document_highlight/02_highlight_read_write.cpp
 
 **Arguments passed by mutable reference**
 
-An argument bound to a non-const lvalue reference parameter is a write,
-where the `&` inlay hint marks it
+An argument bound to a non-const lvalue reference parameter is a write
 
 A const reference or a by-value parameter reads the argument, and so does
 taking its address. A forwarding reference (`T&&`, `auto&&`) binds
@@ -1477,8 +1476,10 @@ tests/snap/document_highlight/document_highlight/03_highlight_reference_argument
 The overloaded assignment, compound assignment, increment and decrement
 operators of a class write their left operand like the built-in ones
 
-Other operators read it. Their right operand is a write when the
-operator takes it by mutable reference, as a stream extraction does.
+Other operators read it, and so does a call of a member function, an
+explicit object parameter's included. An operand or argument is a write
+when the operator or member takes it by mutable reference, as a stream
+extraction does.
 The operator itself highlights where it is declared and wherever an
 expression uses it.
 
@@ -1497,8 +1498,8 @@ only read
 
 A designated initializer or a constructor's member initializer names the
 field it initializes without writing it: initialization is not an
-assignment. Fields of an anonymous union or struct highlight like any
-other field.
+assignment. Fields of an anonymous union highlight like any other
+field.
 
 ```snap
 tests/snap/document_highlight/document_highlight/05_highlight_members.cpp
@@ -1515,6 +1516,8 @@ testing it and its `#undef`
 
 A name written in a macro argument highlights where it is written; a
 name the macro's replacement spells highlights the whole invocation.
+A macro used in another macro's replacement highlights neither there
+nor at that macro's invocations.
 
 ```snap
 tests/snap/document_highlight/document_highlight/06_highlight_macros.cpp
