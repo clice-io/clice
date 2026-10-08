@@ -1,0 +1,33 @@
+---
+created_at: 2026-10-08
+input_file: text_ranges/01_literals.cpp
+---
+char:
+  - { range: "20:15-20:16", text: "x" }
+  - { range: "20:14-20:17", text: "'x'" }
+  - { range: "20:0-20:17", text: "char letter = 'x'" }
+  - { range: "20:0-20:18", text: "char letter = 'x';" }
+
+plain:
+  - { range: "16:21-16:31", text: "plain text" }
+  - { range: "16:20-16:32", text: "\"plain text\"" }
+  - { range: "16:0-16:32", text: "const char* plain = \"plain text\"" }
+  - { range: "16:0-16:33", text: "const char* plain = \"plain text\";" }
+
+prefixed:
+  - { range: "17:29-17:42", text: "prefixed text" }
+  - { range: "17:26-17:43", text: "u8\"prefixed text\"" }
+  - { range: "17:0-17:43", text: "const char8_t* prefixed = u8\"prefixed text\"" }
+  - { range: "17:0-17:44", text: "const char8_t* prefixed = u8\"prefixed text\";" }
+
+raw:
+  - { range: "18:26-18:34", text: "raw text" }
+  - { range: "18:18-18:41", text: "R\"delim(raw text)delim\"" }
+  - { range: "18:0-18:41", text: "const char* raw = R\"delim(raw text)delim\"" }
+  - { range: "18:0-18:42", text: "const char* raw = R\"delim(raw text)delim\";" }
+
+suffix:
+  - { range: "19:14-19:25", text: "tagged text" }
+  - { range: "19:13-19:30", text: "\"tagged text\"_tag" }
+  - { range: "19:0-19:30", text: "Tag tagged = \"tagged text\"_tag" }
+  - { range: "19:0-19:31", text: "Tag tagged = \"tagged text\"_tag;" }

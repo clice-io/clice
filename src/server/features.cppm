@@ -126,6 +126,12 @@ public:
                             kota::cancellation_token token = {});
     RawResult document_symbol(Ticket ticket, kota::cancellation_token token = {});
 
+    /// One chain of selection ranges per position: from the AST, or for a
+    /// document without one from the raw lex of its text.
+    RawResult selection_range(Ticket ticket,
+                              std::vector<protocol::Position> positions,
+                              kota::cancellation_token token = {});
+
     /// Code actions on a range of the buffer: the worker computes them to
     /// completion against its AST, and the index requests they carry
     /// (definitions to vet and place in the host source, headers

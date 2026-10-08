@@ -1,0 +1,55 @@
+---
+created_at: 2026-10-08
+input_file: cursor_placement.cpp
+---
+blank:
+  - { range: "13:21-19:1", text: "{ int result = helper(count); result = count; re…" }
+  - { range: "13:0-19:1", text: "int probe(int count) { int result = helper(count…" }
+
+local_const:
+  - { range: "17:4-17:9", text: "const" }
+  - { range: "17:4-17:27", text: "const int copy = result" }
+  - { range: "17:4-17:28", text: "const int copy = result;" }
+  - { range: "14:4-18:18", text: "int result = helper(count); result = count; resu…" }
+  - { range: "13:21-19:1", text: "{ int result = helper(count); result = count; re…" }
+  - { range: "13:0-19:1", text: "int probe(int count) { int result = helper(count…" }
+
+name_paren:
+  - { range: "14:17-14:23", text: "helper" }
+  - { range: "14:17-14:30", text: "helper(count)" }
+  - { range: "14:4-14:30", text: "int result = helper(count)" }
+  - { range: "14:4-14:31", text: "int result = helper(count);" }
+  - { range: "14:4-18:18", text: "int result = helper(count); result = count; resu…" }
+  - { range: "13:21-19:1", text: "{ int result = helper(count); result = count; re…" }
+  - { range: "13:0-19:1", text: "int probe(int count) { int result = helper(count…" }
+
+name_semi:
+  - { range: "15:13-15:18", text: "count" }
+  - { range: "15:4-15:18", text: "result = count" }
+  - { range: "15:4-15:19", text: "result = count;" }
+  - { range: "14:4-18:18", text: "int result = helper(count); result = count; resu…" }
+  - { range: "13:21-19:1", text: "{ int result = helper(count); result = count; re…" }
+  - { range: "13:0-19:1", text: "int probe(int count) { int result = helper(count…" }
+
+punct_name:
+  - { range: "16:20-16:25", text: "count" }
+  - { range: "16:13-16:25", text: "result+count" }
+  - { range: "16:4-16:25", text: "result = result+count" }
+  - { range: "16:4-16:26", text: "result = result+count;" }
+  - { range: "14:4-18:18", text: "int result = helper(count); result = count; resu…" }
+  - { range: "13:21-19:1", text: "{ int result = helper(count); result = count; re…" }
+  - { range: "13:0-19:1", text: "int probe(int count) { int result = helper(count…" }
+
+top_const:
+  - { range: "6:0-6:5", text: "const" }
+  - { range: "6:0-6:19", text: "const int limit = 3" }
+  - { range: "6:0-6:20", text: "const int limit = 3;" }
+
+trailing_const:
+  - { range: "9:14-9:19", text: "const" }
+  - { range: "9:4-9:19", text: "int get() const" }
+  - { range: "9:4-9:20", text: "int get() const;" }
+  - { range: "9:4-10:14", text: "int get() const; int field;" }
+  - { range: "8:13-11:1", text: "{ int get() const; int field; }" }
+  - { range: "8:0-11:1", text: "struct Probe { int get() const; int field; }" }
+  - { range: "8:0-11:2", text: "struct Probe { int get() const; int field; };" }

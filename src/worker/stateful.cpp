@@ -410,6 +410,17 @@ void StatefulWorker::register_handlers() {
                 [&](DocumentEntry& doc) { return feature::code_actions(doc.unit, params.range); });
         });
 
+    // === SelectionRange ===
+    peer.on_request([this](RequestContext& ctx, const worker::SelectionRangeParams& params)
+                        -> RequestResult<worker::SelectionRangeParams> {
+        return with_ast_or("SelectionRange",
+                           params,
+                           std::vector<std::vector<LocalSourceRange>>{},
+                           [&](DocumentEntry& doc) {
+                               return feature::selection_ranges(doc.unit, params.offsets);
+                           });
+    });
+
     // === Evict ===
     peer.on_notification([this](const worker::EvictParams& params) {
         LOG_DEBUG("Evict notification: path={}", params.path);

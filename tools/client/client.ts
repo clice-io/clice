@@ -1089,6 +1089,13 @@ export class CliceClient {
         });
     }
 
+    selectionRanges(uri: string, positions: proto.Position[]) {
+        return this.sendRequest(proto.SelectionRangeRequest.type, {
+            textDocument: { uri },
+            positions,
+        });
+    }
+
     foldingRanges(uri: string) {
         return this.sendRequest(proto.FoldingRangeRequest.type, {
             textDocument: { uri },

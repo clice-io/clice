@@ -40,8 +40,8 @@ struct InspectOptions {
               help =
                   "Feature to run (code_action, code_completion, document_highlight, "
                   "document_links, document_symbol, folding_range, hover, inlay_hint, "
-                  "semantic_tokens, signature_help, tu_index) and a source file or "
-                  "directory",
+                  "selection_range, semantic_tokens, signature_help, tu_index) and a "
+                  "source file or directory",
               required = false)
     <std::vector<std::string>> inputs;
 
@@ -187,6 +187,12 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
         feature::inlay_hints(unit,
                              range,
                              *parse_feature_config<feature::InlayHintsOptions>(config)));
+}
+
+std::optional<kota::codec::RawValue> run_selection_range(CompilationUnitRef unit,
+                                                         std::uint32_t offset,
+                                                         [[maybe_unused]] llvm::StringRef config) {
+    return to_raw_json(feature::selection_ranges(unit, {offset}).front());
 }
 
 struct RawCodeAction {
@@ -378,6 +384,7 @@ constexpr std::array features = {
     FeatureSpec{.name = "inlay_hint",
                 .run_over = run_inlay_hints,
                 .check_config = check_feature_config<feature::InlayHintsOptions>},
+    FeatureSpec{.name = "selection_range", .run_at = run_selection_range},
     FeatureSpec{.name = "semantic_tokens", .run = run_semantic_tokens},
     FeatureSpec{.name = "signature_help", .run_complete = run_signature_help},
     FeatureSpec{.name = "tu_index", .run = run_tu_index},

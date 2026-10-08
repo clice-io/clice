@@ -76,6 +76,16 @@ test("index serves unedited reads", async ({ session }) => {
         [4, 18, proto.DocumentHighlightKind.Read],
     ]);
 
+    // Without an AST, selection ranges come from the text alone.
+    const [selection] = (await client.selectionRanges(uri, [{ line: 4, character: 15 }])) ?? [];
+    const steps: string[] = [];
+    for (let step = selection; step; step = step.parent) {
+        steps.push(
+            `${step.range.start.line}:${step.range.start.character}-${step.range.end.line}:${step.range.end.character}`,
+        );
+    }
+    expect(steps).toEqual(["4:15-4:16", "4:15-4:19", "4:14-4:20", "4:4-4:21", "3:17-5:1"]);
+
     // Pinned degradations of the read-only surface.
     const hints = await client.inlayHints(uri, {
         start: { line: 0, character: 0 },

@@ -441,6 +441,13 @@ struct CodeActionParams {
     LocalSourceRange range;
 };
 
+/// Request the selection ranges of an open file's AST around byte offsets
+/// of its text, one chain per offset (see feature::selection_ranges).
+struct SelectionRangeParams {
+    std::string path;
+    std::vector<std::uint32_t> offsets;
+};
+
 struct EvictParams {
     std::string path;
 };
@@ -491,6 +498,13 @@ template <>
 struct RequestTraits<clice::worker::CodeActionParams> {
     using Result = std::vector<clice::feature::CodeAction>;
     constexpr inline static std::string_view method = "clice/worker/codeAction";
+};
+
+template <>
+struct RequestTraits<clice::worker::SelectionRangeParams> {
+    /// Empty without an AST.
+    using Result = std::vector<std::vector<clice::LocalSourceRange>>;
+    constexpr inline static std::string_view method = "clice/worker/selectionRange";
 };
 
 template <>

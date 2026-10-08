@@ -1,0 +1,23 @@
+---
+created_at: 2026-10-08
+input_file: syntax_ranges/07_blocks.cpp
+---
+blank:
+  - { range: "18:4-20:31", text: "int sides = 4; return sides * square.side;" }
+  - { range: "17:36-21:1", text: "{ int sides = 4; return sides * square.side; }" }
+  - { range: "17:0-21:1", text: "int perimeter(const Square& square) { int sides …" }
+  - { range: "12:0-21:1", text: "struct Square { int side; int area() const; }; i…" }
+  - { range: "10:17-23:1", text: "{ struct Square { int side; int area() const; };…" }
+  - { range: "10:0-23:1", text: "namespace shapes { struct Square { int side; int…" }
+
+member:
+  - { range: "13:8-13:12", text: "side" }
+  - { range: "13:4-13:12", text: "int side" }
+  - { range: "13:4-13:13", text: "int side;" }
+  - { range: "13:4-14:21", text: "int side; int area() const;" }
+  - { range: "12:14-15:1", text: "{ int side; int area() const; }" }
+  - { range: "12:0-15:1", text: "struct Square { int side; int area() const; }" }
+  - { range: "12:0-15:2", text: "struct Square { int side; int area() const; };" }
+  - { range: "12:0-21:1", text: "struct Square { int side; int area() const; }; i…" }
+  - { range: "10:17-23:1", text: "{ struct Square { int side; int area() const; };…" }
+  - { range: "10:0-23:1", text: "namespace shapes { struct Square { int side; int…" }

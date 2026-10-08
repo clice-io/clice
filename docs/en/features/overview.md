@@ -24,6 +24,7 @@ Language Server Protocol features available when using clice as an editor backen
 | [Inlay Hints](./inlay-hints.md)           | 31 supported · 6 partial · 4 unsupported   |
 | [Folding Ranges](./folding-ranges.md)     | 24 supported                               |
 | [Document Symbols](./document-symbols.md) | 20 supported · 1 partial · 6 unsupported   |
+| [Selection Ranges](./selection-ranges.md) | 10 supported                               |
 | [Formatting](./formatting.md)             | Implemented                                |
 | [Diagnostics](./diagnostics.md)           | Partial                                    |
 | [Code Action](./code-action.md)           | 57 supported                               |

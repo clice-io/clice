@@ -20,6 +20,7 @@ features:
     - document-links
     - document-symbols
     - folding-ranges
+    - selection-ranges
     - formatting
 
 cli:

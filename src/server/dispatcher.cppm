@@ -71,6 +71,13 @@ public:
     kota::task<std::optional<std::vector<feature::FoldingRange>>, kota::ipc::Error>
         folding_ranges(const Ticket& ticket, kota::cancellation_token token = {});
 
+    /// The selection ranges around offsets of the buffer from the stateful
+    /// worker holding the AST, none without one.
+    kota::task<std::vector<std::vector<LocalSourceRange>>, kota::ipc::Error>
+        selection_ranges(const Ticket& ticket,
+                         std::vector<std::uint32_t> offsets,
+                         kota::cancellation_token token = {});
+
     /// The code actions on a range of the buffer, from the stateful worker
     /// holding the AST; index requests come back unresolved.
     kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>

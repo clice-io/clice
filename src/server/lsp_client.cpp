@@ -355,6 +355,7 @@ void LSPClient::register_lifecycle() {
         caps.document_symbol_provider = true;
         caps.document_link_provider = protocol::DocumentLinkOptions{};
         caps.folding_range_provider = true;
+        caps.selection_range_provider = true;
         caps.inlay_hint_provider = true;
         caps.call_hierarchy_provider = true;
         caps.type_hierarchy_provider = true;
@@ -716,6 +717,18 @@ void LSPClient::register_language_features() {
                            project->features.folding_range(Ticket::take(session),
                                                            line_folding_only,
                                                            ctx.cancellation));
+        });
+
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::SelectionRangeParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            if(!session)
+                return kota::outcome_error(unserved(path));
+            return holding(project,
+                           project->features.selection_range(Ticket::take(session),
+                                                             params.positions,
+                                                             ctx.cancellation));
         });
 
     peer.on_request([this](RequestContext& ctx,
