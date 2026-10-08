@@ -642,15 +642,12 @@ public:
         map(map), encoding(encoding), output(output) {}
 
     void append(const SemanticToken& token) {
-        if(!token.range.valid() || token.range.end <= token.range.begin ||
-           token.range.end > map.size()) {
+        if(token.range.end <= token.range.begin || token.range.end > map.size()) {
             return;
         }
 
         auto begin = map.position(token.range.begin, encoding);
         auto end = map.position(token.range.end, encoding);
-        if(!begin || !end)
-            return;
 
         // LSP semantic tokens have no multiline support (unless the client
         // negotiates the capability), so split the token into per-line pieces.

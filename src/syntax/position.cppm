@@ -61,14 +61,19 @@ public:
         return position;
     }
 
+    /// The positions of a byte range's ends, as position() converts each.
     std::optional<kota::ipc::protocol::Range> range(LocalSourceRange range,
                                                     PositionEncoding encoding) const {
-        auto start = position(range.begin, encoding);
-        auto end = position(range.end, encoding);
-        if(!start || !end) {
-            return std::nullopt;
+        auto converted = dispatch(encoding, [&](auto text, const auto&... known) {
+            return kota::ipc::lsp::to_range(text, starts, range.begin, range.end, known...);
+        });
+        if(!converted) {
+            LOG_ANOMALY(PositionMapFail,
+                        "range {}-{} cannot be mapped to positions",
+                        range.begin,
+                        range.end);
         }
-        return kota::ipc::protocol::Range{.start = *start, .end = *end};
+        return converted;
     }
 
     /// The offset of a client's position, a character past the line's end

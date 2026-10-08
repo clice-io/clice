@@ -127,8 +127,9 @@ ZEST_CASE(PastTextAnomaly) {
     ZEXPECT(trapped.empty());
     ZEXPECT(at(map, 10, UTF16) == "none");
     ZEXPECT(!map.range({0, 10}, UTF16));
-    ZEXPECT(trapped.size() == 2u);
-    ZEXPECT(trapped.front() == logging::AnomalyId::PositionMapFail);
+    ZASSERT(trapped.size() == 2u);
+    ZEXPECT(trapped[0] == logging::AnomalyId::PositionMapFail);
+    ZEXPECT(trapped[1] == logging::AnomalyId::PositionMapFail);
 
     logging::reset_anomaly_for_testing();
 }

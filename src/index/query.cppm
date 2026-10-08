@@ -41,12 +41,16 @@ struct RowSource {
 
     /// The site of a row's range; nullopt for a range outside the text.
     std::optional<Site> site(LocalSourceRange range) const {
-        auto begin = line_column(positions, range.begin);
-        auto end = line_column(positions, range.end);
-        if(!begin || !end) {
+        if(range.end > positions.size()) {
             return std::nullopt;
         }
-        return Site{.file = file, .path = path, .range = range, .begin = *begin, .end = *end};
+        return Site{
+            .file = file,
+            .path = path,
+            .range = range,
+            .begin = *line_column(positions, range.begin),
+            .end = *line_column(positions, range.end),
+        };
     }
 };
 

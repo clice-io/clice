@@ -40,15 +40,18 @@ struct Lines {
     explicit Lines(llvm::StringRef text) :
         text(text), starts(kota::ipc::lsp::line_starts({text.data(), text.size()})) {}
 
+    PositionMap positions() const {
+        return {text, starts};
+    }
+
     /// A token's position: never inside a newline.
     LineColumn position(std::uint32_t offset) const {
-        return *line_column(PositionMap(text, starts), offset);
+        return *line_column(positions(), offset);
     }
 
     std::string line_of(std::uint32_t offset) const {
-        auto line = kota::ipc::lsp::line_of(starts, offset);
-        auto end = line + 1 < starts.size() ? starts[line + 1] : text.size();
-        return text.slice(starts[line], end).trim().str();
+        auto bounds = *positions().line_bounds(kota::ipc::lsp::line_of(starts, offset));
+        return text.slice(bounds.begin, bounds.end).trim().str();
     }
 
     Site site(Fid file, std::string path, std::uint32_t offset, std::uint32_t length) const {
@@ -493,7 +496,7 @@ RenamePlan plan_rename(const IndexQuery& query,
                 continue;
             }
             if(auto cursor = query.symbol_at(file, offset);
-               cursor && cursor->site.range.begin <= offset && offset < cursor->site.range.end) {
+               cursor && cursor->site.range.contains(offset)) {
                 if(llvm::any_of(cursor->symbols,
                                 [&](SymbolHash symbol) { return renames(symbol, file); })) {
                     add_edit(file, cursor->site, offset, false);

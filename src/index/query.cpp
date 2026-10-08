@@ -58,7 +58,7 @@ auto site_key(const Site& site) {
 std::optional<Site> extent_of(const RowSource& source, const Relation& relation) {
     assert(RelationKind(relation.kind).isDeclOrDef());
     auto extent = std::bit_cast<LocalSourceRange>(relation.target_symbol);
-    if(extent.begin >= extent.end || extent.end > source.positions.size()) {
+    if(extent.begin >= extent.end) {
         return std::nullopt;
     }
     return source.site(extent);

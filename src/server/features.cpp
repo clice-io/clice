@@ -33,12 +33,11 @@ static std::string shown(FileTable& files, llvm::StringRef identity) {
     return files.display(files.intern(Spelling::absolute(identity)));
 }
 
-/// The link whose argument covers `offset`. Link ranges are half-open;
-/// contains() would also accept end.
+/// The link whose argument covers `offset`.
 const static index::DocumentLink* link_at(llvm::ArrayRef<index::DocumentLink> links,
                                           std::uint32_t offset) {
     auto it = llvm::find_if(links, [&](const index::DocumentLink& link) {
-        return offset >= link.range.begin && offset < link.range.end;
+        return link.range.contains(offset);
     });
     return it != links.end() ? &*it : nullptr;
 }

@@ -228,16 +228,13 @@ public:
         assert(location.isFileID());
 
         auto [fid, offset] = decompose(location);
-        auto holds_caret = [&](LocalSourceRange range) {
-            return range.begin <= offset && offset < range.end;
-        };
         for(auto range: diagnostic.getRanges()) {
-            if(auto local = file_range(range, fid); local && holds_caret(*local)) {
+            if(auto local = file_range(range, fid); local && local->contains(offset)) {
                 return std::pair{fid, *local};
             }
         }
         for(auto& hint: diagnostic.getFixItHints()) {
-            if(auto local = file_range(hint.RemoveRange, fid); local && holds_caret(*local)) {
+            if(auto local = file_range(hint.RemoveRange, fid); local && local->contains(offset)) {
                 return std::pair{fid, *local};
             }
         }
