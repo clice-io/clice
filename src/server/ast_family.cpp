@@ -540,6 +540,12 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
               session->generation,
               projections.current(path_id));
 
+    // A closed session never compiles again, and the join below cannot
+    // tell: its generation stopped moving at the close.
+    if(session->closed) {
+        co_return false;
+    }
+
     // A document whose compile keeps killing workers waits for a change
     // or a save instead of feeding the same content to one more worker;
     // the crash note was published when the crash was recorded.
@@ -734,12 +740,10 @@ kota::task<bool> ASTFamily::fetch_include_tree(Fid host) {
 }
 
 kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
-    // The session is resolved at round start: a didClose between spawn
-    // and entry leaves nothing to compile.
+    // Only a join for an open session spawns a round, and the round gets
+    // here before its first suspension: nothing can have closed it.
     auto session = sessions.find(path_id);
-    if(!session) {
-        co_return RoundOutcome::Stale;
-    }
+    assert(session && "AST round for a closed document");
 
     // The round's content identity. The graph's round identity covers
     // invalidation (ctx.current()); this covers the buffer itself — a
