@@ -77,6 +77,9 @@ std::unique_ptr<clang::CompilerInvocation>
     if(bound != 0) {
         pp_opts.PrecompiledPreambleBytes = {bound, false};
     }
+    // A preamble with errors still gets its PCH: without one, every edit
+    // parses the whole preamble again.
+    pp_opts.AllowPCHWithCompilerErrors = true;
 
     // `#pragma clang __debug crash` and its kin crash the compiler on
     // purpose. Tests keep them as a crash a file's content decides.
@@ -344,9 +347,12 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     /// If the output file is not empty, it represents that we are
     /// generating a PCH or PCM. If error occurs, the AST must be
     /// invalid to some extent, serialization of such AST may result
-    /// in crash frequently. So forbidden it here and return as error.
+    /// in crash frequently. So a PCM's build fails. A PCH keeps its
+    /// preamble's errors; clang writes none only after a module failed
+    /// to load.
     if(!instance.getFrontendOpts().OutputFile.empty() &&
-       instance.getDiagnostics().hasErrorOccurred()) {
+       (self.kind == CompilationKind::Preamble ? instance.hadModuleLoaderFatalFailure()
+                                               : instance.getDiagnostics().hasErrorOccurred())) {
         return CompilationStatus::FatalError;
     }
 

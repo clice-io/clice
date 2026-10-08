@@ -362,6 +362,32 @@ int main() {
     ZASSERT(unit->top_level_decls().size() >= 1U);
 }
 
+ZEST_CASE(PCHKeepsPreambleErrors) {
+    add_file("broken.h", R"(
+#pragma once
+int broken = undeclared_name;
+int before();
+)");
+    add_file("after.h", R"(
+#pragma once
+int after();
+)");
+
+    // A missing include is fatal, and the preamble goes on past it.
+    add_main("main.cpp", R"(
+#include "broken.h"
+#include "missing.h"
+#include "after.h"
+
+int main() { return before() + after(); }
+)");
+
+    ZASSERT(compile_with_pch());
+    ZASSERT(std::ranges::none_of(unit->diagnostics(), [](auto& diag) {
+        return diag.id.level >= DiagnosticLevel::Error;
+    }));
+}
+
 ZEST_CASE(PreambleBoundComputation) {
     // Test that compute_preamble_bound correctly identifies the end of the preamble.
     llvm::StringRef code_with_preamble = R"(

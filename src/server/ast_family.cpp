@@ -92,6 +92,18 @@ void append_crash_notes(const Session& session, std::vector<protocol::Diagnostic
     }
 }
 
+static bool preamble_errors(const std::shared_ptr<index::TUIndex>& preamble) {
+    std::vector<protocol::Diagnostic> diagnostics;
+    if(preamble) {
+        [[maybe_unused]] auto status =
+            kota::codec::json::from_string<kota::ipc::lsp_config>(preamble->preamble_diagnostics(),
+                                                                  diagnostics);
+    }
+    return std::ranges::any_of(diagnostics, [](const protocol::Diagnostic& diagnostic) {
+        return diagnostic.severity == protocol::DiagnosticSeverity::Error;
+    });
+}
+
 /// The compile's diagnostics behind the ones its PCH's build raised in the
 /// preamble, which the parse consuming the PCH never raises again — those
 /// of the command line it does, and they appear once. Files with one
@@ -330,9 +342,10 @@ void ASTFamily::saved(Session& session) {
     // retry with it: a crashed build is refused until a consumer holds a
     // license (see depend_modules), a failed one until what it read or
     // looked for changes. A failed build's inputs miss a lookup in a
-    // directory that did not exist yet, so a save retries its failed
-    // preamble too. Either refusal leaves the compile standing, so only a
-    // fresh round asks for the artifact again.
+    // directory that did not exist yet, and so do those of a PCH that kept
+    // its preamble's errors: a save retries the preamble either way.
+    // Either refusal leaves the compile standing, so only a fresh round
+    // asks for the artifact again.
     bool retry = session.quarantine->crashed(evidence_kind(EvidenceKind::PCM));
     llvm::SmallVector<Fid> modules{session.path_id};
     llvm::DenseSet<Fid> seen{session.path_id};
@@ -353,9 +366,14 @@ void ASTFamily::saved(Session& session) {
         retry |= pcm.forget_failure(modules[i]);
         add_imports({Family::PCM, modules[i].raw});
     }
-    if(auto projection = projections.projection(session.path_id);
-       projection && projection->failed_pch_key) {
-        retry |= pch.forget_failure(*projection->failed_pch_key);
+    if(auto projection = projections.projection(session.path_id)) {
+        if(projection->failed_pch_key) {
+            retry |= pch.forget_failure(*projection->failed_pch_key);
+        } else if(auto& key = projection->pch_key;
+                  key && preamble_errors(pch.preamble_state(*key))) {
+            pch.invalidate(*key);
+            retry = true;
+        }
     }
     if(retry) {
         invalidate(session.path_id);
