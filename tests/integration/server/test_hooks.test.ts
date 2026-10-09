@@ -74,12 +74,13 @@ test("hold parks a compile", async ({ session }) => {
 
     const [uri] = client.open("main.cpp");
     const hold = await client.hold("compile", uri);
-    const hover = client.hoverAt(uri, 0, 4);
+    // A pull waits for the compile; a hover could take the index's rows.
+    const pulled = client.pullDiagnostics(uri);
     await client.parkedBy(hold);
     expect(client.publishCount(uri), "a parked compile publishes nothing").toBe(0);
     const file = workspace.displayPath("main.cpp");
     expect((await client.sync({ deadlineMs: 1_000 })).pending).toEqual([
-        expect.stringMatching(/^request textDocument\/hover \d+$/),
+        expect.stringMatching(/^request textDocument\/diagnostic \d+$/),
         `compile ${file}: reply parked by hold ${hold}`,
         `compile ${file}`,
     ]);
@@ -87,7 +88,7 @@ test("hold parks a compile", async ({ session }) => {
     const published = client.armDiagnostics(uri);
     await client.release(hold);
     await published;
-    await hover;
+    await pulled;
     expect(client.errors(uri)).toHaveLength(1);
     const builds = (await client.stats()).builds.find(
         (build) => client.normalizeUri(build.uri) === uri,

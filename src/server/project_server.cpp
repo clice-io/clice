@@ -507,7 +507,9 @@ kota::task<> ProjectServer::metadata_flush_task() {
     // failure) retries on the next spawn with this backoff.
     co_await kota::sleep(std::chrono::milliseconds(50));
     metadata_flush_scheduled = false;
+    metadata_flushing = true;
     co_await sched.pump.persist();
+    metadata_flushing = false;
     if(project.artifacts_dirty || sched.store.contexts.dirty) {
         co_await kota::sleep(std::chrono::seconds(5));
         schedule_metadata_flush();

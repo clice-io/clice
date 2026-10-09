@@ -937,7 +937,7 @@ std::vector<std::string> MasterServer::pending_work(const kota::ipc::JSONPeer& e
                                         pump.pending_files()));
         }
         if(project->metadata_flush_pending()) {
-            lines.push_back("metadata flush scheduled");
+            lines.push_back("metadata save");
         }
     }
     return lines;

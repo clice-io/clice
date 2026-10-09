@@ -194,7 +194,7 @@ public:
     /// Test hook (clice/internal/sync): wait until nothing is in flight —
     /// no request of `editor` but `self`, no round of the task graph, no
     /// index round running or queued, no disk change waiting for its drain,
-    /// no metadata flush scheduled. A request is listed from its dispatch
+    /// no metadata save scheduled or running. A request is listed from its dispatch
     /// on, before the work it starts surfaces, so one look at all of them
     /// at once settles it.
     kota::task<> settle(const kota::ipc::JSONPeer& editor,
