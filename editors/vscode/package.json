@@ -142,7 +142,7 @@
         "title": "Clice: Implement Pure Virtual Methods"
       },
       {
-        "command": "clice.refactor.rewrite.memberwiseConstructor",
+        "command": "clice.refactor.rewrite.generateMemberwiseConstructor",
         "title": "Clice: Generate Memberwise Constructor"
       },
       {
@@ -305,7 +305,7 @@
           "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
         },
         {
-          "command": "clice.refactor.rewrite.memberwiseConstructor",
+          "command": "clice.refactor.rewrite.generateMemberwiseConstructor",
           "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
         },
         {

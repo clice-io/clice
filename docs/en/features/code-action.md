@@ -15,20 +15,20 @@ In VS Code, the actions at the cursor are behind the lightbulb and `Ctrl+.`, and
 
 Each refactoring has its own code action kind, so an editor can ask for one alone:
 
-| Action                                               | Kind                                     |
-| ---------------------------------------------------- | ---------------------------------------- |
-| Define a method inline                               | `refactor.rewrite.define.inline`         |
-| Define a function out of line, or in the host source | `refactor.rewrite.define.outOfLine`      |
-| Define the missing members of a class                | `refactor.rewrite.define.missing`        |
-| Implement pure virtual methods                       | `refactor.rewrite.implementPureVirtuals` |
-| Generate a memberwise constructor                    | `refactor.rewrite.memberwiseConstructor` |
-| Add the missing enum cases to a switch               | `refactor.rewrite.populateSwitch`        |
-| Expand a deduced type                                | `refactor.rewrite.expandDeducedType`     |
-| Reorder definitions by declaration order             | `refactor.rewrite.reorderDefinitions`    |
-| Expand a macro                                       | `refactor.inline.macro`                  |
-| Add an include, apply a diagnostic's fix             | `quickfix`                               |
+| Action                                               | Kind                                             |
+| ---------------------------------------------------- | ------------------------------------------------ |
+| Define a method inline                               | `refactor.rewrite.define.inline`                 |
+| Define a function out of line, or in the host source | `refactor.rewrite.define.outOfLine`              |
+| Define the missing members of a class                | `refactor.rewrite.define.missing`                |
+| Implement pure virtual methods                       | `refactor.rewrite.implementPureVirtuals`         |
+| Generate a memberwise constructor                    | `refactor.rewrite.generateMemberwiseConstructor` |
+| Add the missing enum cases to a switch               | `refactor.rewrite.populateSwitch`                |
+| Expand a deduced type                                | `refactor.rewrite.expandDeducedType`             |
+| Reorder definitions by declaration order             | `refactor.rewrite.reorderDefinitions`            |
+| Expand a macro                                       | `refactor.inline.macro`                          |
+| Add an include, apply a diagnostic's fix             | `quickfix`                                       |
 
-The VS Code extension has a command for each refactoring, named `clice.` followed by its kind and titled after the action in the Command Palette ("Clice: Add Missing Enum Cases to Switch"). It applies the action at once when it is the only one offered, and lets you pick otherwise. A key binds to it in `keybindings.json`:
+The VS Code extension has a command for each refactoring, named `clice.` followed by its kind and titled after the action in the Command Palette ("Clice: Add Missing Enum Cases to Switch"). It applies the action at once when it is the only one offered, and lets you pick otherwise. Bind a key to it in `keybindings.json`:
 
 ```json
 {
@@ -38,7 +38,7 @@ The VS Code extension has a command for each refactoring, named `clice.` followe
 }
 ```
 
-A kind also covers the kinds below it: bound to `refactor.rewrite.define`, VS Code's own `editor.action.codeAction` command offers every way to define the function at the cursor.
+A kind also covers the kinds below it: given `refactor.rewrite.define`, VS Code's own `editor.action.codeAction` command offers every way to define the function at the cursor.
 
 ```json
 {

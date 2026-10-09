@@ -6,7 +6,7 @@ const_base:
 (no actions)
 
 const_initialized:
-- [refactor.rewrite.memberwiseConstructor] Generate a memberwise constructor for 'Fourth'
+- [refactor.rewrite.generateMemberwiseConstructor] Generate a memberwise constructor for 'Fourth'
   47:0-47:0 => "    explicit Fourth(int x) : x(x) {}\n"
 
 explicit_base:

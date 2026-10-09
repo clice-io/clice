@@ -3,10 +3,10 @@ created_at: 2026-10-01
 input_file: move_declared_later.cpp
 ---
 after:
-- [refactor.rewrite.memberwiseConstructor] Generate a memberwise constructor for 'After'
+- [refactor.rewrite.generateMemberwiseConstructor] Generate a memberwise constructor for 'After'
   18:0-18:0 => "    explicit After(Handle handle) : handle(std::move(handle)) {}\n"
 
 before:
-- [refactor.rewrite.memberwiseConstructor] Generate a memberwise constructor for 'Before'
+- [refactor.rewrite.generateMemberwiseConstructor] Generate a memberwise constructor for 'Before'
   0:0-0:0 => "#include <utility>\n"
   9:0-9:0 => "    explicit Before(Handle handle) : handle(std::move(handle)) {}\n"

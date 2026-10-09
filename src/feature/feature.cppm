@@ -524,7 +524,8 @@ constexpr inline std::string_view define_out_of_line = "refactor.rewrite.define.
 constexpr inline std::string_view define_missing = "refactor.rewrite.define.missing";
 constexpr inline std::string_view implement_pure_virtuals =
     "refactor.rewrite.implementPureVirtuals";
-constexpr inline std::string_view memberwise_constructor = "refactor.rewrite.memberwiseConstructor";
+constexpr inline std::string_view memberwise_constructor =
+    "refactor.rewrite.generateMemberwiseConstructor";
 constexpr inline std::string_view populate_switch = "refactor.rewrite.populateSwitch";
 constexpr inline std::string_view expand_deduced_type = "refactor.rewrite.expandDeducedType";
 constexpr inline std::string_view reorder_definitions = "refactor.rewrite.reorderDefinitions";

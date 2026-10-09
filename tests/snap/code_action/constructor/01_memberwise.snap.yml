@@ -3,5 +3,5 @@ created_at: 2026-09-21
 input_file: constructor/01_memberwise.cpp
 ---
 record:
-- [refactor.rewrite.memberwiseConstructor] Generate a memberwise constructor for 'Record'
+- [refactor.rewrite.generateMemberwiseConstructor] Generate a memberwise constructor for 'Record'
   13:0-13:0 => "    Record(int id, const Name& name, const char* label, double* weight) : id(id), name(name), label(label), weight(weight) {}\n"

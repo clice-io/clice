@@ -439,6 +439,24 @@ suite("clice E2E", function () {
             this.skip();
         }
 
+        // Each command asks for the kind its name spells: the commands and
+        // the refactoring kinds the server advertises are the same set.
+        const extension = vscode.extensions.getExtension("clice-io.clice");
+        const manifest = extension?.packageJSON as {
+            contributes: { commands: { command: string }[] };
+        };
+        const commands = manifest.contributes.commands
+            .map(({ command }) => command)
+            .filter((command) => command.startsWith("clice.refactor."))
+            .map((command) => command.slice("clice.".length));
+        const provider = (extension?.exports as { client: ClientHandle }).client.current
+            .initializeResult?.capabilities.codeActionProvider;
+        const advertised =
+            typeof provider === "object"
+                ? (provider.codeActionKinds ?? []).filter((kind) => kind.startsWith("refactor."))
+                : [];
+        assert.deepStrictEqual([...commands].sort(), [...advertised].sort());
+
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-refactor-"));
         const file = path.join(root, "paint.cpp");
         fs.writeFileSync(
@@ -465,8 +483,10 @@ suite("clice E2E", function () {
                     }
                 });
             });
-            await vscode.commands.executeCommand("clice.refactor.rewrite.populateSwitch");
-            await edited;
+            await Promise.all([
+                edited,
+                vscode.commands.executeCommand("clice.refactor.rewrite.populateSwitch"),
+            ]);
             assert.ok(
                 source.getText().includes("case Color::Green:"),
                 `the missing case was not added:\n${source.getText()}`,

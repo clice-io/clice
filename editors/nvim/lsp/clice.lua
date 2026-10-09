@@ -10,7 +10,7 @@
 --- - `:LspCliceSwitchConfiguration`: select the build configuration (the `configuration` tags of
 ---   the `clice.toml` rules) clice runs from its next start.
 --- - `:LspCliceRefactor {kind}`: apply the refactoring of a code action kind at the cursor, such as
----   `refactor.rewrite.populateSwitch`; a choice when several apply.
+---   `refactor.rewrite.populateSwitch`, offering a choice when several apply.
 
 ---@param client vim.lsp.Client
 ---@param bufnr integer
