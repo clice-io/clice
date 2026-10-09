@@ -1166,11 +1166,17 @@ void LSPClient::register_extensions() {
             if(!srv.test_hooks()) {
                 co_await kota::fail(hooks_off());
             }
+            // The deadline counts from the request; a poll runs to its end,
+            // a tick cut short would leave the trackers out of step.
+            auto deadline = std::chrono::steady_clock::now() +
+                            std::chrono::milliseconds(params.deadline_ms.value_or(240'000));
             if(params.poll.value_or(false)) {
                 co_await tick_trackers(srv, /*cdb=*/false, /*force=*/true);
             }
-            auto deadline = std::chrono::milliseconds(params.deadline_ms.value_or(240'000));
-            co_await kota::when_any(srv.settle(this->peer), kota::sleep(deadline, srv.loop));
+            auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::max(deadline - std::chrono::steady_clock::now(),
+                         std::chrono::steady_clock::duration::zero()));
+            co_await kota::when_any(srv.settle(this->peer), kota::sleep(left, srv.loop));
             ext::SyncResult result;
             for(auto& project: srv.projects) {
                 for(auto id: project->sched.pump.failed()) {
