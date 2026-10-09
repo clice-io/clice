@@ -8,13 +8,6 @@ import :worker.probe;
 
 namespace clice {
 
-constexpr std::array<llvm::StringLiteral, 4> build_kind_names = {
-    "compile",
-    "pch",
-    "pcm",
-    "index",
-};
-
 llvm::StringRef build_kind_name(BuildKind kind) {
     return build_kind_names[std::to_underlying(kind)];
 }
@@ -27,11 +20,8 @@ std::optional<BuildKind> parse_build_kind(llvm::StringRef name) {
     return static_cast<BuildKind>(it - build_kind_names.begin());
 }
 
-void BuildProbe::dispatched(BuildKind kind, llvm::StringRef file) {
+kota::task<> BuildProbe::returned(BuildKind kind, llvm::StringRef file) {
     builds[file][std::to_underlying(kind)] += 1;
-}
-
-kota::task<> BuildProbe::arrived(BuildKind kind, llvm::StringRef file) {
     auto it = llvm::find_if(placed, [&](const Hold& hold) {
         return !hold.parked && hold.kind == kind && hold.file == file;
     });

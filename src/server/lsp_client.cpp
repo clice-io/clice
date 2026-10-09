@@ -64,7 +64,7 @@ static kota::task<T, kota::ipc::Error> holding(std::shared_ptr<ProjectServer> pr
 
 /// Tick the file trackers of every project, as clice/internal/poll asks:
 /// the database loop (`force` skips its gates, see ext::PollParams) or the
-/// workspace loop. Every project ticks; returns the events of all.
+/// workspace loop. Returns the events of all.
 static kota::task<std::uint32_t> tick_trackers(MasterServer& srv, bool cdb, bool force) {
     std::uint32_t count = 0;
     if(cdb) {

@@ -16,29 +16,34 @@ enum class BuildKind : std::uint8_t {
     Index,
 };
 
-/// The kind's name on the wire: "compile", "pch", "pcm" or "index".
+/// The kinds' names on the wire, by BuildKind.
+constexpr inline std::array<llvm::StringLiteral, 4> build_kind_names = {
+    "compile",
+    "pch",
+    "pcm",
+    "index",
+};
+
 llvm::StringRef build_kind_name(BuildKind kind);
 
 std::optional<BuildKind> parse_build_kind(llvm::StringRef name);
 
 /// Test instrumentation of the builds the worker pool dispatches, fed only
 /// while test hooks are on (project.test_hooks, see WorkerPool::probe): how
-/// many builds of each kind went to a worker per file, and holds that park
-/// a build's reply between its arrival and its delivery. Parked, the build
-/// is still in flight to the master — its round has not landed — so a test
+/// many builds of each kind a worker ran per file, and holds that park a
+/// build's reply between its arrival and its delivery. Parked, the build is
+/// still in flight to the master — its round has not landed — so a test
 /// acts inside the window a slow build would open, without making one slow.
 class BuildProbe {
 public:
-    /// Builds sent to a worker, per file, indexed by BuildKind.
-    llvm::StringMap<std::array<std::uint32_t, 4>> builds;
+    /// Builds a worker ran, or died running, per file, indexed by
+    /// BuildKind.
+    llvm::StringMap<std::array<std::uint32_t, build_kind_names.size()>> builds;
 
-    /// A build of `kind` for `file` goes to a worker.
-    void dispatched(BuildKind kind, llvm::StringRef file);
-
-    /// The reply of a build of `kind` for `file` arrived: parks it while a
-    /// hold claims it. A hold claims one reply, the first to arrive after
-    /// it was placed.
-    kota::task<> arrived(BuildKind kind, llvm::StringRef file);
+    /// A worker ran a build of `kind` for `file` and its reply arrived:
+    /// counts the build, then parks the reply while a hold claims it. A
+    /// hold claims one reply, the first to arrive after it was placed.
+    kota::task<> returned(BuildKind kind, llvm::StringRef file);
 
     /// Hold the next reply of `kind` for `file`; returns the hold's id.
     std::uint64_t hold(BuildKind kind, std::string file);

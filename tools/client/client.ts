@@ -250,7 +250,7 @@ export class CliceClient {
     /// Holds whose reply the server parked (clice/internal/held), and the
     /// waiters of the ones not parked yet.
     private parked = new Set<number>();
-    private parkWaiters = new Map<number, () => void>();
+    private parkWaiters = new Map<number, (() => void)[]>();
 
     // Retention cap for drained stderr: long stress runs mirror the whole
     // server log, and the teardown scans only need the tail (sanitizer
@@ -300,7 +300,9 @@ export class CliceClient {
         });
         this.onNotification(HeldNotification, (p) => {
             this.parked.add(p.id);
-            this.parkWaiters.get(p.id)?.();
+            for (const resolve of this.parkWaiters.get(p.id) ?? []) {
+                resolve();
+            }
             this.parkWaiters.delete(p.id);
         });
         this.connection.onRequest(proto.WorkDoneProgressCreateRequest.type, (p) => {
@@ -1306,7 +1308,7 @@ export class CliceClient {
             return Promise.resolve();
         }
         return new Promise((resolve) => {
-            this.parkWaiters.set(id, resolve);
+            this.parkWaiters.set(id, [...(this.parkWaiters.get(id) ?? []), resolve]);
         });
     }
 

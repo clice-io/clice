@@ -3,6 +3,7 @@
 /// while the server still sees it in flight.
 
 import * as proto from "vscode-languageserver-protocol";
+import { HoldRequest, type BuildKind } from "@clice/tools/protocol";
 import { expect, test } from "../fixtures.ts";
 
 const UNITS = ["a.cpp", "b.cpp", "c.cpp"];
@@ -22,6 +23,19 @@ test("sync waits for indexing", async ({ session }) => {
     expect(builds.map((build) => [client.normalizeUri(build.uri), build.index]).sort()).toEqual(
         UNITS.map((unit) => [workspace.uri(unit), 1]),
     );
+});
+
+test("sync after a poll", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("a.cpp", "int fn_a() { return 1; }\n");
+    workspace.writeCDB(["a.cpp"]);
+    await client.initialize(workspace);
+    await client.sync();
+
+    // A rewrite of another size: the look at the disk sees it at once.
+    workspace.write("a.cpp", "int fn_renamed() { return 1; }\n");
+    expect(await client.sync({ poll: true })).toEqual({ failed: [], unsaved: false, pending: [] });
+    expect((await client.workspaceSymbols("fn_renamed"))?.length).toBe(1);
 });
 
 test("sync reports held work", async ({ session }) => {
@@ -63,6 +77,11 @@ test("hold parks a compile", async ({ session }) => {
     const hover = client.hoverAt(uri, 0, 4);
     await client.parkedBy(hold);
     expect(client.publishCount(uri), "a parked compile publishes nothing").toBe(0);
+    const file = workspace.displayPath("main.cpp");
+    expect((await client.sync({ deadlineMs: 1_000 })).pending).toEqual([
+        `compile ${file}: reply parked by hold ${hold}`,
+        `compile ${file}`,
+    ]);
 
     const published = client.armDiagnostics(uri);
     await client.release(hold);
@@ -75,6 +94,38 @@ test("hold parks a compile", async ({ session }) => {
     expect(builds?.compile).toBe(1);
 });
 
+test("shutdown releases a parked reply", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", "int main() { return 0; }\n");
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+    await client.sync();
+
+    const [uri] = client.open("main.cpp");
+    const hold = await client.hold("compile", uri);
+    const hover = client.hoverAt(uri, 0, 4).catch(() => null);
+    await client.parkedBy(hold);
+    // The exit gate fails a server that does not exit.
+    await client.shutdown();
+    await hover;
+});
+
+test("holds name a build and a file", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", "int main() { return 0; }\n");
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+    const invalid = { code: proto.ErrorCodes.InvalidParams };
+    await expect(
+        client.sendRequest(HoldRequest, {
+            kind: "query" as BuildKind,
+            uri: workspace.uri("main.cpp"),
+        }),
+    ).rejects.toMatchObject(invalid);
+    await expect(client.hold("compile", "untitled:main")).rejects.toMatchObject(invalid);
+    await expect(client.release(7)).rejects.toMatchObject(invalid);
+});
+
 test("hooks need the option", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", "int main() { return 0; }\n");
@@ -82,7 +133,10 @@ test("hooks need the option", async ({ session }) => {
     await client.initialize(workspace, {
         initializationOptions: { project: { test_hooks: false } },
     });
-    await expect(client.sync()).rejects.toMatchObject({
-        code: proto.ErrorCodes.InvalidRequest,
-    });
+    const off = { code: proto.ErrorCodes.InvalidRequest };
+    await expect(client.sync()).rejects.toMatchObject(off);
+    await expect(client.hold("compile", workspace.uri("main.cpp"))).rejects.toMatchObject(off);
+    await expect(client.release(1)).rejects.toMatchObject(off);
+    await client.openAndWait("main.cpp");
+    expect((await client.stats()).builds, "no build is counted").toEqual([]);
 });

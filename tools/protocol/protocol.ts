@@ -272,7 +272,9 @@ export interface ReleaseParams {
     id: number;
 }
 
-export const ReleaseRequest = new RequestType<ReleaseParams, Record<string, never>, void>(
+export type ReleaseResult = Record<string, never>;
+
+export const ReleaseRequest = new RequestType<ReleaseParams, ReleaseResult, void>(
     "clice/internal/release",
 );
 

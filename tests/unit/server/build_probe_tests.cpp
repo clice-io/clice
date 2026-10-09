@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :support.signal;
 import :tests.unit.test.test;
 import :worker.probe;
 
@@ -20,10 +21,10 @@ Signal<std::uint64_t>::Connection held_conn =
     probe.on_held.connect([this](std::uint64_t id) { held.push_back(id); });
 
 ZEST_CASE(counts_by_kind) {
-    probe.dispatched(BuildKind::Compile, "/w/main.cpp");
-    probe.dispatched(BuildKind::Compile, "/w/main.cpp");
-    probe.dispatched(BuildKind::PCH, "/w/main.cpp");
-    probe.dispatched(BuildKind::Index, "/w/lib.cpp");
+    run(probe.returned(BuildKind::Compile, "/w/main.cpp"),
+        probe.returned(BuildKind::Compile, "/w/main.cpp"),
+        probe.returned(BuildKind::PCH, "/w/main.cpp"),
+        probe.returned(BuildKind::Index, "/w/lib.cpp"));
 
     auto& main = probe.builds["/w/main.cpp"];
     ZEXPECT(main[std::to_underlying(BuildKind::Compile)] == 2u);
@@ -44,7 +45,7 @@ ZEST_CASE(hold_parks_until_release) {
     auto id = probe.hold(BuildKind::Compile, "/w/main.cpp");
     bool delivered = false;
     auto reply = [&]() -> kota::task<> {
-        co_await probe.arrived(BuildKind::Compile, "/w/main.cpp");
+        co_await probe.returned(BuildKind::Compile, "/w/main.cpp");
         delivered = true;
     };
     auto test = [&]() -> kota::task<> {
@@ -67,7 +68,7 @@ ZEST_CASE(hold_claims_one_reply) {
     auto id = probe.hold(BuildKind::Index, "/w/lib.cpp");
     int delivered = 0;
     auto reply = [&](BuildKind kind, llvm::StringRef file) -> kota::task<> {
-        co_await probe.arrived(kind, file);
+        co_await probe.returned(kind, file);
         delivered += 1;
     };
     auto test = [&]() -> kota::task<> {
@@ -95,7 +96,7 @@ ZEST_CASE(release_before_arrival) {
     ZEXPECT(!probe.release(id));
     bool delivered = false;
     auto reply = [&]() -> kota::task<> {
-        co_await probe.arrived(BuildKind::PCM, "/w/m.cppm");
+        co_await probe.returned(BuildKind::PCM, "/w/m.cppm");
         delivered = true;
     };
     run(reply());
@@ -108,7 +109,7 @@ ZEST_CASE(release_all_frees_parked) {
     probe.hold(BuildKind::PCH, "/w/b.cpp");
     int delivered = 0;
     auto reply = [&](BuildKind kind, llvm::StringRef file) -> kota::task<> {
-        co_await probe.arrived(kind, file);
+        co_await probe.returned(kind, file);
         delivered += 1;
     };
     auto test = [&]() -> kota::task<> {
@@ -116,7 +117,6 @@ ZEST_CASE(release_all_frees_parked) {
             co_await kota::yield();
         }
         probe.release_all();
-        co_return;
     };
     run(reply(BuildKind::Compile, "/w/a.cpp"), reply(BuildKind::PCH, "/w/b.cpp"), test());
     ZEXPECT(delivered == 2);

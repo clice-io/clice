@@ -15,7 +15,6 @@ import :support.logging;
 import :vfs.file_system;
 import :vfs.path;
 import :worker.pool;
-import :worker.probe;
 
 namespace clice {
 

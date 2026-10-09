@@ -164,6 +164,14 @@ struct LogFloodResult {
 /// Absent from capabilities and user docs.
 struct StatsParams {};
 
+struct FileBuilds {
+    std::string uri;
+    std::uint32_t compile = 0;
+    std::uint32_t pch = 0;
+    std::uint32_t pcm = 0;
+    std::uint32_t index = 0;
+};
+
 struct StatsResult {
     /// pch_cache entries whose pch.idx envelope is currently open, and
     /// their mapped bytes. Steady state after closing documents: bounded
@@ -202,14 +210,6 @@ struct StatsResult {
 
     /// The builds each file went through, while test hooks are on (see
     /// BuildProbe); empty otherwise.
-    struct FileBuilds {
-        std::string uri;
-        std::uint32_t compile = 0;
-        std::uint32_t pch = 0;
-        std::uint32_t pcm = 0;
-        std::uint32_t index = 0;
-    };
-
     std::vector<FileBuilds> builds;
 };
 
