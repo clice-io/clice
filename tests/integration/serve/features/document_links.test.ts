@@ -44,7 +44,8 @@ const test = serve.files({
 async function openMain(s: Serve): Promise<proto.DocumentLink[]> {
     await s.compiled("main.cpp");
     const links = (await s.request("textDocument/documentLink", "main.cpp")) as
-        proto.DocumentLink[] | null;
+        | proto.DocumentLink[]
+        | null;
     expect(links, "document_links returned None").not.toBeNull();
     return links ?? [];
 }

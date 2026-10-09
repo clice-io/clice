@@ -251,7 +251,8 @@ for (const { name, source, headers = [], lines, characters } of CASES) {
         expect(await s.errors("main.cpp")).toEqual([]);
 
         const folds = (await s.request("textDocument/foldingRange", "main.cpp")) as
-            proto.FoldingRange[] | null;
+            | proto.FoldingRange[]
+            | null;
         expect(render(folds)).toEqual(characters);
     });
 }

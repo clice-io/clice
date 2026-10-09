@@ -19,7 +19,8 @@ function locations(reply: unknown): proto.Location[] {
 
 async function prepareCalls(s: Serve, anchor: string): Promise<proto.CallHierarchyItem[]> {
     const items = (await s.request("textDocument/prepareCallHierarchy", at("main.cpp", anchor))) as
-        proto.CallHierarchyItem[] | null;
+        | proto.CallHierarchyItem[]
+        | null;
     expect(
         items && items.length > 0,
         `prepareCallHierarchy returned ${JSON.stringify(items)}`,
@@ -29,7 +30,8 @@ async function prepareCalls(s: Serve, anchor: string): Promise<proto.CallHierarc
 
 async function prepareTypes(s: Serve, anchor: string): Promise<proto.TypeHierarchyItem[]> {
     const items = (await s.request("textDocument/prepareTypeHierarchy", at("main.cpp", anchor))) as
-        proto.TypeHierarchyItem[] | null;
+        | proto.TypeHierarchyItem[]
+        | null;
     expect(
         items && items.length > 0,
         `prepareTypeHierarchy returned ${JSON.stringify(items)}`,
@@ -322,7 +324,8 @@ test("definition on include", async ({ s }) => {
 test("document links include preamble", async ({ s }) => {
     await s.compiled("nav.cpp");
     const links = (await s.request("textDocument/documentLink", "nav.cpp")) as
-        proto.DocumentLink[] | null;
+        | proto.DocumentLink[]
+        | null;
     const targets = (links ?? []).map((link) => link.target ?? "");
     expect(targets.some((target) => target.includes("nav.h"))).toBe(true);
     expect(targets.some((target) => target.includes("nav_late.h"))).toBe(true);

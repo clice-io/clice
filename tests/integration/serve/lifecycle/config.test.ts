@@ -24,7 +24,8 @@ serve.data("config_rules_no_config")("baseline without rules", async ({ s }) => 
 serve.data("config_rules_toml")("rules from toml", async ({ s }) => {
     await s.clean("main.cpp");
     const symbols = (await s.request("textDocument/documentSymbol", "main.cpp")) as
-        proto.DocumentSymbol[] | null;
+        | proto.DocumentSymbol[]
+        | null;
     expect(symbols && symbols.length > 0, "Expected document symbols for value()/main()").toBe(
         true,
     );

@@ -206,7 +206,8 @@ serve.files(
     const arrived = s.client.armDiagnostics(uri);
     s.client.open("third_party/lib.cpp");
     const symbols = (await s.request("textDocument/documentSymbol", "third_party/lib.cpp")) as
-        proto.DocumentSymbol[] | null;
+        | proto.DocumentSymbol[]
+        | null;
     expect(symbols?.map((symbol) => symbol.name)).toContain("tp_sym");
     await arrived;
     s.client.assertNoErrors(uri);

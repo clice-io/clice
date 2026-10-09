@@ -103,7 +103,9 @@ serve.files({
 
     s.edit("main.cpp", { before: "    return 0;", insert: "    w.\n" });
     const reply = (await s.request("textDocument/completion", at("main.cpp", "w.|"))) as
-        proto.CompletionList | proto.CompletionItem[] | null;
+        | proto.CompletionList
+        | proto.CompletionItem[]
+        | null;
     const items = Array.isArray(reply) ? reply : (reply?.items ?? []);
     expect(items.map((item) => item.label.trim())).toContain("alpha_member");
 });

@@ -78,7 +78,8 @@ serve.files(PROJECT, AUTO)("index serves unedited reads", async ({ s }) => {
     );
 
     const folds = (await s.request("textDocument/foldingRange", "main.cpp")) as
-        proto.FoldingRange[] | null;
+        | proto.FoldingRange[]
+        | null;
     expect(folds?.length ?? 0).toBeGreaterThan(0);
 
     expect(linksTo(await s.request("textDocument/documentLink", "main.cpp"), "header.h")).toBe(
@@ -393,7 +394,8 @@ serve.files(
     await s.indexed();
 
     const links = (await s.request("textDocument/documentLink", "main.cpp")) as
-        proto.DocumentLink[] | null;
+        | proto.DocumentLink[]
+        | null;
     const targets = (links ?? []).map((link) => link.target?.split("/").pop()).sort();
     expect(targets).toEqual(["a.h", "b.h"]);
 });

@@ -18,7 +18,9 @@ function cxx17(sources: string[]): ServeOptions {
 
 async function names(s: Serve, file: string): Promise<string[]> {
     const symbols = (await s.request("textDocument/documentSymbol", file)) as
-        proto.DocumentSymbol[] | proto.SymbolInformation[] | null;
+        | proto.DocumentSymbol[]
+        | proto.SymbolInformation[]
+        | null;
     return (symbols ?? []).map((symbol) => symbol.name);
 }
 

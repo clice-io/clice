@@ -12,7 +12,8 @@ serve.files({ "main.cpp": MAIN }, { manifest: { units: { "main.cpp": ["-fsanitiz
     async ({ s }) => {
         expect(await s.errors("main.cpp")).toEqual([]);
         const links = (await s.request("textDocument/documentLink", "main.cpp")) as
-            proto.DocumentLink[] | null;
+            | proto.DocumentLink[]
+            | null;
         expect(links?.length).toBe(1);
     },
 );
