@@ -121,12 +121,13 @@ public:
         return ledger.pending_reason(server_path_id);
     }
 
-    /// Forget a file's pending-reindex state (reason and queue membership):
-    /// used when the file is removed from disk — nothing is left to reindex,
-    /// and a lingering ContentChanged reason would suppress its deliberately
-    /// still-serving shard forever. A queue slot already consumed stays
-    /// consumed; one not yet consumed is skipped at dispatch time (the
-    /// consume loop treats a missing ledger entry as a cleared slot).
+    /// Forget a file's pending-reindex debt: used when the file is removed
+    /// from disk — nothing is left to reindex, and a lingering
+    /// ContentChanged reason would suppress its deliberately still-serving
+    /// shard forever. A queue slot already consumed stays consumed; one not
+    /// yet consumed is skipped at dispatch time (the consume loop treats a
+    /// missing ledger entry as a cleared slot) unless the file is recorded
+    /// again first, which reuses it.
     void clear_pending(Fid server_path_id) {
         ledger.clear(server_path_id);
         settle_attempt_waits(server_path_id);

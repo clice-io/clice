@@ -157,6 +157,16 @@ ZEST_CASE(cleared_claim_drops) {
     ZEXPECT(ledger.empty());
 }
 
+ZEST_CASE(cleared_slot_reused) {
+    // A file removed from disk and recreated before its slot was consumed
+    // owes no second slot: both would dispatch it in one round.
+    ZEXPECT(ledger.record(Fid{1}, ReindexReason::ContentChanged));
+    ledger.clear(Fid{1});
+    ZEXPECT(!ledger.record(Fid{1}, ReindexReason::ContentChanged));
+    ZEXPECT(ledger.claim(Fid{1}).has_value());
+    ZEXPECT(!ledger.has_queued_slots());
+}
+
 };  // ZEST_SUITE(PendingLedger)
 
 }  // namespace
