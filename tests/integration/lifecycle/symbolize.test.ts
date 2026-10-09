@@ -61,9 +61,13 @@ test.skipIf(release === undefined)(
             },
         });
         // One crash to read: with clang-tidy on, the compile would first
-        // retry without it and crash again.
+        // retry without it and crash again, and indexing the file would
+        // crash another worker.
         await client.initialize(workspace, {
-            initializationOptions: { diagnostics: { clang_tidy: false } },
+            initializationOptions: {
+                diagnostics: { clang_tidy: false },
+                project: { enable_indexing: false },
+            },
         });
         const compile = `compile ${workspace.displayPath("poison.cpp")}`;
         const [uri] = client.open("poison.cpp");
