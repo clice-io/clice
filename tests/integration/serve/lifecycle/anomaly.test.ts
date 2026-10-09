@@ -31,7 +31,11 @@ describe.skipIf(process.platform !== "linux")("linux", () => {
         // traps, exercises the crash handler, and is not intercepted by
         // ASan (handle_abort=0), unlike SIGSEGV which ASan turns into
         // its own report and a plain exit(1).
+        const died = s.client.nextLogMessage((message) =>
+            message.includes("[anomaly:WorkerCrash]"),
+        );
         process.kill(worker ?? 0, "SIGABRT");
+        await died;
 
         // The document comes back on a respawned worker, which the
         // master starts once it handled the death.

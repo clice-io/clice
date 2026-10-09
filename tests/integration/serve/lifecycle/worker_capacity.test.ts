@@ -27,7 +27,13 @@ if (process.platform === "linux") {
             expect(pid, `a stateful worker before kill ${kill}`).toBeDefined();
             expect(pid).not.toBe(previous);
             previous = pid ?? 0;
+            // The signal lands when it lands: a request sent before the
+            // master saw the death could still be answered by the worker.
+            const died = s.client.nextLogMessage((message) =>
+                message.includes("[anomaly:WorkerCrash]"),
+            );
             process.kill(previous, "SIGUSR2");
+            await died;
             expect(await s.hover(at("main.cpp", "int a|dd("))).not.toBeNull();
         }
 

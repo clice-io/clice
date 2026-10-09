@@ -221,6 +221,7 @@ export class CliceClient {
     /// Every publishDiagnostics received, in order.
     publishedDiagnostics: proto.PublishDiagnosticsParams[] = [];
     logMessages: proto.LogMessageParams[] = [];
+    private logWaiters: { match: (message: string) => boolean; resolve: () => void }[] = [];
     progressTokens: string[] = [];
     progressEvents: { token: string; value: unknown }[] = [];
     /// Methods of server→client requests the client answered with null.
@@ -299,6 +300,13 @@ export class CliceClient {
         });
         this.onNotification(proto.LogMessageNotification.type, (p) => {
             this.logMessages.push(p);
+            const waiters = this.logWaiters;
+            this.logWaiters = waiters.filter((waiter) => !waiter.match(p.message));
+            for (const waiter of waiters) {
+                if (!this.logWaiters.includes(waiter)) {
+                    waiter.resolve();
+                }
+            }
         });
         this.onNotification(HeldNotification, (p) => {
             this.parked.add(p.id);
@@ -892,6 +900,14 @@ export class CliceClient {
         return this.publishes.get(this.normalizeUri(uri)) ?? 0;
     }
 
+    /// Resolves at the next window/logMessage `match` accepts: arm it
+    /// before what makes the server say it.
+    nextLogMessage(match: (message: string) => boolean): Promise<void> {
+        return new Promise((resolve) => {
+            this.logWaiters.push({ match, resolve });
+        });
+    }
+
     /// The last diagnostics publish the document received.
     lastPublish(uri: string): proto.PublishDiagnosticsParams | undefined {
         return this.lastPublishes.get(this.normalizeUri(uri));
@@ -1144,8 +1160,7 @@ export class CliceClient {
     async inactiveLines(uri: string): Promise<number[]> {
         const result = await this.semanticTokensFull(uri);
         const provider = this.initResult?.capabilities.semanticTokensProvider as
-            | proto.SemanticTokensOptions
-            | undefined;
+            proto.SemanticTokensOptions | undefined;
         const bit = provider?.legend.tokenModifiers.indexOf("inactive") ?? -1;
         if (bit < 0) {
             throw new Error("server legend misses the inactive modifier");
