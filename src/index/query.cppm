@@ -530,12 +530,15 @@ private:
                            SourceMask mask,
                            RelationVisitor visitor) const;
 
-    /// The header entries of an overlay that may contribute results:
-    /// files that are themselves open serve buffer-true rows through their
-    /// sessions, and entries of text the disk no longer holds point nowhere
-    /// (clause 2).
-    void visit_overlay_files(const TUIndex& state,
-                             llvm::function_ref<bool(const RowSource&)> visitor) const;
+    /// The `kind` rows of `hash` in the header entries of an overlay that
+    /// may contribute results: files that are themselves open serve
+    /// buffer-true rows through their sessions, and entries of text the
+    /// disk no longer holds point nowhere (clause 2). False once the
+    /// visitor stopped.
+    bool visit_overlay_rows(const TUIndex& state,
+                            SymbolHash hash,
+                            RelationKind kind,
+                            RelationVisitor visitor) const;
 
     /// The text a source's offsets index: the buffer, the blob's stored
     /// text, or the disk re-read for pure-ASCII blobs (kept alive in

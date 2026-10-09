@@ -217,28 +217,39 @@ std::shared_ptr<TUIndex> IndexQuery::preamble_blob(Fid file) const {
     return live ? live->preamble_blob(file) : nullptr;
 }
 
-void IndexQuery::visit_overlay_files(const TUIndex& state,
-                                     llvm::function_ref<bool(const RowSource&)> visitor) const {
+bool IndexQuery::visit_overlay_rows(const TUIndex& state,
+                                    SymbolHash hash,
+                                    RelationKind kind,
+                                    RelationVisitor visitor) const {
     auto main_id = state.path_count() - 1;
-    for(std::uint32_t i = 0; i < state.section_count(); i += 1) {
+    bool stopped = false;
+    for(std::uint32_t i = 0; i < state.section_count() && !stopped; i += 1) {
         auto local_id = state.section_path(i);
         if(local_id == main_id) {
             continue;
         }
-        auto& shard = state.shard_of(local_id);
-        auto file = files.intern(Spelling::absolute(state.path(local_id)));
-        if(live->is_open(file) || (gate && gate->stale(file, shard.content_hash()))) {
-            continue;
-        }
-        RowSource source{.kind = RowSource::Kind::Overlay,
-                         .file = file,
-                         .path = files.display(file),
-                         .rows = &shard,
-                         .positions = shard.positions()};
-        if(!visitor(source)) {
-            return;
-        }
+        auto& shard = state.section_shard(i);
+        std::optional<RowSource> source;
+        shard.lookup(hash, kind, [&](const Relation& relation) {
+            // An overlay spans hundreds of headers and few hold rows of any
+            // one symbol: resolving every entry's file up front dominated
+            // each lookup.
+            if(!source) {
+                auto file = files.intern(Spelling::absolute(state.path(local_id)));
+                if(live->is_open(file) || (gate && gate->stale(file, shard.content_hash()))) {
+                    return false;
+                }
+                source = RowSource{.kind = RowSource::Kind::Overlay,
+                                   .file = file,
+                                   .path = files.display(file),
+                                   .rows = &shard,
+                                   .positions = shard.positions()};
+            }
+            stopped = !visitor(*source, relation);
+            return !stopped;
+        });
     }
+    return !stopped;
 }
 
 void IndexQuery::each_disk_file(SymbolHash hash,
@@ -314,7 +325,7 @@ void IndexQuery::for_each_relation(SymbolHash hash,
             return true;
         }
         live->each_overlay([&](const TUIndex& state) {
-            visit_overlay_files(state, emit);
+            stopped = !visit_overlay_rows(state, hash, kind, visitor);
             return !stopped;
         });
         return !stopped;
