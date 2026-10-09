@@ -76,9 +76,11 @@ end
 ---@param bufnr integer
 local function switch_context(client, bufnr)
   local uri = vim.uri_from_bufnr(bufnr)
-  request(client, bufnr, 'clice/currentContext', { uri = uri }, function(current)
-    query_contexts(client, bufnr, function(contexts, epoch)
-      if #contexts == 0 then
+  query_contexts(client, bufnr, function(contexts, epoch)
+    request(client, bufnr, 'clice/currentContext', { uri = uri }, function(current)
+      if current.epoch ~= epoch then
+        return switch_context(client, bufnr)
+      elseif #contexts == 0 then
         return vim.notify('clice: no compilation contexts for this file')
       end
       local active = current.context ~= vim.NIL and current.context or {}
