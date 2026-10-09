@@ -15,11 +15,13 @@ clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-
 
 ### Neovim
 
-clice 在 [`editors/nvim`](https://github.com/clice-io/clice/tree/main/editors/nvim) 中随附了适用于 Neovim ≥ 0.11 的 LSP 配置。将 `doc/clice.lua` 复制到配置目录中的 `lsp/` 目录，然后启用：
+在 Neovim 0.11 或更高版本上安装 [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) 后，启用 clice：
 
 ```lua
 vim.lsp.enable('clice')
 ```
+
+nvim-lspconfig 收录了 [`editors/nvim`](https://github.com/clice-io/clice/tree/main/editors/nvim) 中配置的一份副本，更新晚于这里；未安装 nvim-lspconfig，或想先用上它副本里还没有的改动时，把其中的 `lsp/clice.lua` 复制到你配置目录中的 `after/lsp/` 目录，它优先于 nvim-lspconfig 的那份。该配置添加了几个命令，用于查看和切换缓冲区的编译上下文；[README](https://github.com/clice-io/clice/tree/main/editors/nvim#readme) 列出了这些命令，以及 Neovim 留给你自行配置的功能，例如内联提示和输入时自动补全。
 
 ### Zed
 

@@ -49,13 +49,13 @@ npm run package
 
 ## Neovim
 
-The Neovim extension lives in `editors/nvim` and is written in Lua. It is still evolving.
+The Neovim integration lives in `editors/nvim`:
 
-- Add the repo path to `runtimepath`, e.g. `set rtp+=/path/to/clice/editors/nvim`
-- Or create a local symlink: `~/.config/nvim/pack/clice/start/clice` -> `<repo>/editors/nvim`
-- Ensure the `clice` executable is discoverable in `$PATH`
+- `lsp/clice.lua` is the LSP config. nvim-lspconfig carries the same file as its own `lsp/clice.lua`, so a change here is also a pull request there; `lsp/.stylua.toml` is nvim-lspconfig's formatting, which keeps the two files identical.
+- `plugin/clice.lua` dims inactive preprocessor branches.
+- `tests/e2e.lua` is the headless smoke test: `pixi run -e editor nvim-e2e`.
 
-Dev tips: the codebase is small—load it directly in Neovim and watch `:messages`/LSP logs; format with `stylua` (config included).
+To try a change, append the directory to `runtimepath` (`set rtp+=/path/to/clice/editors/nvim`), after nvim-lspconfig whose copy it then overrides, and `vim.lsp.enable('clice')`; `:checkhealth vim.lsp` shows the client and where its log is.
 
 ## Zed
 
