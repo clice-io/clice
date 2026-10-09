@@ -72,6 +72,12 @@ struct Value {
         int bits;
         float real;
     } aligned[2];
+    typedef struct {
+        int first, second;
+    } Pair;
+    static struct {
+        int count;
+    } shared;
 };
 §(unnamed_members)Value current;
 }
@@ -105,12 +111,58 @@ template <typename T> void take(§(primary_use)Box<T> box);
 §(explicit_specialization)Box<bool> flag;
 }
 
+namespace instantiated_unnamed {
+template <typename T> struct Expected {
+    union {
+        T value;
+        int error;
+    };
+    struct {
+        T low, high;
+    } range, *last;
+    enum { capacity = sizeof(T) };
+    bool has_error : 1;
+};
+§(instantiated_unnamed)Expected<long> expected;
+}
+
+namespace declarator_specifiers {
+struct Device {
+    volatile struct {
+        unsigned control;
+        unsigned status;
+    } registers;
+    mutable struct {
+        int hits;
+    } cache;
+    const struct Limits {
+        int low, high;
+    } limits{0, 1};
+    void attach(struct Driver* driver);
+    typedef struct Handle* HandlePtr;
+};
+§(declarator_specifiers)Device device;
+}
+
 namespace forward_declared {
 struct Later;
 §(before_definition)Later* later;
 struct Later {
     int value;
 };
+}
+
+namespace redeclared_nested {
+class Tree {
+    struct Node;
+    template <typename T> struct Visitor;
+    Node* root;
+    struct Node {
+        int value;
+    };
+    template <typename T> struct Visitor {};
+};
+§(redeclared_nested)Tree tree;
 }
 
 namespace derived_members {

@@ -218,7 +218,7 @@ Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned lo
 | ------------- | -------- | ------- |
 | `max_members` | `uint32` | `20`    |
 
-How many members, at most, the definition of a hovered class or enum lists: its data members and member types, or its enumerators. `0` shows the declaration alone.
+Maximum number of members the definition of a hovered class or enum lists: data members and member types, or enumerators; member functions are left out. `0` shows the declaration alone.
 
 </div>
 

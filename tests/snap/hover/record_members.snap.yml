@@ -2,7 +2,7 @@
 created_at: 2026-10-09
 input_file: record_members.cpp
 ---
-before_definition: { range: "109:0-109:5" }
+before_definition: { range: "148:0-148:5" }
 ### struct `Later`  
 
 ---
@@ -38,7 +38,26 @@ private:
 }
 ```
 
-derived: { range: "122:0-122:6" }
+declarator_specifiers: { range: "143:0-143:6" }
+### struct `Device`  
+
+---
+```cpp
+// In namespace declarator_specifiers
+struct Device {
+  volatile struct {
+    unsigned int control;
+    unsigned int status;
+  } registers;
+  mutable struct {
+    int hits;
+  } cache;
+  const struct Limits limits{0, 1};
+  typedef struct Handle *HandlePtr;
+}
+```
+
+derived: { range: "174:0-174:6" }
 ### struct `Square`  
 
 ---
@@ -49,7 +68,7 @@ struct Square final : Shape {
 }
 ```
 
-explicit_specialization: { range: "104:0-104:3" }
+explicit_specialization: { range: "110:0-110:3" }
 ### struct `Box<bool>`  
 
 ---
@@ -69,7 +88,7 @@ functions_only: { range: "53:0-53:7" }
 struct Service {}
 ```
 
-implicit_instantiation: { range: "102:0-102:3" }
+implicit_instantiation: { range: "108:0-108:3" }
 ### struct `Box<int>`  
 
 ---
@@ -84,6 +103,26 @@ template <> struct Box<int> {
 }
 ```
 
+instantiated_unnamed: { range: "125:0-125:8" }
+### struct `Expected<long>`  
+
+---
+```cpp
+// In namespace instantiated_unnamed
+template <> struct Expected<long> {
+  union {
+    long value;
+    int error;
+  };
+  struct {
+    long low;
+    long high;
+  } range, *last;
+  enum { capacity = sizeof(long) };
+  bool has_error : 1;
+}
+```
+
 nested_type: { range: "43:12-43:16" }
 ### struct `Node`  
 
@@ -95,7 +134,7 @@ public: struct Node {
 }
 ```
 
-partial_specialization: { range: "103:0-103:3" }
+partial_specialization: { range: "109:0-109:3" }
 ### struct `Box<int *>`  
 
 ---
@@ -106,7 +145,7 @@ template <> struct Box<int *> {
 }
 ```
 
-primary_declaration: { range: "100:29-100:32" }
+primary_declaration: { range: "106:29-106:32" }
 ### struct `Box`  
 
 ---
@@ -121,7 +160,7 @@ template <typename T> struct Box {
 }
 ```
 
-primary_use: { range: "101:32-101:35" }
+primary_use: { range: "107:32-107:35" }
 ### struct `Box`  
 
 ---
@@ -136,7 +175,20 @@ template <typename T> struct Box {
 }
 ```
 
-unnamed_members: { range: "75:0-75:5" }
+redeclared_nested: { range: "164:0-164:4" }
+### class `Tree`  
+
+---
+```cpp
+// In namespace redeclared_nested
+class Tree {
+  struct Node;
+  template <typename T> struct Visitor;
+  Node *root;
+}
+```
+
+unnamed_members: { range: "81:0-81:5" }
 ### struct `Value`  
 
 ---
@@ -158,5 +210,10 @@ struct Value {
     int bits;
     float real;
   } aligned[2] alignas(8);
+  typedef struct {
+    int first;
+    int second;
+  } Pair;
+  static struct(unnamed) shared;
 }
 ```

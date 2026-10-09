@@ -114,9 +114,10 @@ struct HoverOptions {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "How many members, at most, the definition of a hovered "
-                         "class or enum lists: its data members and member types, "
-                         "or its enumerators. `0` shows the declaration alone.")
+                         "Maximum number of members the definition of a hovered "
+                         "class or enum lists: data members and member types, or "
+                         "enumerators; member functions are left out. `0` shows "
+                         "the declaration alone.")
     <std::uint32_t> max_members = 20;
 };
 

@@ -1003,49 +1003,6 @@ auto initializer(const clang::Decl& member) -> const clang::Expr* {
     return nullptr;
 }
 
-/// The definition of a tag, or of the class a class template declares.
-auto defined_tag(const clang::Decl* decl) -> const clang::TagDecl* {
-    if(const auto* class_template = llvm::dyn_cast<clang::ClassTemplateDecl>(decl)) {
-        decl = class_template->getTemplatedDecl();
-    }
-    const auto* tag = llvm::dyn_cast<clang::TagDecl>(decl);
-    return tag ? tag->getDefinition() : nullptr;
-}
-
-/// Whether the field is declared along with the tag its type is built on,
-/// as `a` and `b` are in `struct { ... } a, *b[2];`.
-bool declared_with(const clang::FieldDecl& field, const clang::TagDecl& tag) {
-    clang::QualType type = field.getType();
-    while(!type->isSpecifierType()) {
-        if(const auto* array = llvm::dyn_cast<clang::ArrayType>(type)) {
-            type = array->getElementType();
-        } else if(auto pointee = type->getPointeeType(); !pointee.isNull()) {
-            type = pointee;
-        } else {
-            break;
-        }
-    }
-    const auto* tag_type = llvm::dyn_cast<clang::TagType>(type);
-    return tag_type && tag_type->isTagOwned() && tag_type->getDecl() == &tag;
-}
-
-/// Whether a class summary lists the member: its data and the types it
-/// declares. A specialization of a member template is left to the template.
-bool is_listed(const clang::Decl& member) {
-    if(member.isImplicit() ||
-       llvm::isa<clang::ClassTemplateSpecializationDecl, clang::VarTemplateSpecializationDecl>(
-           member)) {
-        return false;
-    }
-    return llvm::isa<clang::FieldDecl,
-                     clang::VarDecl,
-                     clang::VarTemplateDecl,
-                     clang::TypedefNameDecl,
-                     clang::TypeAliasTemplateDecl,
-                     clang::TagDecl,
-                     clang::ClassTemplateDecl>(member);
-}
-
 /// Clang's terse rendering of a tag declaration — template prefix,
 /// attributes, bases — without the empty body it gives a definition: "{}"
 /// for a C++ class, "{\n}" for an enum or a C struct.
@@ -1058,6 +1015,58 @@ auto tag_head(const clang::Decl& decl, const clang::PrintingPolicy& policy) -> s
         head = head.rtrim();
     }
     return head.str();
+}
+
+/// Whether the tag is declared as a member, which the mention in a member
+/// like `struct item* first;` is not. A member type of an instantiation is
+/// only declared until used, its pattern tells.
+bool is_member_type(const clang::TagDecl& tag) {
+    const clang::TagDecl* written = &tag;
+    if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(&tag);
+       record && record->getInstantiatedFromMemberClass()) {
+        written = record->getInstantiatedFromMemberClass();
+    } else if(const auto* enum_decl = llvm::dyn_cast<clang::EnumDecl>(&tag);
+              enum_decl && enum_decl->getInstantiatedFromMemberEnum()) {
+        written = enum_decl->getInstantiatedFromMemberEnum();
+    }
+    return written->isThisDeclarationADefinition() || written->isFreeStanding();
+}
+
+/// Whether a class summary lists the member: its data and the types it
+/// declares. A type declared twice is listed once, and a specialization of
+/// a member template is left to the template.
+bool is_listed(const clang::Decl& member) {
+    if(member.isImplicit() || !member.isFirstDecl() ||
+       llvm::isa<clang::ClassTemplateSpecializationDecl, clang::VarTemplateSpecializationDecl>(
+           member)) {
+        return false;
+    }
+    if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(&member)) {
+        return is_member_type(*tag);
+    }
+    return llvm::isa<clang::FieldDecl,
+                     clang::VarDecl,
+                     clang::VarTemplateDecl,
+                     clang::TypedefNameDecl,
+                     clang::TypeAliasTemplateDecl,
+                     clang::ClassTemplateDecl>(member);
+}
+
+/// Whether the member is declared along with the tag, as `a` and `b` are in
+/// `struct { ... } a, *b;`: its type is spelled from the tag on. Locations
+/// tell where the AST does not: an instantiation drops the type's tie to
+/// the declaration that defines it.
+bool declared_with(const clang::Decl& member, const clang::TagDecl& tag) {
+    if(member.isImplicit()) {
+        return false;
+    }
+    clang::SourceLocation type_start;
+    if(const auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(&member)) {
+        type_start = declarator->getTypeSpecStartLoc();
+    } else if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefNameDecl>(&member)) {
+        type_start = typedef_decl->getTypeSourceInfo()->getTypeLoc().getBeginLoc();
+    }
+    return type_start == tag.getBeginLoc();
 }
 
 /// Prints the body of a tag definition as a summary: the enumerators of an
@@ -1121,19 +1130,19 @@ struct MemberPrinter {
             }
 
             const auto* tag = llvm::dyn_cast<clang::TagDecl>(member);
-            llvm::SmallVector<const clang::FieldDecl*> declarators;
+            llvm::SmallVector<const clang::Decl*> declarators;
             if(tag) {
-                for(auto next = std::next(it); next != decls.end(); ++next) {
-                    const auto* field = llvm::dyn_cast<clang::FieldDecl>(*next);
-                    if(!field || field->isImplicit() || !declared_with(*field, *tag)) {
-                        break;
-                    }
-                    declarators.push_back(field);
+                for(auto next = std::next(it); next != decls.end() && declared_with(**next, *tag);
+                    ++next) {
+                    declarators.push_back(*next);
                 }
-                /// An unnamed type declared only with a typedef or a static
-                /// member shows up in that declaration instead.
-                if(!tag->getDeclName() && !tag->isFreeStanding() && declarators.empty()) {
-                    continue;
+                /// A static member keeps its own declaration, and an unnamed
+                /// type shows up there.
+                if(!declarators.empty() && llvm::isa<clang::VarDecl>(declarators.front())) {
+                    if(!tag->getDeclName()) {
+                        continue;
+                    }
+                    declarators.clear();
                 }
             }
             if(!fits()) {
@@ -1148,6 +1157,9 @@ struct MemberPrinter {
             os << '\n';
 
             if(tag) {
+                if(!declarators.empty()) {
+                    specifiers(*declarators.front());
+                }
                 /// A named type has its own hover card; an unnamed one shows
                 /// its members only here.
                 os << tag_head(*tag, policy);
@@ -1157,10 +1169,10 @@ struct MemberPrinter {
                 auto declarator_policy = policy;
                 declarator_policy.SuppressSpecifiers = true;
                 llvm::StringRef separator = " ";
-                for(const clang::FieldDecl* field: declarators) {
+                for(const clang::Decl* declarator: declarators) {
                     os << separator;
                     separator = ", ";
-                    print(*field, declarator_policy);
+                    print(*declarator, declarator_policy);
                 }
                 std::advance(it, declarators.size());
             } else if(llvm::isa<clang::ClassTemplateDecl>(member)) {
@@ -1170,6 +1182,23 @@ struct MemberPrinter {
             }
             os << ';';
         }
+    }
+
+    /// The specifiers the declarators in `const struct { ... } a, *b;`
+    /// share; each of them prints without.
+    void specifiers(const clang::Decl& declarator) {
+        clang::QualType type;
+        if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefNameDecl>(&declarator)) {
+            os << "typedef ";
+            type = typedef_decl->getUnderlyingType();
+        } else {
+            const auto& field = llvm::cast<clang::FieldDecl>(declarator);
+            if(field.isMutable()) {
+                os << "mutable ";
+            }
+            type = field.getType();
+        }
+        types::unwrap(type).getQualifiers().print(os, policy, /*appendSpaceIfNonEmpty=*/true);
     }
 
     void print(const clang::Decl& member, clang::PrintingPolicy member_policy) {
@@ -1182,8 +1211,9 @@ struct MemberPrinter {
 
 }  // namespace
 
-auto definition(const clang::Decl* decl, const Options& options, TokenCount token_count)
-    -> std::string {
+auto definition(const clang::Decl* decl,
+                const Options& options,
+                llvm::function_ref<std::size_t(clang::SourceRange)> token_count) -> std::string {
     assert(decl);
     clang::PrintingPolicy policy = derive_policy(decl->getASTContext(), options);
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
@@ -1193,21 +1223,31 @@ auto definition(const clang::Decl* decl, const Options& options, TokenCount toke
 
     std::string definition;
     llvm::raw_string_ostream os(definition);
-    const clang::TagDecl* tag = defined_tag(decl);
-    if(!tag) {
+    const auto* class_template = llvm::dyn_cast<clang::ClassTemplateDecl>(decl);
+    const auto* tag =
+        llvm::dyn_cast<clang::TagDecl>(class_template ? class_template->getTemplatedDecl() : decl);
+    if(!tag || !tag->getDefinition()) {
         decl->print(os, policy);
         return definition;
     }
 
-    /// tag_head() relies on the terse body.
+    /// The head comes from the definition too: only a definition prints its
+    /// bases. tag_head() relies on the terse body.
     assert(options.terse);
-    if(llvm::isa<clang::ClassTemplateDecl>(decl)) {
+    tag = tag->getDefinition();
+    if(class_template) {
         os << tag_head(*llvm::cast<clang::CXXRecordDecl>(tag)->getDescribedClassTemplate(), policy);
     } else {
         os << tag_head(*tag, policy);
     }
     if(options.max_members > 0) {
-        MemberPrinter{os, policy, token_count, options.max_members}.body(*tag);
+        MemberPrinter printer{
+            .os = os,
+            .policy = policy,
+            .token_count = token_count,
+            .budget = options.max_members,
+        };
+        printer.body(*tag);
     }
     return definition;
 }

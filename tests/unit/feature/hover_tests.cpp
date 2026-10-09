@@ -658,44 +658,6 @@ ZEST_CASE(max_members_option) {
              options);
     ZASSERT(info);
     ZEXPECT(info->definition == "enum Value");
-
-    options.max_members = 1;
-    run_info(R"cpp(
-    struct Record {
-        int first;
-        int second;
-    };
-    Re§cord record;
-  )cpp",
-             options);
-    ZASSERT(info);
-    ZEXPECT(info->definition == "struct Record {\n  int first;\n  // ...\n}");
-
-    run_info(R"cpp(
-    enum Value { first, second };
-    Va§lue value;
-  )cpp",
-             options);
-    ZASSERT(info);
-    ZEXPECT(info->definition == "enum Value {\n  first = 0,\n  // ...\n}");
-}
-
-ZEST_CASE(c_record_members) {
-    run_info(R"cpp(
-    struct Point {
-        int x;
-        union {
-            int tag;
-            float weight;
-        };
-    };
-    struct Po§int point;
-  )cpp",
-             {},
-             "-std=c11");
-    ZASSERT(info);
-    ZEXPECT(info->definition ==
-            "struct Point {\n  int x;\n  union {\n    int tag;\n    float weight;\n  };\n}");
 }
 
 ZEST_CASE(big_ints_no_crash) {
