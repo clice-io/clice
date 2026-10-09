@@ -151,6 +151,11 @@ public:
     std::vector<ConfigIssue> config_issues;
     std::string config_path;
 
+    /// A metadata save is scheduled and has not started yet.
+    bool metadata_flush_pending() const {
+        return metadata_flush_scheduled;
+    }
+
 private:
     /// A fresh session for the document, replacing a live one.
     std::shared_ptr<Session> create_session(Fid path_id);

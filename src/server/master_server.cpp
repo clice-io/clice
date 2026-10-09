@@ -41,8 +41,10 @@ MasterServer::MasterServer(kota::event_loop& loop,
     // check, a rescan inside a cascade: the drain runs on a later loop
     // turn, outside it.
     files.disk.on_change = [this] {
+        drains_due += 1;
         bg_tasks.spawn([](MasterServer& server) -> kota::task<> {
             co_await kota::sleep(std::chrono::milliseconds(0));
+            server.drains_due -= 1;
             server.drain_disk_changes();
         }(*this));
     };
@@ -865,27 +867,48 @@ static bool working(ProjectServer& project) {
            (project.project.config.project.enable_indexing.value && !project.sched.pump.is_idle());
 }
 
-kota::task<> MasterServer::settle() {
-    int quiet = 0;
-    while(quiet < 3) {
-        co_await kota::yield();
+/// The requests of `editor` other than `self`.
+static auto other_requests(const kota::ipc::JSONPeer& editor,
+                           const kota::ipc::protocol::RequestID& self) {
+    auto requests = editor.incoming_requests();
+    std::erase_if(requests, [&](const auto& request) { return request.id == self; });
+    return requests;
+}
+
+kota::task<> MasterServer::settle(const kota::ipc::JSONPeer& editor,
+                                  const kota::ipc::protocol::RequestID& self) {
+    while(true) {
         auto busy = llvm::find_if(projects, [](auto& project) { return working(*project); });
-        if(busy == projects.end()) {
-            quiet += 1;
+        if(busy != projects.end()) {
+            // Held: a folder removed meanwhile does not take the project along.
+            auto project = *busy;
+            co_await project->sched.graph.await_rounds();
+            if(project->project.config.project.enable_indexing.value) {
+                co_await project->sched.pump.await_idle();
+            }
             continue;
         }
-        quiet = 0;
-        // Held: a folder removed meanwhile does not take the project along.
-        auto project = *busy;
-        co_await project->sched.graph.await_rounds();
-        if(project->project.config.project.enable_indexing.value) {
-            co_await project->sched.pump.await_idle();
+        if(other_requests(editor, self).empty() && drains_due == 0 &&
+           llvm::none_of(projects,
+                         [](auto& project) { return project->metadata_flush_pending(); })) {
+            co_return;
         }
+        // Requests, drains and flushes announce no end: look again shortly.
+        co_await kota::sleep(std::chrono::milliseconds(1), loop);
     }
 }
 
-std::vector<std::string> MasterServer::pending_work() {
+std::vector<std::string> MasterServer::pending_work(const kota::ipc::JSONPeer& editor,
+                                                    const kota::ipc::protocol::RequestID& self) {
     std::vector<std::string> lines;
+    for(auto& request: other_requests(editor, self)) {
+        lines.push_back(std::visit(
+            [&](const auto& id) { return std::format("request {} {}", request.method, id); },
+            request.id));
+    }
+    if(drains_due > 0) {
+        lines.push_back("disk changes waiting for their drain");
+    }
     for(auto& hold: probe.holds()) {
         if(hold.parked) {
             lines.push_back(std::format("{} {}: reply parked by hold {}",
@@ -912,6 +935,9 @@ std::vector<std::string> MasterServer::pending_work() {
                                         pump.progress().completed,
                                         pump.progress().total,
                                         pump.pending_files()));
+        }
+        if(project->metadata_flush_pending()) {
+            lines.push_back("metadata flush scheduled");
         }
     }
     return lines;

@@ -214,10 +214,10 @@ struct StatsResult {
 };
 
 /// clice/internal/sync — TEST-ONLY, present while project.test_hooks is on.
-/// Answers once the server has no work left: no compile, PCH or PCM build
-/// and no index round in flight or queued, a round's save included — and
-/// it stayed so for a few loop turns, so work an earlier message starts
-/// late is waited for too. Absent from capabilities and user docs.
+/// Answers once the server has no work left: no other request of the
+/// editor unanswered, no compile, PCH or PCM build and no index round in
+/// flight or queued, a round's save included, and no disk change or
+/// metadata save waiting to run. Absent from capabilities and user docs.
 struct SyncParams {
     /// How long to wait before answering with the work still pending;
     /// four minutes by default.

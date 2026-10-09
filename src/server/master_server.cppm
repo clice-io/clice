@@ -191,15 +191,18 @@ public:
     /// on (project.test_hooks of the first project).
     bool test_hooks() const;
 
-    /// Test hook (clice/internal/sync): wait until no project has work in
-    /// flight — no round of the task graph, no index round running or
-    /// queued — and the quiet held across a few loop turns: work a request
-    /// or a deferred drain starts surfaces a turn or two after it was asked
-    /// for.
-    kota::task<> settle();
+    /// Test hook (clice/internal/sync): wait until nothing is in flight —
+    /// no request of `editor` but `self`, no round of the task graph, no
+    /// index round running or queued, no disk change waiting for its drain,
+    /// no metadata flush scheduled. A request is listed from its dispatch
+    /// on, before the work it starts surfaces, so one look at all of them
+    /// at once settles it.
+    kota::task<> settle(const kota::ipc::JSONPeer& editor,
+                        const kota::ipc::protocol::RequestID& self);
 
     /// What settle() still waits for, one line each; empty once settled.
-    std::vector<std::string> pending_work();
+    std::vector<std::string> pending_work(const kota::ipc::JSONPeer& editor,
+                                          const kota::ipc::protocol::RequestID& self);
 
     kota::cancellation_token shutdown_token() const {
         return shutdown_source.token();
@@ -367,6 +370,8 @@ private:
     /// Shutdowns of removed projects and deferred drains of the file
     /// table's changes; joined in shutdown_and_cleanup().
     kota::task_group<> bg_tasks;
+    /// Deferred drains not run yet (settle() waits for them).
+    std::size_t drains_due = 0;
 
     /// The background looks at files and databases, and the ends of the
     /// file table's turns, until the drain cancels them.

@@ -226,9 +226,10 @@ export interface FileBuilds {
 export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/stats");
 
 /// clice/internal/sync — TEST-ONLY, present while project.test_hooks is on.
-/// Answers once the server has no work left: no compile, PCH or PCM build
-/// and no index round in flight or queued, a round's save included — and it
-/// stayed so for a few loop turns.
+/// Answers once the server has no work left: no other request of the editor
+/// unanswered, no compile, PCH or PCM build and no index round in flight or
+/// queued, a round's save included, and no disk change or metadata save
+/// waiting to run.
 export interface SyncParams {
     /// How long to wait before answering with the work still pending; four
     /// minutes by default.

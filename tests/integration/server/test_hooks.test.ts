@@ -1,5 +1,5 @@
-/// The server's test hooks: sync waits out every build and index round,
-/// stats counts the builds per file, and a hold parks a build's reply
+/// The server's test hooks: sync waits out every request, build and index
+/// round, stats counts the builds per file, and a hold parks a build's reply
 /// while the server still sees it in flight.
 
 import * as proto from "vscode-languageserver-protocol";
@@ -79,6 +79,7 @@ test("hold parks a compile", async ({ session }) => {
     expect(client.publishCount(uri), "a parked compile publishes nothing").toBe(0);
     const file = workspace.displayPath("main.cpp");
     expect((await client.sync({ deadlineMs: 1_000 })).pending).toEqual([
+        expect.stringMatching(/^request textDocument\/hover \d+$/),
         `compile ${file}: reply parked by hold ${hold}`,
         `compile ${file}`,
     ]);
