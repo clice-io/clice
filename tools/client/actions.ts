@@ -24,7 +24,7 @@ import { actionsOf, applyTextEdits } from "./edits.ts";
 import { runProcess } from "./process.ts";
 import { DATA_DIR, generateCDB } from "../compile_commands.ts";
 import { looseManifest, materialize, writeDatabase, type Manifest } from "./project.ts";
-import { cliceExecutable, type SessionFactory } from "./session.ts";
+import { cliceExecutable, type SessionFactory, type SessionOptions } from "./session.ts";
 import type { Workspace } from "./workspace.ts";
 
 /// A position: where the unique snippet `anchor` starts in the file, or
@@ -196,6 +196,15 @@ export interface ServeOptions {
     /// anomalies it expects itself.
     anomalies?: boolean;
 }
+
+/// How a server starts, beyond the case's config and environment: client
+/// capabilities, the workspace folders it announces, a step between the
+/// initialize response and the initialized notification (`s.client` is the
+/// new server then), the program and its arguments.
+export type Launch = Pick<
+    SessionOptions,
+    "capabilities" | "folders" | "beforeInitialized" | "args" | "executable" | "drainStderr"
+>;
 
 /// A hold on the next reply of a build (clice/internal/hold).
 export interface Hold {
@@ -507,8 +516,8 @@ export class Serve {
     }
 
     /// Start a server on the workspace; its cache is the one a server
-    /// before it left.
-    start(): Promise<void> {
+    /// before it left. `launch` holds for this server only.
+    start(launch: Launch = {}): Promise<void> {
         return this.steps.run("start the server", async () => {
             const env: Record<string, string> = { ...this.options.env };
             const anomalies = this.options.anomalies === true || this.options.killOn !== undefined;
@@ -519,10 +528,18 @@ export class Serve {
             if (this.options.killOn !== undefined) {
                 env["CLICE_TEST_KILL_REQUEST"] = this.workspace.path(this.killFile());
             }
-            const client = this.session.spawn(this.workspace, { env, allowAnomaly: anomalies });
+            const { capabilities, folders, beforeInitialized, ...spawn } = launch;
+            const client = this.session.spawn(this.workspace, {
+                ...spawn,
+                env,
+                allowAnomaly: anomalies,
+            });
             this.server = client;
             await client.initialize(this.workspace, {
                 initializationOptions: this.options.config,
+                capabilities,
+                folders,
+                beforeInitialized,
             });
         });
     }

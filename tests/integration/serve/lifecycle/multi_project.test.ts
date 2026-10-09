@@ -58,12 +58,10 @@ async function startOn(
     folders: string[] | null,
     beforeInitialized?: (client: CliceClient) => Promise<void>,
 ): Promise<void> {
-    const client = s.session.spawn(s.workspace);
-    (s as unknown as { server: CliceClient | null }).server = client;
-    await client.initialize(s.workspace, {
+    await s.start({
         folders,
         beforeInitialized:
-            beforeInitialized === undefined ? undefined : () => beforeInitialized(client),
+            beforeInitialized === undefined ? undefined : () => beforeInitialized(s.client),
     });
 }
 
