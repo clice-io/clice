@@ -1,7 +1,6 @@
 /// Touching a header (mtime bump, identical content) must not reindex its
 /// closed dependents — the content-hash staleness check is the storm filter.
 
-import * as fs from "node:fs";
 import { MTIME_GRANULARITY, runProcess, sleep } from "@clice/tools/client";
 import { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
@@ -44,24 +43,6 @@ test("touch header no reindex", async ({ session }) => {
     // the check re-hashes, proves a mere touch, and the storm filter
     // leaves the closed TU alone.
     expect(await batchIndex(workspace), "a same-content touch must not reindex dependents").toBe(0);
-});
-
-test("source deleted while down withdrawn", async ({ session }) => {
-    const ws = session.tmpdir();
-    ws.pinCacheDir();
-    ws.write("main.cpp", "int main() { return 0; }\n");
-    ws.write("b.cpp", "int only_in_b() { return 2; }\n");
-    ws.writeCDB(["main.cpp", "b.cpp"]);
-    expect(await batchIndex(ws)).toBe(2);
-
-    fs.rmSync(ws.path("b.cpp"));
-    // No background sweep reaches b.cpp before the query.
-    const client = session.spawn(ws);
-    await client.initialize(ws, {
-        initializationOptions: { project: { idle_timeout_ms: 600_000 } },
-    });
-    expect(await client.workspaceSymbols("only_in_b")).toEqual([]);
-    expect(await client.workspaceSymbols("main")).toHaveLength(1);
 });
 
 /// An importer's index reads the module's interface without entering its

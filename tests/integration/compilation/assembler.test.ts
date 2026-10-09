@@ -1,6 +1,6 @@
 /// Integration tests for assembler-with-cpp sources (`.S`): the preprocessor
-/// passes a `#` comment line through to the assembler, and both the editor
-/// and the batch index must get past it (#791).
+/// passes a `#` comment line through to the assembler, and the batch index
+/// must get past it (#791; the editor's side is in serve/compilation).
 
 import { runProcess } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
@@ -27,16 +27,6 @@ function writeAssembler(workspace: Workspace): void {
         ]),
     );
 }
-
-test("open assembler with comments", async ({ session }) => {
-    const { client, workspace } = session.tmp();
-    writeAssembler(workspace);
-    await client.initialize(workspace);
-    const [uri] = await client.openAndWait("entry.S");
-
-    const hover = await client.hoverAt(uri, 5, 11);
-    expect(JSON.stringify(hover?.contents)).toContain("Expands to");
-});
 
 test("index assembler with comments", async ({ session }) => {
     const workspace = session.tmpdir();

@@ -47,3 +47,18 @@ test("deleted source withdraws its rows", async ({ s }) => {
     expect(run.status, run.stderr).toBe(0);
     expect(run.json).toMatchObject({ result: { symbols: [] } });
 });
+
+// No background sweep reaches b.cpp before the query.
+serve.files(
+    { "main.cpp": "int main() { return 0; }\n", "b.cpp": "int only_in_b() { return 2; }\n" },
+    { config: { project: { idle_timeout_ms: 600_000 } } },
+)("source deleted while down withdrawn", async ({ s }) => {
+    await s.offline(async () => {
+        const run = await s.cli("index");
+        expect(run.status, run.stderr).toBe(0);
+        expect(run.stdout).toContain("Indexed 2 translation units");
+        s.disk.rm("b.cpp");
+    });
+    expect(await s.workspaceSymbols("only_in_b")).toEqual([]);
+    expect(await s.workspaceSymbols("main")).toHaveLength(1);
+});

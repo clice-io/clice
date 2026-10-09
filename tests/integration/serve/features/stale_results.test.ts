@@ -1,7 +1,28 @@
-/// A request whose buffer moved on while the compile it waits for was in
-/// flight answers ContentModified, never a result for the old text and
-/// never null (see tests/integration/features/stale_results.test.ts for why
-/// clients need the error).
+/// A request whose buffer moved on mid-flight answers ContentModified, never
+/// a result computed on the old text and never null.
+///
+/// Why an error and not null: to a client, null is a real answer — "this
+/// document has nothing". VS Code's semantic-token pipeline keeps a full
+/// request in flight across keystrokes (it does not cancel on edit; it
+/// reconciles the reply with the edits made meanwhile), and on a null reply
+/// it clears every semantic token of the document, so the whole file falls
+/// back to TextMate colors until the next pull lands — the flicker users saw
+/// while typing. On a ContentModified error the same pipeline keeps the
+/// tokens it has and schedules a re-pull; the client even advertises this in
+/// `staleRequestSupport.retryOnContentModified`. Inlay hints, folds and the
+/// outline behave the same way: an empty reply is applied, an error is not.
+///
+/// Why not the old result either: whole-document replies carry positions of
+/// the text they were computed on; the client would map them onto the
+/// edited buffer at the wrong places (formatting edits would even corrupt
+/// the file). The server has no AST for the old buffer anymore once the edit
+/// superseded the compile, so the only honest answer is "changed, ask again".
+///
+/// Completion is the exception while the edits sit at or past its cursor:
+/// VS Code neither cancels nor re-asks a completion the user keeps typing
+/// into — it filters the reply by what was typed meanwhile, and treats
+/// ContentModified as an empty list. An edit before the cursor moves the
+/// reply's ranges, so that one still answers ContentModified.
 
 import * as proto from "vscode-languageserver-protocol";
 import { at, expect, serve, type Loc } from "../../fixtures.ts";
@@ -52,3 +73,124 @@ serve("tiny", { config: { project: { enable_indexing: false } } }).for(FEATURES)
         expect((again as { data?: unknown[] }).data?.length ?? 1).toBeGreaterThan(0);
     },
 );
+
+function labels(reply: unknown): string[] {
+    const list = reply as proto.CompletionList | proto.CompletionItem[] | null;
+    return (Array.isArray(list) ? list : (list?.items ?? [])).map((item) => item.label);
+}
+
+const PROBE = "int extra_value;\nint probe = extra_";
+
+// A completion waits for the PCH of its preamble: the parked PCH keeps it in
+// flight while the buffer moves on.
+serve.files({
+    "pre.h": "#pragma once\n",
+    "more.h": "#pragma once\n",
+    "main.cpp": `#include "pre.h"\n${PROBE}`,
+})("edit mid-flight still completes", async ({ s }) => {
+    const probe = at("main.cpp", "int probe = extra_|");
+    const { served } = await s.inFlight(
+        "pch",
+        "main.cpp",
+        () => {
+            s.open("main.cpp");
+        },
+        async () => {
+            const served = s.request("textDocument/completion", probe);
+            // Any later reply: the server took the completion up before.
+            await s.counts();
+            s.edit("main.cpp", { after: "int probe = extra_", insert: "v" });
+            return { served };
+        },
+    );
+    expect(labels(await served)).toContain("extra_value");
+
+    let moved: Promise<unknown> = Promise.resolve();
+    await s.inFlight(
+        "pch",
+        "main.cpp",
+        () => {
+            // A new preamble, whose PCH the completion waits for.
+            s.edit("main.cpp", { after: '#include "pre.h"\n', insert: '#include "more.h"\n' });
+            moved = s.request("textDocument/completion", probe).then(
+                () => null,
+                (error: unknown) => error,
+            );
+        },
+        () => {
+            s.edit("main.cpp", { before: '#include "pre.h"', insert: "int moved;\n" });
+        },
+    );
+    expect(await moved).toMatchObject({ code: proto.LSPErrorCodes.ContentModified });
+});
+
+// The messages below are written in one write, which the server reads
+// together: a request still belongs to the text it was asked about, though
+// the edit read with it is applied before its task starts.
+
+function request(id: string, method: string, params: object): proto.RequestMessage {
+    return { jsonrpc: "2.0", id, method, params };
+}
+
+function notification(method: string, params: object): proto.NotificationMessage {
+    return { jsonrpc: "2.0", method, params };
+}
+
+function edit(uri: string, text: string): proto.NotificationMessage {
+    return notification(proto.DidChangeTextDocumentNotification.method, {
+        textDocument: { uri, version: 2 },
+        contentChanges: [{ text }],
+    });
+}
+
+const READ_WITH_AN_EDIT = [
+    { method: "textDocument/hover", params: { position: { line: 0, character: 4 } } },
+    {
+        method: "textDocument/formatting",
+        params: { options: { tabSize: 4, insertSpaces: true } },
+    },
+];
+
+serve.files({ "main.cpp": "int value = 1;\n" }).for(READ_WITH_AN_EDIT)(
+    "$method read with an edit answers ContentModified",
+    async ({ method, params }, { s }) => {
+        await s.compiled("main.cpp");
+        const uri = s.uri("main.cpp");
+        const replies = await s.client.sendTogether([
+            request(method, method, { textDocument: { uri }, ...params }),
+            edit(uri, "int  value = 2;\n"),
+        ]);
+        expect(replies.get(method)?.error?.code).toBe(proto.LSPErrorCodes.ContentModified);
+    },
+);
+
+const completing = serve.files({ "main.cpp": PROBE });
+
+completing("completion read with an edit is served", async ({ s }) => {
+    await s.compiled("main.cpp");
+    const uri = s.uri("main.cpp");
+    const replies = await s.client.sendTogether([
+        request("completion", "textDocument/completion", {
+            textDocument: { uri },
+            position: { line: 1, character: 18 },
+        }),
+        edit(uri, PROBE + "v"),
+    ]);
+    expect(labels(replies.get("completion")?.result)).toContain("extra_value");
+});
+
+completing("completion read with a reopen answers ContentModified", async ({ s }) => {
+    await s.compiled("main.cpp");
+    const uri = s.uri("main.cpp");
+    const replies = await s.client.sendTogether([
+        request("completion", "textDocument/completion", {
+            textDocument: { uri },
+            position: { line: 1, character: 18 },
+        }),
+        notification(proto.DidCloseTextDocumentNotification.method, { textDocument: { uri } }),
+        notification(proto.DidOpenTextDocumentNotification.method, {
+            textDocument: { uri, languageId: "cpp", version: 1, text: PROBE },
+        }),
+    ]);
+    expect(replies.get("completion")?.error?.code).toBe(proto.LSPErrorCodes.ContentModified);
+});
