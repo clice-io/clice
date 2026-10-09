@@ -71,7 +71,7 @@ public:
     /// every path id the tree, the symbol table and the sections carry;
     /// corrupt bytes load as an empty reader.
     /// Section blob bytes are verified per section: structurally by
-    /// shard_of on first use, or hash-checked and wrapped by
+    /// section_shard on first use, or hash-checked and wrapped by
     /// shards_verify in one pass.
     static TUIndex from_bytes(llvm::StringRef data);
 
@@ -123,13 +123,14 @@ public:
     /// none (no rows means no contribution). Sections ascend by path id.
     std::optional<std::uint32_t> section_of(std::uint32_t path_id) const;
 
-    /// A reader over `path_id`'s rows, wrapped on first use and cached
-    /// for the envelope's lifetime (the wrap verifies the blob and later
-    /// materializes its line table). An empty shard when the file has no
-    /// section or its blob fails verification.
+    /// section_shard of `path_id`'s section, or an empty shard when the
+    /// file has none.
     const Shard& shard_of(std::uint32_t path_id) const;
 
-    /// The reader over section `section`'s rows, wrapped on first use.
+    /// A reader over section `section`'s rows, wrapped on first use and
+    /// cached for the envelope's lifetime (the wrap verifies the blob and
+    /// later materializes its line table). An empty shard when its blob
+    /// fails verification.
     const Shard& section_shard(std::uint32_t section) const;
 
     /// Wrap every section's blob in one pass, checking its bytes against

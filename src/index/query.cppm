@@ -532,10 +532,8 @@ private:
     /// The `kind` rows of `hash` in the header entries of an overlay that
     /// may contribute results: files that are themselves open serve
     /// buffer-true rows through their sessions, and entries of text the
-    /// disk no longer holds point nowhere (clause 2). An overlay spans
-    /// hundreds of headers and few hold rows of any one symbol, so an
-    /// entry's file is resolved only once it does. False once the visitor
-    /// stopped.
+    /// disk no longer holds point nowhere (clause 2). False once the
+    /// visitor stopped.
     bool visit_overlay_rows(const TUIndex& state,
                             SymbolHash hash,
                             RelationKind kind,

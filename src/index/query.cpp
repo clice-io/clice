@@ -238,6 +238,9 @@ bool IndexQuery::visit_overlay_rows(const TUIndex& state,
         auto& shard = state.section_shard(i);
         std::optional<RowSource> source;
         shard.lookup(hash, kind, [&](const Relation& relation) {
+            // An overlay spans hundreds of headers and few hold rows of any
+            // one symbol: resolving every entry's file up front dominated
+            // each lookup.
             if(!source) {
                 auto file = files.intern(Spelling::absolute(state.path(local_id)));
                 if(live->is_open(file) || (gate && gate->stale(file, shard.content_hash()))) {
