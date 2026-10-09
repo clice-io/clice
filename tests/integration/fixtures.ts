@@ -3,9 +3,11 @@
 /// test and runs the teardown gates when it ends.
 
 import { test as base } from "vitest";
+import { Serve, type ServeOptions } from "@clice/tools/actions";
 import type { CliceClient } from "@clice/tools/client";
 import {
     cliceExecutable,
+    createSessionFactory,
     type Session,
     type SessionFactory,
     type SessionOptions,
@@ -14,6 +16,7 @@ import type { Workspace } from "@clice/tools/workspace";
 import { sessionFixture } from "../session_fixture.ts";
 
 export { expect } from "vitest";
+export { at, type Change, type Loc, type Serve } from "@clice/tools/actions";
 export { cliceExecutable, type Session, type SessionFactory, type SessionOptions };
 
 export const test = base.extend<{ session: SessionFactory }>({
@@ -53,3 +56,70 @@ export function cliceTest(name: string, options: SessionOptions = {}) {
         },
     });
 }
+
+/// A serve case's own hang detection: its waits end on server events, so
+/// only a case that hangs runs into it.
+const CASE_TIMEOUT = 300_000;
+
+type ServeBody = (context: { s: Serve }) => Promise<void>;
+
+export interface ServeTest {
+    (name: string, body: ServeBody): void;
+    for<T>(
+        cases: readonly T[],
+    ): (name: string, body: (item: T, context: { s: Serve }) => Promise<void>) => void;
+}
+
+function serveTest(project: string | null, options: ServeOptions): ServeTest {
+    const bound = base.extend<{ s: Serve }>({
+        s: async ({ task }, use) => {
+            const handle = createSessionFactory();
+            let started = false;
+            let s: Serve | undefined;
+            try {
+                s = await Serve.start(handle.session, project, options);
+                started = true;
+                await use(s);
+            } finally {
+                const failed = !started || (task.result?.errors?.length ?? 0) > 0;
+                try {
+                    await s?.finish(failed);
+                } finally {
+                    await handle.teardown(failed);
+                }
+            }
+        },
+    });
+    const run = (name: string, body: ServeBody): void => {
+        bound(name, { timeout: CASE_TIMEOUT }, body);
+    };
+    run.for =
+        <T>(cases: readonly T[]) =>
+        (name: string, body: (item: T, context: { s: Serve }) => Promise<void>): void => {
+            bound.for(cases)(name, { timeout: CASE_TIMEOUT }, body);
+        };
+    return run;
+}
+
+/// Cases on a copy of the sample project tests/projects/<project>, each
+/// with its own copy and server (see @clice/tools/actions):
+///
+///     const test = serve("shapes/headers");
+///     test("deleted source withdraws its rows", async ({ s }) => { ... });
+export function serve(project: string, options: ServeOptions = {}): ServeTest {
+    return serveTest(project, options);
+}
+
+/// One case on each of several variants of a project, named after it.
+serve.each =
+    (projects: readonly string[], options: ServeOptions = {}) =>
+    (name: string, body: ServeBody): void => {
+        for (const project of projects) {
+            serveTest(project, options)(`${name} [${project}]`, body);
+        }
+    };
+
+/// Cases on a workspace of loose files, each source a unit: for files whose
+/// content is what the case tests.
+serve.files = (files: Record<string, string>, options: ServeOptions = {}): ServeTest =>
+    serveTest(null, { ...options, files });

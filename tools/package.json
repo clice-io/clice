@@ -5,10 +5,13 @@
   "type": "module",
   "exports": {
     "./bench/perf": "./bench/perf.ts",
+    "./actions": "./client/actions.ts",
+    "./anchors": "./client/anchors.ts",
     "./client": "./client/client.ts",
     "./client/edits": "./client/edits.ts",
     "./promise": "./promise.ts",
     "./docs/generated": "./docs/generated.ts",
+    "./project": "./client/project.ts",
     "./workspace": "./client/workspace.ts",
     "./session": "./client/session.ts",
     "./snap/annotation": "./snap/annotation.ts",

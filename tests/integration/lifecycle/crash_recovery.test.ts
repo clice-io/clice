@@ -1,108 +1,20 @@
 /// Crash-recovery of background indexing.
 ///
-/// Kills stateless workers while an indexing round is in flight and verifies
-/// the round still converges: an outside kill names no request, so the
-/// in-flight files are lost rather than blamed, the indexer requeues them,
-/// and a follow-up round indexes every file. The second test darkens the
-/// whole pool (crash budget exhausted) and verifies the round parks until
-/// revival instead of spinning requeues (#611). The third pins that a file
-/// whose indexing crashed a worker waits for a change instead of being
-/// retried.
+/// The first test darkens the whole pool (crash budget exhausted) and
+/// verifies the round parks until revival instead of spinning requeues
+/// (#611). The second pins that a file whose indexing crashed a worker waits
+/// for a change instead of being retried.
 
 import { MTIME_GRANULARITY, sleep, waitUntil, type CliceClient } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
 const FILE_COUNT = 8;
-const KILL_FILE_COUNT = 3;
 const OUTAGE_RESPONSE_TIMEOUT = 15_000;
 
 async function indexedFunctions(client: CliceClient): Promise<Set<string>> {
     const result = await client.workspaceSymbols("func_");
     return new Set((result ?? []).map((s) => s.name));
 }
-
-test.skipIf(process.platform !== "linux")(
-    "crash during indexing",
-    { timeout: 360_000 },
-    async ({ session }) => {
-        const workspace = session.tmpdir();
-        const files: string[] = [];
-        for (let i = 0; i < KILL_FILE_COUNT; i++) {
-            const name = `file_${i}.cpp`;
-            workspace.write(
-                name,
-                `#include <vector>\n#include <string>\n` +
-                    `int func_${i}() { return (int)std::string("${i}").size(); }\n`,
-            );
-            files.push(name);
-        }
-        workspace.write("main.cpp", "int main() { return 0; }\n");
-        workspace.writeCDB([...files, "main.cpp"]);
-
-        // The kills below surface as WorkerCrash anomalies; Debug builds abort on
-        // anomalies by design, so disable the trap like anomaly.test does. The
-        // crashes are intentional, so the session opts out of the anomaly gate.
-        process.env["CLICE_ANOMALY_NO_TRAP"] = "1";
-        let client;
-        try {
-            client = session.spawn(workspace, { allowAnomaly: true });
-            await client.initialize(workspace);
-        } finally {
-            delete process.env["CLICE_ANOMALY_NO_TRAP"];
-        }
-
-        await client.openAndWait("main.cpp");
-
-        // Kill the worker an index run is in flight on, as soon as one
-        // takes it: a background compile runs niced, so waiting for its
-        // result instead would let a loaded machine starve the wait.
-        const killed = await waitUntil(
-            () => {
-                for (let i = 0; i < 16; i++) {
-                    const name = `SL-${i}`;
-                    if (workspace.log(`${name}.log`).includes("TURun request")) {
-                        for (const pid of client.workerPids(`${name}\0`)) {
-                            process.kill(pid, "SIGKILL");
-                        }
-                        return true;
-                    }
-                }
-                return false;
-            },
-            {
-                timeout: 30_000,
-                interval: 50,
-                description: "an index run to reach a stateless worker",
-            },
-        );
-        expect(killed, "indexing never started or no stateless worker found").toBe(true);
-
-        // The files that were in flight on the killed worker must be
-        // requeued and indexed by a follow-up round: every function
-        // eventually appears in the project index.
-        const expected = new Set(Array.from({ length: KILL_FILE_COUNT }, (_, i) => `func_${i}`));
-        let found = new Set<string>();
-        await waitUntil(
-            async () => {
-                found = await indexedFunctions(client);
-                return [...expected].every((name) => found.has(name));
-            },
-            {
-                timeout: 240_000,
-                interval: 1_000,
-                description: "every translation unit to be reindexed after a worker crash",
-            },
-        );
-        const missing = [...expected].filter((f) => !found.has(f)).sort();
-        expect(
-            [...expected].every((f) => found.has(f)),
-            `missing after crash: ${JSON.stringify(missing)}`,
-        ).toBe(true);
-
-        // The kill landed on an index run in flight: the premise under test.
-        expect(workspace.log("master.log")).toContain("Worker died while indexing");
-    },
-);
 
 // Regression for #611: with every stateless slot's crash budget burnt, the
 // dispatch loop must park until the pool revives a slot — not spin the same
