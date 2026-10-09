@@ -660,6 +660,26 @@ ZEST_CASE(max_members_option) {
     ZEXPECT(info->definition == "enum Value");
 }
 
+ZEST_CASE(tag_members_no_crash) {
+    run_info(R"cpp(
+    struct Record {
+        struct { int x; } method();
+        int field;
+    };
+    Re§cord record;
+  )cpp");
+    ZASSERT(info);
+
+    run_info(R"cpp(
+    struct Record {
+        int get() const;
+        __declspec(property(get = get)) struct { int x; } property;
+    };
+    Re§cord record;
+  )cpp");
+    ZASSERT(info);
+}
+
 ZEST_CASE(big_ints_no_crash) {
     // APInt64 wrap around.
     run_info(R"cpp(

@@ -1017,10 +1017,11 @@ auto tag_head(const clang::Decl& decl, const clang::PrintingPolicy& policy) -> s
     return head.str();
 }
 
-/// Whether the tag is declared as a member, which the mention in a member
-/// like `struct item* first;` is not. A member type of an instantiation is
-/// only declared until used, its pattern tells.
-bool is_member_type(const clang::TagDecl& tag) {
+/// Whether the tag is declared on its own, as a nested type or an
+/// anonymous struct or union, not inside another member's declaration as in
+/// `struct item* first;` or `char raw[sizeof(struct { ... })];`. An
+/// instantiation leaves that to its pattern.
+bool is_free_standing(const clang::TagDecl& tag) {
     const clang::TagDecl* written = &tag;
     if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(&tag);
        record && record->getInstantiatedFromMemberClass()) {
@@ -1029,7 +1030,7 @@ bool is_member_type(const clang::TagDecl& tag) {
               enum_decl && enum_decl->getInstantiatedFromMemberEnum()) {
         written = enum_decl->getInstantiatedFromMemberEnum();
     }
-    return written->isThisDeclarationADefinition() || written->isFreeStanding();
+    return written->isFreeStanding();
 }
 
 /// Whether a class summary lists the member: its data and the types it
@@ -1041,32 +1042,34 @@ bool is_listed(const clang::Decl& member) {
            member)) {
         return false;
     }
-    if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(&member)) {
-        return is_member_type(*tag);
-    }
     return llvm::isa<clang::FieldDecl,
                      clang::VarDecl,
                      clang::VarTemplateDecl,
                      clang::TypedefNameDecl,
                      clang::TypeAliasTemplateDecl,
+                     clang::TagDecl,
                      clang::ClassTemplateDecl>(member);
 }
 
-/// Whether the member is declared along with the tag, as `a` and `b` are in
-/// `struct { ... } a, *b;`: its type is spelled from the tag on. Locations
-/// tell where the AST does not: an instantiation drops the type's tie to
-/// the declaration that defines it.
+/// Whether a field or a typedef is declared along with the tag, as `a` and
+/// `b` are in `struct { ... } a, *b;`: its type is spelled from the tag on,
+/// and is the tag behind pointers and arrays. Locations tell where the AST
+/// does not: an instantiation drops the type's tie to the declaration that
+/// defines it.
 bool declared_with(const clang::Decl& member, const clang::TagDecl& tag) {
-    if(member.isImplicit()) {
+    clang::SourceLocation type_start;
+    clang::QualType type;
+    if(const auto* field = llvm::dyn_cast<clang::FieldDecl>(&member);
+       field && !field->isImplicit()) {
+        type_start = field->getTypeSpecStartLoc();
+        type = field->getType();
+    } else if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefDecl>(&member)) {
+        type_start = typedef_decl->getTypeSourceInfo()->getTypeLoc().getBeginLoc();
+        type = typedef_decl->getUnderlyingType();
+    } else {
         return false;
     }
-    clang::SourceLocation type_start;
-    if(const auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(&member)) {
-        type_start = declarator->getTypeSpecStartLoc();
-    } else if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefNameDecl>(&member)) {
-        type_start = typedef_decl->getTypeSourceInfo()->getTypeLoc().getBeginLoc();
-    }
-    return type_start == tag.getBeginLoc();
+    return type_start == tag.getBeginLoc() && types::unwrap(type)->getAs<clang::TagType>();
 }
 
 /// Prints the body of a tag definition as a summary: the enumerators of an
@@ -1095,8 +1098,11 @@ struct MemberPrinter {
         os << " {";
         if(const auto* enum_decl = llvm::dyn_cast<clang::EnumDecl>(&tag)) {
             enumerators(*enum_decl);
-        } else {
+        } else if(tag.isCompleteDefinition()) {
             members(llvm::cast<clang::RecordDecl>(tag));
+        } else {
+            /// An instantiation defines a member class only once it is used.
+            os << "\n// ...";
         }
         os << "\n}";
     }
@@ -1131,18 +1137,20 @@ struct MemberPrinter {
 
             const auto* tag = llvm::dyn_cast<clang::TagDecl>(member);
             llvm::SmallVector<const clang::Decl*> declarators;
+            auto last = it;
             if(tag) {
-                for(auto next = std::next(it); next != decls.end() && declared_with(**next, *tag);
-                    ++next) {
-                    declarators.push_back(*next);
-                }
-                /// A static member keeps its own declaration, and an unnamed
-                /// type shows up there.
-                if(!declarators.empty() && llvm::isa<clang::VarDecl>(declarators.front())) {
-                    if(!tag->getDeclName()) {
-                        continue;
+                /// A tag mentioned or defined inside a declarator, as in
+                /// `struct { ... } a[sizeof(struct B)], *b;`, comes between.
+                for(auto next = std::next(it); next != decls.end(); ++next) {
+                    if(declared_with(**next, *tag)) {
+                        declarators.push_back(*next);
+                        last = next;
+                    } else if(!llvm::isa<clang::TagDecl>(*next)) {
+                        break;
                     }
-                    declarators.clear();
+                }
+                if(declarators.empty() && !is_free_standing(*tag)) {
+                    continue;
                 }
             }
             if(!fits()) {
@@ -1174,7 +1182,7 @@ struct MemberPrinter {
                     separator = ", ";
                     print(*declarator, declarator_policy);
                 }
-                std::advance(it, declarators.size());
+                it = last;
             } else if(llvm::isa<clang::ClassTemplateDecl>(member)) {
                 os << tag_head(*member, policy);
             } else {
@@ -1188,7 +1196,7 @@ struct MemberPrinter {
     /// share; each of them prints without.
     void specifiers(const clang::Decl& declarator) {
         clang::QualType type;
-        if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefNameDecl>(&declarator)) {
+        if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefDecl>(&declarator)) {
             os << "typedef ";
             type = typedef_decl->getUnderlyingType();
         } else {

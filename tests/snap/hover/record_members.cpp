@@ -121,6 +121,9 @@ template <typename T> struct Expected {
         T low, high;
     } range, *last;
     enum { capacity = sizeof(T) };
+    struct {
+        T* next;
+    } *lazy;
     bool has_error : 1;
 };
 §(instantiated_unnamed)Expected<long> expected;
@@ -140,6 +143,9 @@ struct Device {
     } limits{0, 1};
     void attach(struct Driver* driver);
     typedef struct Handle* HandlePtr;
+    struct {
+        int id;
+    } queue[sizeof(struct Request*)], *head;
 };
 §(declarator_specifiers)Device device;
 }

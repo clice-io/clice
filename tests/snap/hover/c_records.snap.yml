@@ -2,6 +2,20 @@
 created_at: 2026-10-09
 input_file: c_records.cpp
 ---
+c_inner_tags: { range: "34:7-34:13" }
+### struct `Packed`  
+
+---
+```cpp
+struct Packed {
+  char raw[16];
+  typeof(struct(unnamed)) typed;
+  void (*callback)(struct(unnamed) *);
+  _Atomic(struct(unnamed)) atomic;
+  int tail;
+}
+```
+
 c_mentions: { range: "22:7-22:10" }
 ### struct `ops`  
 
