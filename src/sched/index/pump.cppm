@@ -162,11 +162,6 @@ public:
         return !indexing_active && index_queue_pos >= index_queue.size();
     }
 
-    /// Wait until background indexing is idle: the round running now ends
-    /// with its save, and so do the rounds its requeues and the work queued
-    /// meanwhile start. Waits on while queued work has no round scheduled.
-    kota::task<> await_idle();
-
     /// Number of files remaining in the indexing queue.
     std::size_t pending_files() const {
         return index_queue_pos < index_queue.size() ? index_queue.size() - index_queue_pos : 0;
@@ -278,10 +273,6 @@ private:
     /// stateless worker" the moment a slot (re)enters service.
     kota::event capacity_event{false};
     Signal<>::Connection capacity_conn;
-
-    /// Set when a round ends with nothing left queued; await_idle waits
-    /// on it.
-    kota::event idle_event{false};
 
     Progress progress_data;
 

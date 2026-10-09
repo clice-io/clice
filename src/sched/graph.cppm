@@ -241,11 +241,6 @@ public:
     /// The nodes whose round is in flight.
     llvm::SmallVector<NodeId> compiling() const;
 
-    /// Wait until no round is in flight, looking again after each landing:
-    /// a round spawned meanwhile — a dependency's, the respawn of a stale
-    /// one — is waited for too.
-    kota::task<> await_rounds();
-
     /// Structural sanity that holds at every drain boundary: a compiling
     /// node has an unfinished round, and a finished round never leaves the
     /// compiling flag behind.

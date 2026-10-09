@@ -191,18 +191,18 @@ public:
     /// on (project.test_hooks of the first project).
     bool test_hooks() const;
 
-    /// Test hook (clice/internal/sync): wait until nothing is in flight —
-    /// no request of `editor` but `self`, no round of the task graph, no
-    /// index round running or queued, no disk change waiting for its drain,
-    /// no metadata save scheduled or running. A request is listed from its
-    /// dispatch on, before the work it starts surfaces, so one look at all
-    /// of them at once settles it.
-    kota::task<> settle(const kota::ipc::JSONPeer& editor,
-                        const kota::ipc::protocol::RequestID& self);
+    /// Test hook (clice/internal/sync): wait until nothing is in flight.
+    /// One look, taken in one turn after the disk changes the file table
+    /// saw are drained, at three read-only views: `editor` has no request
+    /// unanswered but syncs (kota lists a request from its dispatch on), no
+    /// task-graph round is live, and the index pump is idle. Work starts
+    /// inside one of these or from a new message, so the look is exact.
+    /// Not waited for: the metadata save that follows a build, and the
+    /// shutdown of a removed folder's project.
+    kota::task<> settle(const kota::ipc::JSONPeer& editor);
 
     /// What settle() still waits for, one line each; empty once settled.
-    std::vector<std::string> pending_work(const kota::ipc::JSONPeer& editor,
-                                          const kota::ipc::protocol::RequestID& self);
+    std::vector<std::string> pending_work(const kota::ipc::JSONPeer& editor);
 
     kota::cancellation_token shutdown_token() const {
         return shutdown_source.token();
@@ -370,8 +370,6 @@ private:
     /// Shutdowns of removed projects and deferred drains of the file
     /// table's changes; joined in shutdown_and_cleanup().
     kota::task_group<> bg_tasks;
-    /// Deferred drains not run yet (settle() waits for them).
-    std::size_t drains_due = 0;
 
     /// The background looks at files and databases, and the ends of the
     /// file table's turns, until the drain cancels them.

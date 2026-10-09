@@ -313,51 +313,6 @@ ZEST_CASE(concurrent_requests_share) {
     });
 }
 
-ZEST_CASE(await_rounds_covers_respawns) {
-    // The wait ends only once no round is in flight: a round its requester
-    // spawns again after a stale landing counts too.
-    kota::event started;
-    kota::event proceed;
-    kota::event restarted;
-    kota::event finish;
-    int calls = 0;
-    graph.register_family(FamA, [&](RoundContext&, NodeId) -> kota::task<RoundOutcome> {
-        calls += 1;
-        if(calls == 1) {
-            started.set();
-            co_await proceed.wait();
-            co_return RoundOutcome::Stale;
-        }
-        restarted.set();
-        co_await finish.wait();
-        co_return RoundOutcome::Success;
-    });
-
-    Probe probe;
-    bool settled = false;
-    execute([&]() -> kota::task<> {
-        auto waiter = [&]() -> kota::task<> {
-            co_await started.wait();
-            co_await graph.await_rounds();
-            settled = true;
-        };
-        auto driver = [&]() -> kota::task<> {
-            co_await started.wait();
-            proceed.set();
-            co_await restarted.wait();
-            ZEXPECT(!settled);
-            ZEXPECT(graph.compiling() == llvm::SmallVector<NodeId>{a(1)});
-            finish.set();
-        };
-
-        co_await kota::when_all(run_request(a(1), probe), waiter(), driver());
-
-        ZEXPECT(settled);
-        ZEXPECT(probe.outcome == JoinOutcome::Success);
-        ZEXPECT(graph.compiling().empty());
-    });
-}
-
 ZEST_CASE(cross_family_edge) {
     // A FamA node depending on a FamB node: the edge crosses families and
     // update() cascades across it.

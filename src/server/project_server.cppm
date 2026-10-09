@@ -151,11 +151,6 @@ public:
     std::vector<ConfigIssue> config_issues;
     std::string config_path;
 
-    /// A metadata save is scheduled or running.
-    bool metadata_flush_pending() const {
-        return metadata_flush_scheduled || metadata_flushing;
-    }
-
 private:
     /// A fresh session for the document, replacing a live one.
     std::shared_ptr<Session> create_session(Fid path_id);
@@ -203,7 +198,6 @@ private:
     void schedule_metadata_flush();
     kota::task<> metadata_flush_task();
     bool metadata_flush_scheduled = false;
-    bool metadata_flushing = false;
 
     /// The periodic SchedulingStack::checkpoint().
     kota::task<> checkpoint_task();

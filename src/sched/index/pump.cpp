@@ -131,13 +131,6 @@ void IndexPump::settle_attempt_waits(Fid server_path_id, std::uint64_t ticket) {
     }
 }
 
-kota::task<> IndexPump::await_idle() {
-    while(!is_idle()) {
-        idle_event.reset();
-        co_await idle_event.wait();
-    }
-}
-
 void IndexPump::pause_indexing() {
     pause_depth += 1;
     if(pause_depth == 1) {
@@ -532,8 +525,6 @@ kota::task<> IndexPump::run_background_indexing() {
     // stay skipped for that whole wait.
     if(index_queue_pos < index_queue.size()) {
         schedule(/*immediate=*/true);
-    } else {
-        idle_event.set();
     }
 }
 

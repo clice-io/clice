@@ -38,6 +38,25 @@ test("sync after a poll", async ({ session }) => {
     expect((await client.workspaceSymbols("fn_renamed"))?.length).toBe(1);
 });
 
+test("sync waits for requests", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", "int main() { return missing; }\n");
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+
+    // The pull waits for a compile no build had started when the syncs
+    // arrived; neither sync waits for the other.
+    const [uri] = client.open("main.cpp");
+    let answered = false;
+    const pulled = client.pullDiagnostics(uri).then(() => {
+        answered = true;
+    });
+    const syncs = await Promise.all([client.sync(), client.sync()]);
+    expect(answered, "the pull is answered before the syncs").toBe(true);
+    expect(syncs.map((sync) => sync.pending)).toEqual([[], []]);
+    await pulled;
+});
+
 test("sync reports held work", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("a.cpp", "int fn_a() { return 1; }\n");

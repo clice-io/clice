@@ -1170,8 +1170,7 @@ void LSPClient::register_extensions() {
                 co_await tick_trackers(srv, /*cdb=*/false, /*force=*/true);
             }
             auto deadline = std::chrono::milliseconds(params.deadline_ms.value_or(240'000));
-            co_await kota::when_any(srv.settle(this->peer, ctx.id),
-                                    kota::sleep(deadline, srv.loop));
+            co_await kota::when_any(srv.settle(this->peer), kota::sleep(deadline, srv.loop));
             ext::SyncResult result;
             for(auto& project: srv.projects) {
                 for(auto id: project->sched.pump.failed()) {
@@ -1180,7 +1179,7 @@ void LSPClient::register_extensions() {
                 result.unsaved = result.unsaved || project->sched.store.has_unsaved_state();
             }
             llvm::sort(result.failed);
-            result.pending = srv.pending_work(this->peer, ctx.id);
+            result.pending = srv.pending_work(this->peer);
             co_return to_raw(result);
         });
 
