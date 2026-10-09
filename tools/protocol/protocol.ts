@@ -232,8 +232,8 @@ export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/
 /// down. The metadata save that follows a build is not waited for; a test
 /// needing what is on disk stops the server.
 export interface SyncParams {
-    /// How long to wait before answering with the work still pending; four
-    /// minutes by default.
+    /// How long after the request to answer with the work still pending, four
+    /// minutes by default; a poll runs to its end first.
     deadlineMs?: number;
     /// Tick the workspace loop first, so changes on disk are part of the work
     /// waited for.

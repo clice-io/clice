@@ -221,8 +221,8 @@ struct StatsResult {
 /// for; a test needing what is on disk stops the server. Absent from
 /// capabilities and user docs.
 struct SyncParams {
-    /// How long to wait before answering with the work still pending;
-    /// four minutes by default.
+    /// How long after the request to answer with the work still pending,
+    /// four minutes by default; a poll runs to its end first.
     std::optional<std::uint32_t> deadline_ms;
 
     /// Tick the workspace loop first (see PollParams), so changes on disk
