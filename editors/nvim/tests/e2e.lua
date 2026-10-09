@@ -204,6 +204,7 @@ if scenario.context then
 
     local notified
     vim.notify = function(msg)
+        io.stdout:write('notify: ' .. msg .. '\n')
         notified = msg
     end
     step 'show context'
@@ -213,7 +214,7 @@ if scenario.context then
     end, 50) then
         fail 'LspCliceShowContext showed nothing'
     end
-    if not notified:find(scenario.context, 1, true) then
+    if not notified:find(scenario.context .. '.*picked automatically') then
         fail('LspCliceShowContext showed: ' .. notified)
     end
 

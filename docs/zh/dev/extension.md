@@ -55,7 +55,7 @@ Neovim 集成位于 `editors/nvim`：
 - `plugin/clice.lua` 淡化显示非活动预处理分支。
 - `tests/e2e.lua` 是以 headless 模式运行的冒烟测试：`pixi run -e editor nvim-e2e`。
 
-试用改动时，把该目录加入 `runtimepath`（`set rtp^=/path/to/clice/editors/nvim`），并调用 `vim.lsp.enable('clice')`；`:checkhealth vim.lsp` 会显示客户端及其日志的位置。
+试用改动时，把该目录追加到 `runtimepath`（`set rtp+=/path/to/clice/editors/nvim`），排在 nvim-lspconfig 之后，从而覆盖它的副本，并调用 `vim.lsp.enable('clice')`；`:checkhealth vim.lsp` 会显示客户端及其日志的位置。
 
 ## Zed
 

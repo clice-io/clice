@@ -4,7 +4,7 @@ Neovim 0.11 or later.
 
 ## Setup
 
-[nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) ships the config in [`lsp/clice.lua`](lsp/clice.lua); with it installed:
+[nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) carries a copy of [`lsp/clice.lua`](lsp/clice.lua); with it installed:
 
 ```lua
 vim.lsp.enable('clice')
@@ -16,7 +16,7 @@ Without nvim-lspconfig, copy `lsp/clice.lua` into the `lsp/` directory of your c
 vim.lsp.config('clice', { cmd = { '/path/to/clice', 'serve' } })
 ```
 
-One clice process serves every C, C++ and CUDA buffer of a Neovim instance and finds the project of each file itself; the root of the first buffer, the nearest directory above it holding a `clice.toml`, a `compile_commands.json` or a `.git`, is its workspace folder.
+Neovim runs a clice for each project root: the nearest directory above the file that holds a `clice.toml`, else a `compile_commands.json`, else a `.git` (before Neovim 0.11.3, the nearest that holds any of them).
 
 ## Commands
 
@@ -29,7 +29,7 @@ One clice process serves every C, C++ and CUDA buffer of a Neovim instance and f
 
 ## Features
 
-Neovim drives most of clice through its defaults: pulled diagnostics with clang-tidy findings and their fixes (`gra`), semantic tokens, `K` hover, `<C-S>` signature help, `<C-]>` definition (on an `#include` too), `grr` references, `gri` implementations, `grt` type definition (on `auto`, the deduced type), `grn` rename, `gO` document symbols and `gq` formatting. On Neovim 0.12, `an` and `in` grow and shrink the visual selection through clice, in buffers without a tree-sitter parser.
+Neovim drives most of clice through its defaults: pulled diagnostics with clang-tidy findings and their fixes (`gra`), semantic tokens, `K` hover, `<C-S>` signature help, `<C-X><C-O>` completion, `<C-]>` definition (on an `#include` too), `grr` references, `gri` implementations, `grn` rename, `gO` document symbols and `gq` formatting. Neovim 0.12 adds `grt` type definition (on `auto`, the deduced type), and `an` and `in` grow and shrink the visual selection through clice in buffers without a tree-sitter parser (Neovim bundles one for C, not for C++).
 
 Inactive preprocessor branches carry the `@lsp.mod.inactive` highlight; `plugin/clice.lua` links it to `Comment`. Without the plugin:
 

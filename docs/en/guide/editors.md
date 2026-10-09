@@ -21,7 +21,7 @@ On Neovim 0.11 or later with [nvim-lspconfig](https://github.com/neovim/nvim-lsp
 vim.lsp.enable('clice')
 ```
 
-nvim-lspconfig carries the config from [`editors/nvim`](https://github.com/clice-io/clice/tree/main/editors/nvim); without it, copy `lsp/clice.lua` from there into the `lsp/` directory of your config. The config adds commands that show and switch the compilation context of a buffer; the [README](https://github.com/clice-io/clice/tree/main/editors/nvim#readme) lists them, along with the features Neovim leaves to your config, such as inlay hints and completion.
+nvim-lspconfig carries a copy of the config in [`editors/nvim`](https://github.com/clice-io/clice/tree/main/editors/nvim); without it, copy `lsp/clice.lua` from there into the `lsp/` directory of your config. The config adds commands that show and switch the compilation context of a buffer; the [README](https://github.com/clice-io/clice/tree/main/editors/nvim#readme) lists them, along with the features Neovim leaves to your config, such as inlay hints and completion as you type.
 
 ### Zed
 

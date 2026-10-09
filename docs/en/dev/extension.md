@@ -55,7 +55,7 @@ The Neovim integration lives in `editors/nvim`:
 - `plugin/clice.lua` dims inactive preprocessor branches.
 - `tests/e2e.lua` is the headless smoke test: `pixi run -e editor nvim-e2e`.
 
-To try a change, add the directory to `runtimepath` (`set rtp^=/path/to/clice/editors/nvim`) and `vim.lsp.enable('clice')`; `:checkhealth vim.lsp` shows the client and where its log is.
+To try a change, append the directory to `runtimepath` (`set rtp+=/path/to/clice/editors/nvim`), after nvim-lspconfig whose copy it then overrides, and `vim.lsp.enable('clice')`; `:checkhealth vim.lsp` shows the client and where its log is.
 
 ## Zed
 

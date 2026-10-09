@@ -16,13 +16,16 @@
 ---@param params table
 ---@param on_result fun(result: any)
 local function request(client, bufnr, method, params, on_result)
-  client:request(method, params, function(err, result)
+  local sent = client:request(method, params, function(err, result)
     if err then
       vim.notify(('%s: %s'):format(method, err.message), vim.log.levels.ERROR)
     else
       on_result(result)
     end
   end, bufnr)
+  if not sent then
+    vim.notify(('%s: clice is not running'):format(method), vim.log.levels.ERROR)
+  end
 end
 
 --- Every page of the buffer's contexts, all from one listing epoch.
@@ -35,7 +38,6 @@ local function query_contexts(client, bufnr, on_contexts)
   local function fetch()
     request(client, bufnr, 'clice/queryContext', { uri = uri, offset = #contexts }, function(page)
       if epoch and page.epoch ~= epoch then
-        -- The workspace changed between two pages: list again.
         contexts, epoch = {}, nil
         return fetch()
       end
@@ -160,10 +162,6 @@ return {
   cmd = { 'clice', 'serve' },
   filetypes = { 'c', 'cpp', 'cuda' },
   root_markers = { 'clice.toml', 'compile_commands.json', '.git' },
-  -- One clice serves every project: it finds the project of each file itself.
-  reuse_client = function(client, config)
-    return client.name == config.name
-  end,
   on_attach = function(client, bufnr)
     vim.api.nvim_buf_create_user_command(bufnr, 'LspCliceShowContext', function()
       show_context(client, bufnr)
