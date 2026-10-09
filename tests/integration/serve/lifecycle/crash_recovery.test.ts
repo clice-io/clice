@@ -24,10 +24,12 @@ const FILE_COUNT = 8;
 /// The pool's max_crash_streak: a slot is given up at the death past it.
 const CRASH_BUDGET = 3;
 
+// Light units: a worker's crashes add up only while it dies within the
+// pool's healthy uptime of its spawn, and the holds keep the round in
+// flight however fast the runs are.
 const OUTAGE_FILES: Record<string, string> = { "main.cpp": "int main() { return 0; }\n" };
 for (let i = 0; i < FILE_COUNT; i++) {
-    OUTAGE_FILES[`file_${i}.cpp`] =
-        `#include <string>\nint func_${i}() { return (int)std::string("${i}").size(); }\n`;
+    OUTAGE_FILES[`file_${i}.cpp`] = `int func_${i}() { return ${i}; }\n`;
 }
 
 if (process.platform === "linux") {
