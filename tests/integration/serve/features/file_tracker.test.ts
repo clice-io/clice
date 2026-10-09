@@ -282,6 +282,8 @@ serve.files(
 
     // The header moves on disk: b.cpp's compile is stale, its buffer is
     // not, so the rows it compiled from these very bytes keep serving.
+    // Settled first, as in "delete while open reported".
+    await s.sync();
     expect(await events(s, "workspace")).toBe(0);
     s.disk.write("h.h", "#pragma once\n// moved\nextern int shared_sym;\n");
     expect(await events(s, "workspace")).toBe(1);
@@ -367,6 +369,9 @@ serve.files(
     // A buffer shadows the disk for its own file's compile only: the
     // removal is main.cpp's news while the header is still open.
     s.open("header.h");
+    // Settled: work still running would look at the header and report its
+    // removal before the poll does.
+    await s.sync();
     expect(await events(s, "workspace")).toBe(0);
     s.disk.rm("header.h");
     expect(await events(s, "workspace"), "an open file's removal is reported").toBe(1);
