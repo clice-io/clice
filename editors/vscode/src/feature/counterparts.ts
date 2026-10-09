@@ -19,8 +19,9 @@ export function registerCounterparts(client: ClientHandle, ext: vscode.Extension
             result = await client.sendRequest<CounterpartsResult>("clice/counterparts", {
                 uri: document.uri.toString(),
             });
-        } catch {
-            vscode.window.showWarningMessage("clice: server not ready");
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            vscode.window.showWarningMessage(`clice: cannot find counterparts: ${message}`);
             return;
         }
         if (result.preferred !== null) {

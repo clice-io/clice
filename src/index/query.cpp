@@ -361,10 +361,13 @@ Fid IndexQuery::definition_file(SymbolHash hash) const {
     if(!identity || !has_flag(identity->flags, SymbolFlags::HasDefinition)) {
         return {};
     }
-    // The table never retracts a definition: a file reindexed without it
-    // keeps the record until another unit defines the symbol.
+    // The table never retracts a definition: a file reindexed or edited
+    // without it keeps the record until another unit defines the symbol.
+    // The rows serving the file say whether it still does — an open
+    // buffer's own when they are current, else the file's shard.
     Fid file{identity->file};
-    auto* rows = index.shard(file);
+    auto source = serving(file);
+    auto* rows = source ? source->rows : index.shard(file);
     bool defines = false;
     if(rows) {
         rows->lookup(hash, RelationKind::Definition, [&](const Relation&) {
