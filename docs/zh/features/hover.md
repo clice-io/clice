@@ -709,13 +709,13 @@ tests/snap/hover/macro_hover/06_preamble_define_hover.cpp
 
 <!-- BEGIN GENERATED ITEMS: special_hover_targets -->
 
-<!-- BEGIN CAPABILITY: partial clangd#959 -->
+<!-- BEGIN CAPABILITY: supported clangd#959 -->
 
 **类型悬停中的成员**
 
 悬停于枚举或结构体类型时，会列出其成员
 
-卡片显示类型名称（对于结构体，还会显示其布局），但不展开成员列表，类型体显示为 `{}`。
+类会列出其数据成员和成员类型，枚举会列出其枚举项及对应的值；成员函数不会列出。`max_members` 选项限制列表的条目数，默认为 20，设为 `0` 则关闭该列表。
 
 ```snap
 tests/snap/hover/special_hover_targets/01_type_members_on_hover.cpp

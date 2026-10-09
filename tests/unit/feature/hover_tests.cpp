@@ -639,6 +639,65 @@ ZEST_CASE(disable_show_aka) {
     check_sym_range();
 }
 
+ZEST_CASE(max_members_option) {
+    feature::HoverOptions options;
+    options.max_members = 0;
+
+    run_info(R"cpp(
+    struct Record { int field; };
+    Re§cord record;
+  )cpp",
+             options);
+    ZASSERT(info);
+    ZEXPECT(info->definition == "struct Record");
+
+    run_info(R"cpp(
+    enum Value { one, two };
+    Va§lue value;
+  )cpp",
+             options);
+    ZASSERT(info);
+    ZEXPECT(info->definition == "enum Value");
+
+    options.max_members = 1;
+    run_info(R"cpp(
+    struct Record {
+        int first;
+        int second;
+    };
+    Re§cord record;
+  )cpp",
+             options);
+    ZASSERT(info);
+    ZEXPECT(info->definition == "struct Record {\n  int first;\n  // ...\n}");
+
+    run_info(R"cpp(
+    enum Value { first, second };
+    Va§lue value;
+  )cpp",
+             options);
+    ZASSERT(info);
+    ZEXPECT(info->definition == "enum Value {\n  first = 0,\n  // ...\n}");
+}
+
+ZEST_CASE(c_record_members) {
+    run_info(R"cpp(
+    struct Point {
+        int x;
+        union {
+            int tag;
+            float weight;
+        };
+    };
+    struct Po§int point;
+  )cpp",
+             {},
+             "-std=c11");
+    ZASSERT(info);
+    ZEXPECT(info->definition ==
+            "struct Point {\n  int x;\n  union {\n    int tag;\n    float weight;\n  };\n}");
+}
+
 ZEST_CASE(big_ints_no_crash) {
     // APInt64 wrap around.
     run_info(R"cpp(

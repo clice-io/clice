@@ -1,0 +1,151 @@
+---
+created_at: 2026-10-09
+input_file: member_truncation.cpp
+---
+exact_record: { range: "17:0-17:9" }
+### struct `Registers`  
+
+---
+```cpp
+// In namespace exact_record
+struct Registers {
+  int r00;
+  int r01;
+  int r02;
+  int r03;
+  int r04;
+  int r05;
+  int r06;
+  int r07;
+  int r08;
+  int r09;
+  int r10;
+  int r11;
+  int r12;
+  int r13;
+  int r14;
+  int r15;
+  int r16;
+  int r17;
+  int r18;
+  int r19;
+}
+```
+
+huge_enumerator: { range: "58:0-58:3" }
+### enum `Sum`  
+
+---
+```cpp
+// In namespace huge_initializers
+enum Sum { Small = 1, Large = 256 }
+```
+
+huge_record_initializers: { range: "55:0-55:6" }
+### struct `Tables`  
+
+---
+```cpp
+// In namespace huge_initializers
+struct Tables {
+  int large_field[256];
+  static int large_static[256];
+  int small_field = 1;
+  static int small_static = 2;
+}
+```
+
+long_enum: { range: "26:0-26:6" }
+### enum `Opcode`  
+
+---
+```cpp
+// In namespace long_enum
+enum Opcode {
+  Op00 = 0,
+  Op01 = 1,
+  Op02 = 2,
+  Op03 = 3,
+  Op04 = 4,
+  Op05 = 5,
+  Op06 = 6,
+  Op07 = 7,
+  Op08 = 8,
+  Op09 = 9,
+  Op10 = 10,
+  Op11 = 11,
+  Op12 = 12,
+  Op13 = 13,
+  Op14 = 14,
+  Op15 = 15,
+  Op16 = 16,
+  Op17 = 17,
+  Op18 = 18,
+  Op19 = 19,
+  // ...
+}
+```
+
+long_record: { range: "9:0-9:9" }
+### struct `Registers`  
+
+---
+```cpp
+// In namespace long_record
+struct Registers {
+  int r00;
+  int r01;
+  int r02;
+  int r03;
+  int r04;
+  int r05;
+  int r06;
+  int r07;
+  int r08;
+  int r09;
+  int r10;
+  int r11;
+  int r12;
+  int r13;
+  int r14;
+  int r15;
+  int r16;
+  int r17;
+  int r18;
+  int r19;
+  // ...
+}
+```
+
+nested_cut: { range: "40:0-40:6" }
+### struct `Packet`  
+
+---
+```cpp
+// In namespace nested_cut
+struct Packet {
+  int r00;
+  int r01;
+  int r02;
+  int r03;
+  int r04;
+  int r05;
+  int r06;
+  int r07;
+  int r08;
+  int r09;
+  int r10;
+  int r11;
+  int r12;
+  int r13;
+  int r14;
+  int r15;
+  int r16;
+  int r17;
+  union {
+    int word;
+    // ...
+  };
+  // ...
+}
+```

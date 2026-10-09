@@ -8,7 +8,7 @@ enum: { range: "16:11-16:16" }
 ---
 ```cpp
 // In namespace kinds
-enum class Color : int {}
+enum class Color : int { Red = 0 }
 ```
 
 enumerator: { range: "17:4-17:7" }
@@ -69,7 +69,9 @@ Size: 4 bytes, alignment 4 bytes
 ---
 ```cpp
 // In namespace kinds
-struct Point {}
+struct Point {
+  int x;
+}
 ```
 
 typedef: { range: "20:6-20:11" }
@@ -93,5 +95,7 @@ Size: 4 bytes, alignment 4 bytes
 ---
 ```cpp
 // In namespace kinds
-union Packet {}
+union Packet {
+  int raw;
+}
 ```

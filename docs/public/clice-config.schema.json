@@ -40,7 +40,8 @@
             "description": "The [hover] section: hover rendering options.",
             "default": {
                 "parse_comment_as_markdown": true,
-                "show_aka": true
+                "show_aka": true,
+                "max_members": 20
             }
         },
         "inlay_hints": {
@@ -184,6 +185,13 @@
                     "type": "boolean",
                     "description": "Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.",
                     "default": true
+                },
+                "max_members": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "How many members, at most, the definition of a hovered class or enum lists: its data members and member types, or its enumerators. `0` shows the declaration alone.",
+                    "default": 20
                 }
             },
             "additionalProperties": false

@@ -111,6 +111,13 @@ struct HoverOptions {
                          "Show the desugared form of a type, e.g. "
                          "`vector<int>::size_type (aka unsigned long)`.")
     <bool> show_aka = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "How many members, at most, the definition of a hovered "
+                         "class or enum lists: its data members and member types, "
+                         "or its enumerators. `0` shows the declaration alone.")
+    <std::uint32_t> max_members = 20;
 };
 
 /// Corresponds to the `[diagnostics]` section in clice.toml.

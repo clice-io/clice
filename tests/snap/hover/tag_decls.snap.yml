@@ -26,7 +26,10 @@ class Controller {}
 ---
 ```cpp
 // In namespace union_use::model
-union Storage {}
+union Storage {
+  long integer;
+  double decimal;
+}
 ```
 
 04_forward_class: { range: "27:0-27:7" }
@@ -44,7 +47,7 @@ class Session {}
 ---
 ```cpp
 // In namespace enum_use
-enum Direction {}
+enum Direction { North = 0, East = 1, South = 2, West = 3 }
 ```
 
 06_enumerator: { range: "37:19-37:23" }

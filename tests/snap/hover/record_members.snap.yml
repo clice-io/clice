@@ -1,0 +1,162 @@
+---
+created_at: 2026-10-09
+input_file: record_members.cpp
+---
+before_definition: { range: "109:0-109:5" }
+### struct `Later`  
+
+---
+```cpp
+// In namespace forward_declared
+struct Later {
+  int value;
+}
+```
+
+class_sections: { range: "42:4-42:10" }
+### class `Widget`  
+
+---
+```cpp
+// In namespace access_sections
+class Widget : public Base {
+  int id;
+
+public:
+  using Size = unsigned long;
+  template <typename T> using Pointer = T *;
+  static constexpr int limit = 4;
+  enum class Kind : int;
+  struct Node;
+  struct Forward;
+  template <typename T> struct Nested;
+
+private:
+  static int instances;
+  mutable int cache = 0;
+  unsigned int flags : 3;
+}
+```
+
+derived: { range: "122:0-122:6" }
+### struct `Square`  
+
+---
+```cpp
+// In namespace derived_members
+struct Square final : Shape {
+  int length;
+}
+```
+
+explicit_specialization: { range: "104:0-104:3" }
+### struct `Box<bool>`  
+
+---
+```cpp
+// In namespace templates
+template <> struct Box<bool> {
+  unsigned char bits;
+}
+```
+
+functions_only: { range: "53:0-53:7" }
+### struct `Service`  
+
+---
+```cpp
+// In namespace functions_only
+struct Service {}
+```
+
+implicit_instantiation: { range: "102:0-102:3" }
+### struct `Box<int>`  
+
+---
+```cpp
+// In namespace templates
+template <> struct Box<int> {
+  using value_type = int;
+  int value;
+  template <typename U> static constexpr bool holds;
+  template <typename U> struct Rebind;
+  struct Inner;
+}
+```
+
+nested_type: { range: "43:12-43:16" }
+### struct `Node`  
+
+---
+```cpp
+// In Widget
+public: struct Node {
+  int hidden;
+}
+```
+
+partial_specialization: { range: "103:0-103:3" }
+### struct `Box<int *>`  
+
+---
+```cpp
+// In namespace templates
+template <> struct Box<int *> {
+  int *pointer;
+}
+```
+
+primary_declaration: { range: "100:29-100:32" }
+### struct `Box`  
+
+---
+```cpp
+// In namespace templates
+template <typename T> struct Box {
+  using value_type = T;
+  T value;
+  template <typename U> static constexpr bool holds = false;
+  template <typename U> struct Rebind;
+  struct Inner;
+}
+```
+
+primary_use: { range: "101:32-101:35" }
+### struct `Box`  
+
+---
+```cpp
+// In namespace templates
+template <typename T> struct Box {
+  using value_type = T;
+  T value;
+  template <typename U> static constexpr bool holds = false;
+  template <typename U> struct Rebind;
+  struct Inner;
+}
+```
+
+unnamed_members: { range: "75:0-75:5" }
+### struct `Value`  
+
+---
+```cpp
+// In namespace unnamed_members
+struct Value {
+  enum { inline_capacity = 16 };
+  int kind;
+  union {
+    long integer;
+    double decimal;
+  };
+  struct {
+    int x;
+    int y;
+  } position, *previous;
+  struct Named named;
+  union {
+    int bits;
+    float real;
+  } aligned[2] alignas(8);
+}
+```

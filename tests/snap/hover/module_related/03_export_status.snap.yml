@@ -23,7 +23,9 @@ Size: 4 bytes, alignment 4 bytes
 
 ---
 ```cpp
-export struct Square {}
+export struct Square {
+  int side;
+}
 ```
 
 internal_fn: { range: "22:4-22:13" }

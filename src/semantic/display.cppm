@@ -55,6 +55,10 @@ struct Options {
 
     /// type(): attach the desugared form as `aka` when it differs.
     bool show_aka = false;
+
+    /// definition(): how many members, at most, the body of a class or enum
+    /// definition lists — nested ones count too; 0 prints no body.
+    std::uint32_t max_members = 0;
 };
 
 /// A pretty-printed type, optionally with its desugared form.
@@ -175,10 +179,11 @@ auto template_params(const clang::TemplateParameterList* params, const Options& 
 /// "template <...> class" for template template parameters.
 auto template_param_type(const clang::NamedDecl* param, const Options& options = {}) -> Type;
 
-/// Pretty-print the declaration itself. Initializers longer than 200
-/// tokens, counted by `token_count` over a range, are suppressed — such
-/// lists are not useful in a hover card and are catastrophically expensive
-/// to print.
+/// Pretty-print the declaration itself. A class or enum with a visible
+/// definition prints that definition, its body summarized as
+/// options.max_members asks. Initializers longer than 200 tokens, counted by
+/// `token_count` over a range, are suppressed — such lists are not useful in
+/// a hover card and are catastrophically expensive to print.
 auto definition(const clang::Decl* decl,
                 const Options& options,
                 llvm::function_ref<std::size_t(clang::SourceRange)> token_count) -> std::string;
