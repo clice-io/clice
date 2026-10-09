@@ -849,10 +849,10 @@ std::uint64_t container_entity(CompilationUnitRef unit, const clang::FunctionDec
     return 0;
 }
 
-CodeAction define_action(std::string title, IndexRequest request) {
+CodeAction define_action(std::string title, std::string_view kind, IndexRequest request) {
     return CodeAction{
         .title = std::move(title),
-        .kind = protocol::CodeActionKind::RefactorRewrite,
+        .kind = kind,
         .index = std::move(request),
     };
 }
@@ -894,6 +894,7 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
         if(auto semicolon =
                main_range(unit, written) ? semicolon_after(unit, written.getEnd()) : std::nullopt) {
             out.push_back(define_action(std::format("Define '{}' inline", name),
+                                        action_kind::define_inline,
                                         DefineRequest{
                                             .range = {*semicolon, *semicolon + 1},
                                             .before = " ",
@@ -913,6 +914,7 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
         if(auto text = definition_text(unit, decl, placement->from, {.mark_inline = header_once})) {
             out.push_back(
                 define_action(std::format("Define '{}' out of line", qualified(placement->from)),
+                              action_kind::define_out_of_line,
                               at_placement(*placement,
                                            {
                                                {entity, std::move(*text)}
@@ -922,6 +924,7 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
     if(header_once) {
         if(auto text = definition_text(unit, decl, unit.tu())) {
             out.push_back(define_action(std::format("Define '{}'", qualified(unit.tu())),
+                                        action_kind::define_out_of_line,
                                         DefineInHostRequest{
                                             .container = container_entity(unit, decl),
                                             .pieces = {{entity, std::move(*text)}},
@@ -995,12 +998,15 @@ void define_missing(const Context& ctx, std::vector<CodeAction>& out) {
     auto title = std::format("Define missing members of '{}'", record->getName());
     if(placement) {
         if(auto same_file = pieces(placed, placement->from, false); !same_file.empty()) {
-            out.push_back(define_action(title, at_placement(*placement, std::move(same_file))));
+            out.push_back(define_action(title,
+                                        action_kind::define_missing,
+                                        at_placement(*placement, std::move(same_file))));
         }
     }
     if(ctx.main_is_header) {
         if(auto host = pieces(missing, unit.tu(), true); !host.empty()) {
             out.push_back(define_action(title,
+                                        action_kind::define_missing,
                                         DefineInHostRequest{
                                             .container = unit.entity(outermost_record(record)),
                                             .pieces = std::move(host),

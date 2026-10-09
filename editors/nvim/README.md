@@ -26,6 +26,7 @@ Neovim runs a clice for each project root: the nearest directory above the file 
 | `:LspCliceSwitchContext`       | Pick another context, or go back to the automatic one.                                                                                         |
 | `:LspCliceResetContext`        | Go back to the automatic context.                                                                                                              |
 | `:LspCliceSwitchConfiguration` | Select the build configuration (the `configuration` tags of the `clice.toml` rules) clice runs from its next start.                            |
+| `:LspCliceRefactor {kind}`     | Apply the refactoring of a code action kind at the cursor, such as `refactor.rewrite.populateSwitch`; a choice when several apply.             |
 
 ## Features
 

@@ -514,12 +514,37 @@ auto document_format(llvm::StringRef file,
                      PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::TextEdit>;
 
+/// One kind per refactoring, below the standard `refactor.rewrite` and
+/// `refactor.inline`, so that a client can ask for one alone: an editor
+/// binds a key to it. Fixes are all `quickfix`.
+namespace action_kind {
+
+constexpr inline std::string_view define_inline = "refactor.rewrite.define.inline";
+constexpr inline std::string_view define_out_of_line = "refactor.rewrite.define.outOfLine";
+constexpr inline std::string_view define_missing = "refactor.rewrite.define.missing";
+constexpr inline std::string_view implement_pure_virtuals =
+    "refactor.rewrite.implementPureVirtuals";
+constexpr inline std::string_view memberwise_constructor = "refactor.rewrite.memberwiseConstructor";
+constexpr inline std::string_view populate_switch = "refactor.rewrite.populateSwitch";
+constexpr inline std::string_view expand_deduced_type = "refactor.rewrite.expandDeducedType";
+constexpr inline std::string_view reorder_definitions = "refactor.rewrite.reorderDefinitions";
+constexpr inline std::string_view expand_macro = "refactor.inline.macro";
+
+}  // namespace action_kind
+
 /// The kinds the actions produce: the advertised capability, and what a
 /// request's `only` filter is matched against.
-constexpr inline std::array<std::string_view, 3> code_action_kinds = {
+constexpr inline std::array code_action_kinds = {
     protocol::CodeActionKind::QuickFix,
-    protocol::CodeActionKind::RefactorInline,
-    protocol::CodeActionKind::RefactorRewrite,
+    action_kind::define_inline,
+    action_kind::define_out_of_line,
+    action_kind::define_missing,
+    action_kind::implement_pure_virtuals,
+    action_kind::memberwise_constructor,
+    action_kind::populate_switch,
+    action_kind::expand_deduced_type,
+    action_kind::reorder_definitions,
+    action_kind::expand_macro,
 };
 
 /// One definition the index vets: dropped when any source knows a

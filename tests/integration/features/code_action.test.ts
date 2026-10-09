@@ -48,7 +48,7 @@ test("edits apply to the buffer they were computed for", async ({ session }) => 
     );
     const outline = actions.find((action) => action.title === "Define 'S::f' out of line");
     expect(outline).toBeDefined();
-    expect(outline!.kind).toBe("refactor.rewrite");
+    expect(outline!.kind).toBe("refactor.rewrite.define.outOfLine");
     // The harness opens documents at version 0; an edit stamps that
     // version so a client refuses it once the buffer moved on.
     const change = outline!.edit!.documentChanges![0]!;
@@ -68,20 +68,23 @@ test("only filters by kind", async ({ session }) => {
     const [uri] = await client.openAndWait("main.cpp");
     const range = { start: { line: 1, character: 6 }, end: { line: 1, character: 6 } };
 
-    const all = actionsOf(await client.codeActions(uri, range));
-    expect(all.length).toBeGreaterThan(0);
-    const quickfix = await client.sendRequest("textDocument/codeAction", {
-        textDocument: { uri },
-        range,
-        context: { diagnostics: [], only: ["quickfix"] },
-    });
-    expect(actionsOf(quickfix as proto.CodeAction[]).length).toBe(0);
-    const refactor = await client.sendRequest("textDocument/codeAction", {
-        textDocument: { uri },
-        range,
-        context: { diagnostics: [], only: ["refactor"] },
-    });
-    expect(actionsOf(refactor as proto.CodeAction[]).length).toBe(all.length);
+    const only = async (kind: string) =>
+        actionsOf(
+            (await client.sendRequest("textDocument/codeAction", {
+                textDocument: { uri },
+                range,
+                context: { diagnostics: [], only: [kind] },
+            })) as proto.CodeAction[],
+        ).map((action) => action.title);
+
+    const all = actionsOf(await client.codeActions(uri, range)).map((action) => action.title);
+    expect(all).toEqual(["Define 'f' inline", "Define 'S::f' out of line"]);
+    expect(await only("quickfix")).toEqual([]);
+    expect(await only("refactor")).toEqual(all);
+    expect(await only("refactor.rewrite.define")).toEqual(all);
+    expect(await only("refactor.rewrite.define.outOfLine")).toEqual(["Define 'S::f' out of line"]);
+    expect(await only("refactor.rewrite.def")).toEqual([]);
+    expect(await only("refactor.rewrite.populateSwitch")).toEqual([]);
     client.close(uri);
 });
 

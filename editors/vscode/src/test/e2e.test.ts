@@ -432,4 +432,48 @@ suite("clice E2E", function () {
             `space trigger outside an import line must yield no server items, got: ${JSON.stringify(labels)}`,
         );
     });
+
+    test("refactor command applies its action", async function () {
+        this.timeout(60 * 1000);
+        if (path.basename(workspaceFolder().uri.fsPath) !== "hello_world") {
+            this.skip();
+        }
+
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-refactor-"));
+        const file = path.join(root, "paint.cpp");
+        fs.writeFileSync(
+            file,
+            "enum class Color { Red, Green };\n\nint paint(Color color) {\n" +
+                "    switch(color) {\n        case Color::Red: return 1;\n    }\n    return 0;\n}\n",
+        );
+        try {
+            const source = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+            const cursor = source.positionAt(source.getText().indexOf("switch"));
+            await vscode.window.showTextDocument(source, {
+                selection: new vscode.Range(cursor, cursor),
+            });
+            const edited = new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    subscription.dispose();
+                    reject(new Error("the command applied no edit"));
+                }, 30 * 1000);
+                const subscription = vscode.workspace.onDidChangeTextDocument((event) => {
+                    if (event.document === source && event.contentChanges.length > 0) {
+                        clearTimeout(timer);
+                        subscription.dispose();
+                        resolve();
+                    }
+                });
+            });
+            await vscode.commands.executeCommand("clice.refactor.rewrite.populateSwitch");
+            await edited;
+            assert.ok(
+                source.getText().includes("case Color::Green:"),
+                `the missing case was not added:\n${source.getText()}`,
+            );
+        } finally {
+            await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
 });

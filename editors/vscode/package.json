@@ -124,6 +124,42 @@
       {
         "command": "clice.loadMoreContexts",
         "title": "Clice: Load More Compilation Contexts"
+      },
+      {
+        "command": "clice.refactor.rewrite.define.inline",
+        "title": "Clice: Define Inline"
+      },
+      {
+        "command": "clice.refactor.rewrite.define.outOfLine",
+        "title": "Clice: Define Out of Line"
+      },
+      {
+        "command": "clice.refactor.rewrite.define.missing",
+        "title": "Clice: Define Missing Members"
+      },
+      {
+        "command": "clice.refactor.rewrite.implementPureVirtuals",
+        "title": "Clice: Implement Pure Virtual Methods"
+      },
+      {
+        "command": "clice.refactor.rewrite.memberwiseConstructor",
+        "title": "Clice: Generate Memberwise Constructor"
+      },
+      {
+        "command": "clice.refactor.rewrite.populateSwitch",
+        "title": "Clice: Add Missing Enum Cases to Switch"
+      },
+      {
+        "command": "clice.refactor.rewrite.expandDeducedType",
+        "title": "Clice: Expand Deduced Type"
+      },
+      {
+        "command": "clice.refactor.rewrite.reorderDefinitions",
+        "title": "Clice: Reorder Definitions by Declaration Order"
+      },
+      {
+        "command": "clice.refactor.inline.macro",
+        "title": "Clice: Expand Macro"
       }
     ],
     "semanticTokenTypes": [
@@ -250,6 +286,42 @@
         },
         {
           "command": "clice.queryContexts",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.define.inline",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.define.outOfLine",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.define.missing",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.implementPureVirtuals",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.memberwiseConstructor",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.populateSwitch",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.expandDeducedType",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.reorderDefinitions",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.inline.macro",
           "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
         }
       ],

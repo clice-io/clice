@@ -9,5 +9,5 @@ directive:
 (no actions)
 
 empty:
-- [refactor.inline] Expand macro 'EMPTY'
+- [refactor.inline.macro] Expand macro 'EMPTY'
   10:14-10:19 => ""
