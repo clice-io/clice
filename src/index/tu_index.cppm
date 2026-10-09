@@ -129,6 +129,9 @@ public:
     /// section or its blob fails verification.
     const Shard& shard_of(std::uint32_t path_id) const;
 
+    /// The reader over section `section`'s rows, wrapped on first use.
+    const Shard& section_shard(std::uint32_t section) const;
+
     /// Wrap every section's blob in one pass, checking its bytes against
     /// the recorded section hash on top of structural verification — the
     /// load gate for persisted envelopes, where a corrupt blob must read
@@ -184,9 +187,6 @@ public:
     llvm::StringRef preamble_diagnostics() const;
 
 private:
-    /// The reader over section `section`'s rows, wrapped on first use.
-    const Shard& section_shard(std::uint32_t section) const;
-
     /// The verified envelope bytes (owned iff `owned` is set); accessors
     /// rebuild the (pointer-sized) fbs view from them on demand.
     std::unique_ptr<llvm::MemoryBuffer> owned;
