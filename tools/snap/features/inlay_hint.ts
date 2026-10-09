@@ -1,6 +1,5 @@
 import * as proto from "vscode-languageserver-protocol";
 import { markerRanges } from "../annotation.ts";
-import type { CliceClient } from "../../client/client.ts";
 import {
     enumName,
     fmtPos,
@@ -122,19 +121,6 @@ function adaptReply(hints: proto.InlayHint[], root: string): HintEntry[] {
     });
 }
 
-/// The hints as the editor holds them once it resolved each label naming
-/// symbols: the snap client resolves `label.location` lazily, as VS Code
-/// does.
-async function resolved(client: CliceClient, hints: proto.InlayHint[] | null) {
-    return Promise.all(
-        (hints ?? []).map(async (hint) =>
-            hint.data === undefined
-                ? hint
-                : client.sendRequest(proto.InlayHintResolveRequest.type, hint),
-        ),
-    );
-}
-
 export const inlayHint: Feature = {
     shape: "range",
     fromInspect(entry, ctx) {
@@ -155,7 +141,7 @@ export const inlayHint: Feature = {
                 start: { line: 0, character: 0 },
                 end: { line: ctx.source.content.split("\n").length, character: 0 },
             };
-            const hints = await resolved(client, await client.inlayHints(uri, wholeFile));
+            const hints = (await client.inlayHints(uri, wholeFile)) ?? [];
             return formatInlayHints(adaptReply(hints, ctx.root));
         }
         const map = new OffsetConverter(ctx.stripped);
@@ -165,7 +151,7 @@ export const inlayHint: Feature = {
                 start: map.position(begin),
                 end: map.position(end),
             };
-            sections.push([name, await resolved(client, await client.inlayHints(uri, range))]);
+            sections.push([name, (await client.inlayHints(uri, range)) ?? []]);
         }
         return markerSections(sections, (value) =>
             formatInlayHints(adaptReply(value as proto.InlayHint[], ctx.root)),

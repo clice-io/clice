@@ -32,7 +32,7 @@ const EDITOR_CAPABILITIES: proto.ClientCapabilities = {
     workspace: { workspaceEdit: { documentChanges: true } },
     textDocument: {
         completion: { completionItem: { snippetSupport: true, insertReplaceSupport: true } },
-        inlayHint: { resolveSupport: { properties: ["label.location"] } },
+        inlayHint: {},
     },
 };
 
