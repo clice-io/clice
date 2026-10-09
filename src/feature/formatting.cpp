@@ -74,13 +74,24 @@ auto format_content(llvm::StringRef file, llvm::StringRef content, tooling::Rang
         tooling::calculateRangesAfterReplacements(include_replacements, ranges)));
 }
 
-auto to_edits(const tooling::Replacements& replacements) -> std::vector<TextReplacement> {
+/// The replacements as edits of `content`. clang-format counts the '\r' of a
+/// "\r\n" line into the line, so a sorted include block's replacement ends
+/// between the two, where no position points: such an end takes the '\n'
+/// too.
+auto to_edits(llvm::StringRef content, const tooling::Replacements& replacements)
+    -> std::vector<TextReplacement> {
     std::vector<TextReplacement> edits;
     for(const auto& replacement: replacements) {
         auto begin = static_cast<std::uint32_t>(replacement.getOffset());
+        auto end = static_cast<std::uint32_t>(begin + replacement.getLength());
+        auto text = replacement.getReplacementText().str();
+        if(end > 0 && content.substr(end - 1).starts_with("\r\n")) {
+            end += 1;
+            text += '\n';
+        }
         edits.push_back({
-            .range = {begin, static_cast<std::uint32_t>(begin + replacement.getLength())},
-            .text = replacement.getReplacementText().str()
+            .range = {begin, end},
+            .text = std::move(text),
         });
     }
     return edits;
@@ -103,19 +114,13 @@ auto document_format(llvm::StringRef file,
     }
 
     auto lines = lsp::line_starts(content);
-    PositionMap map{.content = content, .lines = lines, .encoding = encoding};
+    PositionMap map(content, lines);
 
-    for(const auto& replacement: *replacements) {
-        auto begin = static_cast<std::uint32_t>(replacement.getOffset());
-        auto end = static_cast<std::uint32_t>(begin + replacement.getLength());
-        auto range = map.to_range({begin, end});
+    for(auto& edit: to_edits(content, *replacements)) {
+        auto range = map.range(edit.range, encoding);
         if(!range)
             continue;
-        protocol::TextEdit edit{
-            .range = *range,
-            .new_text = replacement.getReplacementText().str(),
-        };
-        edits.push_back(std::move(edit));
+        edits.push_back({.range = *range, .new_text = std::move(edit.text)});
     }
 
     return edits;
@@ -153,7 +158,7 @@ auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<Tex
                                 *changed,
                                 tooling::calculateRangesAfterReplacements(replacements, ranges),
                                 file);
-    return to_edits(replacements.merge(formatted));
+    return to_edits(content, replacements.merge(formatted));
 }
 
 auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string {

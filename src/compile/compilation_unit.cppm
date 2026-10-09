@@ -10,6 +10,7 @@ import :compile.directive;
 import :compile.tokens;
 import :semantic.resolver;
 import :semantic.symbol;
+import :syntax.position;
 import :syntax.preamble_synthesis;
 import :syntax.token;
 
@@ -146,13 +147,12 @@ public:
     /// Get the content of main file.
     auto main_content() -> llvm::StringRef;
 
-    /// Get the byte offsets of each line start in the main file.
-    /// Lazily computed and cached.
-    auto line_starts() -> std::span<const std::uint32_t>;
+    /// A file's positions, over line tables computed on first use and
+    /// cached.
+    auto positions(clang::FileID fid) -> PositionMap;
 
-    /// Which lines of the main file hold a byte past ASCII, as
-    /// kota::ipc::lsp::non_ascii_lines() gives. Lazily computed and cached.
-    auto non_ascii_lines() -> std::span<const std::uint64_t>;
+    /// The main file's positions.
+    auto positions() -> PositionMap;
 
     /// Check if a file is a builtin file.
     bool is_builtin_file(clang::FileID fid);

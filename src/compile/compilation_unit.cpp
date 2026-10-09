@@ -160,20 +160,18 @@ auto CompilationUnitRef::main_content() -> llvm::StringRef {
     return file_content(main_file());
 }
 
-auto CompilationUnitRef::line_starts() -> std::span<const std::uint32_t> {
-    if(self->line_starts_cache.empty()) {
-        auto content = main_content();
-        self->line_starts_cache = kota::ipc::lsp::line_starts({content.data(), content.size()});
+auto CompilationUnitRef::positions(clang::FileID fid) -> PositionMap {
+    auto content = file_content(fid);
+    auto [it, inserted] = self->line_tables.try_emplace(fid);
+    if(inserted) {
+        it->second.starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
+        it->second.non_ascii = kota::ipc::lsp::non_ascii_lines({content.data(), content.size()});
     }
-    return self->line_starts_cache;
+    return {content, it->second.starts, it->second.non_ascii};
 }
 
-auto CompilationUnitRef::non_ascii_lines() -> std::span<const std::uint64_t> {
-    if(!self->non_ascii_cache) {
-        auto content = main_content();
-        self->non_ascii_cache = kota::ipc::lsp::non_ascii_lines({content.data(), content.size()});
-    }
-    return *self->non_ascii_cache;
+auto CompilationUnitRef::positions() -> PositionMap {
+    return positions(main_file());
 }
 
 bool CompilationUnitRef::is_builtin_file(clang::FileID fid) {

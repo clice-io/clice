@@ -47,6 +47,12 @@ struct LocalSourceRange {
     }
 
     constexpr bool contains(std::uint32_t offset) const {
+        return offset >= begin && offset < end;
+    }
+
+    /// Whether a cursor at `offset` touches the range: inside it, or right
+    /// after its last byte.
+    constexpr bool touches(std::uint32_t offset) const {
         return offset >= begin && offset <= end;
     }
 

@@ -210,7 +210,7 @@ void run(llvm::StringRef code) {
     auto points = nameless_points();
     ZASSERT(points.size() == 1U);
     auto offset = points[0];
-    result = feature::hover(*unit, offset, {}, feature::PositionEncoding::UTF8);
+    result = feature::hover(*unit, offset, {}, PositionEncoding::UTF8);
 }
 
 void compile_only(llvm::StringRef code) {
@@ -735,7 +735,7 @@ int §foo = 1;
 
     feature::HoverOptions options;
     options.parse_comment_as_markdown = false;
-    result = feature::hover(*unit, nameless_points()[0], options, feature::PositionEncoding::UTF8);
+    result = feature::hover(*unit, nameless_points()[0], options, PositionEncoding::UTF8);
 
     ZASSERT(result);
     auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
@@ -779,7 +779,7 @@ int x = 0;
     ZEXPECT(info->symbol_range->begin == arg.begin);
     ZEXPECT(info->symbol_range->end == arg.end);
 
-    result = feature::hover(*unit, arg.begin + 1, {}, feature::PositionEncoding::UTF8);
+    result = feature::hover(*unit, arg.begin + 1, {}, PositionEncoding::UTF8);
     ZASSERT(result);
     auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
     ZASSERT(content != nullptr);

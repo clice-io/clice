@@ -145,7 +145,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
     auto path_id = session->path_id;
     auto path = project.file_table.display(path_id);
     auto uri = feature::to_uri(path);
-    auto map = session->position_map();
+    auto map = session->positions();
 
     /// The action rendered over main-file replacements, all of them or
     /// none: half an edit set would corrupt the buffer.
@@ -154,7 +154,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
                     llvm::ArrayRef<TextReplacement> replacements) {
         std::vector<protocol::TextEdit> edits;
         for(const auto& replacement: replacements) {
-            auto converted = map.to_range(replacement.range);
+            auto converted = map.range(replacement.range, PositionEncoding::UTF16);
             if(!converted) {
                 return;
             }
@@ -240,9 +240,10 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             } else {
                 return;
             }
-            auto end = *kota::ipc::lsp::to_position(content,
-                                                    static_cast<std::uint32_t>(content.size()),
-                                                    feature::PositionEncoding::UTF16);
+            auto lines = kota::ipc::lsp::line_starts(content);
+            auto end =
+                *PositionMap(content, lines)
+                     .position(static_cast<std::uint32_t>(content.size()), PositionEncoding::UTF16);
             edit.range = {end, end};
             edit.new_text =
                 (content.empty() || content.ends_with('\n') ? "\n" : "\n\n") + formatted;

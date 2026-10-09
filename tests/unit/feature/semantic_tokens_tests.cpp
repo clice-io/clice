@@ -33,21 +33,11 @@ struct DecodedToken {
     std::uint32_t modifiers = 0;
 };
 
-auto compute_line_starts(llvm::StringRef content) -> std::vector<std::uint32_t> {
-    std::vector<std::uint32_t> starts = {0};
-    for(std::uint32_t i = 0; i < content.size(); ++i) {
-        if(content[i] == '\n') {
-            starts.push_back(i + 1);
-        }
-    }
-    return starts;
-}
-
 auto decode_utf8_tokens(llvm::StringRef content, const protocol::SemanticTokens& tokens)
     -> std::vector<DecodedToken> {
     assert(tokens.data.size() % 5 == 0 && "invalid semantic token payload");
 
-    auto starts = compute_line_starts(content);
+    auto starts = lsp::line_starts(content);
     std::vector<DecodedToken> result;
     result.reserve(tokens.data.size() / 5);
 
@@ -125,7 +115,7 @@ std::vector<DecodedToken> decoded;
 void run_utf8(llvm::StringRef code) {
     add_main("main.cpp", code);
     ZASSERT(compile_with_pch());
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 }
 
@@ -218,8 +208,8 @@ int main() {
 )cpp");
     ZASSERT(compile_with_pch());
 
-    auto utf8_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    auto utf16_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF16);
+    auto utf8_tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
+    auto utf16_tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF16);
 
     auto utf8 = decode_utf8_tokens(unit->main_content(), utf8_tokens);
     auto utf16 = decode_relative_tokens(utf16_tokens);
@@ -249,19 +239,22 @@ int main() {
     ZASSERT(utf8_token->length > utf16_token->length);
 }
 
-/// A block comment over two lines splits into one piece per line, each
-/// ending before its line's terminator.
-void check_comment_split(llvm::StringRef newline) {
+/// A block comment over two lines, `/*<head>` and `cd*/`, splits into one
+/// piece per line, each ending before its line's terminator.
+void check_comment_split(llvm::StringRef head,
+                         llvm::StringRef newline,
+                         PositionEncoding encoding,
+                         std::uint32_t head_length) {
     add_main("main.cpp",
              std::format(R"cpp(int main() {{
-/*ab{}cd*/
+/*{}{}cd*/
 }}
 )cpp",
+                         head,
                          newline));
     ZASSERT(compile_with_pch());
 
-    auto utf8_tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
-    auto relative = decode_relative_tokens(utf8_tokens);
+    auto relative = decode_relative_tokens(feature::semantic_tokens(*unit, encoding));
 
     auto comment_type = static_cast<std::uint32_t>(SymbolKind::Comment);
     std::vector<DecodedToken> comments;
@@ -272,18 +265,22 @@ void check_comment_split(llvm::StringRef newline) {
     }
 
     ZASSERT(comments.size() == 2);
-    ZASSERT(comments[0].length == 4);
+    ZASSERT(comments[0].length == head_length);
     ZASSERT(comments[1].line == comments[0].line + 1);
     ZASSERT(comments[1].start == 0);
     ZASSERT(comments[1].length == 4);
 }
 
 ZEST_CASE(MultiLineCommentSplit) {
-    check_comment_split("\n");
+    check_comment_split("ab", "\n", PositionEncoding::UTF8, 4);
 }
 
 ZEST_CASE(CRLFCommentSplit) {
-    check_comment_split("\r\n");
+    check_comment_split("ab", "\r\n", PositionEncoding::UTF8, 4);
+}
+
+ZEST_CASE(UTF16CommentSplit) {
+    check_comment_split("\xc3\xa9", "\r\n", PositionEncoding::UTF16, 3);
 }
 
 ZEST_CASE(ModuleImport) {
@@ -297,7 +294,7 @@ export int x = 42;
 int y = x;
 )");
     ZASSERT(compile_with_modules());
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
@@ -315,7 +312,7 @@ import §(m0)⟦app⟧.§(m1)⟦core⟧;
 int y = x;
 )");
     ZASSERT(compile_with_modules());
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
     EXPECT_TOKEN("m0", SymbolKind::Module);
@@ -381,7 +378,7 @@ export module foo;
 export §(kw)⟦import⟧ :§(part)⟦part⟧;
 )");
     ZASSERT(compile_with_modules());
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
@@ -399,7 +396,7 @@ export int x = 42;
 int y = §(ref)⟦x⟧;
 )");
     ZASSERT(compile_with_modules());
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
@@ -418,7 +415,7 @@ export module bar;
 export §(kw)⟦import⟧ §(mod)⟦foo⟧;
 )");
     ZASSERT(compile_with_modules());
-    tokens = feature::semantic_tokens(*unit, feature::PositionEncoding::UTF8);
+    tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);

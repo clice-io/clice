@@ -113,12 +113,13 @@ struct CompilationUnitRef::Self {
     /// Lazily built, see CompilationUnitRef::entity().
     std::unique_ptr<EntityTable> entities;
 
-    /// Cache for line starts of the main file.
-    std::vector<std::uint32_t> line_starts_cache;
+    struct LineTables {
+        std::vector<std::uint32_t> starts;
+        std::vector<std::uint64_t> non_ascii;
+    };
 
-    /// Cache for the main file's non-ASCII lines; an ASCII file has none,
-    /// so only nullopt means not built yet.
-    std::optional<std::vector<std::uint64_t>> non_ascii_cache;
+    /// Each file's line tables, built together on first use.
+    llvm::DenseMap<clang::FileID, LineTables> line_tables;
 
     llvm::BumpPtrAllocator path_storage;
 
