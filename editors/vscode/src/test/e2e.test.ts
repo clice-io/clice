@@ -6,7 +6,11 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { ClientHandle } from "../client";
 // Shared protocol shapes — type-only, mirrors feature/context.ts.
-import type { CurrentContextResult, QueryContextResult } from "@clice/tools/protocol" with {
+import type {
+    CounterpartsResult,
+    CurrentContextResult,
+    QueryContextResult,
+} from "@clice/tools/protocol" with {
     "resolution-mode": "import",
 };
 
@@ -394,6 +398,31 @@ suite("clice E2E", function () {
             uri,
         });
         assert.ok(automatic.automatic, "the reset leaves the automatic context");
+    });
+
+    test("switch source/header without a counterpart", async function () {
+        this.timeout(60 * 1000);
+        const folder = workspaceFolder();
+        if (path.basename(folder.uri.fsPath) !== "header_context") {
+            this.skip();
+        }
+        assert.ok(document, "main file was not opened (earlier test failed)");
+
+        // utils.h defines everything it declares: the command reports that
+        // and leaves the editor where it was.
+        const extension = vscode.extensions.getExtension("clice-io.clice");
+        assert.ok(extension?.isActive, "extension not active");
+        const client = (extension.exports as { client: ClientHandle }).client;
+        const result = await client.sendRequest<CounterpartsResult>("clice/counterparts", {
+            uri: document.uri.toString(),
+        });
+        assert.deepStrictEqual(result, { candidates: [], preferred: null });
+        await vscode.window.showTextDocument(document);
+        await vscode.commands.executeCommand("clice.switchSourceHeader");
+        assert.strictEqual(
+            vscode.window.activeTextEditor?.document.uri.toString(),
+            document.uri.toString(),
+        );
     });
 
     test("completion", async function () {

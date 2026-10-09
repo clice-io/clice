@@ -1377,6 +1377,7 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
         .resolve_decltype = true,
         .tag_keyword_prefix = true,
         .show_aka = options.show_aka,
+        .max_members = options.max_members,
     };
 
     auto location = unit.create_location(unit.main_file(), offset);

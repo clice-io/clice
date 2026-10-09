@@ -8,6 +8,7 @@ import :driver.driver;
 import :driver.query_support;
 import :project.configuration;
 import :project.open_index;
+import :server.counterparts;
 import :server.query_commands;
 
 namespace clice::driver {
@@ -34,8 +35,8 @@ struct QueryOptions {
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help =
                "Question to ask: compileCommand, projectFiles, fileDeps, impactAnalysis, "
-               "symbolSearch, readSymbol, documentSymbols, definition, references, "
-               "callGraph, typeHierarchy",
+               "counterparts, symbolSearch, readSymbol, documentSymbols, definition, "
+               "references, callGraph, typeHierarchy",
            required = false)
     <std::string> method;
 
@@ -107,7 +108,8 @@ struct QueryOptions {
 constexpr llvm::StringLiteral build_methods[] = {"compileCommand",
                                                  "projectFiles",
                                                  "fileDeps",
-                                                 "impactAnalysis"};
+                                                 "impactAnalysis",
+                                                 "counterparts"};
 constexpr llvm::StringLiteral index_methods[] = {"symbolSearch",
                                                  "readSymbol",
                                                  "documentSymbols",
@@ -189,6 +191,8 @@ Reply answer(Project& project,
         emit(query::file_deps(ctx, absolute, direction, opts.depth.value_or(1)));
     } else if(method == "impactAnalysis") {
         emit(query::impact_analysis(ctx, absolute));
+    } else if(method == "counterparts") {
+        emit(query::counterparts(ctx, absolute));
     } else if(method == "symbolSearch") {
         auto limit = opts.limit.value_or(100);
         emit(query::symbol_search(ctx,

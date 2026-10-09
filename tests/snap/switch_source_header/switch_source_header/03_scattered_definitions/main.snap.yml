@@ -1,0 +1,14 @@
+---
+created_at: 2026-10-09
+input_file: switch_source_header/03_scattered_definitions/main.cpp
+---
+"text.h":
+  preferred: "${WS}/switch_source_header/03_scattered_definitions/text_ops.cpp"
+  candidates:
+    - { file: "${WS}/switch_source_header/03_scattered_definitions/text_ops.cpp", reasons: ["defines 3 of 4 declarations"] }
+    - { file: "${WS}/switch_source_header/03_scattered_definitions/text_case.cpp", reasons: ["defines 1 of 4 declarations"] }
+
+"text_case.cpp":
+  preferred: "${WS}/switch_source_header/03_scattered_definitions/text.h"
+  candidates:
+    - { file: "${WS}/switch_source_header/03_scattered_definitions/text.h", reasons: ["declares 1 of 1 definition"] }

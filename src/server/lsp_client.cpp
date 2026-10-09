@@ -10,12 +10,14 @@ module clice;
 import :command.argument_parser;
 import :feature.feature;
 import :semantic.symbol;
+import :server.counterparts;
 import :server.editor_context;
 import :server.extension;
 import :server.file_tracker;
 import :server.format;
 import :server.lsp_client;
 import :server.master_server;
+import :server.query_commands;
 import :server.uri;
 import :support.anomaly;
 import :support.logging;
@@ -1134,6 +1136,34 @@ void LSPClient::register_extensions() {
                                                  this->server.requested_configuration));
                     });
 
+    peer.on_request(
+        "clice/counterparts",
+        [this](RequestContext& ctx, const ext::CounterpartsParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto resolved = resolve_uri(params.uri);
+            ext::CounterpartsResult result;
+            if(resolved.path.empty()) {
+                co_return to_raw(result);
+            }
+            auto& project = *resolved.project;
+            query::Context context{.project = project.project,
+                                   .contexts = project.contexts,
+                                   .query = project.index_query};
+            auto found = query::counterparts(context, Spelling::absolute(resolved.path));
+            // A buffer not on disk yet has no counterparts to offer.
+            if(!found) {
+                co_return to_raw(result);
+            }
+            for(auto& candidate: found->candidates) {
+                result.candidates.push_back({.uri = feature::to_uri(candidate.path),
+                                             .reasons = std::move(candidate.reasons)});
+            }
+            if(found->preferred) {
+                result.preferred = feature::to_uri(*found->preferred);
+            }
+            co_return to_raw(result);
+        });
+
     // ── Test hooks ──────────────────────────────────────────────────
 
     // Runs one file-tracker tick (see ext::PollParams).
@@ -1284,6 +1314,7 @@ void LSPClient::register_extensions() {
                     [](const HeaderContext& context) { return context.synthesized != nullptr; }));
                 stats.sessions += static_cast<std::uint32_t>(served->sessions.sessions.size());
                 stats.import_scans += served->sched.pcm.import_scans;
+                stats.index_idle = stats.index_idle && served->sched.pump.is_idle();
             }
             stats.checks_looked = this->server.files.disk.checks.looked;
             stats.checks_trusted = this->server.files.disk.checks.trusted;

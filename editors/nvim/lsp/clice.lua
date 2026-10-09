@@ -11,6 +11,8 @@
 ---   the `clice.toml` rules) clice runs from its next start.
 --- - `:LspCliceRefactor {kind}`: apply the refactoring of a code action kind at the cursor, such as
 ---   `refactor.rewrite.populateSwitch`, offering a choice when several apply.
+--- - `:LspCliceSwitchSourceHeader`: open the file the buffer pairs with — a header's source, a
+---   source's header, a module's interface or implementation — or pick one when several qualify.
 
 ---@param client vim.lsp.Client
 ---@param bufnr integer
@@ -161,6 +163,32 @@ local function switch_configuration(client, bufnr)
   end)
 end
 
+---@param client vim.lsp.Client
+---@param bufnr integer
+local function switch_source_header(client, bufnr)
+  request(client, bufnr, 'clice/counterparts', { uri = vim.uri_from_bufnr(bufnr) }, function(result)
+    local function open(uri)
+      vim.cmd.edit(vim.fn.fnameescape(vim.uri_to_fname(uri)))
+    end
+    if result.preferred and result.preferred ~= vim.NIL then
+      return open(result.preferred)
+    elseif #result.candidates == 0 then
+      return vim.notify('clice: no counterpart of this file found')
+    end
+    vim.ui.select(result.candidates, {
+      prompt = 'File to open',
+      format_item = function(candidate)
+        local name = vim.fn.fnamemodify(vim.uri_to_fname(candidate.uri), ':~:.')
+        return ('%s  (%s)'):format(name, table.concat(candidate.reasons, ', '))
+      end,
+    }, function(choice)
+      if choice then
+        open(choice.uri)
+      end
+    end)
+  end)
+end
+
 ---@type vim.lsp.Config
 return {
   cmd = { 'clice', 'serve' },
@@ -190,5 +218,8 @@ return {
       end,
       desc = 'Apply the refactoring of a code action kind',
     })
+    vim.api.nvim_buf_create_user_command(bufnr, 'LspCliceSwitchSourceHeader', function()
+      switch_source_header(client, bufnr)
+    end, { desc = 'Switch between source and header' })
   end,
 }

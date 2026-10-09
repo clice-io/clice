@@ -633,8 +633,9 @@ auto index_hover(const index::SymbolRef& info,
     }
 
     // The stored extent is the whole written definition; the AST card
-    // prints a declaration — a function without its body, a type or
-    // namespace with an empty one, a macro with its `#define`.
+    // prints a declaration — a function without its body, a namespace with
+    // an empty one, a macro with its `#define`. A type gets an empty body
+    // too: the AST card's member summary needs the AST.
     hover.definition = definition_text.str();
     switch(info.kind) {
         case SymbolKind::Function:

@@ -121,6 +121,29 @@ struct SwitchConfigurationResult {
     bool success = false;
 };
 
+/// clice/counterparts: the files `uri` pairs with — a header's sources, a
+/// source's headers, a module's interface and implementation units — best
+/// first.
+struct CounterpartsParams {
+    std::string uri;
+};
+
+struct Counterpart {
+    std::string uri;
+
+    /// What pairs it with the file, for the user to read ("same name",
+    /// "defines 12 of 15 declarations").
+    std::vector<std::string> reasons;
+};
+
+struct CounterpartsResult {
+    std::vector<Counterpart> candidates;
+
+    /// The candidate to go to without asking; none when the user should
+    /// pick, and when there is no candidate.
+    std::optional<std::string> preferred;
+};
+
 /// clice/internal/poll — TEST-ONLY, not a stable API. Runs
 /// one file-tracker tick (stat → diff → events → dispatch → effects) and
 /// responds only once the effects are applied, so integration tests can
@@ -207,6 +230,10 @@ struct StatsResult {
 
     /// Preprocessor passes that looked for a unit's imports.
     std::uint64_t import_scans = 0;
+
+    /// Whether no project has background indexing queued or running: what
+    /// the index serves is all it will serve until the next change.
+    bool index_idle = true;
 
     /// The builds each file went through, while test hooks are on (see
     /// BuildProbe); empty otherwise.

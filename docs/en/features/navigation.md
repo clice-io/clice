@@ -1693,17 +1693,112 @@ tests/snap/document_highlight/document_highlight/11_highlight_module_unit/main.c
 
 ## Switch Source/Header
 
+Open the file the current one pairs with: a header's source, a source's header, a module interface's implementation units, an implementation unit's interface. VS Code runs it as **Clice: Switch Source/Header** (`Alt+O`), Neovim as `:LspCliceSwitchSourceHeader`, and `clice query --method counterparts --path <file>` answers the same on the command line. Zed lets no extension add a command, and its own _switch source header_ works with clangd only.
+
+The candidates come from what the build and the index already know, so nothing is compiled for the answer: the files of the same name on the other side — in the file's own directory, or elsewhere in the workspace when one includes the other —, the declarations one holds that the other defines, and module declarations. Each candidate carries its reasons. The editor opens the best one directly when it is the only candidate or beats every other: it has each of the other's reasons among shared declarations and the same name, at least as many shared declarations, and either a reason more, twice the shared declarations when both share some, or — neither sharing any — a module pairing the other lacks. Otherwise it lists the candidates to pick from.
+
 <!-- BEGIN GENERATED ITEMS: switch_source_header -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**Source-header switching**
+**Header and its source**
 
-Source/header switching is not implemented, so users cannot jump directly
-between paired files
+A header and the source of the same name that defines what it declares switch to each other directly
 
 ```snap
-tests/snap/navigation/switch_source_header/01_switch_source_header.cpp
+tests/snap/switch_source_header/switch_source_header/01_header_source/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Headers apart from sources**
+
+A header under `include/` finds its source under `src/`, ahead of another file of the same name that defines none of its declarations
+
+Away from the header's own directory, a file of the same name counts
+only when one of the two includes the other — `tools/shape.cpp` includes
+nothing and is no counterpart — and of those only the nearest:
+`src/legacy/shape.cpp` lies a directory deeper than `src/shape.cpp`.
+
+```snap
+tests/snap/switch_source_header/switch_source_header/02_split_layout/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Definitions across several sources**
+
+When several sources define a header's declarations, the one defining clearly the most is taken directly and the others stay listed
+
+```snap
+tests/snap/switch_source_header/switch_source_header/03_scattered_definitions/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**No clear counterpart**
+
+When no candidate clearly outweighs the others, the editor lists them with their reasons to pick from
+
+```snap
+tests/snap/switch_source_header/switch_source_header/04_split_evenly/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Module interface and implementations**
+
+A module interface unit pairs with the units implementing its module, and each of them with the interface
+
+```snap
+tests/snap/switch_source_header/switch_source_header/05_module_units/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Partition beside its implementation**
+
+An internal partition and the implementation unit of the same name defining its declarations switch to each other directly
+
+The implementation unit also lists the primary interface of its module,
+after the partition.
+
+```snap
+tests/snap/switch_source_header/switch_source_header/06_module_partition/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Files without a counterpart**
+
+A header that defines everything it declares, and a `.def` fragment, have no counterpart
+
+```snap
+tests/snap/switch_source_header/switch_source_header/07_no_counterpart/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Template definitions apart**
+
+A header and the `.tpp` file it includes for its template definitions switch to each other
+
+```snap
+tests/snap/switch_source_header/switch_source_header/08_template_definitions/main.cpp
 ```
 
 <!-- END CAPABILITY -->

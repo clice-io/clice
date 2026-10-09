@@ -1504,16 +1504,108 @@ tests/snap/document_highlight/document_highlight/11_highlight_module_unit/main.c
 
 ## 切换源文件／头文件
 
+打开与当前文件配对的文件：头文件的源文件、源文件的头文件、模块接口的实现单元、实现单元的接口。VS Code 中对应的命令是 **Clice: Switch Source/Header**（`Alt+O`），Neovim 中是 `:LspCliceSwitchSourceHeader`，命令行上则由 `clice query --method counterparts --path <file>` 给出同样的答案。Zed 不允许扩展添加命令，它自带的 _switch source header_ 只适用于 clangd。
+
+候选文件来自构建和索引已经掌握的信息，因此给出答案无需编译任何东西：另一侧的同名文件（位于该文件自己的目录中，或者位于工作区的其他位置、但两者之间有包含关系）、一方声明而另一方定义的那些声明，以及模块声明。每个候选都附有理由。最佳候选是唯一的候选，或者胜过其余每个候选时，编辑器会直接打开它。胜过对方需要同时满足：在共享声明和同名这两项理由中，对方具备的它都具备；共享声明不比对方少；并且理由比对方多一项，或者在双方都有共享声明时达到对方的两倍，或者在双方都没有共享声明时具备对方没有的模块配对。否则编辑器会列出这些候选，供用户挑选。
+
 <!-- BEGIN GENERATED ITEMS: switch_source_header -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**源文件与头文件切换**
+**头文件与其源文件**
 
-源文件与头文件切换尚未实现，因此用户无法在配对文件之间直接跳转
+头文件与定义其所声明内容的同名源文件之间可以直接相互切换
 
 ```snap
-tests/snap/navigation/switch_source_header/01_switch_source_header.cpp
+tests/snap/switch_source_header/switch_source_header/01_header_source/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**头文件与源文件分开存放**
+
+`include/` 下的头文件能找到 `src/` 下的源文件，并把它排在另一个同名、但未定义该头文件任何声明的文件之前
+
+在头文件所在目录之外，同名文件只有在两者中一方包含另一方时才算数（`tools/shape.cpp` 什么都没有包含，因此不是配对文件），而且其中只取最近的那个：`src/legacy/shape.cpp` 比 `src/shape.cpp` 深一层目录。
+
+```snap
+tests/snap/switch_source_header/switch_source_header/02_split_layout/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**定义分散在多个源文件中**
+
+多个源文件分别定义同一头文件的声明时，直接选中定义数量明显最多的那个，其余的仍留在列表中
+
+```snap
+tests/snap/switch_source_header/switch_source_header/03_scattered_definitions/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**没有明确的配对文件**
+
+没有哪个候选明显胜过其他候选时，编辑器会列出所有候选及其理由，供用户挑选
+
+```snap
+tests/snap/switch_source_header/switch_source_header/04_split_evenly/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模块接口与实现**
+
+模块接口单元与实现该模块的各个单元配对，每个实现单元也与该接口配对
+
+```snap
+tests/snap/switch_source_header/switch_source_header/05_module_units/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**分区与其实现单元**
+
+内部分区与定义其声明的同名实现单元之间可以直接相互切换
+
+该实现单元还会列出其模块的主接口，排在分区之后。
+
+```snap
+tests/snap/switch_source_header/switch_source_header/06_module_partition/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**没有配对的文件**
+
+自身定义了全部所声明内容的头文件，以及 `.def` 片段，都没有配对文件
+
+```snap
+tests/snap/switch_source_header/switch_source_header/07_no_counterpart/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模板定义分开存放**
+
+头文件与它为存放模板定义而包含的 `.tpp` 文件之间可以相互切换
+
+```snap
+tests/snap/switch_source_header/switch_source_header/08_template_definitions/main.cpp
 ```
 
 <!-- END CAPABILITY -->

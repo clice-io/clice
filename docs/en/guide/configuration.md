@@ -212,6 +212,16 @@ Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned lo
 
 </div>
 
+<div class="config-option">
+
+| Option        | Type     | Default |
+| ------------- | -------- | ------- |
+| `max_members` | `uint32` | `20`    |
+
+Maximum number of members the definition of a hovered class or enum lists: data members and member types, or enumerators; member functions are left out. `0` shows the declaration alone.
+
+</div>
+
 <!-- END GENERATED CONFIG -->
 
 ## `[inlay_hints]`
