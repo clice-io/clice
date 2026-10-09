@@ -10,7 +10,9 @@ serve("tiny")("buffer edits reach the compile", async ({ s }) => {
     expect(s.show(errors.map(({ range }) => ({ uri: s.uri("main.cpp"), range })))).toBe(
         "main.cpp: int value = add(1);",
     );
-    expect(s.show(await s.hover(at("main.cpp", "a|dd(1)")))).toContain("int add(int lhs, int rhs)");
+    expect(s.show(await s.hover(at("main.cpp", "int a|dd(")))).toContain(
+        "int add(int lhs, int rhs)",
+    );
     expect(s.disk.read("main.cpp")).toContain("add(1, 2)");
 
     s.save("main.cpp");

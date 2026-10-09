@@ -541,6 +541,15 @@ export class Serve {
         if (Array.isArray(value)) {
             return value.map((item) => this.show(item)).join("\n");
         }
+        // Before Location: proto.Location.is takes a hover's range with no
+        // uri for one.
+        const hover = value as Partial<proto.Hover>;
+        if (hover.contents !== undefined) {
+            const contents = Array.isArray(hover.contents) ? hover.contents : [hover.contents];
+            return contents
+                .map((part) => (typeof part === "string" ? part : part.value))
+                .join("\n");
+        }
         if (proto.Location.is(value)) {
             return this.showLocation(value.uri, value.range);
         }
@@ -550,13 +559,6 @@ export class Serve {
         const symbol = value as Partial<proto.SymbolInformation>;
         if (symbol.name !== undefined && symbol.location !== undefined) {
             return `${symbol.name} ${this.showLocation(symbol.location.uri, symbol.location.range)}`;
-        }
-        const hover = value as Partial<proto.Hover>;
-        if (hover.contents !== undefined) {
-            const contents = Array.isArray(hover.contents) ? hover.contents : [hover.contents];
-            return contents
-                .map((part) => (typeof part === "string" ? part : part.value))
-                .join("\n");
         }
         throw new Error(`no rendering for ${JSON.stringify(value)}`);
     }
