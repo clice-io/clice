@@ -187,8 +187,9 @@ public:
 
     void schedule_shutdown();
 
-    /// Whether the test hooks the harness asks for at initialize time are
-    /// on (project.test_hooks of the first project).
+    /// Whether the test hooks are on: project.test_hooks of the first
+    /// project at initialize, kept whatever folders come and go — the
+    /// pool's probe is attached then.
     bool test_hooks() const;
 
     /// Test hook (clice/internal/sync): wait until nothing is in flight.
