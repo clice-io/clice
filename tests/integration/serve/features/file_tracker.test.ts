@@ -259,6 +259,19 @@ serve.files(
     ).toContain("closed.cpp");
 });
 
+// The includer's index predates the header: its own run must not take
+// that index's word that the includer never enters it.
+serve.files(
+    { "closed.cpp": '#include "gen.h"\nint use_b() { return make(); }\n' },
+    cxx17(["closed.cpp"]),
+)("created header indexes in its includer", async ({ s }) => {
+    await s.indexed();
+    s.disk.write("gen.h", "int make();\n");
+    expect(await events(s, "workspace")).toBe(1);
+    await s.indexed();
+    expect(await referrers(s, at("gen.h", "make"))).toContain("closed.cpp");
+});
+
 serve.files(
     {
         "h.h": "#pragma once\nextern int shared_sym;\n",
