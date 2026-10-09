@@ -291,7 +291,9 @@ export class Serve {
             manifest = materialize(project, workspace);
         } else if (options.data !== undefined) {
             fs.cpSync(path.join(DATA_DIR, options.data), workspace.root, { recursive: true });
+            // What runs in the data directory itself left there.
             workspace.rm(".clice");
+            workspace.rm("build");
             if (workspace.exists("CMakeLists.txt")) {
                 generateCDB(workspace.root);
             }
