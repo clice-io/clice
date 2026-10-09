@@ -868,10 +868,10 @@ static bool working(ProjectServer& project) {
 kota::task<> MasterServer::settle() {
     int quiet = 0;
     while(quiet < 3) {
+        co_await kota::yield();
         auto busy = llvm::find_if(projects, [](auto& project) { return working(*project); });
         if(busy == projects.end()) {
             quiet += 1;
-            co_await kota::yield();
             continue;
         }
         quiet = 0;
