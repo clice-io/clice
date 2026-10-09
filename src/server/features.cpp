@@ -33,12 +33,11 @@ static std::string shown(FileTable& files, llvm::StringRef identity) {
     return files.display(files.intern(Spelling::absolute(identity)));
 }
 
-/// The link whose argument covers `offset`. Link ranges are half-open;
-/// contains() would also accept end.
+/// The link whose argument covers `offset`.
 const static index::DocumentLink* link_at(llvm::ArrayRef<index::DocumentLink> links,
                                           std::uint32_t offset) {
     auto it = llvm::find_if(links, [&](const index::DocumentLink& link) {
-        return offset >= link.range.begin && offset < link.range.end;
+        return link.range.contains(offset);
     });
     return it != links.end() ? &*it : nullptr;
 }
@@ -320,7 +319,10 @@ std::optional<protocol::Hover> Features::directive_hover(const Session& session,
     info.definition = shown(project.file_table, link.target);
     info.symbol_range = link.range;
 
-    auto hover = feature::to_protocol_hover(info, project.config.hover, session.position_map());
+    auto hover = feature::to_protocol_hover(info,
+                                            project.config.hover,
+                                            session.positions(),
+                                            PositionEncoding::UTF16);
     if(!hover.range) {
         return std::nullopt;
     }
@@ -344,9 +346,9 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
     // Links carry byte offsets; this reply edge converts them.
     auto convert = [&](llvm::ArrayRef<index::DocumentLink> raw_links,
                        std::vector<protocol::DocumentLink>& links) {
-        auto map = session->position_map();
+        auto map = session->positions();
         for(const auto& link: raw_links) {
-            auto range = map.to_range(link.range);
+            auto range = map.range(link.range, PositionEncoding::UTF16);
             if(!range)
                 continue;
             protocol::DocumentLink out{.range = *range};
@@ -432,7 +434,8 @@ Features::RawResult Features::definition(Ticket ticket,
     // mid-flight (the round landed as bounded staleness): the cached
     // links may describe a pre-edit preamble — skip, and let the index and
     // worker paths below answer.
-    auto offset = session ? session->position_map().to_offset(position) : std::nullopt;
+    auto offset =
+        session ? session->positions().offset(position, PositionEncoding::UTF16) : std::nullopt;
     if(offset && ast.projections.current(path_id)) {
         auto links = find_preamble_links(*session);
         if(auto* link = link_at(links, *offset)) {
@@ -537,8 +540,10 @@ Features::RawResult Features::hover(Ticket ticket,
 
     auto index_card = [&]() -> std::optional<serde_raw> {
         if(auto info = index_hover_card(*session, position)) {
-            return to_raw(
-                feature::to_protocol_hover(*info, project.config.hover, session->position_map()));
+            return to_raw(feature::to_protocol_hover(*info,
+                                                     project.config.hover,
+                                                     session->positions(),
+                                                     PositionEncoding::UTF16));
         }
         return std::nullopt;
     };
@@ -558,7 +563,7 @@ Features::RawResult Features::hover(Ticket ticket,
 
     // A directive's card names its target, which the worker knows only by
     // identity: this side answers it, from the links.
-    auto offset = session->position_map().to_offset(position);
+    auto offset = session->positions().offset(position, PositionEncoding::UTF16);
     auto argument = offset ? feature::find_directive_argument(session->text,
                                                               *offset,
                                                               &index_lang_options(*session))
@@ -578,7 +583,8 @@ Features::RawResult Features::hover(Ticket ticket,
         if(info && info->kind == SymbolKind::Module) {
             co_return to_raw(feature::to_protocol_hover(module_hover_card(*cursor, *info),
                                                         project.config.hover,
-                                                        session->position_map()));
+                                                        session->positions(),
+                                                        PositionEncoding::UTF16));
         }
     }
 
@@ -620,7 +626,9 @@ Features::RawResult Features::semantic_tokens(Ticket ticket, kota::cancellation_
                 rows.decls,
                 [&](index::SymbolHash hash) { return query.symbol_info(hash); });
             session->index_served = true;
-            co_return to_raw(feature::semantic_tokens_to_protocol(tokens, session->position_map()));
+            co_return to_raw(feature::semantic_tokens_to_protocol(tokens,
+                                                                  session->positions(),
+                                                                  PositionEncoding::UTF16));
         }
         case Route::Empty: {
             // The client caches this null, and only a semanticTokens
@@ -654,7 +662,8 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
     }
     auto hints = co_await dispatcher.inlay_hints(ticket, range, std::move(token)).or_fail();
     if(!label_parts) {
-        co_return to_raw(feature::inlay_hints_to_protocol(hints, session->position_map()));
+        co_return to_raw(
+            feature::inlay_hints_to_protocol(hints, session->positions(), PositionEncoding::UTF16));
     }
     // A reply names the same few types and parameters over and over.
     llvm::DenseMap<std::pair<index::SymbolHash, Fid>, std::optional<protocol::Location>> located;
@@ -685,7 +694,10 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
         }
         return it->second;
     };
-    co_return to_raw(feature::inlay_hints_to_protocol(hints, session->position_map(), locate));
+    co_return to_raw(feature::inlay_hints_to_protocol(hints,
+                                                      session->positions(),
+                                                      PositionEncoding::UTF16,
+                                                      locate));
 }
 
 Features::RawResult Features::folding_range(Ticket ticket,
@@ -693,8 +705,10 @@ Features::RawResult Features::folding_range(Ticket ticket,
                                             kota::cancellation_token token) {
     auto& session = ticket.session;
     auto convert = [&](llvm::ArrayRef<feature::FoldingRange> folds) {
-        return to_raw(
-            feature::folding_ranges_to_protocol(folds, session->position_map(), line_folding_only));
+        return to_raw(feature::folding_ranges_to_protocol(folds,
+                                                          session->positions(),
+                                                          PositionEncoding::UTF16,
+                                                          line_folding_only));
     };
 
     std::optional<index::RowSource> source;
@@ -738,8 +752,9 @@ Features::RawResult Features::document_symbol(Ticket ticket, kota::cancellation_
                 return query.symbol_info(hash);
             });
             session->index_served = true;
-            co_return to_raw(
-                feature::document_symbols_to_protocol(symbols, session->position_map()));
+            co_return to_raw(feature::document_symbols_to_protocol(symbols,
+                                                                   session->positions(),
+                                                                   PositionEncoding::UTF16));
         }
         case Route::Empty: co_return serde_raw{"[]"};
         case Route::Ast: break;
@@ -755,14 +770,16 @@ Features::RawResult Features::selection_range(Ticket ticket,
                                               kota::cancellation_token token) {
     auto& session = ticket.session;
     std::vector<std::uint32_t> offsets;
-    auto map = session->position_map();
+    auto map = session->positions();
     for(const auto& position: positions) {
-        offsets.push_back(map.to_offset_clamped(position));
+        offsets.push_back(map.offset_clamped(position, PositionEncoding::UTF16));
     }
     auto convert = [&](llvm::ArrayRef<std::vector<LocalSourceRange>> chains) {
         std::vector<protocol::SelectionRange> result;
         for(const auto& chain: chains) {
-            result.push_back(feature::selection_range_to_protocol(chain, session->position_map()));
+            result.push_back(feature::selection_range_to_protocol(chain,
+                                                                  session->positions(),
+                                                                  PositionEncoding::UTF16));
         }
         return to_raw(result);
     };
@@ -840,8 +857,8 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     auto path_id = session->path_id;
     auto path = std::string(project.file_table.resolve(path_id));
 
-    auto map = session->position_map();
-    auto offset = map.to_offset(position);
+    auto map = session->positions();
+    auto offset = map.offset(position, PositionEncoding::UTF16);
 
     PreambleCompletionContext pctx;
     if(offset) {
@@ -900,7 +917,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                     end += close + 1;
                 }
                 return protocol::TextEdit{
-                    .range = *map.to_range({pctx.replace.begin, end}),
+                    .range = *map.range({pctx.replace.begin, end}, PositionEncoding::UTF16),
                     .new_text = candidate.name + (candidate.is_directory ? '/' : closer),
                 };
             };
@@ -931,7 +948,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 item.label = name;
                 item.kind = protocol::CompletionItemKind::Module;
                 item.text_edit = protocol::TextEdit{
-                    .range = *map.to_range(pctx.replace),
+                    .range = *map.range(pctx.replace, PositionEncoding::UTF16),
                     .new_text = pctx.closed ? name : name + ";",
                 };
                 items.push_back(std::move(item));

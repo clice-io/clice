@@ -220,7 +220,7 @@ std::vector<Dependency> dependencies(CompilationUnitRef unit, llvm::ArrayRef<Slo
             return std::nullopt;
         }
         auto offset = unit.file_offset(location);
-        return offset >= region.begin && offset < region.end ? std::optional(offset) : std::nullopt;
+        return region.contains(offset) ? std::optional(offset) : std::nullopt;
     };
     std::vector<Dependency> out;
     auto depend = [&](clang::SourceLocation before, clang::SourceLocation after) {
@@ -269,9 +269,8 @@ std::vector<Dependency> dependencies(CompilationUnitRef unit, llvm::ArrayRef<Slo
     // moves with it.
     for(const auto& include: semantics.include_directives()) {
         if(include.begin <= region.begin || include.begin >= region.end ||
-           llvm::any_of(slots, [&](const Slot& slot) {
-               return include.begin >= slot.range.begin && include.begin < slot.range.end;
-           })) {
+           llvm::any_of(slots,
+                        [&](const Slot& slot) { return slot.range.contains(include.begin); })) {
             continue;
         }
         for(const auto& slot: slots) {

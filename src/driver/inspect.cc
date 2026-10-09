@@ -231,13 +231,9 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
                 if(!found) {
                     continue;
                 }
-                auto coords = index::shard_coordinates(rows);
-                auto begin = coords.position(found->begin);
-                auto end = coords.position(found->end);
                 return RawLocation{
                     .path = tu.path(path_id).str(),
-                    .range = {.start = {.line = begin->line, .character = begin->utf16_column},
-                              .end = {.line = end->line, .character = end->utf16_column}},
+                    .range = *rows.positions().range(*found, PositionEncoding::UTF16),
                 };
             }
         }

@@ -3,9 +3,10 @@ module;
 #include "modules/prelude.h"
 /// Primary inlay-hint coverage lives in the snapshot corpus
 /// (tests/snap/inlay_hint/), which pins both the standalone and the server
-/// path under default options. This file keeps only the categories the
-/// corpus cannot reach: block-end and default-argument hints are off by
-/// default and only selectable through InlayHintsOptions.
+/// path under default options. This file keeps only what the corpus cannot
+/// reach: block-end and default-argument hints are off by default and only
+/// selectable through InlayHintsOptions, and the corpus asks for whole files,
+/// never a range.
 
 module clice;
 
@@ -579,6 +580,20 @@ ZEST_CASE(FreestandingBuiltins) {
             }
         )c");
     EXPECT_SIZE(0);
+};
+
+ZEST_CASE(RangeEndExcluded) {
+    add_main("main.cpp", R"c(
+        void sink(int value);
+        void use() {
+            sink(§(arg)1);
+        }
+    )c");
+    ZASSERT(compile_with_pch("-std=c++23"));
+
+    auto arg = point("arg");
+    ZEXPECT(feature::inlay_hints(*unit, {0, arg}).size() == 0U);
+    ZEXPECT(feature::inlay_hints(*unit, {arg, arg + 1}).size() == 1U);
 };
 
 };  // ZEST_SUITE(inlay_hint)

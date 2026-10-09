@@ -1288,13 +1288,14 @@ auto inlay_hints(CompilationUnitRef unit, LocalSourceRange target, const InlayHi
 auto inlay_hints_to_protocol(
     llvm::ArrayRef<InlayHint> hints,
     const PositionMap& map,
+    PositionEncoding encoding,
     llvm::function_ref<std::optional<protocol::Location>(const InlayHintPart&)> locate)
     -> std::vector<protocol::InlayHint> {
     std::vector<protocol::InlayHint> result;
     result.reserve(hints.size());
 
     for(const auto& hint: hints) {
-        auto pos = map.to_position(hint.offset);
+        auto pos = map.position(hint.offset, encoding);
         if(!pos)
             continue;
         protocol::InlayHint out{.position = *pos};

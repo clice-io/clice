@@ -502,9 +502,8 @@ CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer*
     llvm::StringRef content = buffer->second->getBuffer();
     auto completion_offset =
         static_cast<std::uint32_t>(std::min<std::size_t>(offset, content.size()));
-    auto position = kota::ipc::lsp::to_position({content.data(), content.size()},
-                                                completion_offset,
-                                                kota::ipc::lsp::PositionEncoding::UTF8);
+    auto lines = kota::ipc::lsp::line_starts({content.data(), content.size()});
+    auto position = PositionMap(content, lines).position(completion_offset, PositionEncoding::UTF8);
     assert(position && "clamped completion offset must be mappable");
 
     /// Clang completion locations are 1-based.

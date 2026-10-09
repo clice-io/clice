@@ -85,9 +85,10 @@ void SessionStore::apply_change(Session& session,
                 } else {
                     // The batch's earlier changes left non_ascii_lines
                     // stale; line_starts is kept current.
-                    feature::PositionMap map{.content = session.text, .lines = session.line_starts};
+                    PositionMap map(session.text, session.line_starts);
                     auto& range = c.range;
-                    if(!map.to_offset(range.start) || !map.to_offset(range.end)) {
+                    if(!map.offset(range.start, PositionEncoding::UTF16) ||
+                       !map.offset(range.end, PositionEncoding::UTF16)) {
                         // The client's view has drifted from ours (or the
                         // client is buggy). LSP 3.17 requires clamping
                         // positions past the document instead of dropping
@@ -103,7 +104,7 @@ void SessionStore::apply_change(Session& session,
                             session.path_id,
                             version);
                     }
-                    auto [start, end] = map.to_offset_range(range);
+                    auto [start, end] = map.offset_range(range, PositionEncoding::UTF16);
                     if(llvm::StringRef(session.text).substr(start, end - start) != c.text) {
                         session.text.replace(start, end - start, c.text);
                         applied = true;

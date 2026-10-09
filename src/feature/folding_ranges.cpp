@@ -557,14 +557,15 @@ auto declaration_lines(llvm::StringRef content,
 
 auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
                                 const PositionMap& map,
+                                PositionEncoding encoding,
                                 bool line_folding_only) -> std::vector<protocol::FoldingRange> {
     std::vector<protocol::FoldingRange> result;
     result.reserve(ranges.size());
 
     for(const auto& item: ranges) {
         auto bounds = line_folding_only ? item.lines.value_or(item.range) : item.range;
-        auto start = map.to_position(bounds.begin);
-        auto end = map.to_position(bounds.end);
+        auto start = map.position(bounds.begin, encoding);
+        auto end = map.position(bounds.end, encoding);
         if(!start || !end)
             continue;
 

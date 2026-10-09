@@ -11,13 +11,10 @@ import :index.symbol_query;
 import :index.tu_index;
 import :index.types;
 import :semantic.symbol;
+import :syntax.position;
 import :vfs.file_table;
 
 namespace clice::index {
-
-/// The coordinates a shard's rows are expressed in: its stored text, or
-/// the line table of the pure-ASCII text it leaves out.
-Coordinates shard_coordinates(const Shard& shard);
 
 /// One readable row set with its own coordinate system, as the federation
 /// hands it to a visitor.
@@ -40,16 +37,20 @@ struct RowSource {
     Fid file;
     std::string path;
     const Shard* rows;
-    Coordinates coords;
+    PositionMap positions;
 
     /// The site of a row's range; nullopt for a range outside the text.
     std::optional<Site> site(LocalSourceRange range) const {
-        auto begin = coords.position(range.begin);
-        auto end = coords.position(range.end);
-        if(!begin || !end) {
+        if(range.end > positions.size()) {
             return std::nullopt;
         }
-        return Site{.file = file, .path = path, .range = range, .begin = *begin, .end = *end};
+        return Site{
+            .file = file,
+            .path = path,
+            .range = range,
+            .begin = *line_column(positions, range.begin),
+            .end = *line_column(positions, range.end),
+        };
     }
 };
 

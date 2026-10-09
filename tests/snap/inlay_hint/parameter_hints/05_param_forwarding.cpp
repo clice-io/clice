@@ -51,3 +51,13 @@ void use() {
     call_with(1, 2, 3);
     chain(32, 42);
 }
+
+// A pack handed on to a callable object resolves to its call operator.
+template <typename F, typename... Args>
+void invoke_with(F f, Args... args) {
+    f(args...);
+}
+
+void use_callable() {
+    invoke_with([](int width, int height) {}, 3, 4);
+}

@@ -97,39 +97,20 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         params.synthesized = resolved.synthesized->files;
     }
 
-    // A unit providing a module waits on its own PCM node — that round
-    // builds the transitive imports and registers their artifacts. An
-    // ordinary TU waits on its imports the same way: the fill_pcm_deps
-    // snapshot below would otherwise race a cold build and parse without
-    // the module files. The scan runs under the command resolved above —
-    // a borrowed header host's flags select the same imports the parse
-    // will see — and its sentinel edges are what let an unresolved
+    // A unit waits on the PCMs of its imports: the fill_pcm_deps snapshot
+    // below would otherwise race a cold build and parse without the module
+    // files. The scan runs under the command resolved above, extra args
+    // included — a borrowed header host's flags select the same imports the
+    // parse will see — and its sentinel edges are what let an unresolved
     // name's first provider re-dirty this TU. A failed PCM build is not
-    // terminal on either shape — the parse consumes whatever artifacts
-    // landed and the worker reports its own failure if they are not
-    // enough.
-    bool own_module = !project.dep_graph.module_of(path_id).empty();
-    PCMFamily::ModuleDeps deps;
-    if(own_module) {
-        deps.resolved.push_back(path_id);
-        deps.declared.push_back({Family::PCM, path_id.raw});
+    // terminal — the parse consumes whatever artifacts landed and the
+    // worker reports its own failure if they are not enough.
+    std::vector<const char*> argv;
+    argv.reserve(params.arguments.size());
+    for(auto& arg: params.arguments) {
+        argv.push_back(arg.c_str());
     }
-    // The scan must evaluate the same conditionals the worker's parse
-    // will — the resolved command already carries the plan's extra args.
-    // A module unit's own PCM round resolves the base command without
-    // them, so extras run their own scan even there.
-    bool has_extras = !extras.prepend.empty() || !extras.append.empty();
-    if(!own_module || has_extras) {
-        std::vector<const char*> argv;
-        argv.reserve(params.arguments.size());
-        for(auto& arg: params.arguments) {
-            argv.push_back(arg.c_str());
-        }
-        auto scanned =
-            co_await pcm.direct_deps(path_id, resolved, argv, params.directory, std::nullopt);
-        llvm::append_range(deps.resolved, scanned.resolved);
-        llvm::append_range(deps.declared, scanned.declared);
-    }
+    auto deps = co_await pcm.direct_deps(path_id, resolved, argv, params.directory, std::nullopt);
 
     // Scanner truth outlives the run: committed as durable edges even
     // when the run or a build fails, so fixing or providing an import
@@ -162,22 +143,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     }
 
     project.fill_pcm_deps(params.pcms, path_id);
-    // The modules the parse reads — a module unit's are the imports its own
-    // PCM round resolved, built or not, never its own PCM. Taken with the
-    // PCM paths: a module rebuilt while the parse runs is no input of it.
-    llvm::SmallVector<Fid> read;
-    for(auto dep: deps.resolved) {
-        if(dep != path_id) {
-            read.push_back(dep);
-            continue;
-        }
-        for(auto id: graph.dependencies({Family::PCM, path_id.raw})) {
-            if(!PCMFamily::is_unresolved(id)) {
-                read.push_back(Fid{static_cast<std::uint32_t>(id.key)});
-            }
-        }
-    }
-    auto imports = project.module_inputs(read);
+    // The modules the parse reads, taken with the PCM paths: a module
+    // rebuilt while the parse runs is no input of it.
+    auto imports = project.module_inputs(deps.resolved);
     if(plan.index && !send_in_full.erase(path_id)) {
         params.known_variants = store.known_variants(path_id);
     }

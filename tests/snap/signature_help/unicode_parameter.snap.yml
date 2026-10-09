@@ -1,0 +1,6 @@
+---
+created_at: 2026-10-09
+input_file: unicode_parameter.cpp
+---
+pos:
+- greet(int 参数𝑥, ⟦double second⟧) -> void

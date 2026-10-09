@@ -59,9 +59,9 @@ public:
                 }
 
                 protocol::ParameterInformation parameter;
-                auto begin = static_cast<protocol::uinteger>(buffer.size());
+                auto begin = lsp::encoded_length(buffer.str(), PositionEncoding::UTF16);
                 param.print(stream, policy);
-                auto end = static_cast<protocol::uinteger>(buffer.size());
+                auto end = lsp::encoded_length(buffer.str(), PositionEncoding::UTF16);
                 parameter.label = std::tuple<protocol::uinteger, protocol::uinteger>{begin, end};
                 signature.parameters->push_back(std::move(parameter));
             };

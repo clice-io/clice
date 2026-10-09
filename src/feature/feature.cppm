@@ -6,13 +6,13 @@ module clice:feature.feature;
 
 import :compile.compilation;
 import :compile.compilation_unit;
-import :feature.position;
 import :index.manifest;
 import :index.types;
 import :semantic.display;
 import :semantic.symbol;
 import :support.anomaly;
 import :support.markup;
+import :syntax.position;
 import :vfs.path;
 
 namespace clice::index {
@@ -22,6 +22,9 @@ class Shard;
 }
 
 namespace clice::feature {
+
+namespace lsp = kota::ipc::lsp;
+namespace protocol = kota::ipc::protocol;
 
 // Feature options double as their clice.toml/initializationOptions config
 // sections: `defaulted = true` lets a decode leave unmentioned fields at
@@ -39,17 +42,6 @@ inline auto to_uri(llvm::StringRef file) -> std::string {
     auto uri = kota::ipc::lsp::URI::from_file_path(std::string_view(file.data(), file.size()));
     assert(uri && "a URI names an absolute path");
     return uri->str();
-}
-
-/// The main file's positions, over the line tables the unit caches.
-inline auto main_position_map(CompilationUnitRef unit, PositionEncoding encoding) -> PositionMap {
-    auto content = unit.main_content();
-    return {
-        .content = {content.data(), content.size()},
-        .lines = unit.line_starts(),
-        .non_ascii = unit.non_ascii_lines(),
-        .encoding = encoding,
-    };
 }
 
 /// Corresponds to the `[code_completion]` section in clice.toml.
@@ -375,8 +367,9 @@ auto semantic_tokens(CompilationUnitRef unit,
 /// Wire encoding of computed tokens against the text they describe — one
 /// encoder for the worker's AST results and the master's index
 /// projections, so both paths emit byte-identical replies.
-auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens, const PositionMap& map)
-    -> protocol::SemanticTokens;
+auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
+                                 const PositionMap& map,
+                                 PositionEncoding encoding) -> protocol::SemanticTokens;
 
 auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange>;
 
@@ -404,6 +397,7 @@ auto declaration_lines(llvm::StringRef content,
 /// whole lines and ignores the character offsets.
 auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
                                 const PositionMap& map,
+                                PositionEncoding encoding,
                                 bool line_folding_only) -> std::vector<protocol::FoldingRange>;
 
 /// The ranges an expanding selection steps through from each offset of the
@@ -423,14 +417,17 @@ auto lexical_selection_ranges(llvm::StringRef content,
     -> std::vector<std::vector<LocalSourceRange>>;
 
 /// Wire encoding of one offset's ranges as a chain of parents.
-auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges, const PositionMap& map)
-    -> protocol::SelectionRange;
+auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
+                                 const PositionMap& map,
+                                 PositionEncoding encoding) -> protocol::SelectionRange;
 
 auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol>;
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol>;
 
-auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols, const PositionMap& map)
+auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
+                                  const PositionMap& map,
+                                  PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol>;
 
 auto inlay_hints(CompilationUnitRef unit,
@@ -444,6 +441,7 @@ auto inlay_hints(CompilationUnitRef unit,
 auto inlay_hints_to_protocol(
     llvm::ArrayRef<InlayHint> hints,
     const PositionMap& map,
+    PositionEncoding encoding,
     llvm::function_ref<std::optional<protocol::Location>(const InlayHintPart&)> locate = nullptr)
     -> std::vector<protocol::InlayHint>;
 
@@ -497,8 +495,10 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
 
 /// Render structured hover information with the configured markup format and
 /// convert its byte range through the caller's current line map.
-auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const PositionMap& map)
-    -> protocol::Hover;
+auto to_protocol_hover(const HoverInfo& info,
+                       const HoverOptions& options,
+                       const PositionMap& map,
+                       PositionEncoding encoding) -> protocol::Hover;
 
 auto hover(CompilationUnitRef unit,
            std::uint32_t offset,

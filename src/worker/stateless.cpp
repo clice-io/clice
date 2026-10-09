@@ -252,16 +252,6 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
                          /*internal_error=*/false);
 }
 
-/// Where a diagnostic starts, its column counted in bytes as compilers
-/// count them.
-static auto byte_position(CompilationUnitRef unit, const Diagnostic& diagnostic)
-    -> std::optional<kota::ipc::protocol::Position> {
-    auto content = unit.file_content(diagnostic.fid);
-    return kota::ipc::lsp::to_position({content.data(), content.size()},
-                                       diagnostic.range.begin,
-                                       kota::ipc::lsp::PositionEncoding::UTF8);
-}
-
 /// Collect the tidy pass's findings with real per-file locations: unlike
 /// the LSP path, which folds header diagnostics onto their include line,
 /// the CLI reports them where they are. clang-tidy's header-filter
@@ -293,7 +283,8 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
             if(!last_kept || raw.fid.isInvalid() || !raw.range.valid()) {
                 continue;
             }
-            if(auto start = byte_position(unit, raw)) {
+            if(auto start =
+                   unit.positions(raw.fid).position(raw.range.begin, PositionEncoding::UTF8)) {
                 out.back().notes.push_back({
                     .file = std::string(unit.file_path(raw.fid)),
                     .line = start->line + 1,
@@ -328,7 +319,8 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
                 continue;
             }
         }
-        auto start = byte_position(unit, raw);
+        // Columns count bytes, as compilers count them.
+        auto start = unit.positions(raw.fid).position(raw.range.begin, PositionEncoding::UTF8);
         if(!start) {
             continue;
         }

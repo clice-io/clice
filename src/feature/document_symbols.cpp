@@ -349,10 +349,11 @@ void sort_symbols(std::vector<DocumentSymbol>& symbols) {
     }
 }
 
-auto to_protocol_symbol(const DocumentSymbol& symbol, const PositionMap& map)
-    -> std::optional<protocol::DocumentSymbol> {
-    auto range = map.to_range(symbol.range);
-    auto selection_range = map.to_range(symbol.selection_range);
+auto to_protocol_symbol(const DocumentSymbol& symbol,
+                        const PositionMap& map,
+                        PositionEncoding encoding) -> std::optional<protocol::DocumentSymbol> {
+    auto range = map.range(symbol.range, encoding);
+    auto selection_range = map.range(symbol.selection_range, encoding);
     if(!range || !selection_range)
         return std::nullopt;
 
@@ -371,7 +372,7 @@ auto to_protocol_symbol(const DocumentSymbol& symbol, const PositionMap& map)
         std::vector<protocol::DocumentSymbol> children;
         children.reserve(symbol.children.size());
         for(const auto& child: symbol.children) {
-            if(auto converted = to_protocol_symbol(child, map)) {
+            if(auto converted = to_protocol_symbol(child, map, encoding)) {
                 children.push_back(std::move(*converted));
             }
         }
@@ -391,16 +392,18 @@ auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol> {
 
 auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol> {
-    return document_symbols_to_protocol(document_symbols(unit), main_position_map(unit, encoding));
+    return document_symbols_to_protocol(document_symbols(unit), unit.positions(), encoding);
 }
 
-auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols, const PositionMap& map)
+auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
+                                  const PositionMap& map,
+                                  PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol> {
     std::vector<protocol::DocumentSymbol> result;
     result.reserve(symbols.size());
 
     for(const auto& symbol: symbols) {
-        if(auto converted = to_protocol_symbol(symbol, map)) {
+        if(auto converted = to_protocol_symbol(symbol, map, encoding)) {
             result.push_back(std::move(*converted));
         }
     }

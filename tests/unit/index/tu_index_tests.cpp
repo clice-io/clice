@@ -163,7 +163,7 @@ auto select(llvm::StringRef pos) -> std::vector<index::Occurrence> {
 
     std::vector<index::Occurrence> occurrences;
     while(it != index.occurrences.end()) {
-        if(it->range.contains(offset)) {
+        if(it->range.touches(offset)) {
             occurrences.emplace_back(*it);
             it++;
             continue;
@@ -1161,7 +1161,7 @@ ZEST_CASE(CrossFileHeaderIndex) {
                                        {},
                                        [](const index::Occurrence& o) { return o.range.end; });
     ZASSERT(it != main_index.occurrences.end());
-    ZASSERT(it->range.contains(use_offset));
+    ZASSERT(it->range.touches(use_offset));
 
     // The helper symbol should exist in the TU symbol table.
     auto helper_hash = it->target;

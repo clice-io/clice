@@ -31,7 +31,7 @@ index::RowSource ServerLiveSources::buffer_source(index::RowSource::Kind kind,
         .file = file,
         .path = project.file_table.display(file),
         .rows = &rows,
-        .coords = {session.text, session.line_starts}
+        .positions = session.positions(),
     };
 }
 

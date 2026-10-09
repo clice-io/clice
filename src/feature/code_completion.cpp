@@ -534,9 +534,9 @@ public:
         FuzzyMatcher matcher(prefix.spelling);
 
         auto lines = lsp::line_starts(content);
-        PositionMap map{.content = content, .lines = lines, .encoding = encoding};
-        auto typed = map.to_range(prefix.typed);
-        auto whole = map.to_range(prefix.whole);
+        PositionMap map(content, lines);
+        auto typed = map.range(prefix.typed, encoding);
+        auto whole = map.range(prefix.whole, encoding);
         if(!typed || !whole) {
             return;
         }

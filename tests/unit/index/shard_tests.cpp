@@ -6,8 +6,8 @@ module clice;
 
 import :index.serialization;
 import :index.shard;
-import :index.site;
 import :index.tu_index;
+import :syntax.position;
 import :tests.unit.test.test;
 import :tests.unit.test.tester;
 
@@ -189,10 +189,9 @@ ZEST_CASE(CRLFLinesMarked) {
     ZASSERT(std::ranges::equal(merged.crlf_lines(), shard.crlf_lines()));
 
     auto starts = shard.line_starts();
-    index::Coordinates marked(shard.content_size(), starts, shard.crlf_lines());
-    index::Coordinates scanned(content, starts);
+    PositionMap scanned(content, starts);
     for(std::uint32_t row = 0; row < starts.size(); row += 1) {
-        ZEXPECT(marked.line_bounds(row) == scanned.line_bounds(row));
+        ZEXPECT(shard.positions().line_bounds(row) == scanned.line_bounds(row));
     }
 }
 

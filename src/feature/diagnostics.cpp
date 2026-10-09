@@ -56,7 +56,7 @@ bool is_note(const Diagnostic& diagnostic) {
 class Presenter {
 public:
     Presenter(CompilationUnitRef unit, PositionEncoding encoding) :
-        unit(unit), encoding(encoding), map(main_position_map(unit, encoding)) {}
+        unit(unit), encoding(encoding), map(unit.positions()) {}
 
     /// A diagnostic and the notes clang attached to it, as published on the
     /// main file; nullopt when it does not concern the main file.
@@ -126,7 +126,7 @@ private:
                 }
                 anchor = note->range;
             }
-            auto range = map.to_range(anchor);
+            auto range = map.range(anchor, encoding);
             if(!range) {
                 return false;
             }
@@ -164,7 +164,7 @@ private:
                 }
             }
             if(anchor) {
-                auto range = map.to_range(*anchor);
+                auto range = map.range(*anchor, encoding);
                 if(!range || !relocated.insert(anchor->begin).second) {
                     return false;
                 }
@@ -184,7 +184,7 @@ private:
         if(note == notes.end()) {
             return false;
         }
-        auto range = map.to_range(note->range);
+        auto range = map.range(note->range, encoding);
         if(!range) {
             return false;
         }
@@ -237,16 +237,7 @@ private:
             return;
         }
 
-        std::optional<protocol::Range> converted;
-        if(fid == unit.main_file()) {
-            converted = map.to_range(range);
-        } else {
-            auto content = unit.file_content(fid);
-            auto lines = lsp::line_starts(content);
-            converted =
-                PositionMap{.content = content, .lines = lines, .encoding = encoding}.to_range(
-                    range);
-        }
+        auto converted = unit.positions(fid).range(range, encoding);
         if(!converted) {
             return;
         }

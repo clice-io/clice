@@ -21,7 +21,7 @@ struct Steps {
     std::vector<LocalSourceRange> ranges;
 
     void add(LocalSourceRange range) {
-        if(range.begin < range.end && range.contains(offset)) {
+        if(range.begin < range.end && range.touches(offset)) {
             ranges.push_back(range);
         }
     }
@@ -520,12 +520,13 @@ auto lexical_selection_ranges(llvm::StringRef content,
     return result;
 }
 
-auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges, const PositionMap& map)
-    -> protocol::SelectionRange {
+auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
+                                 const PositionMap& map,
+                                 PositionEncoding encoding) -> protocol::SelectionRange {
     std::unique_ptr<protocol::SelectionRange> parent;
     for(const auto& range: llvm::reverse(ranges)) {
         auto node = std::make_unique<protocol::SelectionRange>();
-        node->range = *map.to_range(range);
+        node->range = *map.range(range, encoding);
         node->parent = std::move(parent);
         parent = std::move(node);
     }
