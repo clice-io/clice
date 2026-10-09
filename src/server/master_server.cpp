@@ -954,6 +954,11 @@ public:
         co_await inner->write_message(payload).or_fail();
     }
 
+    kota::task<void, kota::ipc::Error>
+        write_messages(std::span<const std::string> payloads) override {
+        co_await inner->write_messages(payloads).or_fail();
+    }
+
     kota::task<void, kota::ipc::Error> close_output() override {
         co_await inner->close_output().or_fail();
     }
