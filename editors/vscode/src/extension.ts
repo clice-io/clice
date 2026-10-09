@@ -20,6 +20,7 @@ import { registerBuildConfiguration } from "./feature/configuration";
 import { registerCompilationContext } from "./feature/context";
 import { registerConflictCheck } from "./feature/conflicts";
 import { registerInactiveRegions } from "./feature/inactive";
+import { registerRefactorCommands } from "./feature/refactor";
 
 let client: ClientHandle | undefined;
 
@@ -351,6 +352,7 @@ export async function activate(context: ExtensionContext) {
     registerCompilationContext(client, context);
     registerConflictCheck(client, context);
     registerAliasRedirect(context);
+    registerRefactorCommands(context);
 
     await startServer(context);
 

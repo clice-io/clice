@@ -1092,6 +1092,9 @@ auto code_actions(CompilationUnitRef unit, LocalSourceRange selection) -> std::v
     auto before = out.size();
     action::expand_macro(unit, selection, out);
     action::format_actions(unit, out, before);
+    assert(llvm::all_of(out, [](const CodeAction& action) {
+        return llvm::is_contained(code_action_kinds, action.kind);
+    }));
     return out;
 }
 

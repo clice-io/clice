@@ -42,7 +42,7 @@ interface RawCodeAction {
 
 /// One block per action:
 ///
-///     - [refactor.rewrite] Define 'S::f' out of line
+///     - [refactor.rewrite.define.outOfLine] Define 'S::f' out of line
 ///       3:0-3:0 => "\nvoid S::f() {\n}\n"
 function formatActions(actions: ActionEntry[]): string[] {
     if (actions.length === 0) {
