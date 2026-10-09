@@ -168,13 +168,13 @@ local function switch_source_header(client, bufnr)
     local function open(uri)
       vim.cmd.edit(vim.fn.fnameescape(vim.uri_to_fname(uri)))
     end
-    if result.preferred ~= vim.NIL then
+    if result.preferred and result.preferred ~= vim.NIL then
       return open(result.preferred)
     elseif #result.candidates == 0 then
       return vim.notify('clice: no counterpart of this file found')
     end
     vim.ui.select(result.candidates, {
-      prompt = 'Switch source/header',
+      prompt = 'File to open',
       format_item = function(candidate)
         local name = vim.fn.fnamemodify(vim.uri_to_fname(candidate.uri), ':~:.')
         return ('%s  (%s)'):format(name, table.concat(candidate.reasons, ', '))

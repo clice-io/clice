@@ -361,7 +361,18 @@ Fid IndexQuery::definition_file(SymbolHash hash) const {
     if(!identity || !has_flag(identity->flags, SymbolFlags::HasDefinition)) {
         return {};
     }
-    return Fid{identity->file};
+    // The table never retracts a definition: a file reindexed without it
+    // keeps the record until another unit defines the symbol.
+    Fid file{identity->file};
+    auto* rows = index.shard(file);
+    bool defines = false;
+    if(rows) {
+        rows->lookup(hash, RelationKind::Definition, [&](const Relation&) {
+            defines = true;
+            return false;
+        });
+    }
+    return defines ? file : Fid{};
 }
 
 std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t offset) const {

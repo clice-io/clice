@@ -1,4 +1,4 @@
-# These fixtures contain `§(name)` marker annotations that clang-format
-# would split apart, so formatting is disabled for this directory.
+# The fixtures' doc headers and code feed the docs as written, so
+# formatting is disabled for this directory.
 DisableFormat: true
 SortIncludes: false

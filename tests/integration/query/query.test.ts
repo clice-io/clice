@@ -253,6 +253,24 @@ test("answers from the persisted index", async ({ session }) => {
     expect(asUri(counterparts.result!.preferred!)).toBe(ws.uri("main.cpp"));
 });
 
+test("counterparts pair module units", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("store.cppm", "export module store;\nexport int fetch(int key);\n");
+    ws.write("store_impl.cpp", "module store;\nint fetch(int key) { return key * 2; }\n");
+    ws.writeCDB(["store.cppm", "store_impl.cpp"], { std: "c++20" });
+    ws.pinCacheDir();
+    expect((await runIndex(ws)).status).toBe(0);
+
+    const answer = await query<{
+        candidates: { path: string; reasons: string[] }[];
+        preferred: string | null;
+    }>(ws, "counterparts", "--path", "store_impl.cpp");
+    expect(answer.result?.candidates.map((c) => [asUri(c.path), ...c.reasons])).toEqual([
+        [ws.uri("store.cppm"), "declares 1 of 1 definition", "interface of module store"],
+    ]);
+    expect(asUri(answer.result!.preferred!)).toBe(ws.uri("store.cppm"));
+});
+
 test("workspace spelled with a climb", async ({ session }) => {
     const ws = writeProject(session);
     ws.mkdir("build");

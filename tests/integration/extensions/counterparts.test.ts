@@ -2,7 +2,6 @@
 /// no compile of its own: files of the same name before the index arrives,
 /// the declarations a source defines once it has.
 
-import { waitUntil } from "@clice/tools/client";
 import type { CounterpartsResult } from "@clice/tools/protocol";
 import { canonicalUri, type Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
@@ -24,7 +23,11 @@ function writeProject(ws: Workspace): void {
 
 /// The reply with every file named relative to the workspace.
 function shown(ws: Workspace, result: CounterpartsResult) {
-    const relative = (uri: string) => canonicalUri(uri).slice(canonicalUri(ws.uri()).length + 1);
+    const root = `${canonicalUri(ws.uri())}/`;
+    const relative = (uri: string) => {
+        expect(canonicalUri(uri).startsWith(root), uri).toBe(true);
+        return canonicalUri(uri).slice(root.length);
+    };
     return {
         preferred: result.preferred === null ? null : relative(result.preferred),
         candidates: result.candidates.map((candidate) => [
@@ -57,11 +60,7 @@ test("definitions rank the sources", async ({ session }) => {
     await client.initialize(ws);
 
     const header = ws.uri("include/codec.h");
-    await waitUntil(async () => (await client.stats()).indexIdle, {
-        timeout: 60_000,
-        interval: 200,
-        description: "the background index to catch up",
-    });
+    await client.waitForIndexIdle();
     expect(shown(ws, await client.counterparts(header))).toEqual({
         preferred: "src/codec.cpp",
         candidates: [
@@ -75,17 +74,39 @@ test("definitions rank the sources", async ({ session }) => {
     });
 });
 
+test("an edited buffer defines the declarations", async ({ session }) => {
+    const ws = session.tmpdir();
+    writeProject(ws);
+    const client = session.spawn(ws);
+    await client.initialize(ws);
+
+    await client.waitForIndexIdle();
+    const [uri] = await client.openAndWait("src/decode.cpp");
+    client.change(
+        uri,
+        1,
+        '#include "../include/codec.h"\nint encode(int value) { return value + 2; }\n' +
+            "int decode(int value) { return value - 2; }\n",
+    );
+    await client.waitForRecompile(uri);
+    // The unsaved buffer comes before the disk: codec.cpp, still defining
+    // encode there, pairs by its name alone.
+    expect(shown(ws, await client.counterparts(ws.uri("include/codec.h")))).toEqual({
+        preferred: null,
+        candidates: [
+            ["src/decode.cpp", "defines 2 of 2 declarations"],
+            ["src/codec.cpp", "same name"],
+        ],
+    });
+});
+
 test("nothing to pair with", async ({ session }) => {
     const ws = session.tmpdir();
     writeProject(ws);
     const client = session.spawn(ws);
     await client.initialize(ws);
 
-    await waitUntil(async () => (await client.stats()).indexIdle, {
-        timeout: 60_000,
-        interval: 200,
-        description: "the background index to catch up",
-    });
+    await client.waitForIndexIdle();
     expect(await client.counterparts(ws.uri("src/inline.h"))).toEqual({
         candidates: [],
         preferred: null,

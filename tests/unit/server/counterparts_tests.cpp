@@ -61,7 +61,7 @@ ZEST_CASE(NameAndOverlapWin) {
 ZEST_CASE(TwiceTheOverlapWins) {
     auto ranking = query::rank_counterparts({
         {.path = "text_case.cpp", .overlap = 1},
-        {.path = "text_ops.cpp",  .overlap = 3},
+        {.path = "text_ops.cpp",  .overlap = 2},
     });
     ZEXPECT(order(ranking).front() == "text_ops.cpp");
     ZEXPECT(ranking.decisive);
@@ -75,18 +75,36 @@ ZEST_CASE(CloseOverlapAsks) {
     ZEXPECT(!ranking.decisive);
 }
 
+ZEST_CASE(SharedTieIgnoresModule) {
+    auto ranking = query::rank_counterparts({
+        {.path = "b.cpp", .overlap = 2},
+        {.path = "a.cpp", .module = "lib", .overlap = 2},
+    });
+    ZEXPECT(order(ranking).front() == "a.cpp");
+    ZEXPECT(!ranking.decisive);
+}
+
 ZEST_CASE(EqualEvidenceAsks) {
     auto ranking = query::rank_counterparts({
-        {.path = "src/foo.cpp",   .same_name = true, .distance = 3},
         {.path = "tests/foo.cpp", .same_name = true, .distance = 3},
+        {.path = "src/foo.cpp",   .same_name = true, .distance = 3},
     });
     ZEXPECT(order(ranking) == std::vector<std::string>{"src/foo.cpp", "tests/foo.cpp"});
     ZEXPECT(!ranking.decisive);
 }
 
+ZEST_CASE(NearerDirectoryFirst) {
+    auto ranking = query::rank_counterparts({
+        {.path = "a/far.cpp",  .same_name = true, .distance = 3},
+        {.path = "b/near.cpp", .same_name = true, .distance = 1},
+    });
+    ZEXPECT(order(ranking).front() == "b/near.cpp");
+    ZEXPECT(!ranking.decisive);
+}
+
 ZEST_CASE(NameAgainstOverlapAsks) {
-    // A source of the same name the index has not reached yet must not lose
-    // to another one defining a single declaration.
+    // A source of the same name the index has not reached yet keeps the
+    // choice open against another one defining a single declaration.
     auto ranking = query::rank_counterparts({
         {.path = "foo.cpp", .same_name = true},
         {.path = "bar.cpp", .overlap = 1     },

@@ -306,9 +306,10 @@ public:
     /// The file defining an external symbol: an open buffer's own rows
     /// first — a buffer its own compile serves stays out of the project
     /// table until it closes — else the definition the project table
-    /// records. Invalid when neither knows one. Never walks the files
-    /// referencing the symbol, so it costs the same for a symbol every
-    /// file uses.
+    /// records, while that file's rows still hold it. Invalid when neither
+    /// knows one; of several files defining the symbol, one. Never walks
+    /// the files referencing the symbol, so it costs the same for a symbol
+    /// every file uses.
     Fid definition_file(SymbolHash hash) const;
 
     /// Go-to-definition from a cursor: the definition sites, or — standing

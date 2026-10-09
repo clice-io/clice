@@ -33,7 +33,7 @@ enum class Side : std::uint8_t {
     Fragment,
 };
 
-Side classify(Project& project, Fid file) {
+Side classify(const Project& project, Fid file) {
     llvm::StringRef path = project.file_table.resolve(file);
     auto extension = path::extension(path);
     if(extension == ".inc" || extension == ".def") {
@@ -57,12 +57,7 @@ bool separable(SymbolKind kind) {
 
 /// Directory steps from one directory to another.
 std::uint32_t steps(llvm::StringRef from, llvm::StringRef to) {
-    auto a = path::begin(from);
-    auto b = path::begin(to);
-    while(a != path::end(from) && b != path::end(to) && *a == *b) {
-        ++a;
-        ++b;
-    }
+    auto [a, b] = std::mismatch(path::begin(from), path::end(from), path::begin(to), path::end(to));
     return static_cast<std::uint32_t>(std::distance(a, path::end(from)) +
                                       std::distance(b, path::end(to)));
 }
@@ -81,12 +76,12 @@ unsigned signals(const Evidence& candidate) {
 struct Pairing {
     Context& ctx;
     Fid file;
-    std::string self;
+    CanonicalRef self;
     Side side;
 
     llvm::DenseMap<Fid, Side> sides{};
     llvm::DenseMap<Fid, const index::Shard*> rows{};
-    llvm::MapVector<Fid, Evidence> found{};
+    llvm::DenseMap<Fid, Evidence> found{};
 
     /// How many of the file's declarations (on the interface side) or
     /// definitions (on the implementation side) some candidate shares.
@@ -100,11 +95,15 @@ struct Pairing {
         return it->second;
     }
 
+    /// The rows saying what a file declares and defines: those serving it,
+    /// else its shard even when the text has moved on from it — positions
+    /// play no part in pairing, and a buffer edited since its last compile
+    /// must not lose its evidence.
     const index::Shard* rows_of(Fid other) {
         auto [it, inserted] = rows.try_emplace(other);
         if(inserted) {
             auto source = ctx.query.serving(other);
-            it->second = source ? source->rows : nullptr;
+            it->second = source ? source->rows : ctx.project.project_index.shard(other);
         }
         return it->second;
     }
@@ -120,26 +119,29 @@ struct Pairing {
         return it != scans.end() ? &it->second : nullptr;
     }
 
-    /// The declarations and definitions the file shares with files on the
-    /// other side: where each declaration is defined, and which interface
+    std::uint32_t distance_to(CanonicalRef other) const {
+        return steps(path::parent_path(self), path::parent_path(other));
+    }
+
+    /// The files on the other side sharing the file's declarations and
+    /// definitions: where each declaration is defined, and which interface
     /// files referencing a definition's symbol declare it.
-    void overlap() {
-        auto source = ctx.query.serving(file);
-        if(!source) {
+    void pair_by_declarations() {
+        auto* own = rows_of(file);
+        if(!own) {
             return;
         }
         constexpr std::uint8_t declares = 1;
         constexpr std::uint8_t defines = 2;
         llvm::DenseMap<index::SymbolHash, std::uint8_t> written;
-        source->rows->for_each_relation(
-            [&](index::SymbolHash hash, const index::Relation& relation) {
-                if(relation.kind == RelationKind::Declaration) {
-                    written[hash] |= declares;
-                } else if(relation.kind == RelationKind::Definition) {
-                    written[hash] |= defines;
-                }
-                return true;
-            });
+        own->for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
+            if(relation.kind == RelationKind::Declaration) {
+                written[hash] |= declares;
+            } else if(relation.kind == RelationKind::Definition) {
+                written[hash] |= defines;
+            }
+            return true;
+        });
         auto& table = ctx.project.project_index;
         for(auto [hash, bits]: written) {
             auto identity = table.identity_of(hash);
@@ -185,7 +187,7 @@ struct Pairing {
 
     /// A module implementation unit pairs with the interface of its module,
     /// a primary module interface with every unit implementing it.
-    void module_units() {
+    void pair_by_module() {
         auto& graph = ctx.project.dep_graph;
         if(auto* own = declaration_of(file); own && own->is_implementation_unit()) {
             for(auto interface: graph.lookup_module(own->module_name)) {
@@ -193,15 +195,15 @@ struct Pairing {
             }
             return;
         }
-        auto provided = graph.module_of(file).str();
-        if(provided.empty() || llvm::StringRef(provided).contains(':')) {
+        auto provided = graph.module_of(file);
+        if(provided.empty() || provided.contains(':')) {
             return;
         }
         for(auto unit: ctx.project.build.members()) {
             auto* declared = declaration_of(unit);
             if(declared && declared->is_implementation_unit() &&
                declared->module_name == provided) {
-                found[unit].module = provided;
+                found[unit].module = provided.str();
             }
         }
     }
@@ -212,19 +214,15 @@ struct Pairing {
     /// under `src/` including it, not two files of separate parts sharing a
     /// name, nor a system header and a project source. Of those the
     /// nearest, and any other the evidence so far already holds.
-    void same_name() {
-        auto& files = ctx.project.file_table;
+    void pair_by_name() {
         auto& graph = ctx.project.dep_graph;
         auto stem = path::stem(self);
         auto directory = path::parent_path(self);
         CanonicalRef root = ctx.project.config.workspace_root;
-        bool rooted = !root.empty() && path::under(self, llvm::StringRef(root));
-        auto includes = [&](Fid includer, Fid included) {
-            return llvm::is_contained(graph.get_all_includes(includer), included);
-        };
+        bool rooted = !root.empty() && path::under(self, root);
         llvm::SmallVector<std::pair<Fid, std::uint32_t>> named;
         for(auto other: graph.all_files()) {
-            llvm::StringRef other_path = files.resolve(other);
+            auto other_path = ctx.project.file_table.resolve(other);
             if(other == file || !path::stem(other_path).equals_insensitive(stem)) {
                 continue;
             }
@@ -232,15 +230,19 @@ struct Pairing {
             if(other_side == Side::Fragment || other_side == side) {
                 continue;
             }
-            auto other_directory = path::parent_path(other_path);
-            if(other_directory != directory &&
-               !(rooted && path::under(other_path, llvm::StringRef(root)) &&
-                 (includes(file, other) || includes(other, file)))) {
+            bool linked =
+                graph.count_includes(file, other) > 0 || graph.count_includes(other, file) > 0;
+            if(path::parent_path(other_path) != directory &&
+               !(rooted && path::under(other_path, root) && linked)) {
                 continue;
             }
-            named.emplace_back(other, steps(directory, other_directory));
+            // Includers keep naming a header deleted from disk.
+            if(!vfs::is_file(other_path)) {
+                continue;
+            }
+            named.emplace_back(other, distance_to(other_path));
         }
-        auto nearest = ~0u;
+        auto nearest = std::numeric_limits<std::uint32_t>::max();
         for(auto distance: llvm::make_second_range(named)) {
             nearest = std::min(nearest, distance);
         }
@@ -288,52 +290,50 @@ Ranking rank_counterparts(std::vector<Evidence> candidates) {
     return {.candidates = std::move(candidates), .decisive = decisive};
 }
 
-Outcome<CounterpartsResult> counterparts(Context& ctx, const Spelling& spelling) {
-    if(!vfs::is_file(spelling)) {
-        return std::unexpected(std::format("no such file: {}", spelling));
+Outcome<CounterpartsResult> counterparts(Context& ctx, const Spelling& path) {
+    if(!vfs::is_file(path)) {
+        return std::unexpected(std::format("no such file: {}", path));
     }
     auto& files = ctx.project.file_table;
-    auto file = files.intern(spelling);
+    auto file = files.intern(path);
     CounterpartsResult result{.file = files.display(file)};
     Pairing pairing{
         .ctx = ctx,
         .file = file,
-        .self = llvm::StringRef(files.resolve(file)).str(),
+        .self = files.resolve(file),
         .side = classify(ctx.project, file),
     };
     if(pairing.side == Side::Fragment) {
         return result;
     }
-    pairing.overlap();
-    pairing.module_units();
-    pairing.same_name();
+    if(!ctx.project.project_index.shard(file)) {
+        ctx.unindexed.push_back(result.file);
+    }
+    pairing.pair_by_declarations();
+    pairing.pair_by_module();
+    pairing.pair_by_name();
 
     std::vector<Evidence> candidates;
     for(auto& [other, evidence]: pairing.found) {
-        llvm::StringRef other_path = files.resolve(other);
+        auto other_path = files.resolve(other);
         if(!vfs::is_file(other_path)) {
             continue;
         }
         evidence.path = files.display(other);
-        evidence.distance = steps(path::parent_path(pairing.self), path::parent_path(other_path));
+        evidence.distance = pairing.distance_to(other_path);
         candidates.push_back(std::move(evidence));
     }
     auto ranking = rank_counterparts(std::move(candidates));
     bool interface = pairing.side == Side::Interface;
-    auto noun = [&](llvm::StringRef singular) {
-        return pairing.paired == 1 ? singular.str() : singular.str() + "s";
-    };
     for(auto& candidate: ranking.candidates) {
         CounterpartEntry entry{.path = std::move(candidate.path)};
         if(candidate.overlap > 0) {
-            entry.reasons.push_back(interface ? std::format("defines {} of {} {}",
-                                                            candidate.overlap,
-                                                            pairing.paired,
-                                                            noun("declaration"))
-                                              : std::format("declares {} of {} {}",
-                                                            candidate.overlap,
-                                                            pairing.paired,
-                                                            noun("definition")));
+            entry.reasons.push_back(std::format("{} {} of {} {}{}",
+                                                interface ? "defines" : "declares",
+                                                candidate.overlap,
+                                                pairing.paired,
+                                                interface ? "declaration" : "definition",
+                                                pairing.paired == 1 ? "" : "s"));
         }
         if(candidate.same_name) {
             entry.reasons.emplace_back("same name");
