@@ -251,10 +251,18 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
 }
 
 std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header) {
+    auto& files = project.file_table;
     if(auto it = project.project_index.manifests.find(host);
        it != project.project_index.manifests.end()) {
-        if(auto found = tree_enterings(project, host, header, it->second.tu_fv, it->second.nodes)) {
-            return found;
+        auto& manifest = it->second;
+        auto appeared =
+            llvm::any_of(manifest.absent,
+                         [&](VersionID place) { return files.version(place).fid == header; }) &&
+            files.present(header);
+        if(!appeared) {
+            if(auto found = tree_enterings(project, host, header, manifest.tu_fv, manifest.nodes)) {
+                return found;
+            }
         }
     }
     if(auto it = project.include_trees.find(host);

@@ -612,6 +612,35 @@ ZEST_CASE(StaleTreeFallsBack) {
     ZEXPECT(host->lines.empty());
 };
 
+ZEST_CASE(AppearedHeaderFallsBack) {
+    /// The indexed compile looked for `gen.h` and found nothing: while the
+    /// place stays empty the tree tells, once the header appears there the
+    /// lexical chain stands in.
+    TreeProject p;
+    llvm::StringRef main_text = "#include \"gen.h\"\n";
+    auto main = p.write("main.cpp", main_text);
+    auto gen = p.project.file_table.intern(Spelling::absolute(p.tmp.path("gen.h")));
+
+    index::TUManifest manifest;
+    manifest.tu_fv = VersionID{p.version(main, main_text)};
+    manifest.absent = {p.project.file_table.intern_version(gen, 0)};
+    p.project.project_index.manifests[main] = std::move(manifest);
+
+    auto missing = enterings(p.project, main, gen);
+    ZASSERT(missing);
+    ZEXPECT(missing->empty());
+
+    p.write("gen.h", "int make();\n");
+    p.project.file_table.disk.end_turn();
+    p.project.dep_graph.set_includes(main, 0, {{gen}});
+    p.project.dep_graph.build_reverse_map();
+    ZEXPECT(!enterings(p.project, main, gen).has_value());
+    auto host = default_host(p.project, gen);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{main, gen});
+    ZEXPECT(host->lexical);
+};
+
 ZEST_CASE(RepeatedHeaderChangeStales) {
     /// The header's guard decided its second include: once the header
     /// changes the tree cannot tell; a header included once keeps it.
