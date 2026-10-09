@@ -121,12 +121,13 @@ public:
         return ledger.pending_reason(server_path_id);
     }
 
-    /// Forget a file's pending-reindex state (reason and queue membership):
-    /// used when the file is removed from disk — nothing is left to reindex,
-    /// and a lingering ContentChanged reason would suppress its deliberately
-    /// still-serving shard forever. A queue slot already consumed stays
-    /// consumed; one not yet consumed is skipped at dispatch time (the
-    /// consume loop treats a missing ledger entry as a cleared slot).
+    /// Forget a file's pending-reindex debt: used when the file is removed
+    /// from disk — nothing is left to reindex, and a lingering
+    /// ContentChanged reason would suppress its deliberately still-serving
+    /// shard forever. A queue slot already consumed stays consumed; one not
+    /// yet consumed is skipped at dispatch time (the consume loop treats a
+    /// missing ledger entry as a cleared slot) unless the file is recorded
+    /// again first, which reuses it.
     void clear_pending(Fid server_path_id) {
         ledger.clear(server_path_id);
         settle_attempt_waits(server_path_id);
@@ -216,6 +217,9 @@ private:
     /// queue is compacted once a round has fully drained.
     std::vector<Fid> index_queue;
     std::size_t index_queue_pos = 0;
+    /// Where the running round's slots end. A slot past it waits for the
+    /// next round and may be a file the running round has in flight.
+    std::size_t round_end = 0;
 
     /// The pending-reindex debt: claim/settle bookkeeping, tickets and
     /// the crash-requeue budget live in the ledger. The pump-side rules
@@ -292,7 +296,6 @@ private:
     /// run_index_task per live slot, bounded by the feeder window.
     kota::task<> run_round_feeder(kota::task_group<>& workers,
                                   RoundState& round,
-                                  std::size_t round_end,
                                   std::size_t total,
                                   std::size_t& dispatched);
 
