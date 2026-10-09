@@ -141,13 +141,14 @@ public:
         return entries.count(id);
     }
 
-    /// Forget a file's debt and queued-slot state (file removed from
-    /// disk): nothing is left to reindex, and a lingering ContentChanged
-    /// reason would suppress its deliberately still-serving shard
-    /// forever.
+    /// Forget a file's debt (file removed from disk, or given up):
+    /// nothing is left to reindex, and a lingering ContentChanged reason
+    /// would suppress its deliberately still-serving shard forever. A slot
+    /// still in the queue keeps its mark: dispatch skips it, and a file
+    /// recorded again before then reuses it — a second slot would dispatch
+    /// the file twice in one round.
     void clear(Fid id) {
         entries.erase(id);
-        queued.erase(id);
     }
 
     /// Every file with booked debt (batch debt reporting).

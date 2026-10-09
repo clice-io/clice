@@ -849,14 +849,6 @@ std::uint64_t container_entity(CompilationUnitRef unit, const clang::FunctionDec
     return 0;
 }
 
-CodeAction define_action(std::string title, IndexRequest request) {
-    return CodeAction{
-        .title = std::move(title),
-        .kind = protocol::CodeActionKind::RefactorRewrite,
-        .index = std::move(request),
-    };
-}
-
 DefineRequest at_placement(const Placement& placement, std::vector<DefinitionPiece> pieces) {
     return DefineRequest{
         .range = {placement.offset, placement.offset},
@@ -893,12 +885,13 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
         auto written = written_declaration(decl)->getSourceRange();
         if(auto semicolon =
                main_range(unit, written) ? semicolon_after(unit, written.getEnd()) : std::nullopt) {
-            out.push_back(define_action(std::format("Define '{}' inline", name),
-                                        DefineRequest{
-                                            .range = {*semicolon, *semicolon + 1},
-                                            .before = " ",
-                                            .pieces = {{entity, "{}"}},
-            }));
+            out.push_back(CodeAction{
+                .title = std::format("Define '{}' inline", name),
+                .kind = action_kind::define_inline,
+                .index = DefineRequest{.range = {*semicolon, *semicolon + 1},
+                                       .before = " ",
+                                       .pieces = {{entity, "{}"}}},
+            });
         }
     }
 
@@ -911,21 +904,24 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
     }
     if(placement) {
         if(auto text = definition_text(unit, decl, placement->from, {.mark_inline = header_once})) {
-            out.push_back(
-                define_action(std::format("Define '{}' out of line", qualified(placement->from)),
-                              at_placement(*placement,
-                                           {
-                                               {entity, std::move(*text)}
-            })));
+            std::vector<DefinitionPiece> pieces{
+                {entity, std::move(*text)}
+            };
+            out.push_back(CodeAction{
+                .title = std::format("Define '{}' out of line", qualified(placement->from)),
+                .kind = action_kind::define_out_of_line,
+                .index = at_placement(*placement, std::move(pieces)),
+            });
         }
     }
     if(header_once) {
         if(auto text = definition_text(unit, decl, unit.tu())) {
-            out.push_back(define_action(std::format("Define '{}'", qualified(unit.tu())),
-                                        DefineInHostRequest{
-                                            .container = container_entity(unit, decl),
-                                            .pieces = {{entity, std::move(*text)}},
-                                        }));
+            out.push_back(CodeAction{
+                .title = std::format("Define '{}'", qualified(unit.tu())),
+                .kind = action_kind::define_out_of_line,
+                .index = DefineInHostRequest{.container = container_entity(unit, decl),
+                                             .pieces = {{entity, std::move(*text)}}},
+            });
         }
     }
 }
@@ -995,16 +991,21 @@ void define_missing(const Context& ctx, std::vector<CodeAction>& out) {
     auto title = std::format("Define missing members of '{}'", record->getName());
     if(placement) {
         if(auto same_file = pieces(placed, placement->from, false); !same_file.empty()) {
-            out.push_back(define_action(title, at_placement(*placement, std::move(same_file))));
+            out.push_back(CodeAction{
+                .title = title,
+                .kind = action_kind::define_missing,
+                .index = at_placement(*placement, std::move(same_file)),
+            });
         }
     }
     if(ctx.main_is_header) {
         if(auto host = pieces(missing, unit.tu(), true); !host.empty()) {
-            out.push_back(define_action(title,
-                                        DefineInHostRequest{
-                                            .container = unit.entity(outermost_record(record)),
-                                            .pieces = std::move(host),
-                                        }));
+            out.push_back(CodeAction{
+                .title = title,
+                .kind = action_kind::define_missing,
+                .index = DefineInHostRequest{.container = unit.entity(outermost_record(record)),
+                                             .pieces = std::move(host)},
+            });
         }
     }
 }

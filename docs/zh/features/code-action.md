@@ -9,6 +9,48 @@ clice 针对选区提供代码操作：依据编译器已掌握的信息生成�
 
 操作锚定在选区覆盖的最内层构造上——方法声明、类名、一个 `switch`、一个 `auto`——因此列表始终很短：点击方法名，列出的是适用于该方法的操作；点击类名，列出的则是适用于该类的操作。
 
+## 执行操作
+
+在 VS Code 中，光标处的操作可以通过灯泡图标和 `Ctrl+.` 打开，重构还会列在编辑器右键菜单的 **Refactor...** 中（`Ctrl+Shift+R`）。重命名符号（`F2`）是一个单独的请求，不属于代码操作。
+
+每种重构都有自己的代码操作种类（kind），因此编辑器可以只请求其中一种：
+
+| 操作                                 | 种类                                             |
+| ------------------------------------ | ------------------------------------------------ |
+| 就地定义方法                         | `refactor.rewrite.define.inline`                 |
+| 在类外定义函数，或定义到宿主源文件中 | `refactor.rewrite.define.outOfLine`              |
+| 定义类中缺失的成员                   | `refactor.rewrite.define.missing`                |
+| 实现纯虚方法                         | `refactor.rewrite.implementPureVirtuals`         |
+| 生成逐成员构造函数                   | `refactor.rewrite.generateMemberwiseConstructor` |
+| 为 switch 补上缺失的枚举分支         | `refactor.rewrite.populateSwitch`                |
+| 展开推导出的类型                     | `refactor.rewrite.expandDeducedType`             |
+| 按声明顺序重排定义                   | `refactor.rewrite.reorderDefinitions`            |
+| 展开宏                               | `refactor.inline.macro`                          |
+| 添加包含指令、应用诊断的修复         | `quickfix`                                       |
+
+VS Code 扩展为每种重构提供一条命令，命令名是 `clice.` 加上它的种类，在命令面板中的标题取自操作本身（“Clice: Add Missing Enum Cases to Switch”）。只给出一个操作时，命令会直接应用它，否则让你从中选择。在 `keybindings.json` 中可以为它绑定按键：
+
+```json
+{
+  "key": "ctrl+alt+s",
+  "command": "clice.refactor.rewrite.populateSwitch",
+  "when": "editorLangId == cpp"
+}
+```
+
+一个种类也涵盖它下面的各个种类：指定 `refactor.rewrite.define` 时，VS Code 自带的 `editor.action.codeAction` 命令会列出定义光标处函数的所有方式。
+
+```json
+{
+  "key": "ctrl+alt+d",
+  "command": "editor.action.codeAction",
+  "args": { "kind": "refactor.rewrite.define", "apply": "ifSingle" },
+  "when": "editorLangId == cpp"
+}
+```
+
+在 Neovim 中，`:LspCliceRefactor {kind}` 的作用相同。
+
 ## 定义函数
 
 <!-- BEGIN GENERATED ITEMS: define -->

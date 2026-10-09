@@ -3,5 +3,5 @@ created_at: 2026-10-01
 input_file: constrained_copy.cpp
 ---
 constrained:
-- [refactor.rewrite] Generate a memberwise constructor for 'Constrained'
+- [refactor.rewrite.generateMemberwiseConstructor] Generate a memberwise constructor for 'Constrained'
   17:0-17:0 => "    Constrained(Maybe<int> maybe, int count) : maybe(std::move(maybe)), count(count) {}\n"

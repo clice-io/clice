@@ -35,12 +35,16 @@ void IndexPump::boost(Fid server_path_id) {
         return;
     }
     // Front of the un-consumed tail: the file someone is reading beats
-    // the bulk backlog. A running round is not disturbed (its snapshot
-    // semantics stay, see run_background_indexing); the slot then leads
-    // the next round.
+    // the bulk backlog. A slot past the running round stays past it and
+    // leads the next round: the round may have the file in flight, and a
+    // second attempt there would join the same node, where only one of
+    // the two lands an outcome.
     auto begin = index_queue.begin() + index_queue_pos;
     auto it = std::find(begin, index_queue.end(), server_path_id);
     if(it != index_queue.end()) {
+        if(indexing_active && it >= index_queue.begin() + round_end) {
+            begin = index_queue.begin() + round_end;
+        }
         std::rotate(begin, it, it + 1);
     }
     schedule(/*immediate=*/true);
@@ -218,7 +222,6 @@ auto IndexPump::note_dispatch_failure(const PendingLedger::Claim& claim,
 
 kota::task<> IndexPump::run_round_feeder(kota::task_group<>& workers,
                                          RoundState& round,
-                                         std::size_t round_end,
                                          std::size_t total,
                                          std::size_t& dispatched) {
     while(index_queue_pos < round_end) {
@@ -469,7 +472,7 @@ kota::task<> IndexPump::run_background_indexing() {
     // waits for the next round; consuming a requeue in the round that
     // produced it is what let a worker outage spin the dispatch loop
     // against instant failures (#611).
-    auto round_end = index_queue.size();
+    round_end = index_queue.size();
     auto total = round_end - index_queue_pos;
     std::size_t dispatched = 0;
     RoundState round;
@@ -486,7 +489,7 @@ kota::task<> IndexPump::run_background_indexing() {
     // The dispatch loop runs as the first child of the group it fills, so a
     // shutdown cancel reaches the feeder and every in-flight task alike.
     co_await kota::with_task_group([&](kota::task_group<>& workers) {
-        return run_round_feeder(workers, round, round_end, total, dispatched);
+        return run_round_feeder(workers, round, total, dispatched);
     });
 
     // Skipped files bump `completed` without a Report emit; refresh the
@@ -503,6 +506,7 @@ kota::task<> IndexPump::run_background_indexing() {
         assert(!ledger.has_queued_slots() && "a drained queue must leave no unconsumed slot");
         index_queue.clear();
         index_queue_pos = 0;
+        round_end = 0;
     }
 
     LOG_PERF("index",
