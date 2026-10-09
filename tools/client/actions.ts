@@ -2,15 +2,15 @@
 /// of a sample project through actions of two kinds: basic ones — one LSP
 /// message, one disk operation or one test-hook call — and composite ones
 /// built only from basic and other composite actions. Every wait ends on a
-/// server event: the publish of the version sent last, a reply,
-/// clice/internal/sync, a parked reply, an exit; none sleeps or polls.
-/// Every action is a step of the case's record, which a failing case
-/// prints together with the work the server still had.
+/// server event: a reply, clice/internal/sync, a parked reply, an exit;
+/// none sleeps or polls. Every action is a step of the case's record, which
+/// a failing case prints together with the work the server still had.
 ///
 /// Positions and edits are values: `at(file, anchor)` names the unique
 /// snippet `anchor` of the file (its `|`, if any, marks the cursor), and a
-/// Change names what it replaces by such a snippet, so a scenario carries
-/// no line or column and the sample projects carry no markers.
+/// Change names what it replaces by such a snippet, so neither a position
+/// nor an edit spells a line or column, and the sample projects carry no
+/// markers.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -37,8 +37,8 @@ export function at(file: string, anchor: string): Loc {
     return { file, anchor };
 }
 
-/// A change to a text, by the unique snippets it touches; `text` replaces
-/// the whole of it.
+/// A change to a text, by the unique snippets it touches, taken literally;
+/// `text` replaces the whole of it.
 export type Change =
     | { replace: string; with: string }
     | { after: string; insert: string }
@@ -46,57 +46,56 @@ export type Change =
     | { remove: string }
     | { text: string };
 
-function quote(text: string): string {
-    return JSON.stringify(text);
-}
-
-/// Where the one occurrence of `snippet` lies in `text`, which `where`
-/// names in the error when there is none or several.
-function span(text: string, snippet: string, where: string): { begin: number; end: number } {
+/// Where the one occurrence of `snippet` lies in `text`; an error naming
+/// `where` when it occurs never or more than once.
+export function uniqueSpan(
+    text: string,
+    snippet: string,
+    where: string,
+): { begin: number; end: number } {
     const begin = text.indexOf(snippet);
     if (begin < 0) {
-        throw new Error(`${where} has no ${quote(snippet)}`);
+        throw new Error(`${where} has no ${JSON.stringify(snippet)}`);
     }
     if (text.includes(snippet, begin + 1)) {
-        throw new Error(`${where} has ${quote(snippet)} more than once`);
+        throw new Error(`${where} has ${JSON.stringify(snippet)} more than once`);
     }
     return { begin, end: begin + snippet.length };
 }
 
-/// The offset `anchor` marks in `text`.
-export function offsetOf(text: string, anchor: string, where: string): number {
+/// The snippet an `at()` anchor stands for, and where its cursor is in it.
+export function anchorSnippet(anchor: string): { snippet: string; cursor: number } {
     const bar = anchor.indexOf("|");
-    if (bar < 0) {
-        return span(text, anchor, where).begin;
-    }
-    return span(text, anchor.slice(0, bar) + anchor.slice(bar + 1), where).begin + bar;
+    return bar < 0
+        ? { snippet: anchor, cursor: 0 }
+        : { snippet: anchor.slice(0, bar) + anchor.slice(bar + 1), cursor: bar };
 }
 
 /// The LSP position of `offset`: JavaScript strings index UTF-16 code
 /// units, as LSP characters count.
-export function positionOf(text: string, offset: number): proto.Position {
+function utf16Position(text: string, offset: number): proto.Position {
     const before = text.slice(0, offset);
     const line = before.split("\n").length - 1;
     return { line, character: offset - (before.lastIndexOf("\n") + 1) };
 }
 
-export function applyChange(text: string, change: Change, where: string): string {
+function applyChange(text: string, change: Change, where: string): string {
     if ("text" in change) {
         return change.text;
     }
     if ("replace" in change) {
-        const { begin, end } = span(text, change.replace, where);
+        const { begin, end } = uniqueSpan(text, change.replace, where);
         return text.slice(0, begin) + change.with + text.slice(end);
     }
     if ("after" in change) {
-        const { end } = span(text, change.after, where);
+        const { end } = uniqueSpan(text, change.after, where);
         return text.slice(0, end) + change.insert + text.slice(end);
     }
     if ("before" in change) {
-        const { begin } = span(text, change.before, where);
+        const { begin } = uniqueSpan(text, change.before, where);
         return text.slice(0, begin) + change.insert + text.slice(begin);
     }
-    const { begin, end } = span(text, change.remove, where);
+    const { begin, end } = uniqueSpan(text, change.remove, where);
     return text.slice(0, begin) + text.slice(end);
 }
 
@@ -105,19 +104,19 @@ function describe(change: Change): string {
         return "replace the text";
     }
     if ("replace" in change) {
-        return `replace ${quote(change.replace)} with ${quote(change.with)}`;
+        return `replace ${JSON.stringify(change.replace)} with ${JSON.stringify(change.with)}`;
     }
     if ("after" in change) {
-        return `insert ${quote(change.insert)} after ${quote(change.after)}`;
+        return `insert ${JSON.stringify(change.insert)} after ${JSON.stringify(change.after)}`;
     }
     if ("before" in change) {
-        return `insert ${quote(change.insert)} before ${quote(change.before)}`;
+        return `insert ${JSON.stringify(change.insert)} before ${JSON.stringify(change.before)}`;
     }
-    return `remove ${quote(change.remove)}`;
+    return `remove ${JSON.stringify(change.remove)}`;
 }
 
 function describeLoc(loc: Loc): string {
-    return `${loc.file} at ${quote(loc.anchor)}`;
+    return `${loc.file} at ${JSON.stringify(loc.anchor)}`;
 }
 
 interface Step {
@@ -129,7 +128,7 @@ interface Step {
 }
 
 /// The actions a case ran, a composite's own nested a level below it.
-export class StepRecord {
+class StepRecord {
     private steps: Step[] = [];
     private depth = 0;
 
@@ -193,7 +192,7 @@ export interface Hold {
     release(): Promise<void>;
 }
 
-export interface BuildCounts {
+interface BuildCounts {
     compile: number;
     pch: number;
     pcm: number;
@@ -255,7 +254,7 @@ export class Serve {
 
     /// A copy of `project` (or of the loose `options.files`) with a server
     /// started on it.
-    static async start(
+    static async create(
         session: SessionFactory,
         project: string | null,
         options: ServeOptions,
@@ -281,13 +280,13 @@ export class Serve {
         return s;
     }
 
-    // === Names ===========================================================
-
     /// The file a logical name of the manifest stands for.
     file(name: string): string {
         const file = this.manifest.files?.[name];
         if (file === undefined) {
-            throw new Error(`${this.project ?? "the workspace"} names no file ${quote(name)}`);
+            throw new Error(
+                `${this.project ?? "the workspace"} names no file ${JSON.stringify(name)}`,
+            );
         }
         return file;
     }
@@ -304,12 +303,10 @@ export class Serve {
         return relative.startsWith("..") ? file : relative.split(path.sep).join("/");
     }
 
-    // === Documents =======================================================
-
     /// didOpen with the file's disk text, and a request a compile starts
     /// on; neither waits.
     open(file: string): void {
-        this.openWith(file, this.disk.read(file));
+        this.openWith(file, this.workspace.read(file));
     }
 
     edit(file: string, ...changes: Change[]): void {
@@ -360,93 +357,75 @@ export class Serve {
         },
     };
 
-    /// The diagnostics of the version of `file` sent last, as published.
-    /// Asks for the compile that publishes them, which runs only when a
-    /// request needs it.
-    async diagnostics(file: string): Promise<proto.Diagnostic[]> {
+    /// The diagnostics of `file` as it stands, as the push to the editor
+    /// carries them: a pull (textDocument/diagnostic) waits for the compile
+    /// of the version sent last, which a hover answered from the index
+    /// would not, and its answer is the push's content.
+    diagnostics(file: string): Promise<proto.Diagnostic[]> {
         const version = this.document(file).version;
-        return this.steps.run(`diagnostics ${file} v${version}`, async () => {
-            const client = this.live();
-            const uri = this.uri(file);
-            let asked = false;
-            for (;;) {
-                const last = client.lastPublish(uri);
-                if (last?.version === version) {
-                    return last.diagnostics;
-                }
-                const next = client.armDiagnostics(uri);
-                if (!asked) {
-                    this.askCompile(uri);
-                    asked = true;
-                }
-                await next;
-            }
-        });
+        return this.ask(`diagnostics ${file} v${version}`, (client) =>
+            client.pullDiagnostics(this.uri(file)),
+        );
     }
 
-    // === Requests ========================================================
-
     hover(loc: Loc): Promise<proto.Hover | null> {
+        const { uri, position } = this.place(loc);
         return this.ask(`hover ${describeLoc(loc)}`, (client) =>
-            client.sendRequest(proto.HoverRequest.type, this.positionParams(loc)),
+            client.hoverAt(uri, position.line, position.character),
         );
     }
 
     definition(loc: Loc): Promise<proto.Definition | proto.LocationLink[] | null> {
+        const { uri, position } = this.place(loc);
         return this.ask(`definition ${describeLoc(loc)}`, (client) =>
-            client.sendRequest(proto.DefinitionRequest.type, this.positionParams(loc)),
+            client.definitionAt(uri, position.line, position.character),
         );
     }
 
     references(loc: Loc): Promise<proto.Location[] | null> {
+        const { uri, position } = this.place(loc);
         return this.ask(`references ${describeLoc(loc)}`, (client) =>
-            client.sendRequest(proto.ReferencesRequest.type, {
-                ...this.positionParams(loc),
-                context: { includeDeclaration: true },
-            }),
+            client.referencesAt(uri, position.line, position.character),
         );
     }
 
     codeActions(loc: Loc): Promise<(proto.Command | proto.CodeAction)[] | null> {
-        const position = this.positionParams(loc).position;
+        const { uri, position } = this.place(loc);
         return this.ask(`codeActions ${describeLoc(loc)}`, (client) =>
-            client.sendRequest(proto.CodeActionRequest.type, {
-                textDocument: { uri: this.uri(loc.file) },
-                range: { start: position, end: position },
-                context: { diagnostics: [] },
-            }),
+            client.codeActions(uri, { start: position, end: position }),
         );
     }
 
     workspaceSymbols(
         query: string,
     ): Promise<proto.SymbolInformation[] | proto.WorkspaceSymbol[] | null> {
-        return this.ask(`workspaceSymbols ${quote(query)}`, (client) =>
-            client.sendRequest(proto.WorkspaceSymbolRequest.type, { query }),
+        return this.ask(`workspaceSymbols ${JSON.stringify(query)}`, (client) =>
+            client.workspaceSymbols(query),
         );
     }
 
     /// Any request about a document, at a position when `where` is a Loc;
     /// `extra` joins the parameters.
     request(method: string, where: string | Loc, extra: object = {}): Promise<unknown> {
-        const target =
-            typeof where === "string"
-                ? { textDocument: { uri: this.uri(where) } }
-                : this.positionParams(where);
+        let target: object;
+        if (typeof where === "string") {
+            target = { textDocument: { uri: this.uri(where) } };
+        } else {
+            const { uri, position } = this.place(where);
+            target = { textDocument: { uri }, position };
+        }
         const name = typeof where === "string" ? where : describeLoc(where);
         return this.ask(`${method} ${name}`, (client) =>
             client.sendRequest(method, { ...target, ...extra }),
         );
     }
 
-    // === Server ==========================================================
-
     /// Wait until the server has no work left (clice/internal/sync) — after
     /// a look at the disk with `poll`; the server answering with work still
     /// pending at its deadline fails the step with that work.
     sync(options: { poll?: boolean } = {}): Promise<SyncState> {
-        return this.steps.run(options.poll === true ? "sync after a poll" : "sync", async () => {
-            const result = await this.live().sync(options);
+        return this.ask(options.poll === true ? "sync after a poll" : "sync", async (client) => {
+            const result = await client.sync(options);
             if (result.pending.length > 0) {
                 throw new Error(`the server did not settle:\n${result.pending.join("\n")}`);
             }
@@ -489,17 +468,16 @@ export class Serve {
     /// Hold the next reply of a `kind` build of `file`; resolves once the
     /// hold is in place.
     async hold(kind: BuildKind, file: string): Promise<Hold> {
-        const client = this.live();
-        const id = await this.steps.run(`hold ${kind} ${file}`, () =>
+        const id = await this.ask(`hold ${kind} ${file}`, (client) =>
             client.hold(kind, this.uri(file)),
         );
         return {
             id,
             reached: () =>
-                this.steps.run(`hold ${id} parks the ${kind} of ${file}`, () =>
+                this.ask(`hold ${id} parks the ${kind} of ${file}`, (client) =>
                     client.parkedBy(id),
                 ),
-            release: () => this.steps.run(`release hold ${id}`, () => client.release(id)),
+            release: () => this.ask(`release hold ${id}`, (client) => client.release(id)),
         };
     }
 
@@ -547,7 +525,7 @@ export class Serve {
             try {
                 json = JSON.parse(run.stdout);
             } catch {
-                json = undefined;
+                // Not JSON.
             }
             return { status: run.status, stdout: run.stdout, stderr: run.stderr, json };
         });
@@ -582,8 +560,6 @@ export class Serve {
         }
         throw new Error(`no rendering for ${JSON.stringify(value)}`);
     }
-
-    // === Composite actions ===============================================
 
     /// The diagnostics of `file` as it stands, opening it first if needed.
     compiled(file: string): Promise<proto.Diagnostic[]> {
@@ -665,12 +641,13 @@ export class Serve {
         loc: Loc,
         title: string,
     ): Promise<{ text: string; diagnostics: proto.Diagnostic[] }> {
-        return this.steps.run(`apply ${quote(title)} at ${describeLoc(loc)}`, async () => {
+        return this.steps.run(`apply ${JSON.stringify(title)} at ${describeLoc(loc)}`, async () => {
             const actions = actionsOf(await this.codeActions(loc));
             const action = actions.find((candidate) => candidate.title === title);
             if (action?.edit === undefined) {
+                const offered = actions.map((a) => JSON.stringify(a.title)).join(", ");
                 throw new Error(
-                    `no action ${quote(title)} with an edit; offered: ${actions.map((a) => quote(a.title)).join(", ")}`,
+                    `no action ${JSON.stringify(title)} with an edit; offered: ${offered}`,
                 );
             }
             await this.apply(action.edit);
@@ -705,10 +682,11 @@ export class Serve {
     }
 
     /// Run `body` while a `kind` build of `file` is in flight: the hold is
-    /// placed, `begin` starts the build, and `body` runs once its reply is
-    /// parked; the reply goes on after `body`, failing or not. What `body`
-    /// returns is returned — a promise wrapped in an object, or it would be
-    /// awaited before the build goes on.
+    /// placed, `begin` starts the build — none of it may be under way
+    /// before, or its reply is the one parked — and `body` runs once the
+    /// reply is parked; the reply goes on after `body`, failing or not.
+    /// What `body` returns is returned: a promise wrapped in an object, or
+    /// it would be awaited before the build goes on.
     inFlight<T>(
         kind: BuildKind,
         file: string,
@@ -727,16 +705,15 @@ export class Serve {
         });
     }
 
-    /// Stop the server, remove its cache and start one again.
+    /// Stop the server, remove its cache — the logs stay — and start one
+    /// again.
     cold(): Promise<void> {
         return this.steps.run("cold start", async () => {
             await this.stop();
-            this.workspace.rm(".clice");
+            this.workspace.rm(".clice/cache");
             await this.start();
         });
     }
-
-    // === Teardown ========================================================
 
     /// End the case before the session's teardown: a failed case prints its
     /// steps and the work the server still had; the server is shut down
@@ -765,7 +742,7 @@ export class Serve {
         }
         if (this.options.killOn !== undefined) {
             if (!this.workspace.exists(`${this.killFile()}.taken`)) {
-                throw new Error(`killOn: no worker ran ${quote(this.options.killOn)}`);
+                throw new Error(`killOn: no worker ran ${JSON.stringify(this.options.killOn)}`);
             }
             const others = anomaliesInLogFiles(this.workspace.root).filter(
                 (anomaly) => !anomaly.startsWith("WorkerCrash "),
@@ -775,8 +752,6 @@ export class Serve {
             }
         }
     }
-
-    // === Internals =======================================================
 
     private live(): CliceClient {
         if (this.server === null) {
@@ -800,29 +775,31 @@ export class Serve {
 
     private openWith(file: string, text: string): void {
         this.steps.note(`open ${file}`);
-        const [uri] = this.live().open(file, 0, { text });
+        const client = this.live();
+        const [uri] = client.open(file, 0, { text });
         this.documents.set(file, { version: 0, text });
-        this.askCompile(uri);
+        // The compile starts on a request that needs it; its answer is not
+        // the point.
+        void client.pullDiagnostics(uri).catch(() => undefined);
     }
 
-    /// A compile starts on a request that needs the AST; its answer is not
-    /// the point.
-    private askCompile(uri: string): void {
-        this.live()
-            .hoverAt(uri, 0, 0)
-            .catch(() => undefined);
-    }
-
-    private positionParams(loc: Loc): proto.TextDocumentPositionParams {
+    private place(loc: Loc): { uri: string; position: proto.Position } {
         const text = this.text(loc.file);
-        return {
-            textDocument: { uri: this.uri(loc.file) },
-            position: positionOf(text, offsetOf(text, loc.anchor, loc.file)),
-        };
+        const { snippet, cursor } = anchorSnippet(loc.anchor);
+        const { begin } = uniqueSpan(text, snippet, loc.file);
+        return { uri: this.uri(loc.file), position: utf16Position(text, begin + cursor) };
     }
 
+    /// Run `body` as the step `text` against the live server; the server
+    /// exiting meanwhile ends the wait.
     private ask<T>(text: string, body: (client: CliceClient) => Promise<T>): Promise<T> {
-        return this.steps.run(text, () => body(this.live()));
+        return this.steps.run(text, () => {
+            const client = this.live();
+            const exited = client.exited.then((code) => {
+                throw new Error(`the server exited (code ${String(code)})`);
+            });
+            return Promise.race([body(client), exited]);
+        });
     }
 
     private showLocation(uri: string, range: proto.Range): string {

@@ -1,9 +1,9 @@
 /// Integration tests for persistent PCH/PCM cache.
 ///
 /// Verifies that PCH/PCM artifacts are written to the versioned cache
-/// store ({pch,pcm}/ namespaces) with content-addressed filenames,
-/// survive server restarts via the artifact metadata persisted in the
-/// index database, and are properly reused across sessions.
+/// store ({pch,pcm}/ namespaces) with content-addressed filenames, and how
+/// a cache a server left behind is recovered or rebuilt. Reuse across a
+/// restart is in serve/compile/persistent_cache.test.ts.
 
 import * as fs from "node:fs";
 import * as path from "node:path";

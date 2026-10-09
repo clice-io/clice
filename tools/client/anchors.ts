@@ -7,13 +7,16 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import ts from "typescript";
-import { PROJECTS_DIR, type Manifest } from "./project.ts";
+import { anchorSnippet, uniqueSpan } from "./actions.ts";
+import { PROJECTS_DIR, readManifest } from "./project.ts";
 
 /// An anchor a scenario names: in a file by path, or by the logical name
-/// the projects' manifests map.
+/// the projects' manifests map; an `at()` snippet carries a cursor mark,
+/// an edit's is literal.
 interface Use {
     file: { path: string } | { logical: string };
     anchor: string;
+    cursor: boolean;
     node: ts.Node;
 }
 
@@ -51,7 +54,7 @@ function usesIn(root: ts.Node): Use[] {
                 const file = fileOf(node.arguments[0]);
                 const anchor = literal(node.arguments[1]);
                 if (file !== undefined && anchor !== undefined) {
-                    uses.push({ file, anchor, node });
+                    uses.push({ file, anchor, cursor: true, node });
                 }
             }
             if (ts.isPropertyAccessExpression(callee) && callee.name.text === "edit") {
@@ -70,7 +73,7 @@ function usesIn(root: ts.Node): Use[] {
                         }
                         const anchor = literal(property.initializer);
                         if (anchor !== undefined) {
-                            uses.push({ file, anchor, node: property });
+                            uses.push({ file, anchor, cursor: false, node: property });
                         }
                     }
                 }
@@ -80,47 +83,6 @@ function usesIn(root: ts.Node): Use[] {
     };
     visit(root);
     return uses;
-}
-
-/// The projects a `serve(...)` or `serve.each(...)` call names; undefined
-/// for another call. `serve.each` takes an array literal or the keys of an
-/// object literal declared in the file.
-function servedProjects(node: ts.Node, source: ts.SourceFile): string[] | undefined {
-    if (!ts.isCallExpression(node)) {
-        return undefined;
-    }
-    const callee = node.expression;
-    if (ts.isIdentifier(callee) && callee.text === "serve") {
-        const project = literal(node.arguments[0]);
-        return project === undefined ? undefined : [project];
-    }
-    if (
-        !ts.isPropertyAccessExpression(callee) ||
-        !ts.isIdentifier(callee.expression) ||
-        callee.expression.text !== "serve" ||
-        callee.name.text !== "each"
-    ) {
-        return undefined;
-    }
-    const list = node.arguments[0];
-    if (list !== undefined && ts.isArrayLiteralExpression(list)) {
-        return list.elements.flatMap((element) => literal(element) ?? []);
-    }
-    // Object.keys(TABLE)
-    if (list !== undefined && ts.isCallExpression(list)) {
-        const table = list.arguments[0];
-        if (table !== undefined && ts.isIdentifier(table)) {
-            const declaration = findConst(source, table.text);
-            if (declaration !== undefined && ts.isObjectLiteralExpression(declaration)) {
-                return declaration.properties.flatMap((property) =>
-                    property.name !== undefined && ts.isStringLiteral(property.name)
-                        ? [property.name.text]
-                        : [],
-                );
-            }
-        }
-    }
-    return [];
 }
 
 /// The initializer of the file's `const name = ...`, `as const` unwrapped.
@@ -142,13 +104,61 @@ function findConst(source: ts.SourceFile, name: string): ts.Expression | undefin
     return undefined;
 }
 
+/// The projects a `serve(...)`, `serve.each(...)` or `serve.files(...)`
+/// call runs on — none for loose files; undefined for another call, and an
+/// error for a list the check cannot read: an array literal, a constant of
+/// the file bound to one, or the keys of an object literal declared in it.
+function servedProjects(node: ts.Node, source: ts.SourceFile): string[] | Error | undefined {
+    if (!ts.isCallExpression(node)) {
+        return undefined;
+    }
+    const callee = node.expression;
+    if (ts.isIdentifier(callee) && callee.text === "serve") {
+        const project = literal(node.arguments[0]);
+        return project === undefined ? new Error("serve() names no project literally") : [project];
+    }
+    if (
+        !ts.isPropertyAccessExpression(callee) ||
+        !ts.isIdentifier(callee.expression) ||
+        callee.expression.text !== "serve"
+    ) {
+        return undefined;
+    }
+    if (callee.name.text === "files") {
+        return [];
+    }
+    let list = node.arguments[0];
+    if (list !== undefined && ts.isIdentifier(list)) {
+        list = findConst(source, list.text);
+    }
+    if (list !== undefined && ts.isArrayLiteralExpression(list)) {
+        return list.elements.flatMap((element) => literal(element) ?? []);
+    }
+    const table =
+        list !== undefined &&
+        ts.isCallExpression(list) &&
+        list.expression.getText(source) === "Object.keys"
+            ? list.arguments[0]
+            : undefined;
+    const declaration =
+        table !== undefined && ts.isIdentifier(table) ? findConst(source, table.text) : undefined;
+    if (declaration === undefined || !ts.isObjectLiteralExpression(declaration)) {
+        return new Error("serve.each() names its projects in a way the check cannot read");
+    }
+    return declaration.properties.flatMap((property) =>
+        property.name !== undefined && ts.isStringLiteral(property.name)
+            ? [property.name.text]
+            : [],
+    );
+}
+
 /// The projects behind a test call's callee: `serve(...)`, a constant
 /// bound to one, either followed by `.for(...)`.
 function calleeProjects(
     callee: ts.Expression,
     source: ts.SourceFile,
-    bound: Map<string, string[]>,
-): string[] | undefined {
+    bound: Map<string, string[] | Error>,
+): string[] | Error | undefined {
     if (
         ts.isCallExpression(callee) &&
         ts.isPropertyAccessExpression(callee.expression) &&
@@ -162,14 +172,42 @@ function calleeProjects(
     return servedProjects(callee, source);
 }
 
-function checkFile(testFile: string, projectsDir: string): string[] {
+function checkUse(use: Use, project: string): string | undefined {
+    let file: string;
+    if ("logical" in use.file) {
+        const mapped = readManifest(project).files?.[use.file.logical];
+        if (mapped === undefined) {
+            return `no file is named ${JSON.stringify(use.file.logical)}`;
+        }
+        file = mapped;
+    } else {
+        file = use.file.path;
+    }
+    const full = path.join(PROJECTS_DIR, project, file);
+    if (!fs.existsSync(full)) {
+        return `no file ${file}`;
+    }
+    const snippet = use.cursor ? anchorSnippet(use.anchor).snippet : use.anchor;
+    try {
+        uniqueSpan(fs.readFileSync(full, "utf8"), snippet, file);
+        return undefined;
+    } catch (error) {
+        return (error as Error).message;
+    }
+}
+
+function checkFile(testFile: string): string[] {
     const source = ts.createSourceFile(
         testFile,
         fs.readFileSync(testFile, "utf8"),
         ts.ScriptTarget.Latest,
         true,
     );
-    const bound = new Map<string, string[]>();
+    const where = (node: ts.Node): string =>
+        `${path.basename(testFile)}:${source.getLineAndCharacterOfPosition(node.getStart()).line + 1}`;
+    const problems: string[] = [];
+
+    const bound = new Map<string, string[] | Error>();
     for (const statement of source.statements) {
         if (!ts.isVariableStatement(statement)) {
             continue;
@@ -193,7 +231,9 @@ function checkFile(testFile: string, projectsDir: string): string[] {
         if (ts.isCallExpression(node)) {
             const projects = calleeProjects(node.expression, source, bound);
             const body = node.arguments.at(-1);
-            if (projects !== undefined && body !== undefined && ts.isFunctionLike(body)) {
+            if (projects instanceof Error) {
+                problems.push(`${where(node)}: ${projects.message}`);
+            } else if (projects !== undefined && body !== undefined && ts.isFunctionLike(body)) {
                 bodies.push({ body, projects });
                 const table = ts.isCallExpression(node.expression)
                     ? node.expression.arguments[0]
@@ -222,44 +262,18 @@ function checkFile(testFile: string, projectsDir: string): string[] {
         .filter((use) => !inBodies.has(use.node))
         .map((use) => ({ use, projects: everywhere }));
 
-    const problems: string[] = [];
     for (const { use, projects } of [...scoped, ...loose]) {
-        const line = source.getLineAndCharacterOfPosition(use.node.getStart()).line + 1;
-        const where = `${path.basename(testFile)}:${line}`;
         for (const project of projects) {
-            const problem = checkUse(use, path.join(projectsDir, project));
+            const problem = checkUse(use, project);
             if (problem !== undefined) {
-                problems.push(`${where}: ${project}: ${problem}`);
+                problems.push(`${where(use.node)}: ${project}: ${problem}`);
             }
         }
     }
     return problems;
 }
 
-function checkUse(use: Use, projectDir: string): string | undefined {
-    let file: string;
-    if ("logical" in use.file) {
-        const manifest = JSON.parse(
-            fs.readFileSync(path.join(projectDir, "project.json"), "utf8"),
-        ) as Manifest;
-        const mapped = manifest.files?.[use.file.logical];
-        if (mapped === undefined) {
-            return `no file is named ${JSON.stringify(use.file.logical)}`;
-        }
-        file = mapped;
-    } else {
-        file = use.file.path;
-    }
-    const full = path.join(projectDir, file);
-    if (!fs.existsSync(full)) {
-        return `no file ${file}`;
-    }
-    const snippet = use.anchor.replace("|", "");
-    const count = fs.readFileSync(full, "utf8").split(snippet).length - 1;
-    return count === 1 ? undefined : `${file} has ${JSON.stringify(snippet)} ${count} times`;
-}
-
 /// Every anchor problem of the scenarios in `testFiles`, one line each.
-export function checkAnchors(testFiles: readonly string[], projectsDir = PROJECTS_DIR): string[] {
-    return testFiles.flatMap((file) => checkFile(file, projectsDir));
+export function checkAnchors(testFiles: readonly string[]): string[] {
+    return testFiles.flatMap(checkFile);
 }

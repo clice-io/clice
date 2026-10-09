@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { expect, test } from "vitest";
 import { checkAnchors } from "@clice/tools/anchors";
+import { PROJECTS_DIR, readManifest } from "@clice/tools/project";
 
 const INTEGRATION = path.join(import.meta.dirname, "..", "integration");
 
@@ -35,11 +36,29 @@ test("a missing anchor is reported", () => {
     );
     try {
         expect(checkAnchors([file])).toEqual([
-            'case.test.ts:3: tiny: main.cpp has "return" 2 times',
-            'case.test.ts:7: shapes/modules: src/registry.cpp has "#include" 0 times',
+            'case.test.ts:3: tiny: main.cpp has "return" more than once',
+            'case.test.ts:7: shapes/modules: src/registry.cpp has no "#include"',
             "case.test.ts:8: shapes/modules: no file include/shapes/registry.h",
         ]);
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test("variants name the same files", () => {
+    const shapes = path.join(PROJECTS_DIR, "shapes");
+    const variants = fs.readdirSync(shapes).map((variant) => `shapes/${variant}`);
+    const names = variants.map((variant) => {
+        const files = readManifest(variant).files ?? {};
+        for (const [name, file] of Object.entries(files)) {
+            expect(
+                fs.existsSync(path.join(PROJECTS_DIR, variant, file)),
+                `${variant} ${name}`,
+            ).toBe(true);
+        }
+        return Object.keys(files).sort();
+    });
+    for (const other of names.slice(1)) {
+        expect(other).toEqual(names[0]);
     }
 });

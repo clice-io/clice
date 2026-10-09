@@ -7,7 +7,10 @@ serve("shapes/headers", { killOn: "tuRun src/registry.cpp" })(
     "crash during indexing",
     async ({ s }) => {
         await s.indexed();
-        expect((await s.counts()).files["src/registry.cpp"]?.index).toBe(2);
+        const counts = await s.counts();
+        for (const unit of Object.keys(s.manifest.units)) {
+            expect(counts.files[unit]?.index, unit).toBe(unit === "src/registry.cpp" ? 2 : 1);
+        }
         expect(s.show(await s.workspaceSymbols("registry_count"))).toBe(
             "registry_count src/registry.cpp: int registry_count() {",
         );

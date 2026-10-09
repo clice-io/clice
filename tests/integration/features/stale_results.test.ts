@@ -28,8 +28,8 @@ import * as proto from "vscode-languageserver-protocol";
 import { SLOW_SOURCE as SLOW, sleep } from "@clice/tools/client";
 import { test, expect } from "../fixtures.ts";
 
-// Completion skips most of the work a full build does and can finish the
-// body within EDIT_SUPERSEDE_DELAY on a fast machine.
+// Completion skips most of the work a full build does: the edit has to land
+// much sooner than one superseding a full build would.
 const COMPLETION_EDIT_DELAY = 30;
 
 test("edit mid-flight still completes", async ({ session }) => {

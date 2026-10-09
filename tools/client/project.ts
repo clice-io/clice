@@ -7,7 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { REPO_ROOT } from "../compile_commands.ts";
+import { posix, REPO_ROOT } from "../compile_commands.ts";
 import type { Workspace } from "./workspace.ts";
 
 export const PROJECTS_DIR = path.join(REPO_ROOT, "tests", "projects");
@@ -42,10 +42,6 @@ export function looseManifest(files: Iterable<string>): Manifest {
         }
     }
     return { cxx: ["-std=c++23"], c: ["-std=c17"], units };
-}
-
-function posix(p: string): string {
-    return p.split(path.sep).join("/");
 }
 
 /// Write the compilation database `manifest` describes at the root of

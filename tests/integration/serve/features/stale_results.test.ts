@@ -31,11 +31,14 @@ serve("tiny", { config: { project: { enable_indexing: false } } }).for(FEATURES)
             () => {
                 s.open("main.cpp");
             },
-            () => {
+            async () => {
                 const reply = s.request(method, where, extra).then(
                     () => null,
                     (error: unknown) => error,
                 );
+                // Any later reply: the server took the request up before,
+                // and it waits on the parked compile when the edit arrives.
+                await s.counts();
                 s.edit("main.cpp", { after: "int main() {", insert: " " });
                 return { reply };
             },

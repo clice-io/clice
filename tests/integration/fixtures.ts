@@ -16,7 +16,7 @@ import type { Workspace } from "@clice/tools/workspace";
 import { sessionFixture } from "../session_fixture.ts";
 
 export { expect } from "vitest";
-export { at, type Change, type Loc, type Serve } from "@clice/tools/actions";
+export { at, type Loc } from "@clice/tools/actions";
 export { cliceExecutable, type Session, type SessionFactory, type SessionOptions };
 
 export const test = base.extend<{ session: SessionFactory }>({
@@ -77,13 +77,16 @@ function serveTest(project: string | null, options: ServeOptions): ServeTest {
             let started = false;
             let s: Serve | undefined;
             try {
-                s = await Serve.start(handle.session, project, options);
+                s = await Serve.create(handle.session, project, options);
                 started = true;
                 await use(s);
             } finally {
-                const failed = !started || (task.result?.errors?.length ?? 0) > 0;
+                let failed = !started || (task.result?.errors?.length ?? 0) > 0;
                 try {
                     await s?.finish(failed);
+                } catch (error) {
+                    failed = true;
+                    throw error;
                 } finally {
                     await handle.teardown(failed);
                 }
@@ -112,10 +115,10 @@ export function serve(project: string, options: ServeOptions = {}): ServeTest {
 
 /// One case on each of several variants of a project, named after it.
 serve.each =
-    (projects: readonly string[], options: ServeOptions = {}) =>
+    (projects: readonly string[]) =>
     (name: string, body: ServeBody): void => {
         for (const project of projects) {
-            serveTest(project, options)(`${name} [${project}]`, body);
+            serveTest(project, {})(`${name} [${project}]`, body);
         }
     };
 
