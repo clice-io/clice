@@ -166,6 +166,7 @@ test("cancel storm leaves no tmp", async ({ session }) => {
                 "checksTrusted",
                 "importScans",
                 "headerContexts",
+                "indexIdle",
                 "synthesizedContexts",
                 "indexInmemoryShards",
                 "indexShardContentBytes",

@@ -1,0 +1,13 @@
+---
+created_at: 2026-10-09
+input_file: switch_source_header/01_header_source/main.cpp
+---
+"widget.h":
+  preferred: "${WS}/switch_source_header/01_header_source/widget.cpp"
+  candidates:
+    - { file: "${WS}/switch_source_header/01_header_source/widget.cpp", reasons: ["defines 2 of 2 declarations", "same name"] }
+
+"widget.cpp":
+  preferred: "${WS}/switch_source_header/01_header_source/widget.h"
+  candidates:
+    - { file: "${WS}/switch_source_header/01_header_source/widget.h", reasons: ["declares 2 of 2 definitions", "same name"] }

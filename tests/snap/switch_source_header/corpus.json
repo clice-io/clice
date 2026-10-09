@@ -1,0 +1,4 @@
+{
+  "notes": "Freestanding, -undef and -nostdinc keep host headers out of the build, so the files a reply names are the fixture's own on every host. Fixtures declare the files to ask about as `// switch:` comment lines in the entry source.",
+  "flags": ["-std=c++23", "-ffreestanding", "-undef", "-nostdinc"]
+}

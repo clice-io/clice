@@ -13,6 +13,7 @@
 - `documentSymbols --path <file>` 给出该文件的大纲。
 - `compileCommand --path <file>` 给出编辑器编译该文件时会使用的命令，以及它的来源：文件自身的数据库条目、头文件的宿主源文件、规则的默认命令、从邻近翻译单元借来的命令（借给临时成员时为 `provisional`，借给构建之外的文件时为 `inferred`），或内置的回退命令。给出的是经编译器解析后的命令，带有目标平台和系统头文件目录；询问编译器失败时，`toolchainError` 说明原因，命令则停留在未经解析的驱动命令。
 - `projectFiles [--filter all|source|header|module]` 列出构建涉及的文件；`fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` 和 `impactAnalysis --path <file>` 则沿包含关系图查询。
+- `counterparts --path <file>` 列出与该文件配对的文件——头文件的源文件、源文件的头文件、模块的接口单元和实现单元——最佳的排在最前，每个都附上理由，并把编辑器无需询问就会直接打开的那一个标为 `preferred`（参见[切换源文件／头文件](../features/navigation.md#switch-source-header)）。
 
 问题中的路径可以相对于工作区，也可以是绝对路径，答案中的路径一律是绝对路径；行号从 1 开始。
 

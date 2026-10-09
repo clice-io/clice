@@ -1,0 +1,4 @@
+# The fixtures' doc headers and code feed the docs as written, so
+# formatting is disabled for this directory.
+DisableFormat: true
+SortIncludes: false

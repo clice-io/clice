@@ -160,6 +160,17 @@
       {
         "command": "clice.refactor.inline.macro",
         "title": "Clice: Expand Macro"
+      },
+      {
+        "command": "clice.switchSourceHeader",
+        "title": "Clice: Switch Source/Header"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "clice.switchSourceHeader",
+        "key": "alt+o",
+        "when": "editorTextFocus && (editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp)"
       }
     ],
     "semanticTokenTypes": [
@@ -322,6 +333,10 @@
         },
         {
           "command": "clice.refactor.inline.macro",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.switchSourceHeader",
           "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
         }
       ],

@@ -19,6 +19,7 @@ import {
 } from "vscode-languageserver-protocol/node";
 import { URI } from "vscode-uri";
 import {
+    CounterpartsRequest,
     CurrentContextRequest,
     ListConfigurationsRequest,
     LogFloodRequest,
@@ -28,6 +29,7 @@ import {
     StatsRequest,
     SwitchConfigurationRequest,
     SwitchContextRequest,
+    type CounterpartsResult,
     type CurrentContextResult,
     type ListConfigurationsResult,
     type LogFloodResult,
@@ -1243,6 +1245,20 @@ export class CliceClient {
             SwitchConfigurationRequest,
             uri === undefined ? { name } : { name, uri },
         );
+    }
+
+    /// Poll the stats hook until no project has background indexing queued
+    /// or running.
+    async waitForIndexIdle(timeout = 60_000): Promise<void> {
+        await waitUntil(async () => (await this.stats()).indexIdle, {
+            timeout,
+            interval: 200,
+            description: "background indexing to go idle",
+        });
+    }
+
+    counterparts(uri: string): Promise<CounterpartsResult> {
+        return this.sendRequest(CounterpartsRequest, { uri });
     }
 
     /// clice/internal/poll (test hook): run one tracker tick and apply its

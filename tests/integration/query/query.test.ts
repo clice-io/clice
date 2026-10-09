@@ -242,6 +242,33 @@ test("answers from the persisted index", async ({ session }) => {
         "includes",
     );
     expect(deps.result?.includes.map((d) => asUri(d.path))).toEqual([ws.uri("a.h")]);
+
+    const counterparts = await query<{
+        candidates: { path: string; reasons: string[] }[];
+        preferred: string | null;
+    }>(ws, "counterparts", "--path", "a.h");
+    expect(counterparts.result?.candidates.map((c) => [asUri(c.path), ...c.reasons])).toEqual([
+        [ws.uri("main.cpp"), "defines 1 of 1 declaration"],
+    ]);
+    expect(asUri(counterparts.result!.preferred!)).toBe(ws.uri("main.cpp"));
+});
+
+test("counterparts pair module units", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("store.cppm", "export module store;\nexport int fetch(int key);\n");
+    ws.write("store_impl.cpp", "module store;\nint fetch(int key) { return key * 2; }\n");
+    ws.writeCDB(["store.cppm", "store_impl.cpp"], { std: "c++20" });
+    ws.pinCacheDir();
+    expect((await runIndex(ws)).status).toBe(0);
+
+    const answer = await query<{
+        candidates: { path: string; reasons: string[] }[];
+        preferred: string | null;
+    }>(ws, "counterparts", "--path", "store_impl.cpp");
+    expect(answer.result?.candidates.map((c) => [asUri(c.path), ...c.reasons])).toEqual([
+        [ws.uri("store.cppm"), "declares 1 of 1 definition", "interface of module store"],
+    ]);
+    expect(asUri(answer.result!.preferred!)).toBe(ws.uri("store.cppm"));
 });
 
 test("workspace spelled with a climb", async ({ session }) => {
@@ -600,6 +627,11 @@ test("withholds rows the disk moved on from", async ({ session }) => {
     );
     expect(header.result?.symbols.map((s) => s.name)).toContain("Animal");
     expect(header.stale).toEqual([]);
+
+    // The edited file's definitions no longer vouch for a pairing.
+    const pairs = await query<{ candidates: unknown[] }>(ws, "counterparts", "--path", "a.h");
+    expect(pairs.result?.candidates).toEqual([]);
+    expect(pairs.stale.map(asUri)).toEqual([ws.uri("main.cpp")]);
 });
 
 test("fresh runs the batch indexer", async ({ session }) => {
