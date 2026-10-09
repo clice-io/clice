@@ -104,8 +104,9 @@ function findConst(source: ts.SourceFile, name: string): ts.Expression | undefin
     return undefined;
 }
 
-/// The projects a `serve(...)`, `serve.each(...)` or `serve.files(...)`
-/// call runs on — none for loose files; undefined for another call, and an
+/// The projects a `serve(...)`, `serve.each(...)`, `serve.files(...)` or
+/// `serve.data(...)` call runs on — none for loose files or a data
+/// workspace; undefined for another call, and an
 /// error for a list the check cannot read: an array literal, a constant of
 /// the file bound to one, or the keys of an object literal declared in it.
 function servedProjects(node: ts.Node, source: ts.SourceFile): string[] | Error | undefined {
@@ -124,7 +125,7 @@ function servedProjects(node: ts.Node, source: ts.SourceFile): string[] | Error 
     ) {
         return undefined;
     }
-    if (callee.name.text === "files") {
+    if (callee.name.text === "files" || callee.name.text === "data") {
         return [];
     }
     let list = node.arguments[0];
