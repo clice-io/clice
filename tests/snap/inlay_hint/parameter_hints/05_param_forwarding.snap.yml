@@ -9,3 +9,7 @@ input_file: parameter_hints/05_param_forwarding.cpp
 - { pos: "50:20", kind: Parameter, label: "c:", links: ["c ${WS}/parameter_hints/05_param_forwarding.cpp:27:28-27:29"], padding_right: true }
 - { pos: "51:10", kind: Parameter, label: "a:", links: ["a ${WS}/parameter_hints/05_param_forwarding.cpp:39:18-39:19"], padding_right: true }
 - { pos: "51:14", kind: Parameter, label: "b:", links: ["b ${WS}/parameter_hints/05_param_forwarding.cpp:36:24-36:25"], padding_right: true }
+- { pos: "61:16", kind: Parameter, label: "f:", links: ["f ${WS}/parameter_hints/05_param_forwarding.cpp:56:19-56:20"], padding_right: true }
+- { pos: "61:41", kind: Type, label: "-> void" }
+- { pos: "61:46", kind: Parameter, label: "width:", links: ["width ${WS}/parameter_hints/05_param_forwarding.cpp:61:23-61:28"], padding_right: true }
+- { pos: "61:49", kind: Parameter, label: "height:", links: ["height ${WS}/parameter_hints/05_param_forwarding.cpp:61:34-61:40"], padding_right: true }

@@ -3652,11 +3652,10 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
 ZEST_SUITE(TURunLint) {
 
 ZEST_CASE(ModuleLintScanParity) {
-    // A module unit's own PCM round scans under its base command: only
-    // the lint round's extras-applied scan can discover an import the
-    // extra args gate, and edge it so the PCM exists when the worker's
-    // parse (which sees the extras) consumes it. Only n.cppm runs, so
-    // the import's PCM cannot arrive any other way.
+    // Only a scan under the lint round's extra args discovers the import
+    // they gate, and edges it so the PCM exists when the worker's parse
+    // (which sees the extras) consumes it. Only n.cppm runs, so the
+    // import's PCM cannot arrive any other way.
     TempDir tmp;
     tmp.touch("m.cppm", "export module m;\nexport int mv() { return 1; }\n");
     tmp.touch("n.cppm",
@@ -3777,6 +3776,71 @@ ZEST_CASE(OutdatedRerunsInFull) {
     using enum TURunFamily::Verdict;
     ZEXPECT(verdicts == (std::vector<TURunFamily::Verdict>{Preempted, Completed}));
     ZEXPECT(f.project.project_index.shards.contains(x2_id));
+}
+
+ZEST_CASE(BuildsOnlyImportedPCMs) {
+    // Indexing a module unit needs the PCMs of its imports, never its own:
+    // the interface and an implementation partition nothing imports build
+    // none, the implementation unit builds the interface it imports.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int mv() { return 1; }\n");
+    tmp.touch("detail.cpp", "module m:detail;\nint dv() { return 2; }\n");
+    tmp.touch("impl.cpp", "module m;\nint uv() { return mv(); }\n");
+
+    IndexerFixture f;
+    write_cdb(tmp,
+              f.project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"),     {}},
+                  {tmp.root, tmp.path("detail.cpp"), {}},
+                  {tmp.root, tmp.path("impl.cpp"),   {}},
+    }));
+    scan_all(f.project.cdb, f.project.dep_graph);
+    f.project.dep_graph.build_reverse_map();
+
+    auto store = CacheStore::open(tmp.path("root"), 1);
+    ZASSERT(store);
+    store->register_namespace(
+        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
+    f.project.store.emplace(std::move(*store));
+    f.pcm.register_runner();
+
+    auto id = [&](llvm::StringRef name) {
+        return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
+    };
+    std::vector<TURunFamily::Verdict> verdicts;
+    std::size_t pcms_before_impl = 0;
+    bool done = false;
+    auto body = [&]() -> kota::task<> {
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 1;
+        opts.stateful_count = 0;
+        ZASSERT(f.pool.start(opts));
+
+        for(auto name: {"m.cppm", "detail.cpp", "impl.cpp"}) {
+            if(llvm::StringRef(name) == "impl.cpp") {
+                pcms_before_impl = f.project.pcm_cache.size();
+            }
+            TURunFamily::Plan plan;
+            plan.index = true;
+            verdicts.push_back((co_await f.turun.run(id(name), std::move(plan), {})).verdict);
+        }
+
+        co_await f.graph.shutdown();
+        co_await f.pool.stop();
+        done = true;
+    };
+    auto task = body();
+    f.loop.schedule(task);
+    f.loop.run();
+    ZEXPECT(done);
+
+    using enum TURunFamily::Verdict;
+    ZEXPECT(verdicts == (std::vector<TURunFamily::Verdict>{Completed, Completed, Completed}));
+    ZEXPECT(pcms_before_impl == 0u);
+    ZEXPECT(f.project.pcm_cache.size() == 1u);
+    ZEXPECT(f.project.pcm_cache.contains(id("m.cppm")));
 }
 
 };  // ZEST_SUITE(TURunIndex)
