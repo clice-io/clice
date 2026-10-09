@@ -228,8 +228,9 @@ export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/
 /// clice/internal/sync — TEST-ONLY, present while project.test_hooks is on.
 /// Answers once the server has no work left: no other request of the editor
 /// unanswered, no compile, PCH or PCM build and no index round in flight or
-/// queued, a round's save included. The metadata save that follows a build
-/// is not waited for; a test needing what is on disk stops the server.
+/// queued, a round's save included, and no removed folder still shutting
+/// down. The metadata save that follows a build is not waited for; a test
+/// needing what is on disk stops the server.
 export interface SyncParams {
     /// How long to wait before answering with the work still pending; four
     /// minutes by default.

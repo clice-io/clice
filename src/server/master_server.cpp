@@ -874,13 +874,22 @@ static auto awaited_requests(const kota::ipc::JSONPeer& editor) {
 }
 
 kota::task<> MasterServer::settle(const kota::ipc::JSONPeer& editor) {
-    while(true) {
+    auto quiet = [&] {
         drain_disk_changes();
-        if(awaited_requests(editor).empty() &&
-           llvm::none_of(projects, [](auto& project) { return working(*project); })) {
-            co_return;
+        return awaited_requests(editor).empty() &&
+               llvm::none_of(projects, [](auto& project) { return working(*project); }) &&
+               llvm::all_of(retired, [](auto& weak) { return weak.expired(); });
+    };
+    while(true) {
+        if(quiet()) {
+            // What a landing scheduled on the loop — a refresh request, a
+            // progress handshake — goes out before the answer.
+            co_await kota::yield();
+            if(quiet()) {
+                co_return;
+            }
         }
-        // None of the three announces its end.
+        // None of them announces its end.
         co_await kota::sleep(std::chrono::milliseconds(1), loop);
     }
 }
@@ -891,6 +900,11 @@ std::vector<std::string> MasterServer::pending_work(const kota::ipc::JSONPeer& e
         lines.push_back(std::visit(
             [&](const auto& id) { return std::format("request {} {}", request.method, id); },
             request.id));
+    }
+    for(auto& weak: retired) {
+        if(auto project = weak.lock()) {
+            lines.push_back(std::format("removed project {} shutting down", project->root));
+        }
     }
     for(auto& hold: probe.holds()) {
         if(hold.parked) {

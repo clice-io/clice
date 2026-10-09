@@ -193,12 +193,14 @@ public:
 
     /// Test hook (clice/internal/sync): wait until nothing is in flight.
     /// One look, taken in one turn after the disk changes the file table
-    /// saw are drained, at three read-only views: `editor` has no request
+    /// saw are drained, at read-only views: `editor` has no request
     /// unanswered but syncs (kota lists a request from its dispatch on), no
-    /// task-graph round is live, and the index pump is idle. Work starts
-    /// inside one of these or from a new message, so the look is exact.
-    /// Not waited for: the metadata save that follows a build, and the
-    /// shutdown of a removed folder's project.
+    /// task-graph round is live, the index pump is idle, and no removed
+    /// folder's project is still shutting down (its end may start the
+    /// folder again). Work starts inside one of these or from a new
+    /// message, so the look is exact — with periodic ticks off, as tests
+    /// run: workspace polling and checkpoints start work on their own. The
+    /// metadata save that follows a build is not waited for.
     kota::task<> settle(const kota::ipc::JSONPeer& editor);
 
     /// What settle() still waits for, one line each; empty once settled.
