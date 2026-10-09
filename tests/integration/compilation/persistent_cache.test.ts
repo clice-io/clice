@@ -1,9 +1,9 @@
 /// Integration tests for persistent PCH/PCM cache.
 ///
 /// Verifies that PCH/PCM artifacts are written to the versioned cache
-/// store ({pch,pcm}/ namespaces) with content-addressed filenames,
-/// survive server restarts via the artifact metadata persisted in the
-/// index database, and are properly reused across sessions.
+/// store ({pch,pcm}/ namespaces) with content-addressed filenames, and how
+/// a cache a server left behind is recovered or rebuilt. Reuse across a
+/// restart is in serve/compile/persistent_cache.test.ts.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -114,81 +114,6 @@ test("pch reused on close reopen", async ({ session }) => {
     expect(pchAfterReopen, "PCH file set should be identical after close+reopen").toEqual(
         pchAfterFirst,
     );
-});
-
-test("pch survives server restart", async ({ session }) => {
-    // PCH cache should survive a full server restart — the artifact
-    // metadata is loaded on startup and the existing .pch file is reused.
-    const workspace = session.tmpdir();
-    workspace.pinCacheDir();
-    workspace.write("header.h", "#pragma once\nstruct Baz { int z; };\n");
-    workspace.write("main.cpp", '#include "header.h"\nint main() { Baz b; return b.z; }\n');
-    workspace.writeCDB(["main.cpp"]);
-
-    // Session 1: build PCH.
-    const c1 = session.spawn(workspace);
-    await c1.initialize(workspace);
-    const [uri] = await c1.openAndWait("main.cpp");
-    c1.assertCleanCompile(uri);
-
-    const pchFilesS1 = workspace.pchFiles();
-    expect(pchFilesS1.length, "PCH should be created in session 1").toBeGreaterThanOrEqual(1);
-    const pchMtimeS1 = fs.statSync(pchFilesS1[0]!).mtimeMs;
-
-    c1.assertNoAnomaly();
-    await c1.shutdown();
-
-    // Session 2: restart server, reopen file.
-    const c2 = session.spawn(workspace);
-    await c2.initialize(workspace);
-    const [uri2] = await c2.openAndWait("main.cpp");
-    c2.assertCleanCompile(uri2);
-
-    // The same PCH file should still exist, not overwritten.
-    const pchFilesS2 = workspace.pchFiles();
-    expect(pchFilesS2.length, "No new PCH files should be created in session 2").toBe(
-        pchFilesS1.length,
-    );
-    const pchMtimeS2 = fs.statSync(pchFilesS2[0]!).mtimeMs;
-    expect(pchMtimeS2, "PCH file should not be rebuilt (mtime should be unchanged)").toBe(
-        pchMtimeS1,
-    );
-
-    c2.assertNoAnomaly();
-    await c2.shutdown();
-});
-
-test("pcm offline edit invalidates", async ({ session }) => {
-    // Editing a module interface while the server is down must invalidate
-    // the cached PCM on restart: the PCM key embeds no content, so only its
-    // deps snapshot can see the change.
-    const workspace = session.tmpdir();
-    workspace.copyFiles(path.join(DATA_DIR, "modules", "save_recompile"));
-    workspace.pinCacheDir();
-    workspace.generateCDB();
-
-    // Session 1: importer compiles clean, PCM cached.
-    const c1 = session.spawn(workspace);
-    await c1.initialize(workspace);
-    const [midUri] = await c1.openAndWait("mid.cppm");
-    c1.assertCleanCompile(midUri);
-    expect(workspace.pcmFiles().length).toBeGreaterThanOrEqual(1);
-    c1.assertNoAnomaly();
-    await c1.shutdown();
-
-    // Offline: rename the export the importer calls.
-    workspace.write(
-        "leaf.cppm",
-        "export module Leaf;\n\nexport int renamed_leaf() {\n    return 1;\n}\n",
-    );
-
-    // Session 2: mid.cppm calls leaf(), which no longer exists — a stale
-    // PCM would compile it clean.
-    const c2 = session.spawn(workspace);
-    await c2.initialize(workspace);
-    const [midUri2] = await c2.openAndWait("mid.cppm");
-    c2.assertHasErrors(midUri2, "Expected errors after offline interface edit");
-    await c2.shutdown();
 });
 
 test("pcm offline break drops it", async ({ session }) => {

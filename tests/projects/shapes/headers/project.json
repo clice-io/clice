@@ -1,0 +1,27 @@
+{
+  "args": ["-Iinclude"],
+  "cxx": ["-std=c++23"],
+  "c": ["-std=c17"],
+  "units": {
+    "src/circle.cpp": ["-DSHAPES_EXACT"],
+    "src/polygon.cpp": [],
+    "src/registry.cpp": [],
+    "src/c_api.c": [],
+    "app/main.cpp": [],
+    "test/shapes_test.cpp": ["-DSHAPES_FAST=1"]
+  },
+  "files": {
+    "shape": "include/shapes/shape.h",
+    "circle": "include/shapes/circle.h",
+    "circle_impl": "src/circle.cpp",
+    "polygon": "include/shapes/polygon.h",
+    "polygon_impl": "src/polygon.cpp",
+    "detail": "include/shapes/detail/math.h",
+    "config": "include/shapes/config.h",
+    "units": "include/legacy/units.h",
+    "registry": "src/registry.cpp",
+    "c_api": "src/c_api.c",
+    "main": "app/main.cpp",
+    "test": "test/shapes_test.cpp"
+  }
+}

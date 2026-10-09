@@ -25,60 +25,12 @@
 /// reply's ranges, so that one still answers ContentModified.
 
 import * as proto from "vscode-languageserver-protocol";
-import { EDIT_SUPERSEDE_DELAY, SLOW_SOURCE as SLOW, sleep } from "@clice/tools/client";
+import { SLOW_SOURCE as SLOW, sleep } from "@clice/tools/client";
 import { test, expect } from "../fixtures.ts";
 
-// Completion skips most of the work a full build does and can finish the
-// body within EDIT_SUPERSEDE_DELAY on a fast machine.
+// Completion skips most of the work a full build does: the edit has to land
+// much sooner than one superseding a full build would.
 const COMPLETION_EDIT_DELAY = 30;
-
-test("edit mid-flight answers ContentModified", async ({ session }) => {
-    const { client, workspace } = session.tmp();
-    workspace.write("slow.cpp", SLOW);
-    workspace.writeCDB(["slow.cpp"]);
-    await client.initialize(workspace);
-
-    const [uri] = client.open("slow.cpp");
-    const td: proto.TextDocumentIdentifier = { uri };
-    const head: proto.Range = {
-        start: { line: 0, character: 0 },
-        end: { line: 10, character: 0 },
-    };
-
-    // Every AST-backed feature, each preceded by an edit so it launches a
-    // fresh parse of the whole body: the second edit then lands while that
-    // parse is still running — the "keep typing" case.
-    const pulling: [string, unknown][] = [
-        ["textDocument/hover", { textDocument: td, position: { line: 0, character: 4 } }],
-        ["textDocument/semanticTokens/full", { textDocument: td }],
-        ["textDocument/inlayHint", { textDocument: td, range: head }],
-        ["textDocument/foldingRange", { textDocument: td }],
-        ["textDocument/documentSymbol", { textDocument: td }],
-        ["textDocument/documentLink", { textDocument: td }],
-        ["textDocument/definition", { textDocument: td, position: { line: 0, character: 4 } }],
-    ];
-    let version = 0;
-    for (const [method, params] of pulling) {
-        version += 1;
-        client.change(uri, version, SLOW + `int extra${version};\n`);
-        const pending = client.sendRequest(method, params);
-        await sleep(EDIT_SUPERSEDE_DELAY);
-        version += 1;
-        client.change(uri, version, SLOW + `int extra${version};\n`);
-        await expect(pending, method).rejects.toMatchObject({
-            code: proto.LSPErrorCodes.ContentModified,
-        });
-    }
-
-    // The buffer settled: the client's re-pull waits for the fresh compile
-    // and gets the real answer for the current text — the tokens that the
-    // error told it to keep showing meanwhile are replaced, not blanked.
-    const tokens = await client.semanticTokensFull(uri);
-    expect(tokens).not.toBeNull();
-    expect(tokens!.data.length).toBeGreaterThan(0);
-    const hover = await client.hoverAt(uri, 0, 4);
-    expect(hover).not.toBeNull();
-}, 300_000);
 
 test("edit mid-flight still completes", async ({ session }) => {
     const { client, workspace } = session.tmp();

@@ -23,7 +23,7 @@ export interface CDBEntryOptions {
     std?: string | undefined;
 }
 
-function posix(p: string): string {
+export function posix(p: string): string {
     return p.split(path.sep).join("/");
 }
 

@@ -247,6 +247,7 @@ export class CliceClient {
 
     private diagnosticsWaiters = new Map<string, (() => void)[]>();
     private publishes = new Map<string, number>();
+    private lastPublishes = new Map<string, proto.PublishDiagnosticsParams>();
     /// Holds whose reply the server parked (clice/internal/held), and the
     /// waiters of the ones not parked yet.
     private parked = new Set<number>();
@@ -281,6 +282,7 @@ export class CliceClient {
             const normalized = this.normalizeUri(rawUri);
             const diags = [...params.diagnostics];
             this.publishes.set(normalized, (this.publishes.get(normalized) ?? 0) + 1);
+            this.lastPublishes.set(normalized, params);
             this.diagnostics.set(rawUri, diags);
             if (rawUri !== normalized) {
                 this.diagnostics.set(normalized, diags);
@@ -888,6 +890,11 @@ export class CliceClient {
     /// How many diagnostics publishes the document has received.
     publishCount(uri: string): number {
         return this.publishes.get(this.normalizeUri(uri)) ?? 0;
+    }
+
+    /// The last diagnostics publish the document received.
+    lastPublish(uri: string): proto.PublishDiagnosticsParams | undefined {
+        return this.lastPublishes.get(this.normalizeUri(uri));
     }
 
     errors(uri: string): proto.Diagnostic[] {
