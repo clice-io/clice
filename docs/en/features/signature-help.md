@@ -30,121 +30,95 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 ## Overload Signatures
 
-<!-- BEGIN GENERATED ITEMS: Overload Signatures -->
+<!-- BEGIN GENERATED ITEMS: overload_signatures -->
 
-- [x] Function overloads — every overload of the callee, each with its parameter list and return type
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Function overloads**
 
-  ```cpp
-  void foo();
-  void foo(int x);
-  void foo(int x, int y);
+Signature help lists every overload with its parameter list and return type
 
-  int main() {
-      foo();
-  }
-  ```
+```snap
+tests/snap/signature_help/overload_signatures/01_overloads.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Active parameter tracking — the parameter under the cursor is bracketed; the point sits in the second argument
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Active parameter tracking**
 
-  ```cpp
-  void bar(int first, double second, char third);
+The parameter under the cursor is bracketed; the point sits in the second
+argument
 
-  int main() {
-      bar(1, 2.0, 'c');
-  }
-  ```
+```snap
+tests/snap/signature_help/overload_signatures/02_active_parameter.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Member function overloads — a non-const receiver lists both the const and non-const overloads; the trailing const qualifier is not rendered in the label
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Member function overloads**
 
-  ```cpp
-  struct Buffer {
-      int at(int index);
-      int at(int index) const;
-  };
+A non-const receiver lists both the const and non-const overloads; the
+trailing const qualifier is not rendered in the label
 
-  int main() {
-      Buffer b;
-      b.at(0);
-  }
-  ```
+```snap
+tests/snap/signature_help/overload_signatures/03_member_overloads.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Default arguments in the label — parameters with defaults render their initializer in the signature
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Default arguments in the label**
 
-  ```cpp
-  void configure(int width, int height = 100, bool visible = true);
+Parameters with defaults render their initializer in the signature
 
-  int main() {
-      configure(1);
-  }
-  ```
+```snap
+tests/snap/signature_help/overload_signatures/04_default_arguments.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] C-style variadic function — named parameters are listed while the trailing ellipsis is elided from the label
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**C-style variadic function**
 
-  ```cpp
-  void record(int code, ...);
+Named parameters are listed while the trailing ellipsis is elided from the
+label
 
-  int main() {
-      record(0);
-  }
-  ```
+```snap
+tests/snap/signature_help/overload_signatures/05_variadic_cstyle.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Variadic template pack — the parameter pack renders as the callee's uninstantiated signature
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Variadic template pack**
 
-  ```cpp
-  template <typename... Args>
-  void emit(Args... args);
+The parameter pack renders as the callee's uninstantiated signature
 
-  int main() {
-      emit();
-  }
-  ```
+```snap
+tests/snap/signature_help/overload_signatures/06_variadic_template.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Active parameter past a shorter overload — with the cursor in the second argument, only overloads that declare a second parameter remain
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Active parameter beyond overload**
 
-  ```cpp
-  void draw();
-  void draw(int x);
-  void draw(int x, int y);
+With the cursor in the second argument, only overloads that declare a second
+parameter remain
 
-  int main() {
-      draw(1, 2);
-  }
-  ```
+```snap
+tests/snap/signature_help/overload_signatures/07_active_beyond_last.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -183,125 +157,94 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 
 ## Special Call Contexts
 
-<!-- BEGIN GENERATED ITEMS: Special Call Contexts -->
+<!-- BEGIN GENERATED ITEMS: special_call_contexts -->
 
-- [x] Constructors and aggregates — constructor calls render without a return arrow; aggregate initialization lists the fields in braces ([clangd#726](https://github.com/clangd/clangd/issues/726), [clangd#2541](https://github.com/clangd/clangd/issues/2541))
+<!-- BEGIN CAPABILITY: supported clangd#726 clangd#2541 -->
 
-  <details>
-  <summary>Example</summary>
+**Constructors and aggregates**
 
-  ```cpp
-  struct Point {
-      int x;
-      int y;
-  };
+Constructor calls render without a return arrow; aggregate initialization
+lists the fields in braces
 
-  struct Widget {
-      Widget(int a, double b);
-  };
+```snap
+tests/snap/signature_help/special_call_contexts/01_constructor_aggregate.cpp
+```
 
-  int main() {
-      Point p{1, 2};
-      Widget w(3, 4.0);
-  }
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] Function pointer calls — the prototype's parameter names show, not just the types
+**Function pointer calls**
 
-  <details>
-  <summary>Example</summary>
+The prototype's parameter names show, not just the types
 
-  ```cpp
-  int main() {
-      void (*callback)(int code, double value) = nullptr;
-      callback(5, 1.5);
-  }
-  ```
+```snap
+tests/snap/signature_help/special_call_contexts/02_function_pointer.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Template argument lists — template parameters show as the signature; a class template points at its kind, not a return type ([clangd#299](https://github.com/clangd/clangd/issues/299), [clangd#1387](https://github.com/clangd/clangd/issues/1387))
+<!-- BEGIN CAPABILITY: supported clangd#299 clangd#1387 -->
 
-  <details>
-  <summary>Example</summary>
+**Template argument lists**
 
-  ```cpp
-  template <typename T, typename U>
-  struct Pair {};
+Template parameters show as the signature; a class template points at its
+kind, not a return type
 
-  Pair<int,  double> p;
-  ```
+```snap
+tests/snap/signature_help/special_call_contexts/03_template_arguments.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Nested calls — the inner call's help shows at the inner marker and the outer call's help at the outer marker
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Nested calls**
 
-  ```cpp
-  int inner(int a);
-  int outer(int b, int c);
+The inner call's help shows at the inner marker and the outer call's help at
+the outer marker
 
-  int main() {
-      outer(inner(1), 2);
-  }
-  ```
+```snap
+tests/snap/signature_help/special_call_contexts/04_nested_calls.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Functor call — invoking an object routes signature help to its operator() overload
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Functor call**
 
-  ```cpp
-  struct Adder {
-      int operator()(int a, int b);
-  };
+Invoking an object routes signature help to its operator() overload
 
-  int main() {
-      Adder add;
-      add(1, 2);
-  }
-  ```
+```snap
+tests/snap/signature_help/special_call_contexts/05_operator_call.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Lambda call — calling a lambda variable offers the closure's operator() parameters
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Lambda call**
 
-  ```cpp
-  int main() {
-      auto square = [](int n) {
-          return n * n;
-      };
-      square(3);
-  }
-  ```
+Calling a lambda variable offers the closure's operator() parameters
 
-  </details>
+```snap
+tests/snap/signature_help/special_call_contexts/06_lambda_call.cpp
+```
 
-- [x] New expression — a new-expression's constructor arguments drive signature help
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  struct Node {
-      Node(int value, Node* next);
-  };
+**New expression**
 
-  int main() {
-      Node* n = new Node(0, nullptr);
-  }
-  ```
+A new-expression's constructor arguments drive signature help
 
-  </details>
+```snap
+tests/snap/signature_help/special_call_contexts/07_new_expression.cpp
+```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -396,9 +339,3 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 - [ ] Respect `documentationFormat` capability ([clangd#945](https://github.com/clangd/clangd/issues/945))
 - [ ] Propagate documentation through inherited constructors ([clangd#1936](https://github.com/clangd/clangd/issues/1936))
 - [ ] Overload set count indicator
-
-## Changelog
-
-| Date       | Change                                                                      | PR                                                 |
-| ---------- | --------------------------------------------------------------------------- | -------------------------------------------------- |
-| 2025-08-23 | Function overload signatures, active parameter tracking, trigger characters | [#187](https://github.com/clice-io/clice/pull/187) |

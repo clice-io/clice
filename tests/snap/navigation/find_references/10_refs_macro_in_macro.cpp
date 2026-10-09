@@ -1,0 +1,13 @@
+/// # Nested macro references
+///
+/// - status: unsupported
+/// - issues: clangd#346
+///
+/// Find references on a macro does not include the mentions of it written
+/// inside the bodies of other macro definitions
+
+#define WIDTH 100  // find-refs here omits the WIDTH tokens in AREA below
+
+#define AREA (WIDTH * WIDTH)
+
+int total = AREA;

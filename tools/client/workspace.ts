@@ -6,11 +6,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { URI } from "vscode-uri";
-import { generateCDB } from "../compile_commands.ts";
-
-/// Versioned root of the unified cache store; bump together with
-/// cache_format_version in src/server/state/workspace.h.
-const CACHE_ROOT = path.join(".clice", "cache", "v7");
+import { buildCDBEntry, generateCDB } from "../compile_commands.ts";
+import { logFiles } from "../process_gate.ts";
 
 /// The harness-wide canonical URI spelling: percent-decoded. vscode-uri
 /// encodes the drive colon (file:///c%3A/...) while the server emits it
@@ -27,6 +24,9 @@ export function canonicalUri(uri: string): string {
 export interface CDBOptions {
     extraArgs?: string[] | undefined;
     std?: string | undefined;
+    /// Where the database is written, workspace-relative; default
+    /// compile_commands.json at the root.
+    at?: string | undefined;
 }
 
 export class Workspace {
@@ -66,6 +66,14 @@ export class Workspace {
         return canonicalUri(URI.file(this.path(rel)).toString());
     }
 
+    /// How the server spells a workspace path in text (hover cards, CLI
+    /// output): forward slashes and, on Windows, a lowercase drive letter.
+    displayPath(rel = ""): string {
+        return this.path(rel)
+            .replaceAll("\\", "/")
+            .replace(/^[A-Za-z]:/, (drive) => drive.toLowerCase());
+    }
+
     exists(rel: string): boolean {
         return fs.existsSync(this.path(rel));
     }
@@ -79,6 +87,17 @@ export class Workspace {
         const target = this.path(rel);
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.writeFileSync(target, content);
+    }
+
+    /// Copy the files directly inside `dir` to the workspace root — a data
+    /// workspace's sources, without the build directories a configure left
+    /// beside them.
+    copyFiles(dir: string): void {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (entry.isFile()) {
+                fs.copyFileSync(path.join(dir, entry.name), this.path(entry.name));
+            }
+        }
     }
 
     mkdir(rel: string): void {
@@ -105,18 +124,13 @@ export class Workspace {
     /// Write a compile_commands.json with per-file extra arguments; a file
     /// may appear multiple times to model multi-configuration projects.
     writeEntries(entries: [string, string[]][], options: CDBOptions = {}): void {
-        const data = entries.map(([f, args]) => ({
-            directory: this.root,
-            file: this.path(f),
-            arguments: [
-                "clang++",
-                `-std=${options.std ?? "c++17"}`,
-                "-fsyntax-only",
-                ...args,
-                this.path(f),
-            ],
-        }));
-        this.write("compile_commands.json", JSON.stringify(data, null, 2));
+        const data = entries.map(([f, args]) =>
+            buildCDBEntry(this.root, this.path(f), {
+                extraArgs: args,
+                std: options.std,
+            }),
+        );
+        this.write(options.at ?? "compile_commands.json", JSON.stringify(data, null, 2));
     }
 
     /// Generate compile_commands.json via CMake (workspaces with a
@@ -125,17 +139,82 @@ export class Workspace {
         generateCDB(this.root);
     }
 
+    /// The text of every log file named `name` ("master.log", "SF-0.log")
+    /// the servers wrote under .clice/logs, one session directory each;
+    /// empty when none was written.
+    log(name: string): string {
+        return logFiles(this.root)
+            .filter((file) => path.basename(file) === name)
+            .map((file) => fs.readFileSync(file, "utf8"))
+            .join("");
+    }
+
+    /// The workers that crashed on requests whose tag starts with `tag`
+    /// ("compile /abs/path"), counted from the crash lines the master logs
+    /// with the worker's name in front (the crash report repeats them bare).
+    workerCrashes(tag: string): number {
+        return (
+            this.log("master.log").split(`] clice worker crashed in: clice/worker/${tag}`).length -
+            1
+        );
+    }
+
     /// Write a clice.toml that pins cache_dir to <workspace>/.clice/.
     pinCacheDir(): void {
         this.write("clice.toml", '[project]\ncache_dir = "${workspace}/.clice"\n');
     }
 
-    /// The versioned cache store root.
+    /// The versioned cache store root the server opened: the one
+    /// `v<N>` directory under `.clice/cache`, so a version bump on the
+    /// C++ side never leaves the helpers reading a stale tree. Throws
+    /// when there is none yet or more than one.
     cacheRoot(): string {
-        return this.path(CACHE_ROOT);
+        const versions = this.cacheVersions();
+        const [only] = versions;
+        if (versions.length !== 1 || only === undefined) {
+            throw new Error(
+                `expected one cache version directory under ${this.cacheBase()}, found [${versions.join(", ")}]`,
+            );
+        }
+        return path.join(this.cacheBase(), only);
+    }
+
+    /// The index library of a build configuration under the cache store,
+    /// if it exists: `index/default` for the anonymous one, else the
+    /// directory named by the lowercase tag, `~` and its hash.
+    indexLibrary(configuration?: string): string | undefined {
+        const dir = path.join(this.cacheRoot(), "index");
+        if (!fs.existsSync(dir)) {
+            return undefined;
+        }
+        const wanted =
+            configuration === undefined
+                ? (name: string) => name === "default"
+                : (name: string) => name.startsWith(`${configuration.toLowerCase()}~`);
+        const match = fs.readdirSync(dir).find(wanted);
+        return match === undefined ? undefined : path.join(dir, match);
+    }
+
+    private cacheBase(): string {
+        return this.path(path.join(".clice", "cache"));
+    }
+
+    private cacheVersions(): string[] {
+        if (!fs.existsSync(this.cacheBase())) {
+            return [];
+        }
+        return fs
+            .readdirSync(this.cacheBase(), { withFileTypes: true })
+            .filter((entry) => entry.isDirectory() && /^v\d+$/.test(entry.name))
+            .map((entry) => entry.name);
     }
 
     private globCache(sub: string, suffix: string): string[] {
+        // No store yet (a read-only session opens none) is an empty
+        // namespace, not an error.
+        if (this.cacheVersions().length === 0) {
+            return [];
+        }
         const dir = path.join(this.cacheRoot(), sub);
         if (!fs.existsSync(dir)) {
             return [];
@@ -165,6 +244,9 @@ export class Workspace {
     /// atomically, so anything under tmp/ is either an in-flight write of a
     /// live server or crash residue awaiting cleanup.
     tmpFiles(): string[] {
+        if (this.cacheVersions().length === 0) {
+            return [];
+        }
         const tmpDir = path.join(this.cacheRoot(), "tmp");
         if (!fs.existsSync(tmpDir)) {
             return [];
@@ -184,42 +266,4 @@ export class Workspace {
             })
             .sort();
     }
-
-    /// Read and parse cache.json, or return null if absent. Plain JSON.parse
-    /// mangles the 64-bit dep hashes; tests that rewrite the file use the
-    /// lossless helpers in persistent_cache.test.ts.
-    readCacheJson(): CacheJson | null {
-        const p = path.join(this.cacheRoot(), "cache.json");
-        if (!fs.existsSync(p)) {
-            return null;
-        }
-        return JSON.parse(fs.readFileSync(p, "utf8")) as CacheJson;
-    }
-}
-
-export interface CacheDep {
-    path: number;
-    /// 64-bit content hash; bigint when read through a lossless parser
-    /// (the value overflows a JS double).
-    hash: number | bigint;
-    mtime_ns?: number;
-    size?: number;
-    [key: string]: unknown;
-}
-
-export interface CacheEntry {
-    key?: string;
-    deps: CacheDep[];
-    bound?: number;
-    build_at?: number;
-    source_file?: number;
-    module_name?: string;
-    [key: string]: unknown;
-}
-
-export interface CacheJson {
-    pch: CacheEntry[];
-    pcm?: CacheEntry[];
-    paths: string[];
-    [key: string]: unknown;
 }

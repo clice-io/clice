@@ -25,6 +25,81 @@ test("include completion quoted", async ({ session }) => {
     client.close(uri);
 });
 
+function itemsOf(
+    result: proto.CompletionItem[] | proto.CompletionList | null,
+): proto.CompletionItem[] {
+    return Array.isArray(result) ? result : (result?.items ?? []);
+}
+
+function editOf(item: proto.CompletionItem | undefined): proto.TextEdit | undefined {
+    const edit = item?.textEdit;
+    return edit !== undefined && "range" in edit ? edit : undefined;
+}
+
+/// A header candidate closes the directive, replacing a delimiter already there.
+test("include completion closes directive", async ({ session }) => {
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
+
+    client.change(uri, 1, '#include "my');
+    let item = itemsOf(await client.completionAt(uri, 0, 12)).find((i) => i.label === "myheader.h");
+    expect(editOf(item)).toEqual({
+        range: { start: { line: 0, character: 10 }, end: { line: 0, character: 12 } },
+        newText: 'myheader.h"',
+    });
+
+    client.change(uri, 2, '#include "myhe"');
+    item = itemsOf(await client.completionAt(uri, 0, 12)).find((i) => i.label === "myheader.h");
+    expect(editOf(item)).toEqual({
+        range: { start: { line: 0, character: 10 }, end: { line: 0, character: 15 } },
+        newText: 'myheader.h"',
+    });
+
+    // Picked in an earlier path component, a header ends the path there.
+    client.change(uri, 3, '#include "my/rest.h"');
+    item = itemsOf(await client.completionAt(uri, 0, 12)).find((i) => i.label === "myheader.h");
+    expect(editOf(item)).toEqual({
+        range: { start: { line: 0, character: 10 }, end: { line: 0, character: 20 } },
+        newText: 'myheader.h"',
+    });
+});
+
+/// Sources and other non-header files on the search path are not candidates.
+test("include completion lists headers", async ({ session }) => {
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
+
+    client.change(uri, 1, '#include "');
+    const labels = labelsOf(await client.completionAt(uri, 0, 10));
+    expect(labels).toContain("myheader.h");
+    expect(labels).toContain("subdir/");
+    expect(labels).not.toContain("main.cpp");
+    expect(labels).not.toContain("compile_commands.json");
+});
+
+/// A quoted include finds headers next to the file without any -I.
+test("include completion sibling headers", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("src/main.cpp", "int main() {}\n");
+    workspace.write("src/local.h", "#pragma once\n");
+    workspace.writeCDB(["src/main.cpp"]);
+    await client.initialize(workspace);
+
+    const [uri] = await client.openAndWait("src/main.cpp");
+    client.change(uri, 1, '#include "lo');
+    expect(labelsOf(await client.completionAt(uri, 0, 12))).toContain("local.h");
+});
+
+/// An identifier named `import` opening a line is not an import statement.
+test("import identifier member access", async ({ session }) => {
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
+    client.change(uri, 1, "struct S { int member; };\nvoid f(S* import) {\nimport->\n}");
+
+    const result = await client.completionAt(uri, 2, 8, { triggerCharacter: ">" });
+    expect(labelsOf(result)).toContain("member");
+});
+
 /// Completion for #include "subdir/ should list files in subdir.
 test("include completion subdirectory", async ({ session }) => {
     const { client } = await session("include_completion");
@@ -111,6 +186,10 @@ test("import completion basic", async ({ session }) => {
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
     expect(labels, `Expected 'A' in completion labels, got: ${labels.join(", ")}`).toContain("A");
+    expect(editOf(itemsOf(result).find((i) => i.label === "A"))).toEqual({
+        range: { start: { line: 0, character: 7 }, end: { line: 0, character: 7 } },
+        newText: "A;",
+    });
 });
 
 /// Space-triggered completion on an import line lists modules.
@@ -126,6 +205,22 @@ test("space trigger serves import", async ({ session }) => {
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
     expect(labels, `Expected 'A' in completion labels, got: ${labels.join(", ")}`).toContain("A");
+});
+
+/// A `:` typed after `import` lists the current module's partitions; an
+/// interface unit is offered its interface partitions only.
+test("colon trigger serves partitions", async ({ session }) => {
+    const { client } = await session("modules/internal_partitions");
+
+    const [impl] = await client.openAndWait("impl.cpp");
+    client.change(impl, 1, "module Lib;\nimport :");
+    const fromImpl = await client.completionAt(impl, 1, 8, { triggerCharacter: ":" });
+    expect(labelsOf(fromImpl)).toEqual([":api", ":detail", ":util"]);
+
+    const [lib] = await client.openAndWait("lib.cppm");
+    client.change(lib, 1, "export module Lib;\nexport import :");
+    const fromInterface = await client.completionAt(lib, 1, 15, { triggerCharacter: ":" });
+    expect(labelsOf(fromInterface)).toEqual([":api"]);
 });
 
 /// Space-triggered completion outside import lines returns no items.
@@ -160,6 +255,41 @@ test("space trigger gated include", async ({ session }) => {
         items.length,
         `Expected no items for gated space trigger, got: ${items.join(", ")}`,
     ).toBe(0);
+});
+
+/// `<` opening a template parameter list is not a completion point.
+test("angle trigger gated template", async ({ session }) => {
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
+    client.change(uri, 1, "#define UNRELATED_MACRO 123\ntemplate<");
+
+    const result = await client.completionAt(uri, 1, 9, { triggerCharacter: "<" });
+
+    const items = labelsOf(result);
+    expect(items.length, `Expected no items after template<, got: ${items.join(", ")}`).toBe(0);
+});
+
+/// The third dot of a parameter pack is not a member access.
+test("ellipsis trigger gated", async ({ session }) => {
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
+    client.change(uri, 1, "template<typename...");
+
+    const result = await client.completionAt(uri, 0, 20, { triggerCharacter: "." });
+
+    const items = labelsOf(result);
+    expect(items.length, `Expected no items after an ellipsis, got: ${items.join(", ")}`).toBe(0);
+});
+
+/// A dot after an object still completes its members on the trigger path.
+test("dot trigger serves member", async ({ session }) => {
+    const { client } = await session("include_completion");
+    const [uri] = await client.openAndWait("main.cpp");
+    client.change(uri, 1, "struct Widget { int member; };\nvoid f() { Widget w; w. }");
+
+    const result = await client.completionAt(uri, 1, 23, { triggerCharacter: "." });
+
+    expect(labelsOf(result)).toContain("member");
 });
 
 /// Import completion with prefix should filter to matching modules.
@@ -220,4 +350,42 @@ test("buffer aware module deps", async ({ session }) => {
     // Should have no errors if Math PCM was built successfully from buffer scan.
     const errors = client.errors(uri);
     expect(errors.length, `Expected no errors, got: ${JSON.stringify(errors)}`).toBe(0);
+});
+
+/// Snippets reach only clients that declare snippet support.
+test("snippets follow client support", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", "int compute(int x);\nvoid f() { compu; }\n");
+    workspace.writeCDB(["main.cpp"]);
+    const initializationOptions = {
+        code_completion: {
+            bundle_overloads: false,
+            enable_function_arguments_snippet: true,
+            insert_paren_in_function_call: true,
+        },
+    };
+    await client.initialize(workspace, { initializationOptions });
+
+    const find = async (target: typeof client) => {
+        const [uri] = await target.openAndWait("main.cpp");
+        const result = await target.completionAt(uri, 1, 16);
+        const items = Array.isArray(result) ? result : (result?.items ?? []);
+        return items.find((item) => item.label === "compute");
+    };
+
+    const plain = await find(client);
+    expect(plain?.insertTextFormat).not.toBe(proto.InsertTextFormat.Snippet);
+    expect(plain?.textEdit?.newText).toBe("compute()");
+    await client.shutdown();
+
+    const snippets = session.spawn(workspace);
+    await snippets.initialize(workspace, {
+        initializationOptions,
+        capabilities: {
+            textDocument: { completion: { completionItem: { snippetSupport: true } } },
+        },
+    });
+    const placeholders = await find(snippets);
+    expect(placeholders?.insertTextFormat).toBe(proto.InsertTextFormat.Snippet);
+    expect(placeholders?.textEdit?.newText).toBe("compute(${1:int x})");
 });

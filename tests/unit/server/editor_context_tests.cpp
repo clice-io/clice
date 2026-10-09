@@ -1,0 +1,278 @@
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :command.argument_parser;
+import :server.editor_context;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+
+namespace clice::testing {
+namespace {
+
+/// A host including a header that needs its includer context.
+struct HostedHeader {
+    TempDir tmp;
+    FileTable files;
+    Project project{files};
+    CommandResolver commands{project};
+    Fid host;
+    Fid header;
+    std::string header_path;
+
+    HostedHeader() {
+        tmp.touch("host.cpp", "struct S {\n#include \"h.h\"\n};\n");
+        tmp.touch("h.h", "int member;\n");
+        write_cdb(tmp,
+                  project.cdb,
+                  build_cdb_json({
+                      {tmp.root, tmp.path("host.cpp"), {"-DHOSTED"}}
+        }));
+        host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+        header_path = tmp.path("h.h");
+        header = project.file_table.intern(Spelling::absolute(header_path));
+        project.dep_graph.set_includes(host, 0, {{header}});
+        project.dep_graph.build_reverse_map();
+
+        auto disk = project.file_table.current(header);
+        ZASSERT(disk);
+        commands.record_header_mode(header, HeaderMode::NeedsContext, disk->hash);
+    }
+};
+
+ZEST_SUITE(EditorContext) {
+
+ZEST_CASE(EditorCachesContext) {
+    // Both resolutions synthesize the context in memory; only an editor
+    // resolution keeps it, and reuses it after.
+    HostedHeader fx;
+    ContextsBlob blob;
+    EditorContext editor{fx.project, fx.commands, blob};
+    std::string directory;
+    std::vector<std::string> arguments;
+
+    auto background = fx.commands.resolve_command(fx.header, directory, arguments);
+    ZASSERT(background.source == CommandSource::IncludeGraph);
+    ZASSERT(background.host == fx.host);
+    ZASSERT(background.synthesized != nullptr);
+    ZASSERT(llvm::is_contained(arguments, background.synthesized->prefix));
+    ZASSERT(editor.header_contexts.empty());
+
+    auto resolution = editor.resolve_command(fx.header, directory, arguments);
+    ZASSERT(resolution.source == CommandSource::IncludeGraph);
+    auto* context = editor.header_context(fx.header);
+    ZASSERT(context != nullptr);
+    ZASSERT(resolution.synthesized == context->synthesized);
+    ZASSERT(!blob.dirty);
+
+    auto reused = editor.resolve_command(fx.header, directory, arguments);
+    ZASSERT(reused.synthesized == context->synthesized);
+}
+
+ZEST_CASE(GuessedTracksEditorOnly) {
+    // The invalidator recompiles every editor-guessed file on a database
+    // change; background resolutions must neither add nor clear entries.
+    TempDir tmp;
+    tmp.touch("lonely.cpp", "");
+    tmp.touch("main.cpp", "");
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext editor(project, commands, blob);
+    auto path = tmp.path("lonely.cpp");
+    auto file = project.file_table.intern(Spelling::absolute(path));
+    std::string directory;
+    std::vector<std::string> arguments;
+
+    commands.resolve_command(file, directory, arguments);
+    ZASSERT(!editor.guessed_commands.contains(file));
+
+    ZASSERT(editor.resolve_command(file, directory, arguments).source == CommandSource::Fallback);
+    ZASSERT(editor.guessed_commands.contains(file));
+
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, path, {}}
+    }));
+    commands.resolve_command(file, directory, arguments);
+    ZASSERT(editor.guessed_commands.contains(file));
+    ZASSERT(editor.resolve_command(file, directory, arguments).source == CommandSource::CDBExact);
+    ZASSERT(!editor.guessed_commands.contains(file));
+}
+
+ZEST_CASE(PinSteersEditorOnly) {
+    TempDir tmp;
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    tmp.touch("main.cpp");
+    auto path = tmp.path("main.cpp");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, path, {"-DFIRST"} },
+                  {tmp.root, path, {"-DSECOND"}}
+    }));
+
+    auto file = project.file_table.intern(Spelling::absolute(path));
+    auto candidates = project.cdb.candidate_entries(path);
+    ZASSERT(candidates.size() == 2u);
+    // Pin the non-default candidate (candidate order is content-decided,
+    // so the defines are read back rather than assumed).
+    auto define_of = [&](ConfigID config) -> llvm::StringRef {
+        auto argv = print_argv(project.cdb.render_full(config));
+        return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
+    };
+    auto pinned = candidates.back().config;
+    resolver.selections[file] = Selection{Fid{}, std::nullopt, project.cdb.entry_hash_hex(pinned)};
+
+    // An editor resolution honors the pinned CDB entry...
+    std::string directory;
+    std::vector<std::string> arguments;
+    resolver.resolve_command(file, directory, arguments);
+    ZASSERT(llvm::is_contained(arguments, define_of(pinned)));
+
+    // ...but background indexing must never see user choices.
+    arguments.clear();
+    commands.resolve_command(file, directory, arguments);
+    ZASSERT(llvm::is_contained(arguments, define_of(candidates.front().config)));
+}
+
+ZEST_CASE(PinBaseSurvivesRules) {
+    TempDir tmp;
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    tmp.touch("main.cpp");
+    auto path = tmp.path("main.cpp");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, path, {"-DFIRST"} },
+                  {tmp.root, path, {"-DSECOND"}}
+    }));
+
+    auto file = project.file_table.intern(Spelling::absolute(path));
+    auto candidates = project.cdb.candidate_entries(path);
+    ZASSERT(candidates.size() == 2u);
+    auto define_of = [&](ConfigID config) -> llvm::StringRef {
+        auto argv = print_argv(project.cdb.render_full(config));
+        return llvm::StringRef(argv).contains("SECOND") ? "SECOND" : "FIRST";
+    };
+    auto pinned = candidates.back().config;
+
+    // A pin whose applied hash went stale (a rule edit since it was saved)
+    // but whose base identity is recorded still selects its candidate...
+    resolver.selections[file] =
+        Selection{Fid{}, std::nullopt, "0123456789abcdef", project.cdb.entry_hash_hex(pinned)};
+    std::string directory;
+    std::vector<std::string> arguments;
+    resolver.resolve_command(file, directory, arguments);
+    ZASSERT(llvm::is_contained(arguments, define_of(pinned)));
+
+    // ...while the same stale hash without a base falls back to the default.
+    resolver.selections[file] = Selection{Fid{}, std::nullopt, "0123456789abcdef", ""};
+    arguments.clear();
+    resolver.resolve_command(file, directory, arguments);
+    ZASSERT(llvm::is_contained(arguments, define_of(candidates.front().config)));
+}
+
+ZEST_CASE(ValidateKeepsValidChoice) {
+    TempDir tmp;
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    tmp.touch("host.cpp", R"(#include "h.h")");
+    tmp.touch("h.h");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("host.cpp"), {}}
+    }));
+
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    resolver.selections[header] = Selection{host, std::nullopt, ""};
+
+    resolver.validate_saved_context(header);
+    ZASSERT(resolver.selections.contains(header));
+}
+
+ZEST_CASE(ValidateDropsGoneOccurrence) {
+    // Reopened after the host lost the pinned second include of the header:
+    // didOpen judges the choice the way the orphan pass does.
+    TempDir tmp;
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    tmp.touch("host.cpp", R"(#include "h.h")");
+    tmp.touch("h.h");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("host.cpp"), {}}
+    }));
+
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    resolver.selections[header] = Selection{host, 1, ""};
+
+    resolver.validate_saved_context(header);
+    ZASSERT(!resolver.selections.contains(header));
+}
+
+ZEST_CASE(ValidateDropsStaleChoice) {
+    TempDir tmp;
+    FileTable files;
+    Project project{files};
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    tmp.touch("host.cpp");
+    tmp.touch("h.h");
+    tmp.touch("main.cpp");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("main.cpp"), {}}
+    }));
+
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    auto main_file = project.file_table.intern(Spelling::absolute(tmp.path("main.cpp")));
+
+    // A host pin whose CDB entry disappeared while the server was down.
+    // The drop must dirty the contexts blob, or the stale choice
+    // resurrects from disk at the next start.
+    resolver.selections[header] = Selection{host, std::nullopt, ""};
+    resolver.validate_saved_context(header);
+    ZASSERT(!resolver.selections.contains(header));
+    ZASSERT(blob.dirty);
+
+    // A command pin whose hash matches no current CDB entry.
+    resolver.selections[main_file] = Selection{Fid{}, std::nullopt, "deadbeef"};
+    resolver.validate_saved_context(main_file);
+    ZASSERT(!resolver.selections.contains(main_file));
+}
+
+};  // ZEST_SUITE(EditorContext)
+
+}  // namespace
+}  // namespace clice::testing

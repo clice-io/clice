@@ -9,6 +9,10 @@ on:
         default: false
   workflow_dispatch:
 
+# sync-labels widens its own scope at the job level.
+permissions:
+  contents: read
+
 jobs:
   conventional-commit:
     if: ${{ github.event_name != 'workflow_dispatch' }}
@@ -34,6 +38,53 @@ jobs:
             echo "  Got: '$subject'"
             exit 1
           fi
+
+  layering:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check src/ include layering
+        run: python3 scripts/check_layers.py
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+
+      - name: Check generated docs
+        run: |
+          pixi run -e node check-feature-docs
+          pixi run -e node check-config-docs
+
+      # Last: it sets up its own node for every later step of the job. An
+      # exact release: tools/docs/translations.ts runs this one locally.
+      - name: Check translations
+        uses: clice-io/docs/check-translations@v1.0.0
+
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+
+      - name: Type check and lint
+        run: |
+          pixi run -e node install-tests
+          pixi run -e node npm run check
 
   format:
     if: ${{ inputs.format }}

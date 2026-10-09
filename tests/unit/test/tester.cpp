@@ -1,15 +1,34 @@
-#include "test/tester.h"
+module;
 
-#include <cassert>
-#include <format>
+#include "modules/prelude.h"
 
-#include "syntax/scan.h"
+#ifdef _WIN32
+// See cache_store.cpp: windows.h must not spill min/max macros.
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <sys/stat.h>
+#endif
+
+#include "support/logging.macros.h"
+
+module clice;
+
+import :support.logging;
+import :syntax.scan;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.tester;
+import :vfs.file_system;
 
 namespace clice::testing {
 
 namespace {
 
+/// The language follows the standard: `-std=c17` compiles C.
 std::vector<std::string> base_cc1_args(llvm::StringRef standard, llvm::StringRef triple) {
+    bool cxx = standard.contains("++");
     return {
         "clang",
         "-cc1",
@@ -21,7 +40,7 @@ std::vector<std::string> base_cc1_args(llvm::StringRef standard, llvm::StringRef
         "-fms-extensions",
         "-fsyntax-only",
         "-x",
-        "c++",
+        cxx ? "c++" : "c",
     };
 }
 
@@ -29,7 +48,7 @@ std::vector<std::string> base_cc1_args(llvm::StringRef standard, llvm::StringRef
 
 Tester::~Tester() {
     for(auto& path: pcm_paths) {
-        fs::remove(path);
+        vfs::remove(path);
     }
 }
 
@@ -74,14 +93,14 @@ bool Tester::compile(llvm::StringRef standard) {
 bool Tester::compile_with_pch(llvm::StringRef standard) {
     prepare(standard);
 
-    auto pch_path = fs::createTemporaryFile("clice", "pch");
+    auto pch_path = vfs::temp_file("clice", "pch");
     if(!pch_path) {
         LOG_ERROR("{}", pch_path.error().message());
         return false;
     }
 
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 
@@ -167,6 +186,9 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
         }
 
         auto result = scan_precise(argv, TestVFS::root(), {}, nullptr, vfs);
+        if(result.provided_module().empty()) {
+            continue;
+        }
         modules.push_back(
             {mod.filename, mod.content, result.module_name, std::move(result.modules)});
     }
@@ -204,15 +226,15 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
             return false;
     }
 
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
 
     llvm::StringMap<std::string> built_pcms;
     for(auto idx: order) {
         auto& mod = modules[idx];
 
-        auto pcm_path = fs::createTemporaryFile("clice", "pcm");
+        auto pcm_path = vfs::temp_file("clice", "pcm");
         if(!pcm_path) {
             LOG_ERROR("{}", pcm_path.error().message());
             return false;
@@ -262,17 +284,6 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
     return true;
 }
 
-bool Tester::compile_file(llvm::StringRef path, llvm::StringRef standard) {
-    auto buffer = llvm::MemoryBuffer::getFile(path);
-    if(!buffer) {
-        LOG_ERROR("Failed to read file: {}", path);
-        return false;
-    }
-    auto filename = llvm::sys::path::filename(path);
-    add_main(filename, (*buffer)->getBuffer());
-    return compile(standard);
-}
-
 std::uint32_t Tester::point(llvm::StringRef name, llvm::StringRef file) {
     if(file.empty()) {
         file = src_path;
@@ -320,26 +331,27 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     }
 
     auto command = std::format("clang++ {} {} -fms-extensions", standard, src_path);
-    database.add_command("fake", src_path, command);
-
-    auto commands = database.lookup(src_path);
-    assert(!commands.empty() && "lookup failed after add_command");
-    toolchain.resolve_or_warn(commands.front());
-    params.arguments = commands.front().to_argv();
+    auto entry = database.add_command(TestVFS::root(), src_path, command);
+    assert(entry && "no entry after add_command");
+    CommandRef ref{entry->file,
+                   entry->config,
+                   database.input_kind(entry->config, src_path),
+                   CommandSource::CDBExact};
+    params.arguments = database.render(ref);
 
     params.kind = CompilationKind::Content;
 
-    auto overlay =
-        llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(llvm::vfs::getRealFileSystem());
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
     params.vfs = overlay;
 
+    Spelling main(file_table.resolve(entry->file));
     for(auto& [file, source]: sources.all_files) {
         if(file == src_path) {
-            params.add_remapped_file(file, source.content);
+            params.add_remapped_file(main, source.content);
         } else {
-            std::string path = path::is_absolute(file) ? file.str() : path::join(".", file);
-            params.add_remapped_file(path, source.content);
+            params.add_remapped_file(Spelling(file, main.parent()), source.content);
         }
     }
 }
@@ -349,64 +361,44 @@ bool Tester::compile_driver(llvm::StringRef standard) {
     return try_compile();
 }
 
-bool Tester::compile_driver_with_pch(llvm::StringRef standard) {
-    prepare_driver(standard);
-
-    auto pch_path = fs::createTemporaryFile("clice", "pch");
-    if(!pch_path) {
-        LOG_ERROR("{}", pch_path.error().message());
+bool set_file_mtime(llvm::StringRef path, std::int64_t mtime_ns) {
+#ifdef _WIN32
+    // Path-based instead of fd-based: opening a directory needs
+    // FILE_FLAG_BACKUP_SEMANTICS, which no LLVM open wrapper passes.
+    std::wstring wide;
+    if(!llvm::ConvertUTF8toWide(path, wide)) {
         return false;
     }
-
-    // Phase 1: Build PCH from the preamble portion.
-    params.kind = CompilationKind::Preamble;
-    params.output_file = *pch_path;
-
-    // Clear buffers from prepare_driver() so we can re-add with preamble bound.
-    params.buffers.clear();
-    for(auto& [file, source]: sources.all_files) {
-        if(file == src_path) {
-            auto bound = compute_preamble_bound(source.content);
-            params.add_remapped_file(file, source.content, bound);
-        } else {
-            std::string path = path::is_absolute(file) ? file.str() : path::join(".", file);
-            params.add_remapped_file(path, source.content);
-        }
+    HANDLE handle = ::CreateFileW(wide.c_str(),
+                                  FILE_WRITE_ATTRIBUTES,
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                  nullptr,
+                                  OPEN_EXISTING,
+                                  FILE_FLAG_BACKUP_SEMANTICS,
+                                  nullptr);
+    if(handle == INVALID_HANDLE_VALUE) {
+        return false;
     }
-
-    PCHInfo info;
-    {
-        auto preamble_unit = clice::compile(params, info);
-        if(!preamble_unit.completed()) {
-            for(auto& diag: preamble_unit.diagnostics()) {
-                LOG_ERROR("{}", diag.message);
-            }
-            return false;
-        }
-    }
-
-    // Phase 2: Compile content using the PCH. Re-add the buffers phase 1
-    // consumed: content compiles read the sources through remapping too.
-    params.output_file.clear();
-    params.kind = CompilationKind::Content;
-    params.pch = {info.path, static_cast<std::uint32_t>(info.preamble.size())};
-    params.buffers.clear();
-    for(auto& [file, source]: sources.all_files) {
-        if(file == src_path) {
-            params.add_remapped_file(file, source.content);
-        } else {
-            std::string path = path::is_absolute(file) ? file.str() : path::join(".", file);
-            params.add_remapped_file(path, source.content);
-        }
-    }
-
-    return try_compile();
+    // FILETIME counts 100ns intervals since 1601-01-01.
+    std::uint64_t intervals = static_cast<std::uint64_t>(mtime_ns / 100) + 116444736000000000ull;
+    FILETIME time;
+    time.dwLowDateTime = static_cast<DWORD>(intervals);
+    time.dwHighDateTime = static_cast<DWORD>(intervals >> 32);
+    bool ok = ::SetFileTime(handle, nullptr, &time, &time);
+    ::CloseHandle(handle);
+    return ok;
+#else
+    timespec times[2];
+    times[0].tv_sec = mtime_ns / 1'000'000'000;
+    times[0].tv_nsec = mtime_ns % 1'000'000'000;
+    times[1] = times[0];
+    std::string buffer(path);
+    return ::utimensat(AT_FDCWD, buffer.c_str(), times, 0) == 0;
+#endif
 }
 
 void Tester::clear() {
     params = CompilationParams();
-    database = CompilationDatabase();
-    toolchain = Toolchain();
     unit.reset();
     sources.all_files.clear();
     src_path.clear();
@@ -414,7 +406,7 @@ void Tester::clear() {
     vfs.reset();
     module_files.clear();
     for(auto& path: pcm_paths) {
-        fs::remove(path);
+        vfs::remove(path);
     }
     pcm_paths.clear();
 }

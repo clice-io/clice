@@ -2,1434 +2,988 @@
 
 Rich information cards for the symbol under the cursor.
 
-<!-- The checklist sections below are generated from the snapshot fixtures in
+<!-- The capability sections below are generated from the snapshot fixtures in
      tests/snap/hover/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture doc headers and run
-     `node tools/feature_docs.ts update`. -->
+     `node tools/docs/feature.ts update`. -->
 
 ## Symbol Information
 
-<!-- BEGIN GENERATED ITEMS: Symbol Information -->
+<!-- BEGIN GENERATED ITEMS: symbol_information -->
 
-- [x] Qualified name — the hover card shows the enclosing namespace and class scope
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Qualified name**
 
-  ```cpp
-  namespace app::detail {
+The hover card shows the enclosing namespace and class scope
 
-  struct Engine {
-      void tick() {
-          int count = 0;
-      }
-  };
+```snap
+tests/snap/hover/symbol_information/01_qualified_name.cpp
+```
 
-  int workers = 4;
+<!-- END CAPABILITY -->
 
-  }
+<!-- BEGIN CAPABILITY: supported -->
 
-  int global = 1;
-  ```
+**Symbol kind**
 
-  </details>
+The card names what the symbol is: struct, enum, function, field, …
 
-- [x] Symbol kind — the card names what the symbol is: struct, enum, function, field, …
+```snap
+tests/snap/hover/symbol_information/02_symbol_kind.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  namespace kinds {
+<!-- BEGIN CAPABILITY: supported -->
 
-  struct Point {
-      int x;
-  };
+**Access specifier**
 
-  union Packet {
-      int raw;
-  };
+Members show their public / protected / private access
 
-  enum class Color {
-      Red,
-  };
+```snap
+tests/snap/hover/symbol_information/03_access_specifier.cpp
+```
 
-  using Alias = Point;
+<!-- END CAPABILITY -->
 
-  int length(Point p) {
-      return p.x;
-  }
+<!-- BEGIN CAPABILITY: supported -->
 
-  }
-  ```
+**Definition rendering**
 
-  </details>
+The card includes the symbol's source definition
 
-- [x] Access specifier — members show their public / protected / private access
+```snap
+tests/snap/hover/symbol_information/04_definition_rendering.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  class Account {
-  public:
-      int balance;
+<!-- BEGIN CAPABILITY: supported clangd#710 -->
 
-  protected:
-      int limit;
+**Initializer truncation**
 
-  private:
-      int pin;
-  };
-  ```
+Huge initializers render truncated, not in full
 
-  </details>
+The rendered definition omits the initializer, and the evaluated
+`Value` field shows the first ten of its 256 elements.
 
-- [x] Definition rendering — the card includes the symbol's source definition
+```snap
+tests/snap/hover/symbol_information/05_initializer_truncation.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  namespace retry {
+<!-- BEGIN CAPABILITY: partial clangd#2474 -->
 
-  constexpr int max_retries = 3;
+**Virtual modifiers**
 
-  int backoff(int attempt = 1) {
-      return attempt * max_retries;
-  }
+`virtual` / `override` / `final` show on method hover
 
-  }
-  ```
+Modifiers written in the source render (`virtual … = 0`, `override`,
+`final`), but an overriding method that omits the redundant `virtual`
+keyword gives no sign of its virtuality — the card lacks the
+`virtual void draw() override` form the issue asks for.
 
-  </details>
+```snap
+tests/snap/hover/symbol_information/06_virtual_modifiers.cpp
+```
 
-- [ ] Initializer truncation — huge initializers render truncated, not in full _(partial)_ ([clangd#710](https://github.com/clangd/clangd/issues/710))
+<!-- END CAPABILITY -->
 
-  The rendered definition omits the initializer, but the evaluated
-  `Value` field still spells out all 256 elements.
+<!-- BEGIN CAPABILITY: partial clangd#436 -->
 
-  <details>
-  <summary>Example</summary>
+**Anonymous namespace scope**
 
-  ```cpp
-  #define A(x) x, x, x, x
-  #define B(x) A(A(A(A(x))))
-  int arr[] = {B(0)};
-  ```
+`(anonymous namespace)` shows in the scope display
 
-  </details>
+The cards render, but the anonymous segment is dropped from the
+scope display: a top-level anonymous member shows no scope line at
+all, and `outer::(anonymous)` shows just `outer`.
 
-- [ ] Virtual modifiers — `virtual` / `override` / `final` show on method hover _(partial)_ ([clangd#2474](https://github.com/clangd/clangd/issues/2474))
+```snap
+tests/snap/hover/symbol_information/07_anon_namespace_scope.cpp
+```
 
-  Modifiers written in the source render (`virtual … = 0`, `override`,
-  `final`), but an overriding method that omits the redundant `virtual`
-  keyword gives no sign of its virtuality — the card lacks the
-  `virtual void draw() override` form the issue asks for.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Base {
-      virtual void draw() = 0;
-  };
-
-  struct Circle : Base {
-      void draw() override;
-  };
-
-  struct Dot final : Circle {
-      void draw() final;
-  };
-  ```
-
-  </details>
-
-- [ ] Anonymous namespace scope — `(anonymous namespace)` shows in the scope display _(partial)_ ([clangd#436](https://github.com/clangd/clangd/issues/436))
-
-  The cards render, but the anonymous segment is dropped from the
-  scope display: a top-level anonymous member shows no scope line at
-  all, and `outer::(anonymous)` shows just `outer`.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace {
-  int hidden = 1;
-  }
-
-  namespace outer {
-  namespace {
-  int nested = 2;
-  }
-  }
-
-  int sum = hidden + outer::nested;
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Type Information
 
-<!-- BEGIN GENERATED ITEMS: Type Information -->
+<!-- BEGIN GENERATED ITEMS: type_information -->
 
-- [x] Variable types — pointers, references, arrays
+<!-- BEGIN CAPABILITY: supported -->
 
-  A variable's card pretty-prints its declared type, spelling the pointer,
-  reference and array declarators the way they read in source.
+**Variable types**
 
-  <details>
-  <summary>Example</summary>
+Variable hover preserves pointer, reference and array declarators
 
-  ```cpp
-  namespace variable_type {
+A variable's card pretty-prints its declared type, spelling the pointer,
+reference and array declarators the way they read in source.
 
-  int target;
+```snap
+tests/snap/hover/type_information/01_variable_type.cpp
+```
 
-  int *ptr = &target;
+<!-- END CAPABILITY -->
 
-  int &ref = target;
+<!-- BEGIN CAPABILITY: supported -->
 
-  int numbers[4]{};
+**Type aliases**
 
-  }
-  ```
+Hover can show the desugared `aka` form
 
-  </details>
+A sugared type shows its underlying type as `Alias (aka int)`. The
+`show_aka` option turns the `aka` suffix off.
 
-- [x] Type aliases — the desugared `aka` form
+```snap
+tests/snap/hover/type_information/02_aka_desugar.cpp
+```
 
-  A sugared type shows its underlying type as `Alias (aka int)`. The
-  `show_aka` option turns the `aka` suffix off.
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  namespace aka_desugar {
+**Function signatures**
 
-  using Handle = int;
-  using Alias = Handle;
+Function hover reports return types, parameter names and defaults
 
-  Handle direct = 0;
+A function's card lists its return type, each parameter with its name,
+and any default argument.
 
-  Alias chained = 0;
+```snap
+tests/snap/hover/type_information/03_function_signature.cpp
+```
 
-  }
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] Function signatures — return type, parameter names, defaults
+**Template parameters**
 
-  A function's card lists its return type, each parameter with its name,
-  and any default argument.
+Template hover distinguishes type, template-template and non-type parameters
 
-  <details>
-  <summary>Example</summary>
+Each template parameter kind reports its form: a type parameter, a
+template-template parameter, and a non-type parameter with its default.
 
-  ```cpp
-  namespace function_signature {
+```snap
+tests/snap/hover/type_information/04_template_params.cpp
+```
 
-  int add(int lhs, int rhs);
+<!-- END CAPABILITY -->
 
-  void configure(int width, bool visible = true);
+<!-- BEGIN CAPABILITY: supported -->
 
-  }
-  ```
+**`auto` deduction**
 
-  </details>
+Placeholder hover shows the type it resolves to
 
-- [x] Template parameters — type, template-template, non-type
+Hovering an `auto` placeholder shows the type substituted for it —
+builtins, pointers, lambdas, template instantiations, and the
+`/* not deduced */` marker inside an uninstantiated template.
 
-  Each template parameter kind reports its form: a type parameter, a
-  template-template parameter, and a non-type parameter with its default.
+```snap
+tests/snap/hover/type_information/05_auto_deduction.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  // Template type parameter.
-  namespace type_param {
-  template <typename T = int> void foo();
-  }
+<!-- BEGIN CAPABILITY: supported -->
 
-  // Template template parameter.
-  namespace template_template_param {
-  template <template<typename> class T> void foo();
-  }
+**`decltype` deduction**
 
-  // Non-type template parameter.
-  namespace non_type_param {
-  template <int T = 5> void foo();
-  }
-  ```
+Decltype hover distinguishes value, reference and dependent forms
 
-  </details>
+Hovering a `decltype` or `decltype(auto)` placeholder shows the resolved
+type, including the reference the parenthesized-expression rule adds.
 
-- [x] `auto` deduction — the type the placeholder resolves to
+```snap
+tests/snap/hover/type_information/06_decltype_deduction.cpp
+```
 
-  Hovering an `auto` placeholder shows the type substituted for it —
-  builtins, pointers, lambdas, template instantiations, and the
-  `/* not deduced */` marker inside an uninstantiated template.
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: partial clangd#435 -->
 
-  ```cpp
-  namespace auto_deduction {
+**CTAD**
 
-  struct Bar {};
-  struct Pair { int first; int second; };
-  template <typename T> struct Box {};
+Class placeholder hover shows its deduced template arguments
 
-  void locals() {
-    int n = 0;
-    auto a = 1;
-    const auto b = 1;
-    auto& c = n;
-    auto* d = &n;
-    auto e = &n;
-    auto f = []{};
-    auto g = Box<int>();
-    auto [x, y] = Pair{};
-  }
+With class template argument deduction the variable's card shows the
+deduced `Box<int>`, but hovering the class-name spelling still reports
+the primary template without its arguments.
 
-  auto with_trailing() -> int { return 0; }
+```snap
+tests/snap/hover/type_information/07_ctad_arguments.cpp
+```
 
-  auto deduced_return() { return Bar(); }
+<!-- END CAPABILITY -->
 
-  template <typename T> void undeduced() {
-    auto u = T();
-  }
+<!-- BEGIN CAPABILITY: partial clangd#230 -->
 
-  }
-  ```
+**Instantiation arguments**
 
-  </details>
+Template use hover does not show parameter-to-argument bindings yet
 
-- [x] `decltype` deduction — value, reference and dependent forms
+A use of a template shows the substituted types (`Wrapper<int>`,
+`identity<int>`, `int x`), but not an explicit `T = int` mapping of each
+parameter to the argument it was bound to.
 
-  Hovering a `decltype` or `decltype(auto)` placeholder shows the resolved
-  type, including the reference the parenthesized-expression rule adds.
+```snap
+tests/snap/hover/type_information/08_instantiation_args.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  namespace decltype_deduction {
+<!-- BEGIN CAPABILITY: unsupported clangd#493 -->
 
-  int base = 0;
+**Lambda `auto` parameters**
 
-  void locals() {
-    int n = 0;
-    const int cn = 0;
-    int& r = n;
-    decltype(auto) a = 1;
-    decltype(auto) b = cn;
-    decltype(auto) c = r;
-    decltype(n) d = n;
-    decltype((n)) e = n;
-    decltype(static_cast<int&&>(n)) f = static_cast<int&&>(n);
-  }
+Generic lambda parameters do not show their deduced type yet
 
-  decltype(base) mirror = base;
+Hovering the `auto` parameter of a generic lambda yields no card; the
+deduced parameter type is not shown.
 
-  template <typename T> decltype(auto) undeduced() { return T(); }
+```snap
+tests/snap/hover/type_information/09_lambda_auto_params.cpp
+```
 
-  template <typename T> struct Dependent {
-    using kind = decltype(T::member);
-  };
+<!-- END CAPABILITY -->
 
-  }
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-  </details>
+**Sugared `auto`**
 
-- [ ] CTAD — deduced template arguments of a class placeholder _(partial)_ ([clangd#435](https://github.com/clangd/clangd/issues/435))
+Alias spelling survives `auto` deduction
 
-  With class template argument deduction the variable's card shows the
-  deduced `Box<int>`, but hovering the class-name spelling still reports
-  the primary template without its arguments.
+Hover keeps the alias spelling and appends its desugared form, so `auto`
+deduced from an aliased return type reads as `Outer // aka: int`.
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/hover/type_information/10_sugared_auto.cpp
+```
 
-  ```cpp
-  namespace ctad_arguments {
+<!-- END CAPABILITY -->
 
-  template <typename T> struct Box {
-    Box(T);
-  };
+<!-- BEGIN CAPABILITY: unsupported clangd#2156 -->
 
-  Box picked(42);
+**Type formatting**
 
-  }
-  ```
+Long and nested rendered types are not rewrapped or aligned
 
-  </details>
+Long or nested types are not rewrapped or aligned.
 
-- [ ] Instantiation arguments — template parameters bound at a use site _(partial)_ ([clangd#230](https://github.com/clangd/clangd/issues/230))
+```snap
+tests/snap/hover/type_information/11_clang_format_types.cpp
+```
 
-  A use of a template shows the substituted types (`Wrapper<int>`,
-  `identity<int>`, `int x`), but not an explicit `T = int` mapping of each
-  parameter to the argument it was bound to.
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: supported clangd#2219 -->
 
-  ```cpp
-  namespace instantiation_args {
+**Anonymous struct typedef**
 
-  template <typename T> struct Wrapper {
-    T value;
-  };
+C typedef hover names an anonymous struct after its alias
 
-  template <typename T> T identity(T x) {
-    return x;
-  }
+Both the alias and a variable of it report a clean `Point` card rather
+than presenting the anonymous type as a separately named struct.
 
-  void demo() {
-    Wrapper<int> holder;
-    int r = identity(42);
-  }
+```snap
+tests/snap/hover/type_information/12_c_typedef_anon.cpp
+```
 
-  }
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: partial -->
 
-- [ ] Lambda `auto` parameters — deduced parameter type ([clangd#493](https://github.com/clangd/clangd/issues/493))
+**Concept constraints**
 
-  Hovering the `auto` parameter of a generic lambda yields no card; the
-  deduced parameter type is not shown.
+Constrained placeholders lose their constraint on hover
 
-  <details>
-  <summary>Example</summary>
+The constrained-parameter and concept-reference cards carry the
+constraint, but hovering the placeholder of a constrained `Addable auto`
+variable shows only the deduced type — the constraint is dropped.
 
-  ```cpp
-  namespace lambda_auto_params {
+```snap
+tests/snap/hover/type_information/13_concept_constraints.cpp
+```
 
-  auto printer = [](auto value) { return value; };
-
-  }
-  ```
-
-  </details>
-
-- [x] Sugared `auto` — alias sugar preserved through deduction
-
-  clangd tracks lost alias sugar through `auto` as clangd#709; clice
-  already keeps the alias spelling and appends its desugared form, so
-  `auto` deduced from an aliased return type reads as `Outer // aka: int`.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace sugared_auto {
-
-  using Inner = int;
-  using Outer = Inner;
-
-  Outer make();
-
-  void demo() {
-    auto value = make();
-  }
-
-  }
-  ```
-
-  </details>
-
-- [ ] Type formatting — clang-format applied to rendered types ([clangd#2156](https://github.com/clangd/clangd/issues/2156))
-
-  Long or nested types are printed by the compiler's default type printer;
-  they are not re-wrapped or aligned through clang-format.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace clang_format_types {
-
-  template <typename A, typename B, typename C, typename D>
-  struct Tuple {};
-
-  Tuple<int, long, unsigned, char> wide;
-
-  }
-  ```
-
-  </details>
-
-- [x] Anonymous struct typedef — the classic C `typedef struct {…} Name` ([clangd#2219](https://github.com/clangd/clangd/issues/2219))
-
-  Compiled as C11: clangd renders a misleading `struct Point` for the
-  alias of an anonymous struct; clice names the struct after its typedef,
-  so both the alias and a variable of it report a clean `Point` card.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  /// A 2-D point.
-  typedef struct {
-    int x, y;
-  } Point;
-
-  Point origin = {.y = 2, .x = 1};
-  ```
-
-  </details>
-
-- [ ] Concept constraints — the constraint behind a parameter or `auto` placeholder _(partial)_
-
-  The constrained-parameter and concept-reference cards carry the
-  constraint, but hovering the placeholder of a constrained `Addable auto`
-  variable shows only the deduced type — the constraint is dropped.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace concept_constraints {
-
-  template <typename T>
-  concept Addable = requires(T a) { a + a; };
-
-  template <Addable U>
-  void sum(U a, U b);
-
-  auto flag = Addable<int>;
-
-  Addable auto total = 1;
-
-  }
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Layout Information
 
-<!-- BEGIN GENERATED ITEMS: Layout Information -->
+<!-- BEGIN GENERATED ITEMS: layout_information -->
 
-- [x] Field layout — size, offset, alignment and padding show on field hover
+<!-- BEGIN CAPABILITY: supported -->
 
-  The corpus pins an x86-64 target, so the bit numbers are stable.
+**Field layout**
 
-  <details>
-  <summary>Example</summary>
+Size, offset, alignment and padding show on field hover
 
-  ```cpp
-  struct Header {
-      char tag;
-      int length;
-  };
+```snap
+tests/snap/hover/layout_information/01_field_layout.cpp
+```
 
-  struct Flags {
-      int ready : 1;
-      int end : 1;
-  };
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: partial clangd#1763 -->
 
-- [ ] Type-level layout — hovering the type itself shows its size, alignment and padding _(partial)_ ([clangd#1763](https://github.com/clangd/clangd/issues/1763))
+**Type-level layout**
 
-  Size and alignment show on the type card today; the total padding
-  does not yet.
+Hovering the type itself shows its size, alignment and padding
 
-  <details>
-  <summary>Example</summary>
+Size and alignment show on the type card today; the total padding
+does not yet.
 
-  ```cpp
-  namespace layout {
+```snap
+tests/snap/hover/layout_information/02_type_layout.cpp
+```
 
-  struct Widget {
-      int id;
-      double value;
-  };
+<!-- END CAPABILITY -->
 
-  }
-  ```
+<!-- BEGIN CAPABILITY: partial clangd#1771 -->
 
-  </details>
+**Vtable offset**
 
-- [ ] Vtable offset — virtual methods show their table slot _(partial)_ ([clangd#1771](https://github.com/clangd/clangd/issues/1771))
+Virtual methods show their table slot
 
-  The method card renders without any vtable fact today.
+The method card renders without any vtable fact today.
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/hover/layout_information/03_vtable_offset.cpp
+```
 
-  ```cpp
-  struct Shape {
-      virtual void draw();
-      virtual void move();
-  };
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Expression Context
 
-<!-- BEGIN GENERATED ITEMS: Expression Context -->
+<!-- BEGIN GENERATED ITEMS: expression_context -->
 
-- [x] Constant evaluation — constexpr, enumerators, sizeof
+<!-- BEGIN CAPABILITY: supported -->
 
-  When an initializer is a constant expression, the card evaluates it and
-  shows the resulting value.
+**Constant evaluation**
 
-  <details>
-  <summary>Example</summary>
+Constant-expression hover reports evaluated values
 
-  ```cpp
-  namespace constant_value {
+When an initializer is a constant expression, the card evaluates it and
+shows the resulting value.
 
-  constexpr int square(int n) { return n * n; }
-  int from_call = square(5);
+```snap
+tests/snap/hover/expression_context/01_constant_value.cpp
+```
 
-  int from_sizeof = sizeof(int);
+<!-- END CAPABILITY -->
 
-  enum Color { Red = -1, Green = 5 };
-  Color picked = Green;
+<!-- BEGIN CAPABILITY: supported -->
 
-  template <int A, int B> struct Sum { static constexpr int value = A + B; };
-  int from_member = Sum<3, 4>::value;
+**Call arguments**
 
-  }
-  ```
+Argument hover identifies its bound parameter
 
-  </details>
+Hovering an argument at a call site shows the parameter it is passed to,
+naming the parameter it binds.
 
-- [x] Call arguments — which parameter each argument binds to
+```snap
+tests/snap/hover/expression_context/02_callee_arguments.cpp
+```
 
-  Hovering an argument at a call site shows the parameter it is passed to,
-  naming the parameter it binds.
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  namespace callee_arguments {
+**Pass semantics**
 
-  void configure(int width, int& out, int flags = 0);
+Argument hover distinguishes value and reference passing
 
-  void demo() {
-    int w = 1024;
-    int result = 0;
-    configure(w, result, 3);
-  }
+The argument card states how the value reaches the callee: copied by
+value, or bound to a mutable or const reference parameter.
 
-  }
-  ```
+```snap
+tests/snap/hover/expression_context/03_pass_semantics.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Pass semantics — by value, by reference, by const reference
+<!-- BEGIN CAPABILITY: supported -->
 
-  The argument card states how the value reaches the callee: copied by
-  value, or bound to a mutable or const reference parameter.
+**Implicit conversions**
 
-  <details>
-  <summary>Example</summary>
+Argument hover reports the target type of an implicit conversion
 
-  ```cpp
-  namespace pass_semantics {
+When an argument reaches a parameter through an implicit conversion, the
+card notes the target type, for both built-in and user-defined
+conversions.
 
-  void by_value(int x);
-  void by_ref(int& x);
-  void by_const_ref(const int& x);
+```snap
+tests/snap/hover/expression_context/04_implicit_conversion.cpp
+```
 
-  void demo() {
-    int n = 0;
-    by_value(n);
-    by_ref(n);
-    by_const_ref(n);
-  }
+<!-- END CAPABILITY -->
 
-  }
-  ```
+<!-- BEGIN CAPABILITY: partial clangd#1016 -->
 
-  </details>
+**String literals**
 
-- [x] Implicit conversions — argument converted to the parameter type
+String-literal hover reports its size in bytes
 
-  When an argument reaches a parameter through an implicit conversion, the
-  card notes the target type, for both built-in and user-defined
-  conversions.
+A string-literal card reports the array type and its size in bytes
+(`const char[6]`, `Size: 6 bytes` — the length plus the null
+terminator), not an explicit character count.
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/hover/expression_context/05_string_length.cpp
+```
 
-  ```cpp
-  namespace implicit_conversion {
+<!-- END CAPABILITY -->
 
-  struct Wrapper {
-    Wrapper(int value);
-  };
+<!-- BEGIN CAPABILITY: unsupported clangd#1669 -->
 
-  void take_float(float x);
-  void take_wrapper(Wrapper w);
+**Numeric literals**
 
-  void demo() {
-    int n = 0;
-    take_float(n);
-    take_wrapper(n);
-  }
+Numeric literals have no type or value hover yet
 
-  }
-  ```
+Hovering a numeric literal yields no card, unlike character and string
+literals, whose type and value are shown.
 
-  </details>
+```snap
+tests/snap/hover/expression_context/06_numeric_literal_type.cpp
+```
 
-- [ ] String literals — the length reported on hover _(partial)_ ([clangd#1016](https://github.com/clangd/clangd/issues/1016))
+<!-- END CAPABILITY -->
 
-  A string-literal card reports the array type and its size in bytes
-  (`const char[6]`, `Size: 6 bytes` — the length plus the null
-  terminator), not an explicit character count.
+<!-- BEGIN CAPABILITY: partial clangd#1622 -->
 
-  <details>
-  <summary>Example</summary>
+**Record variables**
 
-  ```cpp
-  namespace string_length {
+Record hover can show a misleading enclosing constant value
 
-  const char *greeting = "hello";
+Hovering a record-typed argument of a constant-evaluable call currently
+reports that call's value (`Value = 7`) on the variable — a value that
+is not the record's own.
 
-  }
-  ```
+```snap
+tests/snap/hover/expression_context/07_record_value_misleading.cpp
+```
 
-  </details>
-
-- [ ] Numeric literals — type and value of an integer or float literal ([clangd#1669](https://github.com/clangd/clangd/issues/1669))
-
-  Hovering a numeric literal yields no card, unlike character and string
-  literals, whose type and value are shown.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace numeric_literal_type {
-
-  auto count = 42;
-  auto ratio = 3.14;
-
-  }
-  ```
-
-  </details>
-
-- [ ] Record variables — enclosing constant value leaks in _(partial)_ ([clangd#1622](https://github.com/clangd/clangd/issues/1622))
-
-  Hovering a record-typed argument of a constant-evaluable call currently
-  reports that call's value (`Value = 7`) on the variable — a value that
-  is not the record's own.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace record_value_misleading {
-
-  struct Tag {};
-
-  constexpr int rank(Tag) {
-    return 7;
-  }
-
-  void demo() {
-    Tag t;
-    int r = rank(t);
-  }
-
-  }
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Documentation
 
-<!-- BEGIN GENERATED ITEMS: Documentation -->
+<!-- BEGIN GENERATED ITEMS: documentation -->
 
-- [x] Doxygen `///` comments — extracted from the declaration and rendered on hover
+<!-- BEGIN CAPABILITY: supported -->
 
-  Applies to plain functions, primary templates and their specializations;
-  a reference resolves to the most specialized declaration's comment.
+**Doxygen `///` comments**
 
-  <details>
-  <summary>Example</summary>
+Declaration documentation appears on hover
 
-  ```cpp
-  namespace docs {
-  /// Adds two integers.
-  int add(int a, int b);
+Applies to plain functions, primary templates and their specializations;
+a reference resolves to the most specialized declaration's comment.
 
-  /// A box holding a value.
-  template <typename T> struct Box {};
+```snap
+tests/snap/hover/documentation/01_doxygen_comments.cpp
+```
 
-  /// A box of pointers.
-  template <typename T> struct Box<T*> {};
+<!-- END CAPABILITY -->
 
-  void use() {
-      Box<int> b;
-      Box<int*> p;
-  }
-  }
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-  </details>
+**Synthesized accessor docs**
 
-- [x] Synthesized accessor docs — trivial getters/setters get a generated one-line description
+Trivial getters/setters get a generated one-line description
 
-  A trivial getter or setter with no comment of its own gets a synthesized
-  "Trivial accessor/setter for `field`." line in its hover card.
-
-  <details>
-  <summary>Example</summary>
+A trivial getter or setter with no comment of its own gets a synthesized
+"Trivial accessor/setter for `field`." line in its hover card.
 
-  ```cpp
-  namespace accessors {
-  struct Widget {
-      int width;
-      int getWidth() { return width; }
-      void setWidth(int w) { width = w; }
-  };
-  }
-  ```
+```snap
+tests/snap/hover/documentation/02_accessor_docs.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [ ] `@copydoc` tags — copy another symbol's documentation onto this one _(partial)_ ([clangd#1320](https://github.com/clangd/clangd/issues/1320))
+<!-- BEGIN CAPABILITY: partial clangd#1320 -->
 
-  A `@copydoc target` tag should copy `target`'s documentation into this
-  symbol's hover card. clice does not resolve the tag yet — the card shows
-  the literal `@copydoc base_func()` text.
+**`@copydoc` tags**
 
-  <details>
-  <summary>Example</summary>
+Copied documentation is not resolved onto the receiving symbol yet
 
-  ```cpp
-  namespace copydoc {
-  /// Detailed documentation.
-  void base_func();
+A `@copydoc target` tag remains literal instead of copying `target`'s
+documentation into this symbol's hover card.
 
-  /// @copydoc base_func()
-  void wrapper();
-  }
-  ```
+```snap
+tests/snap/hover/documentation/03_copydoc.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [ ] Inherited override docs — an override with no comment shows the base method's documentation _(partial)_ ([clangd#2504](https://github.com/clangd/clangd/issues/2504))
+<!-- BEGIN CAPABILITY: partial clangd#2504 -->
 
-  Hovering an overriding method that carries no comment of its own should
-  surface the documentation from the method it overrides. clice does not
-  inherit it yet — the override's card carries no description.
+**Inherited override docs**
 
-  <details>
-  <summary>Example</summary>
+An override with no comment does not inherit the base method's documentation
+yet
 
-  ```cpp
-  namespace inherit_docs {
-  struct Base {
-      /// Renders the widget.
-      virtual void draw();
-  };
-  struct Circle : Base {
-      void draw() override;
-  };
-  }
-  ```
+An overriding method with no comment of its own has no description on its
+hover card.
 
-  </details>
+```snap
+tests/snap/hover/documentation/04_inherit_overridden_docs.cpp
+```
 
-- [ ] Overload doc sharing — a later overload with no comment reuses the first overload's documentation _(partial)_ ([clangd#2506](https://github.com/clangd/clangd/issues/2506))
+<!-- END CAPABILITY -->
 
-  Consecutive overloads often document only the first; a later undocumented
-  overload should reuse that shared description. clice does not share it
-  yet — the later overload's card carries no description.
+<!-- BEGIN CAPABILITY: partial clangd#2506 -->
 
-  <details>
-  <summary>Example</summary>
+**Overload doc sharing**
 
-  ```cpp
-  namespace overloads {
-  /// Opens a file.
-  void open(const char* path);
-  void open(const char* path, int flags);
-  }
-  ```
+A later overload does not reuse the first overload's documentation yet
 
-  </details>
+Consecutive overloads often document only the first; a later undocumented
+overload has no description on its hover card.
 
-- [ ] Inherited constructor docs — `using Base::Base;` surfaces the base constructor's documentation ([clangd#1936](https://github.com/clangd/clangd/issues/1936))
-
-  A constructor pulled in with `using Base::Base;` should carry the base
-  constructor's documentation on hover. There is no hover surface for it:
-  the name in the using-declaration resolves to the class, not the
-  inherited constructor.
+```snap
+tests/snap/hover/documentation/05_overload_doc_sharing.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  namespace inherited_ctor {
-  struct Base {
-      /// Constructs from a value.
-      Base(int value);
-  };
-  struct Derived : Base {
-      using Base::Base;
-  };
-  }
-  ```
+<!-- BEGIN CAPABILITY: unsupported clangd#1936 -->
 
-  </details>
+**Inherited constructor docs**
 
-- [ ] Banner comments — a section banner separated by a blank line must not attach to the next declaration _(partial)_ ([clangd#974](https://github.com/clangd/clangd/issues/974))
+Inherited constructors have no documentation hover yet
 
-  A `// ==== Section ====` banner followed by a blank line should not be
-  misattributed as documentation for the declaration below it. clice
-  currently attaches it anyway — the banner text appears in the card.
+The name in a `using Base::Base;` declaration resolves to the class rather
+than an inherited constructor, so the base constructor's documentation has
+no hover surface.
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/hover/documentation/06_inherited_ctor_docs.cpp
+```
 
-  ```cpp
-  namespace banners {
-  // ==== Section Banner ====
+<!-- END CAPABILITY -->
 
-  void foo();
-  }
-  ```
+<!-- BEGIN CAPABILITY: partial clangd#974 -->
 
-  </details>
+**Banner comments**
 
-- [x] Declaration vs definition comments — the declaration's doc wins over a definition-site comment
+A separated section banner still attaches to the following declaration
 
-  clangd tracks this as clangd#829; clice already prefers the
-  declaration's `///` documentation over the definition's plain `//` note,
-  showing it at both the declaration and the definition site.
+A `// ==== Section ====` banner followed by a blank line is misattributed
+as documentation for the declaration below it, so the banner text appears
+in the card.
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/hover/documentation/07_comment_association.cpp
+```
 
-  ```cpp
-  namespace decldef {
-  /// Public API documentation.
-  void process(int x);
+<!-- END CAPABILITY -->
 
-  // Internal implementation note.
-  void process(int x) { (void)x; }
-  }
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-  </details>
+**Declaration vs definition comments**
 
-- [ ] Whitespace and newlines — a markdown table in a comment keeps its line breaks _(partial)_ ([clangd#2057](https://github.com/clangd/clangd/issues/2057))
+The declaration's doc wins over a definition-site comment
 
-  A markdown table written across several `///` lines should render as a
-  table with its line breaks preserved. clice currently flattens the lines
-  onto one line, so the table does not render.
+The declaration's `///` documentation appears at both the declaration and
+definition sites instead of the definition's plain `//` note.
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/hover/documentation/08_decl_vs_def_docs.cpp
+```
 
-  ```cpp
-  namespace tables {
-  /// | Column A | Column B |
-  /// |----------|----------|
-  /// | 1        | 2        |
-  void table_fn();
-  }
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: partial clangd#2057 -->
 
-- [ ] Comment indentation — indented lines in a comment render without spurious extra indentation _(partial)_ ([clangd#1040](https://github.com/clangd/clangd/issues/1040))
+**Whitespace and newlines**
 
-  A doc comment whose body contains an indented block should render with
-  correct indentation. clice currently strips the leading indentation, so
-  an indented code block loses its offset and the blank line collapses.
+Markdown tables in comments lose their line breaks on hover
 
-  <details>
-  <summary>Example</summary>
+A markdown table written across several `///` lines is flattened onto one
+line, so the table does not render.
 
-  ```cpp
-  namespace indented {
-  /// Summary line.
-  ///
-  ///     step_one();
-  ///     step_two();
-  void run();
-  }
-  ```
+```snap
+tests/snap/hover/documentation/09_whitespace_preserve.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [ ] Template keyword from a macro — the docstring should survive the expansion _(partial)_ ([clangd#1226](https://github.com/clangd/clangd/issues/1226))
+<!-- BEGIN CAPABILITY: partial clangd#1040 -->
 
-  When the `template` keyword is produced by a macro expansion, the
-  declaration's doc comment should still appear on hover. clice currently
-  drops it — the card carries no description.
+**Comment indentation**
 
-  <details>
-  <summary>Example</summary>
+Indented documentation blocks lose their leading indentation on hover
 
-  ```cpp
-  int anchor = 0;
+A doc comment whose body contains an indented block loses the block's
+offset, and its blank line collapses.
 
-  #define TEMPLATE template
+```snap
+tests/snap/hover/documentation/10_comment_indentation.cpp
+```
 
-  /// A documented template function.
-  TEMPLATE <typename T> void run(T value);
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: partial clangd#1226 -->
 
-- [ ] Comment suppression option — a config switch to hide misattributed doc comments ([clangd#2148](https://github.com/clangd/clangd/issues/2148))
+**Template keyword from a macro**
 
-  A stray comment picked up by the association heuristic — a section
-  banner separated from the code by a blank line, for example — always
-  reaches the hover card: clice has no config option to suppress doc
-  comments whose attachment is a guess.
+Documentation on a macro-produced template is missing from hover
 
-  <details>
-  <summary>Example</summary>
+When the `template` keyword is produced by a macro expansion, the
+declaration's doc comment does not appear on hover, and the card carries
+no description.
 
-  ```cpp
-  namespace suppression {
-  // TODO: tidy this file up.
+```snap
+tests/snap/hover/documentation/11_macro_template_doc.cpp
+```
 
-  int counter;
-  }
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: unsupported clangd#2148 -->
+
+**Comment suppression option**
+
+Misattributed documentation cannot be suppressed by configuration yet
+
+A stray comment such as a section banner separated from the code by a blank
+line always reaches the hover card, and no option suppresses it.
+
+```snap
+tests/snap/hover/documentation/12_comment_suppression.cpp
+```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Macro Hover
 
-<!-- BEGIN GENERATED ITEMS: Macro Hover -->
+<!-- BEGIN GENERATED ITEMS: macro_hover -->
 
-- [x] Definition text at every site — `#define`, use, `#ifdef` and `#undef` all show the macro's definition
+<!-- BEGIN CAPABILITY: supported -->
 
-  A macro's hover card carries its `#define` text wherever the name
-  appears: the definition itself, a use, an `#ifdef` guard and an `#undef`.
+**Definition text at every site**
 
-  <details>
-  <summary>Example</summary>
+`#define`, use, `#ifdef`, `defined` and `#undef` all show the macro's definition
 
-  ```cpp
-  int anchor = 0;
+A macro's hover card carries its `#define` text wherever the name
+appears: the definition itself, a use, an `#ifdef` guard, a `defined`
+test and an `#undef`.
 
-  #define LIMIT 64
+```snap
+tests/snap/hover/macro_hover/01_macro_definition_sites.cpp
+```
 
-  int use = LIMIT;
+<!-- END CAPABILITY -->
 
-  #ifdef LIMIT
-  int guarded = 1;
-  #endif
+<!-- BEGIN CAPABILITY: supported -->
 
-  #undef LIMIT
-  ```
+**Fully-expanded preview**
 
-  </details>
+A function-like macro use shows its arguments substituted through the body
 
-- [x] Fully-expanded preview — a function-like macro use shows its arguments substituted through the body
+Hovering a function-like macro invocation shows the `#define` text and a
+preview of the fully-expanded result with the call's arguments spliced in.
 
-  Hovering a function-like macro invocation shows the `#define` text and a
-  preview of the fully-expanded result with the call's arguments spliced in.
+```snap
+tests/snap/hover/macro_hover/02_expansion_preview.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  int x = 1, y = 2;
+<!-- BEGIN CAPABILITY: supported -->
 
-  #define MAX(a, b) ((a) > (b) ? (a) : (b))
+**Command-line macros**
 
-  int z = MAX(x, y);
-  ```
+`-D` definitions hover with a synthesized `#define`
 
-  </details>
+A macro defined on the command line (`-DFROM_CLI=7`) shows a synthesized
+`#define FROM_CLI 7` in its hover card, then its expansion.
 
-- [x] Command-line macros — `-D` definitions hover with a synthesized `#define`
+```snap
+tests/snap/hover/macro_hover/03_cli_macros.cpp
+```
 
-  A macro defined on the command line (`-DFROM_CLI=7`) shows a synthesized
-  `#define FROM_CLI 7` in its hover card, then its expansion.
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: partial -->
 
-  ```cpp
-  int cli = FROM_CLI;
-  ```
+**Nested macro in arguments**
 
-  </details>
+A nested macro argument shows its definition without an expansion preview
 
-- [ ] Nested macro in arguments — a macro named inside another invocation's arguments _(partial)_
+The expansion preview starts at the outer invocation, so hovering an
+inner macro named inside the arguments shows only its definition, not an
+expansion preview.
 
-  The recorded expansion starts at the outer invocation, so hovering an
-  inner macro named inside the arguments shows only its definition, not an
-  expansion preview.
+```snap
+tests/snap/hover/macro_hover/04_nested_arg_expansion.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  int anchor = 0;
+<!-- BEGIN CAPABILITY: partial clangd#2642 -->
 
-  #define ECHO(x) x
-  #define INNER_VAL 99
+**Use before definition**
 
-  int nested = ECHO(INNER_VAL);
-  ```
+A macro use before its definition has no hover yet
 
-  </details>
+A macro name used in an `#if` above its own `#define` has no hover, while a
+use after the definition works normally.
 
-- [ ] Use before definition — hovering a macro name that appears before its `#define` _(partial)_ ([clangd#2642](https://github.com/clangd/clangd/issues/2642))
+```snap
+tests/snap/hover/macro_hover/05_expansion_before_definition.cpp
+```
 
-  A macro name used in an `#if` above its own `#define` should still hover
-  with the macro's definition. clice currently returns no hover at the
-  pre-definition use; a use after the `#define` works normally.
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: unsupported -->
 
-  ```cpp
-  int anchor = 0;
+**`#define` inside the preamble**
 
-  #if COUNT > 0
-  int positive = 1;
-  #endif
+A leading macro definition has no hover card
 
-  #define COUNT 3
+A `#define` in the leading run of directives before the first declaration
+has no hover card, while definitions after a declaration do.
 
-  int use = COUNT;
-  ```
+```snap
+tests/snap/hover/macro_hover/06_preamble_define_hover.cpp
+```
 
-  </details>
-
-- [ ] `#define` inside the preamble — hover on a leading directive
-
-  A `#define` in the file's preamble region (the leading run of directives
-  before the first declaration) is not part of the live parse's
-  preprocessor record, so hovering its name yields nothing. Every other
-  macro fixture opens with a declaration precisely to push its directives
-  past the preamble boundary.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  #define EARLY 1
-
-  int use = EARLY;
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Special Hover Targets
 
-<!-- BEGIN GENERATED ITEMS: Special Hover Targets -->
+<!-- BEGIN GENERATED ITEMS: special_hover_targets -->
 
-- [ ] Members on type hover — hovering an enum or struct type lists its members _(partial)_ ([clangd#959](https://github.com/clangd/clangd/issues/959))
+<!-- BEGIN CAPABILITY: partial clangd#959 -->
 
-  The card names the type (and a struct's layout), but the member list is
-  not expanded — the body renders as `{}`.
+**Members on type hover**
 
-  <details>
-  <summary>Example</summary>
+Hovering an enum or struct type lists its members
 
-  ```cpp
-  namespace members {
+The card names the type (and a struct's layout), but the member list is
+not expanded — the body renders as `{}`.
 
-  enum Color {
-      Red,
-      Green,
-      Blue,
-  };
+```snap
+tests/snap/hover/special_hover_targets/01_type_members_on_hover.cpp
+```
 
-  struct Point {
-      int x;
-      int y;
-  };
+<!-- END CAPABILITY -->
 
-  }
-  ```
+<!-- BEGIN CAPABILITY: partial clangd#2020 -->
 
-  </details>
+**Typedef underlying struct**
 
-- [ ] Typedef underlying struct — hovering an alias expands the aliased definition _(partial)_ ([clangd#2020](https://github.com/clangd/clangd/issues/2020))
+Hovering an alias expands the aliased definition
 
-  The card resolves the alias to its underlying type name, but does not
-  expand that struct's definition or member list.
+The card resolves the alias to its underlying type name, but does not
+expand that struct's definition or member list.
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/hover/special_hover_targets/02_typedef_underlying.cpp
+```
 
-  ```cpp
-  namespace aliases {
+<!-- END CAPABILITY -->
 
-  struct Widget {
-      int id;
-      double value;
-  };
+<!-- BEGIN CAPABILITY: unsupported clangd#1862 -->
 
-  using Handle = Widget;
+**Keyword documentation**
 
-  typedef Widget Widget_t;
+Language keywords do not have documentation hover yet
 
-  }
-  ```
+Hovering a keyword such as `const` or `virtual` produces no card.
 
-  </details>
+```snap
+tests/snap/hover/special_hover_targets/03_keyword_docs.cpp
+```
 
-- [ ] Keyword documentation — hovering a language keyword shows its description ([clangd#1862](https://github.com/clangd/clangd/issues/1862))
+<!-- END CAPABILITY -->
 
-  Hovering a keyword such as `const` or `virtual` produces no card.
+<!-- BEGIN CAPABILITY: supported clangd#1862 -->
 
-  <details>
-  <summary>Example</summary>
+**Attribute documentation**
 
-  ```cpp
-  namespace keywords {
+Hovering an attribute shows its description
 
-  const int limit = 42;
+The attribute's own documentation renders in the card, for both GNU
+`__attribute__` spellings and C++ `[[...]]` attributes.
 
-  struct Widget {
-      virtual void draw();
-  };
+```snap
+tests/snap/hover/special_hover_targets/04_attributes.cpp
+```
 
-  }
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] Attribute documentation — hovering an attribute shows its description ([clangd#1862](https://github.com/clangd/clangd/issues/1862))
+**Include directive hover**
 
-  The attribute's own documentation renders in the card, for both GNU
-  `__attribute__` spellings and C++ `[[...]]` attributes.
+Hovering an `#include` shows the resolved header path
 
-  <details>
-  <summary>Example</summary>
+The card resolves the quoted header to its file on disk.
 
-  ```cpp
-  namespace attr_docs {
-  void foo(int * __attribute__((nonnull, noescape)) );
+```snap
+tests/snap/hover/special_hover_targets/05_include_hover.cpp
+```
 
-  [[nodiscard]] int compute();
-  }
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] Include directive hover — hovering an `#include` shows the resolved header path
+**`this` expression**
 
-  The card resolves the quoted header to its file on disk.
+Hovering `this` shows the pointed-to class type
 
-  <details>
-  <summary>Example</summary>
+Works in a plain class and inside a class template.
 
-  ```cpp
-  #include "own_header.h"
+```snap
+tests/snap/hover/special_hover_targets/06_this_hover.cpp
+```
 
-  int use = own_header_value;
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] `this` expression — hovering `this` shows the pointed-to class type
+**Predefined identifiers**
 
-  Works in a plain class and inside a class template.
+`__func__` hover shows the current function name
 
-  <details>
-  <summary>Example</summary>
+The value resolves in a concrete function; inside a template only the
+approximate type is known.
 
-  ```cpp
-  namespace this_hover {
+```snap
+tests/snap/hover/special_hover_targets/07_predefined_identifiers.cpp
+```
 
-  struct Widget {
-      Widget* self() {
-          return this;
-      }
-  };
+<!-- END CAPABILITY -->
 
-  template <typename T>
-  struct Box {
-      const Box* self() const {
-          return this;
-      }
-  };
+<!-- BEGIN CAPABILITY: supported -->
 
-  }
-  ```
+**No hover on meaningless tokens**
 
-  </details>
+Builtin keywords and empty bodies yield no card
 
-- [x] Predefined identifiers — `__func__` hover shows the current function name
+Hovering a builtin type keyword or the inside of an empty body
+produces no card at all, so editors show nothing rather than noise.
+(Numeric and bool literals also have no card today, but that is a
+tracked gap — see the numeric-literal item — not a promise.)
 
-  The value resolves in a concrete function; inside a template only the
-  approximate type is known.
+```snap
+tests/snap/hover/special_hover_targets/08_no_hover_negatives.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  namespace predefined {
+<!-- BEGIN CAPABILITY: unsupported clangd#2662 -->
 
-  void current() {
-      const char* name = __func__;
-  }
+**GTK-Doc and kernel-doc**
 
-  template <int N>
-  void generic() {
-      const char* name = __func__;
-  }
+GObject Introspection annotations do not appear in hover cards yet
 
-  }
-  ```
+GTK-Doc / kernel-doc comment syntax and GObject Introspection
+annotations are not parsed into the hover card.
 
-  </details>
+```snap
+tests/snap/hover/special_hover_targets/09_gtk_doc.cpp
+```
 
-- [x] No hover on meaningless tokens — builtin keywords and empty bodies yield no card
+<!-- END CAPABILITY -->
 
-  Hovering a builtin type keyword or the inside of an empty body
-  produces no card at all, so editors show nothing rather than noise.
-  (Numeric and bool literals also have no card today, but that is a
-  tracked gap — see the numeric-literal item — not a promise.)
+<!-- BEGIN CAPABILITY: unsupported clangd#2669 -->
 
-  <details>
-  <summary>Example</summary>
+**LaTeX math in Doxygen**
 
-  ```cpp
-  namespace negatives {
+Inline Doxygen formulas are not rendered as math
 
-  int counter = 0;
+The formula text is not rendered as math.
 
-  void noop() {}
+```snap
+tests/snap/hover/special_hover_targets/10_latex_math.cpp
+```
 
-  }
-  ```
-
-  </details>
-
-- [ ] GTK-Doc and kernel-doc — recognize GObject Introspection annotations ([clangd#2662](https://github.com/clangd/clangd/issues/2662))
-
-  GTK-Doc / kernel-doc comment syntax and GObject Introspection
-  annotations are not parsed into the hover card.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  /**
-   * gtk_widget_show:
-   * @widget: (transfer none): a #GtkWidget
-   *
-   * Flags a widget to be displayed.
-   */
-  void gtk_widget_show(GtkWidget *widget);
-  ```
-
-  </details>
-
-- [ ] LaTeX math in Doxygen — render `@f$ ... @f$` formulas ([clangd#2669](https://github.com/clangd/clangd/issues/2669))
-
-  Doxygen LaTeX math formulas are shown verbatim, not rendered as math.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  /// The area of a circle is @f$ A = \pi r^2 @f$.
-  double circle_area(double r);
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Presentation
 
-<!-- BEGIN GENERATED ITEMS: Presentation -->
+<!-- BEGIN GENERATED ITEMS: presentation -->
 
-- [x] Markdown rendering — cards render as markdown, or plain text via `parse_comment_as_markdown = false`
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Markdown rendering**
 
-  ```cpp
-  /// Computes the answer. Tests primality of `p`.
-  constexpr int answer(int p) {
-      return p + 41;
-  }
+Cards render as markdown, or plain text via `parse_comment_as_markdown =
+false`
 
-  int value = answer(1);
+```snap
+tests/snap/hover/presentation/01_presentation.cpp
+```
 
-  struct Layout {
-      char first;
-      int second;
-  };
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Module-Related
 
-<!-- BEGIN GENERATED ITEMS: Module-Related -->
+<!-- BEGIN GENERATED ITEMS: module_related -->
 
-- [ ] Import statement hover — hovering `import` shows the module's info
+<!-- BEGIN CAPABILITY: unsupported -->
 
-  Hovering an `import` declaration does not yet describe the imported
-  module.
+**Import statement hover**
 
-  <details>
-  <summary>Example</summary>
+Hovering `import` does not describe the imported module yet
 
-  ```cpp
-  export module app;
+Hovering an `import` declaration does not yet describe the imported
+module.
 
-  import utils;
-  ```
+```snap
+tests/snap/hover/module_related/01_import_hover.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [ ] Module name hover — hovering a module name lists its owning files
+<!-- BEGIN CAPABILITY: supported -->
 
-  Hovering a module name does not yet list the files or partitions that
-  declare it.
+**Module name hover**
 
-  <details>
-  <summary>Example</summary>
+Hovering a module name shows the interface unit that defines it
 
-  ```cpp
-  export module math;
+The card names the module and the file of its interface unit, on the
+name in an `import` and in the module declaration alike.
 
-  export module math:algebra;
-  ```
+```snap
+tests/snap/hover/module_related/02_module_name_hover/main.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Export status hover**
+
+The card of a module's declaration shows whether the module exports it
+
+An exported declaration's definition reads `export`, whether exported
+on its own or in an `export` block; a declaration the module keeps to
+itself, or a member of an exported class, does not.
+
+```snap
+tests/snap/hover/module_related/03_export_status.cpp
+```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1437,131 +991,79 @@ Rich information cards for the symbol under the cursor.
 
 Robustness on inputs that have broken other tooling.
 
-<!-- BEGIN GENERATED ITEMS: Hover Correctness -->
+<!-- BEGIN GENERATED ITEMS: hover_correctness -->
 
-- [x] MSVC inheritance model — `MSInheritanceAttr` does not corrupt record hover
+<!-- BEGIN CAPABILITY: supported -->
 
-  clangd tracks this as clangd#1643 and clangd#2212; under an MSVC target
-  the implicit inheritance attribute does not leak into the record or
-  method card.
+**MSVC inheritance model**
 
-  <details>
-  <summary>Example</summary>
+MSVC inheritance model attributes do not alter record hover
 
-  ```cpp
-  namespace ms {
+Under an MSVC target, the implicit inheritance attribute does not leak
+into the record or method card.
 
-  struct Widget {
-      int value;
-      void update();
-  };
+```snap
+tests/snap/hover/hover_correctness/01_ms_inheritance.cpp
+```
 
-  int Widget::* member = &Widget::value;
+<!-- END CAPABILITY -->
 
-  }
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-  </details>
+**Most-vexing-parse**
 
-- [x] Most-vexing-parse — object init and function declaration hover distinctly
+Direct initialization and a function declaration have distinct hover cards
 
-  clangd tracks this as clangd#2225; clice reads the direct-init as a
-  variable and the vexing form as a function declaration.
+The direct initialization appears as a variable, while the most-vexing
+form appears as a function declaration.
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/hover/hover_correctness/02_object_vs_function.cpp
+```
 
-  ```cpp
-  namespace mvp {
+<!-- END CAPABILITY -->
 
-  struct Timer {
-      Timer();
-      Timer(int);
-  };
+<!-- BEGIN CAPABILITY: supported -->
 
-  int seconds = 5;
+**Large unsigned enum constant**
 
-  void demo() {
-      Timer active(seconds);
-      Timer empty();
-  }
+Hovering a `0xFFFF...ULL` enumerator does not crash
 
-  }
-  ```
+The card renders the full unsigned value without overflowing or failing.
 
-  </details>
+```snap
+tests/snap/hover/hover_correctness/03_large_enum_value.cpp
+```
 
-- [x] Large unsigned enum constant — hovering a `0xFFFF...ULL` enumerator does not crash
+<!-- END CAPABILITY -->
 
-  clangd crashes on this (clangd#2381); clice renders the full unsigned
-  value without overflow.
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Call with default arguments**
 
-  ```cpp
-  namespace big_enum {
+Hovering a call that omits defaults does not crash
 
-  enum class Flags : unsigned long long {
-      Max = 0xFFFFFFFFFFFFFFFFULL,
-  };
+The call card renders the callee signature with its default arguments.
 
-  }
-  ```
+```snap
+tests/snap/hover/hover_correctness/04_default_args_call.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Call with default arguments — hovering a call that omits defaults does not crash
+<!-- BEGIN CAPABILITY: supported -->
 
-  clangd crashes on this (clangd#551); clice renders the callee signature
-  with its default arguments.
+**Macro-shadowed symbol**
 
-  <details>
-  <summary>Example</summary>
+A function-like macro shadows a same-named function at the call site
 
-  ```cpp
-  namespace defaults {
+The card shows the active macro and its expansion instead of the shadowed
+function.
 
-  int compute(int a, int b = 10, int c = 20);
+```snap
+tests/snap/hover/hover_correctness/05_macro_shadowed_symbol.cpp
+```
 
-  int result = compute(1);
-
-  }
-  ```
-
-  </details>
-
-- [x] Macro-shadowed symbol — a function-like macro over a same-named function
-
-  clangd tracks this as clangd#2490; at the call site the function-like
-  macro is active, and clice's card shows that macro and its expansion.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace shadow {
-
-  int lookup(int key) {
-      return key;
-  }
-
-  }
-
-  #define lookup(key) ((key) + 100)
-
-  int value = lookup(5);
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
-
-## Changelog
-
-| Date       | Change                                                         | PR                                                 |
-| ---------- | -------------------------------------------------------------- | -------------------------------------------------- |
-| 2026-08-23 | Fixture-generated checklist; corpus reorganized by card aspect | [#633](https://github.com/clice-io/clice/pull/633) |
-| 2026-08-23 | Macro hover: definitions, expansion preview                    | [#629](https://github.com/clice-io/clice/pull/629) |
-| 2026-08-21 | Resolved paths for include and embed directives                | [#581](https://github.com/clice-io/clice/pull/581) |
-| 2026-06-12 | Port clangd hover implementation                               | [#452](https://github.com/clice-io/clice/pull/452) |

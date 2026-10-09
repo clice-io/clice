@@ -1,128 +1,329 @@
 # 折叠范围
 
+<!-- The capability sections below are generated from the snapshot fixtures in
+     tests/snap/folding_range/. Do not edit the regions between the GENERATED
+     markers by hand — edit the fixture spec headers and run
+     `node tools/docs/feature.ts update`. -->
+
 ## 折叠类型
 
-- [x] 块折叠 — 函数、类、结构体、联合体、枚举、命名空间、lambda
-- [ ] 嵌套复合语句折叠 — 函数内 `if`/`for`/`while` 体
-- [x] 多行列表折叠 — 函数参数、调用参数、初始化列表、lambda 捕获列表
+<!-- BEGIN GENERATED ITEMS: fold_kinds -->
 
-  ```cpp
-  void configure(
-      int width,           // ┐
-      int height,          // │ 可折叠参数列表
-      bool fullscreen      // ┘
-  );
+<!-- BEGIN CAPABILITY: supported -->
 
-  auto result = compute(
-      getWidth(),          // ┐
-      getHeight(),         // │ 可折叠参数列表
-      true                 // ┘
-  );
-  ```
+**块折叠**
 
-- [x] 访问修饰符区域折叠 — 类内的 `public:` / `protected:` / `private:` 区域（[clangd#1455](https://github.com/clangd/clangd/issues/1455)）
+函数、类型、命名空间和 Lambda 形成折叠范围
 
-  ```cpp
-  class Widget {
-  public:            // ┐
-      void draw();   // │ 可折叠
-      void resize(); // ┘
-  private:           // ┐
-      int width;     // │ 可折叠
-      int height;    // ┘
-  };
-  ```
+```snap
+tests/snap/folding_range/fold_kinds/01_block_folding.cpp
+```
 
-- [ ] 预处理条件折叠（`#if` / `#ifdef` / `#ifndef` ... `#endif`）（[clangd#1661](https://github.com/clangd/clangd/issues/1661)；[clangd#2059](https://github.com/clangd/clangd/issues/2059) 是 #1661 的重复）
-- [x] 自定义区域折叠（`#pragma region` / `#pragma endregion`）（[clangd#1623](https://github.com/clangd/clangd/issues/1623)）
-- [ ] 注释折叠 — 多行 `/* */` 和连续 `//` 行注释
+<!-- END CAPABILITY -->
 
-  ```cpp
-  // 这是一段很长的
-  // 多行注释
-  // 应折叠为一个区域
+<!-- BEGIN CAPABILITY: supported -->
 
-  /*
-   * 块注释
-   * 也应可折叠
-   */
-  ```
+**嵌套复合语句折叠**
 
-- [ ] Include 区域折叠 — 连续的 `#include` 指令
+嵌套的控制流语句体形成折叠范围
 
-  ```cpp
-  #include <vector>       // ┐
-  #include <string>       // │ 可折叠区域
-  #include <algorithm>    // ┘
+```snap
+tests/snap/folding_range/fold_kinds/02_nested_compound_statement.cpp
+```
 
-  #include "app.h"        // ┐ 单独区域
-  #include "config.h"     // ┘（空行分隔）
-  ```
+<!-- END CAPABILITY -->
 
-- [ ] 原始字符串字面量折叠
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  auto sql = R"(
-      SELECT *
-      FROM users
-      WHERE active = true
-  )";  // 可折叠的多行原始字符串
-  ```
+**多行列表折叠**
 
-- [ ] `using` 声明块 — 连续的 using 声明/指令
+跨多行的形参列表、实参列表、初始化器列表和捕获列表形成折叠范围
 
-  ```cpp
-  using std::vector;  // ┐
-  using std::string;  // │ 可折叠
-  using std::map;     // ┘
-  ```
+```snap
+tests/snap/folding_range/fold_kinds/03_multiline_list_folding.cpp
+```
 
-- [ ] 模板参数列表折叠
+<!-- END CAPABILITY -->
 
-  ```cpp
-  template<
-      typename Key,            // ┐
-      typename Value,          // │ 可折叠
-      typename Compare = less  // ┘
-  >
-  class SortedMap { };
-  ```
+<!-- BEGIN CAPABILITY: supported clangd#1455 -->
+
+**访问说明符区段折叠**
+
+类内由访问说明符划分的区域形成折叠范围
+
+```snap
+tests/snap/folding_range/fold_kinds/04_access_specifier_folding.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1661 clangd#2059 -->
+
+**预处理条件折叠**
+
+每个条件分支都形成一个折叠范围，延伸至结束该分支的指令处，该指令本身保持可见
+
+```snap
+tests/snap/folding_range/fold_kinds/05_preprocessor_conditional.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1623 -->
+
+**pragma 区域折叠**
+
+命名的 pragma 区域形成折叠范围
+
+```snap
+tests/snap/folding_range/fold_kinds/06_pragma_region.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**pragma 分类**
+
+仅根据第一个参数 Token 判断是 region 还是 endregion
+
+```snap
+tests/snap/folding_range/fold_kinds/07_pragma_classification.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**注释折叠**
+
+多行块注释和连续的行注释支持折叠
+
+相邻各行上的行注释合为一组，从首行之下开始折叠，首行保持可见；空行或代码行会结束这一组。块注释像一对大括号那样在其定界符处折叠。跟在代码后面的注释不折叠。
+
+```snap
+tests/snap/folding_range/fold_kinds/08_comment_folding.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**include 区域折叠**
+
+连续的 include 指令合为一组，从第一条 include 之下开始折叠
+
+空行、注释行或其他指令会结束这一组；条件分支内的 include 在该分支内部折叠，无论该分支是否被选中。
+
+```snap
+tests/snap/folding_range/fold_kinds/09_include_region/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**原始字符串字面量折叠**
+
+多行原始字符串字面量在其定界符处折叠
+
+占位文本会重复编码前缀、自定义定界符和字面量后缀。写在宏实参中的原始字符串在其书写位置折叠。
+
+```snap
+tests/snap/folding_range/fold_kinds/10_raw_string_literal.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`using` 声明块**
+
+连续的 using 声明和 using 指令从第一条之下开始折叠
+
+空行或其他任何行都会结束这一组，别名声明不会并入其中，与其他代码同处一行的声明也不会。由宏生成的 using 声明在宏调用处折叠。
+
+```snap
+tests/snap/folding_range/fold_kinds/11_using_declaration_block.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模板参数列表折叠**
+
+多行模板参数列表在其尖括号处折叠
+
+类模板、函数模板、变量模板、别名模板、偏特化、模板模板参数和带显式模板参数的 Lambda 的参数列表都可以折叠，类外成员定义中重复书写的参数列表也是如此。
+
+```snap
+tests/snap/folding_range/fold_kinds/12_template_parameter_list.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模板特化与实例化**
+
+源码中编写的特化及其成员支持折叠；实例化生成的声明复用模板原型的源码位置，不会重复折叠
+
+```snap
+tests/snap/folding_range/fold_kinds/13_template_instantiations.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**简写函数模板**
+
+带有 `auto` 或受约束的 `auto` 参数的函数，其函数体与其他函数一样支持折叠
+
+```snap
+tests/snap/folding_range/fold_kinds/14_abbreviated_function_template.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**宏生成内容的折叠**
+
+通过宏生成的大括号和访问说明符在宏调用处形成折叠范围
+
+```snap
+tests/snap/folding_range/fold_kinds/15_macro_folding.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**协程体**
+
+源码中编写的块只形成一个折叠范围，协程转换生成的包装层不会增加重复的折叠范围；协程 Lambda 保留其函数体的折叠范围
+
+```snap
+tests/snap/folding_range/fold_kinds/16_coroutine_body.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**初始化列表构造**
+
+构造表达式的大括号与嵌套的初始化列表共用定界符，只形成一个折叠范围；列表实参外有圆括号时，则保留两个折叠范围
+
+```snap
+tests/snap/folding_range/fold_kinds/17_initializer_list_construction.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**宏实参折叠**
+
+宏实参中书写的代码在其书写位置折叠
+
+```snap
+tests/snap/folding_range/fold_kinds/18_macro_argument_folding.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**链接说明（linkage specification）块**
+
+`extern "C"` 块形成折叠范围，被常见的 `__cplusplus` 守卫包裹时也是如此
+
+```snap
+tests/snap/folding_range/fold_kinds/19_linkage_specification.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模块片段与 export 块**
+
+全局模块片段、私有模块片段和 `export` 块形成折叠范围
+
+```snap
+tests/snap/folding_range/fold_kinds/20_module_blocks.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
 
 ## 改进
 
-- [x] `collapsedText` 折叠占位文本（LSP 3.17）— 折叠后显示摘要（[clangd#2667](https://github.com/clangd/clangd/issues/2667)）
+<!-- BEGIN GENERATED ITEMS: refinements -->
 
-  ```
-  void processData(const Config& cfg) {...}   // 显示签名 + {...}
-  #include <vector>  ... (5 more)             // 显示数量
-  /* License header... */                      // 显示首行
-  ```
+<!-- BEGIN CAPABILITY: supported clangd#2667 -->
 
-  > **客户端支持**：VS Code **不支持** `collapsedText`（[vscode#70794](https://github.com/microsoft/vscode/issues/70794) — 仍为 open）；Neovim 的 nvim-lsp 原生支持。不支持此字段的客户端会静默忽略 — 折叠仍然有效，只是缺少占位文本。
+**`collapsedText` 占位文本（LSP 3.17）**
 
-- [ ] 从声明行开始折叠函数/类体 — 折叠后保留签名可见（[clangd#2666](https://github.com/clangd/clangd/issues/2666)）
+折叠后的范围可显示摘要
 
-  ```cpp
-  // 折叠后：void processData(const Config& cfg) {...}
-  // 而非：  {...（签名被隐藏在折叠上方）}
-  ```
+> **客户端支持**：VS Code 尚**不支持** `collapsedText`
+> （[vscode#70794](https://github.com/microsoft/vscode/issues/70794) 仍未关闭）；
+> 使用 nvim-lsp 的 Neovim 原生支持此功能。
+> 未实现此字段的客户端会静默忽略它，折叠功能仍然可用，
+> 只是不会显示占位文本。
 
-  > **客户端支持**：取决于客户端对 `FoldingRange.startLine` 的解读。VS Code 将 `startLine` 的下一行作为首个隐藏行，因此将 `startLine` 设为声明行即可达到预期效果。但 VS Code 折叠后仍会将 `}` 单独留在下一行，而非收到签名行（[vscode#3352](https://github.com/microsoft/vscode/issues/3352) — 仍为 open）。其他客户端可能不同。
+```snap
+tests/snap/folding_range/refinements/01_collapsed_text.cpp
+```
 
-- [ ] 非活跃预处理分支指示 — 视觉区分或自动折叠非活跃的 `#if`/`#else` 分支
+<!-- END CAPABILITY -->
 
-  ```cpp
-  #ifdef _WIN32
-      // ... Windows 代码（活跃）...
-  #else
-      // ... POSIX 代码（非活跃，可自动折叠）...
-  #endif
-  ```
+<!-- BEGIN CAPABILITY: supported clangd#2666 -->
 
-  > **备注**：与 semantic tokens（非活跃代码灰显）有交叉，部分属于客户端 UX 范畴。服务器可用 `FoldingRangeKind.Region` 标记这些范围，由客户端决定是否自动折叠。
+**声明行折叠**
 
-## 变更记录
+声明体从其名称所在行开始折叠
 
-| 日期 | 变更                                             | PR  |
-| ---- | ------------------------------------------------ | --- |
-| —    | 块折叠、列表折叠、访问修饰符折叠、预处理区域折叠 | —   |
+当函数、类或命名空间的左大括号位于名称下方时——无论是独占一行，还是跟在跨越多行的签名之后——按整行折叠的客户端会从名称所在行开始折叠，折叠后的声明仍能看出它是什么。按字符折叠的客户端从大括号处开始折叠，大括号之前的内容本来就保持可见。名称与大括号之间若有条件编译指令，折叠仍从大括号处开始。
+
+> **客户端支持**：VS Code 仍会将闭合的 `}` 单独留在一行，而不会将其折叠到签名所在行
+> （[vscode#3352](https://github.com/microsoft/vscode/issues/3352) 仍未关闭）。
+
+```snap
+tests/snap/folding_range/refinements/02_fold_from_declaration_line.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**非活动预处理分支**
+
+未选中的分支与选中的分支一样可以折叠
+
+预处理条件的每个分支都可以折叠，无论编译时是否选中该分支，嵌套在未选中分支中的条件也不例外，因此可以手动把不参与编译的代码折叠起来。未选中的代码由语义 Token 的 `inactive` 修饰符淡化显示；折叠范围本身并不区分这些分支。
+
+```snap
+tests/snap/folding_range/refinements/03_inactive_preprocessor_branch.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**单行结构保持展开**
+
+不隐藏任何内容的折叠只会造成干扰
+
+```snap
+tests/snap/folding_range/refinements/04_single_line_constructs.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->

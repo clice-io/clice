@@ -1,0 +1,21 @@
+/// # Smart-pointer pointee navigation
+///
+/// - status: partial
+/// - issues: clangd#1026
+/// - verify: server
+///
+/// Go-to-type-definition on a smart-pointer variable reaches the wrapper type
+/// itself; unwrapping to the pointee type is not offered
+
+template <typename T>
+struct Ptr {
+    T* operator->();
+    T& operator*();
+    T* raw;
+};
+
+struct §(type)Widget {};
+
+int use(Ptr<Widget> §(ptr)ptr) {
+    return 0;
+}

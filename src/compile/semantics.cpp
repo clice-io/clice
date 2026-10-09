@@ -1,0 +1,1917 @@
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :compile.compilation_unit;
+import :compile.semantics;
+import :semantic.decls;
+import :semantic.resolver;
+import :semantic.types;
+
+namespace clice {
+
+SemanticNode::Kind SemanticNode::kind() const {
+    if(auto macro = std::get_if<const MacroRef*>(&storage)) {
+        switch((*macro)->kind) {
+            case MacroRef::Kind::Def: return Kind::MacroDefine;
+            case MacroRef::Kind::Ref: return Kind::MacroReference;
+            case MacroRef::Kind::Undef: return Kind::MacroUndef;
+        }
+    }
+
+    /// The variant alternatives before the macro slot map 1:1 onto Kind; the
+    /// slots after it are shifted by the two extra macro kinds.
+    constexpr std::size_t macro_slot = 9;
+    auto index = storage.index();
+    if(index < macro_slot) {
+        return static_cast<Kind>(index);
+    }
+    return static_cast<Kind>(index + 2);
+}
+
+clang::SourceRange SemanticNode::source_range() const {
+    return visit([](const auto& value) -> clang::SourceRange {
+        using T = std::remove_cvref_t<decltype(value)>;
+        if constexpr(std::same_as<T, const MacroRef*>) {
+            return clang::SourceRange(value->loc);
+        } else if constexpr(std::same_as<T, const Include*>) {
+            return clang::SourceRange(value->location);
+        } else if constexpr(std::same_as<T, const Import*>) {
+            if(!value->name_locations.empty()) {
+                return clang::SourceRange(value->location, value->name_locations.back());
+            }
+            return clang::SourceRange(value->location);
+        } else if constexpr(std::same_as<T, const LexicalInfo::ModuleDeclaration*> ||
+                            std::same_as<T, const LexicalInfo::Comment*>) {
+            /// Lexical payloads carry file offsets, not SourceLocations.
+            return clang::SourceRange();
+        } else if constexpr(std::same_as<T, const clang::Attr*>) {
+            return value->getRange();
+        } else if constexpr(std::is_pointer_v<T>) {
+            return value->getSourceRange();
+        } else {
+            return value.getSourceRange();
+        }
+    });
+}
+
+clang::DynTypedNode SemanticNode::dyn_typed() const {
+    assert(is_ast() && "dyn_typed is only valid for AST nodes");
+    return visit([](const auto& value) -> clang::DynTypedNode {
+        using T = std::remove_cvref_t<decltype(value)>;
+        if constexpr(std::same_as<T, const MacroRef*> || std::same_as<T, const Include*> ||
+                     std::same_as<T, const Import*> ||
+                     std::same_as<T, const LexicalInfo::ModuleDeclaration*> ||
+                     std::same_as<T, const LexicalInfo::Comment*>) {
+            std::unreachable();
+        } else if constexpr(std::is_pointer_v<T>) {
+            return clang::DynTypedNode::create(*value);
+        } else {
+            return clang::DynTypedNode::create(value);
+        }
+    });
+}
+
+bool should_ignore_token(const clang::syntax::Token& token) {
+    switch(token.kind()) {
+        // Even "attached" comments are not considered part of a node's range.
+        case clang::tok::comment:
+        // The AST doesn't directly store locations for terminating semicolons.
+        case clang::tok::semi:
+        // We don't have locations for cvr-qualifiers: see QualifiedTypeLoc.
+        case clang::tok::kw_const:
+        case clang::tok::kw_volatile:
+        case clang::tok::kw_restrict: return true;
+        default: return false;
+    }
+}
+
+namespace {
+
+bool is_implicit(const clang::Stmt* statement) {
+    // Some Stmts are implicit and shouldn't be traversed, but there's no
+    // "implicit" attribute on Stmt/Expr.
+    // Unwrap implicit casts first if present (other nodes too?).
+    if(auto* ICE = llvm::dyn_cast<clang::ImplicitCastExpr>(statement)) {
+        statement = ICE->getSubExprAsWritten();
+    }
+
+    // Implicit this in a MemberExpr is not filtered out by RecursiveASTVisitor.
+    // It would be nice if RAV handled this (!shouldTraverseImplicitCode()).
+    if(auto* CTI = llvm::dyn_cast<clang::CXXThisExpr>(statement)) {
+        if(CTI->isImplicit()) {
+            return true;
+        }
+    }
+
+    // Make sure implicit access of anonymous structs don't end up owning tokens.
+    if(auto* ME = llvm::dyn_cast<clang::MemberExpr>(statement)) {
+        if(auto* FD = llvm::dyn_cast<clang::FieldDecl>(ME->getMemberDecl())) {
+            if(FD->isAnonymousStructOrUnion()) {
+                // If Base is an implicit CXXThis, then the whole MemberExpr has no
+                // tokens. If it's a normal e.g. DeclRef, we treat the MemberExpr like
+                // an implicit cast.
+                return is_implicit(ME->getBase());
+            }
+        }
+    }
+
+    // Refs to operator() and [] are (almost?) always implicit as part of calls.
+    if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(statement)) {
+        // An implicit variable (the coroutine promise, range-for holders)
+        // has no written name; its references sit on the keyword that
+        // desugars to them.
+        if(auto* VD = llvm::dyn_cast<clang::VarDecl>(DRE->getDecl()); VD && VD->isImplicit()) {
+            return true;
+        }
+        if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(DRE->getDecl())) {
+            switch(FD->getOverloadedOperator()) {
+                case clang::OO_Call:
+                case clang::OO_Subscript: return true;
+                default: break;
+            }
+        }
+    }
+
+    return false;
+}
+
+// The range whose tokens a node claims. Usually just the source range, with
+// one exception: MemberExprs to implicitly access anonymous fields should not
+// claim any tokens for themselves. Given:
+//   struct A { struct { int b; }; };
+// The clang AST reports the following nodes for an access to b:
+//   A().b;
+//   [----] MemberExpr, base = A().<anonymous>, member = b
+//   [----] MemberExpr: base = A(), member = <anonymous>
+//   [-]    CXXConstructExpr
+// For our purposes, we don't want the second MemberExpr to own any tokens,
+// so we reduce its range to match the CXXConstructExpr.
+clang::SourceRange claimed_source_range(const SemanticNode& node) {
+    if(const auto* ME = node.get<clang::MemberExpr>()) {
+        if(!ME->getMemberDecl()->getDeclName()) {
+            if(auto* base = ME->getBase()) {
+                return claimed_source_range(SemanticNode(static_cast<const clang::Stmt*>(base)));
+            }
+            return clang::SourceRange();
+        }
+    }
+    return node.source_range();
+}
+
+}  // namespace
+
+// Builds the Semantics of the main file: one full traversal of its AST,
+// claiming expanded tokens innermost-first; a node owns the spelled tokens
+// its claimed tokens stand for (TokenMap::origin). Finally the preprocessor
+// directives (macros, includes, imports) are appended as nodes of their own,
+// owning their name tokens.
+//
+// The traversal maintains a parent stack. Nodes claim their tokens when they
+// pop, so children get to claim parts of their range first, and parents only
+// own tokens that no child owned.
+//
+// Nodes *usually* nest nicely: a child's getSourceRange() lies within the
+// parent's, and a node (transitively) owns all tokens in its range.
+//
+// Exception 1: when declarators nest, *inner* declarator is the *outer* type.
+//              e.g. void foo[5](int) is an array of functions.
+// To handle this case, declarators are careful to only claim the tokens they
+// own, rather than claim a range and rely on claim ordering.
+//
+// Exception 2: siblings both claim the same node.
+//              e.g. `int x, y;` produces two sibling VarDecls.
+//                    ~~~~~ x
+//                    ~~~~~~~~ y
+// Here the first ("leftmost") sibling claims the tokens it wants, and the
+// other sibling gets what's left. So selecting "int" only includes the left
+// VarDecl in the selection tree.
+class SemanticsBuilder : public clang::RecursiveASTVisitor<SemanticsBuilder> {
+public:
+    static void build(Semantics& semantics, CompilationUnitRef unit, SemanticsOptions options) {
+        SemanticsBuilder builder(semantics, unit, options);
+        builder.TraverseAST(unit.context());
+        assert(builder.stack.size() == 1 && "Unpaired push/pop?");
+        builder.append_directives();
+        builder.finalize();
+    }
+
+    // We traverse all "well-behaved" nodes the same way:
+    //  - push the node onto the stack
+    //  - traverse its children recursively
+    //  - pop it from the stack, claiming its unclaimed tokens
+    //
+    // Two categories of nodes are not "well-behaved":
+    //  - those without source range information, we don't record those
+    //  - those that can't be stored in SemanticNode.
+    bool TraverseDecl(clang::Decl* X) {
+        if(auto* tu = llvm::dyn_cast_if_present<clang::TranslationUnitDecl>(X)) {
+            /// The TU decl is not stored; its children become roots.
+            if(options.main_file_only) {
+                for(auto decl: unit.top_level_decls()) {
+                    if(!TraverseDecl(decl)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            // The declarations this unit parsed: noload_decls leaves those of
+            // the modules it imports on disk, indexed by their own units —
+            // loading them costs a deserialization of whole interfaces, and
+            // their headers would ride in every importer's index.
+            for(auto* decl: tu->noload_decls()) {
+                if(!canIgnoreChildDeclWhileTraversingDeclContext(decl) && !TraverseDecl(decl)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Base::TraverseDecl will suppress children, but not this node itself.
+        if(X && X->isImplicit()) {
+            // Most implicit nodes have only implicit children and can be skipped.
+            // However there are exceptions (`void foo(Concept auto x)`), and
+            // the base implementation knows how to find them.
+            return Base::TraverseDecl(X);
+        }
+
+        if(!X) {
+            return true;
+        }
+
+        if(const auto* binding = llvm::dyn_cast<clang::BindingDecl>(X)) {
+            // Namespace-scope bindings are also members of the enclosing
+            // DeclContext, so the visitor reaches them twice: through the
+            // context iteration and through DecompositionDecl's explicit
+            // bindings loop. Record them only under their DecompositionDecl.
+            std::uint32_t parent = stack.back();
+            if(parent == Semantics::invalid ||
+               semantics.nodes[parent].node.get<clang::Decl>() != binding->getDecomposedDecl()) {
+                return true;
+            }
+        }
+
+        // An instantiation subtree reuses the pattern's source locations, so
+        // nothing under it is written here. The explicit instantiation
+        // directive behind one is a written decl of its own
+        // (ExplicitInstantiationDecl); the instantiated members arrive as
+        // top-level decls of their own, carrying the directive's
+        // specialization kind but written nowhere.
+        bool head = decls::is_instantiation(X);
+        if(head) {
+            instantiation_depth += 1;
+        }
+        bool ret = traverse_node(SemanticNode(static_cast<const clang::Decl*>(X)), [&] {
+            // RAV leaves out the condition of `explicit(cond)`, written on the
+            // first declaration only — every redeclaration reports it.
+            if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(X);
+               function && function->isFirstDecl()) {
+                if(auto* condition = clang::ExplicitSpecifier::getFromDecl(function).getExpr()) {
+                    if(!TraverseStmt(condition)) {
+                        return false;
+                    }
+                }
+            }
+            return Base::TraverseDecl(X);
+        });
+        if(head) {
+            instantiation_depth -= 1;
+        }
+        return ret;
+    }
+
+    bool shouldVisitTemplateInstantiations() const {
+        return options.instantiations;
+    }
+
+    // RAV visits a generic lambda's body once, as the pattern; the call
+    // operator template's instantiations hang nowhere else, so visit them
+    // here the way RAV visits class and function template instantiations
+    // under their template.
+    bool TraverseLambdaExpr(clang::LambdaExpr* S, DataRecursionQueue* queue = nullptr) {
+        if(!Base::TraverseLambdaExpr(S, queue)) {
+            return false;
+        }
+        // The attributes written on the lambda belong to its call operator,
+        // a declaration RAV never visits.
+        for(auto* attr: S->getCallOperator()->attrs()) {
+            if(!attr->isImplicit() && !TraverseAttr(attr)) {
+                return false;
+            }
+        }
+        if(!options.instantiations) {
+            return true;
+        }
+        auto* call_operator = S->getCallOperator()->getDescribedFunctionTemplate();
+        if(!call_operator) {
+            return true;
+        }
+        for(auto* specialization: call_operator->specializations()) {
+            if(!TraverseDecl(specialization)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool TraverseTypeLoc(clang::TypeLoc X, bool traverse_qualifier = true) {
+        if(!X) {
+            return true;
+        }
+
+        return traverse_node(SemanticNode(X),
+                             [&] { return Base::TraverseTypeLoc(X, traverse_qualifier); });
+    }
+
+    /// `using Base::Base` names the inherited constructors, as a constructor
+    /// declaration's name does its constructor: the class written there is
+    /// no mention of its own.
+    bool TraverseDeclarationNameInfo(clang::DeclarationNameInfo X) {
+        if(X.getName().getNameKind() == clang::DeclarationName::CXXConstructorName) {
+            return true;
+        }
+        return Base::TraverseDeclarationNameInfo(X);
+    }
+
+    bool TraverseTemplateArgumentLoc(const clang::TemplateArgumentLoc& X) {
+        return traverse_node(SemanticNode(X), [&] { return Base::TraverseTemplateArgumentLoc(X); });
+    }
+
+    bool TraverseNestedNameSpecifierLoc(clang::NestedNameSpecifierLoc X) {
+        if(!X) {
+            return true;
+        }
+
+        return traverse_node(SemanticNode(X),
+                             [&] { return Base::TraverseNestedNameSpecifierLoc(X); });
+    }
+
+    bool TraverseConstructorInitializer(clang::CXXCtorInitializer* X) {
+        if(!X) {
+            return true;
+        }
+
+        return traverse_node(SemanticNode(static_cast<const clang::CXXCtorInitializer*>(X)),
+                             [&] { return Base::TraverseConstructorInitializer(X); });
+    }
+
+    bool TraverseCXXBaseSpecifier(const clang::CXXBaseSpecifier& X) {
+        return traverse_node(SemanticNode(&X), [&] { return Base::TraverseCXXBaseSpecifier(X); });
+    }
+
+    bool TraverseAttr(clang::Attr* X) {
+        if(!X) {
+            return true;
+        }
+
+        return traverse_node(SemanticNode(static_cast<const clang::Attr*>(X)),
+                             [&] { return Base::TraverseAttr(X); });
+    }
+
+    bool TraverseConceptReference(clang::ConceptReference* X) {
+        if(!X) {
+            return true;
+        }
+
+        return traverse_node(SemanticNode(static_cast<const clang::ConceptReference*>(X)),
+                             [&] { return Base::TraverseConceptReference(X); });
+    }
+
+    // Stmt is the same, but this form allows the data recursion optimization.
+    bool dataTraverseStmtPre(clang::Stmt* X) {
+        if(!X || is_implicit(X)) {
+            return false;
+        }
+
+        push(SemanticNode(static_cast<const clang::Stmt*>(X)));
+        if(should_skip_children(X)) {
+            pop();
+            return false;
+        }
+
+        return true;
+    }
+
+    bool dataTraverseStmtPost(clang::Stmt* X) {
+        pop();
+        return true;
+    }
+
+    // QualifiedTypeLoc is handled strangely in RecursiveASTVisitor: the derived
+    // TraverseTypeLoc is not called for the inner UnqualTypeLoc.
+    // This means we'd never see 'int' in 'const int'! Work around that here.
+    // (The reason for the behavior is to avoid traversing the nested Type twice,
+    // but we ignore TraverseType anyway).
+    bool TraverseQualifiedTypeLoc(clang::QualifiedTypeLoc QX, bool traverse_qualifier = true) {
+        return traverse_node(SemanticNode(static_cast<clang::TypeLoc>(QX)), [&] {
+            return TraverseTypeLoc(QX.getUnqualifiedLoc(), traverse_qualifier);
+        });
+    }
+
+    bool TraverseType(clang::QualType, bool = true) {
+        return true;
+    }
+
+    // Uninteresting parts of the AST that don't have locations within them.
+    bool TraverseNestedNameSpecifier(clang::NestedNameSpecifier) {
+        return true;
+    }
+
+    // The DeclStmt for the loop variable claims to cover the whole range
+    // inside the parens, this causes the range-init expression to not be hit.
+    // Traverse the loop VarDecl instead, which has the right source range.
+    bool TraverseCXXForRangeStmt(clang::CXXForRangeStmt* S) {
+        return traverse_node(SemanticNode(static_cast<const clang::Stmt*>(S)), [&] {
+            return TraverseStmt(S->getInit()) && TraverseDecl(S->getLoopVariable()) &&
+                   TraverseStmt(S->getRangeInit()) && TraverseStmt(S->getBody());
+        });
+    }
+
+    // RAV skips a statement's attributes (`[[assume(expr)]];`).
+    bool TraverseAttributedStmt(clang::AttributedStmt* S, DataRecursionQueue* = nullptr) {
+        return traverse_node(SemanticNode(static_cast<const clang::Stmt*>(S)), [&] {
+            for(auto* attr: S->getAttrs()) {
+                if(!TraverseAttr(const_cast<clang::Attr*>(attr))) {
+                    return false;
+                }
+            }
+            return TraverseStmt(S->getSubStmt());
+        });
+    }
+
+    // OpaqueValueExpr blocks traversal, we must explicitly traverse it.
+    bool TraverseOpaqueValueExpr(clang::OpaqueValueExpr* E) {
+        return traverse_node(SemanticNode(static_cast<const clang::Stmt*>(E)),
+                             [&] { return TraverseStmt(E->getSourceExpr()); });
+    }
+
+    // We only want to traverse the *syntactic form* to understand the selection.
+    bool TraversePseudoObjectExpr(clang::PseudoObjectExpr* E) {
+        return traverse_node(SemanticNode(static_cast<const clang::Stmt*>(E)),
+                             [&] { return TraverseStmt(E->getSyntacticForm()); });
+    }
+
+    // Override child traversal for certain node types.
+    using RecursiveASTVisitor::getStmtChildren;
+
+    // PredefinedExpr like __func__ has a StringLiteral child for its value.
+    // It's not written, so don't traverse it.
+    clang::Stmt::child_range getStmtChildren(clang::PredefinedExpr*) {
+        return {clang::StmtIterator{}, clang::StmtIterator{}};
+    }
+
+private:
+    using Base = RecursiveASTVisitor<SemanticsBuilder>;
+
+    SemanticsBuilder(Semantics& semantics, CompilationUnitRef unit, SemanticsOptions options) :
+        semantics(semantics), unit(unit), options(options), SM(unit.context().getSourceManager()) {
+        main_fid = unit.main_file();
+        main_file_range =
+            clang::SourceRange(SM.getLocForStartOfFile(main_fid), SM.getLocForEndOfFile(main_fid));
+        semantics.file_begin = main_file_range.getBegin();
+
+        // Token ownership serves the main file's features; the whole-TU
+        // shape reads no tokens.
+        if(options.main_file_only) {
+            semantics.tokens = unit.spelled_tokens();
+            semantics.pp_ignored = &unit.preprocessed_away();
+            claimed.resize(unit.expanded_tokens().size());
+        }
+
+        stack.push_back(Semantics::invalid);
+    }
+
+    template <typename Func>
+    bool traverse_node(SemanticNode node, const Func& body) {
+        push(std::move(node));
+        bool ret = body();
+        pop();
+        return ret;
+    }
+
+    // There are certain nodes we want to treat as leaves,
+    // although they do have children.
+    bool should_skip_children(const clang::Stmt* X) const {
+        // UserDefinedLiteral (e.g. 12_i) has two children (12 and _i).
+        // Unfortunately the token stream sees 12_i as one token and cannot split it.
+        // So we treat UserDefinedLiteral as a leaf node, owning the token.
+        return llvm::isa<clang::UserDefinedLiteral>(X);
+    }
+
+    // Pushes a node onto the ancestor stack. Pairs with pop().
+    // Performs early claiming for some nodes (on the earlySourceRange).
+    void push(SemanticNode node) {
+        clang::SourceRange early = early_source_range(node);
+        auto self = static_cast<std::uint32_t>(semantics.nodes.size());
+        semantics.nodes.push_back({std::move(node), stack.back()});
+        semantics.nodes.back().flags.in_instantiation = instantiation_depth > 0;
+        stack.push_back(self);
+        claim_range(early, self);
+    }
+
+    // Pops a node off the ancestor stack, claims its tokens and seals its
+    // subtree extent.
+    void pop() {
+        std::uint32_t self = stack.back();
+        claim_tokens_for(semantics.nodes[self].node, self);
+        semantics.nodes[self].subtree_end = static_cast<std::uint32_t>(semantics.nodes.size());
+        stack.pop_back();
+    }
+
+    // Returns the range of tokens that this node will claim directly, and
+    // is not available to the node's children.
+    // Usually empty, but sometimes children cover tokens but shouldn't own them.
+    clang::SourceRange early_source_range(const SemanticNode& N) {
+        if(const clang::Decl* VD = N.get<clang::VarDecl>()) {
+            // We want the name in the var-decl to be claimed by the decl itself and
+            // not by any children. Ususally, we don't need this, because source
+            // ranges of children are not overlapped with their parent's.
+            // An exception is lambda captured var decl, where AutoTypeLoc is
+            // overlapped with the name loc.
+            //    auto fun = [bar = foo]() { ... }
+            //                ~~~~~~~~~   VarDecl
+            //                ~~~         |- AutoTypeLoc
+            return VD->getLocation();
+        }
+
+        // When referring to a destructor ~Foo(), attribute Foo to the destructor
+        // rather than the TypeLoc nested inside it.
+        // We still traverse the TypeLoc, because it may contain other targeted
+        // things like the T in ~Foo<T>().
+        if(const auto* CDD = N.get<clang::CXXDestructorDecl>()) {
+            return CDD->getNameInfo().getNamedTypeInfo()->getTypeLoc().getBeginLoc();
+        }
+
+        if(const auto* ME = N.get<clang::MemberExpr>()) {
+            auto name_info = ME->getMemberNameInfo();
+            if(name_info.getName().getNameKind() == clang::DeclarationName::CXXDestructorName) {
+                return name_info.getNamedTypeInfo()->getTypeLoc().getBeginLoc();
+            }
+        }
+
+        return clang::SourceRange();
+    }
+
+    // Claim tokens for N, after processing its children.
+    // By default this claims all unclaimed tokens in its source range.
+    // We override this if we want to claim fewer tokens (e.g. there are gaps).
+    void claim_tokens_for(const SemanticNode& N, std::uint32_t self) {
+        // CXXConstructExpr often shows implicit construction, like `string s;`.
+        // Don't associate any tokens with it unless there's some syntax like {}.
+        // This prevents it from claiming 's', its primary location.
+        if(const auto* CCE = N.get<clang::CXXConstructExpr>()) {
+            claim_range(CCE->getParenOrBraceRange(), self);
+            return;
+        }
+
+        // ExprWithCleanups is always implicit. It often wraps CXXConstructExpr.
+        // Prevent it claiming 's' in the case above.
+        if(N.get<clang::ExprWithCleanups>()) {
+            return;
+        }
+
+        // Declarators nest "inside out", with parent types inside child ones.
+        // Instead of claiming the whole range (clobbering parent tokens), carefully
+        // claim the tokens owned by this node and non-declarator children.
+        // (We could manipulate traversal order instead, but this is easier).
+        //
+        // Non-declarator types nest normally, and are handled like other nodes.
+        //
+        // Example:
+        //   Vec<R<int>(*[2])(A<char>)> is a Vec of arrays of pointers to functions,
+        //                              which accept A<char> and return R<int>.
+        // The TypeLoc hierarchy:
+        //   Vec<R<int>(*[2])(A<char>)> m;
+        //   Vec<#####################>      TemplateSpecialization Vec
+        //       --------[2]----------       `-Array
+        //       -------*-------------         `-Pointer
+        //       ------(----)---------           `-Paren
+        //       ------------(#######)             `-Function
+        //       R<###>                              |-TemplateSpecialization R
+        //         int                               | `-Builtin int
+        //                    A<####>                `-TemplateSpecialization A
+        //                      char                   `-Builtin char
+        //
+        // In each row
+        //   --- represents unclaimed parts of the SourceRange.
+        //   ### represents parts that children already claimed.
+        if(const auto* TL = N.get<clang::TypeLoc>()) {
+            if(auto PTL = TL->getAs<clang::ParenTypeLoc>()) {
+                claim_range(PTL.getLParenLoc(), self);
+                claim_range(PTL.getRParenLoc(), self);
+                return;
+            }
+
+            if(auto ATL = TL->getAs<clang::ArrayTypeLoc>()) {
+                claim_range(ATL.getBracketsRange(), self);
+                return;
+            }
+
+            if(auto PTL = TL->getAs<clang::PointerTypeLoc>()) {
+                claim_range(PTL.getStarLoc(), self);
+                return;
+            }
+
+            if(auto FTL = TL->getAs<clang::FunctionTypeLoc>()) {
+                claim_range(clang::SourceRange(FTL.getLParenLoc(), FTL.getEndLoc()), self);
+                return;
+            }
+        }
+
+        // An implicit cast spans exactly the operator it wraps, as in each
+        // link of `a = b = c = ...`.
+        if(const auto* expr = N.get<clang::Expr>()) {
+            if(const auto* op = llvm::dyn_cast<clang::BinaryOperator>(expr->IgnoreImpCasts())) {
+                claim_range(operator_range(op), self);
+                return;
+            }
+        }
+
+        claim_range(claimed_source_range(N), self);
+    }
+
+    /// clang finds a binary operator's ends by recursing down its operands,
+    /// quadratic over a chain like `a + b + c + ...`. The operands popped
+    /// first, so a nested operator's range is already known.
+    clang::SourceRange operator_range(const clang::BinaryOperator* op) {
+        auto known = [&](const clang::Expr* expr) -> std::optional<clang::SourceRange> {
+            if(auto it = operator_ranges.find(expr->IgnoreImpCasts());
+               it != operator_ranges.end()) {
+                return it->second;
+            }
+            return std::nullopt;
+        };
+        if(auto range = known(op)) {
+            return *range;
+        }
+        auto lhs = known(op->getLHS());
+        auto rhs = known(op->getRHS());
+        clang::SourceRange range(lhs ? lhs->getBegin() : op->getLHS()->getBeginLoc(),
+                                 rhs ? rhs->getEnd() : op->getRHS()->getEndLoc());
+        operator_ranges.try_emplace(op, range);
+        return range;
+    }
+
+    // Claim all unclaimed expanded tokens in S for node `self`.
+    //
+    // The whole-TU shape only feeds the index projection, which never queries
+    // token ownership — skip the claim machinery entirely. This matters: the
+    // preamble-state build runs a whole-TU pass over the preamble unit, and
+    // claiming its entire expanded stream would be paid on every PCH build.
+    void claim_range(clang::SourceRange S, std::uint32_t self) {
+        if(!options.main_file_only) {
+            return;
+        }
+
+        // An instantiation node's range points into the pattern (an explicit
+        // class instantiation's still spans the directive) and it carries no
+        // references; the written nodes own those tokens.
+        if(semantics.nodes[self].flags.in_instantiation) {
+            return;
+        }
+
+        auto tokens = unit.expanded_tokens(S);
+        if(tokens.empty()) {
+            return;
+        }
+        auto begin = static_cast<unsigned>(tokens.data() - unit.expanded_tokens().data());
+        auto end = begin + static_cast<unsigned>(tokens.size());
+        for(auto index = claimed.find_first_unset_in(begin, end); index != -1;
+            index = claimed.find_first_unset_in(index + 1, end)) {
+            claimed.set(index);
+            if(auto spelled = unit.expanded_token_origin(index)) {
+                add_token_entry(*spelled, self);
+            }
+        }
+    }
+
+    // Add an ownership entry for spelled token `index` unless it is one a
+    // selection does not count.
+    void add_token_entry(std::uint32_t index, std::uint32_t self) {
+        if(!should_ignore_token(semantics.tokens[index]) && !(*semantics.pp_ignored)[index]) {
+            entries.emplace_back(index, self);
+        }
+    }
+
+    // Add one ownership entry at `offset` regardless of the selection ignore
+    // set — preprocessor nodes own their directive tokens.
+    void add_directive_entry(unsigned offset, std::uint32_t self) {
+        auto indices = std::views::iota(0u, static_cast<std::uint32_t>(semantics.tokens.size()));
+        auto it = std::ranges::partition_point(indices, [&](std::uint32_t i) {
+            return semantics.token_offset(i) < offset;
+        });
+        if(it != indices.end() && semantics.token_offset(*it) == offset) {
+            entries.emplace_back(*it, self);
+        }
+    }
+
+    // Decomposes Loc and returns the offset if the file ID is the main file.
+    std::optional<unsigned> offset_in_main_file(clang::SourceLocation location) const {
+        // Decoding Loc with SM.getDecomposedLoc is relatively expensive.
+        // But SourceLocations for a file are numerically contiguous, so we
+        // can use cheap integer operations instead.
+        if(location < main_file_range.getBegin() || location >= main_file_range.getEnd()) {
+            return std::nullopt;
+        }
+
+        return location.getRawEncoding() - main_file_range.getBegin().getRawEncoding();
+    }
+
+    // Cross-check the lexically scanned module declarations against the
+    // compiled module before they become nodes: valid code cannot spell
+    // these token patterns with another meaning, but invalid or disabled
+    // code can, and a node must never outrank the compiler.
+    void filter_module_declarations() {
+        auto& modules = semantics.lexical.modules;
+        auto* mod = unit.context().getCurrentNamedModule();
+        if(!mod) {
+            modules.clear();
+            return;
+        }
+
+        // The declaration form additionally anchors on the compiler's
+        // DefinitionLoc — the written `module` keyword of the real
+        // declaration. This survives macro-spelled names (the keyword is
+        // always written) and kills duplicates in disabled branches.
+        std::optional<unsigned> definition_offset;
+        if(auto def_loc = mod->DefinitionLoc; def_loc.isValid()) {
+            definition_offset = offset_in_main_file(SM.getSpellingLoc(def_loc));
+        }
+        std::optional<unsigned> private_offset;
+        if(auto* fragment = mod->getPrivateModuleFragment()) {
+            private_offset = offset_in_main_file(SM.getSpellingLoc(fragment->DefinitionLoc));
+        }
+
+        std::erase_if(modules, [&](const LexicalInfo::ModuleDeclaration& module) {
+            switch(module.kind) {
+                // The introducer is necessarily the file's first token, so no
+                // conditional can disable it — and under a preamble PCH its
+                // spelled token counts as preprocessed away, so a liveness
+                // check would wrongly drop it.
+                case LexicalInfo::ModuleDeclaration::Kind::GlobalFragment: return false;
+
+                // The DefinitionLoc anchor subsumes liveness: a duplicate in
+                // a disabled branch sits at a different offset. The private
+                // fragment's module is defined at its `private` keyword.
+                case LexicalInfo::ModuleDeclaration::Kind::Declaration:
+                    return definition_offset != module.keyword.begin;
+                case LexicalInfo::ModuleDeclaration::Kind::PrivateFragment:
+                    return private_offset != module.partition_parts.front().begin;
+            }
+            std::unreachable();
+        });
+    }
+
+    // Append the main file's preprocessor directives and lexically
+    // scanned entities as nodes owning their name tokens. These live outside
+    // the AST segment: parent chains do not include them (yet), and selection
+    // ignores them, but hover and document links see macros, includes and
+    // imports as first-class nodes.
+    void append_directives() {
+        semantics.lexical = lexical_scan(unit.main_content(), &unit.lang_options());
+        filter_module_declarations();
+
+        struct Row {
+            unsigned offset;
+            SemanticNode node;
+            llvm::SmallVector<unsigned, 2> extra_offsets;
+        };
+
+        std::vector<Row> rows;
+
+        if(auto it = unit.directives().find(main_fid); it != unit.directives().end()) {
+            auto& directive = it->second;
+
+            for(auto& macro: directive.macros) {
+                if(auto offset = offset_in_main_file(macro.loc)) {
+                    rows.push_back({*offset, SemanticNode(&macro), {}});
+                }
+            }
+
+            for(auto& include: directive.includes) {
+                if(auto offset = offset_in_main_file(include.location)) {
+                    rows.push_back({*offset, SemanticNode(&include), {}});
+                }
+            }
+
+            for(auto& import: directive.imports) {
+                /// An import spelled through a macro carries macro locations;
+                /// name tokens written as macro arguments still resolve to
+                /// spelled main-file tokens.
+                Row row{0, SemanticNode(&import), {}};
+                std::optional<unsigned> anchor;
+                if(auto offset = offset_in_main_file(import.location)) {
+                    anchor = *offset;
+                    row.extra_offsets.push_back(*offset);
+                }
+                for(auto loc: import.name_locations) {
+                    if(loc.isMacroID()) {
+                        loc = SM.getSpellingLoc(loc);
+                    }
+                    if(auto name_offset = offset_in_main_file(loc)) {
+                        if(!anchor) {
+                            anchor = *name_offset;
+                        }
+                        row.extra_offsets.push_back(*name_offset);
+                    }
+                }
+                if(anchor) {
+                    row.offset = *anchor;
+                    rows.push_back(std::move(row));
+                }
+            }
+        }
+
+        // A comment node owns no spelled tokens (the stream drops them); it
+        // participates by its payload range only.
+        for(auto& comment: semantics.lexical.comments) {
+            rows.push_back({comment.range.begin, SemanticNode(&comment), {}});
+        }
+
+        // A module declaration owns its written tokens: the keywords, the
+        // name parts and the partition colon; the separators stay unowned,
+        // matching imports.
+        for(auto& module: semantics.lexical.modules) {
+            Row row{module.keyword.begin, SemanticNode(&module), {}};
+            if(module.export_keyword.valid()) {
+                row.offset = module.export_keyword.begin;
+                row.extra_offsets.push_back(module.export_keyword.begin);
+            }
+            row.extra_offsets.push_back(module.keyword.begin);
+            for(auto& part: module.name_parts) {
+                row.extra_offsets.push_back(part.begin);
+            }
+            if(module.colon.valid()) {
+                row.extra_offsets.push_back(module.colon.begin);
+            }
+            for(auto& part: module.partition_parts) {
+                row.extra_offsets.push_back(part.begin);
+            }
+            rows.push_back(std::move(row));
+        }
+
+        std::ranges::sort(rows, {}, &Row::offset);
+
+        for(auto& row: rows) {
+            auto self = static_cast<std::uint32_t>(semantics.nodes.size());
+            semantics.nodes.push_back({row.node, Semantics::invalid, self + 1});
+            add_directive_entry(row.offset, self);
+            for(auto offset: row.extra_offsets) {
+                add_directive_entry(offset, self);
+            }
+        }
+    }
+
+    // Lay the accumulated entries out by token (CSR), each token's owners
+    // ascending and distinct, and count per-node ownership.
+    void finalize() {
+        auto& offsets = semantics.owner_begin;
+        auto& owners = semantics.owner_nodes;
+        offsets.assign(semantics.tokens.size() + 1, 0);
+        for(auto [token, node]: entries) {
+            offsets[token + 1] += 1;
+        }
+        std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
+        owners.resize(entries.size());
+        auto next = offsets;
+        for(auto [token, node]: entries) {
+            owners[next[token]] = node;
+            next[token] += 1;
+        }
+
+        // A node claiming a macro's tokens owns its name once.
+        std::uint32_t kept = 0;
+        std::uint32_t start = 0;
+        for(std::size_t token = 0; token + 1 < offsets.size(); token += 1) {
+            auto stop = offsets[token + 1];
+            auto bucket = std::span(owners).subspan(start, stop - start);
+            std::ranges::sort(bucket);
+            offsets[token] = kept;
+            for(auto node: llvm::make_range(bucket.begin(), std::ranges::unique(bucket).begin())) {
+                owners[kept] = node;
+                kept += 1;
+                semantics.nodes[node].owned += 1;
+            }
+            start = stop;
+        }
+        offsets.back() = kept;
+        owners.resize(kept);
+    }
+
+    Semantics& semantics;
+    CompilationUnitRef unit;
+    SemanticsOptions options;
+    clang::SourceManager& SM;
+    clang::FileID main_fid;
+    clang::SourceRange main_file_range;
+
+    /// Per expanded token, whether a node claimed it.
+    llvm::BitVector claimed;
+
+    llvm::SmallVector<std::uint32_t, 64> stack;
+
+    /// Depth of enclosing instantiation subtrees; nodes pushed while it is
+    /// non-zero are flagged in_instantiation.
+    std::uint32_t instantiation_depth = 0;
+
+    /// The source ranges of the binary operators popped so far.
+    llvm::DenseMap<const clang::Expr*, clang::SourceRange> operator_ranges;
+
+    /// (spelled token index, owning node index) pairs, laid out in
+    /// finalize().
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> entries;
+};
+
+Semantics Semantics::build(CompilationUnitRef unit, SemanticsOptions options) {
+    Semantics semantics;
+    SemanticsBuilder::build(semantics, unit, options);
+    return semantics;
+}
+
+namespace {
+
+using References = llvm::SmallVector<Reference, 2>;
+
+void refer(References& out,
+           const clang::NamedDecl* decl,
+           RelationKind kind,
+           clang::SourceLocation location) {
+    if(decl) {
+        out.push_back({decl, kind, location});
+    }
+}
+
+/// The reference a written name makes, through its last token when it has
+/// several.
+void refer_name(References& out,
+                const clang::NamedDecl* decl,
+                RelationKind kind,
+                const clang::DeclarationNameInfo& name) {
+    if(!decl) {
+        return;
+    }
+    auto range = written_name(name, decl->getASTContext().getSourceManager());
+    auto end = range.getEnd() == range.getBegin() ? clang::SourceLocation() : range.getEnd();
+    out.push_back({decl, kind, range.getBegin(), end});
+}
+
+/// Weak references to the candidates a dependent name or an overload set
+/// may mean. A using shadow stands for its target, and each introducing
+/// using-declaration is referenced once: hover picks it when the set is
+/// otherwise ambiguous.
+void refer_candidates(References& out, auto&& candidates, const clang::DeclarationNameInfo& name) {
+    llvm::SmallPtrSet<const clang::UsingDecl*, 2> introducers;
+    for(const clang::NamedDecl* target: candidates) {
+        if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(target)) {
+            if(auto* UD = llvm::dyn_cast<clang::UsingDecl>(shadow->getIntroducer())) {
+                introducers.insert(UD);
+            }
+        }
+        refer_name(out, target->getUnderlyingDecl(), RelationKind::WeakReference, name);
+    }
+    for(const auto* UD: introducers) {
+        refer_name(out, UD, RelationKind::WeakReference, name);
+    }
+}
+
+void stmt_references(const clang::Stmt* S,
+                     References& out,
+                     types::TemplateResolver* resolver,
+                     const clang::CallExpr* call = nullptr);
+
+/// The references of a compiler-generated statement tree the traversal
+/// never records as nodes (a range-for's `begin`/`end`/`!=`/`++` calls,
+/// a coroutine's promise protocol), through the same per-statement
+/// extraction as recorded nodes. Nothing in such a tree is written, so
+/// the references carry no location whatever the AST says.
+void refer_hidden(References& out, const clang::Stmt* S, types::TemplateResolver* resolver) {
+    if(!S) {
+        return;
+    }
+
+    References hidden;
+    stmt_references(S, hidden, resolver);
+    for(auto& reference: hidden) {
+        out.push_back({reference.decl, reference.kind, {}});
+    }
+    for(auto* child: S->children()) {
+        refer_hidden(out, child, resolver);
+    }
+}
+
+/// The per-decl-kind extraction below is ported verbatim from the former
+/// SemanticVisitor: the same decls, the same roles, the same name locations.
+void decl_references(const clang::Decl* D, References& out, types::TemplateResolver* resolver) {
+    /// namespace Foo = Bar
+    ///            ^     ^~~~ reference
+    ///            ^~~~ definition
+    if(auto* NAD = llvm::dyn_cast<clang::NamespaceAliasDecl>(D)) {
+        refer(out, NAD, RelationKind::Definition, NAD->getLocation());
+        refer(out, NAD->getNamespace(), RelationKind::Reference, NAD->getTargetNameLoc());
+        return;
+    }
+
+    /// namespace Foo { }
+    ///            ^~~~ definition
+    if(auto* ND = llvm::dyn_cast<clang::NamespaceDecl>(D)) {
+        refer(out, ND, RelationKind::Definition, ND->getLocation());
+        return;
+    }
+
+    /// using namespace Foo
+    ///                  ^~~~~~~ reference
+    if(auto* UDD = llvm::dyn_cast<clang::UsingDirectiveDecl>(D)) {
+        /// As-written: `using namespace Alias` references the alias, not the
+        /// underlying namespace.
+        refer(out,
+              UDD->getNominatedNamespaceAsWritten(),
+              RelationKind::Reference,
+              UDD->getLocation());
+        return;
+    }
+
+    /// label:
+    ///   ^~~~ definition
+    if(auto* LD = llvm::dyn_cast<clang::LabelDecl>(D)) {
+        refer(out, LD, RelationKind::Definition, LD->getLocation());
+        return;
+    }
+
+    /// struct X { int foo; };
+    ///                 ^~~~ definition
+    if(auto* FD = llvm::dyn_cast<clang::FieldDecl>(D)) {
+        refer(out, FD, RelationKind::Definition, FD->getLocation());
+        return;
+    }
+
+    /// __declspec(property(get = get_value)) int value;
+    ///                                            ^~~~ definition
+    if(auto* MSPD = llvm::dyn_cast<clang::MSPropertyDecl>(D)) {
+        refer(out, MSPD, RelationKind::Definition, MSPD->getLocation());
+        return;
+    }
+
+    /// enum Foo { bar };
+    ///             ^~~~ definition
+    if(auto* ECD = llvm::dyn_cast<clang::EnumConstantDecl>(D)) {
+        refer(out, ECD, RelationKind::Definition, ECD->getLocation());
+        return;
+    }
+
+    /// using Base<T>::foo; — the dependent flavor of a using declaration.
+    if(auto* UUV = llvm::dyn_cast<clang::UnresolvedUsingValueDecl>(D)) {
+        if(resolver) {
+            for(auto* target: resolver->lookup(UUV)) {
+                refer(out, target, RelationKind::WeakReference, UUV->getLocation());
+            }
+        }
+        return;
+    }
+
+    if(auto* UUT = llvm::dyn_cast<clang::UnresolvedUsingTypenameDecl>(D)) {
+        if(resolver) {
+            for(auto* target: resolver->lookup(UUT)) {
+                refer(out, target, RelationKind::WeakReference, UUT->getLocation());
+            }
+        }
+        return;
+    }
+
+    /// using Foo::bar;
+    ///             ^~~~ reference
+    /// Shadows are synthetic; reference their underlying targets so hover
+    /// and the index see the real declarations.
+    if(auto* UD = llvm::dyn_cast<clang::UsingDecl>(D)) {
+        for(auto* shadow: UD->shadows()) {
+            refer_name(out,
+                       shadow->getTargetDecl(),
+                       RelationKind::WeakReference,
+                       UD->getNameInfo());
+        }
+        return;
+    }
+
+    /// auto [a, b] = std::make_tuple(1, 2);
+    ///       ^~~~ definition
+    /// The tuple protocol behind a binding (`get<0>`, `tuple_element`) and
+    /// its holding variable are generated; the traversal records neither.
+    if(auto* BD = llvm::dyn_cast<clang::BindingDecl>(D)) {
+        refer(out, BD, RelationKind::Definition, BD->getLocation());
+        refer_hidden(out, BD->getBinding(), resolver);
+        if(auto* holder = BD->getHoldingVar()) {
+            refer_hidden(out, holder->getInit(), resolver);
+            if(auto* TT = holder->getType().getNonReferenceType()->getAs<clang::TypedefType>()) {
+                refer(out, TT->getDecl(), RelationKind::Reference, {});
+            }
+        }
+        return;
+    }
+
+    /// template <typename T> / template <int N>
+    ///                    ^~~~ definition
+    /// An unnamed one (`template <class>`) is located at the next token.
+    if(llvm::isa<clang::TemplateTypeParmDecl,
+                 clang::TemplateTemplateParmDecl,
+                 clang::NonTypeTemplateParmDecl>(D)) {
+        auto* ND = llvm::cast<clang::NamedDecl>(D);
+        if(ND->getDeclName()) {
+            refer(out, ND, RelationKind::Definition, ND->getLocation());
+        }
+        return;
+    }
+
+    /// template <typename T> concept Foo = ...;
+    ///                                ^~~~ definition
+    if(auto* CD = llvm::dyn_cast<clang::ConceptDecl>(D)) {
+        refer(out, CD, RelationKind::Definition, CD->getLocation());
+        return;
+    }
+
+    /// The template decl itself produces no occurrence; the templated decl
+    /// inside it does.
+    if(llvm::isa<clang::ClassTemplateDecl, clang::FunctionTemplateDecl, clang::VarTemplateDecl>(
+           D)) {
+        return;
+    }
+
+    /// template void foo<int>(int);
+    ///               ^~~~ reference
+    /// RecursiveASTVisitor visits the directive's qualifier, declared type
+    /// and template arguments, never the entity's name.
+    if(auto* EID = llvm::dyn_cast<clang::ExplicitInstantiationDecl>(D)) {
+        refer(out, EID->getSpecialization(), RelationKind::Reference, EID->getNameLoc());
+        return;
+    }
+
+    /// struct/class/union/enum Foo { ... };
+    ///                          ^~~~ declaration/definition
+    if(auto* TD = llvm::dyn_cast<clang::TagDecl>(D)) {
+        if(auto* CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(TD)) {
+            switch(CTSD->getSpecializationKind()) {
+                /// The semantic map records instantiations, implicit and
+                /// explicit alike; nothing of them is written here.
+                case clang::TSK_Undeclared:
+                case clang::TSK_ImplicitInstantiation:
+                case clang::TSK_ExplicitInstantiationDeclaration:
+                case clang::TSK_ExplicitInstantiationDefinition: {
+                    return;
+                }
+
+                case clang::TSK_ExplicitSpecialization: {
+                    break;
+                }
+            }
+        }
+
+        RelationKind kind = TD->isThisDeclarationADefinition() ? RelationKind::Definition
+                                                               : RelationKind::Declaration;
+        refer(out, TD, kind, TD->getLocation());
+        return;
+    }
+
+    /// void foo() { ... }
+    ///       ^~~~ declaration/definition
+    if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(D)) {
+        switch(FD->getTemplateSpecializationKind()) {
+            case clang::TSK_ImplicitInstantiation:
+            case clang::TSK_ExplicitInstantiationDeclaration:
+            case clang::TSK_ExplicitInstantiationDefinition: {
+                return;
+            }
+
+            case clang::TSK_Undeclared:
+            case clang::TSK_ExplicitSpecialization: {
+                break;
+            }
+        }
+
+        RelationKind kind = FD->isThisDeclarationADefinition() ? RelationKind::Definition
+                                                               : RelationKind::Declaration;
+        refer_name(out, FD, kind, FD->getNameInfo());
+        return;
+    }
+
+    /// using Foo = int;
+    ///        ^~~~ definition
+    if(auto* TND = llvm::dyn_cast<clang::TypedefNameDecl>(D)) {
+        refer(out, TND, RelationKind::Definition, TND->getLocation());
+        return;
+    }
+
+    /// int foo = 2;
+    ///      ^~~~ declaration/definition
+    if(auto* VD = llvm::dyn_cast<clang::VarDecl>(D)) {
+        if(auto* VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(VD)) {
+            switch(VTSD->getSpecializationKind()) {
+                case clang::TSK_ImplicitInstantiation:
+                case clang::TSK_ExplicitInstantiationDeclaration:
+                case clang::TSK_ExplicitInstantiationDefinition: {
+                    return;
+                }
+
+                case clang::TSK_Undeclared:
+                case clang::TSK_ExplicitSpecialization: {
+                    break;
+                }
+            }
+        }
+
+        /// An unnamed parameter is located at the next token; a structured
+        /// binding's holder at its `[`, the bindings spell the names.
+        if(VD->getDeclName() && !llvm::isa<clang::DecompositionDecl>(VD)) {
+            RelationKind kind = VD->isThisDeclarationADefinition() ? RelationKind::Definition
+                                                                   : RelationKind::Declaration;
+            refer(out, VD, kind, VD->getLocation());
+        }
+
+        /// The variable's destructor runs at the end of its lifetime;
+        /// nothing spells it.
+        refer(out,
+              types::destructor_of(VD->getASTContext().getBaseElementType(VD->getType())),
+              RelationKind::Reference,
+              {});
+        return;
+    }
+}
+
+void type_loc_references(clang::TypeLoc TL, References& out, types::TemplateResolver* resolver) {
+    /// struct Foo foo;
+    ///         ^~~~ reference
+    if(auto TTL = TL.getAs<clang::TagTypeLoc>()) {
+        refer(out, TTL.getDecl(), RelationKind::Reference, TTL.getNameLoc());
+        return;
+    }
+
+    /// using Foo = int; Foo foo;
+    ///                   ^~~~ reference
+    if(auto TTL = TL.getAs<clang::TypedefTypeLoc>()) {
+        refer(out, TTL.getDecl(), RelationKind::Reference, TTL.getNameLoc());
+        return;
+    }
+
+    /// template <typename T> void foo(T t)
+    ///                                ^~~~ reference
+    if(auto TTPL = TL.getAs<clang::TemplateTypeParmTypeLoc>()) {
+        refer(out, TTPL.getDecl(), RelationKind::Reference, TTPL.getNameLoc());
+        return;
+    }
+
+    /// std::vector<int>
+    ///        ^~~~ reference
+    /// X *next; inside the definition of template<class T> struct X — the
+    /// written X is the injected class name.
+    if(auto ICNTL = TL.getAs<clang::InjectedClassNameTypeLoc>()) {
+        refer(out, ICNTL.getDecl(), RelationKind::Reference, ICNTL.getNameLoc());
+        return;
+    }
+
+    /// using typename B<T>::type; type x; — the dependent flavor keeps the
+    /// unresolved-using declaration itself, resolved further when possible.
+    if(auto UUTL = TL.getAs<clang::UnresolvedUsingTypeLoc>()) {
+        for(const auto* target: types::decls_of(UUTL.getType(), resolver)) {
+            refer(out, target, RelationKind::WeakReference, UUTL.getNameLoc());
+        }
+        return;
+    }
+
+    /// using B::value_type; value_type x; — the written type resolves
+    /// through the using shadow to the imported type.
+    if(auto UTL = TL.getAs<clang::UsingTypeLoc>()) {
+        refer(out,
+              UTL.getTypePtr()->getDecl()->getTargetDecl(),
+              RelationKind::Reference,
+              UTL.getNameLoc());
+        return;
+    }
+
+    /// Box b(1); with CTAD — the written name is a deduced placeholder;
+    /// reference the class template's pattern.
+    if(auto DTSTL = TL.getAs<clang::DeducedTemplateSpecializationTypeLoc>()) {
+        if(auto* TD = DTSTL.getTypePtr()->getTemplateName().getAsTemplateDecl()) {
+            auto* target = TD->getTemplatedDecl() ? TD->getTemplatedDecl()
+                                                  : static_cast<clang::NamedDecl*>(TD);
+            refer(out, target, RelationKind::Reference, DTSTL.getTemplateNameLoc());
+        }
+        return;
+    }
+
+    if(auto TSTL = TL.getAs<clang::TemplateSpecializationTypeLoc>()) {
+        auto* TST = TSTL.getTypePtr();
+        if(TST->isDependentType()) {
+            /// The arguments are dependent but the template itself is known;
+            /// reference its pattern.
+            if(auto* TD = TST->getTemplateName().getAsTemplateDecl()) {
+                auto* target = TD->getTemplatedDecl() ? TD->getTemplatedDecl()
+                                                      : static_cast<clang::NamedDecl*>(TD);
+                refer(out, target, RelationKind::Reference, TSTL.getTemplateNameLoc());
+                return;
+            }
+
+            /// std::allocator<T>::rebind<U> — the template itself is a
+            /// dependent name; weak reference, resolved on the primary
+            /// template.
+            for(const auto* target: types::decls_of(TSTL.getType(), resolver)) {
+                refer(out, target, RelationKind::WeakReference, TSTL.getTemplateNameLoc());
+            }
+            return;
+        }
+
+        /// Prefer the (implicit) specialization over its pattern: hover
+        /// renders the concrete type, and the index normalizes back to the
+        /// pattern anyway. Alias templates keep the alias itself.
+        const clang::NamedDecl* decl = nullptr;
+        if(llvm::isa_and_nonnull<clang::ClassTemplateDecl>(
+               TST->getTemplateName().getAsTemplateDecl())) {
+            decl = TST->getAsCXXRecordDecl();
+        }
+        if(!decl) {
+            decl = types::decl_of(TSTL.getType());
+        }
+
+        refer(out, decl, RelationKind::Reference, TSTL.getTemplateNameLoc());
+        return;
+    }
+
+    /// std::vector<T>::value_type
+    ///                      ^~~~ weak reference, resolved on the primary template
+    if(auto DNTL = TL.getAs<clang::DependentNameTypeLoc>()) {
+        for(const auto* target: types::decls_of(DNTL.getType(), resolver)) {
+            refer(out, target, RelationKind::WeakReference, DNTL.getNameLoc());
+        }
+        return;
+    }
+}
+
+void nns_references(clang::NestedNameSpecifierLoc NNSL, References& out) {
+    auto NNS = NNSL.getNestedNameSpecifier();
+    switch(NNS.getKind()) {
+        /// A namespace or namespace alias; the alias decl itself is
+        /// referenced, not the namespace it names.
+        case clang::NestedNameSpecifier::Kind::Namespace: {
+            refer(out,
+                  NNS.getAsNamespaceAndPrefix().Namespace,
+                  RelationKind::Reference,
+                  NNSL.getLocalBeginLoc());
+            break;
+        }
+
+        case clang::NestedNameSpecifier::Kind::MicrosoftSuper: {
+            /// __super::member (MS extension) — the qualifier names the base
+            /// record.
+            refer(out, NNS.getAsMicrosoftSuper(), RelationKind::Reference, NNSL.getLocalBeginLoc());
+            break;
+        }
+
+        /// Type components (including dependent chains, which are
+        /// DependentNameTypes) are visited as TypeLocs.
+        case clang::NestedNameSpecifier::Kind::Null:
+        case clang::NestedNameSpecifier::Kind::Type:
+        case clang::NestedNameSpecifier::Kind::Global: {
+            break;
+        };
+    }
+}
+
+void stmt_references(const clang::Stmt* S,
+                     References& out,
+                     types::TemplateResolver* resolver,
+                     const clang::CallExpr* call) {
+    /// foo = 1
+    ///  ^~~~ reference
+    if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(S)) {
+        refer_name(out, DRE->getDecl(), RelationKind::Reference, DRE->getNameInfo());
+        return;
+    }
+
+    /// sizeof...(Ts)
+    ///           ^~~~ reference to the pack declaration
+    if(auto* SOPE = llvm::dyn_cast<clang::SizeOfPackExpr>(S)) {
+        refer(out, SOPE->getPack(), RelationKind::Reference, SOPE->getPackLoc());
+        return;
+    }
+
+    /// new Foo / delete p with class-provided allocation functions
+    /// ^~~~ reference to operator new / operator delete
+    if(auto* NE = llvm::dyn_cast<clang::CXXNewExpr>(S)) {
+        if(auto* op = NE->getOperatorNew()) {
+            refer(out,
+                  op,
+                  RelationKind::Reference,
+                  keyword_after_scope(op->getASTContext(), NE->getBeginLoc(), NE->isGlobalNew()));
+        }
+        /// The matching deallocation function runs if the initializer throws.
+        refer(out, NE->getOperatorDelete(), RelationKind::Reference, {});
+        return;
+    }
+    if(auto* DE = llvm::dyn_cast<clang::CXXDeleteExpr>(S)) {
+        if(auto* op = DE->getOperatorDelete()) {
+            refer(
+                out,
+                op,
+                RelationKind::Reference,
+                keyword_after_scope(op->getASTContext(), DE->getBeginLoc(), DE->isGlobalDelete()));
+        }
+        if(auto type = DE->getDestroyedType(); !type.isNull()) {
+            refer(out, types::destructor_of(type), RelationKind::Reference, {});
+        }
+        return;
+    }
+
+    /// Foo value(1); / Foo value{};
+    ///          ^~~~ reference to the selected constructor
+    if(auto* CE = llvm::dyn_cast<clang::CXXConstructExpr>(S)) {
+        /// Implicit constructions have no written parens: the reference
+        /// carries an invalid location.
+        refer(out,
+              CE->getConstructor(),
+              RelationKind::Reference,
+              CE->getParenOrBraceRange().getBegin());
+        return;
+    }
+
+    /// __builtin_offsetof(S, field)
+    ///                        ^~~~ reference
+    if(auto* OOE = llvm::dyn_cast<clang::OffsetOfExpr>(S)) {
+        for(unsigned i = 0; i < OOE->getNumComponents(); i += 1) {
+            auto& component = OOE->getComponent(i);
+            if(component.getKind() == clang::OffsetOfNode::Field) {
+                refer(out, component.getField(), RelationKind::Reference, component.getEndLoc());
+            }
+        }
+        return;
+    }
+
+    /// asm goto("" : : : : done)
+    ///                     ^~~~ reference; the traversal never enters the
+    /// label operands.
+    if(auto* GAS = llvm::dyn_cast<clang::GCCAsmStmt>(S)) {
+        for(unsigned i = 0; i < GAS->getNumLabels(); i += 1) {
+            auto* label = GAS->getLabelExpr(i);
+            refer(out, label->getLabel(), RelationKind::Reference, label->getLabelLoc());
+        }
+        return;
+    }
+
+    /// object.value with `__declspec(property)`
+    ///         ^~~~ reference
+    if(auto* MSPRE = llvm::dyn_cast<clang::MSPropertyRefExpr>(S)) {
+        refer(out, MSPRE->getPropertyDecl(), RelationKind::Reference, MSPRE->getMemberLoc());
+        return;
+    }
+
+    /// goto done; / done: ... / &&done
+    ///      ^~~~ reference / definition / reference
+    if(auto* GS = llvm::dyn_cast<clang::GotoStmt>(S)) {
+        refer(out, GS->getLabel(), RelationKind::Reference, GS->getLabelLoc());
+        return;
+    }
+    if(auto* LS = llvm::dyn_cast<clang::LabelStmt>(S)) {
+        refer(out, LS->getDecl(), RelationKind::Definition, LS->getIdentLoc());
+        return;
+    }
+    if(auto* ALE = llvm::dyn_cast<clang::AddrLabelExpr>(S)) {
+        refer(out, ALE->getLabel(), RelationKind::Reference, ALE->getLabelLoc());
+        return;
+    }
+
+    /// a == b rewritten from operator<=> / defaulted operator==
+    ///   ^~~~ reference to the rewritten-to operator
+    if(auto* RBO = llvm::dyn_cast<clang::CXXRewrittenBinaryOperator>(S)) {
+        auto decomposed = RBO->getDecomposedForm();
+        if(auto* call =
+               llvm::dyn_cast_if_present<clang::CXXOperatorCallExpr>(decomposed.InnerBinOp)) {
+            if(auto* callee = call->getDirectCallee()) {
+                refer(out, callee, RelationKind::Reference, RBO->getOperatorLoc());
+            }
+        }
+        return;
+    }
+
+    /// Foo foo{.bar = 1};
+    ///          ^~~~ reference
+    /// Every designator is emitted with its own location; consumers match
+    /// by position, so nested designators need no outer-wins heuristic.
+    if(auto* DIE = llvm::dyn_cast<clang::DesignatedInitExpr>(S)) {
+        for(const auto& designator: DIE->designators()) {
+            if(designator.isFieldDesignator()) {
+                refer(out,
+                      designator.getFieldDecl(),
+                      RelationKind::Reference,
+                      designator.getFieldLoc());
+            }
+        }
+        return;
+    }
+
+    /// foo.bar
+    ///      ^~~~ reference
+    /// An invalid member location means an implicit member expr, e.g. the
+    /// implicit `operator bool` call in `if(x)`.
+    if(auto* ME = llvm::dyn_cast<clang::MemberExpr>(S)) {
+        refer_name(out, ME->getMemberDecl(), RelationKind::Reference, ME->getMemberNameInfo());
+        return;
+    }
+
+    /// std::is_same<T, U>::value
+    ///                       ^~~~ weak reference
+    if(auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(S)) {
+        if(resolver) {
+            if(call) {
+                refer_candidates(out, resolver->lookup(call), DSDRE->getNameInfo());
+            } else {
+                refer_candidates(out, resolver->lookup(DSDRE), DSDRE->getNameInfo());
+            }
+        }
+        return;
+    }
+
+    /// foo(...) / obj.foo(...) where foo names an overload set — clang
+    /// already stores the candidates.
+    if(auto* OE = llvm::dyn_cast<clang::OverloadExpr>(S)) {
+        /// As a callee, the candidate set shrinks to the overloads that can
+        /// accept the call's argument count.
+        if(call && resolver) {
+            refer_candidates(out, resolver->lookup(call), OE->getNameInfo());
+        } else {
+            refer_candidates(out, OE->decls(), OE->getNameInfo());
+        }
+        return;
+    }
+
+    /// obj(args) / obj[i] with overloaded operators — the traversal skips
+    /// these calls' implicit callee references, so the punctuation token has
+    /// no other occurrence source.
+    if(auto* OCE = llvm::dyn_cast<clang::CXXOperatorCallExpr>(S)) {
+        auto op = OCE->getOperator();
+        if(op == clang::OO_Call || op == clang::OO_Subscript) {
+            /// The callee reference sits on the opening token and
+            /// getOperatorLoc on the closing one; anchor both.
+            refer(out,
+                  OCE->getDirectCallee(),
+                  RelationKind::Reference,
+                  OCE->getCallee()->getExprLoc());
+            refer(out, OCE->getDirectCallee(), RelationKind::Reference, OCE->getOperatorLoc());
+        }
+        return;
+    }
+
+    /// t.foo / this->foo where the base type is dependent
+    ///   ^~~~ weak reference, resolved through the template resolver
+    if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(S)) {
+        if(resolver) {
+            if(call) {
+                refer_candidates(out, resolver->lookup(call), DSME->getMemberNameInfo());
+            } else {
+                refer_candidates(out, resolver->lookup(DSME), DSME->getMemberNameInfo());
+            }
+        }
+        return;
+    }
+
+    /// The rest spell no name at all.
+
+    /// f(S()) — the temporary's destructor.
+    if(auto* BTE = llvm::dyn_cast<clang::CXXBindTemporaryExpr>(S)) {
+        refer(out, BTE->getTemporary()->getDestructor(), RelationKind::Reference, {});
+        return;
+    }
+
+    /// int i = s; — the conversion function an implicit conversion calls.
+    if(auto* ICE = llvm::dyn_cast<clang::ImplicitCastExpr>(S)) {
+        if(ICE->getCastKind() == clang::CK_UserDefinedConversion) {
+            refer(out, ICE->getConversionFunction(), RelationKind::Reference, {});
+        }
+        return;
+    }
+
+    /// for(auto x: range) — the traversal records only the written parts;
+    /// the generated begin/end variables, the `!=` and `++` calls and the
+    /// loop variable's `*__begin` initializer have no nodes.
+    if(auto* FRS = llvm::dyn_cast<clang::CXXForRangeStmt>(S)) {
+        for(const clang::Stmt* generated:
+            {static_cast<const clang::Stmt*>(FRS->getBeginStmt()),
+             static_cast<const clang::Stmt*>(FRS->getEndStmt()),
+             static_cast<const clang::Stmt*>(FRS->getCond()),
+             static_cast<const clang::Stmt*>(FRS->getInc()),
+             static_cast<const clang::Stmt*>(FRS->getLoopVarStmt())}) {
+            refer_hidden(out, generated, resolver);
+        }
+        return;
+    }
+
+    /// 12_i — a leaf: the suffix cannot be split off its token, so the
+    /// whole literal token references the operator.
+    if(auto* UDL = llvm::dyn_cast<clang::UserDefinedLiteral>(S)) {
+        refer(out,
+              llvm::dyn_cast_if_present<clang::NamedDecl>(UDL->getCalleeDecl()),
+              RelationKind::Reference,
+              UDL->getBeginLoc());
+        return;
+    }
+
+    /// The coroutine protocol: everything but the body is generated.
+    if(auto* CBS = llvm::dyn_cast<clang::CoroutineBodyStmt>(S)) {
+        for(auto* child: CBS->children()) {
+            if(child != CBS->getBody()) {
+                refer_hidden(out, child, resolver);
+            }
+        }
+        return;
+    }
+    if(auto* CSE = llvm::dyn_cast<clang::CoroutineSuspendExpr>(S)) {
+        /// co_await value
+        /// ^~~~ reference to the `operator co_await` it selects
+        if(llvm::isa<clang::CoawaitExpr>(CSE)) {
+            if(auto* call =
+                   llvm::dyn_cast<clang::CallExpr>(CSE->getCommonExpr()->IgnoreImplicit())) {
+                if(auto* callee = call->getDirectCallee();
+                   callee && callee->getOverloadedOperator() == clang::OO_Coawait) {
+                    refer(out, callee, RelationKind::Reference, CSE->getKeywordLoc());
+                }
+            }
+        }
+        for(auto* child: CSE->children()) {
+            if(child != CSE->getOperand()) {
+                refer_hidden(out, child, resolver);
+            }
+        }
+        return;
+    }
+    if(auto* CRS = llvm::dyn_cast<clang::CoreturnStmt>(S)) {
+        refer_hidden(out, CRS->getPromiseCall(), resolver);
+        return;
+    }
+}
+
+/// The references a token spells, as name occurrences.
+llvm::SmallVector<NameOccurrence, 2> spelled(const References& references) {
+    llvm::SmallVector<NameOccurrence, 2> out;
+    for(auto& reference: references) {
+        if(reference.location.isValid()) {
+            out.push_back({reference.decl, reference.kind, reference.location, reference.name_end});
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
+                                                   std::uint32_t index,
+                                                   types::TemplateResolver* resolver) {
+    auto& entry = semantics.node(index);
+
+    /// A dependent name used as a callee resolves against the call, so the
+    /// candidate set can be filtered by arity. Walk up through the wrapper
+    /// nodes the tree keeps for parent chains.
+    if(auto* S = entry.node.get<clang::Stmt>();
+       S && llvm::isa<clang::OverloadExpr,
+                      clang::DependentScopeDeclRefExpr,
+                      clang::CXXDependentScopeMemberExpr>(S)) {
+        for(auto parent = entry.parent; parent != Semantics::invalid;
+            parent = semantics.node(parent).parent) {
+            auto* PS = semantics.node(parent).node.get<clang::Stmt>();
+            if(!PS) {
+                break;
+            }
+            if(auto* CE = llvm::dyn_cast<clang::CallExpr>(PS)) {
+                if(CE->getCallee()->IgnoreParenImpCasts() == S) {
+                    References out;
+                    stmt_references(S, out, resolver, CE);
+                    return out;
+                }
+                break;
+            }
+            if(!llvm::isa<clang::ParenExpr, clang::ImplicitCastExpr>(PS)) {
+                break;
+            }
+        }
+    }
+
+    return resolve_references(entry.node, resolver);
+}
+
+llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semantics,
+                                                         std::uint32_t index,
+                                                         types::TemplateResolver* resolver) {
+    return spelled(resolve_references(semantics, index, resolver));
+}
+
+bool is_written(const Semantics& semantics, std::uint32_t index) {
+    auto& entry = semantics.node(index);
+    auto* expr = entry.node.get<clang::Expr>();
+    if(!llvm::isa_and_present<clang::DeclRefExpr, clang::MemberExpr>(expr)) {
+        return false;
+    }
+
+    const clang::Stmt* parent = nullptr;
+    for(auto i = entry.parent; i != Semantics::invalid; i = semantics.node(i).parent) {
+        parent = semantics.node(i).node.get<clang::Stmt>();
+        if(!llvm::isa_and_present<clang::ParenExpr, clang::ImplicitCastExpr>(parent)) {
+            break;
+        }
+    }
+    if(!parent) {
+        return false;
+    }
+    auto is_expr = [&](const clang::Expr* operand) {
+        return operand->IgnoreParenImpCasts() == expr;
+    };
+
+    if(auto* op = llvm::dyn_cast<clang::BinaryOperator>(parent)) {
+        return op->isAssignmentOp() && is_expr(op->getLHS());
+    }
+    if(auto* op = llvm::dyn_cast<clang::UnaryOperator>(parent)) {
+        return op->isIncrementDecrementOp();
+    }
+
+    const clang::FunctionDecl* callee = nullptr;
+    llvm::ArrayRef<const clang::Expr*> args;
+    if(auto* call = llvm::dyn_cast<clang::CallExpr>(parent)) {
+        callee = call->getDirectCallee();
+        args = {call->getArgs(), call->getNumArgs()};
+    } else if(auto* construct = llvm::dyn_cast<clang::CXXConstructExpr>(parent)) {
+        callee = construct->getConstructor();
+        args = {construct->getArgs(), construct->getNumArgs()};
+    }
+
+    // The object a call is made on leads the arguments of an operator call
+    // and of a call to an explicit object member function; the parameters
+    // list it unless the callee is an implicit object member.
+    auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(callee);
+    bool explicit_object = method && method->isExplicitObjectMemberFunction();
+    std::size_t skipped_params = 0;
+    if(auto* call = llvm::dyn_cast<clang::CXXOperatorCallExpr>(parent)) {
+        auto op = call->getOperator();
+        if(is_expr(call->getArg(0))) {
+            return call->isAssignmentOp() || op == clang::OO_PlusPlus || op == clang::OO_MinusMinus;
+        }
+        args = args.drop_front();
+        if(!method || explicit_object) {
+            skipped_params = 1;
+        }
+    } else if(explicit_object) {
+        args = args.drop_front();
+        skipped_params = 1;
+    }
+
+    auto it = llvm::find_if(args, is_expr);
+    if(!callee || it == args.end()) {
+        return false;
+    }
+    auto position = skipped_params + (it - args.begin());
+    if(position >= callee->getNumParams()) {
+        return false;
+    }
+    auto* param = callee->getParamDecl(position);
+    auto* forwarded = param;
+    if(decls::underlying_pack_type(param)) {
+        forwarded = decls::resolve_forwarding_params(callee)[position];
+    }
+    // A reference collapsed from `T&&` or `auto&&` is not spelled as one.
+    return decls::binds_mutable_reference(param, forwarded) &&
+           forwarded->getType()->castAs<clang::LValueReferenceType>()->isSpelledAsLValue();
+}
+
+bool NameOccurrence::owns_whole_name() const {
+    return decl->getDeclName().getNameKind() != clang::DeclarationName::CXXConversionFunctionName;
+}
+
+clang::SourceLocation keyword_after_scope(const clang::ASTContext& context,
+                                          clang::SourceLocation begin,
+                                          bool global_qualified) {
+    if(!global_qualified || begin.isInvalid() || begin.isMacroID()) {
+        return begin;
+    }
+    auto token =
+        clang::Lexer::findNextToken(begin, context.getSourceManager(), context.getLangOpts());
+    return token ? token->getLocation() : begin;
+}
+
+clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
+                                const clang::SourceManager& SM) {
+    auto location = name.getLoc();
+    switch(name.getName().getNameKind()) {
+        case clang::DeclarationName::CXXDestructorName: {
+            if(auto* type = name.getNamedTypeInfo()) {
+                return {location, type->getTypeLoc().getBeginLoc()};
+            }
+            return location;
+        }
+        case clang::DeclarationName::CXXOperatorName:
+        case clang::DeclarationName::CXXConversionFunctionName:
+        case clang::DeclarationName::CXXLiteralOperatorName: {
+            if(location.isValid() &&
+               std::strncmp(SM.getCharacterData(SM.getSpellingLoc(location)), "operator", 8) == 0) {
+                return {location, name.getEndLoc()};
+            }
+            return location;
+        }
+        default: {
+            return location;
+        }
+    }
+}
+
+llvm::SmallVector<Reference, 2> resolve_references(const SemanticNode& node,
+                                                   types::TemplateResolver* resolver) {
+    References out;
+
+    switch(node.kind()) {
+        case SemanticNode::Kind::Decl: {
+            decl_references(node.get<clang::Decl>(), out, resolver);
+            break;
+        }
+
+        case SemanticNode::Kind::Stmt: {
+            stmt_references(node.get<clang::Stmt>(), out, resolver);
+            break;
+        }
+
+        case SemanticNode::Kind::TypeLoc: {
+            type_loc_references(*node.get<clang::TypeLoc>(), out, resolver);
+            break;
+        }
+
+        case SemanticNode::Kind::NestedNameSpecifierLoc: {
+            nns_references(*node.get<clang::NestedNameSpecifierLoc>(), out);
+            break;
+        }
+
+        case SemanticNode::Kind::CtorInitializer: {
+            /// Foo() : bar(1) {}
+            ///          ^~~~ reference
+            auto* init = node.get<clang::CXXCtorInitializer>();
+            if(init->isAnyMemberInitializer()) {
+                refer(out,
+                      init->getAnyMember(),
+                      RelationKind::Reference,
+                      init->getMemberLocation());
+            }
+            /// template <class T> struct X { X() : X(T{}) {} };
+            ///                                      ^~~~ weak reference to
+            /// every constructor taking that many arguments: dependent ones
+            /// leave the choice to instantiation. Inside a template a
+            /// delegating initializer reads as one of the base.
+            auto* PLE = llvm::dyn_cast_if_present<clang::ParenListExpr>(init->getInit());
+            auto* type = init->getTypeSourceInfo();
+            if(auto* record = type ? type->getType()->getAsCXXRecordDecl() : nullptr;
+               PLE && record && record->hasDefinition()) {
+                auto count = PLE->getNumExprs();
+                for(auto* ctor: record->ctors()) {
+                    if(ctor->getMinRequiredArguments() <= count &&
+                       (count <= ctor->getNumParams() || ctor->isVariadic())) {
+                        refer(out, ctor, RelationKind::WeakReference, PLE->getLParenLoc());
+                    }
+                }
+            }
+            break;
+        }
+
+        case SemanticNode::Kind::TemplateArgumentLoc: {
+            /// Foo<Bar> where the argument is itself a template name
+            ///      ^~~~ reference
+            auto& TAL = *node.get<clang::TemplateArgumentLoc>();
+            auto kind = TAL.getArgument().getKind();
+            if(kind == clang::TemplateArgument::Template ||
+               kind == clang::TemplateArgument::TemplateExpansion) {
+                auto template_name = TAL.getArgument().getAsTemplateOrTemplatePattern();
+                if(auto* TD = template_name.getAsTemplateDecl()) {
+                    refer(out, TD, RelationKind::Reference, TAL.getTemplateNameLoc());
+                }
+            }
+            break;
+        }
+
+        case SemanticNode::Kind::ConceptReference: {
+            /// requires Foo<T>;
+            ///            ^~~~ reference
+            auto* reference = node.get<clang::ConceptReference>();
+            refer(out,
+                  reference->getNamedConcept(),
+                  RelationKind::Reference,
+                  reference->getConceptNameLoc());
+            break;
+        }
+
+        case SemanticNode::Kind::Attr: {
+            /// __attribute__((cleanup(fn))) — the attribute stores the
+            /// function itself, not an expression the traversal would record.
+            if(auto* CA = node.get<clang::CleanupAttr>()) {
+                refer(out, CA->getFunctionDecl(), RelationKind::Reference, CA->getArgLoc());
+            }
+            break;
+        }
+
+        default: {
+            break;
+        }
+    }
+
+    return out;
+}
+
+}  // namespace clice

@@ -1,8 +1,22 @@
-# Configuration
+---
+outline: 2
+---
 
-clice 从工作区根目录的 `clice.toml` 中读取配置；若该文件不存在，则尝试 `.clice/config.toml`。配置也可以通过 LSP `initializationOptions`（JSON 格式）传入：`initializationOptions` 中的值会覆盖配置文件，合并后仍未设置的项再由默认值填充。
+# 配置
+
+clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在，则从 `.clice/config.toml` 读取。配置也可以通过 LSP `initializationOptions`（JSON 格式）传入；`initializationOptions` 中的值覆盖配置文件，合并后仍未设置的项由默认值填充。
 
 配置只在服务器启动时读取一次。修改配置（无论哪个文件）都需要重启服务器，没有热重载。
+
+完整配置的 JSON Schema 发布于 [`clice-config.schema.json`](/clice-config.schema.json)；支持根据 Schema 验证 TOML 或 JSON 的编辑器可以使用它。
+
+文件中的相对路径和模式相对于配置文件自身所在的目录解析；通过 `initializationOptions` 传入的值则相对于工作区根目录解析。
+
+## 多个文件夹
+
+编辑器打开的每个工作区文件夹，只要含有 `clice.toml` 或 `compile_commands.json`（位于该文件夹本身或其直接子目录中，即发现机制会查找的位置），就是一个独立的项目，各有自己的 `clice.toml`、编译数据库和缓存目录。两者都没有、且位于另一个已打开文件夹之内的文件夹，则属于那个文件夹的项目；而在一个文件夹内部，含有自己的 `clice.toml` 或数据库的目录，会作为独立的项目，服务那些该文件夹的项目不构建的文件。在所有文件夹之外打开的文件，归属于其上方最近的、含有 `clice.toml` 或 `compile_commands.json`（直接位于该目录中，或位于其 `build/` 目录中）的目录；随后该目录会像已打开的文件夹一样得到服务，除非某个正在服务的项目已经加载了那份数据库。文件由数据库中列有它的项目负责编译；没有自身条目的头文件，会从源文件包含了它的项目中借用宿主，并优先选择文件夹中含有该头文件的项目。工作区符号搜索覆盖所有项目；导航——查找引用、跳转到定义与声明、调用层级与类型层级、查找实现——会延伸到那些在同一文件中声明了该符号的项目。编辑器中打开的文件只通过服务它的项目作答，因此每个查询看到的都是它未保存的修改。
+
+`initializationOptions` 作用于每个项目，而一个缓存目录只服务一个项目：位于项目之外的缓存目录会记下最先使用它的项目；其他项目——无论是在同一个 server 中，还是在之后的一次 `clice index` 运行中——都会先退回到自身 `clice.toml` 指定的缓存目录，再退回到其文件夹中的 `.clice`；这些也都被占用时，就在没有缓存的情况下运行。因此，绝对路径的 `cache_dir` 若写在 `initializationOptions` 中，只会分配给第一个文件夹。worker 数量取启动时各文件夹所要求的最大值。列出或切换配置作用于请求所指文件所属的项目——在 VS Code 中即当前活动编辑器的文件——未指定时则作用于第一个文件夹。
 
 ## 变量替换
 
@@ -12,163 +26,470 @@ clice 从工作区根目录的 `clice.toml` 中读取配置；若该文件不存
 | -------------- | ---------------------- |
 | `${workspace}` | 客户端提供的工作区目录 |
 
-## Project
+## 工作区
 
-### `project.clang_tidy`
+顶层选项，写在任何配置节之前。
 
-| 类型   | 默认值  |
-| ------ | ------- |
-| `bool` | `false` |
+<!-- BEGIN GENERATED CONFIG: root -->
 
-启用实验性的 clang-tidy 诊断。**尚未接线**——该选项会被解析，但当前没有任何效果。
+<div class="config-option">
 
-### `project.cache_dir`
+| 选项                    | 类型     | 默认值 |
+| ----------------------- | -------- | ------ |
+| `default_configuration` | `string` | `""`   |
 
-| 类型     | 默认值                                                              |
-| -------- | ------------------------------------------------------------------- |
-| `string` | `$XDG_CACHE_HOME/clice/<workspace>-<hash>` 或 `${workspace}/.clice` |
+当 `--configuration` 与持久化的选择都没有指定配置时，回退使用的构建配置，取规则上声明的标签之一。当规则带有标签而此项没有指向其中任何一个时，使用第一个声明的标签，并记录一条警告。
 
-统一磁盘缓存的存储目录（PCH、PCM 与索引产物都在这里）。默认使用 XDG_CACHE_HOME（或 `~/.cache`）下以工作区目录名加短哈希命名的子目录，例如 `~/.cache/clice/myproject-1a2b3c4d`。如果 XDG 目录无法创建，则回退到 `${workspace}/.clice`。实际解析出的路径会在启动时的有效配置日志中打印（可在编辑器的 clice 输出面板查看）。
+</div>
 
-### `project.logging_dir`
+<!-- END GENERATED CONFIG -->
 
-| 类型     | 默认值              |
-| -------- | ------------------- |
-| `string` | `${cache_dir}/logs` |
+## `[project]`
 
-日志文件目录。每个服务器会话在其中创建独立的时间戳子目录；启动日志中的 `Session log directory:` 一行给出确切路径。
+<!-- BEGIN GENERATED CONFIG: project -->
 
-### `project.compile_commands_paths`
+<div class="config-option">
 
-| 类型              | 默认值 |
-| ----------------- | ------ |
-| `array of string` | `[]`   |
+| 选项        | 类型     | 默认值 |
+| ----------- | -------- | ------ |
+| `cache_dir` | `string` | `""`   |
 
-搜索 `compile_commands.json` 文件的路径。可以是直接的文件路径，也可以是目录（会在其中查找 `compile_commands.json`）。为空（默认）时，clice 会先搜索工作区根目录，再依次搜索其各个直接子目录，使用找到的第一个 `compile_commands.json`。
+统一磁盘缓存的目录（PCH、PCM 和索引产物）。空值默认为 `${workspace}/.clice`，该目录通过生成的 .gitignore 和 CACHEDIR.TAG 标记将自身排除在版本控制和备份之外（`.clice/config.toml` 对 Git 保持可见；遵循 CACHEDIR.TAG 的备份工具会跳过整个目录）；显式配置的目录不会添加这些标记。最终确定的路径会在启动时打印。
 
-### `project.enable_indexing`
+</div>
 
-| 类型   | 默认值 |
-| ------ | ------ |
-| `bool` | `true` |
+<div class="config-option">
 
-启用后台索引，用于跨 TU 功能（查找引用、工作区符号等）。
+| 选项          | 类型     | 默认值 |
+| ------------- | -------- | ------ |
+| `logging_dir` | `string` | `""`   |
 
-### `project.idle_timeout_ms`
+日志文件目录；空值时使用 `${cache_dir}/logs`。每次服务器会话都将日志写入各自带时间戳的子目录。
 
-| 类型  | 默认值 |
-| ----- | ------ |
-| `int` | `3000` |
+</div>
 
-最后一次编辑后开始后台索引的空闲等待时间（毫秒）。
+<div class="config-option">
 
-### `project.stateful_worker_count`
+| 选项              | 类型   | 默认值 |
+| ----------------- | ------ | ------ |
+| `enable_indexing` | `bool` | `true` |
 
-| 类型     | 默认值 |
-| -------- | ------ |
-| `uint32` | `2`    |
+构建后台索引，为跨 TU 功能（查找引用、工作区符号等）提供服务。
 
-有状态工作进程数量。这些进程在内存中持有 AST，服务查询（hover、semantic tokens 等）。
+</div>
 
-### `project.stateless_worker_count`
+<div class="config-option">
 
-| 类型     | 默认值            |
-| -------- | ----------------- |
-| `uint32` | `max(cores/2, 2)` |
+| 选项       | 类型     | 默认值  |
+| ---------- | -------- | ------- |
+| `readonly` | `string` | `"off"` |
 
-启动时创建的无状态工作进程数量。处理临时任务（PCH/PCM 构建、补全、签名帮助）。
+为打开的文件提供只读服务："off" 以为每个打开的文件构建完整 AST 为目标——构建由第一个需要它的请求触发，期间由索引应答；"on" 从不构建 PCH——读取操作仅由索引提供结果（冷文件会被插到索引队列前端），而代码补全和签名帮助仍会在没有 Preamble 的情况下按需编译；"auto" 使每个文件最初都处于 "on"，在首次出现编辑意图（编辑、代码补全、签名帮助、上下文切换）时切换到 "off"，如果索引无法为某个文件提供服务，则该文件回退到 "off"。功能路由始终选择当前可用的最佳来源进行应答。
 
-### `project.min_stateless_worker_count`
+</div>
 
-| 类型     | 默认值      |
-| -------- | ----------- |
-| `uint32` | `0`（自动） |
+<div class="config-option">
 
-无状态工作进程动态缩容的下限。`0` 表示自动确定最小值。
+| 选项              | 类型     | 默认值 |
+| ----------------- | -------- | ------ |
+| `idle_timeout_ms` | `uint32` | `3000` |
 
-### `project.max_stateless_worker_count`
+后台索引开始前的空闲等待时间，单位毫秒。
 
-| 类型     | 默认值      |
-| -------- | ----------- |
-| `uint32` | `0`（自动） |
+</div>
 
-无状态工作进程动态扩容的上限。`0` 表示使用 CPU 核心数。
+<div class="config-option">
 
-### `project.worker_memory_limit`
+| 选项         | 类型   | 默认值  |
+| ------------ | ------ | ------- |
+| `test_hooks` | `bool` | `false` |
 
-| 类型     | 默认值               |
-| -------- | -------------------- |
-| `uint64` | `4294967296`（4 GB） |
+启用测试框架使用的 clice/internal 测试钩子。
 
-每个工作进程的内存限制（字节）。**尚未强制执行**——该选项会被解析，但基于内存的淘汰/重启尚未实现。
+</div>
 
-## Tracker
+<div class="config-option">
 
-文件追踪器轮询编辑器之外发生的变化（`git checkout`、重新生成的 `compile_commands.json`、代码生成器写出的头文件），使服务器无需重启即可感知。将间隔设为 `0` 可禁用对应的轮询循环。
+| 选项                    | 类型     | 默认值 |
+| ----------------------- | -------- | ------ |
+| `stateful_worker_count` | `uint32` | `2`    |
 
-### `tracker.cdb_poll_seconds`
+有状态工作进程的数量——它们在内存中保存 AST 并处理查询（悬停、语义 Token 等）；`0` 无效，回退到默认值。
 
-| 类型     | 默认值 |
-| -------- | ------ |
-| `uint32` | `3`    |
+</div>
 
-重新检查编译数据库文件的间隔（秒）。
+<div class="config-option">
 
-### `tracker.workspace_poll_seconds`
+| 选项                     | 类型     | 默认值 |
+| ------------------------ | -------- | ------ |
+| `stateless_worker_count` | `uint32` | —      |
 
-| 类型     | 默认值 |
-| -------- | ------ |
-| `uint32` | `30`   |
+启动的无状态工作进程数量——它们处理临时任务（PCH/PCM 构建、代码补全、签名帮助、后台索引）——也是后台索引同时占用的工作进程数的上限；默认为机器物理核心数的一半，但至少为 2。`0` 无效，回退到该默认值。
 
-扫描工作区文件磁盘变化的间隔（秒）。
+</div>
 
-## Rules
+<div class="config-option">
 
-`[[rules]]` 是规则对象数组。规则按声明顺序匹配——后面的规则覆盖前面的。
+| 选项                         | 类型     | 默认值 |
+| ---------------------------- | -------- | ------ |
+| `min_stateless_worker_count` | `uint32` | `1`    |
 
-### `[rules].patterns`
+无状态工作进程动态伸缩的下限；`0` 无效，回退到默认值。
 
-| 类型              | 默认值 |
-| ----------------- | ------ |
-| `array of string` | `[]`   |
+</div>
 
-匹配文件路径的 glob 模式：
+<div class="config-option">
 
-- `*` — 匹配路径段中的一个或多个字符
-- `?` — 匹配路径段中的单个字符
-- `**` — 匹配任意数量的路径段，包括零个
-- `{}` — 分组条件（如 `**/*.{h,cpp}`）
-- `[]` — 字符范围（如 `example.[0-9]`）
-- `[!...]` — 排除字符范围
+| 选项                         | 类型     | 默认值 |
+| ---------------------------- | -------- | ------ |
+| `max_stateless_worker_count` | `uint32` | —      |
 
-### `[rules].append`
+无状态工作进程动态伸缩的上限，只有在交互式工作发现所有工作进程都在忙时，才会扩容到这一上限；`0` 表示机器的物理核心数，这也是默认值。
 
-| 类型              | 默认值 |
-| ----------------- | ------ |
-| `array of string` | `[]`   |
+</div>
 
-追加到编译命令的标志。例如：`["-std=c++20", "-DNDEBUG"]`。
+<!-- END GENERATED CONFIG -->
 
-### `[rules].remove`
+## `[tracker]`
 
-| 类型              | 默认值 |
-| ----------------- | ------ |
-| `array of string` | `[]`   |
+clice 会在后台查看磁盘上的文件，以发现编辑器之外发生的变更（如 `git checkout`、重新生成的 `compile_commands.json`、agent 或代码生成器写出的文件），使服务器无需重启即可检测到这些变更。每个依赖工作区文件的请求在处理之前也会重新查看这些文件；工具链安装的头文件每隔几分钟、在其所在环境更新时以及每次保存时会被重新查看。将 `workspace_poll_seconds` 设为 `0` 可关闭后台轮询。
 
-从编译命令中移除的标志。例如：`["-Wall", "-Werror"]`。
+<!-- BEGIN GENERATED CONFIG: tracker -->
+
+<div class="config-option">
+
+| 选项                     | 类型     | 默认值 |
+| ------------------------ | -------- | ------ |
+| `workspace_poll_seconds` | `uint32` | `30`   |
+
+工作区文件两次后台查看之间的最长间隔，单位为秒：每次查看发现文件未变化，间隔就翻倍，直到达到这个值。设为 0 将禁用后台轮询，编译数据库的轮询也一并禁用。
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
+## `[diagnostics]`
+
+`[diagnostics]` 节控制 clice 为已打开文件发布的诊断。
+
+<!-- BEGIN GENERATED CONFIG: diagnostics -->
+
+<div class="config-option">
+
+| 选项         | 类型   | 默认值 |
+| ------------ | ------ | ------ |
+| `clang_tidy` | `bool` | `true` |
+
+对已打开的文件运行 clang-tidy 并提供它的修复，使用最近的 `.clang-tidy` 配置的检查（没有该文件时使用一小组默认检查）。对编辑器来说过慢的检查，以及在编辑中的代码上不可靠的检查，都不会运行；`clice lint` 不检查的文件不运行 clang-tidy。只有在 clang-tidy 运行时，`NOLINT` 注释才会同时屏蔽编译器警告。
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
+## `[hover]`
+
+`[hover]` 节控制悬停卡片的渲染方式。
+
+<!-- BEGIN GENERATED CONFIG: hover -->
+
+<div class="config-option">
+
+| 选项                        | 类型   | 默认值 |
+| --------------------------- | ------ | ------ |
+| `parse_comment_as_markdown` | `bool` | `true` |
+
+将悬停卡片渲染为 Markdown；`false` 时输出纯文本，供无法显示 Markdown 的客户端使用。
+
+</div>
+
+<div class="config-option">
+
+| 选项       | 类型   | 默认值 |
+| ---------- | ------ | ------ |
+| `show_aka` | `bool` | `true` |
+
+显示类型的去糖形式，例如 `vector<int>::size_type (aka unsigned long)`。
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
+## `[inlay_hints]`
+
+`[inlay_hints]` 节控制服务器生成哪些内联提示类别。客户端刷新后会使用更新后的值请求提示；此过程不涉及重新编译。
+
+<!-- BEGIN GENERATED CONFIG: inlay_hints -->
+
+<div class="config-option">
+
+| 选项      | 类型   | 默认值 |
+| --------- | ------ | ------ |
+| `enabled` | `bool` | `true` |
+
+总开关：`false` 会禁用所有内联提示。
+
+</div>
+
+<div class="config-option">
+
+| 选项         | 类型   | 默认值 |
+| ------------ | ------ | ------ |
+| `parameters` | `bool` | `true` |
+
+调用点的参数名提示，例如 `draw(width: 800, height: 600)`；以可变引用传递的实参还会带有 `&` 标记。
+
+</div>
+
+<div class="config-option">
+
+| 选项            | 类型   | 默认值 |
+| --------------- | ------ | ------ |
+| `deduced_types` | `bool` | `true` |
+
+为 `auto` 变量、结构化绑定（structured bindings）和推导出的返回类型显示推导类型提示。
+
+</div>
+
+<div class="config-option">
+
+| 选项          | 类型   | 默认值 |
+| ------------- | ------ | ------ |
+| `designators` | `bool` | `true` |
+
+聚合初始化中的字段指示符提示，例如 `Point{1, 2}` 中的 `.x=` 和 `.y=`。
+
+</div>
+
+<div class="config-option">
+
+| 选项        | 类型   | 默认值  |
+| ----------- | ------ | ------- |
+| `block_end` | `bool` | `false` |
+
+在较长代码块（函数、类型、命名空间或控制流结构）的右花括号后显示 `// name` 提示。
+
+</div>
+
+<div class="config-option">
+
+| 选项                | 类型   | 默认值  |
+| ------------------- | ------ | ------- |
+| `default_arguments` | `bool` | `false` |
+
+显示调用省略的默认实参，过长时缩写。
+
+</div>
+
+<div class="config-option">
+
+| 选项              | 类型     | 默认值 |
+| ----------------- | -------- | ------ |
+| `type_name_limit` | `uint32` | `32`   |
+
+渲染提示文本的字节预算：过长的推导类型会回退为带语法糖的拼写形式或直接省略，过长的默认实参会缩写。`0` 表示不设上限。
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
+## `[code_completion]`
+
+`[code_completion]` 段控制补全项的组装。
+
+<!-- BEGIN GENERATED CONFIG: code_completion -->
+
+<div class="config-option">
+
+| 选项                     | 类型   | 默认值  |
+| ------------------------ | ------ | ------- |
+| `enable_keyword_snippet` | `bool` | `false` |
+
+以代码片段形式补全 `if`、`for` 等语句，为语句的各个部分提供占位符；否则只插入关键字本身。客户端不支持代码片段时忽略此项。
+
+</div>
+
+<div class="config-option">
+
+| 选项                                | 类型   | 默认值  |
+| ----------------------------------- | ------ | ------- |
+| `enable_function_arguments_snippet` | `bool` | `false` |
+
+补全函数调用时，以代码片段形式插入函数实参。对于函数，此设置适用于逐一列出的重载，因此需要 `bundle_overloads = false`；函数式宏没有重载集，始终使用代码片段。客户端不支持代码片段时忽略此项。
+
+</div>
+
+<div class="config-option">
+
+| 选项                                | 类型   | 默认值  |
+| ----------------------------------- | ------ | ------- |
+| `enable_template_arguments_snippet` | `bool` | `false` |
+
+补全类模板、别名模板或变量模板时，以代码片段形式插入模板实参。客户端不支持代码片段时忽略此项。
+
+</div>
+
+<div class="config-option">
+
+| 选项                            | 类型   | 默认值  |
+| ------------------------------- | ------ | ------- |
+| `insert_paren_in_function_call` | `bool` | `false` |
+
+补全函数调用时插入括号，除非名称后面已经有括号；客户端支持代码片段时，光标会落在括号之间。
+
+</div>
+
+<div class="config-option">
+
+| 选项               | 类型   | 默认值 |
+| ------------------ | ------ | ------ |
+| `bundle_overloads` | `bool` | `true` |
+
+将重载集折叠为单个补全项。
+
+</div>
+
+<div class="config-option">
+
+| 选项    | 类型     | 默认值 |
+| ------- | -------- | ------ |
+| `limit` | `uint32` | `0`    |
+
+补全项的最大数量（尚未实现）。
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
+## `[[rules]]`
+
+规则通过模式指定文件，并说明这些文件从哪里获取编译命令，以及如何修改这些命令。匹配某个文件的每条规则都会生效，按声明顺序应用：声明在前的规则的数据库在该文件的候选中排在前面，第一条带 `default_command` 的匹配规则为没有条目的文件提供命令，`append` 与 `remove` 逐条累加，靠后的 `remove` 会抵消靠前的 `append`，而任何匹配规则上的 `index = false` 都会把文件排除在索引之外。带 `configuration` 标签的规则只在相应配置生效期间适用；不同的标签构成配置菜单。
+
+<!-- BEGIN GENERATED CONFIG: rules -->
+
+<div class="config-option">
+
+| 选项       | 类型              | 默认值 |
+| ---------- | ----------------- | ------ |
+| `patterns` | `array of string` | `[]`   |
+
+用于选择此规则所适用文件的 glob 模式。相对模式以本配置文件所在目录为基准（允许 `..` 路径段），通过 initializationOptions 传入的规则则以工作区根目录为基准；绝对模式或以 `**` 开头的模式匹配文件的绝对路径。`*` 匹配一个路径段内的任意字符，`?` 匹配单个字符，`**` 匹配任意数量的路径段，`{a,b}` 表示备选项，`[0-9]` 表示字符范围，`[!...]` 表示取反的字符范围。省略时表示所有文件。
+
+</div>
+
+<div class="config-option">
+
+| 选项            | 类型     | 默认值 |
+| --------------- | -------- | ------ |
+| `configuration` | `string` | `""`   |
+
+构建配置标签。带标签的规则只在相应配置生效期间适用；不带标签的规则始终适用。不同的标签构成配置菜单；`--configuration`、持久化的选择和 `default_configuration` 按此顺序决定哪个配置生效。
+
+</div>
+
+<div class="config-option">
+
+| 选项               | 类型              | 默认值 |
+| ------------------ | ----------------- | ------ |
+| `compile_commands` | `array of string` | `[]`   |
+
+编译数据库，按优先级排列：可以是 compile_commands.json，也可以是包含它的目录，路径相对于本配置文件（通过 initializationOptions 传入的规则则相对于工作区根目录）。它们都会被加载，且无论模式如何，每个条目都适用于其对应的文件；模式和顺序决定同一文件出现在多个数据库中时默认使用哪个条目。不带匹配模式的规则指定的就是整个工作区的数据库。当所有规则都没有声明来源时，工作区根目录及其一级子目录中的每一份 compile_commands.json 都会被加载，打开某个文件时其上层各级目录中的那些也会被加载。
+
+</div>
+
+<div class="config-option">
+
+| 选项              | 类型                          | 默认值 |
+| ----------------- | ----------------------------- | ------ |
+| `default_command` | `string` 或 `array of string` | `""`   |
+
+匹配到但没有数据库条目的文件所用的编译命令，其中不含源文件本身：可以是一个按 shell 命令行方式分词的字符串，也可以是 argv 数组。它以读取到该命令的配置文件所在目录为工作目录运行（通过 initializationOptions 传入的规则则以工作区根目录为准），磁盘上匹配到的源文件会加入后台索引（除非规则关闭了 `index`）——这些文件在启动时枚举，之后每次工作区轮询时再枚举一遍，因此新建的文件打开时即可编译，并在一个轮询周期内加入索引。省略则不提供命令。
+
+</div>
+
+<div class="config-option">
+
+| 选项     | 类型              | 默认值 |
+| -------- | ----------------- | ------ |
+| `append` | `array of string` | `[]`   |
+
+为匹配的文件追加编译标志，例如 `["-std=c++20", "-DNDEBUG"]`。
+
+</div>
+
+<div class="config-option">
+
+| 选项     | 类型              | 默认值 |
+| -------- | ----------------- | ------ |
+| `remove` | `array of string` | `[]`   |
+
+为匹配的文件移除编译标志，例如 `["-Wall"]`。
+
+</div>
+
+<div class="config-option">
+
+| 选项    | 类型   | 默认值 |
+| ------- | ------ | ------ |
+| `index` | `bool` | `true` |
+
+匹配到的翻译单元是否加入后台索引。`false` 会将它们排除在外；它们被打开时仍会编译，也仍会作为其所包含头文件的宿主。只要有一条匹配的规则写了 `false`，就以它为准。
+
+</div>
+
+<div class="config-option">
+
+| 选项   | 类型   | 默认值 |
+| ------ | ------ | ------ |
+| `lint` | `bool` | `true` |
+
+`clice lint` 是否检查匹配到的文件。`false` 会将它们排除在外：它们的检查结果会被丢弃，以它们为主文件的翻译单元也不会被解析，除非 `--index` 需要它来构建索引。工作区之外的文件从不检查。只要有一条匹配的规则写了 `false`，就以它为准。
+
+</div>
+
+<div class="config-option">
+
+| 选项     | 类型   | 默认值 |
+| -------- | ------ | ------ |
+| `format` | `bool` | `true` |
+
+`clice format` 是否格式化匹配到的文件。`false` 会将它们排除在外。工作区之外的文件从不格式化。只要有一条匹配的规则写了 `false`，就以它为准。
+
+</div>
+
+<!-- END GENERATED CONFIG -->
 
 ## 示例
 
 ```toml
-[project]
-compile_commands_paths = ["${workspace}/build", "${workspace}/cmake-build-debug"]
-clang_tidy = true
-
 [[rules]]
-patterns = ["**/*"]
+compile_commands = ["build"]
 append = ["-std=c++23"]
 
 [[rules]]
-patterns = ["**/test/**"]
+patterns = ["test/**"]
 append = ["-DTEST_MODE"]
 ```
+
+两个作为可切换配置的构建目录，以及一个没有编译数据库的项目：
+
+```toml
+default_configuration = "debug"
+
+[[rules]]
+configuration = "debug"
+compile_commands = ["build/debug"]
+
+[[rules]]
+configuration = "release"
+compile_commands = ["build/release"]
+```
+
+```toml
+[[rules]]
+patterns = ["src/**", "include/**"]
+default_command = "arm-none-eabi-gcc -std=c23 -mcpu=cortex-m4 -Iinclude"
+```
+
+## 切换配置
+
+规则上的 `configuration` 标签构成一份菜单，每个项目中有一个标签生效；不带标签的规则始终适用。生效的那个按优先级依次是 `--configuration <tag>` 参数（`clice serve`、`clice index`、`clice lint` 和 `clice inspect` 都接受它）、持久化的选择、`default_configuration`。选择在编辑器中完成——VS Code 的状态栏显示生效的配置，点击即可打开菜单，其他客户端调用 `clice/switchConfiguration`——并存放在 `state.json` 中，该文件位于 `cache_dir` 下，绝不写入 `clice.toml`；它在服务器再次启动时生效，VS Code 扩展会自行重启服务器。每个配置在 `cache_dir` 下保留各自的索引，因此来回切换绝不会重新索引某个配置已经索引过的内容。批处理命令也通过这些标签选择索引：`clice index --configuration release` 构建 release 配置的索引，`clice index --stats` 报告按同样方式解析出的配置所对应的索引。

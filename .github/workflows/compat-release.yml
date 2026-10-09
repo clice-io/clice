@@ -1,0 +1,29 @@
+name: compat-release
+
+# compat-test against the newest release, weekly and on demand.
+on:
+  schedule:
+    - cron: "41 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x64:
+    uses: ./.github/workflows/compat-test.yml
+    with:
+      os: ubuntu-24.04
+      target: x86_64-unknown-linux-gnu
+
+  windows-x64:
+    uses: ./.github/workflows/compat-test.yml
+    with:
+      os: windows-2025
+      target: x86_64-w64-mingw32
+
+  macos-arm64:
+    uses: ./.github/workflows/compat-test.yml
+    with:
+      os: macos-15
+      target: aarch64-apple-darwin

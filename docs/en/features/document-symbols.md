@@ -1,726 +1,390 @@
 # Document Symbols
 
-<!-- The checklist sections below are generated from the snapshot fixtures in
+<!-- The capability sections below are generated from the snapshot fixtures in
      tests/snap/document_symbol/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture spec headers and run
-     `node tools/feature_docs.ts update`. -->
+     `node tools/docs/feature.ts update`. -->
 
 Provides the file outline and breadcrumb navigation via `textDocument/documentSymbol`: a nested symbol tree with ranges, selection ranges and a `detail` field that disambiguates overloads and shows declared types.
 
 ## Symbol Hierarchy
 
-<!-- BEGIN GENERATED ITEMS: Symbol Hierarchy -->
+<!-- BEGIN GENERATED ITEMS: symbol_hierarchy -->
 
-- [x] Nested symbol tree — symbols nest by their written scope; out-of-line definitions appear at their lexical position with qualified names
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Nested symbol tree**
 
-  ```cpp
-  namespace demo {
+Symbols nest by their written scope; out-of-line definitions appear at their
+lexical position with qualified names
 
-  struct Point {
-      int x;
-      int y;
+```snap
+tests/snap/document_symbol/symbol_hierarchy/01_hierarchy_nesting.cpp
+```
 
-      int manhattan() const;
-  };
+<!-- END CAPABILITY -->
 
-  int Point::manhattan() const {
-      return x + y;
-  }
+<!-- BEGIN CAPABILITY: supported -->
 
-  enum class Axis { X, Y };
+**Symbol ranges and selection ranges**
 
-  int origin_distance(const Point& p);
+The range spans the whole declaration; the selection range covers the full
+written name, including multi-token names like `~Widget`, `operator==` and
+`operator bool`
 
-  namespace inner {
-  constexpr int level = 2;
-  }
+```snap
+tests/snap/document_symbol/symbol_hierarchy/02_hierarchy_selection_ranges.cpp
+```
 
-  }  // namespace demo
+<!-- END CAPABILITY -->
 
-  // A reopened namespace gets its own outline node per written scope.
-  namespace demo {
-  int reopened();
-  }
+<!-- BEGIN CAPABILITY: unsupported clangd#499 -->
 
-  namespace demo::nested {
-  int compact();
-  }
-  ```
+**Access specifier grouping**
 
-  </details>
+Access specifiers do not form grouping nodes in the outline yet
 
-- [x] Symbol ranges and selection ranges — the range spans the whole declaration; the selection range covers the full written name, including multi-token names like `~Widget`, `operator==` and `operator bool`
+```snap
+tests/snap/document_symbol/symbol_hierarchy/03_hierarchy_access_specifiers.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  namespace members {
+<!-- BEGIN CAPABILITY: supported -->
 
-  struct Widget {
-      Widget();
-      explicit Widget(int size);
-      ~Widget();
+**Anonymous and inline scopes**
 
-      Widget& operator=(const Widget& other);
-      bool operator==(const Widget& other) const;
-      operator bool() const;
+Anonymous namespaces, unnamed structs and unions group their members under a
+placeholder name; inline namespace members stay under the inline namespace
+node
 
-      static int instances();
+```snap
+tests/snap/document_symbol/symbol_hierarchy/04_hierarchy_anonymous.cpp
+```
 
-      int size;
-      unsigned bits : 3;
-      const char* name = "widget";
-  };
+<!-- END CAPABILITY -->
 
-  Widget::Widget(int size) : size(size), bits(0) {}
+<!-- BEGIN CAPABILITY: supported -->
 
-  int Widget::instances() {
-      return 0;
-  }
+**UTF-16 position encoding**
 
-  }  // namespace members
-  ```
+Columns after non-ASCII text count UTF-16 code units
 
-  </details>
+```snap
+tests/snap/document_symbol/symbol_hierarchy/05_hierarchy_utf16.cpp
+```
 
-- [ ] Access specifier grouping — `public:` / `private:` / `protected:` as grouping nodes for breadcrumb navigation ([clangd#499](https://github.com/clangd/clangd/issues/499))
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  class Widget {
-  public:
-      void draw();
-      void resize();
-
-  private:
-      int width;
-      int height;
-  };
-  ```
-
-  </details>
-
-- [x] Anonymous and inline scopes — anonymous namespaces, unnamed structs and unions group their members under a placeholder name; inline namespace members stay under the inline namespace node
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace {
-
-  int hidden_counter = 0;
-
-  }  // namespace
-
-  namespace misc {
-
-  inline namespace v1 {
-
-  int versioned();
-
-  }  // namespace v1
-
-  struct Outer {
-      struct {
-          int anonymous_member;
-      };
-
-      union {
-          int as_int;
-          float as_float;
-      };
-  };
-
-  }  // namespace misc
-  ```
-
-  </details>
-
-- [x] UTF-16 position encoding — columns after non-ASCII text count UTF-16 code units
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  // π ≈ 3.14159, 中文注释
-  constexpr double 半径 = 2.0;
-  constexpr double π值 = 3.14159; double area();
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Symbol Kinds
 
-<!-- BEGIN GENERATED ITEMS: Symbol Kinds -->
+<!-- BEGIN GENERATED ITEMS: symbol_kinds -->
 
-- [x] Core symbol kinds — namespaces, classes, structs, unions, enums and their members, functions, variables, fields, structured bindings and lambdas all appear in the outline with a mapped LSP symbol kind
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Core symbol kinds**
 
-  ```cpp
-  namespace kinds {
+Namespaces, classes, structs, unions, enums and their members, functions,
+variables, fields, structured bindings and lambdas all appear in the outline
+with a mapped LSP symbol kind
 
-  union Value {
-      int i;
-      float f;
-  };
+```snap
+tests/snap/document_symbol/symbol_kinds/01_kinds_basic.cpp
+```
 
-  enum Flags { FlagA, FlagB };
+<!-- END CAPABILITY -->
 
-  enum class Mode : unsigned char { Fast, Safe };
+<!-- BEGIN CAPABILITY: supported -->
 
-  struct Pair {
-      struct Meta {
-          int tag;
-      };
+**Template declarations**
 
-      int first;
-      int second;
-      static int instances;
-  };
+Class, function and variable templates carry a `template ` detail prefix;
+concepts and abbreviated function templates (`concept auto` parameters)
+appear as well
 
-  Pair make_pair();
+```snap
+tests/snap/document_symbol/symbol_kinds/02_kinds_templates.cpp
+```
 
-  auto [bound_first, bound_second] = make_pair();
+<!-- END CAPABILITY -->
 
-  auto lambda = [](int x) {
-      return x * 2;
-  };
+<!-- BEGIN CAPABILITY: supported -->
 
-  }  // namespace kinds
-  ```
+**Template specializations and deduction guides**
 
-  </details>
+Explicit and partial specializations of class and variable templates appear
+with their template arguments in the name; members nest under their
+specialization; deduction guides render their deduced signature
 
-- [x] Template declarations — class, function and variable templates carry a `template ` detail prefix; concepts and abbreviated function templates (`concept auto` parameters) appear as well
+```snap
+tests/snap/document_symbol/symbol_kinds/03_kinds_specializations.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  namespace templates {
+<!-- BEGIN CAPABILITY: supported -->
 
-  template <typename T>
-  struct Box {
-      T value;
+**Type aliases**
 
-      void reset();
-  };
+`typedef`, `using` aliases and alias templates appear in the outline with a
+`type alias` detail
 
-  template <typename T>
-  void Box<T>::reset() {}
+```snap
+tests/snap/document_symbol/symbol_kinds/04_kinds_type_aliases.cpp
+```
 
-  template <typename T>
-  T zero() {
-      return T();
-  }
+<!-- END CAPABILITY -->
 
-  template <typename T>
-  constexpr T pi = T(3.14159);
+<!-- BEGIN CAPABILITY: supported -->
 
-  template <typename T>
-  concept Small = sizeof(T) <= 4;
+**Explicit instantiation directives**
 
-  void takes_concept(Small auto x);
+Class, function and variable explicit instantiations appear as childless
+symbols
 
-  }  // namespace templates
-  ```
+```snap
+tests/snap/document_symbol/symbol_kinds/05_kinds_explicit_instantiations.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Template specializations and deduction guides — explicit and partial specializations of class and variable templates appear with their template arguments in the name; members nest under their specialization; deduction guides render their deduced signature
+<!-- BEGIN CAPABILITY: supported clangd#1744 -->
 
-  <details>
-  <summary>Example</summary>
+**Macro definitions**
 
-  ```cpp
-  namespace spec {
+Object-like and function-like macros appear in the outline, with parameters
+detailed for function-like forms
 
-  template <typename T>
-  struct Box {
-      T value;
-  };
+```snap
+tests/snap/document_symbol/symbol_kinds/06_kinds_macros.cpp
+```
 
-  template <>
-  struct Box<void> {};
+<!-- END CAPABILITY -->
 
-  template <typename T>
-  struct Box<T*> {
-      T* pointee;
-  };
+<!-- BEGIN CAPABILITY: partial -->
 
-  template <typename T>
-  T zero() {
-      return T();
-  }
+**Macros in the preamble region**
 
-  template <>
-  int zero<int>();
+Macros in the leading directive run are not outlined in editor requests yet
 
-  template <typename T>
-  constexpr T pi = T(3);
+```snap
+tests/snap/document_symbol/symbol_kinds/07_macro_preamble.cpp
+```
 
-  template <>
-  constexpr int pi<int> = 3;
+<!-- END CAPABILITY -->
 
-  template <typename T>
-  constexpr T* pi<T*> = nullptr;
+<!-- BEGIN CAPABILITY: supported -->
 
-  template <typename T>
-  struct Deduced {
-      Deduced(T raw);
-  };
+**Module declarations**
 
-  template <typename T>
-  Deduced(T*) -> Deduced<T>;
+An interface unit's module declaration outlines the module it defines
 
-  // Forces the implicit instantiation Box<int>, which must not appear.
-  Box<int> instantiated;
+```snap
+tests/snap/document_symbol/symbol_kinds/08_kinds_modules.cpp
+```
 
-  // An explicit class instantiation gets a childless node; the instantiated
-  // members and the function instantiation (whose location clang records at
-  // the primary) produce no symbols.
-  template struct Box<char>;
-  template long zero<long>();
-
-  }  // namespace spec
-  ```
-
-  </details>
-
-- [x] Type aliases — `typedef`, `using` aliases and alias templates appear in the outline with a `type alias` detail
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace aliases {
-
-  struct Widget {};
-
-  typedef Widget LegacyWidget;
-
-  using ModernWidget = Widget;
-
-  template <typename T>
-  struct Box {};
-
-  template <typename T>
-  using BoxOf = Box<T>;
-
-  struct Holder {
-      using Inner = Widget;
-  };
-
-  }  // namespace aliases
-  ```
-
-  </details>
-
-- [ ] Explicit instantiation directives — the class forms appear as childless symbols; clang mislocates the function and variable forms at the pattern, so they are missing from the outline _(partial)_ ([llvm#191658](https://github.com/llvm/llvm-project/issues/191658))
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  template <typename T>
-  struct Box {
-      T value;
-  };
-
-  template struct Box<int>;
-  extern template struct Box<char>;
-
-  template <typename T>
-  void convert(T value) {}
-
-  template void convert<int>(int);
-
-  template <typename T>
-  T zero = T();
-
-  template int zero<int>;
-  ```
-
-  </details>
-
-- [x] Macro definitions — object-like and function-like macro definitions in the outline, a parameter list as the function-like detail ([clangd#1744](https://github.com/clangd/clangd/issues/1744))
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  // The assertion holds the directives out of the preamble region, whose
-  // live record the server path does not yet see.
-  static_assert(true);
-
-  #define MAX_BUFFER_SIZE 4096
-  #define CHECK(cond, msg) ((cond) ? 0 : (msg))
-  #define TRACE(...) log(__VA_ARGS__)
-  #define SPLIT_\
-  LIMIT 7
-
-  struct Config {
-  #define CONFIG_VERSION 3
-      int version = CONFIG_VERSION;
-  };
-  ```
-
-  </details>
-
-- [ ] Macros in the preamble region — definitions in the leading directive run outline on the inspect path, while the server's preamble record does not surface them yet _(partial)_
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  #define PREAMBLE_LIMIT 8
-  #define PREAMBLE_CHECK(cond) (!!(cond))
-
-  int after = PREAMBLE_LIMIT;
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Symbol Detail
 
-<!-- BEGIN GENERATED ITEMS: Symbol Detail -->
+<!-- BEGIN GENERATED ITEMS: symbol_detail -->
 
-- [x] Function signatures — parameter and return types in the `detail` field disambiguate overloads; constructors drop the `void` return type ([clangd#520](https://github.com/clangd/clangd/issues/520), [clangd#601](https://github.com/clangd/clangd/issues/601), [clangd#1232](https://github.com/clangd/clangd/issues/1232))
+<!-- BEGIN CAPABILITY: supported clangd#520 clangd#601 clangd#1232 -->
 
-  <details>
-  <summary>Example</summary>
+**Function signatures**
 
-  ```cpp
-  namespace detail {
+Parameter and return types in the `detail` field disambiguate overloads;
+constructors drop the `void` return type
 
-  void process(int x);
-  void process(const char* s);
+```snap
+tests/snap/document_symbol/symbol_detail/01_detail_signatures.cpp
+```
 
-  struct Task {
-      Task();
-      Task(int priority);
+<!-- END CAPABILITY -->
 
-      int run(bool async) const;
-  };
+<!-- BEGIN CAPABILITY: supported -->
 
-  }  // namespace detail
-  ```
+**Variable and field types**
 
-  </details>
+Variable details show the declared type, while lambdas render as `(lambda)`
 
-- [x] Variable and field types — the declared type in the `detail` field; lambdas render as `(lambda)`
+```snap
+tests/snap/document_symbol/symbol_detail/02_detail_variable_types.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  namespace detail {
+<!-- BEGIN CAPABILITY: supported clangd#221 -->
 
-  int timeout = 30;
-  const char* logger_name = "core";
+**Default argument stripping**
 
-  struct Config {
-      unsigned retries;
-      double backoff;
-  };
+The signature is derived from the function type, so default parameter values
+never leak into the outline
 
-  auto on_error = [](int code) {
-      return code != 0;
-  };
+```snap
+tests/snap/document_symbol/symbol_detail/03_detail_default_arguments.cpp
+```
 
-  }  // namespace detail
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: unsupported -->
 
-- [x] Default argument stripping — the signature is derived from the function type, so default parameter values never leak into the outline ([clangd#221](https://github.com/clangd/clangd/issues/221))
+**Base classes in detail**
 
-  <details>
-  <summary>Example</summary>
+Derived class details do not include their base classes yet
 
-  ```cpp
-  namespace detail {
+```snap
+tests/snap/document_symbol/symbol_detail/04_detail_base_classes.cpp
+```
 
-  void open_file(const char* path, int mode = 0644);
+<!-- END CAPABILITY -->
 
-  struct Server {
-      void listen(int port = 8080, int backlog = 128);
-  };
+<!-- BEGIN CAPABILITY: supported clangd#2221 -->
 
-  }  // namespace detail
-  ```
+**Multiline signature ranges**
 
-  </details>
+The symbol range starts at the beginning of the declaration and spans the
+full signature, so editor sticky scroll anchors correctly
 
-- [ ] Base classes in detail — show `: Shape` on derived class declarations
+```snap
+tests/snap/document_symbol/symbol_detail/05_detail_multiline_signatures.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  struct Shape {};
+<!-- BEGIN CAPABILITY: supported -->
 
-  struct Circle : Shape {
-      double radius;
-  };
-  ```
+**Scoped types**
 
-  </details>
+A written class scope appears in the detail exactly once, for nested
+classes, template-ids, aliases and dependent names alike
 
-- [x] Multiline signature ranges — the symbol range starts at the beginning of the declaration and spans the full signature, so editor sticky scroll anchors correctly ([clangd#2221](https://github.com/clangd/clangd/issues/2221))
+```snap
+tests/snap/document_symbol/symbol_detail/06_detail_scoped_types.cpp
+```
 
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Config {};
-
-  void process_data(
-      const Config& cfg,
-      int flags
-  ) {}
-  ```
-
-  </details>
-
-- [x] Scoped types — a written class scope appears in the detail exactly once, for nested classes, template-ids, aliases and dependent names alike
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace scoped {
-
-  struct Outer {
-      struct Inner {};
-      template <typename T> struct Box {};
-      using Alias = int;
-  };
-
-  struct User {
-      Outer::Inner plain;
-      Outer::Box<int> boxed;
-      Outer::Alias aliased;
-      const Outer::Inner frozen;
-  };
-
-  template <typename T>
-  struct Holder {
-      typename T::type value;
-      typename T::inner::type deep;
-      typename T::template rebind<int> bound;
-  };
-
-  }  // namespace scoped
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Missing Symbols
 
-<!-- BEGIN GENERATED ITEMS: Missing Symbols -->
+<!-- BEGIN GENERATED ITEMS: missing_symbols -->
 
-- [ ] Include directives — `#include` entries in the outline ([clangd#2226](https://github.com/clangd/clangd/issues/2226))
+<!-- BEGIN CAPABILITY: unsupported clangd#2226 -->
 
-  <details>
-  <summary>Example</summary>
+**Include directives**
 
-  ```cpp
-  #include "config.h"
+`#include` directives do not appear in the outline yet
 
-  int uses_config();
-  ```
+```snap
+tests/snap/document_symbol/missing_symbols/01_missing_includes.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Local symbols — variables and types declared inside function bodies nest under their function ([clangd#616](https://github.com/clangd/clangd/issues/616))
+<!-- BEGIN CAPABILITY: supported clangd#616 -->
 
-  <details>
-  <summary>Example</summary>
+**Local symbols**
 
-  ```cpp
-  int compute() {
-      int local_sum = 0;
+Variables and types declared inside function bodies nest under their
+function
 
-      struct Accumulator {
-          int total;
-      };
+```snap
+tests/snap/document_symbol/missing_symbols/02_local_symbols.cpp
+```
 
-      auto twice = [](int x) {
-          return 2 * x;
-      };
+<!-- END CAPABILITY -->
 
-      struct Pair {
-          int a;
-          int b;
-      };
+<!-- BEGIN CAPABILITY: unsupported -->
 
-      auto [first, second] = Pair{1, 2};
+**`#pragma mark` navigation markers**
 
-      return local_sum + twice(first) + second;
-  }
-  ```
+Editor section markers do not appear in the outline yet
 
-  </details>
+```snap
+tests/snap/document_symbol/missing_symbols/04_missing_pragma_mark.cpp
+```
 
-- [ ] Module declarations — `export module`, `module` and `import` declarations in the outline
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  export module app.core;
+**Friend function definitions**
 
-  import std;
+A friend function defined inline in a class appears under that class
 
-  export int core_entry();
-  ```
+```snap
+tests/snap/document_symbol/missing_symbols/05_friend_definitions.cpp
+```
 
-  </details>
-
-- [ ] `#pragma mark` navigation markers — editor section markers as outline entries
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  #pragma mark - Lifecycle
-
-  void setup();
-
-  #pragma mark - Rendering
-
-  void draw();
-  ```
-
-  </details>
-
-- [x] Friend function definitions — a friend function defined inline in a class appears under that class
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  struct Owner {
-      friend void inline_friend(Owner& o) {}
-
-      friend bool operator==(const Owner& lhs, const Owner& rhs) {
-          return &lhs == &rhs;
-      }
-  };
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Symbol Tags
 
-<!-- BEGIN GENERATED ITEMS: Symbol Tags -->
+<!-- BEGIN GENERATED ITEMS: symbol_tags -->
 
-- [ ] Deprecated tag — mark `[[deprecated]]` symbols with the LSP `deprecated` symbol tag
+<!-- BEGIN CAPABILITY: unsupported -->
 
-  <details>
-  <summary>Example</summary>
+**Deprecated tag**
 
-  ```cpp
-  [[deprecated("use open_v2")]] void open_v1();
+Deprecated symbols do not carry the LSP `deprecated` symbol tag yet
 
-  void open_v2();
-  ```
+```snap
+tests/snap/document_symbol/symbol_tags/01_tags_deprecated.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [ ] Access and storage indicators — public / private / protected, static, virtual and abstract markers on outline entries ([clangd#2123](https://github.com/clangd/clangd/issues/2123))
+<!-- BEGIN CAPABILITY: unsupported clangd#2123 -->
 
-  <details>
-  <summary>Example</summary>
+**Access and storage indicators**
 
-  ```cpp
-  class Base {
-  public:
-      virtual void render() = 0;
+Outline entries do not expose access, static, virtual or abstract modifiers
+yet
 
-  protected:
-      static int instances();
+```snap
+tests/snap/document_symbol/symbol_tags/02_tags_modifiers.cpp
+```
 
-  private:
-      int id;
-  };
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Location Correctness
 
-<!-- BEGIN GENERATED ITEMS: Location Correctness -->
+<!-- BEGIN GENERATED ITEMS: location_correctness -->
 
-- [x] Symbols from macro expansions — a symbol produced by a macro invocation is located at the invocation, not at the macro definition ([clangd#475](https://github.com/clangd/clangd/issues/475))
+<!-- BEGIN CAPABILITY: supported clangd#475 -->
 
-  <details>
-  <summary>Example</summary>
+**Symbols from macro expansions**
 
-  ```cpp
-  // The assertion holds the directives out of the preamble region, whose
-  // live record the server path does not yet see.
-  static_assert(true);
+A symbol produced by a macro invocation is located at the invocation, not at
+the macro definition
 
-  #define DEFINE_HANDLER(name) void name()
+```snap
+tests/snap/document_symbol/location_correctness/01_macro_symbols.cpp
+```
 
-  DEFINE_HANDLER(on_ready);
-  DEFINE_HANDLER(on_close);
+<!-- END CAPABILITY -->
 
-  #define DECLARE_CLASS(X) class X
-  DECLARE_CLASS(Generated) {
-      int member;
-  };
-  ```
+<!-- BEGIN CAPABILITY: supported clangd#1941 -->
 
-  </details>
+**Names spelled in macro arguments**
 
-- [x] Names spelled in macro arguments — the selection range points at the name written in the macro argument; names spelled in the macro body fall back to the invocation site ([clangd#1941](https://github.com/clangd/clangd/issues/1941))
+The selection range points at the name written in the macro argument; names
+spelled in the macro body fall back to the invocation site
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/document_symbol/location_correctness/02_macro_argument_names.cpp
+```
 
-  ```cpp
-  // The assertion holds the directives out of the preamble region, whose
-  // live record the server path does not yet see.
-  static_assert(true);
-
-  #define VAR(X) int X = 1;
-
-  VAR(from_argument)
-
-  #define COUNTER() int counter_from_body = 0;
-
-  COUNTER()
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
-
-## Changelog
-
-| Date       | Change                                                                                                                                  | PR                                                 |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| 2026-08-01 | Explicit instantiation directives pinned: class forms as childless symbols, function and variable forms missing until clang 23          | [#571](https://github.com/clice-io/clice/pull/571) |
-| 2026-08-01 | Template specializations, type aliases, full-name selection ranges, macro-argument names; traversal moved onto the semantics node table | [#566](https://github.com/clice-io/clice/pull/566) |
-| 2025-01-13 | Nested symbol hierarchy, basic symbol kinds                                                                                             | [#17](https://github.com/clice-io/clice/pull/17)   |

@@ -5,11 +5,17 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { expect, test } from "vitest";
+import { parseAnnotations } from "@clice/tools/snap/annotation";
 import {
-    orphanSnapshots,
-    parseFixtureMeta,
     type SnapCorpus,
     type SnapFixture,
+    fixtureRelative,
+    headingLevel,
+    orphanSnapshots,
+    parseFixtureMeta,
+    scanFixtureHeader,
+    snapCorpora,
+    validateFixtureHeader,
 } from "@clice/tools/snap/corpus";
 
 const DEFAULTS = {
@@ -37,7 +43,30 @@ test("fixture meta parsing", () => {
     // No header: defaults — verify both, one shared snapshot.
     expect(parseFixtureMeta("int x;\n", "f")).toEqual(DEFAULTS);
     // A supplementary fixture (no `# ` doc title) may still open with a
-    // bare `///` meta block.
+    // plain-comment meta block.
+    expect(parseFixtureMeta("// - diagnostics: expected\n\nint x;\n", "f").diagnostics).toBe(true);
+    // ... after an ordinary-comment prologue or leading blank lines.
+    expect(parseFixtureMeta("// note\n\n// - verify: server\nint x;\n", "f").verify).toBe("server");
+    expect(parseFixtureMeta("\n// - verify: inspect\n\n// note\nint x;\n", "f").verify).toBe(
+        "inspect",
+    );
+    expect(() => parseFixtureMeta("// note\n// - snap : skip\nint x;\n", "f")).toThrow(
+        "malformed fixture meta line",
+    );
+    // The block ends at its first blank line; a second block in the
+    // prologue must error rather than lose its entries.
+    expect(() =>
+        parseFixtureMeta("// - verify: server\n\n// - diagnostics: expected\nint x;\n", "f"),
+    ).toThrow("malformed fixture meta line");
+    expect(() =>
+        parseFixtureMeta("// - verify: server\n//\n// note\n// - indexing: true\n\nint x;\n", "f"),
+    ).toThrow("malformed fixture meta line");
+    // Ordinary prose after the block, and entries in the code, are fine.
+    expect(parseFixtureMeta("// - verify: server\n\n// note\nint x; // - a: b\n", "f").verify).toBe(
+        "server",
+    );
+    // The legacy `///` spelling remains readable so validation can report
+    // it as an R7 migration error.
     expect(parseFixtureMeta("/// - diagnostics: expected\n\nint x;\n", "f").diagnostics).toBe(true);
     expect(() => parseFixtureMeta("/// # T\n///\n/// - snpa: separate\n", "f")).toThrow(
         "unknown fixture meta key",
@@ -112,6 +141,7 @@ test("snapshot ownership follows verify and snap modes", () => {
         const fixture = (rel: string, meta: Partial<SnapFixture["meta"]>): SnapFixture => ({
             rel,
             unit: "",
+            section: "",
             meta: {
                 status: "supported",
                 verify: "both",
@@ -144,5 +174,280 @@ test("snapshot ownership follows verify and snap modes", () => {
         ]);
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test("fixture header scanning", () => {
+    const content = [
+        "/// # Qualified name",
+        "///",
+        "/// - status: partial",
+        "/// - verify: server",
+        "///",
+        "/// The card summarizes the capability",
+        "///",
+        "/// Further prose, with",
+        "///   - a bullet",
+        "",
+        "// snap: The server path supplies the required index.",
+        "int x;",
+        "",
+    ].join("\n");
+    const header = scanFixtureHeader(content);
+    expect(header.headings).toEqual(["# Qualified name"]);
+    expect(header.name).toBe("Qualified name");
+    expect(header.meta).toEqual([
+        { key: "status", value: "partial", line: 3 },
+        { key: "verify", value: "server", line: 4 },
+    ]);
+    expect(header.headingLines).toEqual([1]);
+    expect(header.titleSeparated).toBe(true);
+    expect(header.proseSeparated).toBe(true);
+    expect(header.summaryLines).toEqual([{ text: "The card summarizes the capability", line: 6 }]);
+    expect(header.summary).toBe("The card summarizes the capability");
+    expect(header.description).toEqual(["", "Further prose, with", "  - a bullet"]);
+    expect(header.notes).toEqual(["The server path supplies the required index."]);
+    expect(header.lines[header.bodyStart]).toBe("");
+    expect(header.lines[header.bodyStart + 2]).toBe("int x;");
+    // No header at all.
+    const bare = scanFixtureHeader("int x;\n");
+    expect(bare.headings).toEqual([]);
+    expect(bare.bodyStart).toBe(0);
+    // A leading `///` block that opens with prose is a doc comment on the
+    // code, not a header: nothing is malformed and the snap suite sees the
+    // defaults.
+    const doc = scanFixtureHeader("/// Documents f.\n/// - not: a key\nint f();\n");
+    expect(doc).toMatchObject({ headings: [], meta: [], malformed: [], bodyStart: 0 });
+    expect(parseFixtureMeta("/// Documents f.\nint f();\n", "f")).toEqual(DEFAULTS);
+    // So are a bullet without a colon and a `#` line that is no heading.
+    for (const prose of ["/// - first bullet\nint f();\n", "/// #include usage\nint f();\n"]) {
+        expect(scanFixtureHeader(prose)).toMatchObject({
+            headings: [],
+            malformed: [],
+            bodyStart: 0,
+        });
+        expect(parseFixtureMeta(prose, "f")).toEqual(DEFAULTS);
+    }
+    // A colon-bearing bullet is an entry attempt even when misspelled.
+    expect(() => parseFixtureMeta("/// - snap : skip\n", "f")).toThrow(
+        "malformed fixture meta line",
+    );
+    // Headings are markdown headings of any level; `##x` is not one.
+    const levels = scanFixtureHeader("/// # T\n/// ### Sub\n/// ##x\n");
+    expect(levels.headings).toEqual(["# T", "### Sub"]);
+    expect(levels.headingLines).toEqual([1, 2]);
+    expect(levels.malformed).toEqual([{ text: "##x", line: 3 }]);
+    expect(["# T", "##\tT", "###", "##x", "- x: y"].map(headingLevel)).toEqual([1, 2, 3, 0, 0]);
+    // Without a list, the blank `///` after the headings separates the
+    // description (bullets in it are prose); unseparated prose is a
+    // malformed entry.
+    const prose = scanFixtureHeader("/// # T\n///\n/// Documents T.\n/// - a: bullet\nint x;\n");
+    expect(prose).toMatchObject({ headings: ["# T"], meta: [], malformed: [] });
+    expect(prose.summary).toBe("Documents T.\n- a: bullet");
+    expect(prose.description).toEqual([]);
+    expect(prose.lines[prose.bodyStart]).toBe("int x;");
+    expect(parseFixtureMeta("/// # T\n///\n/// Documents T.\n", "f")).toEqual(DEFAULTS);
+    expect(scanFixtureHeader("/// # T\n/// Documents T.\n").malformed).toEqual([
+        { text: "Documents T.", line: 2 },
+    ]);
+    // Blank `///` lines before the opening heading are skipped.
+    expect(scanFixtureHeader("///\n/// # T\n///\n/// - snap: skip\n").headings).toEqual(["# T"]);
+    expect(parseFixtureMeta("///\n/// - snap: skip\n", "f").snap).toBe("skip");
+});
+
+test("fixture header validation", () => {
+    const valid = [
+        "/// # Qualified name",
+        "///",
+        "/// - status: supported",
+        "/// - issues: clangd#710",
+        "/// - verify: server",
+        "///",
+        "/// The hover card includes its enclosing scope",
+        "///",
+        "/// Further reader-facing detail.",
+        "",
+        "// snap: The server path supplies the required index.",
+        "int x;",
+        "",
+    ].join("\n");
+    expect(validateFixtureHeader(valid, "fixture.cpp", "hover")).toEqual([]);
+
+    const invalid = [
+        "// attribution",
+        "",
+        "/// # An excessively long fixture title — with details.",
+        "///",
+        "/// - verify: both",
+        "/// - status: supported",
+        "///",
+        "/// this fixture pins a snapshot. It says two sentences",
+        "",
+        "int x;",
+        "// snap: misplaced",
+        "",
+    ].join("\n");
+    const problems = validateFixtureHeader(invalid, "fixture.cpp", "hover");
+    for (const rule of ["R1", "R2", "R3", "R4", "R5", "R6"]) {
+        expect(problems.some((item) => item.includes(`${rule}:`))).toBe(true);
+    }
+    expect(problems.every((item) => /^fixture\.cpp:\d+: R\d:/.test(item))).toBe(true);
+
+    const brokenKeywordBoundary = valid.replace(
+        "/// Further reader-facing detail.",
+        "/// The prose says verify: both and snap: shared.",
+    );
+    expect(validateFixtureHeader(brokenKeywordBoundary, "fixture.cpp", "hover")).toEqual(
+        expect.arrayContaining([expect.stringContaining("R4:")]),
+    );
+
+    expect(
+        validateFixtureHeader(
+            valid.replace("# Qualified name", "# Qualified name - with details"),
+            "fixture.cpp",
+            "hover",
+        ),
+    ).toEqual(["fixture.cpp:1: R1: the title must contain only the name"]);
+
+    const separate = valid.replace("- verify: server", "- verify: both\n/// - snap: separate");
+    expect(validateFixtureHeader(separate, "fixture.cpp", "hover")).toEqual([]);
+    expect(
+        validateFixtureHeader(
+            separate.replace("// snap: The server path supplies the required index.\n", ""),
+            "fixture.cpp",
+            "hover",
+        ),
+    ).toEqual([
+        "fixture.cpp:6: R5: snap: separate needs a // snap: note explaining the divergence",
+    ]);
+
+    expect(validateFixtureHeader("int x;\n", "root.cpp", "")).toEqual([]);
+    expect(validateFixtureHeader("/// Documents f.\nint f();\n", "root.cpp", "")).toEqual([]);
+    expect(
+        validateFixtureHeader("int f();\n\n/// Documents g.\nint g();\n", "root.cpp", ""),
+    ).toEqual([]);
+    expect(
+        validateFixtureHeader("/// Attribution prologue.\n\nint f();\n", "root.cpp", ""),
+    ).toEqual(expect.arrayContaining([expect.stringContaining("R7:")]));
+    // The prologue may open with ordinary comments; the `///` block after
+    // them is still a prologue.
+    expect(
+        validateFixtureHeader(
+            "// copyright\n\n/// Explains the case.\n\nint f();\n",
+            "root.cpp",
+            "",
+        ),
+    ).toEqual(["root.cpp:3: R7: edge-case prologues must use //, not ///"]);
+    expect(
+        validateFixtureHeader(
+            "// - verify: server\n\n/// Explains the case.\n\nint f();\n",
+            "root.cpp",
+            "",
+        ),
+    ).toEqual(["root.cpp:3: R7: edge-case prologues must use //, not ///"]);
+    expect(
+        validateFixtureHeader("// copyright\n\n/// Documents f.\nint f();\n", "root.cpp", ""),
+    ).toEqual([]);
+    expect(
+        validateFixtureHeader("/// - verify: server\nint x;\n", "nested.cpp", "section"),
+    ).toEqual(expect.arrayContaining([expect.stringContaining("R7:")]));
+    // The legacy metadata-only spelling is a prologue even when the
+    // declaration follows without a blank line.
+    expect(validateFixtureHeader("/// - verify: server\nint x;\n", "root.cpp", "")).toEqual([
+        "root.cpp:1: R7: edge-case prologues must use //, not ///",
+    ]);
+    expect(
+        validateFixtureHeader("// note\n\n/// - verify: server\nint x;\n", "root.cpp", ""),
+    ).toEqual(["root.cpp:3: R7: edge-case prologues must use //, not ///"]);
+    expect(validateFixtureHeader("// - verify: server\nint x;\n", "root.cpp", "")).toEqual([]);
+    expect(
+        validateFixtureHeader("// note\n\n// - verify: server\nint x;\n", "root.cpp", ""),
+    ).toEqual([]);
+});
+
+test("fixture files are named relative to the fixture", () => {
+    const single: SnapFixture = {
+        rel: "fold_kinds/01_block.cpp",
+        unit: "",
+        section: "fold_kinds",
+        meta: { ...DEFAULTS, flags: [] } as SnapFixture["meta"],
+        files: [],
+        extras: [],
+        active: true,
+    };
+    const file = (rel: string) => ({ rel, content: "", source: parseAnnotations("") });
+    expect(fixtureRelative(single, file("fold_kinds/01_block.cpp"))).toBe("01_block.cpp");
+    const unit: SnapFixture = {
+        ...single,
+        rel: "modules/03_iface/main.cpp",
+        unit: "modules/03_iface",
+    };
+    expect(fixtureRelative(unit, file("modules/03_iface/main.cpp"))).toBe("main.cpp");
+    expect(fixtureRelative(unit, file("modules/03_iface/widget.cppm"))).toBe("widget.cppm");
+});
+
+test("documented fixtures live numbered in section directories", () => {
+    // The corpus layout is what places an item on its feature page: a
+    // fixture with a doc header outside a section directory, or without
+    // the ordering prefix, would render nowhere or in an unstable order.
+    for (const corpus of snapCorpora()) {
+        for (const fixture of corpus.fixtures) {
+            const entry = fixture.files.find((file) => file.rel === fixture.rel);
+            const header = scanFixtureHeader(entry?.content ?? "");
+            const documented =
+                header.headings[0] !== undefined && headingLevel(header.headings[0]) === 1;
+            if (!documented) {
+                continue;
+            }
+            const name =
+                fixture.unit === ""
+                    ? fixture.rel.split("/").at(-1)
+                    : fixture.unit.split("/").at(-1);
+            expect(fixture.section, `${corpus.feature}/${fixture.rel}`).not.toBe("");
+            expect(name, `${corpus.feature}/${fixture.rel}`).toMatch(/^\d\d_/);
+        }
+    }
+});
+
+test("corpus layout: sections, units and the depth limits", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-corpus-"));
+    const write = (rel: string, content = "int x;\n") => {
+        fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+        fs.writeFileSync(path.join(root, rel), content);
+    };
+    try {
+        write("f/edge.cpp");
+        write("f/sec/01_item.cpp");
+        write("f/sec/02_unit/main.cpp");
+        write("f/sec/02_unit/part.cppm");
+        write("f/root_unit/main.cpp");
+        write("f/inc/shared.h");
+        write("f/sec/local.h");
+        const [corpus] = snapCorpora(root);
+        expect(corpus).toBeDefined();
+        const fixtures = corpus!.fixtures.map((fx) => [fx.rel, fx.unit, fx.section]);
+        expect(fixtures).toEqual([
+            ["edge.cpp", "", ""],
+            ["root_unit/main.cpp", "root_unit", ""],
+            ["sec/01_item.cpp", "", "sec"],
+            ["sec/02_unit/main.cpp", "sec/02_unit", "sec"],
+        ]);
+        // Support material lives at any depth; unit files belong to their unit.
+        expect(corpus!.support).toEqual(["inc/shared.h", "sec/local.h"]);
+        expect(corpus!.fixtures[3]!.files.map((file) => file.rel)).toEqual([
+            "sec/02_unit/main.cpp",
+            "sec/02_unit/part.cppm",
+        ]);
+
+        write("f/sec/deeper/x.cpp");
+        expect(() => snapCorpora(root)).toThrow("fixture sources live at the corpus root");
+        fs.rmSync(path.join(root, "f/sec/deeper"), { recursive: true });
+        write("f/sec/deeper/unit/main.cpp");
+        expect(() => snapCorpora(root)).toThrow("a unit lives at the corpus root");
+        fs.rmSync(path.join(root, "f/sec/deeper"), { recursive: true });
+        write("f/root_unit/inner/main.cpp");
+        expect(() => snapCorpora(root)).toThrow("nested fixture units");
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
     }
 });

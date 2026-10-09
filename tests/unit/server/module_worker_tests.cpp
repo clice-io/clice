@@ -1,9 +1,12 @@
-#include <string>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "server/protocol/worker.h"
-#include "server/worker_test_helpers.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :tests.unit.server.worker_test_helpers;
+import :tests.unit.test.test;
+import :worker.protocol;
 
 namespace clice::testing {
 
@@ -16,9 +19,9 @@ namespace {
 // This tests the same pipeline as MasterServer.run_build_drain().
 // ============================================================================
 
-TEST_SUITE(ModuleWorker) {
+ZEST_SUITE(ModuleWorker) {
 
-TEST_CASE(BuildPCMThenCompileWithImport) {
+ZEST_CASE(BuildPCMThenCompileWithImport) {
     TempDir tmp;
     // Module interface: produces PCM.
     tmp.touch("mod_iface.cppm",
@@ -34,14 +37,13 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
     auto consumer = tmp.path("consumer.cpp");
 
     WorkerHandle sl;
-    ASSERT_TRUE(sl.spawn());
+    ZASSERT(sl.spawn());
 
     std::string pcm_path;
     bool phase1_done = false;
 
     sl.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::BuildPCM;
+        worker::BuildPCMParams params;
         params.file = iface;
         params.directory = "/tmp";
         params.arguments = {"clang++",
@@ -54,20 +56,20 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
         params.output_path = tmp.path("Hello.pcm");
 
         auto result = co_await sl.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        CO_ASSERT_TRUE(result.value().success);
+        ZASSERT(result);
+        ZASSERT(result.value().success);
         pcm_path = result.value().output_path;
-        EXPECT_FALSE(pcm_path.empty());
+        ZEXPECT(!pcm_path.empty());
 
         phase1_done = true;
         sl.peer->close_output();
     });
 
-    ASSERT_TRUE(phase1_done);
-    ASSERT_FALSE(pcm_path.empty());
+    ZASSERT(phase1_done);
+    ZASSERT(!pcm_path.empty());
 
     WorkerHandle sf;
-    ASSERT_TRUE(sf.spawn(4ULL * 1024 * 1024 * 1024));
+    ZASSERT(sf.spawn(true));
 
     bool phase2_done = false;
 
@@ -91,20 +93,20 @@ TEST_CASE(BuildPCMThenCompileWithImport) {
         };
 
         auto result = co_await sf.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().version, 1);
+        ZASSERT(result);
+        ZEXPECT(result.value().version == 1);
 
         phase2_done = true;
         sf.peer->close_output();
     });
 
-    ASSERT_TRUE(phase2_done);
+    ZASSERT(phase2_done);
 
     // Cleanup PCM temp file.
     std::remove(pcm_path.c_str());
 }
 
-TEST_CASE(BuildPCMChainThenCompile) {
+ZEST_CASE(BuildPCMChainThenCompile) {
     TempDir tmp;
     // Module A: no deps.
     tmp.touch("chain_a.cppm",
@@ -124,7 +126,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
     auto consumer = tmp.path("chain_consumer.cpp");
 
     WorkerHandle sl;
-    ASSERT_TRUE(sl.spawn());
+    ZASSERT(sl.spawn());
 
     std::string pcm_a, pcm_b;
     bool pcm_done = false;
@@ -132,8 +134,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
     sl.run([&]() -> kota::task<> {
         // Build PCM for A first.
         {
-            worker::BuildParams params;
-            params.kind = worker::BuildKind::BuildPCM;
+            worker::BuildPCMParams params;
             params.file = mod_a;
             params.directory = "/tmp";
             params.arguments = {"clang++",
@@ -146,14 +147,13 @@ TEST_CASE(BuildPCMChainThenCompile) {
             params.output_path = tmp.path("A.pcm");
 
             auto result = co_await sl.peer->send_request(params);
-            CO_ASSERT_TRUE(result.has_value() && result.value().success);
+            ZASSERT((result.has_value() && result.value().success));
             pcm_a = result.value().output_path;
         }
 
         // Build PCM for B, passing A's PCM (transitive dep).
         {
-            worker::BuildParams params;
-            params.kind = worker::BuildKind::BuildPCM;
+            worker::BuildPCMParams params;
             params.file = mod_b;
             params.directory = "/tmp";
             params.arguments = {"clang++",
@@ -169,7 +169,7 @@ TEST_CASE(BuildPCMChainThenCompile) {
             };
 
             auto result = co_await sl.peer->send_request(params);
-            CO_ASSERT_TRUE(result.has_value() && result.value().success);
+            ZASSERT((result.has_value() && result.value().success));
             pcm_b = result.value().output_path;
         }
 
@@ -177,11 +177,11 @@ TEST_CASE(BuildPCMChainThenCompile) {
         sl.peer->close_output();
     });
 
-    ASSERT_TRUE(pcm_done);
+    ZASSERT(pcm_done);
 
     // Compile consumer with BOTH PCMs via stateful worker.
     WorkerHandle sf;
-    ASSERT_TRUE(sf.spawn(4ULL * 1024 * 1024 * 1024));
+    ZASSERT(sf.spawn(true));
 
     bool compile_done = false;
 
@@ -206,20 +206,20 @@ TEST_CASE(BuildPCMChainThenCompile) {
         };
 
         auto result = co_await sf.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().version, 1);
+        ZASSERT(result);
+        ZEXPECT(result.value().version == 1);
 
         compile_done = true;
         sf.peer->close_output();
     });
 
-    ASSERT_TRUE(compile_done);
+    ZASSERT(compile_done);
 
     std::remove(pcm_a.c_str());
     std::remove(pcm_b.c_str());
 }
 
-TEST_CASE(ModuleImplementationUnitWithWorker) {
+ZEST_CASE(ModuleImplementationUnitWithWorker) {
     TempDir tmp;
     // Module interface.
     tmp.touch("impl_iface.cppm",
@@ -234,14 +234,13 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
 
     // Build PCM for interface.
     WorkerHandle sl;
-    ASSERT_TRUE(sl.spawn());
+    ZASSERT(sl.spawn());
 
     std::string pcm_path;
     bool pcm_done = false;
 
     sl.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::BuildPCM;
+        worker::BuildPCMParams params;
         params.file = iface;
         params.directory = "/tmp";
         params.arguments = {"clang++",
@@ -254,18 +253,18 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
         params.output_path = tmp.path("Calc.pcm");
 
         auto result = co_await sl.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value() && result.value().success);
+        ZASSERT((result.has_value() && result.value().success));
         pcm_path = result.value().output_path;
 
         pcm_done = true;
         sl.peer->close_output();
     });
 
-    ASSERT_TRUE(pcm_done);
+    ZASSERT(pcm_done);
 
     // Compile implementation unit with the PCM via stateful worker.
     WorkerHandle sf;
-    ASSERT_TRUE(sf.spawn(4ULL * 1024 * 1024 * 1024));
+    ZASSERT(sf.spawn(true));
 
     bool compile_done = false;
 
@@ -288,19 +287,19 @@ TEST_CASE(ModuleImplementationUnitWithWorker) {
         };
 
         auto result = co_await sf.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().version, 1);
+        ZASSERT(result);
+        ZEXPECT(result.value().version == 1);
 
         compile_done = true;
         sf.peer->close_output();
     });
 
-    ASSERT_TRUE(compile_done);
+    ZASSERT(compile_done);
 
     std::remove(pcm_path.c_str());
 }
 
-};  // TEST_SUITE(ModuleWorker)
+};  // ZEST_SUITE(ModuleWorker)
 
 }  // namespace
 }  // namespace clice::testing

@@ -1,34 +1,113 @@
-#include "driver/driver.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :driver.driver;
+import :sched.batch;
+import :support.logging;
 
 namespace clice::driver {
+
+using kota::deco::decl::KVStyle;
 
 namespace {
 
 struct LintOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Workspace root directory (default: current directory)",
+           required = false)
+    <std::string> workspace;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help =
+               "Build configuration to activate, one of the tags declared on rules "
+               "(default: the selected one, else default_configuration)",
+           required = false)
+    <std::string> configuration;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help = "Number of lint workers (default: from config)",
+           required = false)
+    <std::uint32_t> workers;
+
+    DecoFlag(names = {"--index"},
+             help = "Also build and persist the project index from the same parses",
+             required = false)
+    index;
+
+    LogLevelOption log;
 };
 
-auto make_command() {
-    return kota::deco::cli::command<LintOptions>("clice lint [OPTIONS]");
+void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
+    for(auto& d: diagnostics) {
+        driver::println("{}:{}:{}: {}: {} [{}]",
+                        d.file,
+                        d.line,
+                        d.column,
+                        d.error ? "error" : "warning",
+                        d.message,
+                        d.check);
+        for(auto& note: d.notes) {
+            driver::println("{}:{}:{}: note: {}", note.file, note.line, note.column, note.message);
+        }
+    }
+}
+
+int run_lint(Spelling root,
+             std::string configuration,
+             std::uint32_t workers,
+             bool with_index,
+             const char* self_path) {
+    auto result = run_batch_lint({
+        .root = std::move(root),
+        .configuration = std::move(configuration),
+        .workers = workers,
+        .self_path = self_path,
+        .with_index = with_index,
+    });
+    print_findings(result.findings);
+    if(result.interrupted) {
+        driver::println("Lint interrupted. Rerun `clice lint` for a full report.");
+        return result.exit_code;
+    }
+    if(!result.completed) {
+        return result.exit_code;
+    }
+    driver::println("Linted {} translation unit{} in {:.1f}s: {} finding{}.",
+                    result.checked_tus,
+                    plural_s(result.checked_tus),
+                    result.seconds,
+                    result.findings.size(),
+                    plural_s(result.findings.size()));
+    if(result.failed_tus != 0) {
+        driver::println("{} translation unit{} failed to run (see the log); the report is partial.",
+                        result.failed_tus,
+                        plural_s(result.failed_tus));
+    }
+    if(result.unsaved) {
+        driver::println("Part of the index could not be persisted (see the log).");
+    }
+    return result.exit_code;
 }
 
 }  // namespace
 
-void add_lint(kota::deco::cli::SubCommander& root, int& exit_code) {
-    auto cmd = make_command();
-    cmd.matchAll([&exit_code](LintOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           std::println(
-               stderr,
-               "clice lint is not implemented yet: it will run clang-tidy across the workspace with cross-TU caching.");
-       })
-        .on_error([](auto err) { LOG_ERROR("{}", err.message); });
+void add_lint(kota::deco::cli::SubCommander& root, const char* self_path) {
+    auto cmd = kota::deco::cli::command<LintOptions>("clice lint [OPTIONS]");
+    cmd.match_all([self_path](LintOptions opts) {
+        opts.log.apply();
+        logging::stderr_logger("lint", logging::options);
+
+        return run_lint(workspace_spelling(opts.workspace.value_or("")),
+                        opts.configuration.value_or(""),
+                        opts.workers.value_or(0),
+                        static_cast<bool>(opts.index),
+                        self_path);
+    });
 
     root.add({.name = "lint", .description = "Lint C++ source files"}, std::move(cmd));
 }

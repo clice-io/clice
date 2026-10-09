@@ -1,28 +1,73 @@
-#include "test/test.h"
-#include "syntax/preamble_synthesis.h"
+module;
 
-#include "llvm/ADT/StringMap.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.preamble_synthesis;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {
 
 /// Build a resolver from a fixed raw-name -> absolute-path mapping.
 auto map_resolver(const llvm::StringMap<std::string>& mapping) {
-    return [&mapping](llvm::StringRef name,
-                      [[maybe_unused]] bool is_angled,
-                      [[maybe_unused]] bool is_include_next,
-                      [[maybe_unused]] llvm::StringRef includer_dir) -> std::optional<std::string> {
-        auto it = mapping.find(name);
+    return [&mapping](const ScanResult::IncludeInfo& include,
+                      [[maybe_unused]] llvm::StringRef includer_dir,
+                      [[maybe_unused]] std::optional<unsigned> includer_found_dir)
+               -> std::optional<ResolveResult> {
+        auto it = mapping.find(include.path);
         if(it == mapping.end()) {
             return std::nullopt;
         }
-        return it->second;
+        return ResolveResult{.path = llvm::SmallString<256>(it->second)};
     };
 }
 
-TEST_SUITE(PreambleSynthesis) {
+/// A side of the context as the preprocessor reads it: every include of
+/// another synthesized file replaced by that file's content.
+std::string flatten(const SynthesizedContext& context, llvm::StringRef entry) {
+    auto content = [&](llvm::StringRef path) -> llvm::StringRef {
+        for(auto& file: context.files) {
+            if(file.path == path) {
+                return file.content;
+            }
+        }
+        return {};
+    };
+    std::string out;
+    llvm::StringRef rest = content(entry);
+    while(!rest.empty()) {
+        auto [line, tail] = rest.split('\n');
+        rest = tail;
+        auto included = line;
+        if(included.consume_front("#include \"") && included.consume_back("\"") &&
+           !content(included).empty()) {
+            out += flatten(context, included);
+            continue;
+        }
+        out += line;
+        out += '\n';
+    }
+    return out;
+}
 
-TEST_CASE(BasicChain) {
+/// The part before the header's include, flattened; nullopt when the
+/// synthesis failed.
+std::optional<std::string> prefix_of(llvm::ArrayRef<ChainEntry> chain,
+                                     llvm::StringRef target,
+                                     IncludeResolver resolve,
+                                     std::optional<std::uint32_t> occurrence = {}) {
+    auto context = synthesize_context(chain, target, resolve, occurrence);
+    if(!context) {
+        return std::nullopt;
+    }
+    return context->prefix.empty() ? "" : flatten(*context, context->prefix);
+}
+
+ZEST_SUITE(PreambleSynthesis) {
+
+ZEST_CASE(BasicChain) {
     llvm::StringMap<std::string> mapping = {
         {"vector",  "/sys/vector"  },
         {"utils.h", "/proj/utils.h"},
@@ -34,15 +79,15 @@ TEST_CASE(BasicChain) {
 int main() {}
 )"};
 
-    auto result = synthesize_preamble({entry}, "/proj/utils.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
+    auto result = prefix_of({entry}, "/proj/utils.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #include <vector>
 #define DEBUG 1
 )");
 }
 
-TEST_CASE(MultiLevelChain) {
+ZEST_CASE(MultiLevelChain) {
     llvm::StringMap<std::string> mapping = {
         {"utils.h", "/proj/utils.h"},
         {"string",  "/sys/string"  },
@@ -58,17 +103,16 @@ int main() {}
 void util_func();
 )"};
 
-    auto result =
-        synthesize_preamble({main_entry, utils_entry}, "/proj/math.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
+    auto result = prefix_of({main_entry, utils_entry}, "/proj/math.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #line 1 "/proj/utils.h"
 #pragma once
 #include <string>
 )");
 }
 
-TEST_CASE(SameBasenameHeaders) {
+ZEST_CASE(SameBasenameHeaders) {
     // Two headers with the same filename in different directories: the
     // resolver must disambiguate, a filename match would pick the wrong one.
     llvm::StringMap<std::string> mapping = {
@@ -80,16 +124,16 @@ TEST_CASE(SameBasenameHeaders) {
 #include "b/config.h"
 )"};
 
-    auto result = synthesize_preamble({entry}, "/proj/b/config.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
-#include "/proj/a/config.h"
+    auto result = prefix_of({entry}, "/proj/b/config.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
+#include "a/config.h"
 )");
 }
 
-TEST_CASE(QuotedIncludeAbsolutized) {
-    // The preamble file lives in the cache directory, so quoted includes
-    // must be rewritten to absolute paths; angled includes stay untouched.
+ZEST_CASE(QuotedIncludeKept) {
+    // Each fragment sits beside the file it was cut from, so quoted
+    // includes resolve there as written.
     llvm::StringMap<std::string> mapping = {
         {"vector",  "/sys/vector"  },
         {"types.h", "/proj/types.h"},
@@ -101,43 +145,15 @@ TEST_CASE(QuotedIncludeAbsolutized) {
 #include "utils.h"
 )"};
 
-    auto result = synthesize_preamble({entry}, "/proj/utils.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
+    auto result = prefix_of({entry}, "/proj/utils.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #include <vector>
-#include "/proj/types.h"
+#include "types.h"
 )");
 }
 
-TEST_CASE(FilenameFallback) {
-    // Resolution fails entirely — an unambiguous filename match still works.
-    llvm::StringMap<std::string> empty;
-
-    ChainEntry entry{"/proj/main.cpp", R"(#include <vector>
-#include "utils.h"
-)"};
-
-    auto result = synthesize_preamble({entry}, "/proj/utils.h", map_resolver(empty));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
-#include <vector>
-)");
-}
-
-TEST_CASE(AmbiguousFallbackFails) {
-    // Resolution fails and two candidates share the target's filename:
-    // refuse to guess.
-    llvm::StringMap<std::string> empty;
-
-    ChainEntry entry{"/proj/main.cpp", R"(#include "a/config.h"
-#include "b/config.h"
-)"};
-
-    auto result = synthesize_preamble({entry}, "/proj/b/config.h", map_resolver(empty));
-    EXPECT_FALSE(result.has_value());
-}
-
-TEST_CASE(NoMatchFails) {
+ZEST_CASE(NoMatchFails) {
     llvm::StringMap<std::string> mapping = {
         {"vector", "/sys/vector"},
     };
@@ -145,11 +161,11 @@ TEST_CASE(NoMatchFails) {
     ChainEntry entry{"/proj/main.cpp", R"(#include <vector>
 )"};
 
-    auto result = synthesize_preamble({entry}, "/proj/utils.h", map_resolver(mapping));
-    EXPECT_FALSE(result.has_value());
+    auto result = prefix_of({entry}, "/proj/utils.h", map_resolver(mapping));
+    ZEXPECT(!result.has_value());
 }
 
-TEST_CASE(CommentedIncludeIgnored) {
+ZEST_CASE(CommentedIncludeIgnored) {
     llvm::StringMap<std::string> mapping = {
         {"target.h", "/proj/target.h"},
     };
@@ -160,16 +176,16 @@ TEST_CASE(CommentedIncludeIgnored) {
 #include "target.h"
 )"};
 
-    auto result = synthesize_preamble({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
+    auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 /*
 #include "target.h"
 */
 )");
 }
 
-TEST_CASE(LineMarkerEscaping) {
+ZEST_CASE(LineMarkerEscaping) {
     llvm::StringMap<std::string> mapping = {
         {"utils.h", R"(C:\proj\utils.h)"},
     };
@@ -177,13 +193,13 @@ TEST_CASE(LineMarkerEscaping) {
     ChainEntry entry{R"(C:\proj\main.cpp)", R"(#include "utils.h"
 )"};
 
-    auto result = synthesize_preamble({entry}, R"(C:\proj\utils.h)", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "C:\\proj\\main.cpp"
+    auto result = prefix_of({entry}, R"(C:\proj\utils.h)", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "C:\\proj\\main.cpp"
 )");
 }
 
-TEST_CASE(ConditionalShadowSkipped) {
+ZEST_CASE(ConditionalShadowSkipped) {
     // An include of the target inside an #if block must not shadow the
     // real, unconditional one — the cut lands at the latter.
     llvm::StringMap<std::string> mapping = {
@@ -197,11 +213,11 @@ TEST_CASE(ConditionalShadowSkipped) {
 #include "target.h"
 )"};
 
-    auto result = synthesize_preamble({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
+    auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
     // The shadowed occurrence of the target itself is blanked (line kept):
     // at compile time the target's path is remapped to the open buffer.
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #if 0
 
 #endif
@@ -209,7 +225,7 @@ TEST_CASE(ConditionalShadowSkipped) {
 )");
 }
 
-TEST_CASE(GuardChainBalanced) {
+ZEST_CASE(GuardChainBalanced) {
     // Cutting inside a classic include guard must close the open #ifndef,
     // or clang reports an unterminated conditional in the preamble.
     llvm::StringMap<std::string> mapping = {
@@ -223,9 +239,9 @@ struct A {};
 #endif
 )"};
 
-    auto result = synthesize_preamble({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/a.h"
+    auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/a.h"
 #ifndef A_H
 #define A_H
 struct A {};
@@ -233,7 +249,7 @@ struct A {};
 )");
 }
 
-TEST_CASE(OnlyConditionalMatch) {
+ZEST_CASE(OnlyConditionalMatch) {
     // Platform-conditional include: the only match is conditional, so the
     // cut lands inside the block and the #ifdef is balanced.
     llvm::StringMap<std::string> mapping = {
@@ -245,36 +261,15 @@ TEST_CASE(OnlyConditionalMatch) {
 #endif
 )"};
 
-    auto result = synthesize_preamble({entry}, "/proj/impl.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
+    auto result = prefix_of({entry}, "/proj/impl.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #ifdef _WIN32
 #endif
 )");
 }
 
-TEST_CASE(DuplicateSpellingFallback) {
-    // Resolution fails and two directives share the same raw spelling:
-    // they bring in the same file, so prefer the unconditional one instead
-    // of treating this as ambiguous.
-    llvm::StringMap<std::string> empty;
-
-    ChainEntry entry{"/proj/main.cpp", R"(#ifdef FAST
-#include "impl.h"
-#endif
-#include "impl.h"
-)"};
-
-    auto result = synthesize_preamble({entry}, "/proj/impl.h", map_resolver(empty));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
-#ifdef FAST
-#include "impl.h"
-#endif
-)");
-}
-
-TEST_CASE(DuplicateIncludeFirstCut) {
+ZEST_CASE(DuplicateIncludeFirstCut) {
     // Two identical unconditional includes of the target: cut at the first.
     llvm::StringMap<std::string> mapping = {
         {"target.h", "/proj/target.h"},
@@ -285,13 +280,13 @@ TEST_CASE(DuplicateIncludeFirstCut) {
 #include "target.h"
 )"};
 
-    auto result = synthesize_preamble({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
+    auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 )");
 }
 
-TEST_CASE(MacroIncludeIgnored) {
+ZEST_CASE(MacroIncludeIgnored) {
     // #include MACRO carries no header-name token; scan() skips it, so it
     // is kept verbatim and never considered for matching.
     llvm::StringMap<std::string> mapping = {
@@ -302,16 +297,14 @@ TEST_CASE(MacroIncludeIgnored) {
 #include "target.h"
 )"};
 
-    auto result = synthesize_preamble({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
+    auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #include CONFIG_H
 )");
 }
 
-TEST_CASE(IncludeNextKeptVerbatim) {
-    // #include_next search-resume semantics cannot survive relocation into
-    // the cache directory; it is deliberately not rewritten.
+ZEST_CASE(IncludeNextKeptVerbatim) {
     llvm::StringMap<std::string> mapping = {
         {"impl.h",   "/x/impl.h"     },
         {"target.h", "/proj/target.h"},
@@ -321,14 +314,39 @@ TEST_CASE(IncludeNextKeptVerbatim) {
 #include "target.h"
 )"};
 
-    auto result = synthesize_preamble({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, R"(#line 1 "/proj/main.cpp"
+    auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == R"(#line 1 "/proj/main.cpp"
 #include_next "impl.h"
 )");
 }
 
-TEST_CASE(OccurrenceSelectsMatch) {
+ZEST_CASE(IncludeNextFollowsChain) {
+    // A chain file resolves its #include_next from the search directory
+    // its includer's directive found it in; the host from none.
+    ChainEntry host{"/proj/main.cpp", R"(#include <mid.h>
+)"};
+    ChainEntry mid{"/inc/b/mid.h", R"(#include_next <target.h>
+)"};
+    auto resolver = [](const ScanResult::IncludeInfo& include,
+                       [[maybe_unused]] llvm::StringRef includer_dir,
+                       std::optional<unsigned> includer_found_dir) -> std::optional<ResolveResult> {
+        if(include.path == "mid.h" && !includer_found_dir) {
+            return ResolveResult{.path = llvm::SmallString<256>("/inc/b/mid.h"),
+                                 .found_dir_idx = 1};
+        }
+        if(include.path == "target.h" && includer_found_dir == 1u) {
+            return ResolveResult{.path = llvm::SmallString<256>("/inc/c/target.h"),
+                                 .found_dir_idx = 2};
+        }
+        return std::nullopt;
+    };
+
+    auto result = prefix_of({host, mid}, "/inc/c/target.h", resolver);
+    ZASSERT(result);
+}
+
+ZEST_CASE(OccurrenceSelectsMatch) {
     // Explicit occurrence indexes the candidate list of the direct
     // includer, overriding the prefer-unconditional default.
     llvm::StringMap<std::string> mapping = {
@@ -342,26 +360,24 @@ TEST_CASE(OccurrenceSelectsMatch) {
 #include "list.def"
 )"};
 
-    auto second =
-        synthesize_preamble({entry}, "/proj/list.def", map_resolver(mapping), std::uint32_t(1));
-    ASSERT_TRUE(second.has_value());
+    auto second = prefix_of({entry}, "/proj/list.def", map_resolver(mapping), std::uint32_t(1));
+    ZASSERT(second);
     // The other occurrence of the target is blanked (line kept).
-    EXPECT_EQ(*second, R"(#line 1 "/proj/main.cpp"
+    ZEXPECT(*second == R"(#line 1 "/proj/main.cpp"
 #define X(name) int name;
 
 #undef X
 #define X(name) void get_##name();
 )");
 
-    auto first =
-        synthesize_preamble({entry}, "/proj/list.def", map_resolver(mapping), std::uint32_t(0));
-    ASSERT_TRUE(first.has_value());
-    EXPECT_EQ(*first, R"(#line 1 "/proj/main.cpp"
+    auto first = prefix_of({entry}, "/proj/list.def", map_resolver(mapping), std::uint32_t(0));
+    ZASSERT(first);
+    ZEXPECT(*first == R"(#line 1 "/proj/main.cpp"
 #define X(name) int name;
 )");
 }
 
-TEST_CASE(OccurrenceOutOfRange) {
+ZEST_CASE(OccurrenceOutOfRange) {
     llvm::StringMap<std::string> mapping = {
         {"target.h", "/proj/target.h"},
     };
@@ -369,47 +385,36 @@ TEST_CASE(OccurrenceOutOfRange) {
     ChainEntry entry{"/proj/main.cpp", R"(#include "target.h"
 )"};
 
-    auto result =
-        synthesize_preamble({entry}, "/proj/target.h", map_resolver(mapping), std::uint32_t(1));
-    EXPECT_FALSE(result.has_value());
+    auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping), std::uint32_t(1));
+    ZEXPECT(!result.has_value());
 }
 
-TEST_CASE(CountOccurrences) {
-    llvm::StringMap<std::string> empty;
-
-    auto count = count_include_occurrences(R"(#include "list.def"
-#undef X
-#include "list.def"
-)",
-                                           "/proj/main.cpp",
-                                           "/proj/list.def",
-                                           map_resolver(empty));
-    EXPECT_EQ(count, 2u);
-}
-
-TEST_CASE(CrlfLineEndings) {
-    llvm::StringMap<std::string> empty;
+ZEST_CASE(CrlfLineEndings) {
+    llvm::StringMap<std::string> mapping = {
+        {"target.h", "/proj/target.h"},
+    };
 
     // CR cannot appear in a raw literal cleanly; escaped string is clearer.
     ChainEntry entry{"/proj/main.cpp", "#include \"a.h\"\r\n#include \"target.h\"\r\n"};
 
-    auto result = synthesize_preamble({entry}, "/proj/target.h", map_resolver(empty));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, "#line 1 \"/proj/main.cpp\"\n#include \"a.h\"\r\n");
+    auto result = prefix_of({entry}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(*result == "#line 1 \"/proj/main.cpp\"\n#include \"a.h\"\r\n");
 }
 
-TEST_CASE(EmptyChain) {
+ZEST_CASE(EmptyChain) {
     llvm::StringMap<std::string> empty;
 
-    auto result =
-        synthesize_preamble(llvm::ArrayRef<ChainEntry>(), "/proj/x.h", map_resolver(empty));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, "");
+    auto result = prefix_of(llvm::ArrayRef<ChainEntry>(), "/proj/x.h", map_resolver(empty));
+    ZASSERT(result);
+    ZEXPECT(*result == "");
 }
 
-TEST_CASE(SuffixClosesBraces) {
+ZEST_CASE(SuffixClosesBraces) {
     // Function-body X-macro: the suffix restores the closing brace and
-    // trailing directives after the include position.
+    // trailing directives after the include position, entered from the
+    // main file only; the function's head, inside its braces, is entered
+    // after the prefix.
     llvm::StringMap<std::string> mapping = {
         {"errors.def", "/proj/errors.def"},
     };
@@ -422,18 +427,22 @@ TEST_CASE(SuffixClosesBraces) {
 )"};
 
     auto result = synthesize_context({entry}, "/proj/errors.def", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->prefix, R"(#line 1 "/proj/main.cpp"
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, result->prefix) == R"(#line 1 "/proj/main.cpp"
+)");
+    ZEXPECT(flatten(*result, result->open) == R"(#line 1 "/proj/main.cpp"
 void register_all() {
 #define X(name) handle(name);
 )");
-    EXPECT_EQ(result->suffix, R"(#line 4 "/proj/main.cpp"
+    ZEXPECT(flatten(*result, result->suffix) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 4 "/proj/main.cpp"
 #undef X
 }
+#endif
 )");
 }
 
-TEST_CASE(SuffixReopensGuard) {
+ZEST_CASE(SuffixReopensGuard) {
     // The prefix closed the include guard early with a balancing #endif;
     // the suffix reopens it with `#if 1` so its own #endif stays matched.
     llvm::StringMap<std::string> mapping = {
@@ -448,20 +457,22 @@ void tail();
 )"};
 
     auto result = synthesize_context({entry}, "/proj/target.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->prefix, R"(#line 1 "/proj/a.h"
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, result->prefix) == R"(#line 1 "/proj/a.h"
 #ifndef A_H
 #define A_H
 #endif
 )");
-    EXPECT_EQ(result->suffix, R"(#if 1
+    ZEXPECT(flatten(*result, result->suffix) == R"(#if __INCLUDE_LEVEL__ == 1
+#if 1
 #line 4 "/proj/a.h"
 void tail();
+#endif
 #endif
 )");
 }
 
-TEST_CASE(SuffixMirrorsChain) {
+ZEST_CASE(SuffixMirrorsChain) {
     // Multi-level: the suffix is assembled innermost-first, mirroring the
     // prefix's host-first order.
     llvm::StringMap<std::string> mapping = {
@@ -477,15 +488,220 @@ void mid_tail();
 )"};
 
     auto result = synthesize_context({host, mid}, "/proj/target.h", map_resolver(mapping));
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->suffix, R"(#line 2 "/proj/mid.h"
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, result->suffix) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 2 "/proj/mid.h"
 void mid_tail();
 #line 2 "/proj/main.cpp"
 int main() {}
+#endif
 )");
 }
 
-};  // TEST_SUITE(PreambleSynthesis)
+ZEST_CASE(FragmentsBesideFiles) {
+    // Every fragment sits in the directory of the file it was cut from,
+    // the snapshot beside the header, and other occurrences of the header
+    // include the snapshot.
+    llvm::StringMap<std::string> mapping = {
+        {"lib/mid.h", "/proj/lib/mid.h"   },
+        {"target.h",  "/proj/lib/target.h"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", R"(#include "lib/mid.h"
+)"};
+    ChainEntry mid{"/proj/lib/mid.h", R"(#include "target.h"
+#include "target.h"
+)"};
+
+    auto result = synthesize_context({host, mid},
+                                     "/proj/lib/target.h",
+                                     map_resolver(mapping),
+                                     std::uint32_t(0),
+                                     llvm::StringRef("int t;\n"));
+    ZASSERT(result);
+    ZEXPECT(llvm::sys::path::parent_path(result->prefix) == "/proj");
+    ZEXPECT(llvm::sys::path::parent_path(result->suffix) == "/proj/lib");
+    ZASSERT(result->files.size() == 5u);
+    auto& snapshot = result->files.front();
+    ZEXPECT(llvm::sys::path::parent_path(snapshot.path) == "/proj/lib");
+    ZEXPECT(snapshot.content == "int t;\n");
+    ZEXPECT(flatten(*result, result->suffix) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 2 "/proj/lib/mid.h"
+int t;
+#line 2 "/proj/main.cpp"
+#endif
+)");
+}
+
+ZEST_CASE(SnapshotOnlyWhenNamed) {
+    // A header its chain includes once embeds no copy of itself: saving
+    // it leaves the context alone.
+    llvm::StringMap<std::string> mapping = {
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", R"(#include "target.h"
+)"};
+
+    auto result = synthesize_context({host},
+                                     "/proj/target.h",
+                                     map_resolver(mapping),
+                                     std::nullopt,
+                                     llvm::StringRef("int t;\n"));
+    ZASSERT(result);
+    ZEXPECT(!result->snapshot);
+    ZEXPECT(result->files.size() == 2u);
+}
+
+ZEST_CASE(LineNamesTheCut) {
+    // The include tree names the directive the compile entered the header
+    // through: the second one, where the lexical rule would take the first.
+    llvm::StringMap<std::string> mapping = {
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry host{
+        .path = "/proj/main.cpp",
+        .content = R"(#include "target.h"
+#define AGAIN
+#include "target.h"
+)",
+        .line = 3,
+    };
+
+    auto result = synthesize_context({host}, "/proj/target.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, result->prefix) == R"(#line 1 "/proj/main.cpp"
+
+#define AGAIN
+)");
+}
+
+ZEST_CASE(PragmaOnceBlanksOthers) {
+    // A header guarding itself with #pragma once is entered once: its
+    // other include finds it skipped, so no copy of it is embedded.
+    llvm::StringMap<std::string> mapping = {
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", R"(#include "target.h"
+#include "target.h"
+int main() {}
+)"};
+
+    auto result = synthesize_context({host},
+                                     "/proj/target.h",
+                                     map_resolver(mapping),
+                                     std::uint32_t(0),
+                                     llvm::StringRef("#pragma once\nint t;\n"));
+    ZASSERT(result);
+    ZEXPECT(!result->snapshot);
+    ZEXPECT(flatten(*result, result->suffix) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 2 "/proj/main.cpp"
+
+int main() {}
+#endif
+)");
+}
+
+ZEST_CASE(SplitOutsideBraces) {
+    // A class body fragment: the prefix ends where the host last stood
+    // outside every brace, and the class head is entered after it.
+    llvm::StringMap<std::string> mapping = {
+        {"base.h",   "/proj/base.h"  },
+        {"body.inc", "/proj/body.inc"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", R"(#include "base.h"
+#ifdef CLICE
+struct S {
+#include "body.inc"
+};
+#endif
+)"};
+
+    auto result = synthesize_context({host}, "/proj/body.inc", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, result->prefix) == R"(#line 1 "/proj/main.cpp"
+#include "base.h"
+#ifdef CLICE
+#endif
+)");
+    ZEXPECT(flatten(*result, result->open) == R"(#if 1
+#line 3 "/proj/main.cpp"
+struct S {
+#endif
+)");
+    auto open = llvm::find_if(result->files, [&](auto& file) { return file.path == result->open; });
+    ZASSERT(open != result->files.end());
+    ZEXPECT(open->origin.forced);
+}
+
+ZEST_CASE(SplitInIncluder) {
+    // The first chain file cut inside braces splits; the files after it
+    // nest in the part entered after the prefix.
+    llvm::StringMap<std::string> mapping = {
+        {"mid.h", "/proj/mid.h"},
+        {"in.h",  "/proj/in.h" },
+        {"t.inc", "/proj/t.inc"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", "#include \"mid.h\"\n"};
+    ChainEntry mid{"/proj/mid.h", "struct S {\n#include \"in.h\"\n};\n"};
+    ChainEntry in{"/proj/in.h", "int a;\n#include \"t.inc\"\n"};
+
+    auto result = synthesize_context({host, mid, in}, "/proj/t.inc", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, result->prefix) == R"(#line 1 "/proj/main.cpp"
+#line 1 "/proj/mid.h"
+)");
+    ZEXPECT(flatten(*result, result->open) == R"(#line 1 "/proj/mid.h"
+struct S {
+#line 1 "/proj/in.h"
+int a;
+)");
+    auto open = llvm::find_if(result->files, [&](auto& file) { return file.path == result->open; });
+    ZASSERT(open != result->files.end());
+    ZEXPECT(open->origin.source == "/proj/mid.h");
+}
+
+ZEST_CASE(RunsMapToSource) {
+    // A fragment names where each copied run sits in the file it was cut
+    // from, past the marker opening it and around a redirected include.
+    llvm::StringMap<std::string> mapping = {
+        {"target.h", "/proj/target.h"},
+    };
+
+    ChainEntry host{"/proj/main.cpp", R"(#define HOST 1
+#include "target.h"
+#include "target.h"
+int tail;
+)"};
+
+    auto result = synthesize_context({host},
+                                     "/proj/target.h",
+                                     map_resolver(mapping),
+                                     std::uint32_t(0),
+                                     llvm::StringRef("int t;\n"));
+    ZASSERT(result);
+    auto suffix =
+        llvm::find_if(result->files, [&](auto& file) { return file.path == result->suffix; });
+    ZASSERT(suffix != result->files.end());
+    ZASSERT(suffix->origin.runs.size() == 2u);
+    auto& after = suffix->origin.runs.back();
+    ZEXPECT(suffix->content.substr(after.offset, after.length) == "\nint tail;\n");
+    ZEXPECT(host.content.substr(after.source_offset, after.length) == "\nint tail;\n");
+    auto prefix =
+        llvm::find_if(result->files, [&](auto& file) { return file.path == result->prefix; });
+    ZASSERT(prefix != result->files.end());
+    ZEXPECT(prefix->origin.source == "/proj/main.cpp");
+    ZASSERT(prefix->origin.runs.size() == 1u);
+    auto& run = prefix->origin.runs.front();
+    ZEXPECT(prefix->content.substr(run.offset, run.length) == "#define HOST 1\n");
+    ZEXPECT(run.source_offset == 0u);
+}
+
+};  // ZEST_SUITE(PreambleSynthesis)
 
 }  // namespace
 }  // namespace clice::testing

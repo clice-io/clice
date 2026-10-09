@@ -1,0 +1,23 @@
+---
+created_at: 2026-10-08
+input_file: document_highlight/11_highlight_module_unit/main.cpp
+---
+--- main.cpp
+area_use:
+  - { range: "10:11-10:15", kind: Read }
+  - { range: "10:24-10:28", kind: Read }
+
+module_import:
+  - { range: "7:7-7:13", kind: Read }
+
+--- shapes.cppm
+area_decl:
+  - { range: "2:11-2:15", kind: Text }
+
+module_decl:
+  - { range: "0:14-0:20", kind: Text }
+
+result:
+  - { range: "3:8-3:14", kind: Text }
+  - { range: "4:4-4:10", kind: Write }
+  - { range: "5:11-5:17", kind: Read }

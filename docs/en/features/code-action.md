@@ -1,79 +1,922 @@
 # Code Action
 
-clice advertises `textDocument/codeAction` support but currently returns an empty list. This page tracks the intended scope.
+<!-- The capability sections below are generated from the snapshot fixtures in
+     tests/snap/code_action/. Do not edit the regions between the GENERATED
+     markers by hand — edit the fixture spec headers and run
+     `node tools/docs/feature.ts update`. -->
 
-## Quick Fixes
+clice offers code actions on a selection: refactorings that generate or reshape code from what the compiler knows about it, quick fixes for names no header declares, and the fixes the compiler and clang-tidy attach to their diagnostics. Every action is computed to completion when it is offered, so applying one never waits on a second request; edits carry the document version they were computed for, and an editor refuses them once the buffer moved on. The same actions run headless through `clice inspect code_action`.
 
-Actions derived from `FixItHint`s attached to clang / clang-tidy diagnostics.
+An action anchors on the innermost construct the selection covers — a method declaration, a class name, a `switch`, an `auto` — so the list stays short: a click on a method name offers what applies to that method, a click on the class name what applies to the class.
 
-- [ ] Apply a compiler `FixItHint` as a quick fix
-- [ ] Apply clang-tidy fix-its
-- [ ] `source.fixAll` — batch-apply all available fixes in the file ([clangd#1446](https://github.com/clangd/clangd/issues/1446))
-- [ ] "Fix all occurrences" of the same diagnostic kind in one action ([clangd#830](https://github.com/clangd/clangd/issues/830))
-- [ ] Apply fixes whose edits fall outside the main file ([clangd#1747](https://github.com/clangd/clangd/issues/1747))
-- [ ] Honor client code-action capabilities (`isPreferred`, resolve support) ([clangd#573](https://github.com/clangd/clangd/issues/573))
-- [ ] Optionally apply formatting to code-action edits ([clangd#2476](https://github.com/clangd/clangd/issues/2476))
+## Running Actions
 
-## Include Actions
+In VS Code, the actions at the cursor are behind the lightbulb and `Ctrl+.`, and the refactorings are also listed by **Refactor...** in the editor's context menu (`Ctrl+Shift+R`). Renaming a symbol, `F2`, is a request of its own rather than a code action.
 
-- [ ] Add a missing `#include` for an unresolved symbol ([clangd#1017](https://github.com/clangd/clangd/issues/1017))
-- [ ] Insert includes using project-relative paths, not absolute ([clangd#2010](https://github.com/clangd/clangd/issues/2010))
-- [ ] Configurable include style — quoted vs. angle brackets ([clangd#1367](https://github.com/clangd/clangd/issues/1367))
-- [ ] Remove unused `#include` (include-cleaner)
-- [ ] Respect IWYU pragmas (`export`, `keep`, `private`)
-- [ ] Suggest a `using` declaration as alternative to qualifying an unresolved symbol ([clangd#976](https://github.com/clangd/clangd/issues/976))
-- [ ] C files: suggest `<stdlib.h>` not `<cstdlib>` ([clangd#2246](https://github.com/clangd/clangd/issues/2246))
+Each refactoring has its own code action kind, so an editor can ask for one alone:
 
-## Refactorings
+| Action                                               | Kind                                             |
+| ---------------------------------------------------- | ------------------------------------------------ |
+| Define a method inline                               | `refactor.rewrite.define.inline`                 |
+| Define a function out of line, or in the host source | `refactor.rewrite.define.outOfLine`              |
+| Define the missing members of a class                | `refactor.rewrite.define.missing`                |
+| Implement pure virtual methods                       | `refactor.rewrite.implementPureVirtuals`         |
+| Generate a memberwise constructor                    | `refactor.rewrite.generateMemberwiseConstructor` |
+| Add the missing enum cases to a switch               | `refactor.rewrite.populateSwitch`                |
+| Expand a deduced type                                | `refactor.rewrite.expandDeducedType`             |
+| Reorder definitions by declaration order             | `refactor.rewrite.reorderDefinitions`            |
+| Expand a macro                                       | `refactor.inline.macro`                          |
+| Add an include, apply a diagnostic's fix             | `quickfix`                                       |
 
-Cursor/selection-driven refactorings.
+The VS Code extension has a command for each refactoring, named `clice.` followed by its kind and titled after the action in the Command Palette ("Clice: Add Missing Enum Cases to Switch"). It applies the action at once when it is the only one offered, and lets you pick otherwise. Bind a key to it in `keybindings.json`:
 
-### Extract
+```json
+{
+  "key": "ctrl+alt+s",
+  "command": "clice.refactor.rewrite.populateSwitch",
+  "when": "editorLangId == cpp"
+}
+```
 
-- [ ] Extract variable ([clangd#446](https://github.com/clangd/clangd/issues/446))
-- [ ] Extract variable should replace all occurrences of the expression ([clangd#924](https://github.com/clangd/clangd/issues/924))
-- [ ] Extract variable in macro arguments ([clangd#1197](https://github.com/clangd/clangd/issues/1197))
-- [ ] Extract function / method ([clangd#698](https://github.com/clangd/clangd/issues/698))
-- [ ] Extract function should preserve placeholder return types (`auto`) ([clangd#653](https://github.com/clangd/clangd/issues/653))
-- [ ] Extract function must not introduce desugared types ([clangd#1496](https://github.com/clangd/clangd/issues/1496))
-- [ ] Extract function must handle types defined in enclosing scope ([clangd#1710](https://github.com/clangd/clangd/issues/1710))
-- [ ] Extract function for C files ([clangd#1810](https://github.com/clangd/clangd/issues/1810))
+A kind also covers the kinds below it: given `refactor.rewrite.define`, VS Code's own `editor.action.codeAction` command offers every way to define the function at the cursor.
 
-### Inline / Expand
+```json
+{
+  "key": "ctrl+alt+d",
+  "command": "editor.action.codeAction",
+  "args": { "kind": "refactor.rewrite.define", "apply": "ifSingle" },
+  "when": "editorLangId == cpp"
+}
+```
 
-- [ ] Inline variable / function
-- [ ] Expand `auto` / deduced type
-- [ ] Expand macro one level ([clangd#820](https://github.com/clangd/clangd/issues/820))
+In Neovim, `:LspCliceRefactor {kind}` does the same.
 
-### Move / Define
+## Defining Functions
 
-- [ ] Define method out-of-line (move body out of the class)
-- [ ] Define method inline (move body into the declaration)
-- [ ] Generate a missing method definition from declaration ([clangd#445](https://github.com/clangd/clangd/issues/445))
-- [ ] Generate a missing declaration from out-of-line definition ([clangd#2454](https://github.com/clangd/clangd/issues/2454), [clangd#730](https://github.com/clangd/clangd/issues/730))
+<!-- BEGIN GENERATED ITEMS: define -->
 
-### Transform
+<!-- BEGIN CAPABILITY: supported clangd#445 -->
 
-- [ ] Add a `using` declaration ([clangd#73](https://github.com/clangd/clangd/issues/73))
-- [ ] Replace `using namespace` by qualifying names in place ([clangd#1067](https://github.com/clangd/clangd/issues/1067))
-- [ ] Remove unnecessary type qualifiers ([clangd#1619](https://github.com/clangd/clangd/issues/1619))
-- [ ] Swap `if`/`else` branches ([clangd#466](https://github.com/clangd/clangd/issues/466))
-- [ ] Populate `switch` cases ([clangd#807](https://github.com/clangd/clangd/issues/807))
-- [ ] Convert to raw string literal
-- [ ] Create a declaration from a usage ([clangd#467](https://github.com/clangd/clangd/issues/467))
-- [ ] Remove function / method ([clangd#2580](https://github.com/clangd/clangd/issues/2580))
-- [ ] Modify function parameters and update call sites ([clangd#460](https://github.com/clangd/clangd/issues/460))
-- [ ] Fix mismatched declaration/definition signatures ([clangd#77](https://github.com/clangd/clangd/issues/77))
-- [ ] Generate stubs for pure virtual methods of base class ([clangd#1037](https://github.com/clangd/clangd/issues/1037))
-- [ ] Swap binary operands
-- [ ] Convert unscoped enum to scoped enum
-- [ ] Generate memberwise constructor
-- [ ] Declare implicit copy/move special members
-- [ ] Rename symbol (as code action)
-- [ ] Include-cleaner: batch fix unused/missing includes
+**Define a declared method**
 
-## Changelog
+A method declaration offers an inline body and an out-of-line definition after its class
 
-| Date       | Change                                   | PR  |
-| ---------- | ---------------------------------------- | --- |
-| 2024-11-24 | Stub handler (always returns empty list) | —   |
+The out-of-line definition repeats the declaration with `S::` before the
+name and drops what belongs to the declaration alone, such as default
+arguments.
+
+```snap
+tests/snap/code_action/define/01_method_out_of_line.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Declaration-only specifiers dropped**
+
+`virtual`, `static`, `explicit`, `override` and `final` do not appear on the definition
+
+Specifiers that must stay, such as `constexpr` and `noexcept`, are kept.
+
+```snap
+tests/snap/code_action/define/02_declaration_specifiers.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Definition-scope return type**
+
+A return type naming a nested type or another namespace is spelled so it resolves at the definition
+
+Parameter types are looked up in the class scope like the declaration's
+and stay as written.
+
+```snap
+tests/snap/code_action/define/03_qualified_return_type.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Class template member**
+
+The definition of a class template's member carries the template head and the template arguments in its qualifier
+
+Default template arguments are not repeated on the head.
+
+```snap
+tests/snap/code_action/define/04_class_template_member.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Member function template**
+
+A member template keeps its own template head, minus its default arguments, after the class's
+
+Constrained templates keep their requires-clauses, which a definition must
+repeat.
+
+```snap
+tests/snap/code_action/define/05_member_template.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Constructors, destructors and operators**
+
+Special member functions are defined under the class name they are spelled with
+
+Conversion functions and operators keep their full spelling.
+
+```snap
+tests/snap/code_action/define/06_special_members.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Free function declaration**
+
+A declared free function is defined right after its declaration, in the same namespace
+
+The name needs no qualifier inside the namespace; the return type is
+spelled for that scope.
+
+```snap
+tests/snap/code_action/define/07_free_function.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Placement after existing definitions**
+
+When the class already has out-of-line definitions in the file, the new one goes after the last of them
+
+The qualifier follows the scope of that definition, not the class's.
+
+```snap
+tests/snap/code_action/define/08_placement_after_definitions.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#445 -->
+
+**Define all missing members**
+
+On the class name, every member function without a definition is defined at once, in declaration order
+
+Members that already have a definition, pure virtuals and defaulted
+members are left alone.
+
+```snap
+tests/snap/code_action/define/09_missing_members.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Missing members from a definition**
+
+Inside an out-of-line definition, the class's remaining undefined members are offered too
+
+This is how a source file completes a class declared elsewhere: the
+definitions join the ones already there.
+
+```snap
+tests/snap/code_action/define/10_missing_from_definition.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#445 -->
+
+**Define in the host source**
+
+In a header, a member can also be defined in the source file the header is compiled with
+
+The definition is fully qualified and joins the class's other
+definitions in that file; members already defined in some source file
+are not offered again. Templates, inline functions and functions other
+files cannot see stay in the header; any other function defined there
+out of the class is marked `inline`.
+
+```snap
+tests/snap/code_action/define/11_header_host/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Nested class member**
+
+A nested class's member is defined after the outermost enclosing class, qualified through every level
+
+```snap
+tests/snap/code_action/define/12_nested_class.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent return type**
+
+A return type naming the class template or one of its member types is qualified through the template's parameters
+
+```snap
+tests/snap/code_action/define/13_dependent_return_type.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Declarations under a linkage specification**
+
+Functions declared with C linkage are defined like any other, inside the linkage block or after a single-declaration form
+
+```snap
+tests/snap/code_action/define/14_linkage_specification.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Implementing Interfaces
+
+<!-- BEGIN GENERATED ITEMS: implement -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1037 -->
+
+**Implement pure virtual methods**
+
+A class deriving from an abstract base receives an `override` declaration for each unimplemented pure virtual method
+
+The declarations go at the end of the class body.
+
+```snap
+tests/snap/code_action/implement/01_pure_virtuals.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Pure virtuals through a chain**
+
+Only the methods no class in the chain implemented are declared, and a `class` gets a `public:` label for them
+
+```snap
+tests/snap/code_action/implement/02_inheritance_chain.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Types for the derived class**
+
+Parameter and return types written in the base's scope are qualified so they resolve in the derived class
+
+Reference qualifiers and constness are carried over.
+
+```snap
+tests/snap/code_action/implement/03_qualified_types.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Conversion functions and pointer parameters**
+
+A conversion function has no return type to print, and a parameter whose type wraps its name keeps that shape
+
+```snap
+tests/snap/code_action/implement/04_conversion_and_pointers.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Bases sharing a signature**
+
+One declaration overrides the pure virtual methods of every base with that signature, `noexcept` when any of them is
+
+```snap
+tests/snap/code_action/implement/05_shared_signatures.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Specifiers of the override**
+
+A C variadic parameter, `consteval` and whether the base's method is `noexcept` carry over to the override
+
+A method whose exception specification depends on the arguments of a base class template gets no declaration.
+
+```snap
+tests/snap/code_action/implement/06_specifiers.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Switch Cases
+
+<!-- BEGIN GENERATED ITEMS: switch_cases -->
+
+<!-- BEGIN CAPABILITY: supported clangd#807 -->
+
+**Missing enum cases**
+
+A switch over an enum receives the enumerators it does not handle, followed by a `break`
+
+Enumerators sharing a handled value are considered covered.
+
+```snap
+tests/snap/code_action/switch_cases/01_missing_cases.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Cases before the default**
+
+With a `default` present, the missing cases go right before it and fall through into it, keeping the behavior
+
+The action is offered from anywhere inside the switch.
+
+```snap
+tests/snap/code_action/switch_cases/02_before_default.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Unscoped enum in a namespace**
+
+Enumerators of an unscoped enum are qualified with the enum's namespace when the switch lies outside it
+
+```snap
+tests/snap/code_action/switch_cases/03_unscoped_enum.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Complete switch offers nothing**
+
+A switch handling every enumerator, or one over a non-enum value, offers no action
+
+```snap
+tests/snap/code_action/switch_cases/04_complete_switch.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Selection covering the switch**
+
+A selection spanning the whole statement offers the same action as a cursor inside it
+
+```snap
+tests/snap/code_action/switch_cases/05_selection_range.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Labels depending on templates**
+
+A switch with a label depending on template parameters offers no action, since only an instantiation knows which enumerators it covers
+
+A switch in a template whose labels do not depend on its parameters is
+completed as anywhere else.
+
+```snap
+tests/snap/code_action/switch_cases/06_dependent_labels.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Sections declaring variables**
+
+Without a `default`, a switch declaring a variable at its own scope receives the missing cases before its first label, since a label after the declaration would jump past it
+
+No section falls through into cases placed there.
+
+```snap
+tests/snap/code_action/switch_cases/07_declaring_section.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Deduced Types
+
+<!-- BEGIN GENERATED ITEMS: deduced_type -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Expand auto in declarations**
+
+`auto` in a variable declaration is replaced by the type it deduced, leaving qualifiers and declarators in place
+
+```snap
+tests/snap/code_action/deduced_type/01_auto_variable.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Deduced return type**
+
+A function's deduced `auto` return type expands to the deduced type, spelled for the function's scope
+
+```snap
+tests/snap/code_action/deduced_type/02_auto_return.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Expand decltype**
+
+A `decltype` specifier expands to the type it denotes, through any
+`decltype` that type was itself declared with
+
+```snap
+tests/snap/code_action/deduced_type/03_decltype.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Unnameable types stay auto**
+
+Lambdas, dependent types, structured bindings and types the declaration cannot name are not expanded
+
+A type cannot be named where it is local to another function, a member type the declaration has no access to, or the type of `sizeof` with no standard name for it declared yet (MSVC compatibility declares `size_t` implicitly).
+
+```snap
+tests/snap/code_action/deduced_type/04_unnameable_types.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Forwarding references and declarator types**
+
+`auto&&` bound to an lvalue takes the deduced reference in place of both tokens, and a type that wraps the name is left alone
+
+```snap
+tests/snap/code_action/deduced_type/05_forwarding_reference.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Names spelled for the scope**
+
+A name drops the enclosing namespaces only as far as the shorter name still finds the same type
+
+A name hidden by a declaration closer to the expansion keeps its qualifier, and one hidden even when fully qualified starts from the global scope.
+
+```snap
+tests/snap/code_action/deduced_type/06_shadowed_names.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Standard names of builtin types**
+
+The types of `sizeof`, a pointer difference and `nullptr` expand to their standard names where those are declared
+
+Without a declaration of `std::nullptr_t` in sight, the type of `nullptr` is written `decltype(nullptr)`.
+
+```snap
+tests/snap/code_action/deduced_type/07_standard_names.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Constant deduced pointers**
+
+A `const` written before an `auto` that deduced a pointer moves behind the `*`, keeping the pointer itself constant
+
+When other specifiers stand between the `const` and the `auto`, the declaration is left as written.
+
+```snap
+tests/snap/code_action/deduced_type/08_const_pointer.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Macros
+
+<!-- BEGIN GENERATED ITEMS: macro -->
+
+<!-- BEGIN CAPABILITY: supported clangd#820 -->
+
+**Expand a macro invocation**
+
+A macro invocation is replaced by the tokens it expands to
+
+Arguments are substituted; the action is offered from the macro name
+or anywhere inside its arguments.
+
+```snap
+tests/snap/code_action/macro/01_expand_macro.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Nested macros expand fully**
+
+A macro whose body invokes other macros expands to the final tokens
+
+```snap
+tests/snap/code_action/macro/02_nested_expansion.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Directive references and empty macros**
+
+A macro named in a preprocessor condition, on any of its lines, is not an expansion to replace, while a macro expanding to nothing is deleted
+
+```snap
+tests/snap/code_action/macro/03_directives_and_empty.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Macros running pragmas**
+
+A macro whose expansion executes a `_Pragma` operator offers no expansion, since the pragma leaves no tokens behind to write in its place
+
+```snap
+tests/snap/code_action/macro/04_pragma_operator.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Tokens stay apart**
+
+The expansion is spaced so its tokens merge neither with each other nor with the text written flush against the invocation
+
+```snap
+tests/snap/code_action/macro/05_token_boundaries.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Missing Includes
+
+<!-- BEGIN GENERATED ITEMS: include -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1017 -->
+
+**Standard library include**
+
+An unresolved standard library name offers the header declaring it, from the standard library mapping
+
+The directive goes after the includes at the top of the file. An
+unqualified name also tries the `std` namespace.
+
+```snap
+tests/snap/code_action/include/01_standard_library.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Include for a project symbol**
+
+A name declared in a project header the file does not include offers that header, spelled relative to the file
+
+The candidates come from the project index: `lib.h` is known because
+another source file includes it.
+
+```snap
+tests/snap/code_action/include/02_project_header/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**First include of a file**
+
+A file without includes receives the directive at its start, after a `#pragma once` when there is one
+
+```snap
+tests/snap/code_action/include/03_no_include_yet.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Includes under conditionals**
+
+An include nested in a feature condition is not where a directive that must always apply goes: it follows the last one at the file's own level, or the include guard
+
+```snap
+tests/snap/code_action/include/04_conditional_includes.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Embedded and trailing includes**
+
+An include inside `extern "C"` or a type body, or one following the code, is no place for a new directive: it joins the includes at the top of the file
+
+```snap
+tests/snap/code_action/include/05_trailing_includes.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Diagnostic Fixes
+
+A diagnostic under the selection offers its fix as a quick fix, the compiler's and clang-tidy's alike. A fix that would edit inside a macro definition or another file is not offered.
+
+<!-- BEGIN GENERATED ITEMS: fix -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Compiler fix**
+
+A fix the compiler attaches to its diagnostic is offered as a quick fix
+
+The title spells out a single edit.
+
+```snap
+tests/snap/code_action/fix/01_compiler_fix.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**clang-tidy fix**
+
+A clang-tidy finding's fix is offered as a quick fix
+
+Without a `.clang-tidy` above the file, a small default set of checks runs.
+
+```snap
+tests/snap/code_action/fix/02_tidy_fix.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Fixes from notes**
+
+Each note that carries a fix offers it as a quick fix, titled by the note
+
+```snap
+tests/snap/code_action/fix/03_note_fixes.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Reordering Definitions
+
+<!-- BEGIN GENERATED ITEMS: reorder -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Reorder definitions by declaration**
+
+The out-of-line definitions of a class's members are reordered to follow the declaration order in the class
+
+Each definition moves with the comment block directly above it.
+
+```snap
+tests/snap/code_action/reorder/01_class_members.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Namespace blocks reorder separately**
+
+Definitions written in different namespace blocks are reordered within each block, never across
+
+```snap
+tests/snap/code_action/reorder/02_namespace_blocks.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Free functions by declaration order**
+
+From a free function's definition, the definitions of the functions declared alongside it are reordered as declared
+
+```snap
+tests/snap/code_action/reorder/03_free_functions.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Trailing comments stay in place**
+
+A comment ending a definition's line moves with that definition, never with the one below it
+
+```snap
+tests/snap/code_action/reorder/04_trailing_comments.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Definitions using what lies between**
+
+A definition stays where it is when moving it would put it before something it uses, such as a variable or macro defined between the definitions; the others are reordered around it
+
+```snap
+tests/snap/code_action/reorder/05_dependencies.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Constructors
+
+<!-- BEGIN GENERATED ITEMS: constructor -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Memberwise constructor**
+
+A class receives a constructor taking every field in order, scalars by value and copyable classes by const reference
+
+```snap
+tests/snap/code_action/constructor/01_memberwise.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Existing constructor not duplicated**
+
+No constructor is generated when the class already declares one taking as many arguments as it has fields
+
+```snap
+tests/snap/code_action/constructor/02_existing_constructor.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Single field is explicit**
+
+A one-field class gets an `explicit` constructor, placed under a `public:` label when the class ends in another section
+
+```snap
+tests/snap/code_action/constructor/03_single_field.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Declarator-shaped field types**
+
+A field whose type wraps the name, such as a function pointer, keeps that shape in the parameter
+
+```snap
+tests/snap/code_action/constructor/04_declarator_fields.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Base without a default constructor**
+
+No constructor is generated when a base class needs its own initializer, since the memberwise one initializes fields alone
+
+```snap
+tests/snap/code_action/constructor/05_base_without_default.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Deleted base default constructor**
+
+A base whose default constructor is deleted explicitly, or implicitly by a reference member or a const member nothing initializes, blocks the memberwise constructor too
+
+A const member of a class that initializes all its own fields leaves
+the base default-constructible.
+
+```snap
+tests/snap/code_action/constructor/06_implicitly_deleted_base.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Move-only fields**
+
+A field whose class moves but does not copy is taken by value and moved from, and an rvalue reference field binds its argument through `std::move`
+
+The file gains `#include <utility>` when nothing declares `std::move`
+before the class. A class that neither copies nor moves gets no
+constructor.
+
+```snap
+tests/snap/code_action/constructor/07_move_only_fields.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Formatting
+
+Generated text is formatted with the project's clang-format style when one applies to the file, so a definition or a block of `case` labels lands in the surrounding code's layout. Without a style, or with `DisableFormat`, the text keeps the layout shown in the examples above.
+
+## Known Limitations
+
+- A definition placed in the host source goes after the last definition of the class's members the index knows in that file, or at the end of the file when it holds none. Which source file hosts a header follows the header's compilation context.
+- Members already defined in another source file are left out of a "define missing members" action only when the project index knows that definition; with indexing disabled every undefined member is offered.
+- A return type naming a member of a dependent base class is copied as written into an out-of-line definition, where it may need `typename` and the base's qualifier.
+- Missing-include candidates come from the standard library mapping and from headers the project index has seen; a header no indexed source file includes is not suggested.
+
+## Not Implemented
+
+Extract function and variable, inline function and variable, moving a definition between header and source, converting an unscoped enum to a scoped one, and changing a function's signature across its callers.

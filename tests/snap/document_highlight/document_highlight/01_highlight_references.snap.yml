@@ -1,0 +1,37 @@
+---
+created_at: 2026-10-08
+input_file: document_highlight/01_highlight_references.cpp
+---
+function_decl:
+  - { range: "9:4-9:14", kind: Text }
+  - { range: "11:4-11:14", kind: Text }
+  - { range: "17:11-17:21", kind: Read }
+  - { range: "17:27-17:37", kind: Read }
+
+function_use:
+  - { range: "9:4-9:14", kind: Text }
+  - { range: "11:4-11:14", kind: Text }
+  - { range: "17:11-17:21", kind: Read }
+  - { range: "17:27-17:37", kind: Read }
+
+global_decl:
+  - { range: "7:4-7:9", kind: Text }
+  - { range: "12:4-12:9", kind: Write }
+  - { range: "12:12-12:17", kind: Read }
+  - { range: "13:11-13:16", kind: Read }
+
+global_use:
+  - { range: "7:4-7:9", kind: Text }
+  - { range: "12:4-12:9", kind: Write }
+  - { range: "12:12-12:17", kind: Read }
+  - { range: "13:11-13:16", kind: Read }
+
+param_decl:
+  - { range: "11:19-11:25", kind: Text }
+  - { range: "12:20-12:26", kind: Read }
+  - { range: "13:19-13:25", kind: Read }
+
+param_use:
+  - { range: "11:19-11:25", kind: Text }
+  - { range: "12:20-12:26", kind: Read }
+  - { range: "13:19-13:25", kind: Read }

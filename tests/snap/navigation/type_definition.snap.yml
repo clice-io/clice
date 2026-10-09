@@ -23,7 +23,19 @@ alias_var:
   references:
     - { file: "${WS}/type_definition.cpp", range: "10:6-10:12" }
 
-auto_var: none
+auto_var:
+  definition:
+    - { file: "${WS}/type_definition.cpp", range: "2:7-2:12" }
+  declaration:
+    - { file: "${WS}/type_definition.cpp", range: "2:7-2:12" }
+  typeDefinition:
+    - { file: "${WS}/type_definition.cpp", range: "2:7-2:12" }
+  references:
+    - { file: "${WS}/type_definition.cpp", range: "2:7-2:12" }
+    - { file: "${WS}/type_definition.cpp", range: "7:14-7:19" }
+    - { file: "${WS}/type_definition.cpp", range: "9:0-9:5" }
+  typeHierarchy:
+    - { name: "Point", kind: Struct, file: "${WS}/type_definition.cpp", range: "2:0-5:1", selection: "2:7-2:12" }
 
 type:
   definition:
@@ -35,7 +47,7 @@ type:
     - { file: "${WS}/type_definition.cpp", range: "7:14-7:19" }
     - { file: "${WS}/type_definition.cpp", range: "9:0-9:5" }
   typeHierarchy:
-    - { name: "Point", kind: Struct, file: "${WS}/type_definition.cpp", range: "2:7-2:12" }
+    - { name: "Point", kind: Struct, file: "${WS}/type_definition.cpp", range: "2:0-5:1", selection: "2:7-2:12" }
 
 var:
   definition:

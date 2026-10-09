@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "..",
+    "file": "src/main.cpp",
+    "arguments": ["clang++", "-std=c++20", "src/main.cpp"]
+  },
+  {
+    "directory": "..",
+    "file": "vendor/lib.cpp",
+    "arguments": ["clang++", "-std=c++20", "vendor/lib.cpp"]
+  }
+]

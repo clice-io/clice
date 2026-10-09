@@ -3,6 +3,8 @@
 import { IDLE_TIMEOUT, sleep } from "@clice/tools/client";
 import { test, expect } from "../fixtures.ts";
 
+const EDIT_INTERVAL = 200;
+
 test("did open", async ({ session }) => {
     const { client } = await session("hello_world");
     client.open("main.cpp");
@@ -15,7 +17,7 @@ test("did change", async ({ session }) => {
     let content = initial;
     for (let i = 0; i < 20; i++) {
         content += "\n";
-        await sleep(200);
+        await sleep(EDIT_INTERVAL);
         client.change(uri, i + 1, content);
     }
     await sleep(IDLE_TIMEOUT);

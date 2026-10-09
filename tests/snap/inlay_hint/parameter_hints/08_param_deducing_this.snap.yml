@@ -1,0 +1,6 @@
+---
+created_at: 2026-07-31
+input_file: parameter_hints/08_param_deducing_this.cpp
+---
+- { pos: "13:13", kind: Parameter, label: "width:", links: ["width ${WS}/parameter_hints/08_param_deducing_this.cpp:8:39-8:44"], padding_right: true }
+- { pos: "13:18", kind: Parameter, label: "height:", links: ["height ${WS}/parameter_hints/08_param_deducing_this.cpp:8:50-8:56"], padding_right: true }

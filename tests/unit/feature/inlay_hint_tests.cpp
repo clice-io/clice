@@ -1,45 +1,40 @@
+module;
+
+#include "modules/prelude.h"
 /// Primary inlay-hint coverage lives in the snapshot corpus
 /// (tests/snap/inlay_hint/), which pins both the standalone and the server
-/// path under default options. This file keeps only the categories the
-/// corpus cannot reach: block-end and default-argument hints are off by
-/// default and only selectable through InlayHintsOptions.
+/// path under default options. This file keeps only what the corpus cannot
+/// reach: block-end and default-argument hints are off by default and only
+/// selectable through InlayHintsOptions, and the corpus asks for whole files,
+/// never a range.
 
-#include <format>
-#include <string>
+module clice;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "feature/feature.h"
-
-#include "kota/meta/enum.h"
+import :feature.feature;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 
 namespace {
 
-namespace lsp = kota::ipc::lsp;
-namespace protocol = kota::ipc::protocol;
+ZEST_SUITE(inlay_hint, Tester) {
 
-TEST_SUITE(inlay_hint, Tester) {
-
-std::vector<protocol::InlayHint> hints;
-llvm::DenseMap<std::uint32_t, protocol::InlayHint> hints_map;
+std::vector<feature::InlayHint> hints;
+llvm::DenseMap<std::uint32_t, feature::InlayHint> hints_map;
 
 void run(llvm::StringRef code,
          const feature::InlayHintsOptions& options = {},
          std::source_location location = std::source_location::current()) {
     add_main("main.cpp", code);
-    ASSERT_TRUE(compile_with_pch("-std=c++23"));
+    ZASSERT(compile_with_pch("-std=c++23"));
 
-    LocalSourceRange range = LocalSourceRange(0, unit->interested_content().size());
-    hints = feature::inlay_hints(*unit, range, options, feature::PositionEncoding::UTF8);
+    LocalSourceRange range = LocalSourceRange(0, unit->main_content().size());
+    hints = feature::inlay_hints(*unit, range, options);
 
     hints_map.clear();
-    auto content = unit->interested_content();
-    auto line_starts = unit->line_starts();
-    lsp::LineMap map(content, line_starts, feature::PositionEncoding::UTF8);
     for(auto& hint: hints) {
-        hints_map[*map.to_offset(hint.position)] = hint;
+        hints_map[hint.offset] = hint;
     }
 
     if(!unit->diagnostics().empty()) {
@@ -48,12 +43,12 @@ void run(llvm::StringRef code,
         }
     }
 
-    ASSERT_TRUE(unit->diagnostics().empty());
+    ZASSERT(unit->diagnostics().empty());
 }
 
 void EXPECT_SIZE(std::uint32_t size,
                  std::source_location location = std::source_location::current()) {
-    ASSERT_EQ(hints.size(), size);
+    ZASSERT(hints.size() == size);
 }
 
 void EXPECT_HINT(llvm::StringRef pos,
@@ -61,21 +56,16 @@ void EXPECT_HINT(llvm::StringRef pos,
                  std::source_location location = std::source_location::current()) {
     auto offset = point(pos);
     auto it = hints_map.find(offset);
-    ASSERT_TRUE(it != hints_map.end());
+    ZASSERT(it != hints_map.end());
 
     std::string label;
-    if(auto* plain = std::get_if<std::string>(&it->second.label)) {
-        label = *plain;
-    } else {
-        for(const auto& part:
-            std::get<std::vector<protocol::InlayHintLabelPart>>(it->second.label)) {
-            label += part.value;
-        }
+    for(const auto& part: it->second.label) {
+        label += part.value;
     }
-    ASSERT_EQ(label, name);
+    ZASSERT(label == name);
 };
 
-TEST_CASE(BlockEnd) {
+ZEST_CASE(BlockEnd) {
     // Functions
     run(R"c(
             int foo() {
@@ -498,7 +488,7 @@ TEST_CASE(BlockEnd) {
     EXPECT_HINT("0", "// if");
 };
 
-TEST_CASE(DefaultArguments) {
+ZEST_CASE(DefaultArguments) {
     // Smoke test
     run(R"c(
             int foo(int A = 4) { return A; }
@@ -564,7 +554,7 @@ TEST_CASE(DefaultArguments) {
     EXPECT_HINT("0", ", true");
 };
 
-TEST_CASE(EnabledOff) {
+ZEST_CASE(EnabledOff) {
     run(R"c(
             void draw(int width, int height);
             void use() {
@@ -576,7 +566,7 @@ TEST_CASE(EnabledOff) {
     EXPECT_SIZE(0);
 };
 
-TEST_CASE(FreestandingBuiltins) {
+ZEST_CASE(FreestandingBuiltins) {
     // The tester compiles with -ffreestanding, which strips library-builtin
     // IDs: std::forward suppression must hold through the name fallback.
     // The snap corpus compiles hosted and only reaches the builtin-ID path.
@@ -592,7 +582,21 @@ TEST_CASE(FreestandingBuiltins) {
     EXPECT_SIZE(0);
 };
 
-};  // TEST_SUITE(inlay_hint)
+ZEST_CASE(RangeEndExcluded) {
+    add_main("main.cpp", R"c(
+        void sink(int value);
+        void use() {
+            sink(§(arg)1);
+        }
+    )c");
+    ZASSERT(compile_with_pch("-std=c++23"));
+
+    auto arg = point("arg");
+    ZEXPECT(feature::inlay_hints(*unit, {0, arg}).size() == 0U);
+    ZEXPECT(feature::inlay_hints(*unit, {arg, arg + 1}).size() == 1U);
+};
+
+};  // ZEST_SUITE(inlay_hint)
 
 }  // namespace
 }  // namespace clice::testing

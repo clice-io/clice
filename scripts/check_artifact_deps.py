@@ -10,12 +10,13 @@ accidental sentinel into an explicit gate: it inspects the shipped binary's
 dynamic dependencies and rejects anything that resolves into a conda/pixi env
 instead of the OS.
 
-Both branches use LLVM binutils (``llvm-otool`` / ``llvm-readelf``), which ship
-in the build env and can read Mach-O even from a Linux host.
+Windows (MinGW) binaries must not import a toolchain's runtime DLLs:
+libc++, libunwind, winpthreads (xclang links them statically) or the MSVC
+C++ runtime.
 
-TODO: read PE too. With the /MT switch (static CRT), the Windows artifacts
-should no longer import ``MSVCP140.dll`` or ``VCRUNTIME140.dll``; add PE
-support to verify this.
+All branches use LLVM binutils (``llvm-otool`` / ``llvm-readelf`` /
+``llvm-readobj``), which ship in the build env and read every format on
+every host.
 """
 
 import argparse
@@ -25,8 +26,9 @@ import sys
 from pathlib import Path
 
 # Linux NEEDED whitelist, derived from the real packaged x86_64-unknown-linux-gnu binary.
-# clice statically links libstdc++/libgcc, so a portable build only pulls in the
-# glibc runtime pieces. Notably libstdc++.so.6 / libc++.so are absent: if either
+# clice links the LLVM package's libc++ and libgcc statically, so a portable
+# build only pulls in the glibc runtime pieces. Notably libstdc++.so.6 /
+# libc++.so are absent: if either
 # ever appears it would resolve from the conda RUNPATH (see check_elf), which is
 # exactly the shape of the macOS libc++ incident. Keeping them out of the
 # whitelist makes that regression a hard failure.
@@ -40,6 +42,11 @@ LINUX_NEEDED_WHITELIST = {
     "ld-linux-aarch64.so.1",
 }
 
+# MinGW runtime DLLs are lib-prefixed (libc++.dll, libunwind.dll,
+# libwinpthread-1.dll, libgcc_s_seh-1.dll, libstdc++-6.dll), which no
+# Windows system DLL is.
+PE_FORBIDDEN_PREFIXES = ("lib", "msvcp", "vcruntime")
+
 # Path fragments that indicate a dependency or search path pointing into a
 # conda/pixi environment rather than the operating system.
 CONDA_MARKERS = ("conda", ".pixi", "/envs/")
@@ -47,6 +54,10 @@ CONDA_MARKERS = ("conda", ".pixi", "/envs/")
 # macOS system library location prefixes. Anything outside these (notably
 # @rpath / @loader_path / absolute conda paths) is a violation.
 MACOS_SYSTEM_PREFIXES = ("/usr/lib/", "/System/Library/")
+# clice links the LLVM package's libc++ statically; a dependency on the SDK's
+# libc++ means the link fell back to it (the macOS twin of libstdc++.so.6 on
+# Linux), so it is rejected even though /usr/lib/ is a system prefix.
+MACOS_FORBIDDEN_DYLIBS = ("libc++.", "libc++abi.")
 
 
 def run_tool(args: list[str]) -> str:
@@ -86,6 +97,8 @@ def detect_format(binary: Path) -> str:
     }
     if magic in macho:
         return "macho"
+    if magic[:2] == b"MZ":
+        return "pe"
     raise RuntimeError(f"{binary}: unrecognized object file magic {magic!r}")
 
 
@@ -140,6 +153,8 @@ def check_macho(binary: Path) -> list[str]:
         parsed += 1
         if not dylib.startswith(MACOS_SYSTEM_PREFIXES):
             violations.append(f"non-system dylib dependency: {dylib}")
+        elif Path(dylib).name.startswith(MACOS_FORBIDDEN_DYLIBS):
+            violations.append(f"C++ runtime dylib dependency: {dylib}")
 
     violations.extend(assert_parsed(parsed, "llvm-otool -L", "dylib dependencies"))
 
@@ -149,6 +164,20 @@ def check_macho(binary: Path) -> list[str]:
         if any(marker in path for marker in CONDA_MARKERS):
             violations.append(f"LC_RPATH points into a conda/pixi env: {path}")
 
+    return violations
+
+
+def check_pe(binary: Path) -> list[str]:
+    """Return a list of violation messages for a PE (MinGW) binary."""
+    out = run_tool(["llvm-readobj", "--coff-imports", str(binary)])
+    violations = []
+    dlls = re.findall(r"^\s*Name: (\S+\.dll)\s*$", out, re.MULTILINE | re.IGNORECASE)
+    for dll in dlls:
+        if dll.lower().startswith(PE_FORBIDDEN_PREFIXES):
+            violations.append(f"runtime DLL dependency: {dll}")
+    violations.extend(
+        assert_parsed(len(dlls), "llvm-readobj --coff-imports", "imported DLLs")
+    )
     return violations
 
 
@@ -165,7 +194,7 @@ def main() -> int:
         return 1
 
     fmt = detect_format(binary)
-    violations = check_elf(binary) if fmt == "elf" else check_macho(binary)
+    violations = {"elf": check_elf, "macho": check_macho, "pe": check_pe}[fmt](binary)
 
     if violations:
         print(f"FAIL: {binary} has forbidden dynamic dependencies:", file=sys.stderr)

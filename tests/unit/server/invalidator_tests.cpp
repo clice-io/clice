@@ -1,9 +1,20 @@
-#include "test/cdb_helper.h"
-#include "test/temp_dir.h"
-#include "test/test.h"
-#include "server/compiler/compile_graph.h"
-#include "server/compiler/context_resolver.h"
-#include "server/state/invalidator.h"
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :sched.families.pcm;
+import :sched.families.turun;
+import :sched.graph;
+import :server.ast_family;
+import :server.context_service;
+import :server.editor_context;
+import :server.invalidator;
+import :tests.unit.test.cdb_helper;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+import :worker.pool;
 
 namespace clice::testing {
 namespace {
@@ -21,469 +32,755 @@ index::Shard shard_of(llvm::StringRef content) {
     return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
 }
 
-TEST_SUITE(Invalidator) {
+/// Non-module fixtures need the invalidator's PCMFamily and index store
+/// references but never drive them; this bundles the inert plumbing
+/// behind them.
+struct PCMHarness {
+    kota::event_loop loop;
+    TaskGraph graph;
+    WorkerPool pool{loop};
+    PCMFamily pcm;
+    IndexStore index;
+    ASTProjectionTable projections;
 
-TEST_CASE(EmptyBatchNoEffects) {
-    Workspace workspace;
+    PCMHarness(Project& project, EditorContext& resolver) :
+        pcm(graph, project, resolver.commands, pool), index(loop, project, resolver.commands) {}
+};
+
+/// The orphaned-choice tests exercise ContextService's session reset,
+/// which goes through the AST family; this bundles its inert stack.
+struct ASTHarness {
+    kota::event_loop loop;
+    TaskGraph graph;
+    WorkerPool pool{loop};
+    PCMFamily pcm;
+    PCHFamily pch;
+    ASTFamily ast;
+
+    ASTHarness(Project& project, EditorContext& resolver, SessionStore& store) :
+        pcm(graph, project, resolver.commands, pool), pch(graph, project, pool),
+        ast(project, resolver, graph, pcm, pch, pool, store) {}
+};
+
+ZEST_SUITE(Invalidator) {
+
+ZEST_CASE(EmptyBatchNoEffects) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
 
     auto dirty = invalidator.apply({});
 
-    ASSERT_TRUE(dirty.empty());
+    ZASSERT(dirty.empty());
 }
 
-TEST_CASE(NoOpEventsNoEffects) {
-    Workspace workspace;
-    SessionStore store;
-    auto file = workspace.path_pool.intern("/proj/a.cpp");
-    store.open(file);
+ZEST_CASE(NewProviderDirtiesImporters) {
+    // Consumers that scanned the name unresolved hold durable edges to
+    // its sentinel node; the first provider cascades through them. A
+    // closed TU reindexes as ContentChanged (its dep snapshot never
+    // named the interface, so the hash gate cannot see the change); an
+    // open document recompiles. Nothing is ever dropped — a consumer
+    // that can no longer build keeps serving its last-known rows.
+    TempDir tmp;
+    tmp.touch("m.cppm", "int mv();\n");
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
-    // Buffer sync stays in SessionStore (exempt from the pipeline); these
-    // events must produce no effects of their own.
-    FileEvent events[] = {FileEvent::buffer_opened(file), FileEvent::buffer_edited(file)};
+    FileTable files;
+
+    Project project{files};
+    SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"), {}}
+    }));
+    scan_all(project.cdb, project.dep_graph);
+    project.dep_graph.build_reverse_map();
+    tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
+    auto iface = project.file_table.intern(Spelling::absolute(tmp.path("m.cppm")));
+    auto closed = project.file_table.intern(Spelling::absolute("/proj/closed.cpp"));
+    auto open = project.file_table.intern(Spelling::absolute("/proj/open.cpp"));
+    store.open(open);
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    ph.graph.declare({Family::TURun, closed.raw}, {PCMFamily::unresolved_node("m")});
+    ph.graph.declare({Family::AST, open.raw}, {PCMFamily::unresolved_node("m")});
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+
+    FileEvent events[] = {FileEvent::disk_changed(iface)};
     auto dirty = invalidator.apply(events);
 
-    ASSERT_TRUE(dirty.empty());
+    ZEXPECT(llvm::is_contained(dirty.reindex_content_changed, closed));
+    ZEXPECT(llvm::is_contained(dirty.mark_ast_dirty, open));
+    ZEXPECT(dirty.drop_index.empty());
+
+    // The same save again: the name already has its provider.
+    auto again = invalidator.apply(events);
+    ZEXPECT(!llvm::is_contained(again.reindex_content_changed, closed));
+    ZEXPECT(!llvm::is_contained(again.mark_ast_dirty, open));
 }
 
-TEST_CASE(SaveResetsTrialOnly) {
-    Workspace workspace;
+ZEST_CASE(ReloadProviderCascades) {
+    // The CDB-reload flavor of provider appearance: the provider-set diff
+    // drives the same sentinel cascade, and a consumer retired by the
+    // very same reload leaves the index without a reindex being owed.
+    TempDir tmp;
+    tmp.touch("m.cppm", "export module m;\nexport int mv();\n");
+
+    FileTable files;
+
+    Project project{files};
     SessionStore store;
-    auto saved = workspace.path_pool.intern("/proj/a.h");
+    // The producer already reloaded the CDB: only the provider remains.
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cppm"), {}}
+    }));
+    auto iface = project.file_table.intern(Spelling::absolute(tmp.path("m.cppm")));
+    auto retired = project.file_table.intern(Spelling::absolute(tmp.path("old.cpp")));
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    ph.graph.declare({Family::TURun, retired.raw}, {PCMFamily::unresolved_node("m")});
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+
+    CDBDiff delta;
+    delta.added = {iface};
+    delta.removed = {retired};
+    FileEvent events[] = {FileEvent::cdb_changed(std::move(delta))};
+    auto dirty = invalidator.apply(events);
+
+    ZEXPECT(!llvm::is_contained(dirty.reindex_content_changed, retired));
+    ZEXPECT(llvm::is_contained(dirty.drop_index, retired));
+    ZEXPECT(llvm::is_contained(dirty.clear_reindex, retired));
+}
+
+ZEST_CASE(DiskRemovedDropsProvider) {
+    // Deleting a provider must leave the module map too: a later
+    // replacement provider would otherwise sit behind the deleted one in
+    // the candidate list and never be selected.
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto iface = project.file_table.intern(Spelling::absolute("/proj/m.cppm"));
+    project.dep_graph.add_module("m", iface);
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+
+    FileEvent events[] = {FileEvent::disk_removed(iface)};
+    invalidator.apply(events);
+
+    ZEXPECT(project.dep_graph.lookup_module("m").empty());
+}
+
+ZEST_CASE(DiskChangeSparesSession) {
+    TempDir tmp;
+    tmp.touch("a.h", "int x;");
+
+    FileTable files;
+
+    Project project{files};
+    SessionStore store;
+    auto saved = project.file_table.intern(Spelling::absolute(tmp.path("a.h")));
     auto session = store.open(saved);
     store.apply_open(*session, "int x;", 1);
+    project.file_table.disk.read(saved);
 
-    ContextResolver resolver(workspace);
-    // A plain save: the disk holds exactly what the buffer holds.
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
-        return std::optional<std::string>{"int x;"};
-    });
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
-    // The saved file itself is not stale — its buffer was already current —
-    // only its self-containment verdict needs re-evaluation.
-    ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<std::uint32_t>{saved});
-    ASSERT_EQ(dirty.reset_header_mode, llvm::SmallVector<std::uint32_t>{saved});
-    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
-    ASSERT_TRUE(dirty.force_revalidate.empty());
-    ASSERT_TRUE(dirty.recheck_contexts);
-    ASSERT_TRUE(dirty.reschedule_indexing);
+    // The open file's own compile reads its buffer, never its disk: it is
+    // not stale, nor is the self-containment verdict scored on that buffer,
+    // while its disk rows are.
+    ZASSERT(dirty.reset_header_mode.empty());
+    ZASSERT(dirty.mark_ast_dirty.empty());
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
+    ZASSERT(dirty.drop_context.empty());
+    ZASSERT(dirty.recheck_contexts);
+    ZASSERT(dirty.reschedule_indexing);
 }
 
-TEST_CASE(CascadeSplitsOpenClosed) {
-    kota::event_loop loop;
-    Workspace workspace;
-    SessionStore store;
-    auto mod = workspace.path_pool.intern("/proj/m.cppm");
-    auto open_user = workspace.path_pool.intern("/proj/open_user.cppm");
-    auto closed_user = workspace.path_pool.intern("/proj/closed_user.cppm");
+ZEST_CASE(DiskChangeBesideBuffer) {
+    TempDir tmp;
+    tmp.touch("a.h", "int y;");
 
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> deps;
-    deps[open_user] = {mod};
-    deps[closed_user] = {mod};
-    workspace.compile_graph = std::make_unique<CompileGraph>(
-        loop,
-        [](std::uint32_t, bool) -> kota::task<CompileUnit::Outcome> {
-            co_return CompileUnit::Outcome::Success;
-        },
-        [deps = std::move(deps)](std::uint32_t id) -> llvm::SmallVector<std::uint32_t> {
-            auto it = deps.find(id);
-            return it != deps.end() ? it->second : llvm::SmallVector<std::uint32_t>{};
-        });
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto changed = project.file_table.intern(Spelling::absolute(tmp.path("a.h")));
+    auto session = store.open(changed);
+    store.apply_open(*session, "int x;", 1);
+    project.file_table.disk.read(changed);
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(changed));
+
+    // Bytes from elsewhere replace the buffer the verdict was scored on.
+    ZASSERT(dirty.reset_header_mode == llvm::SmallVector<Fid>{changed});
+}
+
+ZEST_CASE(CascadeSplitsOpenClosed) {
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto mod = project.file_table.intern(Spelling::absolute("/proj/m.cppm"));
+    auto open_user = project.file_table.intern(Spelling::absolute("/proj/open_user.cppm"));
+    auto closed_user = project.file_table.intern(Spelling::absolute("/proj/closed_user.cppm"));
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    // The consumer edges build_deps declares in production — no rounds.
+    auto node = [](Fid pid) {
+        return NodeId{Family::PCM, pid.raw};
+    };
+    ph.graph.declare(node(open_user), {node(mod)});
+    ph.graph.declare(node(closed_user), {node(mod)});
 
     store.open(open_user);
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
 
-    auto body = [&]() -> kota::task<> {
-        co_await workspace.compile_graph->compile(open_user);
-        co_await workspace.compile_graph->compile(closed_user);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(mod));
 
-        auto dirty = invalidator.apply(FileEvent::buffer_saved(mod));
-
-        // Cascade-dirtied module units split by session state: open buffers
-        // recompile, closed files go back to the background indexer.
-        EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
-        llvm::SmallVector<std::uint32_t> reindexed{mod, closed_user};
-        llvm::sort(reindexed);
-        EXPECT_EQ(dirty.reindex_deps_only, reindexed);
-        EXPECT_TRUE(dirty.reindex_content_changed.empty());
-
-        co_await workspace.compile_graph->shutdown();
-    };
-    auto task = body();
-    loop.schedule(task);
-    loop.run();
+    // Cascade-dirtied module units split by session state: open buffers
+    // recompile, closed files go back to the background indexer.
+    ZEXPECT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_user});
+    llvm::SmallVector<Fid> reindexed{mod, closed_user};
+    llvm::sort(reindexed);
+    ZEXPECT(dirty.reindex_deps_only == reindexed);
+    ZEXPECT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{mod});
 }
 
-TEST_CASE(ChainHitAndMiss) {
-    Workspace workspace;
+ZEST_CASE(ChainHitAndMiss) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto saved = workspace.path_pool.intern("/proj/inner.h");
-    auto other = workspace.path_pool.intern("/proj/other.h");
-    auto hit = workspace.path_pool.intern("/proj/hit.h");
-    auto miss = workspace.path_pool.intern("/proj/miss.h");
+    auto saved = project.file_table.intern(Spelling::absolute("/proj/inner.h"));
+    auto other = project.file_table.intern(Spelling::absolute("/proj/other.h"));
+    auto hit = project.file_table.intern(Spelling::absolute("/proj/hit.h"));
+    auto miss = project.file_table.intern(Spelling::absolute("/proj/miss.h"));
 
-    auto closed = workspace.path_pool.intern("/proj/closed.h");
+    auto closed = project.file_table.intern(Spelling::absolute("/proj/closed.h"));
     store.open(hit);
     store.open(miss);
 
-    ContextResolver resolver(workspace);
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
     resolver.header_contexts[hit].chain = {saved};
     resolver.header_contexts[miss].chain = {other};
     resolver.header_contexts[closed].chain = {saved};
-    Invalidator invalidator(workspace, store, resolver);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
-    // Every context embedding the saved file re-validates and drops its
-    // verdict; a closed one additionally reindexes in the background — its
-    // shard rows were built under the old chain.
-    llvm::SmallVector<std::uint32_t> revalidated{hit, closed};
-    llvm::sort(revalidated);
-    ASSERT_EQ(dirty.force_revalidate, revalidated);
-    llvm::SmallVector<std::uint32_t> reset{saved, hit, closed};
+    // Every context derived through the saved file resolves again and
+    // drops its verdict; an open one recompiles, a closed one reindexes in
+    // the background — its shard rows were built under the old chain.
+    llvm::SmallVector<Fid> dropped{hit, closed};
+    llvm::sort(dropped);
+    ZASSERT(dirty.drop_context == dropped);
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{hit});
+    llvm::SmallVector<Fid> reset{saved, hit, closed};
     llvm::sort(reset);
-    ASSERT_EQ(dirty.reset_header_mode, reset);
+    ZASSERT(dirty.reset_header_mode == reset);
     // The closed header's own content did not change — only its chain did.
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
 }
 
-TEST_CASE(SaveMarksDependents) {
-    Workspace workspace;
+ZEST_CASE(SaveMarksDependents) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto open_tu = workspace.path_pool.intern("/proj/a.cpp");
-    auto closed_tu = workspace.path_pool.intern("/proj/b.cpp");
-    workspace.dep_graph.set_includes(open_tu, 0, {header});
-    workspace.dep_graph.set_includes(closed_tu, 0, {header});
-    workspace.dep_graph.build_reverse_map();
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto open_tu = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto closed_tu = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
+    project.dep_graph.set_includes(open_tu, 0, {{header}});
+    project.dep_graph.set_includes(closed_tu, 0, {{header}});
+    project.dep_graph.build_reverse_map();
     store.open(open_tu);
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // Open dependents recompile, closed ones reindex; the old/new dependent
     // snapshots overlap fully here, so this also proves the dedup. A
     // dependent's own content did not change: deps-only.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_tu});
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed_tu});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
 }
 
-TEST_CASE(TransitiveDependentsEnqueue) {
-    Workspace workspace;
+ZEST_CASE(TransitiveDependentsEnqueue) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto middle = workspace.path_pool.intern("/proj/g.h");
-    auto root = workspace.path_pool.intern("/proj/c.cpp");
-    workspace.dep_graph.set_includes(middle, 0, {header});
-    workspace.dep_graph.set_includes(root, 0, {middle});
-    workspace.dep_graph.build_reverse_map();
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto middle = project.file_table.intern(Spelling::absolute("/proj/g.h"));
+    auto root = project.file_table.intern(Spelling::absolute("/proj/c.cpp"));
+    project.dep_graph.set_includes(middle, 0, {{header}});
+    project.dep_graph.set_includes(root, 0, {{middle}});
+    project.dep_graph.build_reverse_map();
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // Only root TUs own index shards; the intermediate header is not one.
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{root});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
-    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{root});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
+    ZASSERT(dirty.mark_ast_dirty.empty());
 }
 
-TEST_CASE(StaleReverseMapUnion) {
-    Workspace workspace;
+ZEST_CASE(ForcedHeaderReachesUnits) {
+    // A header reached only through a command's forced include: its
+    // change reaches the units forcing that header in, open or closed.
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto known = workspace.path_pool.intern("/proj/a.cpp");
-    auto unmapped = workspace.path_pool.intern("/proj/b.cpp");
-    workspace.dep_graph.set_includes(known, 0, {header});
-    workspace.dep_graph.build_reverse_map();
-    // Edge added without rebuilding the reverse map: visible only after the
-    // save's rescan rebuilds it. Both snapshots must contribute.
-    workspace.dep_graph.set_includes(unmapped, 0, {header});
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto forced = project.file_table.intern(Spelling::absolute("/proj/force.h"));
+    auto open = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto closed = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
+    project.dep_graph.set_includes(forced, 0, {{header}});
+    project.dep_graph.add_forced_include(open, forced);
+    project.dep_graph.add_forced_include(closed, forced);
+    project.dep_graph.build_reverse_map();
+    store.open(open);
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(header));
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
-    llvm::SmallVector<std::uint32_t> expected{known, unmapped};
-    llvm::sort(expected);
-    ASSERT_EQ(dirty.reindex_deps_only, expected);
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open});
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
 }
 
-TEST_CASE(CloseWithoutShardReindexes) {
-    Workspace workspace;
+ZEST_CASE(BatchSeesEarlierEdges) {
+    // An includer an earlier event of the batch adds is visible to a later
+    // cascade: the reverse map follows every rescan.
+    TempDir tmp;
+    tmp.touch("h.h", "int h;");
+    tmp.touch("a.cpp", R"(#include "h.h")");
+    tmp.touch("b.cpp", "int b;");
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto closed = workspace.path_pool.intern("/proj/a.cpp");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("a.cpp"), {}},
+                  {tmp.root, tmp.path("b.cpp"), {}},
+    }));
+    scan_all(project.cdb, project.dep_graph);
+    project.dep_graph.build_reverse_map();
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    auto known = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
+    auto added = project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
+    tmp.touch("b.cpp", R"(#include "h.h")");
 
-    ContextResolver resolver(workspace);
-    // The file exists on disk (injected read), it just was never indexed.
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
-        return std::optional<std::string>("int x;");
-    });
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty =
+        invalidator.apply({FileEvent::disk_changed(added), FileEvent::disk_changed(header)});
 
-    // No shard to compare against: nothing serves this file's rows anyway.
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{closed});
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
-    ASSERT_TRUE(dirty.reschedule_indexing);
-    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
+    ZASSERT(llvm::is_contained(dirty.reindex_deps_only, known));
+    ZASSERT(llvm::is_contained(dirty.reindex_deps_only, added));
+    ZASSERT(llvm::is_contained(project.dep_graph.get_includers(header), added));
 }
 
-TEST_CASE(CloseCurrentShardDepsOnly) {
-    Workspace workspace;
+ZEST_CASE(RemovalThenChangeKeepsClear) {
+    // A unit removed earlier in the batch is no longer an includer when a
+    // header it included changes: its clear survives, nothing requeues it.
+    TempDir tmp;
+    tmp.touch("h.h", "int changed;");
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto closed = workspace.path_pool.intern("/proj/a.cpp");
-    workspace.shards[closed] = shard_of("int x;");
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    auto removed = project.file_table.intern(Spelling::absolute(tmp.path("gone.cpp")));
+    auto kept = project.file_table.intern(Spelling::absolute(tmp.path("kept.cpp")));
+    project.dep_graph.set_includes(removed, 0, {{header}});
+    project.dep_graph.set_includes(kept, 0, {{header}});
+    project.dep_graph.build_reverse_map();
 
-    ContextResolver resolver(workspace);
-    // Disk matches the content the shard was built from: a browse-and-close
-    // must not blank the file's rows for the reindex queue's latency.
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
-        return std::optional<std::string>{"int x;"};
-    });
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty =
+        invalidator.apply({FileEvent::disk_removed(removed), FileEvent::disk_changed(header)});
 
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
+    ZASSERT(llvm::is_contained(dirty.clear_reindex, removed));
+    ZASSERT(!llvm::is_contained(dirty.reindex_deps_only, removed));
+    ZASSERT(llvm::is_contained(dirty.reindex_deps_only, kept));
 }
 
-TEST_CASE(CloseDivergentShardContentChanged) {
-    Workspace workspace;
+ZEST_CASE(RescanKeepsGuardedProvider) {
+    // A disk-change rescan meeting a module declaration inside a
+    // preprocessor conditional must resolve it the way the startup scan
+    // does (scan_quick alone leaves the name empty) instead of dropping
+    // the provider and leaving its importers unresolved.
+    TempDir tmp;
+    tmp.touch("m.cpp", "#if 1\nexport module m;\n#endif\n");
+
+    FileTable files;
+
+    Project project{files};
     SessionStore store;
-    auto closed = workspace.path_pool.intern("/proj/a.cpp");
-    workspace.shards[closed] = shard_of("int x;");
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("m.cpp"), {"-std=c++20"}}
+    }));
+    scan_all(project.cdb, project.dep_graph);
+    project.dep_graph.build_reverse_map();
+    auto iface = project.file_table.intern(Spelling::absolute(tmp.path("m.cpp")));
+    ZASSERT(project.dep_graph.module_of(iface) == "m");
+    tmp.touch("m.cpp", "#if 1\nexport module m;\n#endif\nexport int v;\n");
 
-    ContextResolver resolver(workspace);
-    // Disk holds edits the shard never saw (saved while open): the shard's
-    // rows describe text that no longer exists.
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
-        return std::optional<std::string>{"int edited;"};
-    });
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(closed));
+    project.project_index.shards[iface] = shard_of(*read_file(tmp.path("m.cpp")));
 
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{closed});
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+
+    invalidator.apply(FileEvent::disk_changed(iface));
+
+    ZEXPECT(project.dep_graph.module_of(iface) == "m");
+    ZEXPECT(llvm::is_contained(project.dep_graph.lookup_module("m"), iface));
 }
 
-TEST_CASE(CrashMarksLostDirty) {
-    Workspace workspace;
+ZEST_CASE(CrashMarksLostDirty) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto first = workspace.path_pool.intern("/proj/a.cpp");
-    auto second = workspace.path_pool.intern("/proj/b.cpp");
+    auto first = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto second = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
     store.open(first);
     store.open(second);
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
-    std::uint32_t lost[] = {first, second};
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    Fid lost[] = {first, second};
     auto dirty = invalidator.apply(FileEvent::worker_crashed(lost));
 
-    llvm::SmallVector<std::uint32_t> expected{first, second};
+    llvm::SmallVector<Fid> expected{first, second};
     llvm::sort(expected);
-    ASSERT_EQ(dirty.mark_lost, expected);
-    // A crash loses build products, not compile inputs: no trial reset.
-    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
-    ASSERT_TRUE(dirty.reset_trial.empty());
+    ZASSERT(dirty.mark_lost == expected);
+    // A crash loses build products, not compile inputs: no verdict reset.
+    ZASSERT(dirty.mark_ast_dirty.empty());
+    ZASSERT(dirty.reset_header_mode.empty());
 }
 
-TEST_CASE(EvictionMarksLost) {
-    Workspace workspace;
+ZEST_CASE(EvictionMarksLost) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto file = workspace.path_pool.intern("/proj/a.cpp");
+    auto file = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
     store.open(file);
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::document_evicted(file));
 
     // Same loss as a crash, scoped to one document.
-    ASSERT_EQ(dirty.mark_lost, llvm::SmallVector<std::uint32_t>{file});
-    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
-    ASSERT_TRUE(dirty.reset_trial.empty());
+    ZASSERT(dirty.mark_lost == llvm::SmallVector<Fid>{file});
+    ZASSERT(dirty.mark_ast_dirty.empty());
+    ZASSERT(dirty.reset_header_mode.empty());
 }
 
-TEST_CASE(BatchSavesDeduplicate) {
-    Workspace workspace;
+ZEST_CASE(BatchChangesDeduplicate) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto saved = workspace.path_pool.intern("/proj/a.h");
+    auto saved = project.file_table.intern(Spelling::absolute("/proj/a.h"));
     store.open(saved);
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
-    FileEvent events[] = {FileEvent::buffer_saved(saved), FileEvent::buffer_saved(saved)};
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    FileEvent events[] = {FileEvent::disk_changed(saved), FileEvent::disk_changed(saved)};
     auto dirty = invalidator.apply(events);
 
-    ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<std::uint32_t>{saved});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
 }
 
-TEST_CASE(SaveDivergentDiskDirties) {
-    Workspace workspace;
+ZEST_CASE(DiskChangeClosedCascades) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto saved = workspace.path_pool.intern("/proj/a.h");
-    auto session = store.open(saved);
-    store.apply_open(*session, "int buffer;", 1);
-
-    ContextResolver resolver(workspace);
-    // A save hook rewrote the file as it landed: disk != buffer.
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
-        return std::optional<std::string>{"int disk;"};
-    });
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
-
-    // The session recompiles so its deps snapshot re-validates against the
-    // rewritten disk instead of describing a state that no longer exists.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{saved});
-}
-
-TEST_CASE(SaveUnreadableDiskDirties) {
-    Workspace workspace;
-    SessionStore store;
-    auto saved = workspace.path_pool.intern("/proj/a.h");
-    auto session = store.open(saved);
-    store.apply_open(*session, "int buffer;", 1);
-
-    ContextResolver resolver(workspace);
-    // The file cannot be read back after the save: the disk state is
-    // unknown, which is treated as divergent (conservative).
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
-        return std::optional<std::string>{};
-    });
-    auto dirty = invalidator.apply(FileEvent::buffer_saved(saved));
-
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{saved});
-}
-
-TEST_CASE(DiskChangeOpenMarksDirty) {
-    Workspace workspace;
-    SessionStore store;
-    auto open_file = workspace.path_pool.intern("/proj/a.cpp");
-    store.open(open_file);
-
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
-    auto dirty = invalidator.apply(FileEvent::disk_changed(open_file));
-
-    // The buffer is the truth for an open file: recompile so the next
-    // compile's deps validation judges the disk change, but no rescan and
-    // no cascade. The file's shard describes the old disk, so its reindex
-    // queues alongside (skipped while open-file indexing is off).
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_file});
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{open_file});
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
-    ASSERT_TRUE(dirty.reset_trial.empty());
-    ASSERT_FALSE(dirty.recheck_contexts);
-}
-
-TEST_CASE(DiskChangeClosedCascades) {
-    Workspace workspace;
-    SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto open_tu = workspace.path_pool.intern("/proj/a.cpp");
-    auto closed_tu = workspace.path_pool.intern("/proj/b.cpp");
-    workspace.dep_graph.set_includes(open_tu, 0, {header});
-    workspace.dep_graph.set_includes(closed_tu, 0, {header});
-    workspace.dep_graph.build_reverse_map();
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto open_tu = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto closed_tu = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
+    project.dep_graph.set_includes(open_tu, 0, {{header}});
+    project.dep_graph.set_includes(closed_tu, 0, {{header}});
+    project.dep_graph.build_reverse_map();
     store.open(open_tu);
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // A closed file's disk change cascades exactly like a save, plus the
     // file's own stale shard is refreshed. The changed file's own rows are
     // untrustworthy; its dependent only rebuilds semantics.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_tu});
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{header});
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed_tu});
-    ASSERT_EQ(dirty.reset_trial, llvm::SmallVector<std::uint32_t>{header});
-    ASSERT_TRUE(dirty.recheck_contexts);
-    ASSERT_TRUE(dirty.reschedule_indexing);
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
+    ZASSERT(dirty.reset_header_mode == llvm::SmallVector<Fid>{header});
+    ZASSERT(dirty.recheck_contexts);
+    ZASSERT(dirty.reschedule_indexing);
 }
 
-TEST_CASE(DiskRemovedScrubsSourceRole) {
-    Workspace workspace;
+ZEST_CASE(DiskChangeOpenCascades) {
+    // Open or not, a disk change reaches every file reading the disk: the
+    // open header's includers cascade now, not at its close, and only the
+    // header's own session — whose compile reads its buffer — is spared.
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto removed_tu = workspace.path_pool.intern("/proj/gone.cpp");
-    auto other_tu = workspace.path_pool.intern("/proj/kept.cpp");
-    workspace.dep_graph.set_includes(removed_tu, 0, {header});
-    workspace.dep_graph.set_includes(other_tu, 0, {header});
-    workspace.dep_graph.build_reverse_map();
-    auto epoch = workspace.context_epoch;
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto open_tu = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto closed_tu = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
+    project.dep_graph.set_includes(open_tu, 0, {{header}});
+    project.dep_graph.set_includes(closed_tu, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    store.open(header);
+    store.open(open_tu);
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
+
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
+}
+
+ZEST_CASE(CompiledIncluderCascades) {
+    // An includer the lexical scan never saw (a macro include) but whose
+    // indexed compile read the file is a dependent all the same.
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(Spelling::absolute("/proj/m.h"));
+    auto scanned = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto compiled = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
+    project.dep_graph.set_includes(scanned, 0, {{header}});
+    project.dep_graph.set_includes(compiled, 0, {});
+    project.dep_graph.build_reverse_map();
+    project.project_index.contributions[header][compiled] = 1;
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
+
+    llvm::SmallVector<Fid> reindexed{scanned, compiled};
+    llvm::sort(reindexed);
+    ZASSERT(dirty.reindex_deps_only == reindexed);
+}
+
+ZEST_CASE(ModuleReadHeaderCascades) {
+    // A header only a module unit's PCM read (its global module fragment):
+    // no include edge names the importers, the unit's recorded inputs do.
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(Spelling::absolute("/proj/gmf.h"));
+    auto mod = project.file_table.intern(Spelling::absolute("/proj/m.cppm"));
+    auto user = project.file_table.intern(Spelling::absolute("/proj/user.cpp"));
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    ph.graph.declare(
+        NodeId{
+            Family::PCM,
+            user.raw
+    },
+        {NodeId{Family::PCM, mod.raw}});
+    project.pcm_cache[mod].deps.push_back({.path_id = header});
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
+
+    ZASSERT(llvm::is_contained(dirty.reindex_deps_only, user));
+}
+
+ZEST_CASE(AppearedHeaderCascades) {
+    // A header appearing where compiles looked for it: the closed TU whose
+    // indexed compile looked reindexes, the open document whose AST looked
+    // recompiles.
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(Spelling::absolute("/proj/gen.h"));
+    auto closed = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
+    auto open = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    project.project_index.probed[header].insert(closed);
+    store.open(open);
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    ph.projections.entries[open].deps = DepsSnapshot{
+        DepState{.path_id = header, .missing = true}
+    };
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    auto dirty = invalidator.apply(FileEvent::disk_changed(header));
+
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed});
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open});
+}
+
+ZEST_CASE(DiskRemovedScrubsSourceRole) {
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto removed_tu = project.file_table.intern(Spelling::absolute("/proj/gone.cpp"));
+    auto other_tu = project.file_table.intern(Spelling::absolute("/proj/kept.cpp"));
+    project.dep_graph.set_includes(removed_tu, 0, {{header}});
+    project.dep_graph.set_includes(other_tu, 0, {{header}});
+    project.dep_graph.build_reverse_map();
+    auto epoch = project.context_epoch;
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_removed(removed_tu));
 
     // The removed file stops being an includer (and thus a host-source
     // candidate); surviving includers are untouched, shards are kept.
-    ASSERT_EQ(workspace.dep_graph.get_includers(header), llvm::ArrayRef<std::uint32_t>{other_tu});
-    ASSERT_TRUE(workspace.dep_graph.get_all_includes(removed_tu).empty());
-    ASSERT_TRUE(dirty.recheck_contexts);
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
-    ASSERT_TRUE(dirty.mark_ast_dirty.empty());
-    ASSERT_EQ(workspace.context_epoch, epoch + 1);
+    ZASSERT(project.dep_graph.get_includers(header) == llvm::ArrayRef<Fid>{other_tu});
+    ZASSERT(project.dep_graph.get_all_includes(removed_tu).empty());
+    ZASSERT(dirty.recheck_contexts);
+    ZASSERT(dirty.reindex_content_changed.empty());
+    ZASSERT(dirty.reindex_deps_only.empty());
+    ZASSERT(dirty.mark_ast_dirty.empty());
+    ZASSERT(project.context_epoch == epoch + 1);
     // The removal clears any pending-reindex state recorded earlier (e.g. a
     // DiskChanged observed just before deletion): the shard keeps serving
     // and nothing is left to reindex.
-    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{removed_tu});
+    ZASSERT(dirty.clear_reindex == llvm::SmallVector<Fid>{removed_tu});
 }
 
-TEST_CASE(RemoveRecreateBatchOrder) {
-    Workspace workspace;
+ZEST_CASE(RemoveRecreateBatchOrder) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto file = workspace.path_pool.intern("/proj/a.cpp");
-    workspace.dep_graph.set_includes(file, 0, {});
-    workspace.dep_graph.build_reverse_map();
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    auto file = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    project.dep_graph.set_includes(file, 0, {});
+    project.dep_graph.build_reverse_map();
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
 
     // Change then delete: the removal is the later fact, the clear wins.
     {
         FileEvent events[] = {FileEvent::disk_changed(file), FileEvent::disk_removed(file)};
         auto dirty = invalidator.apply(events);
-        ASSERT_TRUE(llvm::find(dirty.reindex_content_changed, file) ==
-                    dirty.reindex_content_changed.end());
-        ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{file});
+        ZASSERT(llvm::find(dirty.reindex_content_changed, file) ==
+                dirty.reindex_content_changed.end());
+        ZASSERT(dirty.clear_reindex == llvm::SmallVector<Fid>{file});
     }
 
     // Delete then recreate (an editor's atomic save): the later change must
     // survive — the recreated file needs its reindex.
     {
-        workspace.dep_graph.set_includes(file, 0, {});
-        workspace.dep_graph.build_reverse_map();
+        project.dep_graph.set_includes(file, 0, {});
+        project.dep_graph.build_reverse_map();
         FileEvent events[] = {FileEvent::disk_removed(file), FileEvent::disk_changed(file)};
         auto dirty = invalidator.apply(events);
-        ASSERT_TRUE(dirty.clear_reindex.empty());
-        ASSERT_TRUE(llvm::find(dirty.reindex_content_changed, file) !=
-                    dirty.reindex_content_changed.end());
+        ZASSERT(dirty.clear_reindex.empty());
+        ZASSERT(llvm::find(dirty.reindex_content_changed, file) !=
+                dirty.reindex_content_changed.end());
     }
 }
 
-TEST_CASE(EntryChangeThenRemoval) {
+ZEST_CASE(EntryChangeThenRemoval) {
     TempDir tmp;
     tmp.touch("a.cpp", R"(int a;)");
 
-    Workspace workspace;
+    FileTable files;
+
+    Project project{files};
     SessionStore store;
     auto json = build_cdb_json({
         {tmp.root, tmp.path("a.cpp"), {}}
     });
-    write_cdb(tmp, workspace.cdb, json);
-    auto file = workspace.path_pool.intern(tmp.path("a.cpp"));
+    write_cdb(tmp, project.cdb, json);
+    auto file = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
-    FileEvent::CDBDelta delta;
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    CDBDiff delta;
     delta.changed = {file};
     FileEvent events[] = {FileEvent::cdb_changed(std::move(delta)), FileEvent::disk_removed(file)};
     auto dirty = invalidator.apply(events);
@@ -491,95 +788,84 @@ TEST_CASE(EntryChangeThenRemoval) {
     // The removal is the later fact: the file keeps its last-known index
     // serving, so the entry change's drop and enqueue must not survive — a
     // surviving drop would mask the shard and let the next save retire it.
-    ASSERT_TRUE(dirty.drop_index.empty());
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
-    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{file});
+    ZASSERT(dirty.drop_index.empty());
+    ZASSERT(dirty.reindex_content_changed.empty());
+    ZASSERT(dirty.clear_reindex == llvm::SmallVector<Fid>{file});
 }
 
-TEST_CASE(CloseOfDeletedFile) {
-    Workspace workspace;
-    SessionStore store;
-    auto file = workspace.path_pool.intern("/proj/gone.cpp");
-    ContextResolver resolver(workspace);
-    // Disk read fails: the file vanished while it was open.
-    Invalidator invalidator(workspace, store, resolver, [](llvm::StringRef) {
-        return std::optional<std::string>{};
-    });
-
-    auto dirty = invalidator.apply(FileEvent::buffer_closed(file));
-
-    // The close is the first observation of the removal (the tracker skips
-    // open files): keep any shard serving, do not record ContentChanged,
-    // do not enqueue a nonexistent file.
-    ASSERT_EQ(dirty.clear_reindex, llvm::SmallVector<std::uint32_t>{file});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
-}
-
-TEST_CASE(CDBAddedScansAndEnqueues) {
+ZEST_CASE(CDBAddedScansAndEnqueues) {
     TempDir tmp;
     tmp.touch("inc/header.h", R"(int x = 1;)");
     tmp.touch("src/main.cpp", R"(#include "header.h")");
 
-    Workspace workspace;
+    FileTable files;
+
+    Project project{files};
     SessionStore store;
     auto json = build_cdb_json({
         {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
     });
-    write_cdb(tmp, workspace.cdb, json);
-    auto main_id = workspace.path_pool.intern(tmp.path("src/main.cpp"));
-    auto header_id = workspace.path_pool.intern(tmp.path("inc/header.h"));
+    write_cdb(tmp, project.cdb, json);
+    auto main_id = project.file_table.intern(Spelling::absolute(tmp.path("src/main.cpp")));
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("inc/header.h")));
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
-    FileEvent::CDBDelta delta;
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    CDBDiff delta;
     delta.added = {main_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
     // The rescan resolved the new entry's includes; the new file reindexes.
     // A command change rewrites rows as thoroughly as an edit.
-    ASSERT_EQ(workspace.dep_graph.get_includers(header_id), llvm::ArrayRef<std::uint32_t>{main_id});
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{main_id});
-    ASSERT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{main_id});
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
-    ASSERT_TRUE(dirty.recheck_contexts);
-    ASSERT_TRUE(dirty.ensure_compile_graph);
+    ZASSERT(project.dep_graph.get_includers(header_id) == llvm::ArrayRef<Fid>{main_id});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(dirty.drop_index == llvm::SmallVector<Fid>{main_id});
+    ZASSERT(dirty.reindex_deps_only.empty());
+    ZASSERT(dirty.recheck_contexts);
 }
 
-TEST_CASE(CDBChangedSplitsOpenClosed) {
+ZEST_CASE(CDBChangedSplitsOpenClosed) {
     TempDir tmp;
     tmp.touch("a.cpp", R"(int a;)");
     tmp.touch("b.cpp", R"(int b;)");
 
-    Workspace workspace;
+    FileTable files;
+
+    Project project{files};
     SessionStore store;
     auto json = build_cdb_json({
         {tmp.root, tmp.path("a.cpp"), {}},
         {tmp.root, tmp.path("b.cpp"), {}}
     });
-    write_cdb(tmp, workspace.cdb, json);
-    auto open_id = workspace.path_pool.intern(tmp.path("a.cpp"));
-    auto closed_id = workspace.path_pool.intern(tmp.path("b.cpp"));
+    write_cdb(tmp, project.cdb, json);
+    auto open_id = project.file_table.intern(Spelling::absolute(tmp.path("a.cpp")));
+    auto closed_id = project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
     store.open(open_id);
-    workspace.shards[open_id];
-    workspace.shards[closed_id];
+    project.project_index.shards[open_id];
+    project.project_index.shards[closed_id];
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
-    FileEvent::CDBDelta delta;
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    CDBDiff delta;
     delta.changed = {open_id, closed_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
     // Flag changes recompile open files and reindex closed ones; the
     // pull-side cache keys (canonical flags) miss on their own.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_id});
-    llvm::SmallVector<std::uint32_t> reindexed{open_id, closed_id};
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_id});
+    llvm::SmallVector<Fid> reindexed{open_id, closed_id};
     llvm::sort(reindexed);
     auto content_changed = dirty.reindex_content_changed;
     llvm::sort(content_changed);
-    ASSERT_EQ(content_changed, reindexed);
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
-    ASSERT_TRUE(dirty.recheck_contexts);
+    ZASSERT(content_changed == reindexed);
+    ZASSERT(dirty.reindex_deps_only.empty());
+    ZASSERT(dirty.recheck_contexts);
 
     // Both indexes were built under the old command and look fresh to
     // content-only validation: drop them so the queued reindexes are not
@@ -587,48 +873,56 @@ TEST_CASE(CDBChangedSplitsOpenClosed) {
     // with the indexer, which masks and retires them off the manifests.
     auto dropped = dirty.drop_index;
     llvm::sort(dropped);
-    ASSERT_EQ(dropped, reindexed);
-    ASSERT_EQ(workspace.shards.count(closed_id), 1u);
-    ASSERT_EQ(workspace.shards.count(open_id), 1u);
+    ZASSERT(dropped == reindexed);
+    ZASSERT(project.project_index.shards.count(closed_id) == 1u);
+    ZASSERT(project.project_index.shards.count(open_id) == 1u);
 }
 
-TEST_CASE(CDBAddedOpenMarksDirty) {
-    Workspace workspace;
+ZEST_CASE(CDBAddedOpenMarksDirty) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto file = workspace.path_pool.intern("/proj/a.cpp");
+    auto file = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
     store.open(file);
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
-    FileEvent::CDBDelta delta;
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    CDBDiff delta;
     delta.added = {file};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
     // The open file gained its first real entry: drop the guessed command
     // it was compiled with, and queue the reindex that builds its shard
     // under the real command once open-file indexing is on.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{file});
-    ASSERT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{file});
-    ASSERT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{file});
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{file});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{file});
+    ZASSERT(dirty.drop_index == llvm::SmallVector<Fid>{file});
+    ZASSERT(dirty.reindex_deps_only.empty());
 }
 
-TEST_CASE(CDBChangedDropsHostedContext) {
-    Workspace workspace;
+ZEST_CASE(CDBChangedDropsHostedContext) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto host = workspace.path_pool.intern("/proj/host.cpp");
-    auto open_header = workspace.path_pool.intern("/proj/open.h");
-    auto closed_header = workspace.path_pool.intern("/proj/closed.h");
-    auto other_header = workspace.path_pool.intern("/proj/other.h");
+    auto host = project.file_table.intern(Spelling::absolute("/proj/host.cpp"));
+    auto open_header = project.file_table.intern(Spelling::absolute("/proj/open.h"));
+    auto closed_header = project.file_table.intern(Spelling::absolute("/proj/closed.h"));
+    auto other_header = project.file_table.intern(Spelling::absolute("/proj/other.h"));
     store.open(open_header);
-    workspace.shards[closed_header];
+    project.project_index.shards[closed_header];
 
-    ContextResolver resolver(workspace);
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
     resolver.header_contexts[open_header].host_path_id = host;
     resolver.header_contexts[closed_header].host_path_id = host;
-    resolver.header_contexts[other_header].host_path_id = no_path_id;
-    Invalidator invalidator(workspace, store, resolver);
-    FileEvent::CDBDelta delta;
+    resolver.header_contexts[other_header].host_path_id = Fid{};
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    CDBDiff delta;
     delta.changed = {host};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
@@ -636,221 +930,356 @@ TEST_CASE(CDBChangedDropsHostedContext) {
     // open one recompiles, the closed one reindexes. Any standalone index
     // of theirs borrowed the changed command too, so it is dropped along
     // with the host's. Unrelated contexts are untouched.
-    llvm::SmallVector<std::uint32_t> dropped{open_header, closed_header};
+    llvm::SmallVector<Fid> dropped{open_header, closed_header};
     llvm::sort(dropped);
-    ASSERT_EQ(dirty.drop_context, dropped);
-    llvm::SmallVector<std::uint32_t> evicted{host, open_header, closed_header};
+    ZASSERT(dirty.drop_context == dropped);
+    llvm::SmallVector<Fid> evicted{host, open_header, closed_header};
     llvm::sort(evicted);
     auto drop = dirty.drop_index;
     llvm::sort(drop);
-    ASSERT_EQ(drop, evicted);
-    ASSERT_TRUE(llvm::is_contained(dirty.mark_ast_dirty, open_header));
-    ASSERT_TRUE(llvm::is_contained(dirty.reindex_content_changed, closed_header));
-    ASSERT_EQ(workspace.shards.count(closed_header), 1u);
+    ZASSERT(drop == evicted);
+    ZASSERT(llvm::is_contained(dirty.mark_ast_dirty, open_header));
+    ZASSERT(llvm::is_contained(dirty.reindex_content_changed, closed_header));
+    ZASSERT(project.project_index.shards.count(closed_header) == 1u);
 }
 
-TEST_CASE(CDBChangedCascadesModule) {
-    kota::event_loop loop;
-    Workspace workspace;
+ZEST_CASE(CDBDropsBorrowedIndex) {
+    // A header indexed standalone in an earlier session borrowed its
+    // host's command without ever being opened in this one: the host's
+    // command change drops and rebuilds its rows all the same.
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto mod = workspace.path_pool.intern("/proj/m.cppm");
-    auto open_user = workspace.path_pool.intern("/proj/open_user.cppm");
-    auto closed_user = workspace.path_pool.intern("/proj/closed_user.cppm");
+    auto host = project.file_table.intern(Spelling::absolute("/proj/host.cpp"));
+    auto header = project.file_table.intern(Spelling::absolute("/proj/header.h"));
 
-    llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t>> deps;
-    deps[open_user] = {mod};
-    deps[closed_user] = {mod};
-    workspace.compile_graph = std::make_unique<CompileGraph>(
-        loop,
-        [](std::uint32_t, bool) -> kota::task<CompileUnit::Outcome> {
-            co_return CompileUnit::Outcome::Success;
-        },
-        [deps = std::move(deps)](std::uint32_t id) -> llvm::SmallVector<std::uint32_t> {
-            auto it = deps.find(id);
-            return it != deps.end() ? it->second : llvm::SmallVector<std::uint32_t>{};
-        });
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    ph.index.record_header_host(header, host);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    CDBDiff delta;
+    delta.changed = {host};
+    auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
+
+    ZASSERT(dirty.drop_context.empty());
+    ZASSERT(llvm::is_contained(dirty.drop_index, header));
+    ZASSERT(llvm::is_contained(dirty.reindex_content_changed, header));
+    ZASSERT(!llvm::is_contained(dirty.mark_ast_dirty, header));
+}
+
+ZEST_CASE(CDBBorrowersByServing) {
+    // Open borrowers the index store names: an index-only session loses
+    // its serving rows with the drop and reindexes now; a compiling one
+    // reindexes when it closes. Neither recompiles — no context borrows.
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto host = project.file_table.intern(Spelling::absolute("/proj/host.cpp"));
+    auto served = project.file_table.intern(Spelling::absolute("/proj/served.h"));
+    auto compiled = project.file_table.intern(Spelling::absolute("/proj/compiled.h"));
+    store.open(served)->serving = ServingMode::IndexOnly;
+    store.open(compiled);
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    ph.index.record_header_host(served, host);
+    ph.index.record_header_host(compiled, host);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    CDBDiff delta;
+    delta.changed = {host};
+    auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
+
+    ZASSERT(llvm::is_contained(dirty.drop_index, served));
+    ZASSERT(llvm::is_contained(dirty.drop_index, compiled));
+    ZASSERT(llvm::is_contained(dirty.reindex_content_changed, served));
+    ZASSERT(!llvm::is_contained(dirty.reindex_content_changed, compiled));
+    ZASSERT(!llvm::is_contained(dirty.mark_ast_dirty, served));
+    ZASSERT(!llvm::is_contained(dirty.mark_ast_dirty, compiled));
+}
+
+ZEST_CASE(CDBChangedCascadesModule) {
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    auto mod = project.file_table.intern(Spelling::absolute("/proj/m.cppm"));
+    auto open_user = project.file_table.intern(Spelling::absolute("/proj/open_user.cppm"));
+    auto closed_user = project.file_table.intern(Spelling::absolute("/proj/closed_user.cppm"));
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    // The consumer edges build_deps declares in production — no rounds.
+    auto node = [](Fid pid) {
+        return NodeId{Family::PCM, pid.raw};
+    };
+    ph.graph.declare(node(open_user), {node(mod)});
+    ph.graph.declare(node(closed_user), {node(mod)});
 
     store.open(open_user);
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
 
-    auto body = [&]() -> kota::task<> {
-        co_await workspace.compile_graph->compile(open_user);
-        co_await workspace.compile_graph->compile(closed_user);
+    CDBDiff delta;
+    delta.changed = {mod};
+    auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
-        FileEvent::CDBDelta delta;
-        delta.changed = {mod};
-        auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
-
-        // A module unit's flag change cascades through the compile graph
-        // exactly like a content change: importers' PCMs went stale. The
-        // unit itself lands in both lists (its own entry changed AND the
-        // cascade dirtied its PCM); the indexer's absorbing upgrade
-        // resolves the overlap to ContentChanged.
-        EXPECT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_user});
-        EXPECT_EQ(dirty.reindex_content_changed, llvm::SmallVector<std::uint32_t>{mod});
-        EXPECT_EQ(dirty.drop_index, llvm::SmallVector<std::uint32_t>{mod});
-        llvm::SmallVector<std::uint32_t> deps{mod, closed_user};
-        llvm::sort(deps);
-        EXPECT_EQ(dirty.reindex_deps_only, deps);
-
-        co_await workspace.compile_graph->shutdown();
-    };
-    auto task = body();
-    loop.schedule(task);
-    loop.run();
+    // A module unit's flag change cascades through the compile graph
+    // exactly like a content change: importers' PCMs went stale. The
+    // unit itself lands in both lists (its own entry changed AND the
+    // cascade dirtied its PCM); the indexer's absorbing upgrade
+    // resolves the overlap to ContentChanged.
+    ZEXPECT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_user});
+    ZEXPECT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{mod});
+    ZEXPECT(dirty.drop_index == llvm::SmallVector<Fid>{mod});
+    llvm::SmallVector<Fid> deps{mod, closed_user};
+    llvm::sort(deps);
+    ZEXPECT(dirty.reindex_deps_only == deps);
 }
 
-TEST_CASE(DiskRemovedReindexesIncluders) {
-    Workspace workspace;
+ZEST_CASE(DiskRemovedReindexesIncluders) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    auto open_tu = workspace.path_pool.intern("/proj/a.cpp");
-    auto closed_tu = workspace.path_pool.intern("/proj/b.cpp");
-    workspace.dep_graph.set_includes(open_tu, 0, {header});
-    workspace.dep_graph.set_includes(closed_tu, 0, {header});
-    workspace.dep_graph.build_reverse_map();
+    auto header = project.file_table.intern(Spelling::absolute("/proj/h.h"));
+    auto open_tu = project.file_table.intern(Spelling::absolute("/proj/a.cpp"));
+    auto closed_tu = project.file_table.intern(Spelling::absolute("/proj/b.cpp"));
+    project.dep_graph.set_includes(open_tu, 0, {{header}});
+    project.dep_graph.set_includes(closed_tu, 0, {{header}});
+    project.dep_graph.build_reverse_map();
     store.open(open_tu);
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_removed(header));
 
     // Dependents now compile against a missing include: open ones
     // recompile, closed ones reindex.
-    ASSERT_EQ(dirty.mark_ast_dirty, llvm::SmallVector<std::uint32_t>{open_tu});
-    ASSERT_EQ(dirty.reindex_deps_only, llvm::SmallVector<std::uint32_t>{closed_tu});
-    ASSERT_TRUE(dirty.reindex_content_changed.empty());
-    ASSERT_TRUE(dirty.recheck_contexts);
+    ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
+    ZASSERT(dirty.reindex_deps_only == llvm::SmallVector<Fid>{closed_tu});
+    ZASSERT(dirty.reindex_content_changed.empty());
+    ZASSERT(dirty.recheck_contexts);
 }
 
-TEST_CASE(CDBRemovedDropsSourceRole) {
+ZEST_CASE(CDBRemovedDropsSourceRole) {
     TempDir tmp;
     tmp.touch("inc/h.h", R"(int x;)");
     tmp.touch("kept.cpp", R"(#include "inc/h.h")");
 
-    Workspace workspace;
+    FileTable files;
+
+    Project project{files};
     SessionStore store;
     // The pre-reload graph still shows gone.cpp as an includer; the CDB has
     // already been reloaded without it.
-    auto gone_id = workspace.path_pool.intern(tmp.path("gone.cpp"));
-    auto header_id = workspace.path_pool.intern(tmp.path("inc/h.h"));
-    workspace.dep_graph.set_includes(gone_id, 0, {header_id});
-    workspace.dep_graph.build_reverse_map();
+    auto gone_id = project.file_table.intern(Spelling::absolute(tmp.path("gone.cpp")));
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("inc/h.h")));
+    project.dep_graph.set_includes(gone_id, 0, {{header_id}});
+    project.dep_graph.build_reverse_map();
     auto json = build_cdb_json({
         {tmp.root, tmp.path("kept.cpp"), {}}
     });
-    write_cdb(tmp, workspace.cdb, json);
-    auto kept_id = workspace.path_pool.intern(tmp.path("kept.cpp"));
+    write_cdb(tmp, project.cdb, json);
+    auto kept_id = project.file_table.intern(Spelling::absolute(tmp.path("kept.cpp")));
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
-    FileEvent::CDBDelta delta;
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    CDBDiff delta;
     delta.removed = {gone_id};
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
-    // The rebuild resolves includes from the surviving entries only. A
-    // removed entry keeps its index — the last-known rows still serve.
-    ASSERT_TRUE(workspace.dep_graph.get_all_includes(gone_id).empty());
-    ASSERT_EQ(workspace.dep_graph.get_includers(header_id), llvm::ArrayRef<std::uint32_t>{kept_id});
-    ASSERT_TRUE(dirty.drop_index.empty());
-    ASSERT_TRUE(dirty.recheck_contexts);
+    // The rebuild resolves includes from the surviving entries only. The
+    // removed entry's rows leave the index: its database still loads and
+    // simply stopped compiling the file.
+    ZASSERT(project.dep_graph.get_all_includes(gone_id).empty());
+    ZASSERT(project.dep_graph.get_includers(header_id) == llvm::ArrayRef<Fid>{kept_id});
+    ZASSERT(dirty.drop_index == llvm::SmallVector<Fid>{gone_id});
+    ZASSERT(dirty.reindex_content_changed.empty());
+    ZASSERT(dirty.recheck_contexts);
 }
 
-TEST_CASE(CDBEmptyDeltaNoEffects) {
-    Workspace workspace;
+ZEST_CASE(CDBRemovedStillClaimed) {
+    /// The entry left the database but a rule's default command still
+    /// claims the file: a command change, not a retirement — the rows are
+    /// rebuilt under the default command instead of leaving.
+    TempDir tmp;
+    tmp.touch("gone.cpp", R"(int x;)");
+    tmp.touch("kept.cpp", R"(int y;)");
+
+    FileTable files;
+
+    Project project{files};
+    SessionStore store;
+    project.config.rules.push_back(ConfigRule{.default_command = std::string("clang++")});
+    project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
+    project.build.reset_active("");
+    auto gone_id = project.file_table.intern(Spelling::absolute(tmp.path("gone.cpp")));
+    auto json = build_cdb_json({
+        {tmp.root, tmp.path("kept.cpp"), {}}
+    });
+    write_cdb(tmp, project.cdb, json);
+
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
+    CDBDiff delta;
+    delta.removed = {gone_id};
+    auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
+
+    ZASSERT(dirty.drop_index == llvm::SmallVector<Fid>{gone_id});
+    ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{gone_id});
+    ZASSERT(dirty.clear_reindex.empty());
+}
+
+ZEST_CASE(CDBEmptyDeltaNoEffects) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::cdb_changed({}));
 
-    ASSERT_TRUE(dirty.empty());
+    ZASSERT(dirty.empty());
 }
 
-TEST_CASE(BatchDiskEventsDeduplicate) {
-    Workspace workspace;
+ZEST_CASE(BatchDiskEventsDeduplicate) {
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    auto first = workspace.path_pool.intern("/proj/a.h");
-    auto second = workspace.path_pool.intern("/proj/b.h");
+    auto first = project.file_table.intern(Spelling::absolute("/proj/a.h"));
+    auto second = project.file_table.intern(Spelling::absolute("/proj/b.h"));
 
-    ContextResolver resolver(workspace);
-    Invalidator invalidator(workspace, store, resolver);
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    PCMHarness ph(project, resolver);
+    Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
     FileEvent events[] = {FileEvent::disk_changed(first),
                           FileEvent::disk_changed(first),
                           FileEvent::disk_changed(second)};
     auto dirty = invalidator.apply(events);
 
-    llvm::SmallVector<std::uint32_t> expected{first, second};
+    llvm::SmallVector<Fid> expected{first, second};
     llvm::sort(expected);
-    ASSERT_EQ(dirty.reindex_content_changed, expected);
-    ASSERT_TRUE(dirty.reindex_deps_only.empty());
+    ZASSERT(dirty.reindex_content_changed == expected);
+    ZASSERT(dirty.reindex_deps_only.empty());
 }
 
-};  // TEST_SUITE(Invalidator)
+};  // ZEST_SUITE(Invalidator)
 
-TEST_SUITE(DropOrphanedChoices) {
+ZEST_SUITE(DropOrphanedChoices) {
 
-TEST_CASE(SurvivingEdgeKeepsChoice) {
-    Workspace workspace;
+ZEST_CASE(SurvivingEdgeKeepsChoice) {
+    TempDir tmp;
+    tmp.touch("host.cpp", R"(#include "h.h")");
+    tmp.touch("h.h");
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    ContextResolver resolver(workspace);
-    auto host = workspace.path_pool.intern("/proj/host.cpp");
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    workspace.dep_graph.set_includes(host, 0, {header});
-    workspace.dep_graph.build_reverse_map();
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("host.cpp"), {}}
+    }));
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
 
     auto session = store.open(header);
-    resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
+    resolver.selections[header] = Selection{host, std::nullopt, ""};
 
-    ASSERT_FALSE(resolver.drop_orphaned_choices(store));
-    ASSERT_TRUE(resolver.saved_contexts.contains(header));
+    ASTHarness harness(project, resolver, store);
+    ZASSERT(!ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
+    ZASSERT(resolver.selections.contains(header));
 }
 
-TEST_CASE(RemovedEdgeDropsChoice) {
-    Workspace workspace;
+ZEST_CASE(RemovedEdgeDropsChoice) {
+    // The host still compiles but no longer includes the header.
+    TempDir tmp;
+    tmp.touch("host.cpp", "int x;\n");
+    tmp.touch("h.h");
+    FileTable files;
+    Project project{files};
     SessionStore store;
-    ContextResolver resolver(workspace);
-    auto host = workspace.path_pool.intern("/proj/host.cpp");
-    auto header = workspace.path_pool.intern("/proj/h.h");
-    workspace.dep_graph.build_reverse_map();
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("host.cpp"), {}}
+    }));
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    project.dep_graph.set_includes(host, 0, {});
+    project.dep_graph.build_reverse_map();
 
     auto session = store.open(header);
     session->trial_done = true;
     resolver.header_contexts[header] = HeaderContext{};
-    resolver.saved_contexts[header] = SavedContext{host, std::nullopt, ""};
+    resolver.selections[header] = Selection{host, std::nullopt, ""};
     auto generation = session->generation;
 
-    ASSERT_TRUE(resolver.drop_orphaned_choices(store));
-    ASSERT_FALSE(resolver.header_contexts.contains(header));
-    ASSERT_TRUE(session->ast_dirty);
-    ASSERT_FALSE(session->trial_done);
-    ASSERT_EQ(session->generation, generation + 1);
-    ASSERT_FALSE(resolver.saved_contexts.contains(header));
+    ASTHarness harness(project, resolver, store);
+    harness.ast.projections.entries[header].current = true;
+    ZASSERT(ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
+    ZASSERT(!resolver.header_contexts.contains(header));
+    ZASSERT(!harness.ast.projections.current(header));
+    ZASSERT(!session->trial_done);
+    ZASSERT(session->generation == generation + 1);
+    ZASSERT(!resolver.selections.contains(header));
 }
 
-TEST_CASE(VanishedOccurrenceDropsChoice) {
+ZEST_CASE(VanishedOccurrenceDropsChoice) {
     TempDir tmp;
-    Workspace workspace;
-    SessionStore store;
-    ContextResolver resolver(workspace);
-    // The host still includes the header, but only once — the pinned
-    // occurrence #1 no longer exists.
+    // The host still compiles and includes the header, but only once — the
+    // pinned occurrence #1 no longer exists.
     tmp.touch("host.cpp", R"(#include "h.h")");
     tmp.touch("h.h");
-    auto host = workspace.path_pool.intern(tmp.path("host.cpp"));
-    auto header = workspace.path_pool.intern(tmp.path("h.h"));
-    workspace.dep_graph.set_includes(host, 0, {header});
-    workspace.dep_graph.build_reverse_map();
+    FileTable files;
+    Project project{files};
+    SessionStore store;
+    write_cdb(tmp,
+              project.cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("host.cpp"), {}}
+    }));
+    CommandResolver commands(project);
+    ContextsBlob blob;
+    EditorContext resolver(project, commands, blob);
+    auto host = project.file_table.intern(Spelling::absolute(tmp.path("host.cpp")));
+    auto header = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+    project.dep_graph.set_includes(host, 0, {{header}});
+    project.dep_graph.build_reverse_map();
 
     store.open(header);
-    resolver.saved_contexts[header] = SavedContext{host, 1, ""};
+    resolver.selections[header] = Selection{host, 1, ""};
 
-    ASSERT_TRUE(resolver.drop_orphaned_choices(store));
-    ASSERT_FALSE(resolver.saved_contexts.contains(header));
+    ASTHarness harness(project, resolver, store);
+    ZASSERT(ContextService{project, resolver, harness.ast}.drop_orphaned_choices(store));
+    ZASSERT(!resolver.selections.contains(header));
 }
 
-};  // TEST_SUITE(DropOrphanedChoices)
+};  // ZEST_SUITE(DropOrphanedChoices)
 
 }  // namespace
 }  // namespace clice::testing

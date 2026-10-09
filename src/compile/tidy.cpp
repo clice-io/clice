@@ -1,17 +1,16 @@
-#include "compile/implement.h"
-#include "support/logging.h"
+module;
 
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/Allocator.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/StringSaver.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang-tidy/ClangTidyCheck.h"
-#include "clang-tidy/ClangTidyDiagnosticConsumer.h"
+#include "modules/prelude.h"
+
+#include "support/logging.macros.h"
+
 #include "clang-tidy/ClangTidyForceLinker.h"
-#include "clang-tidy/ClangTidyModuleRegistry.h"
-#include "clang-tidy/ClangTidyOptions.h"
+
+module clice;
+
+import :compile.implement;
+import :support.logging;
+import :vfs.file_system;
 
 namespace clice::tidy {
 
@@ -24,6 +23,200 @@ bool is_inside_main_file(clang::SourceLocation loc, const clang::SourceManager& 
     clang::FileID fid = sm.getFileID(sm.getExpansionLoc(loc));
     return fid == sm.getMainFileID() || fid == sm.getPreambleFileID();
 }
+
+/// The #include directives of the main file's preamble, replayed to the
+/// tidy checks' callbacks: a compile against a PCH never preprocesses
+/// them. Include-aware checks look for them, and a fix inserting an
+/// include places it among them, or leaves out one the file already has.
+/// clangd's ReplayPreamble, read from the source: the preamble's inactive
+/// regions tell the directives the PCH never entered, and one naming its
+/// file through a macro has no filename to replay.
+class PreambleReplay : public clang::PPCallbacks {
+public:
+    PreambleReplay(clang::Preprocessor& pp,
+                   clang::PPCallbacks& delegate,
+                   unsigned bound,
+                   llvm::ArrayRef<std::uint32_t> inactive) :
+        pp(pp), delegate(delegate), bound(bound), inactive(inactive) {}
+
+    /// The preamble's includes follow the predefines buffer, the last
+    /// thing the compile enters before the main file's rest; replayed once
+    /// every callback has left it, so they land in the main file's scope.
+    void LexedFileChanged(clang::FileID,
+                          LexedFileChangeReason reason,
+                          clang::SrcMgr::CharacteristicKind,
+                          clang::FileID prev,
+                          clang::SourceLocation) override {
+        if(reason == LexedFileChangeReason::ExitFile &&
+           pp.getSourceManager().getBufferOrFake(prev).getBufferIdentifier() == "<built-in>") {
+            replay();
+        }
+    }
+
+private:
+    void replay() {
+        auto& sm = pp.getSourceManager();
+        auto main = sm.getMainFileID();
+        // Lexed over the whole buffer, whose terminating null the lexer
+        // relies on, up to the bound.
+        auto text = sm.getBufferData(main);
+        clang::Lexer lexer(sm.getLocForStartOfFile(main),
+                           pp.getLangOpts(),
+                           text.begin(),
+                           text.begin(),
+                           text.end());
+        while(true) {
+            clang::Token hash;
+            lexer.LexFromRawLexer(hash);
+            auto offset = sm.getFileOffset(hash.getLocation());
+            if(offset >= bound) {
+                return;
+            }
+            if(hash.isNot(clang::tok::hash) || !hash.isAtStartOfLine() || in_inactive(offset)) {
+                continue;
+            }
+            clang::Token keyword;
+            lexer.LexFromRawLexer(keyword);
+            if(keyword.is(clang::tok::raw_identifier) &&
+               llvm::is_contained({"include", "include_next", "import"},
+                                  keyword.getRawIdentifier())) {
+                replay_include(hash, keyword, text);
+            }
+        }
+    }
+
+    bool in_inactive(std::uint32_t offset) const {
+        for(std::size_t i = 0; i + 1 < inactive.size(); i += 2) {
+            if(inactive[i] <= offset && offset < inactive[i + 1]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void replay_include(const clang::Token& hash, clang::Token& keyword, llvm::StringRef text) {
+        auto& sm = pp.getSourceManager();
+        auto line = text.drop_front(sm.getFileOffset(keyword.getEndLoc()))
+                        .ltrim(" \t")
+                        .take_until([](char c) { return c == '\n' || c == '\r'; });
+        if(line.empty() || (line.front() != '<' && line.front() != '"')) {
+            return;
+        }
+        auto close = line.find(line.front() == '<' ? '>' : '"', 1);
+        if(close == llvm::StringRef::npos) {
+            return;
+        }
+        auto written = line.take_front(close + 1);
+        auto name = written.drop_front().drop_back();
+        bool angled = written.front() == '<';
+        auto location = sm.getLocForStartOfFile(sm.getMainFileID())
+                            .getLocWithOffset(written.data() - text.data());
+        auto file = pp.LookupFile(location,
+                                  name,
+                                  angled,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr,
+                                  nullptr);
+
+        pp.LookUpIdentifierInfo(keyword);
+        clang::Token filename;
+        filename.startToken();
+        filename.setKind(clang::tok::header_name);
+        filename.setLocation(location);
+        filename.setLength(written.size());
+        filename.setLiteralData(written.data());
+        auto kind = file ? pp.getHeaderSearchInfo().getFileDirFlavor(*file) : clang::SrcMgr::C_User;
+        delegate.InclusionDirective(
+            hash.getLocation(),
+            keyword,
+            name,
+            angled,
+            clang::CharSourceRange::getCharRange(location, filename.getEndLoc()),
+            file,
+            /*SearchPath=*/"",
+            /*RelativePath=*/"",
+            /*SuggestedModule=*/nullptr,
+            /*ModuleImported=*/false,
+            kind);
+        if(file) {
+            delegate.FileSkipped(*file, filename, kind);
+        }
+    }
+
+    clang::Preprocessor& pp;
+    clang::PPCallbacks& delegate;
+    unsigned bound;
+    std::vector<std::uint32_t> inactive;
+};
+
+/// The view of the disk a .clang-tidy resolution reads, recording each
+/// configuration file it looks for: by the hash of the text it read, or
+/// as absent.
+class ConfigReads : public llvm::vfs::ProxyFileSystem {
+public:
+    ConfigReads() : ProxyFileSystem(llvm::makeIntrusiveRefCnt<vfs::View>()) {}
+
+    std::vector<DepFile> files;
+
+    llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override {
+        auto status = ProxyFileSystem::status(path);
+        if(!status && is_config(path)) {
+            files.push_back({.path = path.str(), .absent = true});
+        }
+        return status;
+    }
+
+    llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>>
+        openFileForRead(const llvm::Twine& path) override {
+        auto file = ProxyFileSystem::openFileForRead(path);
+        if(!file || !is_config(path)) {
+            return file;
+        }
+        auto status = (*file)->status();
+        auto buffer = (*file)->getBuffer(path);
+        if(!status || !buffer) {
+            return status ? buffer.getError() : status.getError();
+        }
+        files.push_back({.path = path.str(), .hash = llvm::xxh3_64bits((*buffer)->getBuffer())});
+        return std::make_unique<ReadFile>(*status, std::move(*buffer));
+    }
+
+private:
+    /// The text a recorded read hands on, so the provider parses the bytes
+    /// the record hashed.
+    class ReadFile : public llvm::vfs::File {
+    public:
+        ReadFile(llvm::vfs::Status status, std::unique_ptr<llvm::MemoryBuffer> buffer) :
+            stat(std::move(status)), buffer(std::move(buffer)) {}
+
+        llvm::ErrorOr<llvm::vfs::Status> status() override {
+            return stat;
+        }
+
+        llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
+            getBuffer(const llvm::Twine& name, std::int64_t, bool, bool) override {
+            return llvm::MemoryBuffer::getMemBufferCopy(buffer->getBuffer(), name);
+        }
+
+        std::error_code close() override {
+            return {};
+        }
+
+    private:
+        llvm::vfs::Status stat;
+        std::unique_ptr<llvm::MemoryBuffer> buffer;
+    };
+
+    static bool is_config(const llvm::Twine& path) {
+        llvm::SmallString<256> storage;
+        return llvm::sys::path::filename(path.toStringRef(storage)) == ".clang-tidy";
+    }
+};
 
 }  // namespace
 
@@ -72,7 +265,7 @@ tidy::ClangTidyCheckFactories get_fast_checks(const tidy::ClangTidyCheckFactorie
     return fast;
 }
 
-tidy::ClangTidyOptions create_options() {
+tidy::ClangTidyOptions create_options(const TidyParams& params) {
     // getDefaults instantiates all check factories, which are registered at link
     // time. So cache the results once.
     const static auto default_opts = [] {
@@ -108,16 +301,16 @@ tidy::ClangTidyOptions create_options() {
                          // clangd doesn't replay those when using a preamble.
                          "-llvm-header-guard",
                          "-modernize-macro-to-enum",
+                         "-cppcoreguidelines-macro-to-enum",
 
                          // Check can choke on invalid (intermediate) c++
                          // code, which is often the case when clangd
                          // tries to build an AST.
                          "-bugprone-use-after-move",
-                         // Alias for bugprone-use-after-move.
-                         "-hicpp-invalid-access-moved",
                          // Check uses dataflow analysis, which might hang/crash unexpectedly on
                          // incomplete code.
-                         "-bugprone-unchecked-optional-access");
+                         "-bugprone-unchecked-optional-access",
+                         "-abseil-unchecked-statusor-access");
 
     tidy::ClangTidyOptions opts = default_opts;
 
@@ -125,17 +318,78 @@ tidy::ClangTidyOptions create_options() {
     if(std::optional<std::string> user = llvm::sys::Process::GetEnv("USER")) {
         opts.User = user;
     }
-    // TODO: Providers.push_back(provideClangTidyFiles(TFS)); Filename
-    // TODO: if(EnableConfig) Providers.push_back(provideClangdConfig());
     // clang::clangd::provideDefaultChecks
-    if(!opts.Checks || opts.Checks->empty()) {
-        opts.Checks = default_checks;
-    }
-    // clang::clangd::disableUnusableChecks
-    if(opts.Checks && !opts.Checks->empty()) {
+    opts.Checks = params.checks.empty() ? default_checks : params.checks;
+    // clang::clangd::disableUnusableChecks, after the configuration's own
+    // list so that no configuration enables them again. A batch run never
+    // parses code mid-edit.
+    if(!params.batch) {
         opts.Checks->append(bad_checks);
     }
+    for(auto& [key, value]: params.options) {
+        opts.CheckOptions.insert_or_assign(key, tidy::ClangTidyOptions::ClangTidyValue(value));
+    }
+    if(!params.warnings_as_errors.empty()) {
+        opts.WarningsAsErrors = params.warnings_as_errors;
+    }
+    if(!params.header_filter.empty()) {
+        opts.HeaderFilterRegex = params.header_filter;
+    }
+    if(!params.exclude_header_filter.empty()) {
+        opts.ExcludeHeaderFilterRegex = params.exclude_header_filter;
+    }
+    if(params.system_headers) {
+        opts.SystemHeaders = true;
+    }
+    if(params.header_file_extensions) {
+        opts.HeaderFileExtensions = params.header_file_extensions;
+    }
+    if(params.implementation_file_extensions) {
+        opts.ImplementationFileExtensions = params.implementation_file_extensions;
+    }
+    if(!params.extra_args.empty()) {
+        opts.ExtraArgs = params.extra_args;
+    }
+    if(!params.extra_args_before.empty()) {
+        opts.ExtraArgsBefore = params.extra_args_before;
+    }
     return opts;
+}
+
+CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
+                                    llvm::ArrayRef<std::string> extra_args_before) {
+    // -Wp,/-Wl,/-Wa, are driver pass-throughs, not warning flags: they
+    // must reach the command, while true -W warning flags stay on the
+    // warning-options path where the Checks gate applies.
+    auto non_warning = [](llvm::StringRef ref) {
+        return !ref.starts_with("-W") || ref.starts_with("-Wp,") || ref.starts_with("-Wl,") ||
+               ref.starts_with("-Wa,");
+    };
+    // A -X<tool> forwards its next token, so the pair filters as one
+    // unit on the operand's verdict — a lone survivor would consume
+    // whatever follows it on the final command (the source path, say).
+    auto forwards_operand = [](llvm::StringRef ref) {
+        return ref == "-Xclang" || ref == "-Xpreprocessor" || ref == "-Xlinker" ||
+               ref == "-Xassembler" || ref.starts_with("-Xarch_");
+    };
+    auto filter_into = [&](llvm::ArrayRef<std::string> args, std::vector<std::string>& out) {
+        for(std::size_t i = 0; i < args.size(); i += 1) {
+            llvm::StringRef ref(args[i]);
+            if(forwards_operand(ref) && i + 1 < args.size()) {
+                if(non_warning(args[i + 1])) {
+                    out.push_back(args[i]);
+                    out.push_back(args[i + 1]);
+                }
+                i += 1;
+            } else if(non_warning(ref)) {
+                out.push_back(args[i]);
+            }
+        }
+    };
+    CommandExtraArgs split;
+    filter_into(extra_args_before, split.prepend);
+    filter_into(extra_args, split.append);
+    return split;
 }
 
 // Filter for clang diagnostics groups enabled by CTOptions.Checks.
@@ -252,86 +506,85 @@ void apply_warning_options(llvm::ArrayRef<std::string> extra_args,
     }
 }
 
-ClangTidyChecker::ClangTidyChecker(std::unique_ptr<ClangTidyOptionsProvider> provider) :
-    context(std::move(provider)) {}
+ClangTidyChecker::ClangTidyChecker(std::unique_ptr<ClangTidyOptionsProvider> provider,
+                                   clang::ast_matchers::MatchFinder::MatchFinderOptions options) :
+    context(std::move(provider)), finder(options) {}
 
 clang::DiagnosticsEngine::Level
     ClangTidyChecker::adjust_level(clang::DiagnosticsEngine::Level level,
                                    const clang::Diagnostic& diag) {
-    if(!checks.empty()) {
-        std::string tidy_diag = context.getCheckName(diag.getID());
-        bool is_clang_tidy_diag = !tidy_diag.empty();
-        if(is_clang_tidy_diag) {
-            // Check for suppression comment. Skip the check for diagnostics not
-            // in the main file, because we don't want that function to query the
-            // source buffer for preamble files. For the same reason, we ask
-            // shouldSuppressDiagnostic to avoid I/O.
-            // We let suppression comments take precedence over warning-as-error
-            // to match clang-tidy's behaviour.
-            bool in_main_file = diag.hasSourceManager() &&
-                                is_inside_main_file(diag.getLocation(), diag.getSourceManager());
-            llvm::SmallVector<clang::tooling::Diagnostic, 1> tidy_suppressed_errors;
-            if(in_main_file && context.shouldSuppressDiagnostic(level,
-                                                                diag,
-                                                                tidy_suppressed_errors,
-                                                                /*AllowIO=*/false,
-                                                                /*EnableNolintBlocks=*/true)) {
-                // FIXME: should we expose the suppression error (invalid use of
-                // NOLINT comments)?
-                return clang::DiagnosticsEngine::Ignored;
-            }
-            if(!context.getOptions().SystemHeaders.value_or(false) && diag.hasSourceManager() &&
-               diag.getSourceManager().isInSystemMacro(diag.getLocation())) {
-                return clang::DiagnosticsEngine::Ignored;
-            }
+    if(checks.empty()) {
+        return level;
+    }
+    // Compiler warnings carry their clang-diagnostic-* name too. A batch
+    // run neither suppresses nor promotes the ones Checks leaves out: they
+    // are no findings of its, as in clang-tidy.
+    std::string tidy_diag = context.getCheckName(diag.getID());
+    if(tidy_diag.empty() || (batch && context.isCompilerDiagnostic(diag.getID()) &&
+                             !context.isCheckEnabled(tidy_diag))) {
+        return level;
+    }
+    // Check for suppression comment. The interactive shape skips
+    // diagnostics outside the main file and forbids I/O: that
+    // function would otherwise read the source buffers of preamble
+    // files. The batch shape reads every file, as clang-tidy does.
+    // We let suppression comments take precedence over warning-as-error
+    // to match clang-tidy's behaviour.
+    bool in_main_file =
+        diag.hasSourceManager() && is_inside_main_file(diag.getLocation(), diag.getSourceManager());
+    llvm::SmallVector<clang::tooling::Diagnostic, 1> tidy_suppressed_errors;
+    if((in_main_file || batch) && context.shouldSuppressDiagnostic(level,
+                                                                   diag,
+                                                                   tidy_suppressed_errors,
+                                                                   /*AllowIO=*/batch,
+                                                                   /*EnableNolintBlocks=*/true)) {
+        // FIXME: should we expose the suppression error (invalid use of
+        // NOLINT comments)?
+        return clang::DiagnosticsEngine::Ignored;
+    }
+    // The compiler settles its own diagnostics in system macros: an error
+    // there stays one.
+    if(!context.isCompilerDiagnostic(diag.getID()) &&
+       !context.getOptions().SystemHeaders.value_or(false) && diag.hasSourceManager() &&
+       diag.getSourceManager().isInSystemMacro(diag.getLocation())) {
+        return clang::DiagnosticsEngine::Ignored;
+    }
 
-            // Check for warning-as-error.
-            if(level == clang::DiagnosticsEngine::Warning && context.treatAsError(tidy_diag)) {
-                return clang::DiagnosticsEngine::Error;
-            }
-        }
+    // Check for warning-as-error.
+    if(level == clang::DiagnosticsEngine::Warning && context.treatAsError(tidy_diag)) {
+        return clang::DiagnosticsEngine::Error;
     }
     return level;
 }
 
 void ClangTidyChecker::adjust_diag(Diagnostic& diag) {
     std::string tidy_diag = context.getCheckName(diag.id.value);
-    if(!tidy_diag.empty()) {
-        // TODO: using a global string saver.
-        static llvm::BumpPtrAllocator allocator;
-        static llvm::StringSaver saver(allocator);
-        diag.id.name = saver.save(tidy_diag);
-        diag.id.source = DiagnosticSource::ClangTidy;
-        // clang-tidy bakes the name into diagnostic messages. Strip it out.
-        // It would be much nicer to make clang-tidy not do this.
-        auto clean_message = [&](std::string& msg) {
-            llvm::StringRef rest(msg);
-            if(rest.consume_back("]") && rest.consume_back(diag.id.name) && rest.consume_back(" ["))
-                msg.resize(rest.size());
-        };
-        clean_message(diag.message);
-        // todo: where is clice notes and fixes?
-        // for(auto& note: diag.Notes)
-        //     clean_message(note.Message);
-        // for(auto& fix: diag.Fixes)
-        //     clean_message(fix.Message);
+    // A compiler diagnostic stays the compiler's, but for a batch run's
+    // finding.
+    if(tidy_diag.empty() || (context.isCompilerDiagnostic(diag.id.value) &&
+                             !(batch && context.isCheckEnabled(tidy_diag)))) {
+        return;
+    }
+    diag.id.name = names.save(tidy_diag);
+    diag.id.source = DiagnosticSource::ClangTidy;
+    // clang-tidy bakes the name into diagnostic messages. Strip it out.
+    // It would be much nicer to make clang-tidy not do this.
+    llvm::StringRef rest(diag.message);
+    if(rest.consume_back("]") && rest.consume_back(diag.id.name) && rest.consume_back(" [")) {
+        diag.message.resize(rest.size());
     }
 }
 
 std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
-                                            const TidyParams& params) {
+                                            const TidyParams& params,
+                                            llvm::ArrayRef<std::uint32_t> preamble_inactive) {
     auto& input = instance.getFrontendOpts().Inputs[0];
 
     if(!input.isFile()) {
         return nullptr;
     }
     auto file_name = input.getFile();
-    LOG_INFO("Tidy configure file: {}", file_name);
-
-    tidy::ClangTidyOptions opts = create_options();
-    if(opts.Checks) {
-        LOG_INFO("Tidy configure checks: {}", *opts.Checks);
-    }
+    tidy::ClangTidyOptions opts = create_options(params);
 
     {
         // If clang-tidy is configured to emit clang warnings, we should too.
@@ -371,9 +624,16 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         }
         return factories;
     }();
-    tidy::ClangTidyCheckFactories factories = get_fast_checks(all_factories);
+    tidy::ClangTidyCheckFactories factories =
+        params.batch ? all_factories : get_fast_checks(all_factories);
+    // Like clang-tidy: nodes in system headers are not even matched unless
+    // the configuration asks for their findings.
+    clang::ast_matchers::MatchFinder::MatchFinderOptions finder_options;
+    finder_options.IgnoreSystemHeaders = !opts.SystemHeaders.value_or(false);
     std::unique_ptr<ClangTidyChecker> checker = std::make_unique<ClangTidyChecker>(
-        std::make_unique<tidy::DefaultOptionsProvider>(tidy::ClangTidyGlobalOptions(), opts));
+        std::make_unique<tidy::DefaultOptionsProvider>(tidy::ClangTidyGlobalOptions(), opts),
+        finder_options);
+    checker->batch = params.batch;
 
     checker->context.setDiagnosticsEngine(
         std::make_unique<clang::DiagnosticOptions>(instance.getDiagnosticOpts()),
@@ -383,13 +643,60 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     checker->context.setCurrentFile(file_name);
     checker->context.setSelfContainedDiags(true);
     checker->checks = factories.createChecksForLanguage(&checker->context);
-    LOG_INFO("Tidy configure checks: {}", checker->checks.size());
+    LOG_DEBUG("Tidy configured for {}: {} checks of {}",
+              file_name,
+              checker->checks.size(),
+              *opts.Checks);
     clang::Preprocessor* pp = &instance.getPreprocessor();
     for(const auto& check: checker->checks) {
         check->registerPPCallbacks(instance.getSourceManager(), pp, pp);
         check->registerMatchers(&checker->finder);
     }
+    // The checks' callbacks are all the preprocessor has yet: the replay
+    // reaches them alone, never the unit's own collectors added later.
+    if(auto bound = instance.getPreprocessorOpts().PrecompiledPreambleBytes.first;
+       bound != 0 && pp->getPPCallbacks()) {
+        pp->addPPCallbacks(
+            std::make_unique<PreambleReplay>(*pp, *pp->getPPCallbacks(), bound, preamble_inactive));
+    }
     return checker;
+}
+
+TidyResolution resolve_tidy_params(llvm::StringRef file) {
+    // clang-tidy's own provider: walks the file's ancestor directories
+    // reading .clang-tidy, honoring InheritParentConfig. The defaults
+    // carry no checks, so a tree without any configuration resolves to an
+    // empty list and the consumer's built-in default set applies.
+    auto reads = llvm::makeIntrusiveRefCnt<ConfigReads>();
+    tidy::FileOptionsProvider provider(
+        tidy::ClangTidyGlobalOptions(),
+        [] {
+            auto opts = tidy::ClangTidyOptions::getDefaults();
+            opts.Checks->clear();
+            return opts;
+        }(),
+        tidy::ClangTidyOptions(),
+        reads);
+    auto opts = provider.getOptions(file);
+
+    TidyResolution resolution;
+    auto& params = resolution.params;
+    params.checks = opts.Checks.value_or(std::string());
+    for(auto& [key, value]: opts.CheckOptions) {
+        params.options.emplace_back(key.str(), value.Value);
+    }
+    // Deterministic plan bytes: the option map's iteration order is not.
+    std::ranges::sort(params.options);
+    params.warnings_as_errors = opts.WarningsAsErrors.value_or(std::string());
+    params.header_filter = opts.HeaderFilterRegex.value_or(std::string());
+    params.exclude_header_filter = opts.ExcludeHeaderFilterRegex.value_or(std::string());
+    params.system_headers = opts.SystemHeaders.value_or(false);
+    params.header_file_extensions = opts.HeaderFileExtensions;
+    params.implementation_file_extensions = opts.ImplementationFileExtensions;
+    params.extra_args = opts.ExtraArgs.value_or(std::vector<std::string>());
+    params.extra_args_before = opts.ExtraArgsBefore.value_or(std::vector<std::string>());
+    resolution.files = std::move(reads->files);
+    return resolution;
 }
 
 }  // namespace clice::tidy

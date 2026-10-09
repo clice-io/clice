@@ -1,0 +1,30 @@
+---
+created_at: 2026-09-19
+input_file: workspace_symbol/09_query_syntax.cpp
+---
+"\"process\"":
+  - { name: "process", kind: Function, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "21:5-21:12", container: "io" }
+
+"proc*":
+  - { name: "process", kind: Function, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "21:5-21:12", container: "io" }
+  - { name: "process_all", kind: Function, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "22:5-22:16", container: "io" }
+  - { name: "processor", kind: Function, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "25:5-25:14", container: "io::detail" }
+  - { name: "processed", kind: Variable, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "30:4-30:13" }
+
+"io::*":
+  - { name: "io::Stream", kind: Struct, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "19:7-19:13", container: "io" }
+  - { name: "io::process", kind: Function, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "21:5-21:12", container: "io" }
+  - { name: "io::process_all", kind: Function, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "22:5-22:16", container: "io" }
+  - { name: "io::detail", kind: Namespace, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "24:10-24:16", container: "io" }
+
+"io::**":
+  - { name: "io::Stream", kind: Struct, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "19:7-19:13", container: "io" }
+  - { name: "io::process", kind: Function, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "21:5-21:12", container: "io" }
+  - { name: "io::process_all", kind: Function, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "22:5-22:16", container: "io" }
+  - { name: "io::detail", kind: Namespace, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "24:10-24:16", container: "io" }
+  - { name: "io::detail::processor", kind: Function, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "25:5-25:14", container: "io::detail" }
+
+"process kind:function":
+  - { name: "process", kind: Function, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "21:5-21:12", container: "io" }
+  - { name: "process_all", kind: Function, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "22:5-22:16", container: "io" }
+  - { name: "processor", kind: Function, file: "${WS}/workspace_symbol/09_query_syntax.cpp", range: "25:5-25:14", container: "io::detail" }

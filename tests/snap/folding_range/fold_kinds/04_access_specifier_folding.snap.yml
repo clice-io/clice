@@ -1,0 +1,8 @@
+---
+created_at: 2026-07-27
+input_file: fold_kinds/04_access_specifier_folding.cpp
+---
+- { range: "0:38-5:63", kind: comment }
+- { range: "7:13-14:1", kind: class, collapsed_text: "{...}" }
+- { range: "8:23-11:0", kind: accessSpecifier }
+- { range: "11:23-14:0", kind: accessSpecifier }

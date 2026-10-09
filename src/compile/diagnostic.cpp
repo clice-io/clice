@@ -1,32 +1,43 @@
-#include "compile/diagnostic.h"
+module;
 
-#include "compile/implement.h"
-#include "support/format.h"
+#include "modules/prelude.h"
 
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/AllDiagnostics.h"
-#include "clang/Basic/Diagnostic.h"
-#include "clang/Basic/DiagnosticIDs.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Lex/Preprocessor.h"
+module clice;
+
+import :compile.diagnostic;
+import :compile.implement;
+import :support.format;
 
 namespace clice {
 
+llvm::StringRef diagnostic_source_name(DiagnosticSource source) {
+    switch(source) {
+        case DiagnosticSource::Unknown: return {};
+        case DiagnosticSource::Clang: return "clang";
+        case DiagnosticSource::ClangTidy: return "clang-tidy";
+        case DiagnosticSource::Clice: return "clice";
+    }
+    std::unreachable();
+}
+
 llvm::StringRef DiagnosticID::diagnostic_code() const {
+    if(source == DiagnosticSource::ClangTidy) {
+        return name;
+    }
     switch(value) {
 #define DIAG(ENUM,                                                                                 \
              CLASS,                                                                                \
              DEFAULT_MAPPING,                                                                      \
              DESC,                                                                                 \
-             GROPU,                                                                                \
+             GROUP,                                                                                \
              SFINAE,                                                                               \
              NOWERROR,                                                                             \
              SHOWINSYSHEADER,                                                                      \
              SHOWINSYSMACRO,                                                                       \
              DEFERRABLE,                                                                           \
-             CATEGORY)                                                                             \
+             CATEGORY,                                                                             \
+             STABLE_ID,                                                                            \
+             LEGACY_STABLE_IDS)                                                                    \
     case clang::diag::ENUM: return #ENUM;
 #include "clang/Basic/DiagnosticASTKinds.inc"
 #include "clang/Basic/DiagnosticAnalysisKinds.inc"
@@ -73,7 +84,7 @@ std::optional<std::string> DiagnosticID::diagnostic_document_uri() const {
             // clice's own guidance diagnostics link to the setup guide that
             // explains how to provide a compilation database.
             if(name == "inferred-compile-command") {
-                return "https://clice.io/en/guide/quick-start";
+                return "https://docs.clice.io/clice/guide/quick-start#project-setup";
             }
             return std::nullopt;
         }
@@ -110,7 +121,9 @@ bool DiagnosticID::is_deprecated() const {
         diag::warn_vector_mode_deprecated,
     };
 
-    /// TODO: Add clang tidy
+    if(source == DiagnosticSource::ClangTidy) {
+        return name.starts_with("modernize-");
+    }
     return source == DiagnosticSource::Clang && deprecated_diags.contains(value);
 }
 
@@ -136,7 +149,9 @@ bool DiagnosticID::is_unused() const {
         diag::warn_unused_variable,
     };
 
-    /// TODO: Add clang tidy
+    if(source == DiagnosticSource::ClangTidy) {
+        return name.starts_with("misc-unused-");
+    }
     return source == DiagnosticSource::Clang && unused_diags.contains(value);
 }
 
@@ -151,6 +166,8 @@ bool DiagnosticID::is_deserialization_error() const {
            (level == DiagnosticLevel::Error || level == DiagnosticLevel::Fatal) &&
            clang::DiagnosticIDs::getCategoryNumberForDiag(value) == category;
 }
+
+namespace {
 
 bool is_note(clang::DiagnosticsEngine::Level level) {
     return level == clang::DiagnosticsEngine::Note || level == clang::DiagnosticsEngine::Remark;
@@ -172,6 +189,31 @@ class DiagnosticCollector : public clang::DiagnosticConsumer {
 public:
     DiagnosticCollector(CompilationUnitRef unit) : unit(unit) {}
 
+    /// Decompose a file location; the preamble a PCH recorded of the main
+    /// file is the main file.
+    auto decompose(clang::SourceLocation location) -> std::pair<clang::FileID, std::uint32_t> {
+        auto [fid, offset] = unit.decompose_location(location);
+        return {unit.is_main_file(fid) ? unit.main_file() : fid, offset};
+    }
+
+    /// The range in `fid` a source range covers, half-open; nullopt when it
+    /// crosses files or a macro expansion hides it.
+    auto file_range(clang::CharSourceRange range, clang::FileID fid)
+        -> std::optional<LocalSourceRange> {
+        range = clang::Lexer::makeFileCharRange(range, unit->SM(), unit.lang_options());
+        if(range.isInvalid()) {
+            return std::nullopt;
+        }
+        auto [begin_fid, begin] = decompose(range.getBegin());
+        auto [end_fid, end] = decompose(range.getEnd());
+        if(begin_fid != fid || end_fid != fid) {
+            return std::nullopt;
+        }
+        return LocalSourceRange{begin, end};
+    }
+
+    /// The first range that holds the caret, as clang underlines it; else
+    /// the token at the caret.
     auto diagnostic_range(const clang::Diagnostic& diagnostic)
         -> std::optional<std::pair<clang::FileID, LocalSourceRange>> {
         /// If location is invalid, it represents the diagnostic is
@@ -185,39 +227,80 @@ public:
         location = unit.file_location(location);
         assert(location.isFileID());
 
-        auto [fid, offset] = unit.decompose_location(location);
-
-        /// Select a proper range for the diagnostic.
+        auto [fid, offset] = decompose(location);
         for(auto range: diagnostic.getRanges()) {
-            range = clang::Lexer::makeFileCharRange(range,
-                                                    unit.context().getSourceManager(),
-                                                    unit.lang_options());
-
-            auto [begin, end] = range.getAsRange();
-            auto [begin_fid, begin_offset] = unit.decompose_location(begin);
-            if(begin_fid != fid || begin_offset <= offset) {
-                continue;
+            if(auto local = file_range(range, fid); local && local->contains(offset)) {
+                return std::pair{fid, *local};
             }
-
-            auto [end_fid, end_offset] = unit.decompose_location(end);
-            if(range.isTokenRange()) {
-                end_offset += unit.token_length(end);
-            }
-
-            if(end_fid == fid && end_offset >= offset) {
-                return std::pair{
-                    fid,
-                    LocalSourceRange{begin_offset, end_offset}
-                };
+        }
+        for(auto& hint: diagnostic.getFixItHints()) {
+            if(auto local = file_range(hint.RemoveRange, fid); local && local->contains(offset)) {
+                return std::pair{fid, *local};
             }
         }
 
-        /// Use token range.
         auto end_offset = offset + unit.token_length(location);
         return std::pair{
             fid,
             LocalSourceRange{offset, end_offset}
         };
+    }
+
+    /// The replacements a diagnostic's fix-it hints spell, all of them or
+    /// none: one inside a macro expansion, but for one within a single
+    /// macro argument, which edits the argument, or in another file leaves
+    /// the fix unexpressed, and so do edits that overlap, which an editor
+    /// refuses (misc-unused-parameters removes both `f(1)` and its `1`
+    /// from `f(f(1))`).
+    auto fix(const clang::Diagnostic& diagnostic) -> std::vector<TextReplacement> {
+        auto& sm = unit->SM();
+        std::vector<TextReplacement> edits;
+        for(auto hint: diagnostic.getFixItHints()) {
+            auto& range = hint.RemoveRange;
+            auto begin = range.getBegin();
+            auto end = range.getEnd();
+            if(begin.isMacroID() && end.isMacroID() && sm.getFileID(begin) == sm.getFileID(end)) {
+                range = clang::CharSourceRange(
+                    {sm.getTopMacroCallerLoc(begin), sm.getTopMacroCallerLoc(end)},
+                    range.isTokenRange());
+            }
+            if(range.getBegin().isMacroID() || range.getEnd().isMacroID()) {
+                return {};
+            }
+            auto removed = file_range(range, unit.main_file());
+            if(!removed) {
+                return {};
+            }
+            std::string text = std::move(hint.CodeToInsert);
+            if(hint.InsertFromRange.isValid()) {
+                auto copied = file_range(hint.InsertFromRange, unit.main_file());
+                if(!copied) {
+                    return {};
+                }
+                text = unit.main_content().substr(copied->begin, copied->length());
+            }
+            // An editor applies insertions at one offset in their order.
+            auto at = edits.end();
+            if(hint.BeforePreviousInsertions) {
+                at = llvm::find_if(edits, [&](const TextReplacement& edit) {
+                    return edit.range.begin == removed->begin && edit.range.length() == 0;
+                });
+            }
+            edits.insert(at, {*removed, std::move(text)});
+        }
+        llvm::SmallVector<LocalSourceRange> ranges;
+        for(auto& edit: edits) {
+            ranges.push_back(edit.range);
+        }
+        llvm::sort(ranges, [](LocalSourceRange a, LocalSourceRange b) {
+            return std::pair(a.begin, a.end) < std::pair(b.begin, b.end);
+        });
+        for(auto [before, after]: llvm::zip(ranges, llvm::drop_begin(ranges))) {
+            if(after.begin < before.end) {
+                return {};
+            }
+        }
+        return edits;
     }
 
     void BeginSourceFile(const clang::LangOptions&, const clang::Preprocessor*) override {}
@@ -226,6 +309,9 @@ public:
                           const clang::Diagnostic& raw_diagnostic) override {
         auto& diagnostic = unit.diagnostics().emplace_back();
         diagnostic.id.value = raw_diagnostic.getID();
+        diagnostic.error_by_default =
+            raw_diagnostic.getDiags()->getDiagnosticIDs()->isDefaultMappingAsError(
+                raw_diagnostic.getID());
 
         if(!is_note(level)) {
             if(unit->checker) {
@@ -251,14 +337,20 @@ public:
             auto [fid, range] = *pair;
             diagnostic.fid = fid;
             diagnostic.range = range;
+            if(raw_diagnostic.hasSourceManager()) {
+                diagnostic.in_system = raw_diagnostic.getSourceManager().isInSystemHeader(
+                    raw_diagnostic.getLocation());
+            }
+        }
+
+        // One from the command line has no source to fix.
+        if(raw_diagnostic.hasSourceManager()) {
+            diagnostic.fix = fix(raw_diagnostic);
         }
 
         if(unit->checker) {
             unit->checker->adjust_diag(diagnostic);
         }
-
-        /// TODO: handle FixIts
-        /// raw_diagnostic.getFixItHints();
     }
 
     void EndSourceFile() override {}
@@ -266,6 +358,8 @@ public:
 private:
     CompilationUnitRef unit;
 };
+
+}  // namespace
 
 std::unique_ptr<clang::DiagnosticConsumer> CompilationUnitRef::Self::create_diagnostic() {
     return std::make_unique<DiagnosticCollector>(this);

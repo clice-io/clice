@@ -1,0 +1,11 @@
+---
+created_at: 2026-09-21
+input_file: deduced_type/03_decltype.cpp
+---
+dt:
+- [refactor.rewrite.expandDeducedType] Replace 'decltype(value())' with 'int'
+  10:4-10:21 => "int"
+
+nested:
+- [refactor.rewrite.expandDeducedType] Replace 'decltype(x)' with 'int'
+  11:4-11:15 => "int"

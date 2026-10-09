@@ -1,0 +1,106 @@
+---
+created_at: 2026-10-08
+input_file: go_to_definition/15_def_auto_declarators.cpp
+---
+array_reference:
+  definition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  declaration:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  typeDefinition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  references:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "16:4-16:10" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "20:0-20:6" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "21:0-21:6" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:0-13:16", selection: "13:7-13:13" }
+
+binding:
+  definition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "15:7-15:11" }
+  declaration:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "15:7-15:11" }
+  typeDefinition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "15:7-15:11" }
+  references:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "15:7-15:11" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "30:27-30:31" }
+  typeHierarchy:
+    - { name: "Pair", kind: Struct, file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "15:0-18:1", selection: "15:7-15:11" }
+
+const_reference:
+  definition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  declaration:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  typeDefinition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  references:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "16:4-16:10" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "20:0-20:6" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "21:0-21:6" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:0-13:16", selection: "13:7-13:13" }
+
+decltype_auto:
+  definition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  declaration:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  typeDefinition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  references:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "16:4-16:10" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "20:0-20:6" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "21:0-21:6" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:0-13:16", selection: "13:7-13:13" }
+
+deduced_pointer:
+  definition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  declaration:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  typeDefinition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  references:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "16:4-16:10" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "20:0-20:6" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "21:0-21:6" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:0-13:16", selection: "13:7-13:13" }
+
+forwarding:
+  definition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  declaration:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  typeDefinition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  references:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "16:4-16:10" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "20:0-20:6" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "21:0-21:6" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:0-13:16", selection: "13:7-13:13" }
+
+pointer_declarator:
+  definition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  declaration:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  typeDefinition:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+  references:
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:7-13:13" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "16:4-16:10" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "20:0-20:6" }
+    - { file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "21:0-21:6" }
+  typeHierarchy:
+    - { name: "Widget", kind: Struct, file: "${WS}/go_to_definition/15_def_auto_declarators.cpp", range: "13:0-13:16", selection: "13:7-13:13" }

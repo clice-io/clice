@@ -1,0 +1,411 @@
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :index.search_index;
+import :index.symbol_query;
+import :tests.unit.test.temp_dir;
+import :tests.unit.test.test;
+
+namespace clice::testing {
+namespace {
+
+using index::SearchEntry;
+using index::SearchIndex;
+using index::SearchSnapshot;
+using index::SymbolFlags;
+using index::SymbolHash;
+using index::SymbolQuery;
+
+/// A snapshot built row by row; hashes are the row numbers from 1.
+struct Corpus {
+    SearchSnapshot snapshot;
+    llvm::StringMap<SymbolHash> by_qualified;
+
+    SymbolHash add(llvm::StringRef qualified,
+                   SymbolKind kind,
+                   SymbolFlags flags = SymbolFlags::HasDefinition,
+                   std::uint32_t references = 1,
+                   llvm::StringRef path = "/w/src/a.cpp",
+                   llvm::StringRef args = "") {
+        auto [scope, name] = qualified.rsplit("::");
+        SymbolHash parent = 0;
+        if(!name.empty()) {
+            parent = by_qualified.lookup(scope);
+        } else {
+            name = qualified;
+        }
+        std::uint32_t file = index::no_file;
+        for(std::uint32_t i = 0; i < snapshot.paths.size(); i += 1) {
+            if(snapshot.paths[i] == path) {
+                file = i;
+            }
+        }
+        if(file == index::no_file) {
+            file = static_cast<std::uint32_t>(snapshot.paths.size());
+            snapshot.paths.push_back(path.str());
+        }
+        auto hash = static_cast<SymbolHash>(snapshot.entries.size() + 1);
+        snapshot.entries.push_back({
+            .hash = hash,
+            .name = name.str(),
+            .args = args.str(),
+            .parent = parent,
+            .kind = kind,
+            .flags = flags,
+            .file = file,
+            .reference_files = references,
+        });
+        by_qualified[(qualified + args).str()] = hash;
+        return hash;
+    }
+
+    SearchIndex build() {
+        SearchIndex built;
+        auto bytes = index::build_search_blob(snapshot);
+        built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes));
+        return built;
+    }
+
+    std::string name_of(SymbolHash hash) const {
+        auto& entry = snapshot.entries[hash - 1];
+        return entry.name + entry.args;
+    }
+};
+
+Corpus sample() {
+    Corpus corpus;
+    corpus.add("foo", SymbolKind::Function);
+    corpus.add("foobar", SymbolKind::Function);
+    corpus.add("xfoo", SymbolKind::Function);
+    corpus.add("bar_foo", SymbolKind::Variable);
+    corpus.add("Foo", SymbolKind::Struct, SymbolFlags::HasDefinition, 50);
+    corpus.add("outer", SymbolKind::Namespace);
+    corpus.add("outer::v2",
+               SymbolKind::Namespace,
+               SymbolFlags::HasDefinition | SymbolFlags::InlineNamespace);
+    corpus.add("outer::v2::inner", SymbolKind::Namespace);
+    corpus.add("outer::v2::inner::Widget", SymbolKind::Struct);
+    corpus.add("outer::v2::inner::Widget::paint", SymbolKind::Method);
+    corpus.add("outer::v2::inner::Widget",
+               SymbolKind::Struct,
+               SymbolFlags::HasDefinition,
+               1,
+               "/w/src/a.cpp",
+               "<int>");
+    corpus.add("outer::v2::inner::Widget<int>::paint", SymbolKind::Method);
+    corpus.add("outer::versioned", SymbolKind::Function, SymbolFlags::None);
+    corpus.add("unique_ptr",
+               SymbolKind::Class,
+               SymbolFlags::HasDefinition | SymbolFlags::SystemHeader,
+               500,
+               "/usr/include/memory");
+    corpus.add("upper_bound",
+               SymbolKind::Function,
+               SymbolFlags::HasDefinition,
+               3,
+               "/w/src/b/algo.h");
+    corpus.add("LinkedList", SymbolKind::Struct);
+    corpus.add("parse_config", SymbolKind::Function);
+    corpus.add("strncpy", SymbolKind::Function);
+    corpus.add("strcpy_s", SymbolKind::Function);
+    corpus.add("MAX_SIZE", SymbolKind::Macro);
+    corpus.add("aaaxaaa", SymbolKind::Function);
+    corpus.add("zap_bar_quux", SymbolKind::Function);
+    return corpus;
+}
+
+std::vector<std::string> names(const Corpus& corpus,
+                               const SearchIndex& built,
+                               llvm::StringRef text,
+                               std::size_t limit = 10) {
+    auto query = SymbolQuery::parse(text);
+    std::vector<std::string> out;
+    if(!query) {
+        out.push_back("error: " + query.error());
+        return out;
+    }
+    for(auto& hit: built.search(*query, limit, {}).hits) {
+        out.push_back(corpus.name_of(hit.hash));
+    }
+    return out;
+}
+
+using Names = std::vector<std::string>;
+
+ZEST_SUITE(SearchIndex) {
+
+ZEST_CASE(Loads) {
+    auto corpus = sample();
+    corpus.snapshot.generation = 7;
+    auto built = corpus.build();
+    ZEXPECT(built.loaded());
+    ZEXPECT(built.generation() == std::uint64_t(7));
+    ZEXPECT(built.size() == corpus.snapshot.entries.size());
+    ZEXPECT(built.contains(1));
+    ZEXPECT(!built.contains(999));
+    SearchIndex empty;
+    ZEXPECT(!empty.load(llvm::MemoryBuffer::getMemBufferCopy("junk")));
+    ZEXPECT(!empty.loaded());
+    ZEXPECT(empty.search(*SymbolQuery::parse("foo"), 10, {}).hits.empty());
+    ZEXPECT(built.search(*SymbolQuery::parse("foo"), 100, {}).exhausted);
+    ZEXPECT(!built.search(*SymbolQuery::parse("foo"), 2, {}).exhausted);
+}
+
+ZEST_CASE(DamagedPosting) {
+    auto corpus = sample();
+    auto bytes = index::build_search_blob(corpus.snapshot);
+    // Every bitmap image opens with the portable cookie of a bitmap
+    // without run containers; breaking each one leaves the blob's
+    // structure intact and every posting list undecodable.
+    const std::string cookie("\x3a\x30\x00\x00", 4);
+    for(auto at = bytes.find(cookie); at != std::string::npos; at = bytes.find(cookie, at + 4)) {
+        bytes.replace(at, 4, "\xff\xff\xff\xff");
+    }
+    SearchIndex built;
+    ZASSERT(built.load(llvm::MemoryBuffer::getMemBufferCopy(bytes)));
+    ZEXPECT(!built.damaged());
+    // The exact matches come from the name order, the fuzzy ones from
+    // the posting lists.
+    ZEXPECT(names(corpus, built, "foo") == (Names{"foo", "Foo"}));
+    ZEXPECT(built.damaged());
+}
+
+ZEST_CASE(FuzzyRanking) {
+    auto corpus = sample();
+    auto built = corpus.build();
+    ZEXPECT(names(corpus, built, "foo") == (Names{"foo", "Foo", "foobar", "bar_foo", "xfoo"}));
+    ZEXPECT(names(corpus, built, "Foo") == (Names{"Foo", "foo", "foobar", "bar_foo", "xfoo"}));
+    ZEXPECT(names(corpus, built, "LinLis") == (Names{"LinkedList"}));
+    ZEXPECT(names(corpus, built, "pconf") == (Names{"parse_config"}));
+    ZEXPECT(names(corpus, built, "pcfg").empty());
+    ZEXPECT(names(corpus, built, "up") == (Names{"upper_bound", "unique_ptr"}));
+    // A short query keys the first two words in the index and in a row.
+    ZEXPECT(names(corpus, built, "qu").empty());
+    auto short_query = *SymbolQuery::parse("qu");
+    index::NameRanker short_ranker(short_query);
+    ZEXPECT(!short_ranker.rank("zap_bar_quux", "", 1).has_value());
+    ZEXPECT(short_ranker.rank("zap_quux", "", 1));
+    ZEXPECT(names(corpus, built, "u_p") == (Names{"unique_ptr"}));
+    ZEXPECT(names(corpus, built, "zzz").empty());
+    ZEXPECT(names(corpus, built, "foo", 2) == (Names{"foo", "Foo"}));
+}
+
+ZEST_CASE(ExactAndGlob) {
+    auto corpus = sample();
+    auto built = corpus.build();
+    ZEXPECT(names(corpus, built, R"("foo")") == (Names{"foo"}));
+    ZEXPECT(names(corpus, built, R"("Foo")") == (Names{"Foo"}));
+    ZEXPECT(names(corpus, built, R"("fo")").empty());
+    ZEXPECT(names(corpus, built, "foo*") == (Names{"Foo", "foo", "foobar"}));
+    ZEXPECT(names(corpus, built, "*foo") == (Names{"Foo", "bar_foo", "foo", "xfoo"}));
+    ZEXPECT(names(corpus, built, "str*") == (Names{"strcpy_s", "strncpy"}));
+    ZEXPECT(names(corpus, built, "*_*") == (Names{"unique_ptr",
+                                                  "upper_bound",
+                                                  "bar_foo",
+                                                  "parse_config",
+                                                  "strcpy_s",
+                                                  "zap_bar_quux",
+                                                  "MAX_SIZE"}));
+    ZEXPECT(names(corpus, built, "MAX_*") == (Names{"MAX_SIZE"}));
+    ZEXPECT(names(corpus, built, "??o") == (Names{"Foo", "foo"}));
+    Corpus wide;
+    wide.add((std::string(150, 'a') + "xyz").c_str(), SymbolKind::Function);
+    auto wide_index = wide.build();
+    ZEXPECT(names(wide, wide_index, "*xyz*").size() == std::size_t(1));
+}
+
+ZEST_CASE(Scopes) {
+    auto corpus = sample();
+    auto built = corpus.build();
+    ZEXPECT(names(corpus, built, "inner::paint") == (Names{"paint", "paint"}));
+    ZEXPECT(names(corpus, built, "outer::inner::paint").size() == std::size_t(2));
+    ZEXPECT(names(corpus, built, "outer::paint").size() == std::size_t(2));
+    ZEXPECT(names(corpus, built, "inner::outer::paint").empty());
+    ZEXPECT(names(corpus, built, "::inner::paint").empty());
+    ZEXPECT(names(corpus, built, "::outer::inner::paint").empty());
+    ZEXPECT(names(corpus, built, "::outer::inner::Widget::paint").size() == std::size_t(2));
+    ZEXPECT(names(corpus, built, "::outer::inner::Widget<int>::paint").size() == std::size_t(1));
+    ZEXPECT(names(corpus, built, "::outer::versioned") == (Names{"versioned"}));
+    ZEXPECT(names(corpus, built, "Widget<int>") == (Names{"Widget<int>"}));
+    ZEXPECT(names(corpus, built, "Widget<int>::paint") == (Names{"paint"}));
+    ZEXPECT(names(corpus, built, "Widget") == (Names{"Widget", "Widget<int>"}));
+    ZEXPECT(names(corpus, built, "v2::Widget").empty());
+    ZEXPECT(names(corpus, built, "outer::inner::*") == (Names{"Widget", "Widget<int>"}));
+    ZEXPECT(names(corpus, built, "inner::") == (Names{"Widget", "Widget<int>"}));
+    ZEXPECT(names(corpus, built, "inner::**") ==
+            (Names{"Widget", "Widget<int>", "paint", "paint"}));
+    ZEXPECT(names(corpus, built, "::outer::*") == (Names{"inner", "v2", "versioned"}));
+    ZEXPECT(names(corpus, built, "::*").size() == std::size_t(10));
+    ZEXPECT(names(corpus, built, "*", 100).size() == corpus.snapshot.entries.size());
+    ZEXPECT(names(corpus, built, "::outer::**").size() == std::size_t(7));
+    ZEXPECT(names(corpus, built, "Widget::*") == (Names{"paint", "paint"}));
+    ZEXPECT(names(corpus, built, "Widget<int>::*") == (Names{"paint"}));
+}
+
+ZEST_CASE(UnnamedScopes) {
+    // An unnamed enum's enumerators and an anonymous union's members are
+    // named through the enclosing scope, as lookup names them.
+    Corpus corpus;
+    corpus.add("ns", SymbolKind::Namespace);
+    corpus.add("ns::(anonymous enum)",
+               SymbolKind::Enum,
+               SymbolFlags::HasDefinition | SymbolFlags::Unnamed | SymbolFlags::AnonymousScope);
+    corpus.add("ns::(anonymous enum)::kSize", SymbolKind::EnumMember);
+    corpus.add("S", SymbolKind::Struct);
+    corpus.add("S::(anonymous union)",
+               SymbolKind::Union,
+               SymbolFlags::HasDefinition | SymbolFlags::Unnamed | SymbolFlags::AnonymousScope);
+    corpus.add("S::(anonymous union)::member_a", SymbolKind::Field);
+    auto built = corpus.build();
+    ZEXPECT(names(corpus, built, "ns::kSize") == (Names{"kSize"}));
+    ZEXPECT(names(corpus, built, "::ns::kSize") == (Names{"kSize"}));
+    ZEXPECT(names(corpus, built, "::kSize").empty());
+    ZEXPECT(names(corpus, built, "S::member_a") == (Names{"member_a"}));
+}
+
+ZEST_CASE(Filters) {
+    auto corpus = sample();
+    auto built = corpus.build();
+    ZEXPECT(names(corpus, built, "foo kind:struct") == (Names{"Foo"}));
+    ZEXPECT(names(corpus, built, "foo kind:variable,function") ==
+            (Names{"foo", "foobar", "bar_foo", "xfoo"}));
+    ZEXPECT(names(corpus, built, "kind:namespace *") == (Names{"inner", "outer", "v2"}));
+    ZEXPECT(names(corpus, built, "u path:memory") == (Names{"unique_ptr"}));
+    ZEXPECT(names(corpus, built, "u path:/usr/") == (Names{"unique_ptr"}));
+    ZEXPECT(names(corpus, built, "* path:src/b/") == (Names{"upper_bound"}));
+    ZEXPECT(names(corpus, built, "up path:b/algo.h") == (Names{"upper_bound"}));
+    ZEXPECT(names(corpus, built, "up path:nowhere.h").empty());
+    ZEXPECT(names(corpus, built, "up kind:macro").empty());
+}
+
+ZEST_CASE(Typos) {
+    auto corpus = sample();
+    auto built = corpus.build();
+    ZEXPECT(names(corpus, built, "strcpy") == (Names{"strcpy_s", "strncpy"}));
+    ZEXPECT(names(corpus, built, "strcpy", 1) == (Names{"strcpy_s"}));
+    ZEXPECT(names(corpus, built, "strncpx") == (Names{"strncpy"}));
+    // A row the clean pass rejected is judged again as a typo.
+    ZEXPECT(names(corpus, built, "aaaaaa") == (Names{"aaaxaaa"}));
+    ZEXPECT((names(corpus, built, "strcp").empty() ||
+             names(corpus, built, "strcp") == Names{"strcpy_s"}));
+}
+
+ZEST_CASE(Quality) {
+    using index::symbol_quality;
+    auto plain = symbol_quality("foo", SymbolKind::Function, SymbolFlags::HasDefinition, 1);
+    ZEXPECT(plain == 1.0f);
+    ZEXPECT(symbol_quality("foo", SymbolKind::Function, SymbolFlags::HasDefinition, 1000) > 1.9f);
+    ZEXPECT(symbol_quality("foo", SymbolKind::Function, SymbolFlags::None, 1) < plain);
+    ZEXPECT(symbol_quality("_Foo", SymbolKind::Function, SymbolFlags::HasDefinition, 1) < plain);
+    ZEXPECT(symbol_quality("foo", SymbolKind::Macro, SymbolFlags::HasDefinition, 1) < plain);
+    ZEXPECT(symbol_quality("foo",
+                           SymbolKind::Function,
+                           SymbolFlags::HasDefinition | SymbolFlags::SystemHeader,
+                           1) < plain);
+    ZEXPECT(symbol_quality("foo",
+                           SymbolKind::Function,
+                           SymbolFlags::HasDefinition | SymbolFlags::Deprecated,
+                           1) < plain);
+    ZEXPECT(
+        symbol_quality("foo",
+                       SymbolKind::Function,
+                       index::with_form(SymbolFlags::HasDefinition, index::NameForm::Constructor),
+                       1) < plain);
+}
+
+/// The narrowing by tokens and the early stop lose nothing: every hit a
+/// full scan of the rows would rank among the best comes out of the
+/// index, in the same order.
+ZEST_CASE(MatchesFullScan) {
+    Corpus corpus;
+    const char* stems[] = {"get", "set", "parse", "read", "write", "make", "build", "find"};
+    const char* tails[] = {"Config", "Value", "Name", "Item", "Node", "Buffer", "Entry", "Path"};
+    std::uint32_t references = 1;
+    for(auto stem: stems) {
+        for(auto tail: tails) {
+            references = (references * 7) % 97;
+            corpus.add((std::string(stem) + tail).c_str(),
+                       SymbolKind::Function,
+                       SymbolFlags::HasDefinition,
+                       references);
+            corpus.add((std::string(stem) + "_" + llvm::StringRef(tail).lower()).c_str(),
+                       SymbolKind::Variable,
+                       SymbolFlags::HasDefinition,
+                       references / 2);
+        }
+    }
+    auto built = corpus.build();
+    // Queries under three letters key the first two words only, by
+    // design: `e` finds the Entry names, not every name with an e.
+    ZEXPECT(names(corpus, built, "e", 100).size() == std::size_t(16));
+    ZEXPECT(names(corpus, built, "gc", 100).size() == std::size_t(2));
+    for(llvm::StringRef text:
+        {"get", "cfg", "getcon", "readbuf", "Name", "ent", "buf", "path", "setval", "conf"}) {
+        auto query = SymbolQuery::parse(text);
+        index::NameRanker ranker(*query);
+
+        struct Scored {
+            index::NameRank rank;
+            std::string name;
+            SymbolHash hash;
+        };
+
+        std::vector<Scored> all;
+        for(auto& entry: corpus.snapshot.entries) {
+            auto quality =
+                index::symbol_quality(entry.name, entry.kind, entry.flags, entry.reference_files);
+            if(auto rank = ranker.rank(entry.name, entry.args, quality, true)) {
+                all.push_back({*rank, entry.name, entry.hash});
+            }
+        }
+        std::ranges::sort(all, [](const Scored& lhs, const Scored& rhs) {
+            return index::ranks_after(rhs.rank,
+                                      rhs.name,
+                                      "",
+                                      rhs.hash,
+                                      lhs.rank,
+                                      lhs.name,
+                                      "",
+                                      lhs.hash);
+        });
+        std::vector<std::string> expected;
+        for(auto& scored: all) {
+            if(expected.size() < 5) {
+                expected.push_back(scored.name);
+            }
+        }
+        ZEXPECT(names(corpus, built, text, 5) == expected);
+    }
+}
+
+ZEST_CASE(PortablePathsFiltered) {
+    // The index names files under the workspace relative to it; a path
+    // filter sees them where the checkout sits now.
+    TempDir tmp;
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    Corpus corpus;
+    corpus.add("inside",
+               SymbolKind::Function,
+               SymbolFlags::HasDefinition,
+               1,
+               "${workspace}/src/a.cpp");
+    corpus.add("outside", SymbolKind::Function, SymbolFlags::HasDefinition, 1, "/opt/b.h");
+    auto built = corpus.build();
+    auto found = [&](const std::string& text) {
+        Names out;
+        for(auto& hit: built.search(*SymbolQuery::parse(text), 10, root).hits) {
+            out.push_back(corpus.name_of(hit.hash));
+        }
+        return out;
+    };
+    ZEXPECT(found(std::format("side path:{}/src/", root.str())) == Names{"inside"});
+    ZEXPECT(found("side path:/opt/") == Names{"outside"});
+}
+
+};  // ZEST_SUITE(SearchIndex)
+
+}  // namespace
+}  // namespace clice::testing

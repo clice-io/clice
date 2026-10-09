@@ -1,210 +1,59 @@
-#include "index/database.h"
+module;
 
-#include <atomic>
-#include <cassert>
-#include <cstring>
-#include <type_traits>
+#include "modules/prelude.h"
 
 #ifdef __linux__
 #include <sys/vfs.h>
 #endif
 
-#include "lmdb.h"
-#include "support/cache_store.h"
-#include "support/filesystem.h"
-#include "support/logging.h"
-
-#include "llvm/ADT/SmallString.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/raw_ostream.h"
+#ifndef _WIN32
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 #ifdef _WIN32
 #include <io.h>
 #include <windows.h>
 #endif
+#include "support/logging.macros.h"
+
+module clice;
+
+import :index.database;
+import :support.logging;
+import :vfs.cache_store;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice::index {
 
 namespace {
 
-constexpr llvm::StringLiteral index_lock_name = "index.lock";
-
-/// Cross-process writer lock for the index lineage, shared by both
-/// backends and always taken before the backend touches any of its files.
-/// Atomic per-blob replacement (or a database file) cannot serialize the
-/// mutable global/manifest lineage: two writers (an LSP server plus a
-/// batch `clice index`) derive the same next generation from the same
-/// loaded state, so a manifest written by one passes the other's
-/// generation pin with FileVersion ids allocated against a different
-/// table, loading rows under the wrong files. An OS advisory lock dies
-/// with its process, so a crash leaves nothing stale behind.
-std::optional<int> acquire_writer_lock(CacheStore& store) {
-    auto lock_path = path::join(store.base_dir(), index_lock_name);
-    int lock_fd = -1;
-    if(auto ec = llvm::sys::fs::openFileForReadWrite(lock_path,
-                                                     lock_fd,
-                                                     llvm::sys::fs::CD_OpenAlways,
-                                                     llvm::sys::fs::OF_None)) {
-        LOG_WARN("Failed to open the index writer lock {}: {}", lock_path, ec.message());
-        return std::nullopt;
-    }
-    if(llvm::sys::fs::tryLockFile(lock_fd)) {
-        LOG_WARN(
-            "Another clice process is writing the index cache at {}; "
-            "index persistence is disabled for this process",
-            store.base_dir());
-        llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
-        return std::nullopt;
-    }
-    return lock_fd;
-}
-
-void release_writer_lock(int lock_fd) {
-    if(lock_fd != -1) {
-        llvm::sys::fs::unlockFile(lock_fd);
-        llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
-    }
-}
-
-// ── Filesystem backend ──────────────────────────────────────────────
-
-llvm::StringRef namespace_of(IndexBlobKind kind) {
-    switch(kind) {
-        case IndexBlobKind::Shard: return "index";
-        case IndexBlobKind::Manifest: return "index-manifest";
-        case IndexBlobKind::Global: return "index-global";
-        case IndexBlobKind::CDB: return "index-cdb";
-    }
-    std::unreachable();
-}
-
-class FsDatabase final : public BlobDatabase {
-public:
-    FsDatabase(CacheStore& store, int lock_fd) : store(store), lock_fd(lock_fd) {
-        for(auto kind: {IndexBlobKind::Shard,
-                        IndexBlobKind::Manifest,
-                        IndexBlobKind::Global,
-                        IndexBlobKind::CDB}) {
-            store.register_namespace({
-                .name = std::string(namespace_of(kind)),
-                .extension = ".idx",
-                .policy = CachePolicy::Persistent,
-            });
-        }
-    }
-
-    ~FsDatabase() override {
-        release_writer_lock(lock_fd);
-    }
-
-    ReadBlob read(IndexBlobKind kind, llvm::StringRef key) override {
-        auto path = store.lookup(namespace_of(kind), key);
-        if(!path) {
-            return {};
-        }
-        auto buffer = llvm::MemoryBuffer::getFile(*path);
-        if(!buffer) {
-            return {};
-        }
-        return {.buffer = std::move(*buffer)};
-    }
-
-    bool contains(IndexBlobKind kind, llvm::StringRef key) override {
-        return store.lookup(namespace_of(kind), key).has_value();
-    }
-
-    llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,
-                                         llvm::ArrayRef<BlobKey> removes) override {
-        // A failed batch keeps its removals too, mirroring the LMDB
-        // backend's all-or-nothing commit: a removal landing without the
-        // puts it was batched behind can delete a blob the surviving
-        // on-disk state still references. load() re-sweeps whatever the
-        // skip leaves behind.
-        auto failed = write_puts(puts);
-        if(!failed.empty()) {
-            return failed;
-        }
-        for(auto& [kind, key]: removes) {
-            store.invalidate(namespace_of(kind), key);
-        }
-        return {};
-    }
-
-    void for_each_key(IndexBlobKind kind, llvm::function_ref<void(llvm::StringRef)> fn) override {
-        store.for_each_key(namespace_of(kind), fn);
-    }
-
-    std::expected<std::uint64_t, std::string> advance_read_snapshot() override {
-        return 0;
-    }
-
-    void retire_old_snapshot() override {}
-
-    std::expected<bool, std::string> grow() override {
-        return false;
-    }
-
-private:
-    llvm::SmallVector<std::size_t> write_puts(llvm::ArrayRef<Blob> puts) {
-        // Batch order encodes dependency (shards → manifests → global →
-        // CDB snapshot), so the first failure fails the rest of the batch:
-        // continuing would publish an entry whose prerequisites never
-        // landed — e.g. a CDB snapshot vouching for a global that failed —
-        // and load paths only tolerate a committed prefix, the crash shape.
-        auto fail_from = [&](std::size_t i) {
-            llvm::SmallVector<std::size_t> failed;
-            for(; i < puts.size(); i += 1) {
-                failed.push_back(i);
-            }
-            return failed;
-        };
-        for(std::size_t i = 0; i < puts.size(); i += 1) {
-            auto& blob = puts[i];
-            auto ns = namespace_of(blob.kind);
-            auto pending = store.begin_store(ns, blob.key);
-            std::error_code ec;
-            llvm::raw_fd_ostream os(pending.tmp_path, ec);
-            if(ec) {
-                LOG_WARN("Failed to write index blob {}/{}: {}", ns, blob.key, ec.message());
-                return fail_from(i);
-            }
-            os.write(blob.bytes.data(), blob.bytes.size());
-            os.close();
-            // A truncated blob (disk full) must never be committed: the
-            // namespaces are Persistent, so it would be served forever.
-            if(os.has_error()) {
-                LOG_WARN("Failed to write index blob {}/{}: {}",
-                         ns,
-                         blob.key,
-                         os.error().message());
-                os.clear_error();
-                return fail_from(i);
-            }
-            if(auto committed = store.commit(std::move(pending)); !committed) {
-                LOG_WARN("Failed to commit index blob {}/{}: {}",
-                         ns,
-                         blob.key,
-                         committed.error().message());
-                return fail_from(i);
-            }
-        }
-        return {};
-    }
-
-    CacheStore& store;
-    int lock_fd;
-};
-
-// ── LMDB backend ────────────────────────────────────────────────────
-
 constexpr llvm::StringLiteral lmdb_file_name = "index.mdb";
 
-/// Virtual reservation; pages materialize on use. The file is created
-/// sparse on Windows (real allocation otherwise); when that fails the
-/// caller starts small and relies on grow().
-constexpr std::size_t lmdb_default_mapsize = 64ull << 30;
 constexpr std::size_t lmdb_small_mapsize = 256ull << 20;
+
+/// Virtual reservation; pages materialize on use. On POSIX the file's
+/// size tracks the data high-water mark, so the reservation is generous —
+/// unless the address space is capped (`ulimit -v` on HPC and sandboxed
+/// hosts), where it would not fit. On Windows the mapping extends the file
+/// to the whole mapsize — a 64 GiB file (sparse or not) alarms users and
+/// feeds backup and sync tools at its logical size. Either way the map
+/// then starts small and grows on demand instead.
+std::size_t default_mapsize() {
+#ifdef _WIN32
+    return lmdb_small_mapsize;
+#else
+    constexpr std::size_t generous = 64ull << 30;
+    struct rlimit limit;
+    if(getrlimit(RLIMIT_AS, &limit) == 0 && limit.rlim_cur != RLIM_INFINITY &&
+       limit.rlim_cur < 2 * generous) {
+        return lmdb_small_mapsize;
+    }
+    return generous;
+#endif
+}
 
 char kind_prefix(IndexBlobKind kind) {
     switch(kind) {
@@ -212,6 +61,9 @@ char kind_prefix(IndexBlobKind kind) {
         case IndexBlobKind::Manifest: return 'M';
         case IndexBlobKind::Global: return 'G';
         case IndexBlobKind::CDB: return 'C';
+        case IndexBlobKind::Artifacts: return 'A';
+        case IndexBlobKind::Contexts: return 'X';
+        case IndexBlobKind::Search: return 'N';
     }
     std::unreachable();
 }
@@ -252,14 +104,78 @@ bool is_corruption(int rc) {
 }
 
 void remove_database_files(llvm::StringRef path) {
-    llvm::sys::fs::remove(path);
-    llvm::sys::fs::remove(path + "-lock");
+    vfs::remove(path);
+    vfs::remove(path.str() + "-lock");
+}
+
+/// The file's length against the length its newest meta page vouches
+/// for: every page up to the last one it declares.
+struct Coverage {
+    std::uint64_t length;
+    std::uint64_t declared;
+};
+
+Coverage coverage(MDB_env* env) {
+    MDB_envinfo info;
+    mdb_env_info(env, &info);
+    MDB_stat db_stat;
+    mdb_env_stat(env, &db_stat);
+    std::uint64_t declared = (static_cast<std::uint64_t>(info.me_last_pgno) + 1) * db_stat.ms_psize;
+    mdb_filehandle_t fd;
+    mdb_env_get_fd(env, &fd);
+#ifdef _WIN32
+    LARGE_INTEGER length{};
+    ::GetFileSizeEx(fd, &length);
+    return {static_cast<std::uint64_t>(length.QuadPart), declared};
+#else
+    struct stat file{};
+    ::fstat(fd, &file);
+    return {static_cast<std::uint64_t>(file.st_size), declared};
+#endif
+}
+
+/// LMDB reads the file through a shared mapping, so a page referenced
+/// past the end of a truncated file faults (SIGBUS) instead of failing
+/// the read. A healthy file can be short too — a commit never writes the
+/// tail pages it allocated and freed again, and nothing references them —
+/// so the length alone cannot tell damage from health. Writers keep the
+/// file covering every declared page, zero-filling the gap: a healthy
+/// tree never reads those pages, and a damaged one reads zeros instead of
+/// faulting — a tree page as MDB_CORRUPTED, which the repair path
+/// handles, a blob as bytes its format check rejects. Read-only openers
+/// rely on it and take a short file for damage; a file written before
+/// this rule existed reads as damaged until a writer opens it. The write
+/// transaction keeps every other writer from growing the file meanwhile.
+int cover_declared_pages(MDB_env* env) {
+#ifdef _WIN32
+    // A writable mapping extends the file to the whole map size.
+    return 0;
+#else
+    MDB_txn* txn = nullptr;
+    if(int rc = mdb_txn_begin(env, nullptr, 0, &txn)) {
+        return rc;
+    }
+    int rc = 0;
+    if(auto [length, declared] = coverage(env); length < declared) {
+        mdb_filehandle_t fd;
+        mdb_env_get_fd(env, &fd);
+        if(::ftruncate(fd, static_cast<off_t>(declared)) != 0) {
+            rc = errno;
+        }
+    }
+    mdb_txn_abort(txn);
+    return rc;
+#endif
 }
 
 class LmdbDatabase final : public BlobDatabase {
 public:
-    LmdbDatabase(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, std::string path, int lock_fd) :
-        env(env), dbi(dbi), txn(txn), path(std::move(path)), lock_fd(lock_fd) {}
+    LmdbDatabase(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, std::string path, bool read_only) :
+        env(env), dbi(dbi), txn(txn), path(std::move(path)), read_only_(read_only) {}
+
+    bool read_only() const override {
+        return read_only_;
+    }
 
     ~LmdbDatabase() override {
         retire_old_snapshot();
@@ -272,7 +188,6 @@ public:
         if(condemned) {
             remove_database_files(path);
         }
-        release_writer_lock(lock_fd);
     }
 
     ReadBlob read(IndexBlobKind kind, llvm::StringRef key) override {
@@ -329,6 +244,14 @@ public:
             }
             return failed;
         };
+        // Readers are short-lived commands that may have been killed
+        // since the last batch; a dead one's slot pins its snapshot and the
+        // map only grows until it is cleared.
+        int dead = 0;
+        mdb_reader_check(env, &dead);
+        if(dead != 0) {
+            LOG_INFO("Cleared {} stale index database readers", dead);
+        }
         MDB_txn* wtxn = nullptr;
         if(int rc = mdb_txn_begin(env, nullptr, 0, &wtxn)) {
             return fail_all(rc, "begin");
@@ -352,6 +275,9 @@ public:
         }
         if(int rc = mdb_txn_commit(wtxn)) {
             return fail_all(rc, "commit");
+        }
+        if(int rc = cover_declared_pages(env)) {
+            LOG_WARN("Cannot extend the index database over its pages: {}", mdb_strerror(rc));
         }
         return {};
     }
@@ -474,28 +400,27 @@ private:
     /// See note_error()/corrupted(); written on both loop and pool threads.
     std::atomic<bool> poisoned = false;
     bool condemned = false;
-    int lock_fd;
+    bool read_only_ = false;
 };
 
 #ifdef _WIN32
 /// Without the sparse attribute Windows backs the whole mapsize with real
 /// disk (CreateFileMapping allocates eagerly), so the file is marked
-/// sparse before LMDB first maps it. Returns false when the volume does
-/// not support sparse files — the caller falls back to a small mapsize.
-bool make_sparse(llvm::StringRef path) {
+/// sparse before LMDB first maps it. Best effort: on a volume without
+/// sparse support each mapsize is simply committed up front, which the
+/// small default keeps tolerable.
+void make_sparse(llvm::StringRef path) {
     int fd = -1;
     if(llvm::sys::fs::openFileForReadWrite(path,
                                            fd,
                                            llvm::sys::fs::CD_OpenAlways,
                                            llvm::sys::fs::OF_None)) {
-        return false;
+        return;
     }
     auto handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
     DWORD returned = 0;
-    bool ok =
-        DeviceIoControl(handle, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &returned, nullptr) != 0;
+    DeviceIoControl(handle, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &returned, nullptr);
     llvm::sys::Process::SafelyCloseFileDescriptor(fd);
-    return ok;
 }
 #endif
 
@@ -548,13 +473,12 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     return mdb_txn_commit(wtxn) == 0 ? MetaCheck::Ok : MetaCheck::Transient;
 }
 
-std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
-                                            int lock_fd,
-                                            std::size_t initial_mapsize) {
-    auto path = path::join(store.base_dir(), lmdb_file_name);
-    bool read_only = store.read_only();
+std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
+                                            std::size_t initial_mapsize,
+                                            bool read_only) {
+    auto path = path::join(library, lmdb_file_name);
 
-    auto mapsize = initial_mapsize != 0 ? initial_mapsize : lmdb_default_mapsize;
+    auto mapsize = initial_mapsize != 0 ? initial_mapsize : default_mapsize();
 
     // One recovery retry: confirmed corruption (or a meta mismatch) is
     // repaired by deleting the database — it is a rebuildable cache, and
@@ -562,23 +486,22 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
     // Transient errors (permissions, fd/memory pressure) must NOT delete
     // anything: persistence is disabled for this session instead, the
     // same discipline the loader applies to an unreadable global blob.
-    for(int attempt = 0; attempt < 2; attempt += 1) {
+    bool repaired = false;
+    int reopens = 0;
+    while(true) {
         // Giving up must not leave behind a file this attempt created
-        // (make_sparse and mdb_env_open both create on demand): read-only
-        // opens select the LMDB backend on bare existence, so an abandoned
-        // uninitialized placeholder would shadow the per-file blobs.
-        bool created = !read_only && !llvm::sys::fs::exists(path);
+        // (make_sparse and mdb_env_open both create on demand): a later
+        // session would misread the abandoned uninitialized placeholder as
+        // corruption and log a spurious rebuild.
+        bool created = !read_only && !vfs::exists(path);
         auto discard_created = [&] {
             if(created) {
                 remove_database_files(path);
             }
         };
 #ifdef _WIN32
-        if(!read_only && !make_sparse(path) && initial_mapsize == 0) {
-            LOG_WARN("Index database at {} cannot be sparse; starting at {} bytes and growing",
-                     path,
-                     lmdb_small_mapsize);
-            mapsize = lmdb_small_mapsize;
+        if(!read_only) {
+            make_sparse(path);
         }
 #endif
         MDB_env* env = nullptr;
@@ -593,12 +516,22 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
         // loop should retry; false = give up with persistence disabled.
         auto fail = [&](int rc, llvm::StringRef stage) {
             mdb_env_close(env);
-            if(!read_only && is_corruption(rc) && attempt == 0) {
+            if(read_only && is_corruption(rc)) {
+                LOG_WARN(
+                    "Index database at {} is damaged ({} failed: {}); run `clice index` to "
+                    "repair it",
+                    path,
+                    stage,
+                    mdb_strerror(rc));
+                return false;
+            }
+            if(is_corruption(rc) && !repaired) {
                 LOG_WARN("Index database at {} is corrupt ({} failed: {}); rebuilding",
                          path,
                          stage,
                          mdb_strerror(rc));
                 remove_database_files(path);
+                repaired = true;
                 return true;
             }
             LOG_WARN(
@@ -632,8 +565,37 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
             mdb_env_set_mapsize(env, 0);
             rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &txn);
         }
+        // The last process to close finds itself alone and destroys the
+        // lock file's mutexes, racing an opener blocked on its shared lock
+        // meanwhile: that opener's first transaction fails with EINVAL. A
+        // reopen finds the lock file unowned and initializes it afresh.
+        if(rc == EINVAL && reopens < 3) {
+            mdb_env_close(env);
+            reopens += 1;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10 * reopens));
+            continue;
+        }
         if(rc != 0) {
             if(fail(rc, "snapshot")) {
+                continue;
+            }
+            return nullptr;
+        }
+        if(read_only) {
+            if(auto [length, declared] = coverage(env); length < declared) {
+                mdb_txn_abort(txn);
+                mdb_env_close(env);
+                LOG_WARN(
+                    "Index database at {} is shorter than its pages ({} of {} bytes); run "
+                    "`clice index` to repair it",
+                    path,
+                    length,
+                    declared);
+                return nullptr;
+            }
+        } else if(int cover_rc = cover_declared_pages(env)) {
+            mdb_txn_abort(txn);
+            if(fail(cover_rc, "cover")) {
                 continue;
             }
             return nullptr;
@@ -666,9 +628,8 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(CacheStore& store,
                 return nullptr;
             }
         }
-        return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), lock_fd);
+        return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), read_only);
     }
-    return nullptr;
 }
 
 enum class FsLocality : std::uint8_t {
@@ -715,64 +676,74 @@ FsLocality filesystem_locality(llvm::StringRef dir) {
 
 }  // namespace
 
-std::unique_ptr<BlobDatabase> open_fs_database(CacheStore& store) {
-    int lock_fd = -1;
-    if(!store.read_only()) {
-        auto locked = acquire_writer_lock(store);
-        if(!locked) {
-            return nullptr;
+std::string library_directory(const CacheStore& store, llvm::StringRef configuration) {
+    std::string name = "default";
+    if(!configuration.empty()) {
+        name = configuration.take_front(32).lower();
+        for(char& c: name) {
+            if(!llvm::isAlnum(c) && c != '-' && c != '_') {
+                c = '_';
+            }
         }
-        lock_fd = *locked;
+        name += std::format("~{:016x}", llvm::xxh3_64bits(configuration));
     }
-    return std::make_unique<FsDatabase>(store, lock_fd);
+    return path::join(store.base_dir(), "index", name);
 }
 
-std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store, std::size_t initial_mapsize) {
-    int lock_fd = -1;
-    if(!store.read_only()) {
-        auto locked = acquire_writer_lock(store);
-        if(!locked) {
+std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
+                                                 llvm::StringRef configuration,
+                                                 std::size_t initial_mapsize,
+                                                 bool read_only) {
+    read_only = read_only || store.read_only();
+    auto library = library_directory(store, configuration);
+    if(read_only) {
+        if(!vfs::exists(path::join(library, lmdb_file_name))) {
             return nullptr;
         }
-        lock_fd = *locked;
+    } else if(auto ec = vfs::create_directories(library)) {
+        LOG_WARN("Cannot create the index library {}: {}", library, ec.message());
+        return nullptr;
     }
-    auto db = open_lmdb_env(store, lock_fd, initial_mapsize);
+    auto db = open_lmdb_env(library, initial_mapsize, read_only);
     if(!db) {
-        release_writer_lock(lock_fd);
+        return nullptr;
     }
+    LOG_INFO("Index library: {}", library);
     return db;
 }
 
-std::unique_ptr<BlobDatabase> open_database(CacheStore& store, llvm::StringRef backend) {
-    if(backend == "files") {
-        return open_fs_database(store);
-    }
-    if(backend != "lmdb") {
-        LOG_WARN("Unknown index_db backend '{}'; using lmdb", backend);
-    }
+std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
+                                            llvm::StringRef configuration,
+                                            bool read_only) {
+    // FIXME: no index persistence on remote filesystems. A per-file blob
+    // backend used to fill this gap (one CacheStore-namespace file per
+    // blob, removed in PR #650 — see its history to resurrect it), but it
+    // duplicated everything the database gives for free — atomic batches,
+    // read snapshots, corruption detection — while the remote scenarios
+    // it claimed to serve (NFS home directories, SMB project shares,
+    // WSL drvfs checkouts) differ enough in locking and cache-coherence
+    // behavior that one untested fallback cannot honestly cover them.
+    // What remote workspaces actually need is an open design question;
+    // until it is answered, such sessions run with an in-memory index
+    // and this warning.
     switch(filesystem_locality(store.base_dir())) {
         case FsLocality::Local: break;
         case FsLocality::Remote: {
             LOG_WARN(
-                "{} is on a remote filesystem, which LMDB does not support; "
-                "using per-file index storage",
+                "{} is on a remote filesystem, which the index database does not "
+                "support; index persistence is disabled for this session",
                 store.base_dir());
-            return open_fs_database(store);
+            return nullptr;
         }
         case FsLocality::Unknown: {
             LOG_WARN(
-                "{} is on a FUSE filesystem; LMDB needs local-filesystem semantics — "
-                "set index_db = \"files\" if the index database misbehaves",
+                "{} is on a FUSE filesystem; the index database needs "
+                "local-filesystem semantics and may misbehave there",
                 store.base_dir());
             break;
         }
     }
-    // A reader before any LMDB writer ever ran (or after "files" runs)
-    // reads whatever the per-file backend left behind — including nothing.
-    if(store.read_only() && !llvm::sys::fs::exists(path::join(store.base_dir(), lmdb_file_name))) {
-        return open_fs_database(store);
-    }
-    return open_lmdb_database(store);
+    return open_lmdb_database(store, configuration, 0, read_only);
 }
 
 }  // namespace clice::index

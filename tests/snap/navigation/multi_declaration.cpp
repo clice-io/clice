@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 int §(first_decl)clamp(int value);
 int §(second_decl)clamp(int value);

@@ -5,22 +5,21 @@
 /// by canonical flags, host ranking, and switch validation.
 
 import * as fs from "node:fs";
-import * as path from "node:path";
-import { MTIME_GRANULARITY, SETTLE_TIME, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY, SETTLE_TIME, sleep, waitUntil } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
-/// Snapshot the artifact directory as name -> mtime (nanoseconds), matching
-/// the Python st_mtime_ns comparison.
-function snapshotMtimes(dir: string): Record<string, bigint> {
+/// Snapshot files as path -> mtime (nanoseconds).
+function snapshotMtimes(files: string[]): Record<string, bigint> {
     const out: Record<string, bigint> = {};
-    for (const name of fs.readdirSync(dir)) {
-        out[name] = fs.statSync(path.join(dir, name), { bigint: true }).mtimeNs;
+    for (const file of files) {
+        out[file] = fs.statSync(file, { bigint: true }).mtimeNs;
     }
     return out;
 }
 
 /// Switching between two CDB entries of one source must recompile it
-/// under the selected flags.
+/// under the selected flags. The unswitched default is content-decided
+/// (not CDB order), so the test drives both states explicitly.
 test("source command switch", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write(
@@ -33,9 +32,7 @@ test("source command switch", async ({ session }) => {
     ]);
     await client.initialize(workspace);
 
-    // Default entry is the first one: EXPECTED defined, clean.
     const [mainUri] = await client.openAndWait("main.cpp");
-    client.assertCleanCompile(mainUri);
 
     const query = await client.queryContext(mainUri);
     expect(query.total).toBe(2);
@@ -47,8 +44,14 @@ test("source command switch", async ({ session }) => {
     const plainHash = contexts.find((c) => !c.label.includes("-DEXPECTED"))!.commandHash!;
     const definedHash = contexts.find((c) => c.label.includes("-DEXPECTED"))!.commandHash!;
 
+    // Pin the entry with the define: clean compile.
+    let switched = await client.switchContext(mainUri, mainUri, { commandHash: definedHash });
+    expect(switched.success).toBe(true);
+    await client.waitForRecompile(mainUri);
+    client.assertCleanCompile(mainUri);
+
     // Switch to the entry without the define: the #error must fire.
-    let switched = await client.switchContext(mainUri, mainUri, { commandHash: plainHash });
+    switched = await client.switchContext(mainUri, mainUri, { commandHash: plainHash });
     expect(switched.success).toBe(true);
     await client.waitForRecompile(mainUri);
     client.assertHasErrors(mainUri, "Expected #error without -DEXPECTED");
@@ -101,6 +104,7 @@ test("occurrence switch", async ({ session }) => {
 
         const current = await client.currentContext(defUri);
         expect(current.context!.occurrence).toBe(occ);
+        expect(current.automatic).toBe(false);
     }
 });
 
@@ -221,9 +225,12 @@ test("stale epoch rejected", async ({ session }) => {
         `queryContext must stamp an epoch, got: ${JSON.stringify(query)}`,
     ).toBeTruthy();
 
-    // Any save bumps the workspace epoch.
+    // A save of new bytes bumps the project epoch.
+    const saved = '#define VALUE_TYPE int\n#include "shared.h"\nint main() { return 1; }\n';
+    workspace.write("main.cpp", saved);
+    client.change(mainUri, 2, saved);
     client.save(mainUri);
-    await sleep(500);
+    await sleep(SETTLE_TIME);
 
     let switched = await client.switchContext(sharedUri, mainUri, { epoch: oldEpoch });
     expect(switched.success).toBe(false);
@@ -277,6 +284,27 @@ test("multi config host", async ({ session }) => {
     expect(current.context!.commandHash, JSON.stringify(current)).toBe(metalHash);
 });
 
+/// A file opened through a symlink is offered the commands of its identity:
+/// the rules matching the file it names edit them.
+test.skipIf(process.platform === "win32")("contexts through a symlink", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("real/main.cpp", "int main() { return 0; }\n");
+    workspace.writeEntries([
+        ["real/main.cpp", ["-DFIRST"]],
+        ["real/main.cpp", ["-DSECOND"]],
+    ]);
+    workspace.write("clice.toml", '[[rules]]\npatterns = ["real/**"]\nappend = ["-DFROM_RULE"]\n');
+    fs.symlinkSync(workspace.path("real"), workspace.path("link"));
+    await client.initialize(workspace);
+
+    const [uri] = await client.openAndWait("link/main.cpp");
+    const labels = (await client.queryContext(uri)).contexts.map((c) => c.label);
+    expect(labels).toHaveLength(2);
+    for (const label of labels) {
+        expect(label).toContain("FROM_RULE");
+    }
+});
+
 /// Adding an #include and saving must immediately expose the new host
 /// in queryContext: the include graph is rescanned on didSave.
 test("saved include updates hosts", async ({ session }) => {
@@ -304,7 +332,7 @@ test("saved include updates hosts", async ({ session }) => {
 });
 
 /// Closing and reopening a header keeps its context choice and reuses
-/// the synthesized preamble instead of re-synthesizing it.
+/// the PCH built over its synthesized context.
 test("reopen reuses preamble", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("list.def", "X(alpha)\nX(beta)\n");
@@ -328,11 +356,8 @@ test("reopen reuses preamble", async ({ session }) => {
     expect(switched.success).toBe(true);
     await client.waitForRecompile(defUri);
 
-    const artifactDir = workspace.path(path.join(".clice", "header_context"));
-    const snapshot = snapshotMtimes(artifactDir);
-    expect(Object.keys(snapshot).length, "expected synthesized preamble artifacts").toBeGreaterThan(
-        0,
-    );
+    const snapshot = snapshotMtimes(workspace.pchFiles());
+    expect(Object.keys(snapshot).length, "expected a PCH over the context").toBeGreaterThan(0);
 
     client.close(defUri);
     await sleep(MTIME_GRANULARITY);
@@ -341,12 +366,12 @@ test("reopen reuses preamble", async ({ session }) => {
     const current = await client.currentContext(defUri);
     expect(current.context!.occurrence).toBe(1);
 
-    const after = snapshotMtimes(artifactDir);
-    expect(after, "reopen must reuse the preamble, not re-synthesize").toEqual(snapshot);
+    const after = snapshotMtimes(workspace.pchFiles());
+    expect(after, "reopen must reuse the PCH, not rebuild it").toEqual(snapshot);
 });
 
 /// Reopening a header after its chain file changed on disk must NOT
-/// reuse the stale preamble — the chain content is embedded in it.
+/// reuse the stale context — the chain content is embedded in it.
 test("chain change resynthesizes", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("list.def", "X(alpha)\nX(beta)\n");
@@ -369,23 +394,18 @@ test("chain change resynthesizes", async ({ session }) => {
     const switched = await client.switchContext(defUri, mainUri, { occurrence: 1 });
     expect(switched.success).toBe(true);
     await client.waitForRecompile(defUri);
-
-    const artifactDir = workspace.path(path.join(".clice", "header_context"));
-    const snapshot = snapshotMtimes(artifactDir);
-    expect(Object.keys(snapshot).length, "expected synthesized preamble artifacts").toBeGreaterThan(
-        0,
-    );
+    client.assertCleanCompile(defUri);
 
     client.close(defUri);
     await sleep(MTIME_GRANULARITY);
     // The chain file (the includer) changes on disk while the header is
-    // closed: the embedded preamble content is now stale.
+    // closed: the embedded context content is now stale.
     workspace.write(
         "main.cpp",
-        "#define X(name) int name = 2;\n" +
+        "#define X(name) int name = 1;\n" +
             '#include "list.def"\n' +
             "#undef X\n" +
-            "#define X(name) void get_##name();\n" +
+            "#define X(name) int get_##name = missing_value;\n" +
             '#include "list.def"\n' +
             "#undef X\n" +
             "int main() { return alpha; }\n",
@@ -395,8 +415,13 @@ test("chain change resynthesizes", async ({ session }) => {
     const current = await client.currentContext(defUri);
     expect(current.context!.occurrence).toBe(1);
 
-    const after = snapshotMtimes(artifactDir);
-    expect(after, "stale preamble must be re-synthesized").not.toEqual(snapshot);
+    const messages = client
+        .errors(defUri)
+        .map((d) => (typeof d.message === "string" ? d.message : d.message.value));
+    expect(
+        messages.some((m) => m.includes("missing_value")),
+        `the reopened compile must see the new chain: ${JSON.stringify(messages)}`,
+    ).toBe(true);
 });
 
 /// The client resync contract: after a successful switch the client
@@ -416,17 +441,24 @@ test("switched context survives reopen", async ({ session }) => {
     await client.initialize(workspace);
 
     const [uri] = await client.openAndWait("main.cpp");
-    client.assertCleanCompile(uri);
 
     const query = await client.queryContext(uri);
     const contexts = query.contexts;
     expect(query.total, `expected both entries: ${JSON.stringify(contexts)}`).toBe(2);
+    const cleanHash = contexts.find((c) => (c.label || "").includes("USE_A"))!.commandHash!;
     const targetHash = contexts.find((c) => (c.label || "").includes("USE_B"))!.commandHash!;
 
-    const switched = await client.switchContext(uri, uri, {
-        commandHash: targetHash,
+    // The unswitched default is content-decided; pin USE_A for a known
+    // starting state.
+    let switched = await client.switchContext(uri, uri, {
+        commandHash: cleanHash,
         epoch: query.epoch,
     });
+    expect(switched.success, `switch failed: ${JSON.stringify(switched)}`).toBe(true);
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+
+    switched = await client.switchContext(uri, uri, { commandHash: targetHash });
     expect(switched.success, `switch failed: ${JSON.stringify(switched)}`).toBe(true);
 
     client.close(uri);
@@ -436,12 +468,11 @@ test("switched context survives reopen", async ({ session }) => {
     // The close publishes an empty retract that can race the reopen's
     // first publish; poll past it for the real compile's errors.
     const [uri2] = await client.openAndWait("main.cpp");
-    for (let i = 0; i < 50; i++) {
-        if (client.errors(uri2).length > 0) {
-            break;
-        }
-        await sleep(200);
-    }
+    await waitUntil(() => client.errors(uri2).length, {
+        timeout: 10_000,
+        interval: 200,
+        description: "reopened context diagnostics",
+    });
     expect(
         (client.diagnostics.get(uri2) ?? []).some((d) =>
             (typeof d.message === "string" ? d.message : d.message.value).includes(

@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "pairs": [
+    { "kind": "heading", "en": "4301973c7f805a4c", "zh": "e859e1d5c006a3b8" },
+    { "kind": "paragraph", "en": "9af1d404ef7dd0dd", "zh": "ee32183018dd6326" },
+    { "kind": "paragraph", "en": "3e63e0ba9245f6cf", "zh": "03fd62bc0f5ad788" },
+    { "kind": "heading", "en": "1985dd2230f19f78", "zh": "37665fe48339b410" },
+    { "kind": "paragraph", "en": "d5dd149bae2a2d2c", "zh": "db1fb0056917134c" },
+    { "kind": "paragraph", "en": "f41e9c1d6cde822a", "zh": "299f731169008933" },
+    { "kind": "paragraph", "en": "4f40bf59784e67d1", "zh": "d00f3e85e03ff53b" },
+    { "kind": "paragraph", "en": "95aa9184068e2df9", "zh": "9ba31d2e58d16b3f" },
+    { "kind": "blockquote", "en": "534c2d5af40769a8", "zh": "28f6fbe51fb83c0d" },
+    { "kind": "heading", "en": "8f9a847c65c4aacd", "zh": "8f9a847c65c4aacd" },
+    { "kind": "paragraph", "en": "7b318afba5b0bf1f", "zh": "254b70dc2615f84a" },
+    { "kind": "paragraph", "en": "1e75614cae66d10d", "zh": "51c2562981ae01f5" },
+    { "kind": "tableRow", "en": "6445bc35595d7cb6", "zh": "fb13447088776ad1" },
+    { "kind": "tableRow", "en": "c679c9d3262c7fbb", "zh": "ae14b88f05bb11b6" },
+    { "kind": "tableRow", "en": "bef57aa0ef0972bc", "zh": "d611d67cb2108dc1" },
+    { "kind": "paragraph", "en": "28c9fea6ac2419d9", "zh": "8213f549c4c8651b" },
+    { "kind": "paragraph", "en": "290dbb985bce7cd2", "zh": "99c41e5897e36828" },
+    { "kind": "paragraph", "en": "75d83f8b4c729970", "zh": "f76f4fd02ecacb48" },
+    { "kind": "paragraph", "en": "1bd1395d9801064d", "zh": "bace7d1780821552" },
+    { "kind": "paragraph", "en": "96440263a5621a7c", "zh": "00005af5d2f9307c" },
+    { "kind": "paragraph", "en": "6937b81974c779d2", "zh": "15f4f957266ace1e" },
+    { "kind": "paragraph", "en": "0102ea067a80bc1a", "zh": "a9a7d1ad3abd0d9e" },
+    { "kind": "heading", "en": "a8de10ca40b6d4a0", "zh": "524b3d36e7bcab82" },
+    { "kind": "paragraph", "en": "bd3689658b90e127", "zh": "92c93b64e2c3bcf1" },
+    { "kind": "paragraph", "en": "a537c5706ef8defe", "zh": "08f9fa9a4738bc4f" },
+    { "kind": "blockquote", "en": "c81364186b833e23", "zh": "bfc309cefcf5d427" },
+    { "kind": "paragraph", "en": "8efc2c53a696d053", "zh": "7585bb0c4cdd36ea" }
+  ]
+}

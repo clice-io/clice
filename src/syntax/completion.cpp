@@ -1,14 +1,85 @@
-#include "syntax/completion.h"
+module;
 
-#include "syntax/include_resolver.h"
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
+module clice;
+
+import :syntax.completion;
+import :syntax.dependency_graph;
+import :syntax.include_resolver;
+import :syntax.lexer;
+import :syntax.scan;
 
 namespace clice {
+
+namespace {
+
+/// Bytes of multi-byte UTF-8 sequences count too: clang accepts extended
+/// characters in identifiers.
+bool is_identifier_char(char c) {
+    return clang::isAsciiIdentifierContinue(c) || static_cast<unsigned char>(c) >= 0x80;
+}
+
+bool is_module_name_char(char c) {
+    return is_identifier_char(c) || c == '.' || c == ':';
+}
+
+/// Clang's own include-completion filter widened by the fragment
+/// extensions projects include (`.inl`, `.ipp`, `.def`, ...): header
+/// extensions everywhere, extensionless files (the standard library's,
+/// Qt's, frameworks') only where such headers live.
+bool looks_like_header(llvm::StringRef name,
+                       llvm::StringRef dir,
+                       llvm::StringRef search_dir,
+                       bool system) {
+    auto extension = llvm::sys::path::extension(name).lower();
+    if(llvm::is_contained({".h",
+                           ".hh",
+                           ".hpp",
+                           ".hxx",
+                           ".h++",
+                           ".inc",
+                           ".inl",
+                           ".ipp",
+                           ".tcc",
+                           ".tpp",
+                           ".txx",
+                           ".def",
+                           ".cuh"},
+                          extension)) {
+        return true;
+    }
+    if(name.contains('.')) {
+        return false;
+    }
+    auto dir_name = llvm::sys::path::filename(dir);
+    return system || dir_name.starts_with("Qt") || dir_name == "ActiveQt" ||
+           dir.ends_with(".framework/Headers") ||
+           llvm::sys::path::filename(search_dir) == "include";
+}
+
+}  // namespace
+
+bool follows_access_operator(llvm::StringRef text, std::uint32_t offset) {
+    auto before = text.take_front(offset);
+    if(before.ends_with("::")) {
+        return true;
+    }
+    /// `x-->y` is a postfix decrement followed by `>`.
+    if(before.ends_with("->")) {
+        return !before.ends_with("-->");
+    }
+    if(!before.ends_with(".") || before.ends_with("..")) {
+        return false;
+    }
+    /// A dot right after a numeric literal continues the literal (`3.`).
+    auto operand = before.drop_back(1);
+    auto start = operand.size();
+    while(start > 0 && is_identifier_char(operand[start - 1])) {
+        start -= 1;
+    }
+    return start == operand.size() || !clang::isDigit(operand[start]);
+}
 
 PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::uint32_t offset) {
     // TODO: cache newline offsets from incremental text updates to avoid
@@ -31,13 +102,29 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
         // The argument is likely half-typed, so its prefix is taken
         // textually between the keyword token and the cursor.
         auto argument = text.slice(keyword.range.end, offset).ltrim();
+        CompletionContext kind;
         if(argument.consume_front("\"")) {
-            return {CompletionContext::IncludeQuoted, argument.str()};
+            kind = CompletionContext::IncludeQuoted;
+        } else if(argument.consume_front("<")) {
+            kind = CompletionContext::IncludeAngled;
+        } else {
+            return {};
         }
-        if(argument.consume_front("<")) {
-            return {CompletionContext::IncludeAngled, argument.str()};
+        auto slash = argument.rfind('/');
+        auto component = slash == llvm::StringRef::npos ? argument : argument.drop_front(slash + 1);
+        // A closed directive may name a file with spaces; an unclosed one
+        // ends its name at the first space.
+        char closer = kind == CompletionContext::IncludeQuoted ? '"' : '>';
+        auto line = text.slice(offset, text.find_first_of("\r\n", offset));
+        bool closed = line.contains(closer);
+        auto end = offset;
+        while(end < offset + line.size() && text[end] != '/' && text[end] != closer &&
+              (closed || !clang::isWhitespace(text[end]))) {
+            end += 1;
         }
-        return {};
+        return {kind,
+                argument.str(),
+                LocalSourceRange(offset - static_cast<std::uint32_t>(component.size()), end)};
     }
 
     // `[export] import` opening a logical line always means an import
@@ -52,39 +139,78 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
         return {};
     }
 
-    // Only complete while the statement is still open on this line.
-    auto line_end = text.find('\n', offset);
-    if(line_end == llvm::StringRef::npos) {
-        line_end = text.size();
-    }
-    if(text.slice(first.range.begin, line_end).contains(';')) {
+    if(text.slice(first.range.begin, offset).contains(';')) {
         return {};
     }
 
+    // `import->x` in C is a member access on a variable named `import`.
     auto prefix = text.slice(import_keyword.range.end, offset).ltrim();
-    return {CompletionContext::Import, prefix.str()};
-}
-
-std::vector<std::string>
-    complete_module_import(const llvm::DenseMap<std::uint32_t, std::string>& modules,
-                           llvm::StringRef prefix) {
-    std::vector<std::string> results;
-    // FIXME: exclude the current file's own module name from results
-    // (self-import is never valid). Needs the requesting path_id passed in.
-    // TODO: `modules` is only refreshed on file save; unsaved new module
-    // files won't appear in completions until written to disk.
-    for(auto& [path_id, module_name]: modules) {
-        if(llvm::StringRef(module_name).starts_with(prefix)) {
-            results.push_back(module_name);
+    if(!llvm::all_of(prefix, [](char c) {
+           return is_module_name_char(c) || clang::isHorizontalWhitespace(c);
+       })) {
+        return {};
+    }
+    auto end = offset;
+    while(end < text.size() && is_module_name_char(text[end])) {
+        end += 1;
+    }
+    // A semicolon before the cursor ended the statement above, so one on
+    // the rest of the line, past comments and attributes, closes this one.
+    bool closed = false;
+    for(auto token = lexer.advance(); !token.is_eof() && !token.is_at_start_of_line;
+        token = lexer.advance()) {
+        if(token.kind == clang::tok::semi) {
+            closed = true;
+            break;
         }
     }
+    return {CompletionContext::Import,
+            prefix.str(),
+            LocalSourceRange(offset - static_cast<std::uint32_t>(prefix.size()), end),
+            closed};
+}
+
+std::vector<std::string> complete_module_import(const DependencyGraph& graph,
+                                                llvm::StringRef prefix,
+                                                const ScanResult& unit) {
+    // TODO: the graph's declarations are only refreshed on file save;
+    // unsaved new module files won't appear in completions until written
+    // to disk.
+    auto [module, own_partition] = llvm::StringRef(unit.module_name).split(':');
+    std::vector<std::string> results;
+    for(auto& entry: graph.modules()) {
+        if(entry.getValue().empty()) {
+            continue;
+        }
+        // A partition is imported by its own module alone, by the partition
+        // name; a unit never imports its own module or itself.
+        auto [owner, partition] = entry.getKey().split(':');
+        std::string name;
+        if(partition.empty()) {
+            if(owner == module) {
+                continue;
+            }
+            name = owner.str();
+        } else {
+            if(module.empty() || owner != module || partition == own_partition ||
+               (unit.is_interface_unit && graph.internal_partition(entry.getValue().front()))) {
+                continue;
+            }
+            name = std::format(":{}", partition);
+        }
+        if(name.starts_with(prefix)) {
+            results.push_back(std::move(name));
+        }
+    }
+    std::ranges::sort(results);
     return results;
 }
 
-std::vector<IncludeCandidate> complete_include_path(const ResolvedSearchConfig& resolved,
+std::vector<IncludeCandidate> complete_include_path(const SearchConfig& config,
+                                                    llvm::StringRef includer_dir,
                                                     llvm::StringRef prefix,
                                                     bool angled,
-                                                    DirListingCache& dir_cache) {
+                                                    vfs::Scope& scope) {
     llvm::StringRef dir_prefix;
     llvm::StringRef file_prefix = prefix;
     auto slash_pos = prefix.rfind('/');
@@ -93,44 +219,36 @@ std::vector<IncludeCandidate> complete_include_path(const ResolvedSearchConfig& 
         file_prefix = prefix.slice(slash_pos + 1, llvm::StringRef::npos);
     }
 
-    unsigned start_idx = angled ? resolved.angled_start_idx : 0;
-
     std::vector<IncludeCandidate> results;
     llvm::StringSet<> seen;
 
-    for(unsigned i = start_idx; i < resolved.dirs.size(); ++i) {
-        auto& search_dir = resolved.dirs[i];
-
-        const llvm::StringSet<>* entries = nullptr;
+    auto collect = [&](llvm::StringRef search_dir, bool system) {
+        llvm::SmallString<256> dir(search_dir);
         if(!dir_prefix.empty()) {
-            llvm::SmallString<256> sub_path(search_dir.path);
-            llvm::sys::path::append(sub_path, dir_prefix);
-            entries = resolve_dir(sub_path, dir_cache);
-        } else {
-            entries = search_dir.entries;
+            llvm::sys::path::append(dir, dir_prefix);
         }
-
-        if(!entries)
-            continue;
-
-        for(auto& entry: *entries) {
+        for(auto& entry: scope.list(dir).entries) {
             auto name = entry.getKey();
-            if(!name.starts_with(file_prefix))
+            if(!name.starts_with(file_prefix) || seen.contains(name)) {
                 continue;
-            if(!seen.insert(name).second)
-                continue;
-
-            llvm::SmallString<256> full_path(search_dir.path);
-            if(!dir_prefix.empty()) {
-                llvm::sys::path::append(full_path, dir_prefix);
             }
-            llvm::sys::path::append(full_path, name);
 
-            bool is_dir = false;
-            llvm::sys::fs::is_directory(llvm::Twine(full_path), is_dir);
+            bool is_dir = entry.getValue();
+            if(!is_dir && !looks_like_header(name, dir, search_dir, system)) {
+                continue;
+            }
 
+            seen.insert(name);
             results.push_back({name.str(), is_dir});
         }
+    };
+
+    // A quoted include looks next to the file that contains it first.
+    if(!angled) {
+        collect(includer_dir, false);
+    }
+    for(unsigned i = angled ? config.angled_start_idx : 0; i < config.dirs.size(); i += 1) {
+        collect(config.dirs[i].path, i >= config.system_start_idx);
     }
 
     return results;

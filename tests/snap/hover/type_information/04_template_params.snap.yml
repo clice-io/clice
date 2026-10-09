@@ -1,0 +1,39 @@
+---
+created_at: 2026-07-28
+input_file: type_information/04_template_params.cpp
+---
+01_type_param: { range: "10:19-10:24" }
+### type `Value`  
+
+---
+Type: `typename`  
+
+---
+```cpp
+// In accept_type
+typename Value = long
+```
+
+02_template_template_param: { range: "12:36-12:45" }
+### type `Container`  
+
+---
+Type: `template <typename> class`  
+
+---
+```cpp
+// In accept_template
+template <typename> class Container
+```
+
+03_non_type_param: { range: "15:15-15:20" }
+### variable `Count`  
+
+---
+Type: `long`  
+
+---
+```cpp
+// In accept_value
+long Count = 8
+```

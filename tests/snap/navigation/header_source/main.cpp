@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 #include §(include_target)"lib.h"
 

@@ -1,8 +1,23 @@
-#include "syntax/lexer.h"
+module;
 
-#include "clang/Lex/Lexer.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.lexer;
 
 namespace clice {
+
+clang::LangOptions raw_dialect(clang::Language language, clang::LangStandard::Kind standard) {
+    clang::LangOptions options;
+    std::vector<std::string> includes;
+    clang::LangOptions::setLangDefaults(options, language, llvm::Triple(), includes, standard);
+    options.Char8 = options.CPlusPlus20;
+    options.CPlusPlusModules = options.CPlusPlus20;
+    options.GNUKeywords = options.GNUMode;
+    options.LineComment = true;
+    return options;
+}
 
 static clang::SourceLocation fake_loc = clang::SourceLocation::getFromRawEncoding(1);
 static clang::LangOptions default_opts;
@@ -82,8 +97,7 @@ void Lexer::lex(Token& token) {
         auto kw = token.text(content);
         // `import` here is the directive form (`#import`), which takes a
         // filename; a module import never sets parse_pp_keyword.
-        parse_header_name =
-            kw == "include" || kw == "include_next" || kw == "embed" || kw == "import";
+        parse_header_name = takes_header_name(kw);
     }
 
     // The __has_include family takes a parenthesized filename argument the
@@ -129,16 +143,6 @@ Token Lexer::advance() {
     }
 
     return current_token;
-}
-
-std::optional<Token> Lexer::advance_if(llvm::function_ref<bool(const Token&)> callback) {
-    auto token = next();
-
-    if(callback(token)) {
-        return advance();
-    }
-
-    return std::nullopt;
 }
 
 Token Lexer::advance_until(TokenKind kind) {

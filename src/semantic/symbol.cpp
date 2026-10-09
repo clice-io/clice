@@ -1,7 +1,10 @@
-#include "semantic/symbol.h"
+module;
 
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :semantic.symbol;
 
 namespace clice {
 
@@ -17,7 +20,7 @@ SymbolKind SymbolKind::from(const clang::Decl* decl) {
                : TD->isStruct() ? SymbolKind::Struct
                : TD->isUnion()  ? SymbolKind::Union
                                 : SymbolKind::Class;
-    } else if(llvm::isa<clang::FieldDecl>(decl)) {
+    } else if(llvm::isa<clang::FieldDecl, clang::MSPropertyDecl>(decl)) {
         return SymbolKind::Field;
     } else if(llvm::isa<clang::EnumConstantDecl>(decl)) {
         return SymbolKind::EnumMember;

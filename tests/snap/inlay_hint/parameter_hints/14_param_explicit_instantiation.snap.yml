@@ -1,0 +1,7 @@
+---
+created_at: 2026-07-31
+input_file: parameter_hints/14_param_explicit_instantiation.cpp
+---
+- { pos: "14:10", kind: Parameter, label: "value:", links: ["value ${WS}/parameter_hints/14_param_explicit_instantiation.cpp:9:13-9:18"], padding_right: true }
+- { pos: "22:37", kind: Parameter, label: "amount:", links: ["amount ${WS}/parameter_hints/14_param_explicit_instantiation.cpp:17:16-17:22"], padding_right: true }
+- { pos: "22:40", kind: Type, label: ": int" }

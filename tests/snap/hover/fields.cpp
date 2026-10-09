@@ -1,69 +1,68 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-// Field access.
-namespace field_access {
-struct Foo { int x; };
-int main() {
-  Foo bar;
-  (void)bar.§(01_field)x;
+namespace ordinary_member {
+struct Point {
+    int row;
+};
+int read() {
+    Point point;
+    return point.§(01_field)row;
 }
 }
 
-// Field with initialization.
-namespace field_init {
-struct Foo { int x = 5; };
-int main() {
-  Foo bar;
-  (void)bar.§(02_field_init)x;
+namespace initialized_member {
+struct Counter {
+    int value = 12;
+};
+int read() {
+    Counter counter;
+    return counter.§(02_field_init)value;
 }
 }
 
-// Static field.
-namespace static_field {
-struct Foo { static int x; };
-int main() {
-  (void)Foo::§(03_static_field)x;
+namespace static_member {
+struct Limits {
+    static int maximum;
+};
+int read() {
+    return Limits::§(03_static_field)maximum;
 }
 }
 
-// Field in member initializer.
-namespace member_initializer {
-struct Foo {
-  int x;
-  Foo() : §(04_member_initializer)x(0) {}
+namespace constructor_member {
+struct Window {
+    int height;
+    Window() : §(04_member_initializer)height(480) {}
 };
 }
 
-// Field, GNU old-style field designator.
-namespace gnu_designator {
-struct Foo { int x; };
-int main() {
-  Foo bar = { §(05_gnu_designator)x : 1 };
+namespace old_designator {
+struct Coordinates {
+    int column;
+};
+Coordinates point = {§(05_gnu_designator)column : 3};
+}
+
+namespace standard_designator {
+struct Coordinates {
+    int column;
+    int row;
+};
+Coordinates point = {.§(06_field_designator)column = 3, .row = 4};
+}
+
+namespace member_function {
+struct Queue {
+    int size();
+};
+int read(Queue& queue) {
+    return queue.§(07_method_call)size();
 }
 }
 
-// Field, field designator.
-namespace field_designator {
-struct Foo { int x; int y; };
-int main() {
-  Foo bar = { .§(06_field_designator)x = 2, .y = 2 };
-}
-}
-
-// Method call.
-namespace method_call {
-struct Foo { int x(); };
-int main() {
-  Foo bar;
-  bar.§(07_method_call)x();
-}
-}
-
-// Static method call.
-namespace static_method_call {
-struct Foo { static int x(); };
-int main() {
-  Foo::§(08_static_method_call)x();
+namespace static_function {
+struct Clock {
+    static int now();
+};
+int read() {
+    return Clock::§(08_static_method_call)now();
 }
 }

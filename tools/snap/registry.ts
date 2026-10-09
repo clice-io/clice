@@ -3,13 +3,16 @@
 /// ask for or fails loudly — never a silently skipped feature.
 
 import type { AnnotatedSource } from "./annotation.ts";
+import { codeAction } from "./features/code_action.ts";
 import { codeCompletion } from "./features/code_completion.ts";
+import { documentHighlight } from "./features/document_highlight.ts";
 import { documentLinks } from "./features/document_links.ts";
 import { documentSymbol } from "./features/document_symbol.ts";
 import { foldingRange } from "./features/folding_range.ts";
 import { hover } from "./features/hover.ts";
 import { inlayHint } from "./features/inlay_hint.ts";
 import { navigation } from "./features/navigation.ts";
+import { selectionRange } from "./features/selection_range.ts";
 import { semanticTokens } from "./features/semantic_tokens.ts";
 import { signatureHelp } from "./features/signature_help.ts";
 import { tuIndex } from "./features/tu_index.ts";
@@ -17,13 +20,16 @@ import { workspaceSymbol } from "./features/workspace_symbol.ts";
 import type { Feature, FeatureShape } from "./render.ts";
 
 const FEATURES: Record<string, Feature> = {
+    code_action: codeAction,
     code_completion: codeCompletion,
+    document_highlight: documentHighlight,
     document_links: documentLinks,
     document_symbol: documentSymbol,
     folding_range: foldingRange,
     hover,
     inlay_hint: inlayHint,
     navigation,
+    selection_range: selectionRange,
     semantic_tokens: semanticTokens,
     signature_help: signatureHelp,
     tu_index: tuIndex,
@@ -50,6 +56,9 @@ export function participates(
     const hasPoints = source.offsets.size > 0 || source.namelessOffsets.length > 0;
     if (shape === "point" || shape === "completion") {
         return hasPoints;
+    }
+    if (shape === "selection") {
+        return hasPoints || source.ranges.size > 0;
     }
     return entry || hasPoints || source.ranges.size > 0;
 }

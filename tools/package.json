@@ -6,17 +6,21 @@
   "exports": {
     "./bench/perf": "./bench/perf.ts",
     "./client": "./client/client.ts",
+    "./client/edits": "./client/edits.ts",
+    "./promise": "./promise.ts",
+    "./docs/generated": "./docs/generated.ts",
     "./workspace": "./client/workspace.ts",
     "./session": "./client/session.ts",
     "./snap/annotation": "./snap/annotation.ts",
     "./snap/snapshot": "./snap/snapshot.ts",
     "./snap/corpus": "./snap/corpus.ts",
     "./snap/registry": "./snap/registry.ts",
-    "./snap/render": "./snap/render.ts",
     "./snap/features/*": "./snap/features/*.ts",
     "./snap/server": "./snap/server.ts",
     "./snap/inspect": "./snap/inspect.ts",
     "./protocol": "./protocol/protocol.ts",
+    "./compat/check": "./compat/check.ts",
+    "./compat/scenario": "./compat/scenario.ts",
     "./compile-commands": "./compile_commands.ts"
   },
   "scripts": {
@@ -26,12 +30,13 @@
   },
   "dependencies": {
     "diff": "^9.0.0",
-    "vscode-jsonrpc": "^8.2.1",
+    "shell-quote": "^1.11.0",
     "vscode-languageserver-protocol": "^3.17.5",
     "vscode-uri": "^3.1.0"
   },
   "devDependencies": {
     "@types/node": "~25.0.3",
+    "@types/shell-quote": "^1.7.5",
     "eslint": "^10.8.0",
     "typescript": "~5.5.4",
     "typescript-eslint": "^8.65.0"

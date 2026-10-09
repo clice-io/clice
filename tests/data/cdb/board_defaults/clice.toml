@@ -1,0 +1,11 @@
+default_configuration = "board-a"
+
+[[rules]]
+configuration = "board-a"
+patterns = ["src/**", "include/**"]
+default_command = "clang -std=c23 -DBOARD_A -Iinclude"
+
+[[rules]]
+configuration = "board-b"
+patterns = ["src/**", "include/**"]
+default_command = "clang -std=c23 -DBOARD_B -Iinclude"

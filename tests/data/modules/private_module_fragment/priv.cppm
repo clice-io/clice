@@ -1,6 +1,6 @@
 export module Priv;
 export int public_fn();
-module :private;
+module : private;
 
 int public_fn() {
     return 42;

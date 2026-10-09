@@ -1,13 +1,14 @@
+module;
+
+#include "modules/prelude.h"
 /// Ported from clangd's unittests/support/MarkupTests.cpp (llvmorg-21.1.8), part of the LLVM
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
-#include <string>
+module clice;
 
-#include "test/test.h"
-#include "support/markup.h"
-
-#include "llvm/ADT/StringRef.h"
+import :support.markup;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 
@@ -29,193 +30,192 @@ bool escaped_none(llvm::StringRef text) {
     return !text.contains('\\');
 }
 
-TEST_SUITE(Markup) {
+ZEST_SUITE(Markup) {
 
-TEST_CASE(Escaping) {
-    // Check all ASCII punctuation.
+ZEST_CASE(Escaping) {  // Check all ASCII punctuation.
     std::string punctuation = R"txt(!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~)txt";
     std::string escaped_punc = R"txt(!"#$%&'()\*+,-./:;<=>?@[\\]^\_\`{|}~)txt";
-    ASSERT_EQ(escape(punctuation), escaped_punc);
+    ZASSERT(escape(punctuation) == escaped_punc);
 
     // Inline code
-    ASSERT_EQ(escape("`foo`"), R"(\`foo\`)");
-    ASSERT_EQ(escape("`foo"), R"(\`foo)");
-    ASSERT_EQ(escape("foo`"), R"(foo\`)");
-    ASSERT_EQ(escape("``foo``"), R"(\`\`foo\`\`)");
+    ZASSERT(escape("`foo`") == R"(\`foo\`)");
+    ZASSERT(escape("`foo") == R"(\`foo)");
+    ZASSERT(escape("foo`") == R"(foo\`)");
+    ZASSERT(escape("``foo``") == R"(\`\`foo\`\`)");
     // Code blocks
-    ASSERT_EQ(escape("```"), R"(\`\`\`)");  // This could also be inline code!
-    ASSERT_EQ(escape("~~~"), R"(\~~~)");
+    ZASSERT(escape("```") == R"(\`\`\`)");  // This could also be inline code!
+    ZASSERT(escape("~~~") == R"(\~~~)");
 
     // Rulers and headings
-    ASSERT_TRUE(escaped(escape("## Heading"), '#'));
-    ASSERT_TRUE(escaped_none(escape("Foo # bar")));
-    ASSERT_EQ(escape("---"), R"(\---)");
-    ASSERT_EQ(escape("-"), R"(\-)");
-    ASSERT_EQ(escape("==="), R"(\===)");
-    ASSERT_EQ(escape("="), R"(\=)");
-    ASSERT_EQ(escape("***"), R"(\*\*\*)");  // \** could start emphasis!
+    ZASSERT(escaped(escape("## Heading"), '#'));
+    ZASSERT(escaped_none(escape("Foo # bar")));
+    ZASSERT(escape("---") == R"(\---)");
+    ZASSERT(escape("-") == R"(\-)");
+    ZASSERT(escape("===") == R"(\===)");
+    ZASSERT(escape("=") == R"(\=)");
+    ZASSERT(escape("***") == R"(\*\*\*)");  // \** could start emphasis!
 
     // HTML tags.
-    ASSERT_TRUE(escaped(escape("<pre"), '<'));
-    ASSERT_TRUE(escaped_none(escape("< pre")));
-    ASSERT_TRUE(escaped(escape("if a<b then"), '<'));
-    ASSERT_TRUE(escaped_none(escape("if a<b then c.")));
-    ASSERT_TRUE(escaped(escape("if a<b then c='foo'."), '<'));
-    ASSERT_TRUE(escaped(escape("std::vector<T>"), '<'));
-    ASSERT_TRUE(escaped(escape("std::vector<std::string>"), '<'));
-    ASSERT_TRUE(escaped_none(escape("std::map<int, int>")));
+    ZASSERT(escaped(escape("<pre"), '<'));
+    ZASSERT(escaped_none(escape("< pre")));
+    ZASSERT(escaped(escape("if a<b then"), '<'));
+    ZASSERT(escaped_none(escape("if a<b then c.")));
+    ZASSERT(escaped(escape("if a<b then c='foo'."), '<'));
+    ZASSERT(escaped(escape("std::vector<T>"), '<'));
+    ZASSERT(escaped(escape("std::vector<std::string>"), '<'));
+    ZASSERT(escaped_none(escape("std::map<int, int>")));
     // Autolinks
-    ASSERT_TRUE(escaped_none(escape("Email <foo@bar.com>")));
-    ASSERT_TRUE(escaped_none(escape("Website <http://foo.bar>")));
+    ZASSERT(escaped_none(escape("Email <foo@bar.com>")));
+    ZASSERT(escaped_none(escape("Website <http://foo.bar>")));
 
     // Bullet lists.
-    ASSERT_TRUE(escaped(escape("- foo"), '-'));
-    ASSERT_TRUE(escaped(escape("* foo"), '*'));
-    ASSERT_TRUE(escaped(escape("+ foo"), '+'));
-    ASSERT_TRUE(escaped(escape("+"), '+'));
-    ASSERT_TRUE(escaped_none(escape("a + foo")));
-    ASSERT_TRUE(escaped_none(escape("a+ foo")));
-    ASSERT_TRUE(escaped(escape("1. foo"), '.'));
-    ASSERT_TRUE(escaped_none(escape("a. foo")));
+    ZASSERT(escaped(escape("- foo"), '-'));
+    ZASSERT(escaped(escape("* foo"), '*'));
+    ZASSERT(escaped(escape("+ foo"), '+'));
+    ZASSERT(escaped(escape("+"), '+'));
+    ZASSERT(escaped_none(escape("a + foo")));
+    ZASSERT(escaped_none(escape("a+ foo")));
+    ZASSERT(escaped(escape("1. foo"), '.'));
+    ZASSERT(escaped_none(escape("a. foo")));
 
     // Emphasis.
-    ASSERT_EQ(escape("*foo*"), R"(\*foo\*)");
-    ASSERT_EQ(escape("**foo**"), R"(\*\*foo\*\*)");
-    ASSERT_TRUE(escaped(escape("*foo"), '*'));
-    ASSERT_TRUE(escaped_none(escape("foo *")));
-    ASSERT_TRUE(escaped_none(escape("foo * bar")));
-    ASSERT_TRUE(escaped_none(escape("foo_bar")));
-    ASSERT_TRUE(escaped(escape("foo _bar"), '_'));
-    ASSERT_TRUE(escaped(escape("foo_ bar"), '_'));
-    ASSERT_TRUE(escaped_none(escape("foo _ bar")));
+    ZASSERT(escape("*foo*") == R"(\*foo\*)");
+    ZASSERT(escape("**foo**") == R"(\*\*foo\*\*)");
+    ZASSERT(escaped(escape("*foo"), '*'));
+    ZASSERT(escaped_none(escape("foo *")));
+    ZASSERT(escaped_none(escape("foo * bar")));
+    ZASSERT(escaped_none(escape("foo_bar")));
+    ZASSERT(escaped(escape("foo _bar"), '_'));
+    ZASSERT(escaped(escape("foo_ bar"), '_'));
+    ZASSERT(escaped_none(escape("foo _ bar")));
 
     // HTML entities.
-    ASSERT_TRUE(escaped(escape("fish &chips;"), '&'));
-    ASSERT_TRUE(escaped_none(escape("fish & chips;")));
-    ASSERT_TRUE(escaped_none(escape("fish &chips")));
-    ASSERT_TRUE(escaped(escape("foo &#42; bar"), '&'));
-    ASSERT_TRUE(escaped(escape("foo &#xaf; bar"), '&'));
-    ASSERT_TRUE(escaped_none(escape("foo &?; bar")));
+    ZASSERT(escaped(escape("fish &chips;"), '&'));
+    ZASSERT(escaped_none(escape("fish & chips;")));
+    ZASSERT(escaped_none(escape("fish &chips")));
+    ZASSERT(escaped(escape("foo &#42; bar"), '&'));
+    ZASSERT(escaped(escape("foo &#xaf; bar"), '&'));
+    ZASSERT(escaped_none(escape("foo &?; bar")));
 
     // Links.
-    ASSERT_TRUE(escaped(escape("[foo](bar)"), ']'));
-    ASSERT_TRUE(escaped(escape("[foo]: bar"), ']'));
+    ZASSERT(escaped(escape("[foo](bar)"), ']'));
+    ZASSERT(escaped(escape("[foo]: bar"), ']'));
     // No need to escape these, as the target never exists.
-    ASSERT_TRUE(escaped_none(escape("[foo][]")));
-    ASSERT_TRUE(escaped_none(escape("[foo][bar]")));
-    ASSERT_TRUE(escaped_none(escape("[foo]")));
+    ZASSERT(escaped_none(escape("[foo][]")));
+    ZASSERT(escaped_none(escape("[foo][bar]")));
+    ZASSERT(escaped_none(escape("[foo]")));
 
     // In code blocks we don't need to escape ASCII punctuation.
     Paragraph p;
     p.append_code("* foo !+ bar * baz");
-    ASSERT_EQ(p.as_markdown(), "`* foo !+ bar * baz`");
+    ZASSERT(p.as_markdown() == "`* foo !+ bar * baz`");
 
     // But we have to escape the backticks.
     p = Paragraph();
     p.append_code("foo`bar`baz", /*preserve=*/true);
-    ASSERT_EQ(p.as_markdown(), "`foo``bar``baz`");
+    ZASSERT(p.as_markdown() == "`foo``bar``baz`");
     // In plain-text, we fall back to different quotes.
-    ASSERT_EQ(p.as_plain_text(), "'foo`bar`baz'");
+    ZASSERT(p.as_plain_text() == "'foo`bar`baz'");
 
     // Inline code blocks starting or ending with backticks should add spaces.
     p = Paragraph();
     p.append_code("`foo");
-    ASSERT_EQ(p.as_markdown(), "` ``foo `");
+    ZASSERT(p.as_markdown() == "` ``foo `");
     p = Paragraph();
     p.append_code("foo`");
-    ASSERT_EQ(p.as_markdown(), "` foo`` `");
+    ZASSERT(p.as_markdown() == "` foo`` `");
     p = Paragraph();
     p.append_code("`foo`");
-    ASSERT_EQ(p.as_markdown(), "` ``foo`` `");
+    ZASSERT(p.as_markdown() == "` ``foo`` `");
 
     // Code blocks might need more than 3 backticks.
     Document d;
     d.add_code_block("foobarbaz `\nqux");
-    ASSERT_EQ(d.as_markdown(),
-              "```cpp\n"
-              "foobarbaz `\nqux\n"
-              "```");
+    ZASSERT(d.as_markdown() ==
+            "```cpp\n"
+            "foobarbaz `\nqux\n"
+            "```");
     d = Document();
     d.add_code_block("foobarbaz ``\nqux");
-    ASSERT_EQ(d.as_markdown(),
-              "```cpp\n"
-              "foobarbaz ``\nqux\n"
-              "```");
+    ZASSERT(d.as_markdown() ==
+            "```cpp\n"
+            "foobarbaz ``\nqux\n"
+            "```");
     d = Document();
     d.add_code_block("foobarbaz ```\nqux");
-    ASSERT_EQ(d.as_markdown(),
-              "````cpp\n"
-              "foobarbaz ```\nqux\n"
-              "````");
+    ZASSERT(d.as_markdown() ==
+            "````cpp\n"
+            "foobarbaz ```\nqux\n"
+            "````");
     d = Document();
     d.add_code_block("foobarbaz ` `` ``` ```` `\nqux");
-    ASSERT_EQ(d.as_markdown(),
-              "`````cpp\n"
-              "foobarbaz ` `` ``` ```` `\nqux\n"
-              "`````");
+    ZASSERT(d.as_markdown() ==
+            "`````cpp\n"
+            "foobarbaz ` `` ``` ```` `\nqux\n"
+            "`````");
 }
 
-TEST_CASE(ParagraphChunks) {
+ZEST_CASE(ParagraphChunks) {
     Paragraph p;
     p.append_text("One ");
     p.append_code("fish");
     p.append_text(", two ");
     p.append_code("fish", /*preserve=*/true);
 
-    ASSERT_EQ(p.as_markdown(), "One `fish`, two `fish`");
-    ASSERT_EQ(p.as_plain_text(), "One fish, two `fish`");
+    ZASSERT(p.as_markdown() == "One `fish`, two `fish`");
+    ZASSERT(p.as_plain_text() == "One fish, two `fish`");
 }
 
-TEST_CASE(ChunkSeparation) {
+ZEST_CASE(ChunkSeparation) {
     // This test keeps appending contents to a single Paragraph and checks
     // expected accumulated contents after each one.
     // Purpose is to check for separation between different chunks.
     Paragraph p;
 
     p.append_text("after ");
-    ASSERT_EQ(p.as_markdown(), "after");
-    ASSERT_EQ(p.as_plain_text(), "after");
+    ZASSERT(p.as_markdown() == "after");
+    ZASSERT(p.as_plain_text() == "after");
 
     p.append_code("foobar").append_space();
-    ASSERT_EQ(p.as_markdown(), "after `foobar`");
-    ASSERT_EQ(p.as_plain_text(), "after foobar");
+    ZASSERT(p.as_markdown() == "after `foobar`");
+    ZASSERT(p.as_plain_text() == "after foobar");
 
     p.append_text("bat");
-    ASSERT_EQ(p.as_markdown(), "after `foobar` bat");
-    ASSERT_EQ(p.as_plain_text(), "after foobar bat");
+    ZASSERT(p.as_markdown() == "after `foobar` bat");
+    ZASSERT(p.as_plain_text() == "after foobar bat");
 
     p.append_code("no").append_code("space");
-    ASSERT_EQ(p.as_markdown(), "after `foobar` bat`no` `space`");
-    ASSERT_EQ(p.as_plain_text(), "after foobar batno space");
+    ZASSERT(p.as_markdown() == "after `foobar` bat`no` `space`");
+    ZASSERT(p.as_plain_text() == "after foobar batno space");
 }
 
-TEST_CASE(ExtraSpaces) {
+ZEST_CASE(ExtraSpaces) {
     // Make sure spaces inside chunks are dropped.
     Paragraph p;
     p.append_text("foo\n   \t   baz");
     p.append_code(" bar\n");
-    ASSERT_EQ(p.as_markdown(), "foo baz`bar`");
-    ASSERT_EQ(p.as_plain_text(), "foo bazbar");
+    ZASSERT(p.as_markdown() == "foo baz`bar`");
+    ZASSERT(p.as_plain_text() == "foo bazbar");
 }
 
-TEST_CASE(SpacesCollapsed) {
+ZEST_CASE(SpacesCollapsed) {
     Paragraph p;
     p.append_text(" foo bar ");
     p.append_text(" baz ");
-    ASSERT_EQ(p.as_markdown(), "foo bar baz");
-    ASSERT_EQ(p.as_plain_text(), "foo bar baz");
+    ZASSERT(p.as_markdown() == "foo bar baz");
+    ZASSERT(p.as_plain_text() == "foo bar baz");
 }
 
-TEST_CASE(NewLines) {
+ZEST_CASE(NewLines) {
     // New lines before and after chunks are dropped.
     Paragraph p;
     p.append_text(" \n foo\nbar\n ");
     p.append_code(" \n foo\nbar \n ");
-    ASSERT_EQ(p.as_markdown(), "foo bar `foo bar`");
-    ASSERT_EQ(p.as_plain_text(), "foo bar foo bar");
+    ZASSERT(p.as_markdown() == "foo bar `foo bar`");
+    ZASSERT(p.as_plain_text() == "foo bar foo bar");
 }
 
-TEST_CASE(DocumentSeparators) {
+ZEST_CASE(DocumentSeparators) {
     Document d;
     d.add_paragraph().append_text("foo");
     d.add_code_block("test");
@@ -229,50 +229,50 @@ TEST_CASE(DocumentSeparators) {
         "test\n"
         "```\n"
         "bar";
-    ASSERT_EQ(d.as_markdown(), expected_markdown);
+    ZASSERT(d.as_markdown() == expected_markdown);
 
     const char* expected_text = R"pt(foo
 
 test
 
 bar)pt";
-    ASSERT_EQ(d.as_plain_text(), expected_text);
+    ZASSERT(d.as_plain_text() == expected_text);
 }
 
-TEST_CASE(DocumentRuler) {
+ZEST_CASE(DocumentRuler) {
     Document d;
     d.add_paragraph().append_text("foo");
     d.add_ruler();
 
     // Ruler followed by paragraph.
     d.add_paragraph().append_text("bar");
-    ASSERT_EQ(d.as_markdown(), "foo  \n\n---\nbar");
-    ASSERT_EQ(d.as_plain_text(), "foo\n\nbar");
+    ZASSERT(d.as_markdown() == "foo  \n\n---\nbar");
+    ZASSERT(d.as_plain_text() == "foo\n\nbar");
 
     d = Document();
     d.add_paragraph().append_text("foo");
     d.add_ruler();
     d.add_code_block("bar");
     // Ruler followed by a codeblock.
-    ASSERT_EQ(d.as_markdown(), "foo  \n\n---\n```cpp\nbar\n```");
-    ASSERT_EQ(d.as_plain_text(), "foo\n\nbar");
+    ZASSERT(d.as_markdown() == "foo  \n\n---\n```cpp\nbar\n```");
+    ZASSERT(d.as_plain_text() == "foo\n\nbar");
 
     // Ruler followed by another ruler
     d = Document();
     d.add_paragraph().append_text("foo");
     d.add_ruler();
     d.add_ruler();
-    ASSERT_EQ(d.as_markdown(), "foo");
-    ASSERT_EQ(d.as_plain_text(), "foo");
+    ZASSERT(d.as_markdown() == "foo");
+    ZASSERT(d.as_plain_text() == "foo");
 
     // Multiple rulers between blocks
     d.add_ruler();
     d.add_paragraph().append_text("foo");
-    ASSERT_EQ(d.as_markdown(), "foo  \n\n---\nfoo");
-    ASSERT_EQ(d.as_plain_text(), "foo\n\nfoo");
+    ZASSERT(d.as_markdown() == "foo  \n\n---\nfoo");
+    ZASSERT(d.as_plain_text() == "foo\n\nfoo");
 }
 
-TEST_CASE(DocumentAppend) {
+ZEST_CASE(DocumentAppend) {
     Document d;
     d.add_paragraph().append_text("foo");
     d.add_ruler();
@@ -280,19 +280,19 @@ TEST_CASE(DocumentAppend) {
     e.add_ruler();
     e.add_paragraph().append_text("bar");
     d.append(std::move(e));
-    ASSERT_EQ(d.as_markdown(), "foo  \n\n---\nbar");
+    ZASSERT(d.as_markdown() == "foo  \n\n---\nbar");
 }
 
-TEST_CASE(DocumentHeading) {
+ZEST_CASE(DocumentHeading) {
     Document d;
     d.add_heading(1).append_text("foo");
     d.add_heading(2).append_text("bar");
     d.add_paragraph().append_text("baz");
-    ASSERT_EQ(d.as_markdown(), "# foo  \n## bar  \nbaz");
-    ASSERT_EQ(d.as_plain_text(), "foo\nbar\nbaz");
+    ZASSERT(d.as_markdown() == "# foo  \n## bar  \nbaz");
+    ZASSERT(d.as_plain_text() == "foo\nbar\nbaz");
 }
 
-TEST_CASE(CodeBlockRender) {
+ZEST_CASE(CodeBlockRender) {
     Document d;
     // Code blocks preserves any extra spaces.
     d.add_code_block("foo\n  bar\n  baz");
@@ -305,8 +305,8 @@ foo
     llvm::StringRef expected_plain_text = R"pt(foo
   bar
   baz)pt";
-    ASSERT_EQ(d.as_markdown(), expected_markdown);
-    ASSERT_EQ(d.as_plain_text(), expected_plain_text);
+    ZASSERT(d.as_markdown() == expected_markdown);
+    ZASSERT(d.as_plain_text() == expected_plain_text);
 
     d.add_code_block("foo");
     expected_markdown = R"md(```cpp
@@ -317,25 +317,25 @@ foo
 ```cpp
 foo
 ```)md";
-    ASSERT_EQ(d.as_markdown(), expected_markdown);
+    ZASSERT(d.as_markdown() == expected_markdown);
     expected_plain_text = R"pt(foo
   bar
   baz
 
 foo)pt";
-    ASSERT_EQ(d.as_plain_text(), expected_plain_text);
+    ZASSERT(d.as_plain_text() == expected_plain_text);
 }
 
-TEST_CASE(BulletListRender) {
+ZEST_CASE(BulletListRender) {
     BulletList l;
     // Flat list
     l.add_item().add_paragraph().append_text("foo");
-    ASSERT_EQ(l.as_markdown(), "- foo");
-    ASSERT_EQ(l.as_plain_text(), "- foo");
+    ZASSERT(l.as_markdown() == "- foo");
+    ZASSERT(l.as_plain_text() == "- foo");
 
     l.add_item().add_paragraph().append_text("bar");
-    ASSERT_EQ(l.as_markdown(), "- foo\n- bar");
-    ASSERT_EQ(l.as_plain_text(), "- foo\n- bar");
+    ZASSERT(l.as_markdown() == "- foo\n- bar");
+    ZASSERT(l.as_plain_text() == "- foo\n- bar");
 
     // Nested list, with a single item.
     Document& d = l.add_item();
@@ -364,7 +364,7 @@ TEST_CASE(BulletListRender) {
         "  - foo  \n"
         "    - baz  \n"
         "      baz";
-    ASSERT_EQ(l.as_markdown(), expected_markdown);
+    ZASSERT(l.as_markdown() == expected_markdown);
     const char* expected_plain_text = R"pt(- foo
 - bar
 - foo
@@ -372,7 +372,7 @@ TEST_CASE(BulletListRender) {
   - foo
     - baz
       baz)pt";
-    ASSERT_EQ(l.as_plain_text(), expected_plain_text);
+    ZASSERT(l.as_plain_text() == expected_plain_text);
 
     // Termination
     inner.add_paragraph().append_text("after");
@@ -387,7 +387,7 @@ TEST_CASE(BulletListRender) {
         "      baz\n"
         "    \n"
         "    after";
-    ASSERT_EQ(l.as_markdown(), expected_markdown);
+    ZASSERT(l.as_markdown() == expected_markdown);
     expected_plain_text = R"pt(- foo
 - bar
 - foo
@@ -396,10 +396,10 @@ TEST_CASE(BulletListRender) {
     - baz
       baz
     after)pt";
-    ASSERT_EQ(l.as_plain_text(), expected_plain_text);
+    ZASSERT(l.as_plain_text() == expected_plain_text);
 }
 
-};  // TEST_SUITE(Markup)
+};  // ZEST_SUITE(Markup)
 
 }  // namespace
 }  // namespace clice::testing

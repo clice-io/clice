@@ -11,18 +11,30 @@
 /// and didOpen agree, background indexing sees the same bytes, and no
 /// fixture shares state with another — no corpus workspace, no lock.
 
+import type * as proto from "vscode-languageserver-protocol";
 import type { CliceClient } from "../client/client.ts";
 import type { SessionFactory } from "../client/session.ts";
 import {
-    HEADER,
-    materializeFixture,
     type FixtureFile,
+    HEADER,
     type SnapCorpus,
     type SnapFixture,
+    fixtureRelative,
+    materializeFixture,
 } from "./corpus.ts";
 import { feature, participates } from "./registry.ts";
 import { abBlocks, fileSections } from "./render.ts";
 import { SnapshotContext } from "./snapshot.ts";
+
+/// An editor that takes everything a reply can carry — versioned edits,
+/// snippets, insert/replace ranges — the client `clice inspect` renders for.
+const EDITOR_CAPABILITIES: proto.ClientCapabilities = {
+    workspace: { workspaceEdit: { documentChanges: true } },
+    textDocument: {
+        completion: { completionItem: { snippetSupport: true, insertReplaceSupport: true } },
+        inlayHint: {},
+    },
+};
 
 /// Replay one snap fixture through a real server and compare the reply
 /// against the colocated snapshot. Shared snapshot bodies are owned by the
@@ -118,7 +130,7 @@ export async function checkServerSnapFixture(
             if (!participates(shape, file.source, file.rel === fixture.rel)) {
                 continue;
             }
-            const label = fixture.unit === "" ? file.rel : file.rel.slice(fixture.unit.length + 1);
+            const label = fixtureRelative(fixture, file);
             const stripped = Buffer.from(file.source.content);
             sections.push([
                 label,
@@ -137,12 +149,16 @@ export async function checkServerSnapFixture(
     };
 
     const client = session.spawn(workspace);
-    await client.initialize(workspace, { initializationOptions: initializationOptions(false) });
+    await client.initialize(workspace, {
+        capabilities: EDITOR_CAPABILITIES,
+        initializationOptions: initializationOptions(false),
+    });
     let body = await present(client);
     if (fixture.meta.config !== undefined) {
         await client.shutdown();
         const configured = session.spawn(workspace);
         await configured.initialize(workspace, {
+            capabilities: EDITOR_CAPABILITIES,
             initializationOptions: initializationOptions(true),
         });
         body = abBlocks(body, await present(configured));
@@ -150,8 +166,8 @@ export async function checkServerSnapFixture(
 
     const shared = fixture.meta.verify === "both" && fixture.meta.snap === "shared";
     const snapshots = shared
-        ? new SnapshotContext(corpus.corpus, { colocated: true, update: false })
-        : new SnapshotContext(corpus.corpus, { colocated: true });
+        ? new SnapshotContext(corpus.corpus, { update: false })
+        : new SnapshotContext(corpus.corpus);
     const variant =
         fixture.meta.verify === "both" && fixture.meta.snap === "separate" ? "server" : "";
     snapshots.check(fixture.rel, body.join("\n"), variant);

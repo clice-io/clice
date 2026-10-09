@@ -1,0 +1,14 @@
+---
+created_at: 2026-10-08
+input_file: cursor_placement.cpp
+---
+blank: none
+
+keyword: none
+
+literal: none
+
+name_end:
+  - { range: "8:11-8:17", kind: Text }
+  - { range: "9:4-9:10", kind: Read }
+  - { range: "10:11-10:17", kind: Read }

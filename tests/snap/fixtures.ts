@@ -4,21 +4,12 @@
 /// integration suite — bound independently, per suite.
 
 import { test as base } from "vitest";
-import { cliceExecutable, createSessionFactory, type SessionFactory } from "@clice/tools/session";
+import { cliceExecutable, type SessionFactory } from "@clice/tools/session";
+import { sessionFixture } from "../session_fixture.ts";
 
 export { expect } from "vitest";
 export { cliceExecutable };
 
 export const test = base.extend<{ session: SessionFactory }>({
-    session: async (
-        { task }: { task: { result?: { errors?: unknown[] } } },
-        use: (factory: SessionFactory) => Promise<void>,
-    ) => {
-        const handle = createSessionFactory();
-        try {
-            await use(handle.session);
-        } finally {
-            await handle.teardown((task.result?.errors?.length ?? 0) > 0);
-        }
-    },
+    session: sessionFixture,
 });

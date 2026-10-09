@@ -1,33 +1,45 @@
-#include <chrono>
-#include <csignal>
-#include <format>
-#include <print>
-#include <ranges>
-#include <thread>
+module;
 
-#include "driver/driver.h"
-#include "index/serialization.h"
-#include "server/transport/master_server.h"
-#include "support/filesystem.h"
-#include "support/timer.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/FileSystem.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :driver.driver;
+import :index.database;
+import :index.query;
+import :index.serialization;
+import :index.writer_lock;
+import :project.configuration;
+import :project.open_index;
+import :project.project;
+import :sched.batch;
+import :server.control_client;
+import :support.timer;
 
 namespace clice::driver {
+
+using kota::deco::decl::KVStyle;
 
 namespace {
 
 struct IndexOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+    DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Workspace root directory (default: current directory)",
            required = false)
     <std::string> workspace;
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help =
+               "Build configuration to activate, one of the tags declared on rules "
+               "(default: the selected one, else default_configuration)",
+           required = false)
+    <std::string> configuration;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "Number of indexing workers (default: from config)",
            required = false)
     <std::uint32_t> workers;
@@ -37,21 +49,44 @@ struct IndexOptions {
              required = false)
     stats;
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
+    DecoKV(style = KVStyle::JoinedOrSeparate,
            help = "How many of the largest file shards --stats lists",
            required = false)
     <std::uint32_t> top;
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           names = {"--log-level", "--log-level="},
-           help = "Log level: trace, debug, info, warn, error, off",
-           required = false)
-    <std::string> log_level;
-};
+    DecoFlag(names = {"--variants"},
+             help =
+                 "Print the statistics and then every file shard with its variant "
+                 "count, one tab-separated line each",
+             required = false)
+    variants;
 
-auto make_command() {
-    return kota::deco::cli::command<IndexOptions>("clice index [OPTIONS]");
-}
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           names = {"--show-symbol", "--show-symbol="},
+           help =
+               "Print what the persisted index records about a symbol, named by its "
+               "name, qualified name or #hash, instead of indexing",
+           required = false)
+    <std::string> show_symbol;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           names = {"--show-file", "--show-file="},
+           help =
+               "Print a file's persisted rows: variants, contributing units and row "
+               "counts, instead of indexing",
+           required = false)
+    <std::string> show_file;
+
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           names = {"--show-tu", "--show-tu="},
+           help =
+               "Print a translation unit's persisted manifest: include tree and "
+               "contributions, instead of indexing",
+           required = false)
+    <std::string> show_tu;
+
+    LogLevelOption log;
+};
 
 std::string format_size(std::uint64_t bytes) {
     if(bytes >= 1024 * 1024) {
@@ -63,226 +98,210 @@ std::string format_size(std::uint64_t bytes) {
     return std::format("{} B", bytes);
 }
 
-/// Poll until the background indexer has drained every round (requeue
-/// rounds included) and persisted its results.
-kota::task<> wait_until_indexed(const MasterServer& server) {
-    while(!server.indexer.is_idle()) {
-        co_await kota::sleep(200);
-    }
+std::string format_hash(std::uint64_t hash) {
+    return std::format("#{:016x}", hash);
 }
 
-/// The first signal asks for a graceful stop: in-flight files are
-/// abandoned, finished ones are persisted, and a rerun resumes from
-/// there. A second signal — of either watched kind, hence the shared
-/// flag — exits immediately.
-kota::task<> watch_signal(MasterServer& server, int signum, bool& stop_requested) {
-    auto watcher = kota::signal::create();
-    if(!watcher || watcher->start(signum).has_error()) {
-        co_return;
-    }
-    while(true) {
-        co_await watcher->wait();
-        if(stop_requested) {
-            std::_Exit(130);
-        }
-        stop_requested = true;
-        LOG_INFO("Interrupted; saving indexing progress");
-        server.schedule_shutdown();
-    }
+/// Milliseconds since the epoch as a local wall-clock stamp.
+std::string format_time(std::uint64_t epoch_ms) {
+    auto seconds = static_cast<std::time_t>(epoch_ms / 1000);
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &seconds);
+#else
+    localtime_r(&seconds, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", &local);
+    return stamp;
 }
 
-kota::task<> run_indexing_task(MasterServer& server, std::string root, int& exit_code) {
-    ScopedTimer timer;
-    server.initialize(root);
-    if(server.lifecycle != ServerLifecycle::Ready) {
-        exit_code = 1;
-        co_await server.shutdown_and_cleanup();
-        co_return;
+/// Index through the serving writer: the editor's server holds the cache
+/// directory's writer lock, so it runs the sweep and the command waits
+/// for the rows to land.
+int run_indexing_via_server(const index::ServerEndpoint& endpoint, llvm::StringRef configuration) {
+    auto result = control::request_index(endpoint, configuration);
+    if(!result) {
+        LOG_ERROR("{}", result.error());
+        return 1;
     }
-    // The command's whole product is the persisted index: without storage
-    // (cache failed to open, another process holds the index writer lock,
-    // or an unreadable global blob disabled persistence) the run would
-    // only warm this process's memory and a rerun would start from
-    // nothing — fail instead of pretending.
-    if(!server.workspace.index_db) {
-        LOG_ERROR("Cannot persist the index at {}; see the log for the cause and rerun",
-                  std::string_view(server.workspace.config.project.cache_dir));
-        exit_code = 1;
-        co_await server.shutdown_and_cleanup();
-        co_return;
-    }
-    if(server.workspace.cdb.get_entries().empty()) {
-        LOG_ERROR("Nothing to index: no compile_commands.json found under {}", root);
-        exit_code = 1;
-        co_await server.shutdown_and_cleanup();
-        co_return;
-    }
-
-    bool stop_requested = false;
-    kota::task_group<> aux(server.loop);
-    aux.spawn(watch_signal(server, SIGINT, stop_requested));
-    aux.spawn(watch_signal(server, SIGTERM, stop_requested));
-
-    co_await kota::with_token(wait_until_indexed(server), server.shutdown_token());
-    co_await server.shutdown_and_cleanup();
-    aux.cancel();
-    co_await aux.join();
-
-    // Judged only after the watchers settle: a signal arriving while the
-    // final save/teardown ran must still report an interruption, not a
-    // normal completion with exit code 0.
-    if(stop_requested) {
-        std::println("Indexing interrupted; progress saved. Rerun `clice index` to resume.");
-        exit_code = 130;
-        co_return;
-    }
-    auto& workspace = server.workspace;
-    std::uint64_t total_bytes = 0;
-    for(auto& shard: llvm::make_second_range(workspace.shards)) {
-        total_bytes += shard.bytes().size();
-    }
-    std::println("Indexed {} translation units in {:.1f}s: {} file shards ({}), {} symbols.",
-                 workspace.project_index.manifests.size(),
-                 timer.ms() / 1000.0,
-                 workspace.shards.size(),
-                 format_size(total_bytes),
-                 workspace.project_index.symbols.size());
-    if(auto failed = server.indexer.failed_files()) {
-        std::println("{} translation units failed to index (see the log); the index is partial.",
-                     failed);
-        exit_code = 1;
-    }
-    // The shutdown save was the last retry for failed writes; whatever is
-    // still dirty never reached disk and a rerun cannot resume from it.
-    if(server.indexer.has_unsaved_state()) {
-        std::println("Part of the index could not be persisted (see the log).");
-        exit_code = 1;
-    }
-}
-
-int run_indexing(std::string root, std::uint32_t workers, const char* self_path) {
-    kota::event_loop loop;
-    MasterServer server(loop, self_path);
-
-    // A one-shot batch run: rounds start immediately, disk polling stays
-    // off, and indexing happens even when the config keeps the background
-    // index disabled — running `clice index` is the request itself.
-    std::string worker_overlay;
-    if(workers != 0) {
-        worker_overlay = std::format(
-            R"(, "stateless_worker_count": {0}, "min_stateless_worker_count": {0}, "max_stateless_worker_count": {0})",
-            workers);
-    }
-    server.init_options_json = std::format(
-        R"({{"project": {{"idle_timeout_ms": 0, "enable_indexing": true{}}}, "tracker": {{"cdb_poll_seconds": 0, "workspace_poll_seconds": 0}}}})",
-        worker_overlay);
-
-    int exit_code = 0;
-    loop.schedule(run_indexing_task(server, std::move(root), exit_code));
-    loop.run();
-    return exit_code;
-}
-
-/// Sentinel of run_stats_once: the load raced a live writer's batch;
-/// the caller retries instead of reporting over the mid-write state.
-constexpr int stats_retry = -1;
-
-int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
-    auto config = Config::load_from_workspace(root);
-    // Read-only: the default cache directory exists as soon as the config
-    // resolves it, so only the versioned store inside it proves an index
-    // was ever built — and a live server (even one on an older layout)
-    // must not lose blobs to a stats reader.
-    auto store =
-        CacheStore::open(config.project.cache_dir, cache_format_version, /*read_only=*/true);
-    if(!store) {
-        if(store.error() == std::errc::no_such_file_or_directory) {
-            LOG_ERROR("No index cache at {}; run `clice index` first",
-                      std::string_view(config.project.cache_dir));
-        } else {
-            LOG_ERROR("Failed to open cache store at {}: {}",
-                      std::string_view(config.project.cache_dir),
-                      store.error().message());
+    driver::println("Indexed through the running clice server (pid {}).", endpoint.pid);
+    if(!result->failed.empty()) {
+        driver::println(
+            "{} translation unit{} failed to index (see the server log); the index is partial:",
+            result->failed.size(),
+            plural_s(result->failed.size()));
+        for(auto& path: result->failed) {
+            driver::println("  {}", path);
         }
         return 1;
     }
+    return 0;
+}
 
-    kota::event_loop loop;
-    Workspace workspace;
-    workspace.config = std::move(config);
-    workspace.store.emplace(std::move(*store));
-    workspace.index_db = index::open_database(*workspace.store, workspace.config.project.index_db);
-    // A namespace whose directory scan failed looks empty while its blobs
-    // exist — reporting "Index is empty" with exit code 0 would be a lie.
-    if(auto ec = workspace.store->scan_error()) {
-        LOG_ERROR("Failed to read the index cache at {}: {}",
-                  std::string_view(workspace.config.project.cache_dir),
-                  ec.message());
+int run_indexing(Spelling root,
+                 std::string configuration,
+                 std::uint32_t workers,
+                 const char* self_path) {
+    auto config = Config::load_from_workspace(CanonicalPath(root));
+    if(!check_requested_configuration(config, configuration)) {
         return 1;
     }
-    WorkerPool pool(loop);
-    ContextResolver contexts(workspace);
-    SessionStore sessions;
-    Indexer indexer(loop, workspace, pool, contexts, sessions);
-    if(!indexer.load(/*read_only=*/true)) {
-        LOG_ERROR("Index cache at {} is in an old or corrupt format; run `clice index` to rebuild",
-                  std::string_view(workspace.config.project.cache_dir));
-        return 1;
-    }
-    // load() detaches the storage when the global blob exists but cannot
-    // be read — a transient IO error, not an empty index.
-    if(workspace.index_db == nullptr) {
-        LOG_ERROR("Failed to read the index cache at {}; the cache was left untouched",
-                  std::string_view(workspace.config.project.cache_dir));
-        return 1;
-    }
-    // A live writer's save publishes shards and manifests before the
-    // replacement global blob, so a read racing the batch can capture the
-    // old global next to newer blobs; the load drops those as stale and
-    // the verdicts below misread the mid-write state as damage. The writer
-    // may already have finished and unlocked by the time any post-load
-    // probe runs, so retry on the drops themselves; genuine damage merely
-    // spends the bounded retries before the final no-retry pass reports it.
-    if(allow_retry && indexer.pending_files() != 0) {
-        return stats_retry;
-    }
-
-    auto& project = workspace.project_index;
-    if(project.manifests.empty() && workspace.shards.empty()) {
-        // Nothing else fills the queue here, so pending files can only be
-        // load()'s recovery drops: every TU's blobs were missing, stale,
-        // or corrupt — a damaged cache, not a legitimately empty one.
-        if(indexer.pending_files() != 0) {
-            LOG_ERROR(
-                "Index cache at {} has no servable data ({} translation units need "
-                "reindexing); run `clice index` to rebuild",
-                std::string_view(workspace.config.project.cache_dir),
-                indexer.pending_files());
+    auto& cache_dir = config.project.cache_dir;
+    auto writer = index::probe_writer(cache_dir);
+    switch(writer.state) {
+        case index::WriterProbe::State::Free: break;
+        case index::WriterProbe::State::Server:
+            return run_indexing_via_server(writer.endpoint,
+                                           resolve_configuration(config, configuration));
+        case index::WriterProbe::State::Held: {
+            LOG_ERROR("{}", index::held_writer_message(writer, cache_dir));
             return 1;
         }
-        std::println("Index is empty; run `clice index` to build it.");
-        return 0;
     }
-
-    struct ShardStat {
-        llvm::StringRef path;
-        std::uint64_t bytes;
-        std::size_t variants;
-        std::uint64_t occurrences = 0;
-        std::uint64_t relations = 0;
+    // Progress goes to stderr whatever the log level: a run spends most of
+    // its time with nothing else to say, and the per-unit log lines exist
+    // only at info level. The batch paces the reports, and a tick with the
+    // counts unchanged is the heartbeat of a unit that takes longer than
+    // the pace.
+    auto started = std::chrono::steady_clock::now();
+    auto report_progress = [&](const BatchProgress& progress) {
+        driver::println(
+            stderr,
+            "progress {}/{} units, {} failed, {:.0f}s elapsed",
+            progress.completed,
+            progress.total,
+            progress.failed,
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
     };
 
-    struct ColumnBytes {
-        std::uint64_t content = 0;
-        std::uint64_t variants = 0;
-        std::uint64_t symbols = 0;
-        std::uint64_t local_names = 0;
-        std::uint64_t occ_rows = 0;
-        std::uint64_t occ_masks = 0;
-        std::uint64_t rel_rows = 0;
-        std::uint64_t rel_masks = 0;
-    } columns;
+    auto result = run_batch_index({
+        .root = std::move(root),
+        .configuration = std::move(configuration),
+        .workers = workers,
+        .self_path = self_path,
+        .on_progress = report_progress,
+    });
+    if(result.interrupted) {
+        if(result.unsaved) {
+            driver::println(
+                "Indexing interrupted; part of the progress could not be persisted "
+                "(see the log). Rerun `clice index` to resume.");
+        } else {
+            driver::println("Indexing interrupted; progress saved. Rerun `clice index` to resume.");
+        }
+        return result.exit_code;
+    }
+    if(!result.completed) {
+        if(!result.log_dir.empty()) {
+            driver::println("Session log: {}", result.log_dir);
+        }
+        return result.exit_code;
+    }
+    driver::println("Indexed {} translation unit{} in {:.1f}s: {} file shard{} ({}), {} symbol{}.",
+                    result.indexed_tus,
+                    plural_s(result.indexed_tus),
+                    result.seconds,
+                    result.shard_count,
+                    plural_s(result.shard_count),
+                    format_size(result.shard_bytes),
+                    result.symbol_count,
+                    plural_s(result.symbol_count));
+    if(result.standalone_headers != 0) {
+        driver::println(
+            "The index holds {} header{} indexed standalone under borrowed compile "
+            "commands.",
+            result.standalone_headers,
+            plural_s(result.standalone_headers));
+    }
+    if(!result.failed.empty()) {
+        driver::println(
+            "{} translation unit{} failed to index (see the log); the index is partial:",
+            result.failed.size(),
+            plural_s(result.failed.size()));
+        for(auto& path: result.failed) {
+            driver::println("  {}", path);
+        }
+    }
+    if(result.unsaved) {
+        driver::println("Part of the index could not be persisted (see the log).");
+    }
+    if(!result.log_dir.empty()) {
+        driver::println("Session log: {}", result.log_dir);
+    }
+    return result.exit_code;
+}
 
+/// Counts bucketed by powers of two: 0, 1, 2-3, 4-7, ... — the shape of
+/// the long-tailed distributions the index has (references per symbol,
+/// variants per file).
+struct Histogram {
+    constexpr static std::size_t buckets = 12;
+
+    std::array<std::uint64_t, buckets> counts{};
+    std::uint64_t total = 0;
+
+    void add(std::uint64_t value) {
+        counts[std::min<std::size_t>(std::bit_width(value), buckets - 1)] += 1;
+        total += 1;
+    }
+
+    static std::string label(std::size_t bucket) {
+        if(bucket <= 1) {
+            return std::to_string(bucket);
+        }
+        auto low = std::uint64_t(1) << (bucket - 1);
+        if(bucket == buckets - 1) {
+            return std::format("{}+", low);
+        }
+        return std::format("{}-{}", low, low * 2 - 1);
+    }
+
+    void print() const {
+        for(std::size_t bucket = 0; bucket < buckets; bucket += 1) {
+            if(counts[bucket] == 0) {
+                continue;
+            }
+            driver::println("  {:>8}  {:>9}  {:>5.1f}%",
+                            label(bucket),
+                            counts[bucket],
+                            total != 0 ? 100.0 * static_cast<double>(counts[bucket]) /
+                                             static_cast<double>(total)
+                                       : 0.0);
+        }
+    }
+};
+
+struct ShardStat {
+    std::string path;
+    std::uint64_t bytes = 0;
+    std::size_t variants = 0;
+    std::uint64_t occurrences = 0;
+    std::uint64_t relations = 0;
+};
+
+/// The byte split of the shard blobs, mirroring the ShardBlob columns.
+struct ShardColumns {
+    std::uint64_t content = 0;
+    std::uint64_t variants = 0;
+    std::uint64_t symbols = 0;
+    std::uint64_t locals = 0;
+    std::uint64_t occ_rows = 0;
+    std::uint64_t occ_masks = 0;
+    std::uint64_t rel_rows = 0;
+    std::uint64_t rel_masks = 0;
+
+    std::uint64_t total() const {
+        return content + variants + symbols + locals + occ_rows + occ_masks + rel_rows + rel_masks;
+    }
+};
+
+ShardColumns shard_columns_of(llvm::StringRef bytes) {
+    ShardColumns columns;
+    index::ShardBlob blob;
+    if(!index::deserialize_blob(bytes, blob)) {
+        return columns;
+    }
     auto row_bytes = [](const index::RowRanges& rr) -> std::uint64_t {
         return rr.packed.size() * 4 + rr.begins.size() * 4 + rr.lengths.size() +
                rr.long_rows.size() * 4 + rr.long_ends.size() * 4;
@@ -291,12 +310,53 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
         return rr.masks32.size() * 4 + rr.masks64.size() * 8 + rr.roaring_offsets.size() * 4 +
                rr.roaring.size();
     };
+    columns.content = blob.content.size() + blob.line_lengths.size() +
+                      blob.long_line_rows.size() * 4 + blob.long_line_lengths.size() * 4;
+    columns.variants = blob.variants.size() * 8;
+    columns.symbols = blob.sym_hashes.size() * 8 + blob.sym_rel_offsets.size() * 4;
+    columns.locals = blob.local_syms.size() * 4 + blob.local_kinds.size() +
+                     blob.local_scopes.size() + blob.local_parents.size() * 8 +
+                     blob.local_flags.size() * 2;
+    for(auto& name: blob.local_names) {
+        columns.locals += name.size();
+    }
+    for(auto& args: blob.local_args) {
+        columns.locals += args.size();
+    }
+    columns.occ_rows = row_bytes(blob.occs) + blob.occ_syms8.size() + blob.occ_syms16.size() * 2 +
+                       blob.occ_syms32.size() * 4;
+    columns.occ_masks = mask_bytes(blob.occs);
+    columns.rel_rows = row_bytes(blob.rels) + blob.rel_kinds.size() + blob.rel_sym_rows.size() * 4 +
+                       blob.rel_sym8.size() + blob.rel_sym16.size() * 2 +
+                       blob.rel_sym32.size() * 4 + blob.rel_def_rows.size() * 4 +
+                       blob.rel_def_begins.size() * 4 + blob.rel_def_ends.size() * 4;
+    columns.rel_masks = mask_bytes(blob.rels);
+    return columns;
+}
 
-    std::vector<ShardStat> files;
-    files.reserve(workspace.shards.size());
-    std::uint64_t total_bytes = 0, total_occurrences = 0, total_relations = 0;
-    for(auto& [path_id, shard]: workspace.shards) {
-        ShardStat stat{.path = workspace.path_pool.resolve(path_id),
+struct IndexStats {
+    std::vector<ShardStat> shards;
+    ShardColumns columns;
+    std::uint64_t shard_bytes = 0;
+    std::uint64_t occurrences = 0;
+    std::uint64_t relations = 0;
+    std::uint64_t global_bytes = 0;
+    std::uint64_t search_bytes = 0;
+    std::uint64_t manifest_bytes = 0;
+    std::uint64_t local_fanout = 0;
+    index::ProjectIndex::GlobalColumns global;
+    Histogram references_per_symbol;
+    Histogram name_lengths;
+    Histogram variants_per_shard;
+};
+
+IndexStats collect_stats(Project& project) {
+    IndexStats stats;
+    auto& project_index = project.project_index;
+
+    stats.shards.reserve(project.project_index.shards.size());
+    for(auto& [path_id, shard]: project.project_index.shards) {
+        ShardStat stat{.path = project.file_table.display(path_id),
                        .bytes = shard.bytes().size(),
                        .variants = shard.variants().size()};
         shard.for_each_occurrence([&](const index::Occurrence&) {
@@ -307,144 +367,489 @@ int run_stats_once(llvm::StringRef root, std::uint32_t top, bool allow_retry) {
             stat.relations += 1;
             return true;
         });
-        total_bytes += stat.bytes;
-        total_occurrences += stat.occurrences;
-        total_relations += stat.relations;
-        files.push_back(stat);
+        stats.shard_bytes += stat.bytes;
+        stats.occurrences += stat.occurrences;
+        stats.relations += stat.relations;
+        stats.variants_per_shard.add(stat.variants);
+        auto columns = shard_columns_of(shard.bytes());
+        stats.columns.content += columns.content;
+        stats.columns.variants += columns.variants;
+        stats.columns.symbols += columns.symbols;
+        stats.columns.locals += columns.locals;
+        stats.columns.occ_rows += columns.occ_rows;
+        stats.columns.occ_masks += columns.occ_masks;
+        stats.columns.rel_rows += columns.rel_rows;
+        stats.columns.rel_masks += columns.rel_masks;
+        stats.shards.push_back(stat);
+    }
+    std::ranges::sort(stats.shards, std::ranges::greater{}, &ShardStat::bytes);
 
-        index::ShardBlob blob;
-        if(index::deserialize_blob(shard.bytes(), blob)) {
-            columns.content += blob.content.size() + blob.line_lengths.size() +
-                               blob.long_line_rows.size() * 4 + blob.long_line_lengths.size() * 4;
-            columns.variants += blob.variants.size() * 8;
-            columns.symbols += blob.sym_hashes.size() * 8 + blob.sym_rel_offsets.size() * 4;
-            columns.local_names +=
-                blob.local_syms.size() * 4 + blob.local_kinds.size() + blob.local_scopes.size();
-            for(auto& name: blob.local_names) {
-                columns.local_names += name.size();
-            }
-            columns.occ_rows += row_bytes(blob.occs) + blob.occ_syms8.size() +
-                                blob.occ_syms16.size() * 2 + blob.occ_syms32.size() * 4;
-            columns.occ_masks += mask_bytes(blob.occs);
-            columns.rel_rows += row_bytes(blob.rels) + blob.rel_kinds.size() +
-                                blob.rel_sym_rows.size() * 4 + blob.rel_sym8.size() +
-                                blob.rel_sym16.size() * 2 + blob.rel_sym32.size() * 4 +
-                                blob.rel_def_rows.size() * 4 + blob.rel_def_begins.size() * 4 +
-                                blob.rel_def_ends.size() * 4;
-            columns.rel_masks += mask_bytes(blob.rels);
+    stats.global = project_index.global_columns();
+    project_index.for_each_symbol(
+        [&](index::SymbolHash, const index::SymbolIdentity& symbol, std::uint32_t references) {
+            stats.references_per_symbol.add(references);
+            stats.name_lengths.add(symbol.name.size());
+            return true;
+        });
+    for(auto& [tu, manifest]: project_index.manifests) {
+        stats.local_fanout += manifest.local_fanout.size();
+        if(auto blob = project.index_db->read(index::IndexBlobKind::Manifest,
+                                              project_index.key_of(project.file_table, tu))) {
+            stats.manifest_bytes += blob.buffer->getBufferSize();
         }
     }
-    std::ranges::sort(files, std::ranges::greater{}, &ShardStat::bytes);
+    if(auto blob = project.index_db->read(index::IndexBlobKind::Global, "global")) {
+        stats.global_bytes = blob.buffer->getBufferSize();
+    }
+    if(auto blob = project.index_db->read(index::IndexBlobKind::Search, "search")) {
+        stats.search_bytes = blob.buffer->getBufferSize();
+    }
+    return stats;
+}
 
-    std::println("Index cache: {}", std::string_view(workspace.store->base_dir()));
-    std::println("Translation units: {}", project.manifests.size());
-    std::println("File shards: {} ({}), {} occurrences, {} relations",
-                 files.size(),
-                 format_size(total_bytes),
-                 total_occurrences,
-                 total_relations);
-    std::println("Global symbols: {}, file versions: {}",
-                 project.symbols.size(),
-                 project.file_versions.size());
-
-    auto payload = columns.content + columns.variants + columns.symbols + columns.local_names +
-                   columns.occ_rows + columns.occ_masks + columns.rel_rows + columns.rel_masks;
-    auto share = [&](std::uint64_t bytes) {
-        return payload != 0 ? 100.0 * static_cast<double>(bytes) / static_cast<double>(payload)
-                            : 0.0;
+void print_stats(const Project& project,
+                 llvm::ArrayRef<Fid> dropped,
+                 const IndexStats& stats,
+                 std::uint32_t top) {
+    auto& project_index = project.project_index;
+    auto share = [](std::uint64_t bytes, std::uint64_t whole) {
+        return whole != 0 ? 100.0 * static_cast<double>(bytes) / static_cast<double>(whole) : 0.0;
     };
-    std::println();
-    std::println("Payload by column ({}; the rest of the file size is format framing):",
-                 format_size(payload));
-    std::println("  occurrence rows      {:>10}  {:>5.1f}%",
-                 format_size(columns.occ_rows),
-                 share(columns.occ_rows));
-    std::println("  occurrence masks     {:>10}  {:>5.1f}%",
-                 format_size(columns.occ_masks),
-                 share(columns.occ_masks));
-    std::println("  relation rows        {:>10}  {:>5.1f}%",
-                 format_size(columns.rel_rows),
-                 share(columns.rel_rows));
-    std::println("  relation masks       {:>10}  {:>5.1f}%",
-                 format_size(columns.rel_masks),
-                 share(columns.rel_masks));
-    std::println("  symbol tables        {:>10}  {:>5.1f}%",
-                 format_size(columns.symbols),
-                 share(columns.symbols));
-    std::println("  local symbol names   {:>10}  {:>5.1f}%",
-                 format_size(columns.local_names),
-                 share(columns.local_names));
-    std::println("  content + line maps  {:>10}  {:>5.1f}%",
-                 format_size(columns.content),
-                 share(columns.content));
-    std::println("  variant tables       {:>10}  {:>5.1f}%",
-                 format_size(columns.variants),
-                 share(columns.variants));
-    if(indexer.pending_files() != 0) {
-        std::println(
+    auto column = [&](llvm::StringRef name, std::uint64_t bytes, std::uint64_t whole) {
+        driver::println("  {:<24} {:>10}  {:>5.1f}%",
+                        name,
+                        format_size(bytes),
+                        share(bytes, whole));
+    };
+
+    auto configuration = project.build.active_configuration();
+    driver::println("Index cache: {}", index::library_directory(*project.store, configuration));
+    if(!configuration.empty()) {
+        driver::println("Configuration: {}", configuration);
+    }
+    driver::println("Translation units: {} (manifests {}), {} internal symbols spanning files",
+                    project_index.manifests.size(),
+                    format_size(stats.manifest_bytes),
+                    stats.local_fanout);
+    driver::println("File shards: {} ({}), {} occurrences, {} relations",
+                    stats.shards.size(),
+                    format_size(stats.shard_bytes),
+                    stats.occurrences,
+                    stats.relations);
+    driver::println("Global symbols: {}, file versions: {}",
+                    project_index.symbol_count(),
+                    project.file_table.versions.size());
+    driver::println("Search index: {} symbols ({}), {} merged since its build",
+                    project.project_index.search_index.size(),
+                    format_size(stats.search_bytes),
+                    project.project_index.search_pending.size());
+    if(!dropped.empty()) {
+        driver::println(
             "Translation units pending reindex (stale or partially written): {}; "
             "run `clice index` to repair",
-            indexer.pending_files());
+            dropped.size());
     }
-    std::println();
-    std::println("Top {} file shards by size:", std::min<std::size_t>(top, files.size()));
-    for(auto& stat: files | std::views::take(top)) {
-        std::println("  {:>10}  {:>4} variants  {:>9} occs  {:>9} rels  {}",
-                     format_size(stat.bytes),
-                     stat.variants,
-                     stat.occurrences,
-                     stat.relations,
-                     std::string_view(stat.path));
+
+    auto payload = stats.columns.total();
+    driver::println();
+    driver::println("Shard payload by column ({}; the rest of the file size is format framing):",
+                    format_size(payload));
+    column("occurrence rows", stats.columns.occ_rows, payload);
+    column("occurrence masks", stats.columns.occ_masks, payload);
+    column("relation rows", stats.columns.rel_rows, payload);
+    column("relation masks", stats.columns.rel_masks, payload);
+    column("symbol tables", stats.columns.symbols, payload);
+    column("local symbols", stats.columns.locals, payload);
+    column("content + line maps", stats.columns.content, payload);
+    column("variant tables", stats.columns.variants, payload);
+
+    auto& global = stats.global;
+    auto column_bytes =
+        global.names + global.args + global.bitmaps + global.fixed + global.contributors;
+    driver::println();
+    driver::println("Global blob ({}):", format_size(stats.global_bytes));
+    column("symbol names", global.names, stats.global_bytes);
+    column("specialization args", global.args, stats.global_bytes);
+    column("reference bitmaps", global.bitmaps, stats.global_bytes);
+    column("symbol fixed columns", global.fixed, stats.global_bytes);
+    column("reverse include graph", global.contributors, stats.global_bytes);
+    column("file versions + paths",
+           stats.global_bytes > column_bytes ? stats.global_bytes - column_bytes : 0,
+           stats.global_bytes);
+
+    driver::println();
+    driver::println("Symbols by reference file count:");
+    stats.references_per_symbol.print();
+    driver::println();
+    driver::println("Symbols by name length:");
+    stats.name_lengths.print();
+    driver::println();
+    driver::println("File shards by variant count:");
+    stats.variants_per_shard.print();
+
+    driver::println();
+    driver::println("Top {} file shards by size:", std::min<std::size_t>(top, stats.shards.size()));
+    for(auto& stat: stats.shards | std::views::take(top)) {
+        driver::println("  {:>10}  {:>4} variants  {:>9} occs  {:>9} rels  {}",
+                        format_size(stat.bytes),
+                        stat.variants,
+                        stat.occurrences,
+                        stat.relations,
+                        stat.path);
+    }
+}
+
+/// Every file shard with its variant count, most variants first — the
+/// machine-readable form for cross-run comparisons.
+void print_variants(const IndexStats& stats) {
+    auto by_variants = stats.shards;
+    std::ranges::stable_sort(by_variants, std::ranges::greater{}, &ShardStat::variants);
+    driver::println();
+    driver::println("variants\tpath");
+    for(auto& stat: by_variants) {
+        driver::println("{}\t{}", stat.variants, stat.path);
+    }
+}
+
+int run_stats(Project& project, llvm::ArrayRef<Fid> dropped, std::uint32_t top, bool variants) {
+    if(project.project_index.manifests.empty() && project.project_index.shards.empty()) {
+        driver::println("Index is empty; run `clice index` to build it.");
+        return 0;
+    }
+    auto stats = collect_stats(project);
+    print_stats(project, dropped, stats, top);
+    if(variants) {
+        print_variants(stats);
     }
     // Partial damage is still damage: automation must not read exit 0 as
     // "the cache is healthy" just because some TUs remained servable.
-    return indexer.pending_files() == 0 ? 0 : 1;
+    return dropped.empty() ? 0 : 1;
 }
 
-int run_stats(llvm::StringRef root, std::uint32_t top) {
-    constexpr std::uint32_t stats_attempts = 5;
-    for(std::uint32_t attempt = 1; attempt < stats_attempts; attempt += 1) {
-        int rc = run_stats_once(root, top, /*allow_retry=*/true);
-        if(rc != stats_retry) {
-            return rc;
+std::string flag_names(index::SymbolFlags flags) {
+    llvm::SmallVector<llvm::StringRef> names;
+    constexpr std::pair<index::SymbolFlags, llvm::StringRef> bits[] = {
+        {index::SymbolFlags::HasDefinition,   "HasDefinition"  },
+        {index::SymbolFlags::Template,        "Template"       },
+        {index::SymbolFlags::Specialization,  "Specialization" },
+        {index::SymbolFlags::Deprecated,      "Deprecated"     },
+        {index::SymbolFlags::InlineNamespace, "InlineNamespace"},
+        {index::SymbolFlags::Unnamed,         "Unnamed"        },
+        {index::SymbolFlags::SpelledInMacro,  "SpelledInMacro" },
+        {index::SymbolFlags::SystemHeader,    "SystemHeader"   },
+        {index::SymbolFlags::Completable,     "Completable"    },
+        {index::SymbolFlags::Exported,        "Exported"       },
+        {index::SymbolFlags::AnonymousScope,  "AnonymousScope" },
+    };
+    for(auto [bit, name]: bits) {
+        if(index::has_flag(flags, bit)) {
+            names.push_back(name);
         }
-        LOG_DEBUG("Index cache is mid-save; retrying the stats read");
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
-    return run_stats_once(root, top, /*allow_retry=*/false);
+    return llvm::join(names, ",");
+}
+
+llvm::StringRef kind_name(SymbolKind kind) {
+    return kota::meta::enum_name(static_cast<SymbolKind::Kind>(kind), "Invalid");
+}
+
+/// The symbol a `--show-symbol` argument names: `#<hex>` is a hash, anything
+/// else a display name (`Box<int>`) or a qualified one (`ns::Box<int>`).
+std::vector<index::SymbolHash> matching_symbols(Project& project,
+                                                index::IndexQuery& query,
+                                                llvm::StringRef wanted) {
+    std::vector<index::SymbolHash> matches;
+    if(wanted.starts_with("#")) {
+        if(auto hash = index::parse_symbol_id(wanted)) {
+            matches.push_back(*hash);
+        }
+        return matches;
+    }
+    bool qualified = wanted.contains("::");
+    project.project_index.for_each_symbol(
+        [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, std::uint32_t) {
+            if((symbol.name + symbol.args).str() == wanted ||
+               (qualified && query.qualified_name(hash) == wanted)) {
+                matches.push_back(hash);
+            }
+            return true;
+        });
+    std::ranges::sort(matches);
+    return matches;
+}
+
+int run_show_symbol(Project& project, llvm::StringRef wanted) {
+    index::IndexQuery query(project.project_index, project.file_table, nullptr, nullptr);
+    auto matches = matching_symbols(project, query, wanted);
+    if(matches.empty()) {
+        driver::println(
+            "No symbol named {} in the index (names cover the global table; "
+            "file-local symbols are reachable by #hash).",
+            std::string_view(wanted));
+        return 1;
+    }
+    int rc = 0;
+    for(auto hash: matches) {
+        auto info = query.symbol_info(hash);
+        if(!info) {
+            driver::println("{}: no table knows this hash", format_hash(hash));
+            rc = 1;
+            continue;
+        }
+        driver::println("symbol {}  kind={}  name={}  args={}  qualified={}  flags={}  form={}",
+                        format_hash(hash),
+                        kind_name(info->kind),
+                        info->name,
+                        info->args,
+                        query.qualified_name(hash),
+                        flag_names(info->flags),
+                        kota::meta::enum_name(index::name_form(info->flags), "Other"));
+        // A persisted parent column can be cyclic; the tables only reject
+        // reserved values.
+        llvm::DenseSet<index::SymbolHash> visited{hash};
+        for(auto parent = info->parent; parent != 0 && visited.insert(parent).second;) {
+            auto scope = query.symbol_info(parent);
+            if(!scope) {
+                driver::println("  parent {}: unknown", format_hash(parent));
+                break;
+            }
+            driver::println("  parent {}  kind={}  name={}",
+                            format_hash(parent),
+                            kind_name(scope->kind),
+                            scope->display_name());
+            parent = scope->parent;
+        }
+        if(auto symbol = project.project_index.identity_of(hash)) {
+            driver::println("  scope={}  file={}  reference files={}",
+                            kota::meta::enum_name(symbol->scope, "External"),
+                            symbol->file == index::no_file
+                                ? "-"
+                                : project.file_table.display(Fid{symbol->file}),
+                            project.project_index.reference_count(hash));
+        } else {
+            driver::println("  scope=local (not in the global table)");
+        }
+
+        struct Counts {
+            std::size_t definitions = 0;
+            std::size_t declarations = 0;
+            std::size_t references = 0;
+        };
+
+        // Straight from every shard: the query's fan-out follows the global
+        // table's reference bitmaps, which a file-local symbol has no entry
+        // in.
+        std::map<std::string, Counts> per_file;
+        for(auto& [path_id, shard]: project.project_index.shards) {
+            auto count = [&](RelationKind kind, std::size_t Counts::* field) {
+                shard.lookup(hash, kind, [&](const index::Relation&) {
+                    per_file[project.file_table.display(path_id)].*field += 1;
+                    return true;
+                });
+            };
+            count(RelationKind::Definition, &Counts::definitions);
+            count(RelationKind::Declaration, &Counts::declarations);
+            count(RelationKind::Reference, &Counts::references);
+        }
+        for(auto& [path, counts]: per_file) {
+            driver::println("  {}: definitions={} declarations={} references={}",
+                            path,
+                            counts.definitions,
+                            counts.declarations,
+                            counts.references);
+        }
+    }
+    return rc;
+}
+
+int run_show_file(Project& project, llvm::StringRef argument) {
+    auto path = inspected_path(project, argument);
+    auto file = project.file_table.find(path);
+    auto shard_it =
+        file ? project.project_index.shards.find(*file) : project.project_index.shards.end();
+    if(shard_it == project.project_index.shards.end()) {
+        driver::println("No rows for {} in the index.",
+                        project.file_table.display(CanonicalPath(path)));
+        return 1;
+    }
+    auto& shard = shard_it->second;
+    driver::println("file {}", project.file_table.display(*file));
+    driver::println("  blob={}  content size={}  content hash={}  text={}",
+                    format_size(shard.bytes().size()),
+                    shard.content_size(),
+                    format_hash(shard.content_hash()),
+                    shard.content().empty() ? "not stored (ASCII)" : "stored");
+
+    // Which unit contributed which variant, from the manifests.
+    std::map<std::uint64_t, std::vector<std::string>> contributors;
+    if(auto it = project.project_index.contributions.find(*file);
+       it != project.project_index.contributions.end()) {
+        for(auto& [tu, hash]: it->second) {
+            contributors[hash].push_back(project.file_table.display(tu));
+        }
+    }
+    auto variants = shard.variants();
+    driver::println("  variants={}", variants.size());
+    for(auto hash: variants) {
+        auto& units = contributors[hash];
+        std::ranges::sort(units);
+        driver::println("    {}  contributed by {} unit{}",
+                        format_hash(hash),
+                        units.size(),
+                        plural_s(units.size()));
+        for(auto& unit: units) {
+            driver::println("      {}", unit);
+        }
+    }
+
+    std::size_t occurrences = 0;
+    shard.for_each_occurrence([&](const index::Occurrence&) {
+        occurrences += 1;
+        return true;
+    });
+    std::map<llvm::StringRef, std::size_t> by_kind;
+    std::size_t relations = 0;
+    shard.for_each_relation([&](index::SymbolHash, const index::Relation& relation) {
+        by_kind[kota::meta::enum_name(relation.kind, "Invalid")] += 1;
+        relations += 1;
+        return true;
+    });
+    index::ShardBlob blob;
+    index::deserialize_blob(shard.bytes(), blob);
+    driver::println("  symbols={}  local symbols={}  occurrences={}  relations={}",
+                    blob.sym_hashes.size(),
+                    blob.local_syms.size(),
+                    occurrences,
+                    relations);
+    for(auto& [kind, count]: by_kind) {
+        driver::println("    {}={}", kind, count);
+    }
+    for(std::size_t k = 0; k < blob.local_syms.size(); k += 1) {
+        driver::println("    local {}  kind={}  name={}{}",
+                        format_hash(blob.sym_hashes[blob.local_syms[k]]),
+                        kind_name(SymbolKind(blob.local_kinds[k])),
+                        blob.local_names[k],
+                        blob.local_args[k]);
+    }
+    return 0;
+}
+
+int run_show_tu(Project& project, llvm::StringRef argument) {
+    auto path = inspected_path(project, argument);
+    auto& files = project.file_table;
+    auto tu = files.find(path);
+    auto& project_index = project.project_index;
+    auto manifest_it = tu ? project_index.manifests.find(*tu) : project_index.manifests.end();
+    if(manifest_it == project_index.manifests.end()) {
+        driver::println("No manifest for {} in the index.", files.display(CanonicalPath(path)));
+        return 1;
+    }
+    auto& manifest = manifest_it->second;
+    auto version_path = [&](VersionID fv) {
+        return files.display(files.version(fv).fid);
+    };
+    auto unit = files.display(*tu);
+    driver::println("translation unit {}", unit);
+    driver::println("  built at {}  generation={}  content hash={}",
+                    format_time(manifest.built_at),
+                    manifest.global_gen,
+                    format_hash(files.version(manifest.tu_fv).content_hash));
+
+    driver::println("  contributions={}", manifest.contributions.size());
+    for(auto& [fv, hash]: manifest.contributions) {
+        driver::println("    {}  {}", format_hash(hash), version_path(fv));
+    }
+
+    // The include tree, children under their parent in node order; a
+    // node's line is the directive's line in the file that includes it.
+    driver::println("  include tree ({} node{}):",
+                    manifest.nodes.size(),
+                    plural_s(manifest.nodes.size()));
+    std::vector<std::vector<std::uint32_t>> children(manifest.nodes.size() + 1);
+    for(std::uint32_t i = 0; i < manifest.nodes.size(); i += 1) {
+        auto parent = manifest.nodes[i].parent;
+        children[parent == index::no_node ? manifest.nodes.size() : parent].push_back(i);
+    }
+    std::size_t printed = 0;
+    auto print = [&](auto& self, std::uint32_t node, std::size_t depth) -> void {
+        printed += 1;
+        auto& entry = manifest.nodes[node];
+        auto includer = entry.parent == index::no_node
+                            ? unit
+                            : version_path(VersionID{manifest.nodes[entry.parent].file});
+        driver::println("    {:{}}{}  {} at {}:{}",
+                        "",
+                        depth * 2,
+                        version_path(VersionID{entry.file}),
+                        entry.skipped ? "skipped" : "included",
+                        includer,
+                        entry.line);
+        for(auto child: children[node]) {
+            self(self, child, depth + 1);
+        }
+    };
+    for(auto root: children.back()) {
+        print(print, root, 0);
+    }
+    // A manifest is accepted with in-range parents only; a cycle hangs off
+    // no root and would otherwise vanish from the listing.
+    if(printed != manifest.nodes.size()) {
+        driver::println("    {} node{} unreachable from the root (cyclic parents)",
+                        manifest.nodes.size() - printed,
+                        plural_s(manifest.nodes.size() - printed));
+        return 1;
+    }
+    return 0;
 }
 
 }  // namespace
 
-void add_index(kota::deco::cli::SubCommander& root, int& exit_code, const char* self_path) {
-    auto cmd = make_command();
-    cmd.matchAll([&exit_code, self_path](IndexOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           if(!apply_log_level(opts.log_level.value_or("info")))
-               return;
-           logging::stderr_logger("index", logging::options);
+void add_index(kota::deco::cli::SubCommander& root, const char* self_path) {
+    auto cmd = kota::deco::cli::command<IndexOptions>("clice index [OPTIONS]");
+    cmd.match_all([self_path](IndexOptions opts) {
+        opts.log.apply();
+        logging::stderr_logger("index", logging::options);
 
-           llvm::SmallString<256> workspace(opts.workspace.value_or(""));
-           if(workspace.empty()) {
-               llvm::sys::fs::current_path(workspace);
-           } else {
-               llvm::sys::fs::make_absolute(workspace);
-           }
-           std::string ws(workspace.str());
-           path::canonicalize(ws);
-
-           if(opts.stats) {
-               exit_code = run_stats(ws, opts.top.value_or(20));
-               return;
-           }
-           exit_code = run_indexing(std::move(ws), opts.workers.value_or(0), self_path);
-       })
-        .on_error([](auto err) { LOG_ERROR("{}", err.message); });
+        auto spelling = workspace_spelling(opts.workspace.value_or(""));
+        CanonicalPath ws(spelling);
+        auto configuration = opts.configuration.value_or("");
+        std::size_t modes = (opts.show_symbol ? 1 : 0) + (opts.show_file ? 1 : 0) +
+                            (opts.show_tu ? 1 : 0) + (opts.stats || opts.variants ? 1 : 0);
+        if(modes > 1) {
+            LOG_ERROR(
+                "--stats, --variants, --show-symbol, --show-file and --show-tu are "
+                "separate modes; pass one of them");
+            return 1;
+        }
+        if(opts.show_symbol || opts.show_file || opts.show_tu || opts.stats || opts.variants) {
+            FileTable files;
+            // Answers name files under the workspace as the command line does.
+            files.spell_root(spelling);
+            Project project{files};
+            CommandResolver commands{project};
+            auto loaded = load_index(project, commands, ws, configuration, /*with_build=*/false);
+            if(!loaded) {
+                return 1;
+            }
+            if(opts.show_symbol) {
+                return run_show_symbol(project, *opts.show_symbol);
+            }
+            if(opts.show_file) {
+                return run_show_file(project, *opts.show_file);
+            }
+            if(opts.show_tu) {
+                return run_show_tu(project, *opts.show_tu);
+            }
+            return run_stats(project,
+                             loaded->dropped,
+                             opts.top.value_or(20),
+                             static_cast<bool>(opts.variants));
+        }
+        return run_indexing(std::move(spelling),
+                            std::move(configuration),
+                            opts.workers.value_or(0),
+                            self_path);
+    });
 
     root.add({.name = "index", .description = "Index a workspace ahead of time"}, std::move(cmd));
 }

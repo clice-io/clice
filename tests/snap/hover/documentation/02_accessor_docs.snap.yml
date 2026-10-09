@@ -1,0 +1,32 @@
+---
+created_at: 2026-08-23
+input_file: documentation/02_accessor_docs.cpp
+---
+01_getter: { range: "12:9-12:19" }
+### method `getReading`  
+
+---
+→ `long`  
+Trivial accessor for `reading`.  
+
+---
+```cpp
+// In Meter
+public: long getReading()
+```
+
+02_setter: { range: "13:9-13:19" }
+### method `setReading`  
+
+---
+→ `void`  
+Parameters:  
+- `long next`
+
+Trivial setter for `reading`.  
+
+---
+```cpp
+// In Meter
+public: void setReading(long next)
+```

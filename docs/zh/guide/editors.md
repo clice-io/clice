@@ -1,35 +1,37 @@
-# Editor Setup
+# 编辑器设置
 
-clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-server-protocol)，任何带 LSP 客户端的编辑器都可以使用它。下面的编辑器分为两类：有官方 clice 插件的，以及通过通用 LSP 客户端配置的。
+clice 实现了 [Language Server Protocol](https://microsoft.github.io/language-server-protocol)，所以任何带 LSP 客户端的编辑器都可以使用它。下面的编辑器分为两类：有官方 clice 插件的编辑器，以及通过通用 LSP 客户端配置的编辑器。
 
 所有配置的前提：
 
-- `clice` 可执行文件在 `PATH` 中（或在下面的片段中使用绝对路径）。
-- 项目提供 `compile_commands.json`（clice 默认先搜索工作区根目录，再依次搜索其各个直接子目录）。
+- `clice` 可执行文件位于 `PATH` 中（或在下面的代码片段中使用绝对路径）。
+- 你的项目提供 `compile_commands.json`（clice 默认先搜索工作区根目录，再搜索其每个直接子目录）。
 
-## Official Plugins
+## 官方插件
 
 ### Visual Studio Code
 
-从市场安装 [clice 扩展](https://marketplace.visualstudio.com/items?itemName=clice-io.clice)。市场上的扩展按平台分发，clice 服务端已内置在扩展中，安装后无需下载、无需访问网络；如需使用自己构建的版本，设置 `clice.executable`。
+从应用市场安装 [clice 扩展](https://marketplace.visualstudio.com/items?itemName=clice-io.clice)；Cursor、VSCodium、Windsurf 等 VS Code 衍生编辑器从 [Open VSX](https://open-vsx.org/extension/clice-io/clice) 安装同一个扩展。发布的构建版本针对不同平台提供，并在扩展中内置 clice 服务端，因此安装后无需再下载或访问网络；若要改用自己的构建版本，请设置 `clice.executable`。
 
 ### Neovim
 
-clice 在 [`editors/nvim`](https://github.com/clice-io/clice/tree/main/editors/nvim) 中提供了 Neovim ≥ 0.11 的 LSP 配置。把 `doc/clice.lua` 复制到你配置目录的 `lsp/` 下，然后启用：
+在 Neovim 0.11 或更高版本上安装 [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) 后，启用 clice：
 
 ```lua
 vim.lsp.enable('clice')
 ```
 
+nvim-lspconfig 收录了 [`editors/nvim`](https://github.com/clice-io/clice/tree/main/editors/nvim) 中配置的一份副本，更新晚于这里；未安装 nvim-lspconfig，或想先用上它副本里还没有的改动时，把其中的 `lsp/clice.lua` 复制到你配置目录中的 `after/lsp/` 目录，它优先于 nvim-lspconfig 的那份。该配置添加了几个命令，用于查看和切换缓冲区的编译上下文；[README](https://github.com/clice-io/clice/tree/main/editors/nvim#readme) 列出了这些命令，以及 Neovim 留给你自行配置的功能，例如内联提示和输入时自动补全。
+
 ### Zed
 
 Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。
 
-## Generic LSP Clients
+## 通用 LSP 客户端
 
 ### Helix
 
-添加到 `~/.config/helix/languages.toml`：
+在 `~/.config/helix/languages.toml` 中添加以下内容：
 
 ```toml
 [language-server.clice]
@@ -58,7 +60,7 @@ language-servers = ["clice"]
 
 ### Sublime Text
 
-安装 [LSP 包](https://packagecontrol.io/packages/LSP)，然后在其设置中添加：
+安装 [LSP 包](https://packagecontrol.io/packages/LSP)，然后在其设置中添加以下内容：
 
 ```json
 {
@@ -74,7 +76,7 @@ language-servers = ["clice"]
 
 ### Kate
 
-打开 `设置 → 配置 Kate → LSP 客户端 → 用户服务器设置`，添加：
+打开 `Settings → Configure Kate → LSP Client → User Server Settings`，然后添加以下内容：
 
 ```json
 {

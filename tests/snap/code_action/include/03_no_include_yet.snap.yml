@@ -1,0 +1,7 @@
+---
+created_at: 2026-09-21
+input_file: include/03_no_include_yet.cpp
+---
+string:
+- [quickfix] Add #include <string>
+  8:0-8:0 => "#include <string>\n"

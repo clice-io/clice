@@ -1,623 +1,361 @@
 # Folding Ranges
 
-<!-- The checklist sections below are generated from the snapshot fixtures in
-     tests/data/folding_range/. Do not edit the regions between the GENERATED
+<!-- The capability sections below are generated from the snapshot fixtures in
+     tests/snap/folding_range/. Do not edit the regions between the GENERATED
      markers by hand — edit the fixture spec headers and run
-     `node tools/feature_docs.ts update`. -->
+     `node tools/docs/feature.ts update`. -->
 
 ## Fold Kinds
 
-<!-- BEGIN GENERATED ITEMS: Fold Kinds -->
-
-- [x] Block folding — functions, classes, structs, unions, enums, namespaces, lambdas
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace geometry {
-
-  enum class Shape {
-      Circle,
-      Square,
-      Triangle
-  };
-
-  struct Point {
-      int x;
-      int y;
-  };
-
-  union Value {
-      int as_int;
-      float as_float;
-  };
-
-  class Canvas {
-      Point origin;
-
-      int area() {
-          auto scale = [](int factor) {
-              return factor * 2;
-          };
-          return scale(4);
-      }
-  };
-
-  }  // namespace geometry
-
-  namespace spaced
-  {
-
-  struct Placeholder {
-      int filler;
-  };
-
-  }  // namespace spaced
-  ```
-
-  </details>
-
-- [x] Nested compound-statement folding — `if`/`for`/`while` bodies inside functions
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  void process(int count) {
-      if (count > 0) {
-          for (int i = 0; i < count; i += 1) {
-              count -= 1;
-          }
-      }
-
-      while (count > 0) {
-          count -= 1;
-      }
-
-      // A bare scope block folds too.
-      {
-          int scratch = count;
-          count = scratch + 1;
-      }
-  }
-  ```
-
-  </details>
-
-- [x] Multi-line list folding — function parameters, call arguments, initializer lists, lambda captures
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  void configure(
-      int width,       // ┐
-      int height,      // │ foldable parameter list
-      bool fullscreen  // ┘
-  );
-
-  int compute(int a, int b, int c);
-
-  void demo() {
-      int values[] = {
-          1,  // ┐
-          2,  // │ foldable initializer list
-          3   // ┘
-      };
-
-      int result = compute(
-          values[0],  // ┐
-          values[1],  // │ foldable argument list
-          values[2]   // ┘
-      );
-
-      auto sum = [
-          first = values[0],   // ┐
-          second = values[1]   // ┘ foldable lambda capture
-      ] {
-          return first + second;
-      };
-
-      auto scale = [](
-          int base,    // ┐ foldable lambda
-          int factor   // ┘ parameter list
-      ) {
-          return base * factor;
-      };
-
-      result += sum() + scale(result, 2);
-  }
-
-  int accumulate(
-      int start,  // ┐
-      int step,   // │ foldable parameter list
-      int count   // ┘ on a definition
-  ) {
-      return start + step * count;
-  }
-
-  void log_all(
-      const char* format,  // ┐ variadic parameter
-      ...                  // ┘ list still folds
-  );
-
-  struct Rect {
-      Rect(int w, int h);
-  };
-
-  Rect area(
-      10,  // ┐ foldable constructor
-      20   // ┘ arguments
-  );
-
-  Rect brace_area{
-      30,
-      40
-  };
-  ```
-
-  </details>
-
-- [x] Access-specifier section folding — `public:` / `protected:` / `private:` regions within a class ([clangd#1455](https://github.com/clangd/clangd/issues/1455))
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  class Widget {
-  public:            // ┐
-      void draw();   // │ foldable
-      void resize(); // ┘
-  private:           // ┐
-      int width;     // │ foldable
-      int height;    // ┘
-  };
-  ```
-
-  </details>
-
-- [ ] Preprocessor conditional folding (`#if` / `#ifdef` / `#ifndef` ... `#endif`) _(partial)_ ([clangd#1661](https://github.com/clangd/clangd/issues/1661), [clangd#2059](https://github.com/clangd/clangd/issues/2059))
-
-  Branch regions delimited by `#else` fold today; a bare `#if ... #endif`
-  block without an `#else` does not fold yet. clangd#2059 is a duplicate
-  of clangd#1661.
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  #ifdef ENABLE_LOGGING    // ┐
-  void log_message();      // │ no fold yet: bare conditional without #else
-  #endif                   // ┘
-
-  #ifdef USE_THREADS       // ┐
-  void spawn_workers();    // │ folds: branches delimited by #else
-  #else                    // │
-  void run_inline();       // │
-  #endif                   // ┘
-  ```
-
-  </details>
+<!-- BEGIN GENERATED ITEMS: fold_kinds -->
 
-- [x] Custom region folding (`#pragma region` / `#pragma endregion`) ([clangd#1623](https://github.com/clangd/clangd/issues/1623))
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  #pragma region Configuration
+<!-- BEGIN CAPABILITY: supported -->
 
-  int retry_count = 3;
-  int timeout_ms = 5000;
+**Block folding**
 
-  #pragma endregion
-  ```
+Functions, types, namespaces and lambdas form folding ranges
 
-  </details>
+```snap
+tests/snap/folding_range/fold_kinds/01_block_folding.cpp
+```
 
-- [x] Pragma classification — only the first argument token decides region/endregion
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  // The leading declaration ends the preamble so the pragmas below reach the
-  // main-file parse on both the inspect and the server path.
-  int before = 0;
+<!-- BEGIN CAPABILITY: supported -->
 
-  // Neither a region name nor another pragma's argument mentioning
-  // "endregion" may close the fold early.
-  #pragma region endregion_pair
-  int retries = 3;
-  #pragma mark see endregion notes
-  int limit = 10;
-  #pragma endregion
+**Nested compound-statement folding**
 
-  // The tail of a multiline comment before the introducer must not hide
-  // the region either.
-  /* spans
-  a line */ #pragma region after_comment
-  int after = 1;
-  #pragma endregion
-  ```
+Nested control-flow bodies form folding ranges
 
-  </details>
+```snap
+tests/snap/folding_range/fold_kinds/02_nested_compound_statement.cpp
+```
 
-- [ ] Comment folding — multi-line `/* */` and consecutive `//` line comments
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  // This is a long
-  // multi-line comment
-  // that should fold as one region
-
-  /*
-   * Block comment
-   * should also fold
-   */
-  ```
-
-  </details>
-
-- [ ] Include region folding — consecutive `#include` directives
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  #include <vector>       // ┐
-  #include <string>       // │ foldable region
-  #include <algorithm>    // ┘
+**Multi-line list folding**
 
-  #include "app.h"        // ┐ separate region
-  #include "config.h"     // ┘ (blank line separates)
-  ```
+Multiline parameter, argument, initializer and capture lists form folding
+ranges
 
-  </details>
-
-- [ ] Raw string literal folding
+```snap
+tests/snap/folding_range/fold_kinds/03_multiline_list_folding.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  auto sql = R"(
-      SELECT *
-      FROM users
-      WHERE active = true
-  )";  // foldable multi-line raw string
-  ```
+<!-- BEGIN CAPABILITY: supported clangd#1455 -->
 
-  </details>
+**Access-specifier section folding**
 
-- [ ] `using` declaration blocks — consecutive using declarations/directives
+Access-specifier regions within a class form folding ranges
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/folding_range/fold_kinds/04_access_specifier_folding.cpp
+```
 
-  ```cpp
-  using std::vector;  // ┐
-  using std::string;  // │ foldable
-  using std::map;     // ┘
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
-
-- [ ] Template parameter list folding
+<!-- BEGIN CAPABILITY: supported clangd#1661 clangd#2059 -->
 
-  <details>
-  <summary>Example</summary>
+**Preprocessor conditional folding**
 
-  ```cpp
-  template<typename T>
-  struct Less;
+Each branch of a conditional forms a folding range up to the directive that
+ends it, which stays visible
 
-  template<
-      typename Key,                 // ┐
-      typename Value,               // │ foldable
-      typename Compare = Less<Key>  // ┘
-  >
-  class SortedMap { };
-  ```
+```snap
+tests/snap/folding_range/fold_kinds/05_preprocessor_conditional.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Template specializations and instantiations — written specializations and their members fold; instantiated declarations reuse the pattern's source locations and must not fold it again
+<!-- BEGIN CAPABILITY: supported clangd#1623 -->
 
-  <details>
-  <summary>Example</summary>
+**Pragma region folding**
 
-  ```cpp
-  template <typename T>
-  struct Box {
-      T value;
+Named pragma regions form folding ranges
 
-      void reset() {
-          value = T();
-      }
-  };
+```snap
+tests/snap/folding_range/fold_kinds/06_pragma_region.cpp
+```
 
-  template <>
-  struct Box<void> {
-      void reset() {
-          // nothing stored
-      }
-  };
+<!-- END CAPABILITY -->
 
-  template <typename T>
-  struct Box<T*> {
-      T* pointee;
-  };
+<!-- BEGIN CAPABILITY: supported -->
 
-  // Neither the implicit instantiation Box<int> nor the explicit instantiation
-  // Box<char> re-folds the primary's braces or the reset() body.
-  Box<int> implicit_use;
-  template struct Box<char>;
-  ```
-
-  </details>
-
-- [x] Abbreviated function templates — bodies of functions with `auto` or constrained `auto` parameters fold like any other function
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  template <typename T>
-  concept Small = sizeof(T) <= 8;
-
-  void consume(Small auto x) {
-      auto copy = x;
-      copy += 1;
-  }
-
-  void forward(auto value) {
-      consume(value);
-  }
-  ```
-
-  </details>
-
-- [x] Macro-generated folding — braces and access specifiers spelled through macros fold at the invocation site
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  #define NS_BEGIN namespace ns {
-  #define NS_END }
-  #define PUBLIC public:
-  #define PRIVATE private:
+**Pragma classification**
 
-  NS_BEGIN
-
-  class Widget {
-  PUBLIC
-      void draw();
-      void resize();
-  PRIVATE
-      int width;
-      int height;
-  };
-
-  NS_END
-  ```
-
-  </details>
-
-- [x] Coroutine bodies — the written block folds exactly once and the coroutine transformation wrapper adds no duplicate fold; a coroutine lambda keeps its body fold
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace std {
-
-  template <typename Ret, typename...>
-  struct coroutine_traits {
-      using promise_type = typename Ret::promise_type;
-  };
-
-  template <typename = void>
-  struct coroutine_handle {
-      coroutine_handle() = default;
-
-      template <typename Promise>
-      coroutine_handle(coroutine_handle<Promise>) noexcept;
-
-      static coroutine_handle from_address(void*) noexcept;
-  };
-
-  struct suspend_never {
-      bool await_ready() const noexcept;
-      void await_suspend(coroutine_handle<>) const noexcept;
-      void await_resume() const noexcept;
-  };
-
-  }  // namespace std
-
-  struct Task {
-      struct promise_type {
-          Task get_return_object();
-          std::suspend_never initial_suspend();
-          std::suspend_never final_suspend() noexcept;
-          void return_void();
-          void unhandled_exception();
-      };
-  };
-
-  Task work() {
-      int steps = 0;
-      if (steps == 0) {
-          steps += 1;
-      }
-      co_return;
-  }
-
-  void host() {
-      auto nested = []() -> Task {
-          int steps = 0;
-          steps += 1;
-          co_return;
-      };
-  }
-  ```
-
-  </details>
-
-- [x] Initializer-list constructions — the constructor's braces and the nested initializer list share delimiters and fold once; a parenthesized list argument keeps both folds
-
-  <details>
-  <summary>Example</summary>
-
-  ```cpp
-  namespace std {
-
-  template <typename T>
-  class initializer_list {
-  public:
-      using size_type = decltype(sizeof(0));
-
-      const T* ptr = nullptr;
-      size_type len = 0;
-  };
-
-  }  // namespace std
-
-  struct Bag {
-      Bag(std::initializer_list<int> values);
-  };
-
-  Bag braces{
-      1,
-      2
-  };
-
-  Bag nested({
-      3,
-      4
-  });
-  ```
-
-  </details>
+Only the first argument token decides region/endregion
+
+```snap
+tests/snap/folding_range/fold_kinds/07_pragma_classification.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Comment folding**
+
+Multiline block comments and runs of line comments fold
+
+Line comments on consecutive lines fold as one run below the first line,
+which stays visible; a blank line or a line of code ends the run. A block
+comment folds on its delimiters like a brace pair. A comment trailing code
+does not fold.
+
+```snap
+tests/snap/folding_range/fold_kinds/08_comment_folding.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Include region folding**
+
+Consecutive include directives fold as one run below the first include
+
+A blank line, a comment line or another directive ends the run; includes
+inside a conditional branch fold within it, whether or not the branch is
+taken.
+
+```snap
+tests/snap/folding_range/fold_kinds/09_include_region/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Raw string literal folding**
+
+Multiline raw string literals fold on their delimiters
+
+The placeholder repeats the encoding prefix, a custom delimiter and a
+literal suffix. A raw string written in a macro argument folds where it is
+written.
+
+```snap
+tests/snap/folding_range/fold_kinds/10_raw_string_literal.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`using` declaration blocks**
+
+Consecutive using declarations and directives fold below the first one
+
+A blank line or any other line ends the run, and alias declarations do not
+join one, nor does a declaration sharing its line with other code. Using
+declarations produced by macros fold at the invocations.
+
+```snap
+tests/snap/folding_range/fold_kinds/11_using_declaration_block.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Template parameter list folding**
+
+Multiline template parameter lists fold on their angle brackets
+
+Class, function, variable and alias templates, partial specializations,
+the lists an out-of-line member definition repeats, template template
+parameters and lambdas with explicit template parameters all fold their
+parameter lists.
+
+```snap
+tests/snap/folding_range/fold_kinds/12_template_parameter_list.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Template specializations and instantiations**
+
+Written specializations and their members fold; instantiated declarations
+reuse the pattern's source locations and do not fold it again
+
+```snap
+tests/snap/folding_range/fold_kinds/13_template_instantiations.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Abbreviated function templates**
+
+Bodies of functions with `auto` or constrained `auto` parameters fold like
+any other function
+
+```snap
+tests/snap/folding_range/fold_kinds/14_abbreviated_function_template.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Macro-generated folding**
+
+Braces and access specifiers spelled through macros fold at the invocation
+site
+
+```snap
+tests/snap/folding_range/fold_kinds/15_macro_folding.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Coroutine bodies**
+
+The written block folds exactly once and the coroutine transformation
+wrapper adds no duplicate fold; a coroutine lambda keeps its body fold
+
+```snap
+tests/snap/folding_range/fold_kinds/16_coroutine_body.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Initializer-list constructions**
+
+The constructor's braces and the nested initializer list share delimiters
+and fold once; a parenthesized list argument keeps both folds
+
+```snap
+tests/snap/folding_range/fold_kinds/17_initializer_list_construction.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Macro-argument folding**
+
+Code written inside macro arguments folds where it is written
+
+```snap
+tests/snap/folding_range/fold_kinds/18_macro_argument_folding.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Linkage specification blocks**
+
+`extern "C"` blocks form folding ranges, also behind the usual
+`__cplusplus` guards
+
+```snap
+tests/snap/folding_range/fold_kinds/19_linkage_specification.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Module fragments and export blocks**
+
+The global and private module fragments and `export` blocks form folding
+ranges
+
+```snap
+tests/snap/folding_range/fold_kinds/20_module_blocks.cpp
+```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 ## Refinements
 
-<!-- BEGIN GENERATED ITEMS: Refinements -->
+<!-- BEGIN GENERATED ITEMS: refinements -->
 
-- [x] `collapsedText` placeholder (LSP 3.17) — show a summary when folded ([clangd#2667](https://github.com/clangd/clangd/issues/2667))
+<!-- BEGIN CAPABILITY: supported clangd#2667 -->
 
-  > **Client support**: VS Code does **not** support `collapsedText` yet
-  > ([vscode#70794](https://github.com/microsoft/vscode/issues/70794) — still
-  > open); Neovim with nvim-lsp supports it natively. Clients that do not
-  > implement this field will silently ignore it — the folding still works,
-  > only the placeholder text is missing.
+**`collapsedText` placeholder (LSP 3.17)**
 
-  <details>
-  <summary>Example</summary>
+Folded ranges can show a summary
 
-  ```cpp
-  struct Config {
-      int width;
-      int height;
-  };
+> **Client support**: VS Code does **not** support `collapsedText` yet
+> ([vscode#70794](https://github.com/microsoft/vscode/issues/70794) — still
+> open); Neovim with nvim-lsp supports it natively. Clients that do not
+> implement this field will silently ignore it — the folding still works,
+> only the placeholder text is missing.
 
-  // When folded, the body collapses to a `{...}` placeholder while the
-  // signature stays visible: int process_data(const Config& cfg) {...}
-  int process_data(const Config& cfg) {
-      return cfg.width * cfg.height;
-  }
-  ```
+```snap
+tests/snap/folding_range/refinements/01_collapsed_text.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [ ] Fold from the declaration line for function/class bodies — keep the signature visible when folded ([clangd#2666](https://github.com/clangd/clangd/issues/2666))
+<!-- BEGIN CAPABILITY: supported clangd#2666 -->
 
-  > **Client support**: this depends on the client interpreting
-  > `FoldingRange.startLine` correctly. VS Code uses the line _after_
-  > `startLine` as the first hidden line, so setting `startLine` to the
-  > declaration line achieves the desired effect. However, VS Code still
-  > leaves the closing `}` on a separate line rather than collapsing it onto
-  > the signature line ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)
-  > — still open). Other clients may differ.
+**Declaration-line folding**
 
-  <details>
-  <summary>Example</summary>
+A declaration's body folds from the line holding its name
 
-  ```cpp
-  struct Config {
-      int width;
-      int height;
-  };
+When the opening brace of a function, class or namespace sits below the
+name — on a line of its own, or after a signature spanning several lines —
+a client that folds whole lines starts the fold on the name's line, so the
+folded declaration keeps showing what it is. A client folding by
+characters starts at the brace and keeps everything before it visible
+anyway. A conditional directive between the name and the brace keeps the
+fold at the brace.
 
-  // desired when folded: int process_data(const Config& cfg) {...}
-  // not:                 {... (signature hidden above fold)}
-  int process_data(const Config& cfg) {
-      int area = cfg.width * cfg.height;
-      return area;
-  }
-  ```
+> **Client support**: VS Code still leaves the closing `}` on a separate
+> line rather than collapsing it onto the signature line
+> ([vscode#3352](https://github.com/microsoft/vscode/issues/3352) — still
+> open).
 
-  </details>
+```snap
+tests/snap/folding_range/refinements/02_fold_from_declaration_line.cpp
+```
 
-- [ ] Inactive preprocessor branch indication — visually distinguish or auto-fold inactive `#if`/`#else` branches _(partial)_
+<!-- END CAPABILITY -->
 
-  The server emits a fold range for the region between the condition and
-  `#else`, so the first branch can be folded manually; the post-`#else`
-  branch gets no range yet. Knowing which branch is _inactive_ — to dim or
-  auto-fold it — is not implemented here; that information belongs to the
-  inactive-regions feature.
+<!-- BEGIN CAPABILITY: supported -->
 
-  > **Note**: this overlaps with semantic tokens (inactive code dimming) and
-  > is partly a client UX concern. The server can mark these ranges with
-  > `FoldingRangeKind.Region` and clients can choose to auto-fold them.
+**Inactive preprocessor branches**
 
-  <details>
-  <summary>Example</summary>
+Untaken branches fold like taken ones
 
-  ```cpp
-  #ifdef _WIN32
-      // ... Windows code (active) ...
-  #else
-      // ... POSIX code (inactive, could auto-fold) ...
-  #endif
-  ```
+Every branch of a conditional folds whether or not the compile takes it,
+conditionals nested in an untaken branch included, so dead code can be
+folded away by hand. Untaken code is dimmed by the `inactive` modifier of
+semantic tokens; the folds themselves do not tell the branches apart.
 
-  </details>
+```snap
+tests/snap/folding_range/refinements/03_inactive_preprocessor_branch.cpp
+```
 
-- [x] Single-line constructs stay unfolded — a fold that hides nothing is noise
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  namespace tiny { }
+**Single-line constructs stay unfolded**
 
-  struct Empty {};
+A fold that hides nothing is noise
 
-  enum Flags { A, B };
+```snap
+tests/snap/folding_range/refinements/04_single_line_constructs.cpp
+```
 
-  void noop() {}
-
-  int values[] = {1, 2, 3};
-
-  auto lambda = [](int x) { return x; };
-
-  int result = lambda(42);
-  ```
-
-  </details>
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
-
-## Changelog
-
-| Date       | Change                                                                                                                     | PR                                                 |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| 2026-08-01 | Nested compound statements, abbreviated function templates and coroutine bodies; instantiation dedup; semantics-table walk | [#568](https://github.com/clice-io/clice/pull/568) |
-| 2024-12-17 | Block folding, list folding, access specifiers, preprocessor regions                                                       | [#13](https://github.com/clice-io/clice/pull/13)   |

@@ -184,10 +184,8 @@ function renderDiff(oldBody: string, newBody: string): string {
 
 /// One feature's snapshot directory plus the run-wide update flag.
 ///
-/// Legacy layout stores `<input>.cpp.snap.yml` under a snapshot tree that
-/// mirrors the corpus; the colocated layout used by tests/snap/ stores
-/// `<input>.snap.yml` (source extension replaced) next to the source
-/// itself, with an optional variant infix: `<input>.inspect.snap.yml` /
+/// Snapshots replace the source extension and sit next to the input, with
+/// an optional variant infix: `<input>.inspect.snap.yml` /
 /// `<input>.server.snap.yml` for `snap: separate` fixtures.
 export class SnapshotContext {
     readonly directory: string;
@@ -196,22 +194,18 @@ export class SnapshotContext {
     /// server driver on a shared snapshot) — for it a missing snapshot is
     /// an error, not something to create from its own output.
     readonly create: boolean;
-    readonly colocated: boolean;
 
     // Plain field assignments: parameter properties are not erasable
     // syntax, and tools/ scripts run under bare `node` in strip-only mode.
-    constructor(directory: string, options: { update?: boolean; colocated?: boolean } = {}) {
+    constructor(directory: string, options: { update?: boolean } = {}) {
         this.directory = directory;
         this.update = options.update ?? process.env["UPDATE_SNAPSHOTS"] === "1";
         this.create = options.update !== false;
-        this.colocated = options.colocated ?? false;
     }
 
     snapPath(inputFile: string, variant = ""): string {
         const suffix = (variant ? `.${variant}` : "") + ".snap.yml";
-        const name = this.colocated
-            ? inputFile.replace(/\.(cpp|cc|cxx)$/, "") + suffix
-            : inputFile + suffix;
+        const name = inputFile.replace(/\.(cpp|cc|cxx)$/, "") + suffix;
         return path.join(this.directory, name);
     }
 

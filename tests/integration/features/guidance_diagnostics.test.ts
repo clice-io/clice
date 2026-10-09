@@ -29,9 +29,9 @@ test("fallback guidance lifecycle", async ({ session }) => {
     const first = session.spawn(tmp);
     await first.initialize(tmp);
     const [uri] = await first.openAndWait("main.cpp");
-    expect(fileNotFoundDiags(first, uri).length, "broken include should surface").toBeGreaterThan(
-        0,
-    );
+    const missingIncludes = fileNotFoundDiags(first, uri);
+    expect(missingIncludes.length, "broken include should surface").toBeGreaterThan(0);
+    expect(missingIncludes.every((diagnostic) => diagnostic.source === "clang")).toBe(true);
     const guidance = guidanceDiags(first, uri);
     expect(guidance.length, `expected one guidance diagnostic: ${JSON.stringify(guidance)}`).toBe(
         1,
@@ -39,6 +39,9 @@ test("fallback guidance lifecycle", async ({ session }) => {
     expect(guidance[0]!.severity).toBe(proto.DiagnosticSeverity.Warning);
     expect(guidance[0]!.range.start.line).toBe(0);
     expect(guidance[0]!.source).toBe("clice");
+    expect(guidance[0]!.codeDescription?.href).toBe(
+        "https://docs.clice.io/clice/guide/quick-start#project-setup",
+    );
     // The missing CDB is also announced via window/logMessage guidance.
     expect(first.guidanceMessages().some((m) => m.includes("compile_commands.json"))).toBe(true);
 

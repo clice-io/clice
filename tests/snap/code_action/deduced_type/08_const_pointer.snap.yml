@@ -1,0 +1,18 @@
+---
+created_at: 2026-10-01
+input_file: deduced_type/08_const_pointer.cpp
+---
+parted:
+(no actions)
+
+pointee:
+- [refactor.rewrite.expandDeducedType] Replace 'const auto' with 'int* const'
+  10:4-10:14 => "int* const"
+
+pointer:
+- [refactor.rewrite.expandDeducedType] Replace 'const auto' with 'int* const'
+  9:4-9:14 => "int* const"
+
+specifiers:
+- [refactor.rewrite.expandDeducedType] Replace 'const auto' with 'int* const'
+  11:11-11:21 => "int* const"

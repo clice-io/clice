@@ -12,18 +12,12 @@ export default defineConfig({
         // exclusivity across files is enforced by the session fixture's
         // per-workspace lock, not by the scheduler.
         fileParallelism: true,
-        poolOptions: {
-            forks: {
-                maxForks: Math.max(1, os.availableParallelism()),
-                minForks: 1,
-            },
-        },
+        maxWorkers: Math.max(1, os.availableParallelism()),
         // A failing test's waits should burn ~2 minutes, not five: a large
         // default timeout amplifies every failure (and queues same-workspace
         // files behind the lock). The few legitimately slow tests override
         // per-test (crash recovery under ASan, stderr backpressure).
         testTimeout: 120_000,
         hookTimeout: 60_000,
-        globalSetup: ["./integration/global_setup.ts"],
     },
 });

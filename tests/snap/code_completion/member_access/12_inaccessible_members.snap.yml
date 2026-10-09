@@ -1,0 +1,9 @@
+---
+created_at: 2026-09-27
+input_file: member_access/12_inaccessible_members.cpp
+---
+pos:
+- { label: "Account", kind: Class, edit: "19:20-19:20" }
+- { label: "balance", kind: Field, description: "int", edit: "19:20-19:20" }
+- { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "19:20-19:20" }
+- { label: "~Account", kind: Method, detail: "()", description: "void", edit: "19:20-19:20" }

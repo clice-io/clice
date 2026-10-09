@@ -18,11 +18,11 @@ your question:
    point it at clangd with `--server clangd` to A/B the same scenario.
 
 3. **Component benchmarks** — _which design alternative is faster?_
-   Standalone binaries in this directory, built with
-   `-DCLICE_ENABLE_BENCHMARK=ON`, each answering one decision:
+   Standalone binaries in this directory, Bazel targets of their own
+   (`//:benchmarks`), each answering one decision:
    - `scan_benchmark` — dependency-graph scan over a real CDB.
    - `pipeline_benchmark` — per-TU stage profile (preprocess with/without
-     TokenBuffer, parse, index build/serialize, preamble PCH build incl.
+     token collection, parse, index build/serialize, preamble PCH build incl.
      preamble indexing, reparse over PCH incl. interactive indexing), one
      result per file.
    - `pch_chain_benchmark` — monolithic vs chained PCH strategy (ported
@@ -31,10 +31,11 @@ your question:
 ## Building
 
 ```bash
-cmake -B build/RelWithDebInfo -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake -DCLICE_ENABLE_BENCHMARK=ON
-ninja -C build/RelWithDebInfo scan_benchmark pipeline_benchmark pch_chain_benchmark
+pixi run build RelWithDebInfo -- //:benchmarks
 ```
+
+`//:benchmarks` is all four; name single ones (`//:bin/scan_benchmark`) to
+build less. They land in `build/RelWithDebInfo/bin/bin`.
 
 Always benchmark `RelWithDebInfo`; Debug numbers are meaningless.
 
@@ -50,17 +51,17 @@ compile_commands.json):
 python benchmarks/fetch_workload.py llvm
 ```
 
-clice's own CDB (`build/RelWithDebInfo/compile_commands.json`) doubles as
-an always-available medium workload.
+clice's own CDB (`npx bazel run @compdb//:refresh` writes `compile_commands.json`)
+doubles as an always-available medium workload.
 
 ## Typical sessions
 
 Stage profile of the 100 largest TUs plus a Chrome trace of one:
 
 ```bash
-./build/RelWithDebInfo/bin/pipeline_benchmark --limit 100 --json /tmp/pipeline.json \
+./build/RelWithDebInfo/bin/bin/pipeline_benchmark --limit 100 --json /tmp/pipeline.json \
     benchmarks/workloads/llvm/build/compile_commands.json
-./build/RelWithDebInfo/bin/pipeline_benchmark --filter SemaExpr.cpp --runs 3 \
+./build/RelWithDebInfo/bin/bin/pipeline_benchmark --filter SemaExpr.cpp --runs 3 \
     --time-trace /tmp/traces benchmarks/workloads/llvm/build/compile_commands.json
 ```
 
@@ -96,7 +97,7 @@ preamble build and AST build times for the same TU without a server or
 background indexing in the way:
 
 ```bash
-./build/RelWithDebInfo/bin/pipeline_benchmark --filter SemaExpr.cpp --runs 5 \
+./build/RelWithDebInfo/bin/bin/pipeline_benchmark --filter SemaExpr.cpp --runs 5 \
     benchmarks/workloads/llvm/build/compile_commands.json
 clangd --check=benchmarks/workloads/llvm/clang/lib/Sema/SemaExpr.cpp \
     --compile-commands-dir=benchmarks/workloads/llvm/build 2>&1 | grep -E "preamble|AST"
@@ -105,7 +106,7 @@ clangd --check=benchmarks/workloads/llvm/clang/lib/Sema/SemaExpr.cpp \
 Read them side by side as: clangd "Built preamble in N s" vs our
 `pch_build`, clangd "Building AST" gap vs our `parse_pch`. Everything our
 `pch_build` spends beyond clangd's preamble number is the work clice adds
-to the critical path (TokenBuffer collection, preamble indexing).
+to the critical path (preamble indexing).
 
 ## Method rules
 
@@ -120,7 +121,7 @@ to the critical path (TokenBuffer collection, preamble indexing).
   ninja alongside a benchmark: page-cache-sensitive numbers wobble because
   WSL2 reclaims mmap'd cache aggressively.
 - **One variable at a time.** The pipeline stages and the A/B knobs
-  (`collect_tokens`, PCH on/off) exist so a comparison changes exactly one
+  (token collection, PCH on/off) exist so a comparison changes exactly one
   thing.
 
 ## Reference numbers

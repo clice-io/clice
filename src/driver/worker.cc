@@ -1,8 +1,17 @@
-#include <cstdint>
+module;
 
-#include "driver/driver.h"
-#include "server/worker/stateful_worker.h"
-#include "server/worker/stateless_worker.h"
+#include "modules/prelude.h"
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
+module clice;
+
+import :driver.driver;
+import :support.process;
+import :worker.stateful;
+import :worker.stateless;
 
 namespace clice::driver {
 
@@ -11,19 +20,12 @@ namespace {
 using kota::deco::decl::KVStyle;
 
 struct WorkerOptions {
-    DecoFlag(names = {"-h", "--help"}, help = "Show help", required = false)
-    help;
+    kota::deco::decl::HelpOption help;
 
     DecoFlag(names = {"--stateful"},
              help = "Run as stateful worker (default: stateless)",
              required = false)
     stateful;
-
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--memory-limit", "--memory-limit="},
-           help = "Memory limit in bytes (stateful worker only)",
-           required = false)
-    <std::uint64_t> memory_limit;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            names = {"--max-documents", "--max-documents="},
@@ -38,34 +40,35 @@ struct WorkerOptions {
 
     DecoKV(style = KVStyle::JoinedOrSeparate, names = {"--log-dir", "--log-dir="}, required = false)
     <std::string> log_dir;
-};
 
-auto make_command() {
-    return kota::deco::cli::command<WorkerOptions>("clice worker [OPTIONS]");
-}
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           names = {"--master-pid", "--master-pid="},
+           required = false)
+    <std::uint32_t> master_pid;
+};
 
 }  // namespace
 
-void add_worker(kota::deco::cli::SubCommander& root, int& exit_code) {
-    auto cmd = make_command();
-    cmd.matchAll([&exit_code](WorkerOptions opts) {
-           if(opts.help) {
-               auto help = make_command();
-               print_usage(help);
-               exit_code = 0;
-               return;
-           }
-           auto name = opts.worker_name.value_or("worker");
-           auto log_dir = opts.log_dir.value_or("");
-           if(opts.stateful) {
-               auto limit = opts.memory_limit.value_or(4ULL * 1024 * 1024 * 1024);
-               auto max_docs = opts.max_documents.value_or(default_max_documents);
-               exit_code = run_stateful_worker_mode(limit, name, log_dir, max_docs);
-           } else {
-               exit_code = run_stateless_worker_mode(name, log_dir);
-           }
-       })
-        .on_error([](auto err) { LOG_ERROR("{}", err.message); });
+void add_worker(kota::deco::cli::SubCommander& root) {
+    auto cmd = kota::deco::cli::command<WorkerOptions>("clice worker [OPTIONS]");
+    cmd.match_all([](WorkerOptions opts) {
+        // A worker lives and dies with its master: an orphan answers no one
+        // and nothing stops it when it hangs. Its own process group keeps a
+        // terminal's Ctrl-C and SIGHUP for the master, which stops it.
+        if(opts.master_pid) {
+            exit_with_parent(*opts.master_pid);
+        }
+#ifndef _WIN32
+        ::setpgid(0, 0);
+#endif
+        auto name = opts.worker_name.value_or("worker");
+        auto log_dir = opts.log_dir.value_or("");
+        if(opts.stateful) {
+            auto max_docs = opts.max_documents.value_or(default_max_documents);
+            return run_stateful_worker_mode(name, log_dir, max_docs);
+        }
+        return run_stateless_worker_mode(name, log_dir);
+    });
 
     root.add({.name = "worker"}, std::move(cmd));
 }

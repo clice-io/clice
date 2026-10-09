@@ -9,6 +9,8 @@ Detailed knowledge lives in skills — load them at the moments their descriptio
 - **pr** — before committing, opening a PR, or checking on an open one (pre-push checks, self-review, CI/review watching).
 - **resolve-comments** — each watch round of an open PR: pulls unresolved review threads, fixes and resolves them, returns a summary.
 - **codex** — before delegating work to the codex CLI: adversarial plan review, code review, debugging, test writing, scoped implementation.
+- **docs** — the documentation system: generated pages, the en→zh translation pipeline, and their pixi commands. Read BEFORE editing anything under `docs/`.
+- **translate-docs** — what is translated and what stays verbatim in `docs/zh`, by page position and by term. Read BEFORE translating, reviewing or editing any zh page.
 - **build / test / format** — build the project, run suites, format sources.
 - **triage** — classify untriaged issues and produce the activity digest; label rules live in the skill's `rules.md`.
 - **release / upgrade-llvm** — release operations and LLVM upgrades.
@@ -25,7 +27,7 @@ Detailed knowledge lives in skills — load them at the moments their descriptio
 
 Distilled from real correction history — these mistakes keep recurring:
 
-- **Read before you write.** The project already has a `Lexer`, `PositionMapper`, `CompilationUnitRef` helpers, `SemanticVisitor`, the `Tester` framework, and utilities in `src/support/` — search before adding anything that feels generic. New features copy the structure of 2-3 existing features of the same kind. When unsure whether to extend or create, ask.
+- **Read before you write.** The project already has a `Lexer`, `PositionMap`, `CompilationUnitRef` helpers, `SemanticVisitor`, the `Tester` framework, and utilities in `src/support/` — search before adding anything that feels generic. New features copy the structure of 2-3 existing features of the same kind. When unsure whether to extend or create, ask.
 - **Optimize the real scenario.** First ask when the code actually runs and what the user experiences (e.g. server startup is always a cold start — hot-cache numbers there are meaningless).
 - **Refactoring means improving the abstraction**, not moving code. Understand what design problem the refactor solves before touching anything.
 - **Comments talk to the future reader, not the diff reviewer.** The default for any change is zero new comments. Add one only when the final code, read on its own, would trap or mislead a competent reader — a non-obvious why, an invariant nothing enforces, a workaround for an external quirk that cost real debugging. Never comment what the code does, why the change is correct, or what was there before: that belongs in the PR description and becomes noise the moment it merges. Litmus test: cover the comment; if the surrounding code already tells the reader everything it said, delete it. When moving or rewriting code, existing explanatory comments DO survive — this rule is about adding, not preserving.
@@ -36,24 +38,26 @@ Distilled from real correction history — these mistakes keep recurring:
 
 - `src/server/` — LSP server core: master server, compiler, indexer, stateful/stateless workers
 - `src/feature/` — LSP feature implementations: hover, completion, document links, semantic tokens, etc.
-- `src/compile/` — Compilation orchestration: compilation unit, directives, diagnostics
+- `src/compile/` — Compilation orchestration: compilation unit, directives, diagnostics; the per-unit semantic map (AST visitor), selection and entity identities
 - `src/index/` — Symbol indexing: TUIndex, ProjectIndex, MergedIndex, include graph
-- `src/semantic/` — Semantic analysis: symbol kinds, relations, AST visitor, template resolver
+- `src/semantic/` — Semantic analysis over the AST, below compile: symbol kinds, relations, template resolver, declaration and type helpers
 - `src/syntax/` — Lexer, scanner, token types, dependency graph
 - `src/command/` — CLI parsing, compilation database, toolchain detection
-- `src/driver/` — CLI subcommand entry points: serve, worker, index, inspect, format, lint, query, doc
-- `src/support/` — Utilities: logging, filesystem, JSON, string helpers
+- `src/driver/` — CLI subcommand entry points: serve, worker, index, inspect, format, lint, query, refactor, analyze
+- `src/vfs/` — Disk access: reads, statuses, writes, directory walks; the file table and its freshness checks; the on-disk cache store
+- `src/support/` — Utilities: logging, JSON, string helpers
 
 Beyond `src/`: `tools/` is the TypeScript harness (`@clice/tools`: LSP client, snap machinery, replay, shared protocol types), `tests/` holds all four test suites, `editors/` the vscode/zed/nvim clients. `tools/`, `tests/`, and `editors/vscode` form one npm workspace rooted at the repo top level — run `npm install` and `npm run check` from the root, never inside a package.
 
 ## Build & Test
 
-- **pixi** for environments, **CMake + Ninja** for building. Build types `Debug` and `RelWithDebInfo` (default); output in `build/[type]/`.
+- **pixi** for environments, **Bazel** for building (npm's bazelisk: `npx bazel`; `BUILD.bazel`, `MODULE.bazel`, `.bazelrc`). Build types `Debug` and `RelWithDebInfo` (default), each in its own output directory: `pixi run build [type]` puts clice at `build/[type]/bin/bin/clice`.
 - Four test suites, all must pass before any push:
   - **Unit** (`tests/unit/`): C++, project's own framework. Test names at most 4 words.
   - **Integration** (`tests/integration/`): TypeScript vitest against a real clice server over LSP.
   - **Smoke** (`tests/smoke/`): recorded LSP sessions replayed via `tools/replay.ts`.
   - **Snap** (`tests/snap/`): feature snapshot corpora, pinned from the inspect (`clice inspect`) and server (real server) paths per each fixture's `verify:` mode. A shared-snapshot mismatch between the two paths is a real bug — never `UPDATE_SNAPSHOTS` over it. Ownership rules and fixture meta live in the write-tests skill.
+- **Compat** (`tests/compat/`): real build systems and compilers build a small project; clice must parse the resulting database clean and agree with the compiler. Needs the tools installed, so it runs in CI with every build and weekly against the newest release; run it on a box when changing command handling.
 - TypeScript gate: `npm run check` at the repo root — strict tsc + ESLint across all workspace packages, zero tolerance.
 
 ## Commits, Branches, PRs

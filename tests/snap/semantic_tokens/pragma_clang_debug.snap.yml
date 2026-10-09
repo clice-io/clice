@@ -1,0 +1,20 @@
+---
+created_at: 2026-10-03
+input_file: pragma_clang_debug.cpp
+---
+- { loc: "0:0", text: "// The `#pragma clang __debug` commands that crash, hang or dump the compiler", kind: comment }
+- { loc: "1:0", text: "// do nothing, in the preamble and after it: the code around them highlights", kind: comment }
+- { loc: "2:0", text: "// as usual.", kind: comment }
+- { loc: "4:0", text: "#pragma", kind: directive }
+- { loc: "5:0", text: "#pragma", kind: directive }
+- { loc: "7:0", text: "int", kind: primitive }
+- { loc: "7:4", text: "before", kind: variable, modifiers: [definition] }
+- { loc: "8:0", text: "#pragma", kind: directive }
+- { loc: "9:0", text: "#pragma", kind: directive }
+- { loc: "10:0", text: "#pragma", kind: directive }
+- { loc: "11:0", text: "#pragma", kind: directive }
+- { loc: "12:0", text: "#pragma", kind: directive }
+- { loc: "13:0", text: "#pragma", kind: directive }
+- { loc: "14:0", text: "#pragma", kind: directive }
+- { loc: "15:0", text: "int", kind: primitive }
+- { loc: "15:4", text: "after", kind: variable, modifiers: [definition] }

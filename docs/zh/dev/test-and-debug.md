@@ -1,125 +1,133 @@
-# Test and Debug
+# 测试与调试
 
 ## 运行测试
 
-clice 有四种测试：单元测试、集成测试、冒烟测试和快照测试（snap tests）。
+clice 有四种在每次改动时运行的测试：单元测试、集成测试、冒烟测试和快照测试。兼容性测试需要真实的构建系统和编译器，单独运行。
 
-所有测试依赖（集成套件与工具的 node/npm、scripts/ 的 python）由 pixi 管理，无需单独安装。
+全部测试依赖（集成测试套件和工具所需的 node/npm，以及 scripts/ 所需的 python）均由 pixi 管理，无需另行安装。
 
 ### 单元测试
 
 ```bash
-pixi run unit-test          # 默认 RelWithDebInfo
-pixi run unit-test Debug    # debug 构建
+pixi run unit-test          # default RelWithDebInfo
+pixi run unit-test Debug    # debug build
 ```
 
 等价于：
 
 ```bash
-./build/RelWithDebInfo/bin/unit_tests \
-    --test-dir="./tests/data" \
-    --verbose
+./build/RelWithDebInfo/bin/bin/unit_tests --verbose
 ```
 
 ### 集成测试
 
-启动真实的 clice 服务器，通过 LSP 协议进行端到端测试。
+端到端测试会启动真实的 `clice serve` 实例，并通过 LSP 通信。
 
 ```bash
-pixi run integration-test          # 默认 RelWithDebInfo
-pixi run integration-test Debug    # debug 构建
+pixi run integration-test          # default RelWithDebInfo
+pixi run integration-test Debug    # debug build
 ```
 
-集成套件是基于 vitest 的 TypeScript（`tests/`），通过官方
-vscode-languageserver-protocol 栈与 server 通信。等价于：
+该套件使用基于 vitest 的 TypeScript（`tests/`），并通过官方的 vscode-languageserver-protocol 栈进行 LSP 通信。等价于：
 
 ```bash
 cd tests
-npm run check   # 类型检查（tsc strict）+ lint（ESLint）
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm test
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm test
 ```
+
+改动 TypeScript 时，还要在仓库根目录通过 `npm run check`：对每个包运行严格模式的 tsc 和 ESLint。
 
 常用变体：
 
 ```bash
-npx vitest run --config integration/vitest.config.ts integration/server/memory_ownership.test.ts   # 单文件
+npx vitest run --config integration/vitest.config.ts integration/server/memory_ownership.test.ts   # one file
 ```
 
 ### 冒烟测试
 
-回放录制的 LSP 会话，检查协议处理是否有回归。
+回放已录制的 LSP 会话，以发现协议处理方面的回归问题。
 
 ```bash
-pixi run smoke-test          # 默认 RelWithDebInfo
-pixi run smoke-test Debug    # debug 构建
+pixi run smoke-test          # default RelWithDebInfo
+pixi run smoke-test Debug    # debug build
 ```
 
 等价于：
 
 ```bash
 node tools/replay.ts tests/smoke/*.jsonl \
-    --clice=./build/RelWithDebInfo/bin/clice
+    --clice=./build/RelWithDebInfo/bin/bin/clice
 ```
 
 ### 快照测试
 
-Feature 快照语料位于 `tests/snap/<feature>/`，源文件与快照并排存放。snap 套件（`tests/snap/snap.test.ts`，领域逻辑在 `tools/snap/`）按每个 fixture 的 `verify:` 模式固定其结果：inspect（每个 fixture 一个 `clice inspect` 进程，不经过 server）与 server（通过真实 server 回放）。集成套件不参与任何快照。
+功能快照语料库位于 `tests/snap/<feature>/`，源文件与快照并排存放。快照测试套件（`tests/snap/snap.test.ts`，领域逻辑位于 `tools/snap/`）会固定每个 fixture 在其 `verify:` 模式所要求的各条路径上的结果：inspect（每个 fixture 对应一个 `clice inspect` 进程，不涉及服务器）和 server（通过真实服务器回放）。集成测试套件完全不参与快照测试。
 
 ```bash
-pixi run snap-test          # 默认 RelWithDebInfo
-pixi run snap-test Debug    # debug 构建
+pixi run snap-test          # default RelWithDebInfo
+pixi run snap-test Debug    # debug build
 ```
 
 等价于：
 
 ```bash
 cd tests
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/clice npm run snap
+CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm run snap
 ```
 
-fixture 可以是语料根目录下的单个 `.cpp`，也可以是以 `main.cpp` 为入口的子目录——一个多文件单元，其中的兄弟源文件（模块接口、头文件、附加源码）都属于这个 fixture。语料级编译参数写在语料目录的 `corpus.json` 清单里；单个 fixture 用 `- flags: [...]` 追加自己的参数。server 路径的每次运行都会把 fixture 物化到一次性工作区（源文件落盘时 `§` 标记已剥除），fixture 之间互不共享状态；后台索引默认关闭，需要的 fixture 用 `- indexing: true` 打开。刻意不能干净编译的 fixture 声明 `- diagnostics: expected`：未声明却出现诊断会使 fixture 失败，声明了却干净编译同样失败。
+fixture 可以是单个 `.cpp`，也可以是以 `main.cpp` 为入口的子目录——一个多文件单元，其中同级的源文件（模块接口、头文件和其他源文件）都属于该 fixture。用于说明某项能力的 fixture 位于语料库的章节目录中，命名为 `<section>/NN_name.cpp`（或 `<section>/NN_unit/main.cpp`），并以 `/// # Capability name` 文档头开头——标题只写名称，至多五个词——后接元数据列表，其中 `status`（`supported`、`partial` 或 `unsupported`）为必填项，再接一段一句话摘要，作为能力卡片的摘要：章节目录名用作功能页面生成区域的键，两位数字决定条目在该区域中的顺序，文档头内容则用于生成页面（见 `tools/docs/feature.ts`）。用于边界情况且没有文档头的 fixture 放在语料库根目录。整个语料库共用的编译标志写在该语料库的 `corpus.json` 清单中；单个 fixture 可用 `- flags: [...]` 追加自己的编译标志。server 路径每次运行时都会把 fixture 放入一次性工作区（源文件落盘时已剥除 `§` 标注），因此 fixture 之间绝不共享状态；后台索引默认关闭，可由各 fixture 使用 `- indexing: true` 开启，读取的字节与编译器完全相同。有意让编译产生诊断的 fixture 需声明 `- diagnostics: expected`；非预期诊断会使 fixture 失败，声明了该项却未产生任何诊断也同样会失败。
 
-fixture 默认是 `verify: both` 加 `snap: shared`：inspect 与 server 两路结果必须渲染成逐字节一致的同一份 `<name>.snap.yml`。两路确有合理差异的 fixture 在 `///` 文档头部声明 `- snap: separate`（并用 `// snap:` 注释说明原因），两路各自固定在 `<name>.inspect.snap.yml` / `<name>.server.snap.yml`。两路分歧属于明确错误（尚不支持）的，声明 `- snap: skip`：该 fixture 不再运行，且在两路一致之前不保留任何快照。只存在于单条路径的 feature（include/import 补全由 server 应答；索引转储没有对应的 LSP 请求）声明 `- verify: server` 或 `- verify: inspect`，由该侧拥有普通的 `<name>.snap.yml`。
+默认情况下，fixture 使用 `verify: both` 和 `snap: shared`：inspect 与 server 两条路径的结果必须逐字节完全一致，并统一记录在一份 `<name>.snap.yml` 中。两条路径确有合理差异的 fixture 会在其 `///` 文档头中声明 `- snap: separate`（并用 `// snap:` 注释说明原因），两条路径的结果分别记录在 `<name>.inspect.snap.yml` 和 `<name>.server.snap.yml` 中。若已知两条路径的分歧是错误的，则声明 `- snap: skip`：该 fixture 不会在任一路径上运行，并且在两条路径达成一致之前不保留任何快照。仅存在于一条路径上的功能（include 和 import 代码补全由 server 响应；索引转储没有对应的 LSP 请求形式）会声明 `- verify: server` 或 `- verify: inspect`，对应路径的结果记录在普通的 `<name>.snap.yml` 中。
 
-`UPDATE_SNAPSHOTS=1` 一次跑完即可完成全部更新：inspect 测试先执行并拥有共享快照内容；server 一侧只能更新自己的变体。server 侧报告共享快照不匹配 = server 管线与直接调用 feature 之间的真实分歧——应当排查，而不是重新生成把它盖掉。
+`UPDATE_SNAPSHOTS=1` 一次运行即可更新全部内容：inspect 测试先运行，并负责更新共享快照正文；server 侧只能更新自身对应的变体。server 侧的共享快照不匹配表示 server 处理管线与直接功能调用之间确实存在分歧——应当调查原因，而不是通过重新生成快照将其覆盖。
 
 ### 运行全部测试
 
 ```bash
-pixi run test                # 单元 + 集成 + 冒烟 + 快照
-pixi run test Debug          # debug 构建的全部测试
+pixi run test                # runs unit + integration + smoke + snap
+pixi run test Debug          # all tests with debug build
 ```
 
-## Editor E2E Tests
+## 编辑器 E2E 测试
 
-冒烟测试，用真实编辑器（无头 Neovim 和 VSCode）对本地构建的 clice 二进制进行测试，在两个 fixture（包括一个 C++20 模块项目）上覆盖启动、首批诊断、hover、definition 和 completion。CI 在 Linux 的 `test-editor` job 中使用最新 stable 版编辑器运行，刻意不固定版本：这个 job 的目的就是发现新版编辑器导致的破坏。
+这些冒烟测试使用真实编辑器（无头 Neovim 和 VS Code）测试本地构建的 clice 可执行文件，在两个 fixture（其中包括一个 C++20 模块项目）上覆盖启动、首次诊断、悬停、转到定义和代码补全。CI 在 Linux 上的 `test-editor` 作业中使用编辑器的最新稳定版本运行这些测试，并且有意不锁定版本：该作业用于发现编辑器新版本导致的故障。
 
 ```bash
-$ pixi run build                  # build/RelWithDebInfo/bin/clice
-$ pixi run -e editor editor-test  # nvim + vscode，两个 fixture
+$ pixi run build                  # build/RelWithDebInfo/bin/bin/clice
+$ pixi run -e editor editor-test  # nvim + vscode, both fixtures
 ```
 
-pixi 环境之外的依赖：
+pixi 环境之外的前置条件：
 
-- `nvim`（stable）在 `PATH` 中，供 `nvim-e2e` 使用。
-- 系统的 `cmake`/`ninja`/`clang`，供 `editor-prepare` 配置基于 CMake 的模块 fixture（与集成测试相同的假设）。
-- 显示环境（或 `xvfb-run`）以及 Electron 所需的系统库，供 `vscode-e2e` 使用。
+- `nvim`（stable）可在 `PATH` 中找到，供 `nvim-e2e` 使用。
+- 系统提供的 `cmake`/`ninja`/`clang`，供 `editor-prepare` 配置基于 CMake 的模块 fixture（集成测试也基于这一假设）。
+- 显示环境（或 `xvfb-run`），以及 Electron 通常依赖的系统库，供 `vscode-e2e` 使用。
+
+## 兼容性测试
+
+真实的构建系统与真实的编译器：`tests/compat/scenarios.ts` 中的每个场景用一种构建系统和一套工具链构建 `tests/compat/project/` 下的小项目，再让 clice 处理该构建写出的编译数据库。每个翻译单元都必须无错误地解析，正如它在真实编译器下能编译通过；clice 必须与该编译器在命令参数所决定的宏上保持一致，比较由一个生成的头文件在 clice 自己的解析中完成；每个文件的命令都必须经编译器解析成功，并按场景列出的要求保留或去掉相应参数。仓库不提交任何编译数据库：套件检查的是工具当下写出的结果。
+
+```bash
+pixi run compat-test          # default RelWithDebInfo
+```
+
+每个场景都按 CI 运行器镜像中的样子指定某一平台的编译器：Linux 上是发行版带版本号的 GCC 与 Clang，以及 bear、ccache、meson、ninja、xmake、bazel、zig、Emscripten、MinGW、RISC-V 和 Arm 交叉编译器，还有 pixi `cuda` 环境中的 nvcc（`pixi install -e cuda`）；Windows 上是 Visual Studio、LLVM 和 MinGW；macOS 上是 Apple clang 以及 Homebrew 的 GCC 和 LLVM。缺少工具的场景在本地跳过，在 CI 中则判为失败。clice 尚不支持的场景在 `unsupported` 中写明原因：它的检查被跳过，构建照常运行。CI 每次构建都会运行它，并每周针对最新的发布版本运行一次。
 
 ## 调试
 
-如果想在 clice 上附加调试器，推荐先以 socket 模式单独启动 clice，然后连接客户端。
+如果想为 clice 附加调试器，请先以 socket 模式单独启动 clice，然后连接客户端。
 
 ```shell
-./build/Debug/bin/clice serve --mode socket --port 50051
+./build/Debug/bin/bin/clice serve --mode socket --port 50051
 ```
 
 服务器启动后，可以通过以下两种方式连接客户端：
 
 ### 通过 VS Code 连接
 
-配置 clice 插件连接到正在运行的实例：
+配置 clice 扩展，使其连接到正在运行的实例：
 
-1. 安装 [clice](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) 插件。
+1. 安装 [clice](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) 扩展。
 
 2. 配置 `.vscode/settings.json`：
 
@@ -128,25 +136,25 @@ pixi 环境之外的依赖：
      "clice.executable": "/path/to/your/clice/executable",
      "clice.mode": "socket",
      "clice.port": 50051,
-     // 可选：禁用 clangd
+     // Optional: disable clangd if also installed
      "clangd.path": "",
    }
    ```
 
-3. 重新加载窗口（`Developer: Reload Window`）使设置生效。
+3. 重新加载窗口（`Developer: Reload Window`），使设置生效。
 
-### 调试 VS Code 插件
+### 调试 VS Code 扩展
 
-插件位于仓库内 `editors/vscode/`：
+扩展位于仓库内的 `editors/vscode/`：
 
 1. 安装依赖：
 
    ```shell
-   npm install # 在仓库根目录执行，扩展是 npm workspace 成员
+   npm install # at the repo root; the extension is an npm workspace member
    ```
 
 2. 用 VS Code 打开**仓库根目录**（启动配置位于根目录的 `.vscode/launch.json`）。
 
-3. 创建上述 socket 配置的 `.vscode/settings.json`。
+3. 创建 `.vscode/settings.json`，使用上述 TCP 配置。
 
-4. 按 `F5` 启动扩展开发宿主窗口。
+4. 按 `F5` 并选择 `VSCode Extension (pipe)` 或 `VSCode Extension (socket)`，以启动扩展开发宿主窗口。

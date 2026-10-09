@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "../../..",
+    "file": "firmware/main.c",
+    "arguments": ["clang", "-std=c23", "-DBOARD_B", "firmware/main.c"]
+  }
+]

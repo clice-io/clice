@@ -1,0 +1,7 @@
+[[rules]]
+patterns = ["src/**", "include/**"]
+default_command = "clang++ -std=c++20 -DDEFAULTED -Iinclude"
+
+[[rules]]
+patterns = ["src/skip/**"]
+index = false

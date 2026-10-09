@@ -5,9 +5,17 @@
 /// back to disk after a save, saves write only the true dirty set, and
 /// cancelled builds leave no tmp blobs behind.
 
-import { MTIME_GRANULARITY, sleep, type CliceClient } from "@clice/tools/client";
-import type { StatsResult } from "@clice/tools/protocol";
+import {
+    MTIME_GRANULARITY,
+    SETTLE_TIME,
+    sleep,
+    waitUntil,
+    type CliceClient,
+} from "@clice/tools/client";
+import { wireKeys, type StatsResult } from "@clice/tools/protocol";
 import { expect, test } from "../fixtures.ts";
+
+const EDIT_INTERVAL = 50;
 
 /// Poll clice/internal/stats until predicate(stats) holds.
 async function waitStats(
@@ -15,17 +23,19 @@ async function waitStats(
     predicate: (stats: StatsResult) => boolean,
     message = "",
 ): Promise<StatsResult> {
-    const deadline = Date.now() + 30_000;
-    for (;;) {
-        const stats = await client.stats();
-        if (predicate(stats)) {
-            return stats;
-        }
-        if (Date.now() > deadline) {
-            throw new Error(`${message || "stats condition"} not met: ${JSON.stringify(stats)}`);
-        }
-        await sleep(200);
-    }
+    let last: StatsResult;
+    await waitUntil(
+        async () => {
+            last = await client.stats();
+            return predicate(last);
+        },
+        {
+            timeout: 30_000,
+            interval: 200,
+            description: message || "stats condition",
+        },
+    );
+    return last!;
 }
 
 test("shards flip back after save", async ({ session }) => {
@@ -70,8 +80,6 @@ test("save writes only dirty shards", async ({ session }) => {
     const [uri] = await client.openAndWait("file0.cpp");
     expect(await client.waitForIndex(uri, "func_3"), "background index did not finish").toBe(true);
     await waitStats(client, (s) => s.indexInmemoryShards === 0, "initial round did not settle");
-    // The first workspace tick only seeds the stat baseline.
-    await client.poll("workspace");
 
     // Change one file on disk and tick the tracker: only its shard should
     // be re-merged and re-saved.
@@ -94,11 +102,26 @@ test("save writes only dirty shards", async ({ session }) => {
         `an incremental save must write only the touched shard: ${JSON.stringify(stats)}`,
     ).toBe(1);
 
-    // A round with nothing to write commits zero shards: saving the open
-    // file schedules a round, but its shard is served by the session and
-    // background indexing skips open files.
+    // The open file compiles itself, so the rounds leave its disk snapshot
+    // alone and saving the same bytes queues nothing; closing it hands the
+    // file back to the background index.
     client.save(uri);
-    await waitStats(client, (s) => s.lastSaveShards === 0, "a no-op round must save zero shards");
+    await sleep(SETTLE_TIME);
+    const settled = await waitStats(
+        client,
+        (s) => s.indexInmemoryShards === 0,
+        "the save left shards in memory",
+    );
+    expect(settled.indexShardContentBytes).toBe(stats.indexShardContentBytes);
+
+    client.close(uri);
+    await waitStats(
+        client,
+        (s) =>
+            s.indexShardContentBytes > settled.indexShardContentBytes &&
+            s.indexInmemoryShards === 0,
+        "the closed file's shard did not land",
+    );
     client.assertNoAnomaly();
 });
 
@@ -120,7 +143,7 @@ test("cancel storm leaves no tmp", async ({ session }) => {
             i + 2,
             `#define STORM ${i}\n#include "header.h"\nint main() { return base_val; }\n`,
         );
-        await sleep(50);
+        await sleep(EDIT_INTERVAL);
     }
 
     await client.waitForRecompile(uri);
@@ -130,10 +153,31 @@ test("cancel storm leaves no tmp", async ({ session }) => {
     // session must both register.
     const stats = await client.stats();
     expect(
-        stats["pchCacheEntries"],
+        stats.pchCacheEntries,
         `a PCH was built: ${JSON.stringify(stats)}`,
     ).toBeGreaterThanOrEqual(1);
-    expect(stats["sessions"], `one open document: ${JSON.stringify(stats)}`).toBe(1);
+    expect(stats.sessions, `one open document: ${JSON.stringify(stats)}`).toBe(1);
+    // The C++ and TS shapes of the reply are hand-written on both sides; a
+    // gauge added to one and not the other shows up here.
+    expect(Object.keys(stats).sort()).toEqual(
+        [
+            ...wireKeys<StatsResult>()([
+                "checksLooked",
+                "checksTrusted",
+                "importScans",
+                "headerContexts",
+                "synthesizedContexts",
+                "indexInmemoryShards",
+                "indexShardContentBytes",
+                "lastSaveShards",
+                "pchCacheEntries",
+                "pchLoadedStates",
+                "pchStateBytes",
+                "pendingTmpFiles",
+                "sessions",
+            ]),
+        ].sort(),
+    );
     client.assertNoAnomaly();
 });
 
@@ -204,6 +248,6 @@ test("same preamble shared", async ({ session }) => {
     // blob: opening more consumers must not multiply loaded states.
     const stats = await client.stats();
     expect(stats.pchLoadedStates, `one shared key: ${JSON.stringify(stats)}`).toBe(1);
-    expect(stats["pchCacheEntries"], `one shared entry: ${JSON.stringify(stats)}`).toBe(1);
+    expect(stats.pchCacheEntries, `one shared entry: ${JSON.stringify(stats)}`).toBe(1);
     client.assertNoAnomaly();
 });

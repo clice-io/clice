@@ -40,11 +40,11 @@ clice implements a **PseudoInstantiator** -- it resolves dependent names through
 
 For example: `std::vector<std::vector<T>>::reference` is simplified through pseudo-instantiation to `std::vector<T>&` -- a type concrete enough to provide completions while preserving the symbolic meaning of the template parameter `T`.
 
-### Two-Phase Transform
+### One Rewriter, Two Policies
 
-The resolver is built on Clang's TreeTransform infrastructure and operates in two phases:
+The resolver is a handwritten type rewriter. It deliberately uses neither Sema nor Clang's TreeTransform — both assume a real instantiation context with concrete arguments, which is exactly what is absent here. A single rewriter runs under one of two policies:
 
-**Phase 1: PseudoInstantiator (Heuristic Resolution)**
+**Resolve policy (heuristic resolution)**
 
 This is the main engine, responsible for resolving various kinds of dependent names:
 
@@ -53,11 +53,11 @@ This is the main engine, responsible for resolving various kinds of dependent na
 - **TemplateTypeParmType** (e.g., `T`): looks up the parameter's bound value or default argument via the instantiation stack
 - **DecltypeType** (e.g., `decltype(var)`): resolves simple variable references to their declared type
 
-**Phase 2: SubstituteOnly (Cycle Breaking)**
+**Substitute policy (cycle breaking)**
 
-When Phase 1 expands a typedef, it may encounter another dependent name requiring heuristic lookup, forming a cycle: typedef A's underlying type references dependent name B, and looking up B reveals its type involves typedef A again.
+When heuristic resolution expands a typedef, it may encounter another dependent name requiring heuristic lookup, forming a cycle: typedef A's underlying type references dependent name B, and looking up B reveals its type involves typedef A again.
 
-SubstituteOnly breaks such cycles -- it only performs argument substitution and typedef expansion without heuristic lookups. When Phase 1 needs to expand a typedef, it delegates to SubstituteOnly, ensuring that recursive heuristic lookups are never triggered.
+The substitute policy breaks such cycles -- it only performs argument substitution and typedef expansion without heuristic lookups. When resolution needs to expand a typedef, it delegates to the substitute policy, ensuring that recursive heuristic lookups are never triggered.
 
 ### Instantiation Stack
 
@@ -153,8 +153,10 @@ Walk-based features (inlay hints, folding ranges, document symbols) still skip i
 
 ## Known Limitations
 
-- **Pack expansion**: Currently only single-element packs are handled (e.g., pack forwarding); multi-element pack expansion (e.g., `Us... = {int, float}`) is not supported.
-- **Default values of non-type template parameters**: Only default value substitution for type template parameters (TemplateTypeParmDecl) is supported; default values for non-type parameters (e.g., `template<int N = 0>`) and template template parameters are not.
-- **Dependent member expressions**: Dependent member access of the form `x.template foo<T>()` is not yet implemented.
-- **Complex decltype**: Only the simple case `decltype(var)` is handled; member access, function calls, and other complex expressions are not supported.
-- **Operator lookup**: Operators in dependent contexts (e.g., `a + b` where `a`'s type depends on a template parameter) cannot be resolved because operators lack identifier information.
+Expression-level deduction was deliberately left out of the resolver rewrite — corner cases there are endless, and the resolver's contract is to degrade gracefully (return the name unresolved) rather than guess. The known gaps, all in that family:
+
+- **Non-type template parameter expressions**: Compound NTTP expressions are not substituted or deduced (e.g., selecting a partial specialization keyed on `N + 1`); only direct parameter values flow through.
+- **Constraint evaluation**: Constrained partial specializations are detected but their constraints are not evaluated — a specialization selected purely by a `requires` clause degrades to unresolved instead of being chosen.
+- **Complex `decltype`**: Only the simple case `decltype(var)` is handled; member access, function calls, and other complex expressions are not supported, and a dependent `decltype` used as a scope qualifier makes the whole chain unresolvable.
+- **Deep dependent member chains**: Chained member access (`box.inner.leaf`) resolves one hop; the type of the intermediate member is not fed back into lookup for the next hop. `x.template foo<T>()` member expressions are likewise not implemented.
+- **Operator lookup**: Operators in dependent contexts (e.g., `a + b` where `a`'s type depends on a template parameter) are not resolved by the resolver itself. Independently of the resolver, occurrences inside template bodies can still be colored and navigated through instantiation information when instantiations exist (see the "Instantiations as Implementations" section).

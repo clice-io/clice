@@ -2,6 +2,7 @@
   "name": "clice",
   "displayName": "clice vscode",
   "description": "VSCode extension for clice",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/clice-io/clice"
@@ -10,7 +11,7 @@
   "publisher": "clice-io",
   "icon": "clice.png",
   "engines": {
-    "vscode": "^1.80.0"
+    "vscode": "^1.82.0"
   },
   "categories": [
     "Programming Languages",
@@ -26,21 +27,29 @@
   "activationEvents": [
     "onLanguage:c",
     "onLanguage:cpp",
-    "onLanguage:cuda-cpp",
-    "onStartupFinished"
+    "onLanguage:cuda-cpp"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "clice compiles and indexes workspace code with Clang, which is not safe to run on untrusted code."
+    }
+  },
   "contributes": {
+    "configurationDefaults": {
+      "files.watcherExclude": {
+        "**/.clice/**": true
+      }
+    },
     "configuration": {
       "type": "object",
-      "title": "C/C++ Language Client",
+      "title": "clice",
       "properties": {
-        "clice-client.trace.server": {
-          "default": "verbose"
-        },
         "clice.executable": {
           "type": "string",
           "default": "",
-          "description": "The path of clice executable."
+          "scope": "machine-overridable",
+          "description": "Path of the clice executable; a relative path resolves against the first workspace folder. Leave empty to use the bundled server."
         },
         "clice.mode": {
           "type": "string",
@@ -49,17 +58,32 @@
             "pipe",
             "socket"
           ],
+          "scope": "machine-overridable",
           "description": "How to communicate with clice. pipe or socket. For daily use please use pipe."
         },
         "clice.host": {
           "type": "string",
           "default": "127.0.0.1",
-          "description": "The host to connect to (default: 127.0.0.1)"
+          "scope": "machine-overridable",
+          "description": "The host to connect to in socket mode."
         },
         "clice.port": {
-          "type": "number",
+          "type": "integer",
           "default": 50051,
-          "description": "The port to connect to"
+          "minimum": 1,
+          "maximum": 65535,
+          "scope": "machine-overridable",
+          "description": "The port to connect to in socket mode."
+        },
+        "clice.trace.server": {
+          "type": "string",
+          "default": "off",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "description": "Log the LSP traffic between VS Code and clice to the 'clice (LSP trace)' output channel."
         }
       }
     },
@@ -69,12 +93,20 @@
         "title": "Clice: Restart Language Server"
       },
       {
+        "command": "clice.switchConfiguration",
+        "title": "Clice: Switch Build Configuration"
+      },
+      {
         "command": "clice.switchContext",
         "title": "Clice: Switch Compilation Context"
       },
       {
         "command": "clice.showCurrentContext",
         "title": "Clice: Show Current Compilation Context"
+      },
+      {
+        "command": "clice.resetContext",
+        "title": "Clice: Use Automatic Compilation Context"
       },
       {
         "command": "clice.queryContexts",
@@ -92,6 +124,42 @@
       {
         "command": "clice.loadMoreContexts",
         "title": "Clice: Load More Compilation Contexts"
+      },
+      {
+        "command": "clice.refactor.rewrite.define.inline",
+        "title": "Clice: Define Inline"
+      },
+      {
+        "command": "clice.refactor.rewrite.define.outOfLine",
+        "title": "Clice: Define Out of Line"
+      },
+      {
+        "command": "clice.refactor.rewrite.define.missing",
+        "title": "Clice: Define Missing Members"
+      },
+      {
+        "command": "clice.refactor.rewrite.implementPureVirtuals",
+        "title": "Clice: Implement Pure Virtual Methods"
+      },
+      {
+        "command": "clice.refactor.rewrite.generateMemberwiseConstructor",
+        "title": "Clice: Generate Memberwise Constructor"
+      },
+      {
+        "command": "clice.refactor.rewrite.populateSwitch",
+        "title": "Clice: Add Missing Enum Cases to Switch"
+      },
+      {
+        "command": "clice.refactor.rewrite.expandDeducedType",
+        "title": "Clice: Expand Deduced Type"
+      },
+      {
+        "command": "clice.refactor.rewrite.reorderDefinitions",
+        "title": "Clice: Reorder Definitions by Declaration Order"
+      },
+      {
+        "command": "clice.refactor.inline.macro",
+        "title": "Clice: Expand Macro"
       }
     ],
     "semanticTokenTypes": [
@@ -169,6 +237,16 @@
         "id": "primitive",
         "description": "C/C++ primitive type (e.g., int, float)",
         "superType": "keyword"
+      },
+      {
+        "id": "identifier",
+        "description": "Token without semantic classification (a bare identifier or plain punctuation), emitted only inside inactive preprocessor regions. Deliberately unstyled (no superType) so the editor's own syntax coloring shows through."
+      }
+    ],
+    "semanticTokenModifiers": [
+      {
+        "id": "inactive",
+        "description": "Token inside a preprocessor-inactive region (e.g. an #if 0 branch). The clice extension dims these regions; other clients can style the modifier directly."
       }
     ],
     "views": {
@@ -176,7 +254,7 @@
         {
           "id": "clice.contexts",
           "name": "Compilation Contexts",
-          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+          "when": "resourceLangId == c || resourceLangId == cpp || resourceLangId == cuda-cpp"
         }
       ]
     },
@@ -203,7 +281,47 @@
           "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
         },
         {
+          "command": "clice.resetContext",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
           "command": "clice.queryContexts",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.define.inline",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.define.outOfLine",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.define.missing",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.implementPureVirtuals",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.generateMemberwiseConstructor",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.populateSwitch",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.expandDeducedType",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.rewrite.reorderDefinitions",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.refactor.inline.macro",
           "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
         }
       ],
@@ -235,6 +353,7 @@
     "vscode:prepublish": "webpack --mode production --devtool hidden-source-map",
     "package": "vsce package --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
     "publish": "vsce publish --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
+    "publish:ovsx": "ovsx publish --no-dependencies --baseImagesUrl https://raw.githubusercontent.com/clice-io/clice/main/",
     "compile-tests": "tsc -p . --outDir out",
     "typecheck": "tsc -p . --noEmit",
     "lint": "eslint .",
@@ -248,11 +367,12 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "~25.0.3",
-    "@types/vscode": "^1.80.0",
+    "@types/vscode": "^1.82.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
-    "@vscode/vsce": "^3.7.1",
+    "@vscode/vsce": "^4.0.0",
     "eslint": "^10.8.0",
+    "ovsx": "^1.2.0",
     "ts-loader": "^9.5.4",
     "typescript-eslint": "^8.65.0",
     "typescript": "~5.5.4",

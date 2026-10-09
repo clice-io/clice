@@ -1,0 +1,12 @@
+[
+  {
+    "directory": ".",
+    "file": "main.cpp",
+    "arguments": ["clang++", "-std=c++17", "-fsyntax-only", "main.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "no_includes.cpp",
+    "arguments": ["clang++", "-std=c++17", "-fsyntax-only", "no_includes.cpp"]
+  }
+]

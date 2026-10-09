@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 int §(seed_def)seed = 4;
 

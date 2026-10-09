@@ -1,9 +1,11 @@
-#include <string>
+module;
 
-#include "test/test.h"
-#include "server/state/session_store.h"
+#include "modules/prelude.h"
 
-#include "kota/ipc/lsp/text.h"
+module clice;
+
+import :server.session_store;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {
@@ -25,37 +27,36 @@ protocol::TextDocumentContentChangeEvent partial_change(std::uint32_t start_line
     return change;
 }
 
-TEST_SUITE(SessionStore) {
+ZEST_SUITE(SessionStore) {
 
-TEST_CASE(ApplyOpenInitializesBuffer) {
+ZEST_CASE(ApplyOpenInitializesBuffer) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\nint b;\n", 3);
 
-    ASSERT_EQ(session->version, 3);
-    ASSERT_EQ(session->text, "int a;\nint b;\n");
-    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
-    ASSERT_EQ(session->generation, 1u);
+    ZASSERT(session->version == 3);
+    ZASSERT(session->text == "int a;\nint b;\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->generation == 1u);
 }
 
-TEST_CASE(RangeReplace) {
+ZEST_CASE(RangeReplace) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\nint b;\n", 1);
 
     auto change = partial_change(1, 4, 1, 5, "value");
     store.apply_change(*session, change, 2);
 
-    ASSERT_EQ(session->text, "int a;\nint value;\n");
-    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
-    ASSERT_EQ(session->version, 2);
-    ASSERT_TRUE(session->ast_dirty);
-    ASSERT_EQ(session->generation, 2u);
+    ZASSERT(session->text == "int a;\nint value;\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->version == 2);
+    ZASSERT(session->generation == 2u);
 }
 
-TEST_CASE(SequentialChangesFold) {
+ZEST_CASE(SequentialChangesFold) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "ab\ncd\n", 1);
 
     // The second range addresses the buffer as left by the first change.
@@ -65,41 +66,75 @@ TEST_CASE(SequentialChangesFold) {
     };
     store.apply_change(*session, changes, 2);
 
-    ASSERT_EQ(session->text, "axyz\nQd\n");
-    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
-    ASSERT_EQ(session->generation, 2u);
+    ZASSERT(session->text == "axyz\nQd\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->generation == 2u);
 }
 
-TEST_CASE(WholeDocumentReplace) {
+ZEST_CASE(WholeDocumentReplace) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "old\n", 1);
 
     protocol::TextDocumentContentChangeEvent change =
         protocol::TextDocumentContentChangeWholeDocument{.text = "brand\nnew\n"};
     store.apply_change(*session, change, 2);
 
-    ASSERT_EQ(session->text, "brand\nnew\n");
-    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
+    ZASSERT(session->text == "brand\nnew\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
-TEST_CASE(InvertedRangeCollapsed) {
+ZEST_CASE(InvertedRangeSpans) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "ab\ncd\n", 1);
 
-    // A range whose start lies after its end deletes nothing; the text is
-    // inserted at the start position.
+    // A range whose start lies after its end covers the bytes between its
+    // ends, as vscode-languageserver-textdocument reads it.
     auto change = partial_change(1, 0, 0, 0, "X");
     store.apply_change(*session, change, 2);
 
-    ASSERT_EQ(session->text, "ab\nXcd\n");
-    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
+    ZASSERT(session->text == "Xcd\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
-TEST_CASE(SelectAllDeleteClamped) {
+ZEST_CASE(InsideSurrogatePair) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
+    store.apply_open(*session, "\xf0\x9f\x98\x80x\n", 1);
+
+    // UTF-16 unit 1 is inside the emoji's surrogate pair: the edit lands
+    // at the character's start.
+    auto change = partial_change(0, 1, 0, 1, "Y");
+    store.apply_change(*session, change, 2);
+
+    ZASSERT(session->text == "Y\xf0\x9f\x98\x80x\n");
+    ZASSERT(session->non_ascii_lines == lsp::non_ascii_lines(session->text));
+}
+
+ZEST_CASE(NonASCIILinesTracked) {
+    SessionStore store;
+    auto session = store.open(Fid{1});
+    store.apply_open(*session, "ab\ncd\n", 1);
+    ZASSERT(session->non_ascii_lines.empty());
+
+    // The second change addresses line 1 after the first made line 0
+    // non-ASCII; the positions count UTF-16 units over the new text.
+    protocol::TextDocumentContentChangeEvent changes[] = {
+        partial_change(0, 0, 0, 0, "\xc3\xa9"),
+        partial_change(0, 2, 0, 3, "Z"),
+    };
+    store.apply_change(*session, changes, 2);
+
+    ZASSERT(session->text ==
+            "\xc3\xa9"
+            "aZ\ncd\n");
+    ZASSERT(session->non_ascii_lines == lsp::non_ascii_lines(session->text));
+}
+
+ZEST_CASE(SelectAllDeleteClamped) {
+    SessionStore store;
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int foo() { return 1; }\n", 1);
 
     // Several clients emit select-all-delete as an oversized range; per
@@ -107,16 +142,15 @@ TEST_CASE(SelectAllDeleteClamped) {
     auto change = partial_change(0, 0, 99999, 0, "");
     store.apply_change(*session, change, 2);
 
-    ASSERT_EQ(session->text, "");
-    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
-    ASSERT_EQ(session->version, 2);
-    ASSERT_TRUE(session->ast_dirty);
-    ASSERT_EQ(session->generation, 2u);
+    ZASSERT(session->text == "");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
+    ZASSERT(session->version == 2);
+    ZASSERT(session->generation == 2u);
 }
 
-TEST_CASE(InsertPastLastLine) {
+ZEST_CASE(InsertPastLastLine) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
 
     // Line 1 (after the trailing newline) is the last line; line 2 clamps
@@ -124,26 +158,26 @@ TEST_CASE(InsertPastLastLine) {
     auto change = partial_change(2, 0, 2, 0, "int b;\n");
     store.apply_change(*session, change, 2);
 
-    ASSERT_EQ(session->text, "int a;\nint b;\n");
-    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
+    ZASSERT(session->text == "int a;\nint b;\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
-TEST_CASE(InsertPastLineEnd) {
+ZEST_CASE(InsertPastLineEnd) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "ab\ncd\n", 1);
 
     // A character beyond the line length clamps to the line end.
     auto change = partial_change(0, 9999, 0, 9999, "X");
     store.apply_change(*session, change, 2);
 
-    ASSERT_EQ(session->text, "abX\ncd\n");
-    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
+    ZASSERT(session->text == "abX\ncd\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
-TEST_CASE(ClampedChangeFolds) {
+ZEST_CASE(ClampedChangeFolds) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "ab\ncd\n", 1);
 
     // The clamp for the second change must resolve against the buffer as
@@ -154,25 +188,25 @@ TEST_CASE(ClampedChangeFolds) {
     };
     store.apply_change(*session, changes, 2);
 
-    ASSERT_EQ(session->text, "axyz\ncd\n!");
-    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
+    ZASSERT(session->text == "axyz\ncd\n!");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
-TEST_CASE(EmptyDocumentClamped) {
+ZEST_CASE(EmptyDocumentClamped) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "", 1);
 
     auto change = partial_change(5, 3, 8, 0, "int x;");
     store.apply_change(*session, change, 2);
 
-    ASSERT_EQ(session->text, "int x;");
-    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
+    ZASSERT(session->text == "int x;");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
-TEST_CASE(RangeEndPastEof) {
+ZEST_CASE(RangeEndPastEof) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\nint b;\n", 1);
 
     // The end position sits on the last (empty) line but one character
@@ -180,175 +214,154 @@ TEST_CASE(RangeEndPastEof) {
     auto change = partial_change(1, 0, 2, 1, "");
     store.apply_change(*session, change, 2);
 
-    ASSERT_EQ(session->text, "int a;\n");
-    ASSERT_EQ(session->line_starts, lsp::build_line_starts(session->text));
+    ZASSERT(session->text == "int a;\n");
+    ZASSERT(session->line_starts == lsp::line_starts(session->text));
 }
 
-TEST_CASE(ReopenBumpsGeneration) {
+ZEST_CASE(ReopenBumpsGeneration) {
     SessionStore store;
-    auto first = store.open(7);
+    auto first = store.open(Fid{7});
     first->generation = 5;
 
-    auto second = store.open(7);
-    ASSERT_EQ(first->generation, 6u);
-    ASSERT_NE(first.get(), second.get());
-    ASSERT_EQ(store.find(7).get(), second.get());
+    auto second = store.open(Fid{7});
+    ZASSERT(first->generation == 6u);
+    ZASSERT(first.get() != second.get());
+    ZASSERT(store.find(Fid{7}).get() == second.get());
 }
 
-TEST_CASE(CloseBumpsGeneration) {
+ZEST_CASE(CloseBumpsGeneration) {
     SessionStore store;
-    auto session = store.open(7);
+    auto session = store.open(Fid{7});
     session->generation = 5;
 
-    store.close(7);
-    ASSERT_EQ(session->generation, 6u);
-    ASSERT_EQ(store.find(7), nullptr);
+    store.close(Fid{7});
+    ZASSERT(session->generation == 6u);
+    ZASSERT(store.find(Fid{7}) == nullptr);
 }
 
-TEST_CASE(ResetSupersededBumpsGeneration) {
+ZEST_CASE(ForEachVisitsAll) {
     SessionStore store;
-    auto session = store.open(1);
-    store.apply_open(*session, "int x;", 1);
-    session->ast_dirty = false;
-    session->trial_done = true;
-    session->pch_key = "key";
-    session->ast_deps.emplace();
-    auto gen = session->generation;
-    auto epoch = session->dirty_epoch;
-
-    SessionStore::reset_compile_state(*session, ResetDepth::Superseded);
-
-    ASSERT_TRUE(session->ast_dirty);
-    ASSERT_FALSE(session->trial_done);
-    ASSERT_FALSE(session->pch_key.has_value());
-    ASSERT_FALSE(session->ast_deps.has_value());
-    ASSERT_EQ(session->generation, gen + 1);
-    ASSERT_EQ(session->dirty_epoch, epoch);
-}
-
-TEST_CASE(ResetLostBumpsEpoch) {
-    SessionStore store;
-    auto session = store.open(1);
-    store.apply_open(*session, "int x;", 1);
-    session->ast_dirty = false;
-    session->trial_done = true;
-    session->pch_key = "key";
-    auto gen = session->generation;
-    auto epoch = session->dirty_epoch;
-
-    SessionStore::reset_compile_state(*session, ResetDepth::Lost);
-
-    // The buffer is still the same buffer and its inputs did not change:
-    // only the freshness claim is revoked.
-    ASSERT_TRUE(session->ast_dirty);
-    ASSERT_TRUE(session->trial_done);
-    ASSERT_TRUE(session->pch_key.has_value());
-    ASSERT_EQ(session->generation, gen);
-    ASSERT_EQ(session->dirty_epoch, epoch + 1);
-}
-
-TEST_CASE(SettleCompileConditional) {
-    Session session;
-    session.ast_dirty = true;
-    auto launch_epoch = session.dirty_epoch;
-
-    // Invalidation landed mid-flight: the product must not claim freshness.
-    session.dirty_epoch += 1;
-    session.settle_compile(launch_epoch);
-    ASSERT_TRUE(session.ast_dirty);
-
-    // Quiet flight: the clear goes through.
-    session.settle_compile(session.dirty_epoch);
-    ASSERT_FALSE(session.ast_dirty);
-}
-
-TEST_CASE(ForEachVisitsAll) {
-    SessionStore store;
-    store.open(1);
-    store.open(2);
+    store.open(Fid{1});
+    store.open(Fid{2});
 
     int visited = 0;
-    store.for_each([&](std::uint32_t, const Session&) -> bool {
+    store.for_each([&](Fid, const Session&) -> bool {
         ++visited;
         return true;
     });
-    ASSERT_EQ(visited, 2);
+    ZASSERT(visited == 2);
 
     // A false return stops the iteration early.
     visited = 0;
-    store.for_each([&](std::uint32_t, const Session&) -> bool {
+    store.for_each([&](Fid, const Session&) -> bool {
         ++visited;
         return false;
     });
-    ASSERT_EQ(visited, 1);
+    ZASSERT(visited == 1);
 }
 
-TEST_CASE(QuarantineProbeOnEdit) {
+ZEST_CASE(EditLetsCrashRetry) {
     // The state machine itself is pinned by quarantine_tests; this pins
-    // that apply_change feeds real edits into it without resetting the
-    // record — only a successful compile proves the document healthy.
+    // that apply_change feeds real edits into it.
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
 
-    session->quarantine.on_crash();
+    auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
+    session->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
+    ZASSERT(session->quarantine->barred(0, later));
     store.apply_change(*session, partial_change(0, 0, 0, 0, "x"), 2);
-    ASSERT_EQ(session->quarantine.crashes(), 1u);
-
-    // At the threshold an edit re-arms one probe and keeps the streak: a
-    // quarantined document earns a single attempt per change, not a fresh
-    // budget.
-    session->quarantine.on_crash();
-    ASSERT_TRUE(session->quarantine.blocked());
-    store.apply_change(*session, partial_change(0, 0, 0, 0, "y"), 3);
-    ASSERT_EQ(session->quarantine.crashes(), Quarantine::threshold);
-    ASSERT_FALSE(session->quarantine.blocked());
+    ZASSERT(!session->quarantine->barred(0, later));
 }
 
-TEST_CASE(NoopEditNoProbe) {
+ZEST_CASE(NoopEditNoRetry) {
     SessionStore store;
-    auto session = store.open(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
-    session->quarantine.on_crash();
-    session->quarantine.on_crash();
-    ASSERT_TRUE(session->quarantine.blocked());
+    auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
+    session->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
 
-    // The probe license is one attempt per real content change: an
-    // out-of-range deletion clamps to an empty range at the end of the
-    // document, an empty change list and a no-op replacement change
-    // nothing — none may re-arm a compile of the unchanged poison bytes.
+    // A retry needs a real content change: an out-of-range deletion clamps
+    // to an empty range at the end of the document, an empty change list
+    // and a no-op replacement change nothing — none may send the unchanged
+    // crashing bytes to another worker.
     store.apply_change(*session, partial_change(99, 0, 99, 1, ""), 2);
-    ASSERT_TRUE(session->quarantine.blocked());
+    ZASSERT(session->quarantine->barred(0, later));
 
     store.apply_change(*session, {}, 3);
-    ASSERT_TRUE(session->quarantine.blocked());
+    ZASSERT(session->quarantine->barred(0, later));
 
     store.apply_change(*session, partial_change(0, 0, 0, 1, "i"), 4);
-    ASSERT_TRUE(session->quarantine.blocked());
+    ZASSERT(session->quarantine->barred(0, later));
 
     // A whole-document change carrying identical bytes is a no-op too.
     protocol::TextDocumentContentChangeWholeDocument whole;
     whole.text = session->text;
     store.apply_change(*session, protocol::TextDocumentContentChangeEvent(whole), 5);
-    ASSERT_TRUE(session->quarantine.blocked());
+    ZASSERT(session->quarantine->barred(0, later));
 
     store.apply_change(*session, partial_change(0, 0, 0, 1, "u"), 6);
-    ASSERT_FALSE(session->quarantine.blocked());
+    ZASSERT(!session->quarantine->barred(0, later));
 }
 
-TEST_CASE(ReopenClearsQuarantine) {
+ZEST_CASE(ReopenKeepsCrashes) {
     SessionStore store;
-    auto session = store.open(1);
-    session->quarantine.on_crash();
-    session->quarantine.on_crash();
-
+    auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
+    auto session = store.open(Fid{1});
     store.apply_open(*session, "int a;\n", 1);
+    session->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
+    store.close(Fid{1});
+    ZASSERT(session->closed);
 
-    ASSERT_EQ(session->quarantine.crashes(), 0u);
-    ASSERT_FALSE(session->quarantine.blocked());
+    // Closing and reopening the same bytes is no retry.
+    session = store.open(Fid{1});
+    store.apply_open(*session, "int a;\n", 1);
+    ZASSERT(session->quarantine->barred(0, later));
+
+    // Reopened on other bytes, the difference counts as a change.
+    store.close(Fid{1});
+    session = store.open(Fid{1});
+    store.apply_open(*session, "int b;\n", 1);
+    ZASSERT(session->quarantine->crashed(0));
+    ZASSERT(!session->quarantine->barred(0, later));
 }
 
-};  // TEST_SUITE(SessionStore)
+ZEST_CASE(InFlightAcrossClose) {
+    SessionStore store;
+    auto later = Quarantine::Clock::now() + std::chrono::minutes(1);
+    auto closed = store.open(Fid{1});
+    store.apply_open(*closed, "int a;\n", 1);
+    closed->quarantine->on_crash(0, "d1", "cause", Quarantine::Clock::now());
+    closed->quarantine->on_change(Quarantine::Clock::now());
+
+    // The retry's license, taken before the close, comes back to the
+    // reopened document when the retry ends without an outcome.
+    std::shared_ptr<Session> reopened;
+    {
+        Quarantine::Attempt attempt(*closed->quarantine, 0);
+        store.close(Fid{1});
+        reopened = store.open(Fid{1});
+        store.apply_open(*reopened, "int a;\n", 1);
+        ZASSERT(reopened->quarantine->barred(0, later));
+    }
+    ZASSERT(!reopened->quarantine->barred(0, later));
+
+    // A crash of work still in flight on the closed session bars the
+    // reopened one.
+    closed->quarantine->on_crash(1, "d2", "cause", Quarantine::Clock::now());
+    ZASSERT(reopened->quarantine->barred(1, later));
+
+    // Even when the document had no record at the close.
+    auto clean = store.open(Fid{2});
+    store.apply_open(*clean, "int b;\n", 1);
+    store.close(Fid{2});
+    clean->quarantine->on_crash(0, "d3", "cause", Quarantine::Clock::now());
+    auto again = store.open(Fid{2});
+    store.apply_open(*again, "int b;\n", 1);
+    ZASSERT(again->quarantine->barred(0, later));
+}
+
+};  // ZEST_SUITE(SessionStore)
 
 }  // namespace
 }  // namespace clice::testing

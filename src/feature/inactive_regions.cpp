@@ -1,7 +1,12 @@
-#include "compile/directive.h"
-#include "feature/feature.h"
+module;
 
-#include "llvm/ADT/SmallVector.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :compile.directive;
+import :feature.feature;
+import :support.text;
 
 namespace clice::feature {
 
@@ -11,28 +16,15 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
                               std::uint32_t end_offset) {
     InactiveScan result;
 
-    auto interested = unit.interested_file();
-    auto content = unit.file_content(interested);
+    auto main_fid = unit.main_file();
+    auto content = unit.file_content(main_fid);
     if(end_offset > content.size()) {
         end_offset = static_cast<std::uint32_t>(content.size());
     }
 
-    // Offset just past the end of the line containing `offset`.
-    auto line_end = [&](std::uint32_t offset) -> std::uint32_t {
-        auto pos = content.find('\n', offset);
-        return pos == llvm::StringRef::npos ? static_cast<std::uint32_t>(content.size())
-                                            : static_cast<std::uint32_t>(pos + 1);
-    };
-
-    // Offset of the start of the line containing `offset`.
-    auto line_begin = [&](std::uint32_t offset) -> std::uint32_t {
-        auto pos = content.rfind('\n', offset);
-        return pos == llvm::StringRef::npos ? 0 : static_cast<std::uint32_t>(pos + 1);
-    };
-
     auto local_offset = [&](clang::SourceLocation loc) -> std::optional<std::uint32_t> {
         auto [fid, offset] = unit.decompose_location(loc);
-        if(fid != interested) {
+        if(fid != main_fid) {
             return std::nullopt;
         }
         return offset;
@@ -76,7 +68,7 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
         level.inactive_begin.reset();
     };
 
-    auto directives_it = unit.directives().find(interested);
+    auto directives_it = unit.directives().find(main_fid);
     if(directives_it != unit.directives().end()) {
         for(const auto& condition: directives_it->second.conditions) {
             auto offset = local_offset(condition.loc);
@@ -90,7 +82,7 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
                 case Condition::BranchKind::Ifndef: {
                     stack.push_back({});
                     if(is_inactive(condition)) {
-                        stack.back().inactive_begin = line_end(*offset);
+                        stack.back().inactive_begin = line_end(content, *offset);
                     } else {
                         stack.back().taken = true;
                     }
@@ -102,9 +94,9 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
                     if(stack.empty()) {
                         break;
                     }
-                    close_pending(stack.back(), line_begin(*offset));
+                    close_pending(stack.back(), line_begin(content, *offset));
                     if(is_inactive(condition)) {
-                        stack.back().inactive_begin = line_end(*offset);
+                        stack.back().inactive_begin = line_end(content, *offset);
                     } else {
                         stack.back().taken = true;
                     }
@@ -114,11 +106,11 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
                     if(stack.empty()) {
                         break;
                     }
-                    close_pending(stack.back(), line_begin(*offset));
+                    close_pending(stack.back(), line_begin(content, *offset));
                     // #else has no condition value: it is inactive exactly
                     // when an earlier branch of this level was taken.
                     if(stack.back().taken) {
-                        stack.back().inactive_begin = line_end(*offset);
+                        stack.back().inactive_begin = line_end(content, *offset);
                     }
                     break;
                 }
@@ -126,7 +118,7 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
                     if(stack.empty()) {
                         break;
                     }
-                    close_pending(stack.back(), line_begin(*offset));
+                    close_pending(stack.back(), line_begin(content, *offset));
                     stack.pop_back();
                     break;
                 }
@@ -143,6 +135,27 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
         }
         result.open_stack.push_back(encoded);
         close_pending(level, end_offset);
+    }
+
+    // Nested conditionals close inner regions before the enclosing one, so
+    // the list arrives unordered with inner regions contained in outer
+    // ones. Canonicalize to the sorted disjoint form consumers walk with a
+    // single cursor.
+    auto& regions = result.regions;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> pairs;
+    pairs.reserve(regions.size() / 2);
+    for(std::size_t i = 0; i + 1 < regions.size(); i += 2) {
+        pairs.emplace_back(regions[i], regions[i + 1]);
+    }
+    std::ranges::sort(pairs);
+    regions.clear();
+    for(auto [begin, end]: pairs) {
+        if(!regions.empty() && begin <= regions.back()) {
+            regions.back() = std::max(regions.back(), end);
+        } else {
+            regions.push_back(begin);
+            regions.push_back(end);
+        }
     }
 
     return result;

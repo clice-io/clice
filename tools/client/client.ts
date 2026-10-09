@@ -1,4 +1,5 @@
-/// CliceClient — LSP client for integration testing, on vscode-jsonrpc.
+/// CliceClient — LSP client for integration testing, on
+/// vscode-languageserver-protocol.
 ///
 /// The client owns its whole lifecycle: spawn (stdio or socket), typed
 /// requests including clice's custom protocol, diagnostics tracking,
@@ -19,27 +20,97 @@ import {
 import { URI } from "vscode-uri";
 import {
     CurrentContextRequest,
+    ListConfigurationsRequest,
     LogFloodRequest,
     PollRequest,
     QueryContextRequest,
+    ResetContextRequest,
     StatsRequest,
+    SwitchConfigurationRequest,
     SwitchContextRequest,
     type CurrentContextResult,
+    type ListConfigurationsResult,
     type LogFloodResult,
     type PollResult,
     type QueryContextResult,
     type StatsResult,
+    type SwitchConfigurationResult,
     type SwitchContextResult,
 } from "../protocol/protocol.ts";
+import {
+    anomalyGateFailure,
+    anomaliesInMessages,
+    processGateFailures,
+    SANITIZER_MARKERS,
+    serverEnv,
+    serverStderrExcerpt,
+} from "../process_gate.ts";
 import { canonicalUri, Workspace } from "./workspace.ts";
+
+export {
+    anomaliesInLogFiles,
+    crashTracesInLogFiles,
+    logFiles,
+    SANITIZER_MARKERS,
+} from "../process_gate.ts";
+export { runProcess, type ProcessOptions, type ProcessResult } from "./process.ts";
+import { withTimeout } from "../promise.ts";
+
+// The harness's timing helpers are reached through this module.
+export { withTimeout } from "../promise.ts";
 
 // Standard timing constants — use these instead of hardcoded sleep values.
 export const MTIME_GRANULARITY = 1_100; // Filesystem mtime precision + margin
 export const SETTLE_TIME = 500; // Server stabilization after an operation
 export const IDLE_TIMEOUT = 5_000; // Idle soak time in lifecycle tests
+export const EDIT_SUPERSEDE_DELAY = 300; // An edit lands while SLOW_SOURCE still parses
+
+/// Two hundred thousand trivial declarations: slow to parse on any
+/// hardware, so an edit or a cancel lands while a request still waits on
+/// the compile, and cheap to abandon (the worker polls the stop flag per
+/// declaration).
+export const SLOW_SOURCE =
+    Array.from({ length: 200_000 }, (_, i) => `int v${i};`).join("\n") + "\n";
 
 export function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export interface WaitUntilOptions {
+    timeout: number;
+    interval: number;
+    description: string;
+}
+
+function formatWaitState(state: unknown): string {
+    try {
+        return JSON.stringify({ value: state });
+    } catch {
+        return String(state);
+    }
+}
+
+export async function waitUntil<T>(
+    predicate: () => T | Promise<T>,
+    { timeout, interval, description }: WaitUntilOptions,
+): Promise<T> {
+    const deadline = Date.now() + timeout;
+    let lastState: T;
+    for (;;) {
+        lastState = await predicate();
+        if (lastState) {
+            return lastState;
+        }
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+            break;
+        }
+        await sleep(Math.min(interval, remaining));
+    }
+    throw new Error(
+        `Timed out after ${timeout}ms waiting for ${description}; ` +
+            `last state: ${formatWaitState(lastState)}`,
+    );
 }
 
 /// Normalize a definition/references response to a list of Locations.
@@ -56,136 +127,7 @@ export function asLocations(result: unknown): proto.Location[] {
     return locationsOf(result as proto.Location | proto.Location[] | null);
 }
 
-// Sanitizer/crash fingerprints scanned in server stderr. Detection happens
-// incrementally in the pump: a mid-session report (e.g. relayed from a
-// crashed worker) must survive the retention cap's eviction.
-export const SANITIZER_MARKERS = [
-    "AddressSanitizer",
-    "LeakSanitizer",
-    "MemorySanitizer",
-    "ThreadSanitizer",
-    "UndefinedBehaviorSanitizer",
-    "==ERROR:",
-    "runtime error:",
-] as const;
-
 const SANITIZER_MARKER_BUFFERS = SANITIZER_MARKERS.map((m) => Buffer.from(m));
-
-export function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-        const timer = setTimeout(() => {
-            reject(new Error(`timed out after ${ms}ms: ${what}`));
-        }, ms);
-        promise.then(
-            (v) => {
-                clearTimeout(timer);
-                resolve(v);
-            },
-            (e: unknown) => {
-                clearTimeout(timer);
-                reject(e instanceof Error ? e : new Error(String(e)));
-            },
-        );
-    });
-}
-
-let nextPortOffset = 0;
-
-function tryBind(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-        const server = net.createServer();
-        server.once("error", () => {
-            resolve(false);
-        });
-        server.listen(port, "127.0.0.1", () => {
-            server.close(() => {
-                resolve(true);
-            });
-        });
-    });
-}
-
-/// Pick a port from a per-worker range.
-///
-/// bind(0) draws from the kernel's shared pool: two concurrent workers can
-/// grab the same port in the close-then-rebind gap. Disjoint per-worker
-/// ranges (below the ephemeral range) remove that race; the advancing
-/// offset avoids immediately reusing a just-released port.
-export async function findFreePort(): Promise<number> {
-    const index = Number(process.env["VITEST_POOL_ID"] ?? "0") || 0;
-    const base = 21000 + index * 100;
-    for (let i = 0; i < 100; i++) {
-        const port = base + nextPortOffset;
-        nextPortOffset = (nextPortOffset + 1) % 100;
-        if (await tryBind(port)) {
-            return port;
-        }
-    }
-    throw new Error(`no free port in range ${base}-${base + 99}`);
-}
-
-const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
-const CRASH_TRACE_MARKER = "=== CRASH STACK TRACE ===";
-
-/// All .log files under <workspace>/.clice/logs — one directory per server
-/// session, master and worker logs side by side.
-export function logFiles(root: string | null): string[] {
-    if (root === null) {
-        return [];
-    }
-    const logsDir = path.join(root, ".clice", "logs");
-    if (!fs.existsSync(logsDir)) {
-        return [];
-    }
-    return fs
-        .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
-        .filter((name) => name.endsWith(".log"))
-        .sort()
-        .map((name) => path.join(logsDir, name));
-}
-
-/// Anomaly IDs from master/worker log files under <workspace>/.clice/logs.
-/// Workers don't forward logMessage in v1.0, so their anomalies are only
-/// visible in their log files.
-export function anomaliesInLogFiles(root: string | null): string[] {
-    const found: string[] = [];
-    for (const logFile of logFiles(root)) {
-        for (const line of fs.readFileSync(logFile, "utf8").split("\n")) {
-            const match = ANOMALY_PATTERN.exec(line);
-            if (match) {
-                found.push(`${match[1]} (${path.basename(logFile)}: ${line.trim()})`);
-            }
-        }
-    }
-    return found;
-}
-
-/// Crash stack traces recorded by crashed processes in their log files.
-export function crashTracesInLogFiles(root: string | null): string[] {
-    const traces: string[] = [];
-    for (const logFile of logFiles(root)) {
-        const text = fs.readFileSync(logFile, "utf8");
-        const pos = text.indexOf(CRASH_TRACE_MARKER);
-        if (pos !== -1) {
-            traces.push(`--- ${path.basename(logFile)} ---\n${text.slice(pos)}`);
-        }
-    }
-    return traces;
-}
-
-function serverStderrExcerpt(stderrText: string): string {
-    const interesting = stderrText
-        .split("\n")
-        .filter(
-            (line) =>
-                line.includes("[warn]") ||
-                line.includes("[error]") ||
-                line.includes("Sanitizer") ||
-                line.includes("==ERROR:") ||
-                line.includes("runtime error:"),
-        );
-    return interesting.slice(-80).join("\n");
-}
 
 export interface StartOptions {
     /// The server treats stderr as best-effort, but a client that never
@@ -194,10 +136,31 @@ export interface StartOptions {
     /// to play the hostile client.
     drainStderr?: boolean | undefined;
     args?: string[] | undefined;
+    /// Working directory of the server process; the caller's by default.
+    cwd?: string | undefined;
+    /// Extra environment for the server process, which its workers inherit:
+    /// the CLICE_TEST_* hooks.
+    env?: Record<string, string> | undefined;
 }
 
 export interface InitializeOptions {
     initializationOptions?: Record<string, unknown> | undefined;
+    /// Whether to overlay the test defaults — one worker of each kind and
+    /// background polling off — onto the initialization options.
+    /// A benchmark switches them off to run the server's real defaults,
+    /// which stay spelled in one place: the C++ config initializers.
+    testDefaults?: boolean | undefined;
+    /// Client capabilities to advertise; empty by default so servers see
+    /// the most conservative client unless a test opts in.
+    capabilities?: proto.ClientCapabilities | undefined;
+    /// The workspace folders to announce, workspace-relative; the
+    /// workspace root alone when omitted, no root at all (neither folders
+    /// nor rootUri) when empty, and the root through rootUri alone — a
+    /// client without folder support — when null.
+    folders?: string[] | null | undefined;
+    /// Runs between the initialize response and the initialized
+    /// notification.
+    beforeInitialized?: (() => Promise<void>) | undefined;
 }
 
 interface Transport {
@@ -205,17 +168,50 @@ interface Transport {
     writer: Writable;
 }
 
+/// The initialization options a client sends for `ws`: the caller's, with
+/// the cache pinned into the workspace (so `.clice/` cleanup prevents a
+/// stale PCH) and, unless switched off, the test defaults — one worker of
+/// each kind (halves the per-test spawn cost; tests needing more pass their
+/// own counts) and background polling disabled (tests drive ticks
+/// deterministically through the clice/internal/poll hook).
+export function initializationOptionsFor(
+    ws: Workspace,
+    options: InitializeOptions,
+): Record<string, unknown> {
+    const initializationOptions = { ...(options.initializationOptions ?? {}) };
+    const project = {
+        ...((initializationOptions["project"] ?? {}) as Record<string, unknown>),
+    };
+    project["cache_dir"] = ws.path(".clice");
+    const tracker = {
+        ...((initializationOptions["tracker"] ?? {}) as Record<string, unknown>),
+    };
+    if (options.testDefaults ?? true) {
+        project["stateless_worker_count"] ??= 1;
+        project["stateful_worker_count"] ??= 1;
+        tracker["workspace_poll_seconds"] ??= 0;
+    }
+    initializationOptions["project"] = project;
+    initializationOptions["tracker"] = tracker;
+    return initializationOptions;
+}
+
 export class CliceClient {
     child: ChildProcessWithoutNullStreams;
     protected connection: proto.ProtocolConnection;
+    private transport: Transport;
     /// Non-null only in socket mode: the LSP transport rides this socket
     /// instead of the child's stdio, and must be torn down with the client.
     private socket: net.Socket | null = null;
 
     diagnostics = new Map<string, proto.Diagnostic[]>();
+    /// Every publishDiagnostics received, in order.
+    publishedDiagnostics: proto.PublishDiagnosticsParams[] = [];
     logMessages: proto.LogMessageParams[] = [];
     progressTokens: string[] = [];
     progressEvents: { token: string; value: unknown }[] = [];
+    /// Methods of server→client requests the client answered with null.
+    serverRequests: string[] = [];
     initResult: proto.InitializeResult | null = null;
     /// Bound by initialize(); relative paths in open/openAndWait resolve
     /// against it.
@@ -237,6 +233,7 @@ export class CliceClient {
     disposed = false;
 
     private diagnosticsWaiters = new Map<string, (() => void)[]>();
+    private publishes = new Map<string, number>();
 
     // Retention cap for drained stderr: long stress runs mirror the whole
     // server log, and the teardown scans only need the tail (sanitizer
@@ -245,6 +242,7 @@ export class CliceClient {
 
     private constructor(child: ChildProcessWithoutNullStreams, transport: Transport) {
         this.child = child;
+        this.transport = transport;
         this.connection = createProtocolConnection(
             new StreamMessageReader(transport.reader),
             new StreamMessageWriter(transport.writer),
@@ -261,9 +259,11 @@ export class CliceClient {
         });
 
         this.onNotification(proto.PublishDiagnosticsNotification.type, (params) => {
+            this.publishedDiagnostics.push(params);
             const rawUri = params.uri;
             const normalized = this.normalizeUri(rawUri);
             const diags = [...params.diagnostics];
+            this.publishes.set(normalized, (this.publishes.get(normalized) ?? 0) + 1);
             this.diagnostics.set(rawUri, diags);
             if (rawUri !== normalized) {
                 this.diagnostics.set(normalized, diags);
@@ -299,8 +299,11 @@ export class CliceClient {
         });
         // Requests the test client does not model are answered with null
         // instead of "method not found", mirroring pygls' lenient client.
+        // The methods are recorded so tests can assert that a refresh (or
+        // any other server-initiated request) was actually sent.
         raw.onRequest((method) => {
             console.warn(`[client] unhandled server request ${method} -> null`);
+            this.serverRequests.push(method);
             return null;
         });
         raw.onNotification((method) => {
@@ -312,6 +315,8 @@ export class CliceClient {
     static start(executable: string, options: StartOptions = {}): CliceClient {
         const child = spawn(executable, options.args ?? ["serve"], {
             stdio: ["pipe", "pipe", "pipe"],
+            cwd: options.cwd,
+            env: { ...serverEnv(), ...options.env },
         });
         const client = new CliceClient(child, { reader: child.stdout, writer: child.stdin });
         client.stderrDrainedFromStart = options.drainStderr !== false;
@@ -328,13 +333,17 @@ export class CliceClient {
     static async startSocket(
         executable: string,
         port: number,
-        options: { host?: string | undefined; args?: string[] | undefined } = {},
+        options: {
+            host?: string | undefined;
+            args?: string[] | undefined;
+            env?: Record<string, string> | undefined;
+        } = {},
     ): Promise<CliceClient> {
         const host = options.host ?? "127.0.0.1";
         const child = spawn(
             executable,
             options.args ?? ["serve", "--mode", "socket", "--port", String(port)],
-            { stdio: ["pipe", "pipe", "pipe"] },
+            { stdio: ["pipe", "pipe", "pipe"], env: { ...serverEnv(), ...options.env } },
         );
         let socket: net.Socket | null = null;
         for (let i = 0; i < 150; i++) {
@@ -386,6 +395,70 @@ export class CliceClient {
             : conn.sendRequest(type, params, token);
     }
 
+    /// Writes `messages` in one write, which the server reads together, and
+    /// resolves with the response to each request among them, by id. The
+    /// client's own connection ignores those responses: the ids must be
+    /// strings, which it never sends.
+    sendTogether(
+        messages: (proto.RequestMessage | proto.NotificationMessage)[],
+    ): Promise<Map<string, proto.ResponseMessage>> {
+        const pending = new Set(
+            messages.flatMap((message) => ("id" in message ? [String(message.id)] : [])),
+        );
+        const responses = new Map<string, proto.ResponseMessage>();
+        const { reader, writer } = this.transport;
+        const answered = new Promise<Map<string, proto.ResponseMessage>>((resolve) => {
+            if (pending.size === 0) {
+                resolve(responses);
+                return;
+            }
+            // Attached mid-stream, the first chunk may begin inside a
+            // message: a frame is found by the end of its header, and the
+            // length the header names.
+            let buffer = Buffer.alloc(0);
+            const onData = (chunk: Buffer): void => {
+                buffer = Buffer.concat([buffer, chunk]);
+                for (;;) {
+                    const end = buffer.indexOf("\r\n\r\n");
+                    if (end < 0) {
+                        break;
+                    }
+                    const header = buffer.subarray(0, end).toString("latin1");
+                    const named = /Content-Length: (\d+)/i.exec(
+                        header.slice(header.lastIndexOf("Content-Length:")),
+                    );
+                    const length = Number(named?.[1] ?? 0);
+                    if (buffer.length < end + 4 + length) {
+                        break;
+                    }
+                    const body = buffer.subarray(end + 4, end + 4 + length).toString("utf-8");
+                    buffer = buffer.subarray(end + 4 + length);
+                    const message = JSON.parse(body) as proto.Message;
+                    if (proto.Message.isResponse(message) && pending.delete(String(message.id))) {
+                        responses.set(String(message.id), message);
+                    }
+                }
+                if (pending.size === 0) {
+                    reader.off("data", onData);
+                    resolve(responses);
+                }
+            };
+            reader.on("data", onData);
+        });
+        writer.write(
+            Buffer.concat(
+                messages.map((message) => {
+                    const body = Buffer.from(JSON.stringify(message), "utf-8");
+                    return Buffer.concat([
+                        Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, "ascii"),
+                        body,
+                    ]);
+                }),
+            ),
+        );
+        return answered;
+    }
+
     sendNotification<P>(type: proto.NotificationType<P>, params: P): Promise<void>;
     sendNotification(type: proto.NotificationType0): Promise<void>;
     sendNotification(method: string, params?: unknown): Promise<void>;
@@ -417,27 +490,7 @@ export class CliceClient {
         options: InitializeOptions = {},
     ): Promise<this> {
         const ws = workspace instanceof Workspace ? workspace : new Workspace(workspace);
-        const initializationOptions = { ...(options.initializationOptions ?? {}) };
-        const project = {
-            ...((initializationOptions["project"] ?? {}) as Record<string, unknown>),
-        };
-        // Force cache_dir into the workspace so .clice/ cleanup prevents
-        // stale PCH.
-        project["cache_dir"] = ws.path(".clice");
-        // One worker of each kind is enough for tests and halves the
-        // per-test process-spawn cost. Tests needing more pass their own
-        // counts via initializationOptions.
-        project["stateless_worker_count"] ??= 1;
-        project["stateful_worker_count"] ??= 1;
-        initializationOptions["project"] = project;
-        // Disable the stat-polling loops: tests drive ticks deterministically
-        // through the clice/internal/poll hook instead.
-        const tracker = {
-            ...((initializationOptions["tracker"] ?? {}) as Record<string, unknown>),
-        };
-        tracker["cdb_poll_seconds"] ??= 0;
-        tracker["workspace_poll_seconds"] ??= 0;
-        initializationOptions["tracker"] = tracker;
+        const initializationOptions = initializationOptionsFor(ws, options);
 
         // Wire URIs stay percent-encoded (a '#' in the path must travel as
         // %23, not become a fragment); the decoded ws.uri() form is for
@@ -445,15 +498,44 @@ export class CliceClient {
         const wsUri = URI.file(ws.root).toString();
         const params: proto.InitializeParams = {
             processId: process.pid,
-            capabilities: {},
-            rootUri: wsUri,
-            workspaceFolders: [{ uri: wsUri, name: "test" }],
+            // Versioned workspace edits, like every editor client: code
+            // action replies then carry the buffer version they apply to.
+            capabilities: options.capabilities ?? {
+                workspace: { workspaceEdit: { documentChanges: true } },
+                textDocument: { rename: { prepareSupport: true } },
+            },
+            rootUri: options.folders?.length === 0 ? null : wsUri,
             initializationOptions,
         };
+        if (options.folders === undefined) {
+            params.workspaceFolders = [{ uri: wsUri, name: "test" }];
+        } else if (options.folders !== null) {
+            params.workspaceFolders = options.folders.map((folder) => ({
+                uri: URI.file(ws.path(folder)).toString(),
+                name: folder,
+            }));
+        }
         this.initResult = await this.sendRequest(proto.InitializeRequest.type, params);
-        await this.sendNotification(proto.InitializedNotification.type, {});
         this.workspace = ws;
+        await options.beforeInitialized?.();
+        await this.sendNotification(proto.InitializedNotification.type, {});
         return this;
+    }
+
+    /// Announce workspace folders coming and going
+    /// (didChangeWorkspaceFolders), workspace-relative like `folders` at
+    /// initialize.
+    changeWorkspaceFolders(change: { added?: string[]; removed?: string[] }): Promise<void> {
+        const folder = (name: string) => ({
+            uri: URI.file(this.resolvePath(name)).toString(),
+            name,
+        });
+        return this.sendNotification(proto.DidChangeWorkspaceFoldersNotification.type, {
+            event: {
+                added: (change.added ?? []).map(folder),
+                removed: (change.removed ?? []).map(folder),
+            },
+        });
     }
 
     /// Gracefully shut down: shutdown request, exit notification, then the
@@ -510,12 +592,13 @@ export class CliceClient {
         // reports, late crash text) must reach the scan below. The pump owns
         // the stream — wait for it to see EOF instead of racing it with a
         // second reader.
+        let stderrComplete = true;
+        let stderrFailure: string | undefined;
         try {
             await withTimeout(this.stderrEof, 2_000, "stderr EOF");
         } catch (exc) {
-            // A pump that never saw EOF means the transcript below may be
-            // partial — the sanitizer scan must not silently pass on it.
-            failures.push(`stderr pump did not complete: ${String(exc)}`);
+            stderrComplete = false;
+            stderrFailure = String(exc);
         }
         const stderrText = this.drainedStderr().toString("utf8");
 
@@ -525,23 +608,17 @@ export class CliceClient {
             }
         }
 
-        if (this.child.exitCode !== 0) {
-            failures.push(`server exited with code ${this.child.exitCode}`);
-        }
-
-        // A client that drained continuously must never see the drop report:
-        // shedding under a live reader would mean ordinary tests silently
-        // lose parts of the stderr transcript they later assert on.
-        if (this.stderrDrainedFromStart && stderrText.includes("client not draining")) {
-            failures.push("stderr mirror shed lines despite a draining client");
-        }
-
-        if (this.stderrMarkerHit !== null) {
-            const excerpt = this.stderrMarkerHit.toString("utf8");
-            failures.push(`server stderr contains sanitizer/runtime error output:\n${excerpt}`);
-        } else if (SANITIZER_MARKERS.some((marker) => stderrText.includes(marker))) {
-            failures.push("server stderr contains sanitizer/runtime error output");
-        }
+        failures.push(
+            ...processGateFailures({
+                exitCode: this.child.exitCode,
+                signalCode: this.child.signalCode,
+                stderrText,
+                stderrComplete,
+                stderrFailure,
+                stderrDrainedFromStart: this.stderrDrainedFromStart,
+                sanitizerMarkerHit: this.stderrMarkerHit?.toString("utf8"),
+            }),
+        );
 
         if (failures.length > 0) {
             const excerpt = serverStderrExcerpt(stderrText);
@@ -550,6 +627,37 @@ export class CliceClient {
             }
             throw new Error(failures.join("\n"));
         }
+    }
+
+    /// The PIDs of the server's worker processes whose command line names
+    /// `kind` ("SF-" stateful, "SL-" stateless; every worker when empty).
+    /// Linux only: read from /proc.
+    workerPids(kind = ""): number[] {
+        const pids: number[] = [];
+        for (const entry of fs.readdirSync("/proc")) {
+            if (!/^\d+$/.test(entry)) {
+                continue;
+            }
+            let stat: string;
+            let cmdline: Buffer;
+            try {
+                stat = fs.readFileSync(`/proc/${entry}/stat`, "utf8");
+                cmdline = fs.readFileSync(`/proc/${entry}/cmdline`);
+            } catch {
+                continue;
+            }
+            // /proc/<pid>/stat: pid (comm) state ppid ...
+            const ppid = Number(
+                stat
+                    .slice(stat.lastIndexOf(")") + 1)
+                    .trim()
+                    .split(/\s+/)[1],
+            );
+            if (ppid === this.child.pid && cmdline.includes(kind)) {
+                pids.push(Number(entry));
+            }
+        }
+        return pids;
     }
 
     /// Force-kill the server process, simulating a crash.
@@ -597,9 +705,11 @@ export class CliceClient {
         });
     }
 
-    /// Latch the earliest sanitizer fingerprint and keep appending context
-    /// from later reads; the carry covers markers split across read
-    /// boundaries.
+    /// Detection happens incrementally in the pump: a mid-session report
+    /// (e.g. relayed from a crashed worker) must survive the retention
+    /// cap's eviction. Latch the earliest sanitizer fingerprint and keep
+    /// appending context from later reads; the carry covers markers split
+    /// across read boundaries.
     private scanForMarkers(data: Buffer): void {
         if (this.stderrMarkerHit !== null) {
             if (this.stderrMarkerHit.length < 4096) {
@@ -628,10 +738,6 @@ export class CliceClient {
 
     normalizeUri(uri: string): string {
         return canonicalUri(uri);
-    }
-
-    pathToUri(filepath: string): string {
-        return this.normalizeUri(URI.file(this.resolvePath(filepath)).toString());
     }
 
     /// Workspace-relative paths resolve against the bound workspace;
@@ -738,6 +844,28 @@ export class CliceClient {
         await withTimeout(arrived, timeout, `diagnostics ${uri}`);
     }
 
+    /// Pull the document's diagnostics (textDocument/diagnostic); clice
+    /// answers every pull with a full report.
+    async pullDiagnostics(
+        uri: string,
+        token?: proto.CancellationToken,
+    ): Promise<proto.Diagnostic[]> {
+        const report = await this.sendRequest(
+            proto.DocumentDiagnosticRequest.type,
+            { textDocument: { uri } },
+            token,
+        );
+        if (report.kind !== proto.DocumentDiagnosticReportKind.Full) {
+            throw new Error(`Expected a full report, got: ${JSON.stringify(report)}`);
+        }
+        return report.items;
+    }
+
+    /// How many diagnostics publishes the document has received.
+    publishCount(uri: string): number {
+        return this.publishes.get(this.normalizeUri(uri)) ?? 0;
+    }
+
     errors(uri: string): proto.Diagnostic[] {
         return (this.diagnostics.get(uri) ?? []).filter(
             (d) => d.severity === proto.DiagnosticSeverity.Error,
@@ -761,19 +889,6 @@ export class CliceClient {
         }
     }
 
-    assertDiagnosticsCount(uri: string, count: number, severity?: number): void {
-        let diags = this.diagnostics.get(uri) ?? [];
-        if (severity !== undefined) {
-            diags = diags.filter((d) => d.severity === severity);
-        }
-        if (diags.length !== count) {
-            throw new Error(
-                `Expected ${count} diagnostics (severity=${severity}), ` +
-                    `got ${diags.length}: ${JSON.stringify(diags)}`,
-            );
-        }
-    }
-
     assertCleanCompile(uri: string): void {
         const diags = this.diagnostics.get(uri) ?? [];
         if (diags.length > 0) {
@@ -785,14 +900,7 @@ export class CliceClient {
 
     /// Anomaly IDs from window/logMessage notifications (master process).
     anomaliesInLogMessages(): string[] {
-        const found: string[] = [];
-        for (const msg of this.logMessages) {
-            const id = ANOMALY_PATTERN.exec(msg.message)?.[1];
-            if (id !== undefined) {
-                found.push(id);
-            }
-        }
-        return found;
+        return anomaliesInMessages(this.logMessages.map((message) => message.message));
     }
 
     /// Assert the session produced zero anomalies (client messages + logs).
@@ -801,14 +909,9 @@ export class CliceClient {
     /// the log directory (defaults to the bound workspace).
     assertNoAnomaly(root?: string | null): void {
         const logsRoot = root !== undefined ? root : (this.workspace?.root ?? null);
-        const found = [...this.anomaliesInLogMessages(), ...anomaliesInLogFiles(logsRoot)];
-        // A crashed worker leaves its stack trace in its own log file;
-        // surface it here so a one-off CI crash is diagnosable from the
-        // test output.
-        const traces = found.length > 0 ? crashTracesInLogFiles(logsRoot) : [];
-        const detail = traces.length > 0 ? "\n" + traces.join("\n") : "";
-        if (found.length > 0) {
-            throw new Error(`clice reported internal anomalies: ${found.join(", ")}${detail}`);
+        const failure = anomalyGateFailure(this.anomaliesInLogMessages(), logsRoot);
+        if (failure !== null) {
+            throw new Error(failure);
         }
     }
 
@@ -872,12 +975,57 @@ export class CliceClient {
         });
     }
 
+    documentHighlightAt(uri: string, line: number, character: number) {
+        return this.sendRequest(
+            proto.DocumentHighlightRequest.type,
+            this.textDocumentPosition(uri, line, character),
+        );
+    }
+
+    prepareRenameAt(uri: string, line: number, character: number) {
+        return this.sendRequest(
+            proto.PrepareRenameRequest.type,
+            this.textDocumentPosition(uri, line, character),
+        );
+    }
+
+    renameAt(uri: string, line: number, character: number, newName: string) {
+        return this.sendRequest(proto.RenameRequest.type, {
+            ...this.textDocumentPosition(uri, line, character),
+            newName,
+        });
+    }
+
     /// URIs of the references at a position (declaration excluded).
     async referenceUris(uri: string, line: number, character: number): Promise<string[]> {
         const refs = await this.referencesAt(uri, line, character, {
             includeDeclaration: false,
         });
         return (refs ?? []).map((ref) => ref.uri);
+    }
+
+    /// URIs of the definitions at a position.
+    async definitionUris(uri: string, line: number, character: number): Promise<string[]> {
+        return asLocations(await this.definitionAt(uri, line, character)).map(
+            (location) => location.uri,
+        );
+    }
+
+    /// Poll definitions at a position until expectedUri shows up.
+    async waitForDefinition(
+        uri: string,
+        line: number,
+        character: number,
+        expectedUri: string,
+        timeoutSeconds = 30,
+    ): Promise<boolean> {
+        for (let i = 0; i < timeoutSeconds; i++) {
+            if ((await this.definitionUris(uri, line, character)).includes(expectedUri)) {
+                return true;
+            }
+            await sleep(1_000);
+        }
+        return false;
     }
 
     /// Poll references at a position until expectedUri shows up.
@@ -941,6 +1089,13 @@ export class CliceClient {
         });
     }
 
+    selectionRanges(uri: string, positions: proto.Position[]) {
+        return this.sendRequest(proto.SelectionRangeRequest.type, {
+            textDocument: { uri },
+            positions,
+        });
+    }
+
     foldingRanges(uri: string) {
         return this.sendRequest(proto.FoldingRangeRequest.type, {
             textDocument: { uri },
@@ -951,6 +1106,29 @@ export class CliceClient {
         return this.sendRequest(proto.SemanticTokensRequest.type, {
             textDocument: { uri },
         });
+    }
+
+    /// Lines carrying at least one token with the `inactive` semantic
+    /// token modifier — the wire form of preprocessor-inactive regions.
+    async inactiveLines(uri: string): Promise<number[]> {
+        const result = await this.semanticTokensFull(uri);
+        const provider = this.initResult?.capabilities.semanticTokensProvider as
+            | proto.SemanticTokensOptions
+            | undefined;
+        const bit = provider?.legend.tokenModifiers.indexOf("inactive") ?? -1;
+        if (bit < 0) {
+            throw new Error("server legend misses the inactive modifier");
+        }
+        const data = result?.data ?? [];
+        const lines = new Set<number>();
+        let line = 0;
+        for (let i = 0; i + 4 < data.length; i += 5) {
+            line += data[i] ?? 0;
+            if (((data[i + 4] ?? 0) & (1 << bit)) !== 0) {
+                lines.add(line);
+            }
+        }
+        return [...lines].sort((a, b) => a - b);
     }
 
     inlayHints(uri: string, range: proto.Range) {
@@ -1036,6 +1214,10 @@ export class CliceClient {
         return this.sendRequest(CurrentContextRequest, { uri });
     }
 
+    resetContext(uri: string): Promise<SwitchContextResult> {
+        return this.sendRequest(ResetContextRequest, { uri });
+    }
+
     switchContext(
         uri: string,
         contextUri: string,
@@ -1050,10 +1232,27 @@ export class CliceClient {
         });
     }
 
+    /// The build configuration menu of the project serving `uri`, else of
+    /// the first project over a folder.
+    listConfigurations(uri?: string): Promise<ListConfigurationsResult> {
+        return this.sendRequest(ListConfigurationsRequest, uri === undefined ? {} : { uri });
+    }
+
+    switchConfiguration(name: string, uri?: string): Promise<SwitchConfigurationResult> {
+        return this.sendRequest(
+            SwitchConfigurationRequest,
+            uri === undefined ? { name } : { name, uri },
+        );
+    }
+
     /// clice/internal/poll (test hook): run one tracker tick and apply its
-    /// effects synchronously.
-    poll(loop: "cdb" | "workspace"): Promise<PollResult> {
-        return this.sendRequest(PollRequest, { loop });
+    /// effects synchronously. `force: false` takes the CDB loop through its
+    /// real stamp gate and settling debounce (see PollParams).
+    poll(loop: "cdb" | "workspace", options: { force?: boolean } = {}): Promise<PollResult> {
+        return this.sendRequest(PollRequest, {
+            loop,
+            ...(options.force === undefined ? {} : { force: options.force }),
+        });
     }
 
     /// clice/internal/stats (test hook): ownership gauges for

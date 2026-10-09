@@ -6,7 +6,7 @@ name: vscode
 #   source: package  — six platform vsix embedding the release packages from
 #                      publish-clice.yml (release, nightly, and dry runs).
 #   source: build    — six platform vsix embedding the test-suite binaries
-#                      (no LTO, no strip) already built by native/cross-test,
+#                      (no strip) already built by the test legs,
 #                      so a fix is installable the moment its CI run is green.
 on:
   workflow_call:
@@ -54,27 +54,21 @@ jobs:
           - vsce_target: linux-x64
             triple: x86_64-unknown-linux-gnu
             ext: tar.gz
-            build_artifact: native-build-ubuntu-24.04-RelWithDebInfo
           - vsce_target: linux-arm64
             triple: aarch64-unknown-linux-gnu
             ext: tar.gz
-            build_artifact: cross-build-aarch64-unknown-linux-gnu
           - vsce_target: darwin-arm64
             triple: aarch64-apple-darwin
             ext: tar.gz
-            build_artifact: native-build-macos-15-RelWithDebInfo
           - vsce_target: darwin-x64
             triple: x86_64-apple-darwin
             ext: tar.gz
-            build_artifact: cross-build-x86_64-apple-darwin
           - vsce_target: win32-x64
-            triple: x86_64-pc-windows-msvc
+            triple: x86_64-w64-mingw32
             ext: zip
-            build_artifact: native-build-windows-2025-RelWithDebInfo
           - vsce_target: win32-arm64
-            triple: aarch64-pc-windows-msvc
+            triple: aarch64-w64-mingw32
             ext: zip
-            build_artifact: cross-build-aarch64-pc-windows-msvc
 
     runs-on: ubuntu-latest
 
@@ -92,7 +86,7 @@ jobs:
       - name: Download server binaries
         uses: actions/download-artifact@v8
         with:
-          name: ${{ inputs.source == 'package' && format('package-clice.{0}.{1}', matrix.triple, matrix.ext) || matrix.build_artifact }}
+          name: ${{ inputs.source == 'package' && format('package-clice.{0}.{1}', matrix.triple, matrix.ext) || format('build-{0}-RelWithDebInfo', matrix.triple) }}
           path: /tmp/server
 
       # Both sources end up as editors/vscode/clice/{bin,lib/clang,...}, the
@@ -107,8 +101,7 @@ jobs:
             mv /tmp/server/clice "$DEST"
           else
             mkdir -p "$DEST/bin" "$DEST/lib"
-            # Only the executable: test builds keep unit_tests and (on
-            # Windows) a huge PDB next to it.
+            # Only the executable: test builds keep unit_tests next to it.
             for f in clice clice.exe; do
               if [ -f "/tmp/server/bin/$f" ]; then cp "/tmp/server/bin/$f" "$DEST/bin/"; fi
             done
@@ -190,6 +183,7 @@ jobs:
           path: vsix
 
       - name: Upload .vsix to Release
+        id: release-upload
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
@@ -205,7 +199,10 @@ jobs:
           FAILED=""
           for f in vsix/*.vsix; do
             OK=""
-            for ATTEMPT in 1 2 3; do
+            DELAY=30
+            # Marketplace timeouts can persist for minutes, not seconds:
+            # back off up to ~8 minutes per vsix before giving up.
+            for ATTEMPT in 1 2 3 4 5; do
               # --skip-duplicate: a rerun meets versions an earlier attempt
               # already published; that is success, not an error.
               if pixi run publish-vscode -p "$VSCE_PAT" $FLAG --skip-duplicate \
@@ -213,9 +210,10 @@ jobs:
                 OK=1
                 break
               fi
-              if [ "$ATTEMPT" -lt 3 ]; then
-                echo "publish failed for $f (attempt $ATTEMPT); retrying in 30s"
-                sleep 30
+              if [ "$ATTEMPT" -lt 5 ]; then
+                echo "publish failed for $f (attempt $ATTEMPT); retrying in ${DELAY}s"
+                sleep "$DELAY"
+                DELAY=$((DELAY * 2))
               fi
             done
             if [ -z "$OK" ]; then
@@ -224,5 +222,51 @@ jobs:
           done
           if [ -n "$FAILED" ]; then
             echo "::error::marketplace publish failed after retries:$FAILED"
+            exit 1
+          fi
+
+      # Runs even when the Marketplace step failed, so one registry's outage
+      # never holds back the other; the job still ends red.
+      - name: Publish to Open VSX
+        if: ${{ !cancelled() && steps.release-upload.outcome == 'success' }}
+        env:
+          OVSX_PAT: ${{ secrets.UPLOAD_VSX_EXT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::notice::UPLOAD_VSX_EXT is not set; skipping Open VSX publish"
+            exit 0
+          fi
+          pixi run install-vscode
+          # A rejected token would otherwise burn the full retry budget of
+          # every vsix before failing.
+          if ! pixi run -e node -- npx --no ovsx verify-pat clice-io -p "$OVSX_PAT"; then
+            echo "::error::UPLOAD_VSX_EXT was rejected for the clice-io namespace on Open VSX"
+            exit 1
+          fi
+          FAILED=""
+          for f in vsix/*.vsix; do
+            OK=""
+            DELAY=30
+            for ATTEMPT in 1 2 3 4 5; do
+              # No --pre-release: ovsx ignores it for a prepackaged vsix, and
+              # Open VSX reads the channel (and the target platform) from the
+              # manifest vsce wrote at packaging time.
+              if pixi run publish-ovsx -p "$OVSX_PAT" --skip-duplicate \
+                  --packagePath "$GITHUB_WORKSPACE/$f"; then
+                OK=1
+                break
+              fi
+              if [ "$ATTEMPT" -lt 5 ]; then
+                echo "publish failed for $f (attempt $ATTEMPT); retrying in ${DELAY}s"
+                sleep "$DELAY"
+                DELAY=$((DELAY * 2))
+              fi
+            done
+            if [ -z "$OK" ]; then
+              FAILED="$FAILED $f"
+            fi
+          done
+          if [ -n "$FAILED" ]; then
+            echo "::error::open vsx publish failed after retries:$FAILED"
             exit 1
           fi

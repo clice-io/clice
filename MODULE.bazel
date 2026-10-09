@@ -1,0 +1,27 @@
+module(name = "clice")
+
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "rules_cc", version = "0.2.25")
+bazel_dep(name = "rules_pkg", version = "1.3.0")
+
+# `bazel run @compdb//:refresh` writes compile_commands.json.
+bazel_dep(name = "compdb", version = "0.1.0")
+
+# kotatsu and the third-party libraries, as the clice Bazel registry
+# (bazel/clice.bazelrc) packages them. kotatsu's version is 0.1.0.<n> for the
+# n-th commit of its main.
+bazel_dep(name = "kotatsu", version = "0.1.0.228")
+bazel_dep(name = "croaring", version = "5.2.2.clice.1")
+bazel_dep(name = "lmdb", version = "0.9.31.clice.1")
+bazel_dep(name = "mimalloc", version = "3.5.3.clice.1")
+bazel_dep(name = "simdjson", version = "4.2.4.clice.1")
+bazel_dep(name = "spdlog", version = "1.15.3.clice.1")
+
+# The C++ toolchain on every platform and the LLVM/Clang libraries clice
+# links, both from one xclang release: libclang's ThinLTO bitcode needs the
+# lld of the same LLVM. pixi.toml pins the same release for the tools the
+# tests and the artifact checks run.
+bazel_dep(name = "xclang", version = "23.1.2.9")
+
+xclang = use_extension("@xclang//bazel:extensions.bzl", "xclang")
+use_repo(xclang, "libclang")

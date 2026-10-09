@@ -1,0 +1,10 @@
+---
+created_at: 2026-10-08
+input_file: designator_hints/08_designator_library_array.cpp
+---
+- { pos: "11:19", kind: Type, label: "[0]=" }
+- { pos: "11:22", kind: Type, label: "[1]=" }
+- { pos: "14:29", kind: Type, label: "[0][0]=" }
+- { pos: "14:32", kind: Type, label: "[0][1]=" }
+- { pos: "14:35", kind: Type, label: "[1][0]=" }
+- { pos: "14:38", kind: Type, label: "[1][1]=" }

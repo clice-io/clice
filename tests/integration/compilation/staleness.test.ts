@@ -114,6 +114,26 @@ test("touch without content change skips recompile", async ({ session }) => {
     client.assertCleanCompile(uri);
 });
 
+test("touched pch input keeps completion", async ({ session }) => {
+    // A same-bytes rewrite (git stash pop, a branch switch) moves only the
+    // header's mtime: the PCH built from it must keep serving completion.
+    const { client, workspace } = session.tmp();
+    workspace.write("a.h", "#pragma once\nstruct Widget { int alpha_member; };\n");
+    const main = '#include "a.h"\nint main() {\n    Widget w;\n    return 0;\n}\n';
+    workspace.write("main.cpp", main);
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("a.h", workspace.read("a.h"));
+
+    client.change(uri, 1, main.replace("    return 0;", "    w.\n    return 0;"));
+    const reply = await client.completionAt(uri, 3, 6);
+    const items = Array.isArray(reply) ? reply : (reply?.items ?? []);
+    expect(items.map((item) => item.label.trim())).toContain("alpha_member");
+});
+
 test("header replaced with different content", async ({ session }) => {
     // Replacing a header file with different content should be detected
     // and trigger recompilation reflecting the new content.
@@ -315,13 +335,7 @@ test("didsave triggers recompile for dependents", async ({ session }) => {
 test("didsave with module deps", async ({ session }) => {
     // didSave on a module file should invalidate CompileGraph dependents.
     const { client, workspace } = session.tmp();
-    const src = path.join(DATA_DIR, "modules", "save_recompile");
-    for (const name of fs.readdirSync(src)) {
-        const from = path.join(src, name);
-        if (fs.statSync(from).isFile()) {
-            fs.copyFileSync(from, workspace.path(name));
-        }
-    }
+    workspace.copyFiles(path.join(DATA_DIR, "modules", "save_recompile"));
 
     workspace.generateCDB();
     await client.initialize(workspace);
@@ -396,7 +410,7 @@ test("host change resynthesizes preamble", async ({ session }) => {
     client.assertCleanCompile(utilsUri);
 
     // Ensure mtime advances past filesystem granularity (1s on some FSes).
-    await sleep(1_100);
+    await sleep(MTIME_GRANULARITY);
     workspace.write("main.cpp", '#include "utils.h"\nint main() { return 0; }\n');
 
     // No didSave: mtime-based chain snapshot must detect the change.
@@ -421,7 +435,7 @@ test("intermediate change resynthesizes preamble", async ({ session }) => {
     client.assertCleanCompile(targetUri);
 
     // Rename the macro in the intermediate wrapper.h.
-    await sleep(1_100);
+    await sleep(MTIME_GRANULARITY);
     workspace.write("wrapper.h", '#pragma once\n#define OTHER 42\n#include "target.h"\n');
 
     await client.waitForRecompile(targetUri);
@@ -499,6 +513,33 @@ test("backdated header change detected", async ({ session }) => {
 
     await client.waitForRecompile(uri);
     client.assertHasErrors(uri, "Expected errors after backdated header change");
+});
+
+test("outside edits compile once", async ({ session }) => {
+    // Headers on both sides of the preamble change behind the server's back:
+    // the request's own check finds both, and their cascade lands before
+    // the recompile, not in the middle of it.
+    const { client, workspace } = session.tmp();
+    workspace.write("pre.h", "#pragma once\ninline int pre() { return 1; }\n");
+    workspace.write("late.h", "#pragma once\ninline int late() { return 1; }\n");
+    workspace.write(
+        "main.cpp",
+        '#include "pre.h"\nint main() { return pre(); }\n#include "late.h"\nint tail() { return late(); }\n',
+    );
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace, {
+        initializationOptions: { project: { enable_indexing: false } },
+    });
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertCleanCompile(uri);
+
+    await sleep(MTIME_GRANULARITY);
+    workspace.write("pre.h", "#pragma once\ninline int pre_renamed() { return 1; }\n");
+    workspace.write("late.h", "#pragma once\ninline int late_renamed() { return 1; }\n");
+    const before = client.publishCount(uri);
+    await client.hoverAt(uri, 1, 4);
+    expect(client.publishCount(uri) - before).toBe(1);
+    expect(client.errors(uri)).toHaveLength(2);
 });
 
 test("orphan header default command", async ({ session }) => {

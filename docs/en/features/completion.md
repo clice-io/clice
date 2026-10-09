@@ -1,35 +1,48 @@
 # Code Completion
 
-## Include Path Completion
+## Include paths
 
-Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no compilation needed). Quoted completion searches the configured include directories, not the includer's own directory (unless it is on the include path).
+Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no compilation needed). Quoted completion searches the includer's own directory first, then the configured include directories. Only files that look like headers are candidates: header extensions everywhere, extensionless files in system directories and other places such headers live.
 
-<!-- BEGIN GENERATED ITEMS: Include Path Completion -->
+<!-- BEGIN GENERATED ITEMS: include_path_completion -->
 
-- [x] Quoted include paths — headers and directories from the configured search path, directories marked by a trailing slash
+<!-- BEGIN CAPABILITY: supported -->
 
-  Answered by the server before any compilation, so only the server path
-  exists for this fixture.
+**Quoted include paths**
 
-  <details>
-  <summary>Example</summary>
+Completion lists headers and directories from the configured search path and
+marks directories with a trailing slash
 
-  ```cpp
-  #include "snap"
-  ```
+```snap
+tests/snap/code_completion/include_path_completion/01_include_quoted.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Angled include paths — the same search-path candidates in the angled form
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Angled include paths**
 
-  ```cpp
-  #include <snap>
-  ```
+Angled includes offer the same search-path candidates
 
-  </details>
+```snap
+tests/snap/code_completion/include_path_completion/02_include_angled.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Closing delimiter**
+
+Accepting a header closes the directive, replacing a delimiter already
+typed after the cursor instead of doubling it
+
+```snap
+tests/snap/code_completion/include_path_completion/03_closing_delimiter.cpp
+```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -85,63 +98,76 @@ Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no co
   #include <sys^>  // accept "sys" → inserts "sys", user types "/" → next completion fires
   ```
 
-## Module Completion
+## Module import
 
 Detected via text context analysis. Handled before AST (preamble-level, no compilation needed).
 
-### Import
-
 Triggered when cursor is after `import` or `export import`.
 
-<!-- BEGIN GENERATED ITEMS: Module Completion -->
+<!-- BEGIN GENERATED ITEMS: module_completion -->
 
-- [x] Import statements — known module names complete after `import`, with the closing semicolon inserted
+<!-- BEGIN CAPABILITY: supported -->
 
-  Answered by the server from its module map, so only the server path
-  exists for this fixture; the sibling module interface is opened first
-  so the module is known. The statement stays unterminated — a `;` on
-  the line means the import is already complete and nothing is offered.
+**Import statements**
 
-  <details>
-  <summary>Example</summary>
+Known module names complete after `import`, with the closing semicolon
+inserted
 
-  `main.cpp`:
+```snap
+tests/snap/code_completion/module_completion/01_import_modules/main.cpp
+```
 
-  ```cpp
-  import ma
-  ```
+<!-- END CAPABILITY -->
 
-  `mod_math.cppm`:
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  export module math;
+**Partitions of the current module**
 
-  export int add(int a, int b) {
-      return a + b;
-  }
-  ```
+In an implementation unit, the module's own partitions complete as `:partition`, while neither the module itself nor the partitions of other modules are offered
 
-  </details>
+A statement that already ends in a semicolon keeps it.
+
+```snap
+tests/snap/code_completion/module_completion/02_partition_imports/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Import keyword in implementation units**
+
+`import` completes at file scope of a module implementation unit as it does in an interface
+
+```snap
+tests/snap/code_completion/module_completion/03_import_keyword/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Partitions in interface units**
+
+In an interface unit, only the module's interface partitions complete
+
+An interface cannot export an internal partition, and names it imports from one may not reach the interface's importers, so internal partitions are offered only to the module's other units.
+
+```snap
+tests/snap/code_completion/module_completion/04_interface_partitions/main.cpp
+```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-- [ ] Trigger on space character ([#460](https://github.com/clice-io/clice/pull/460))
+- [x] Trigger on space character ([#460](https://github.com/clice-io/clice/pull/460))
 
-  Requires two-layer gating to avoid firing on every space keystroke:
-  1. **Server-side**: register ` ` (space) as a trigger character so the client sends completion requests on space.
-  2. **Extension-side middleware**: intercept space-triggered requests and only forward them when the current line matches `import ` or `export import ` (cheap string check, zero IPC overhead for non-import spaces). All other spaces return empty immediately.
-
-  This follows the same pattern used by TypeScript/Haxe language extensions ([vscode#67714](https://github.com/microsoft/vscode/issues/67714)).
-
-- [ ] Exclude self-module from results (self-import is invalid) — **FIXME**
-- [ ] Partition import within the same module
-
-  ```cpp
-  // inside module foo
-  import :^  // suggest :core, :io (only foo's own partitions)
-  ```
-
-  Note: `import M:part;` is not valid C++ — partitions can only be imported via the short form `import :part;` from within the same module.
+  Two-layer gating avoids firing on every space keystroke: the server
+  registers ` ` (space) as a trigger character, and space-triggered requests
+  only proceed in import contexts (`import `, `export import `); all other
+  spaces return empty immediately. This follows the same pattern used by
+  TypeScript/Haxe language extensions ([vscode#67714](https://github.com/microsoft/vscode/issues/67714)).
 
 - [ ] Hierarchical dot-completion
 
@@ -151,7 +177,6 @@ Triggered when cursor is after `import` or `export import`.
 
   Note: dots in module names are a naming convention, not language-level hierarchy, but dot-triggered completion is still valuable UX.
 
-- [ ] Filter out non-exported (internal) partitions of other modules
 - [ ] Header unit import
 
   ```cpp
@@ -165,16 +190,9 @@ Triggered when cursor is after `import` or `export import`.
   std::vector^  // on accept, also insert "import std;" at the top
   ```
 
-### Declaration
+## Module declarations
 
 Completion within module declaration contexts (`module` / `export module`).
-
-- [ ] `import` / `module` keyword completion
-
-  ```cpp
-  imp^  // suggest "import" keyword
-  mod^  // suggest "module" keyword
-  ```
 
 - [ ] Module name completion after `module` / `export module`
 
@@ -202,136 +220,246 @@ Completion within module declaration contexts (`module` / `export module`).
   export import :^  // suggest mylib's interface partitions that need re-exporting
   ```
 
-## Semantic Code Completion
+## Member access
 
 Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompleteConsumer` via stateless worker.
 
-### Member Access
+<!-- BEGIN GENERATED ITEMS: member_access -->
 
-<!-- BEGIN GENERATED ITEMS: Member Access -->
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] Members of a class — fields, methods, the destructor and operators complete with plain names
+**Members of a class**
 
-  The destructor completes as `~Account` (never `~struct Account`),
-  `operator=` keeps no space before `=`, and a conversion operator
-  spells its target type.
+Fields, methods, the destructor and operators complete with plain names
 
-  <details>
-  <summary>Example</summary>
+The destructor completes as `~Account` (never `~struct Account`),
+`operator=` keeps no space before `=`, and a conversion operator
+spells its target type.
 
-  ```cpp
-  // The member access expression is left dangling at the point.
-  struct Wallet {
-      int cents;
-  };
+```snap
+tests/snap/code_completion/member_access/01_member_access.cpp
+```
 
-  struct Account {
-      int balance;
-      int bazzzz(int a, int b);
-      operator Wallet();
-  };
+<!-- END CAPABILITY -->
 
-  void bar() {
-      Account acc;
-      acc.
-  }
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-  </details>
+**Instantiated class template members**
 
-- [x] Members of an instantiated class template — the destructor label keeps the written template arguments
+The destructor label keeps the written template arguments
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/code_completion/member_access/02_member_template.cpp
+```
 
-  ```cpp
-  // The member access expression is left dangling at the point.
-  template <typename T>
-  struct Box {
-      T value;
-  };
+<!-- END CAPABILITY -->
 
-  void bar() {
-      Box<int> b;
-      b.
-  }
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-  </details>
+**Pointer member access**
 
-- [x] Pointer member access — `->` on a pointer completes the pointee's members
+`->` on a pointer completes the pointee's members
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/code_completion/member_access/03_pointer_arrow.cpp
+```
 
-  ```cpp
-  // The member access expression is left dangling at the point.
-  struct Node {
-      int value;
-      Node* next;
-      int compute(int a);
-  };
+<!-- END CAPABILITY -->
 
-  void bar() {
-      Node* p;
-      p->
-  }
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-  </details>
+**Scope-qualified members**
 
-- [x] Scope-qualified members — after `::` static data, nested types, methods and the injected class name all list
+After `::` static data, nested types, methods and the injected class name
+all list
 
-  Qualified completion is not filtered to the statically-reachable subset:
-  instance fields and the destructor show up alongside the static members
-  and nested types.
+Qualified completion is not filtered to the statically-reachable subset:
+instance fields and the destructor show up alongside the static members
+and nested types.
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/code_completion/member_access/04_scope_access.cpp
+```
 
-  ```cpp
-  // The qualified-id is left dangling at the point.
-  struct Config {
-      static int shared_count;
-      static int make(int seed);
+<!-- END CAPABILITY -->
 
-      struct Nested {
-          int a;
-      };
+<!-- BEGIN CAPABILITY: supported -->
 
-      int instance_field;
-  };
+**Inherited members**
 
-  void bar() {
-      int v = Config::;
-  }
-  ```
+A derived object completes its own members and those of its base
 
-  </details>
+```snap
+tests/snap/code_completion/member_access/05_inherited_members.cpp
+```
 
-- [x] Inherited members — a derived object completes its own members and those of its base
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  // The member access expression is left dangling at the point.
-  struct Base {
-      int base_field;
-      int base_method();
-  };
+**Dependent member type**
 
-  struct Derived : Base {
-      int derived_field;
-  };
+A variable whose type is a member alias of a dependent specialization
+completes the members of the class the alias stands for
 
-  void bar() {
-      Derived d;
-      d.
-  }
-  ```
+The alias is resolved with the written template arguments substituted,
+so `Vec<Vec<T>>::value_type` lists the members of `Vec<T>` rather than
+nothing at all. An alias naming a reference (`Vec<Vec<T>>::reference`)
+lists the members of the class referred to.
 
-  </details>
+```snap
+tests/snap/code_completion/member_access/06_dependent_member_type.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Partial specialization members**
+
+A dependent specialization that matches a partial specialization
+completes through that specialization, not the primary template
+
+```snap
+tests/snap/code_completion/member_access/07_partial_specialization_members.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent alias chain**
+
+An alias that itself names a dependent member type resolves through
+every link of the chain
+
+```snap
+tests/snap/code_completion/member_access/08_dependent_alias_chain.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dependent pointee members**
+
+`->` on a pointer to a dependent member type completes the pointee's
+members
+
+```snap
+tests/snap/code_completion/member_access/09_dependent_pointee.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Concrete alias target**
+
+A dependent alias that names a concrete specialization completes the
+members that specialization instantiates to
+
+The specialization is instantiated for the completion when the file never
+did, so its members carry the concrete argument types, and a partial
+specialization matching the arguments supplies them.
+
+```snap
+tests/snap/code_completion/member_access/10_concrete_alias_target.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Designated initializer fields**
+
+`{ .` lists the fields of the aggregate being initialized, those of a
+matching partial specialization for a dependent one
+
+```snap
+tests/snap/code_completion/member_access/11_designated_initializer.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Inaccessible members**
+
+Private and protected members are not offered where they cannot be used
+
+```snap
+tests/snap/code_completion/member_access/12_inaccessible_members.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Destructor labels**
+
+A destructor completes as `~` and the bare class name, whatever namespace
+the class lives in
+
+```snap
+tests/snap/code_completion/member_access/13_destructor_label.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#443 -->
+
+**Dependent expression results**
+
+A member access on what a subscript or a member call returns inside a template completes the members of the class it evaluates to
+
+`rows[0].` on a `Vec<Vec<T>>` lists the members of `Vec<T>`, followed
+through the container's `reference` alias the way the standard containers
+declare it. Where a member has a `const` overload, the constness of the
+object picks the one called, a data member reached through a const object
+counting as const, and `->` on a returned iterator reaches the element.
+
+```snap
+tests/snap/code_completion/member_access/14_dependent_expression_result.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Overloads sharing a return type**
+
+A dependent call whose candidate overloads all return the same type completes the members of that type
+
+`table[key].` on a map whose `operator[]` takes either a `const K&` or a
+`K&&` lists the members of the mapped type. The overloads may be defined
+outside the class, and the class template redeclared after its
+definition, as the standard maps are.
+
+```snap
+tests/snap/code_completion/member_access/15_overloaded_subscript.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Deduced variable members**
+
+A variable declared `auto` from a dependent initializer completes the members of the class it deduces to
+
+`auto& row = rows[0]; row.` lists the members of `Vec<T>`. The
+declarator applies as in a real deduction: `const auto&` makes the
+object const, a by-value `auto` drops the initializer's const, `auto&&`
+and `decltype(auto)` keep it, and `auto*` takes the pointee. From a data
+member, `decltype(auto)` takes the type the member is declared with, or
+with parentheses the const reference the expression is.
+
+```snap
+tests/snap/code_completion/member_access/16_deduced_variable.cpp
+```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -354,7 +482,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [ ] `operator[]`, `operator->`, `operator()` in member suggestions
 - [ ] Prioritize direct members for the operator typed (`.` members for `.`, `->` members for `->`)
 
-### Designated Initializers
+## Designated initializers
 
 - [ ] Sort completions in declaration order (required by C++20 designated initializers) ([clangd#965](https://github.com/clangd/clangd/issues/965))
 
@@ -383,16 +511,26 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   Cfg c = { ^  // first item: .width = ${1}, .height = ${2}, .fullscreen = ${3}
   ```
 
-### Override & Out-of-line Definition
+## Override and out-of-line definitions
 
-- [ ] Virtual function override completion with full signature and `override` keyword
+<!-- BEGIN GENERATED ITEMS: override_completion -->
 
-  ```cpp
-  struct Base { virtual void draw(int x, int y) const; };
-  struct Derived : Base {
-      ^  // suggest: void draw(int x, int y) const override
-  };
-  ```
+<!-- BEGIN CAPABILITY: supported -->
+
+**Override declarations**
+
+Inside a derived class, a base class's virtual function completes as a
+whole override declaration, return type and `override` included; inside
+the override, the name completes as itself, not as a call of the base
+version
+
+```snap
+tests/snap/code_completion/override_completion/01_override_declaration.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
 
 - [ ] Full inheritance hierarchy traversal for override candidates ([clangd#226](https://github.com/clangd/clangd/issues/226), [clangd#2374](https://github.com/clangd/clangd/issues/2374))
 
@@ -429,226 +567,220 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
   Vec<T>::^  // suggest "Vec()" and "~Vec()", not "Vec<T>()" or "~Vec<T>()"
   ```
 
-### Symbols
+## Symbols
 
-<!-- BEGIN GENERATED ITEMS: Symbols -->
+<!-- BEGIN GENERATED ITEMS: symbols -->
 
-- [x] Unqualified lookup with fuzzy prefix matching — strong prefix matches survive, weak subsequence matches and unqualified namespace members do not
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Fuzzy unqualified lookup**
 
-  ```cpp
-  // The completion expression dangles as an unfinished statement.
-  namespace A {
+Strong prefix matches survive, weak subsequence matches and unqualified
+namespace members do not
 
-  void fooooo();
+```snap
+tests/snap/code_completion/symbols/01_unqualified_lookup.cpp
+```
 
-  }
+<!-- END CAPABILITY -->
 
-  struct X {
-      void operator()() {}
-  };
+<!-- BEGIN CAPABILITY: supported -->
 
-  void bar() {
-      X functor;
-      auto folded = [](int x) {
-      };
-      fo;
-  }
-  ```
+**Class template deduplication**
 
-  </details>
+A name that is also constructors and a deduction guide stays a single class
+entry
 
-- [x] Class template deduplication — a name that is also constructors and a deduction guide stays a single class entry
+```snap
+tests/snap/code_completion/symbols/02_template_dedup.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  template <typename T>
-  struct Foo {
-      Foo() {}
+<!-- BEGIN CAPABILITY: supported -->
 
-      Foo(T x) {}
+**Constructor labels stay plain**
 
-      Foo(T x, T y) {}
-  };
+Class template constructors and deduction guides complete as the bare class
+name, never a templated spelling
 
-  template <typename T>
-  Foo(T) -> Foo<T>;
+```snap
+tests/snap/code_completion/symbols/03_constructor_labels.cpp
+```
 
-  void bar() {
-      Fo
-  }
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] Constructor labels stay plain — class template constructors and deduction guides complete as the bare class name, never a templated spelling
+**Keyword patterns**
 
-  <details>
-  <summary>Example</summary>
+Keywords complete like any candidate, with plain insert text
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  template <typename T, typename U>
-  struct Bazzz {
-      Bazzz() {}
+```snap
+tests/snap/code_completion/symbols/04_pattern_keyword.cpp
+```
 
-      Bazzz(T x) {}
+<!-- END CAPABILITY -->
 
-      Bazzz(T x, U y) {}
-  };
+<!-- BEGIN CAPABILITY: supported -->
 
-  template <typename T>
-  Bazzz(T) -> Bazzz<T, int>;
+**Macros**
 
-  void bar() {
-      Ba
-  }
-  ```
+Object-like macros complete as constants, function-like ones as functions
+with a parameter signature; argument snippets follow the function setting
 
-  </details>
+```snap
+tests/snap/code_completion/symbols/05_macros.cpp
+```
 
-- [x] Keyword patterns — keywords complete like any candidate, with plain insert text
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int x = tru
-  ```
+**Macro shadowing a declaration**
 
-  </details>
+A name redefined as a macro completes as the macro, not the shadowed
+declaration
 
-- [x] Macros — object-like macros complete as constants, function-like ones as functions with a parameter signature; argument snippets follow the function setting
+```snap
+tests/snap/code_completion/symbols/06_macro_shadow.cpp
+```
 
-  <details>
-  <summary>Example</summary>
+<!-- END CAPABILITY -->
 
-  ```cpp
-  #define RETRY_LIMIT 3
+<!-- BEGIN CAPABILITY: supported -->
 
-  #define CLAMP(value, limit) ((value) < (limit) ? (value) : (limit))
+**Completion inside macro arguments**
 
-  int a = RETRY;
-  int b = CLA;
-  ```
+Member access written as a macro argument completes as it would outside the
+macro
 
-  </details>
+```snap
+tests/snap/code_completion/symbols/07_macro_argument.cpp
+```
 
-- [x] Macro shadowing a declaration — a name redefined as a macro completes as the macro, not the shadowed declaration
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  void GUARD(int);
-  #define GUARD 1
+**Namespace-qualified lookup**
 
-  int BOUND(int lo, int hi);
-  #define BOUND(lo, hi) ((lo) < (hi) ? (lo) : (hi))
+`ns::` lists the namespace's own members
 
-  int a = GUAR;
-  int b = BOUN;
-  ```
+```snap
+tests/snap/code_completion/symbols/08_namespace_qualified.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Namespace-qualified lookup — `ns::` lists the namespace's own members
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Enum members**
 
-  ```cpp
-  // The qualified-id is left dangling at the point.
-  namespace geometry {
+A scoped enum lists through `Type::`, an unscoped enumerator completes by
+bare name
 
-  int area_of(int r);
+```snap
+tests/snap/code_completion/symbols/09_enum_members.cpp
+```
 
-  struct Point {
-      int x;
-  };
+<!-- END CAPABILITY -->
 
-  int origin;
+<!-- BEGIN CAPABILITY: supported -->
 
-  }  // namespace geometry
+**Local shadowing a global**
 
-  void bar() {
-      int v = geometry::;
-  }
-  ```
+The shadowed global does not appear as a duplicate entry
 
-  </details>
+```snap
+tests/snap/code_completion/symbols/10_local_shadow.cpp
+```
 
-- [x] Enum members — a scoped enum lists through `Type::`, an unscoped enumerator completes by bare name
+<!-- END CAPABILITY -->
 
-  <details>
-  <summary>Example</summary>
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  // Both completion prefixes dangle; the statements stay
-  // semicolon-terminated so the second marker is not dragged into recovery.
-  enum class Color { Red, Green, Blue };
+**Using-declaration**
 
-  enum Fruit { Apple, Banana };
+A name pulled in with `using` completes unqualified
 
-  void bar() {
-      Color c = Color::;
-      int f = App;
-  }
-  ```
+```snap
+tests/snap/code_completion/symbols/11_using_declaration.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Local shadowing a global — the shadowed global does not appear as a duplicate entry
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Dependent scope qualifier**
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  int counter = 0;
+`::` after a dependent member type lists that type's members, after a
+dependent specialization the members of its matching partial
+specialization, and after a dependent member enumeration its enumerators
 
-  void bar() {
-      int counter = 1;
-      int v = coun;
-  }
-  ```
+```snap
+tests/snap/code_completion/symbols/12_dependent_scope.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Using-declaration — a name pulled in with `using` completes unqualified
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Required qualifier**
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  namespace lib {
+An enumerator the bare name does not reach completes with the qualifier it
+needs, matched against the bare name
 
-  int helper_fn(int x);
+```snap
+tests/snap/code_completion/symbols/13_required_qualifier.cpp
+```
 
-  }
+<!-- END CAPABILITY -->
 
-  using lib::helper_fn;
+<!-- BEGIN CAPABILITY: supported -->
 
-  void bar() {
-      int v = help;
-  }
-  ```
+**Local hiding a function**
 
-  </details>
+A local that hides a same-named function is the candidate offered, not the
+function it hides
+
+```snap
+tests/snap/code_completion/symbols/14_hidden_by_local.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Constructor templates**
+
+A constructor template completes as the bare class name, like any other
+constructor
+
+```snap
+tests/snap/code_completion/symbols/15_constructor_template.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Overloads across namespaces**
+
+Same-named functions from different namespaces in scope bundle into one
+entry that counts all of them
+
+```snap
+tests/snap/code_completion/symbols/16_overloads_across_scopes.cpp
+```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
 - [x] Qualified name lookup (`std::`)
-- [x] Argument-dependent lookup (ADL) candidates
+- [ ] Argument-dependent lookup (ADL) candidates
 - [x] Macro completion — object-like and function-like macros in the candidate set
-- [ ] Snippet patterns with placeholders (function bodies, control flow)
 - [ ] C++ attribute completion
 
   ```cpp
@@ -673,137 +805,140 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 - [ ] Function-argument comment completion (`/*param=*/` style parameter hints)
 - [ ] Identifier-based fallback completion when semantic analysis is unavailable
 
-### Functions & Snippets
+## Functions and snippets
 
 All options below live in the `[code_completion]` configuration section.
 
-<!-- BEGIN GENERATED ITEMS: Functions & Snippets -->
+<!-- BEGIN GENERATED ITEMS: functions_snippets -->
 
-- [x] Signature and return type details — the parameter list and return type ride along as label details
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Signature and return type details**
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  double foooo(int x, float y);
+The parameter list and return type ride along as label details
 
-  int x = fo
-  ```
+```snap
+tests/snap/code_completion/functions_snippets/01_function_candidates.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Overload bundling — an overload set collapses into one entry with an overload count
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Overload bundling**
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int foooo(int x);
-  int foooo(int x, int y);
-  double foooo(double d);
+An overload set collapses into one entry with an overload count
 
-  int x = fooo
-  ```
+```snap
+tests/snap/code_completion/functions_snippets/02_overload_bundle.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Unbundled overloads — with bundling off, every overload is its own entry with its own signature
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Unbundled overloads**
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int foooo(int x);
-  int foooo(int x, int y);
-  double foooo(double d);
+With bundling off, every overload is its own entry with its own signature
 
-  int x = fooo
-  ```
+```snap
+tests/snap/code_completion/functions_snippets/03_no_bundle_overloads.cpp
+```
 
-  </details>
+<!-- END CAPABILITY -->
 
-- [x] Parameter placeholder snippets — calls insert tab-stop placeholders per argument; a no-argument function stays plain text
+<!-- BEGIN CAPABILITY: supported -->
 
-  <details>
-  <summary>Example</summary>
+**Parameter placeholder snippets**
 
-  ```cpp
-  // The completion prefixes dangle as unfinished statements.
-  int foooo(int x, float y);
-  void nothing_to_fill();
+Calls insert tab-stop placeholders per argument; a no-argument function
+stays plain text
 
-  struct Foo {
-      int bazzzz(int a, int b);
-  };
+```snap
+tests/snap/code_completion/functions_snippets/04_snippet_arguments.cpp
+```
 
-  void bar() {
-      Foo f;
-      fo;
-      no;
-      f.ba;
-  }
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] Snippets defer to bundling — while overloads are bundled, argument snippets stay off even when enabled
+**Snippets defer to bundling**
 
-  <details>
-  <summary>Example</summary>
+While overloads are bundled, argument snippets stay off even when enabled
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int foooo(int x);
-  int foooo(int x, int y);
+```snap
+tests/snap/code_completion/functions_snippets/05_snippet_bundle_mode.cpp
+```
 
-  int z = fo
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] Default-argument parameters — a parameter with a default value drops out of the signature detail
+**Default-argument parameters**
 
-  The signature detail keeps only the required parameters; the trailing
-  `int retries = 3` is elided.
+A parameter with a default value drops out of the signature detail
 
-  <details>
-  <summary>Example</summary>
+The signature detail keeps only the required parameters; the trailing
+`int retries = 3` is elided.
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int configure(int timeout, int retries = 3);
+```snap
+tests/snap/code_completion/functions_snippets/06_default_argument.cpp
+```
 
-  int x = confi
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] Variadic signature — a trailing `...` shows in the parameter detail
+**Variadic signature**
 
-  <details>
-  <summary>Example</summary>
+A trailing `...` shows in the parameter detail
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  int printf_like(const char* fmt, ...);
+```snap
+tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
+```
 
-  int x = printf
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: supported -->
+
+**Call parentheses**
+
+A completed call gets its parentheses with the cursor between them, unless
+arguments already follow the name or it is not being called
+
+```snap
+tests/snap/code_completion/functions_snippets/08_call_parentheses.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Template argument placeholders**
+
+A class template inserts a placeholder per template parameter without a
+default, and empty brackets when every parameter has one
+
+```snap
+tests/snap/code_completion/functions_snippets/09_template_arguments.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Statement keywords**
+
+Statement keywords complete as keywords; the option inserts the whole
+statement with a placeholder for each part
+
+```snap
+tests/snap/code_completion/functions_snippets/10_statement_snippets.cpp
+```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
-
-- [ ] Template argument placeholders (`enable_template_arguments_snippet`)
-- [ ] Auto-insert parentheses (`insert_paren_in_function_call`)
-- [ ] Look-ahead for existing parentheses/brackets to avoid duplicate insertion
-
-  ```cpp
-  foo^(10, 20);  // should NOT insert another pair of parens → foo(10, 20)
-  ```
 
 - [ ] Context-sensitive snippet: insert name only (no call syntax) in function pointer contexts
 
@@ -840,15 +975,9 @@ All options below live in the `[code_completion]` configuration section.
   auto p = std::make_unique<Widget>(^  // show "(int w, int h)"
   ```
 
-- [ ] `InsertReplaceEdit` support (provide both insert and replace ranges for mid-word completion)
-
-  ```cpp
-  refact^orize  // insert: "refactoring^orize", replace: "refactoring"
-  ```
-
 - [ ] Set `InsertTextFormat::PlainText` when no placeholders are present
 
-### Templates & Concepts
+## Templates and concepts
 
 - [ ] Concept-aware completion: infer available members from concept constraints on template parameters ([clangd#1103](https://github.com/clangd/clangd/issues/1103))
 
@@ -859,15 +988,6 @@ All options below live in the `[code_completion]` configuration section.
   template<Drawable T>
   void render(T& widget) {
       widget.^  // suggest draw(), resize() from Drawable concept
-  }
-  ```
-
-- [ ] Dependent type member completion in uninstantiated templates
-
-  ```cpp
-  template<typename T>
-  void process(std::vector<std::vector<T>>& matrix) {
-      matrix[0].^  // resolve operator[] → vector<T>&, suggest push_back(), size() etc.
   }
   ```
 
@@ -895,125 +1015,103 @@ All options below live in the `[code_completion]` configuration section.
   };
   ```
 
-### Macros
+## Filtering and ranking
 
-- [x] Macro name completion, including macros deserialized from the preamble
-- [x] Fuzzy matching for macros (same matcher as other symbols)
-- [x] Correct `CompletionItemKind`: `Function` for function-like, `Constant` for object-like ([clangd#2002](https://github.com/clangd/clangd/issues/2002))
-- [x] Parameter list as the label detail for function-like macros
-- [ ] Show macro definition/expansion as documentation ([clangd#1485](https://github.com/clangd/clangd/issues/1485))
+<!-- BEGIN GENERATED ITEMS: filtering_ranking -->
 
-  ```cpp
-  #define MAX_BUF 4096
-  MAX^  // completion detail shows: #define MAX_BUF 4096
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] Parameter placeholders for function-like macros (respect snippet settings)
+**Underscore filtering**
 
-  ```cpp
-  #define CHECK(cond, msg) ...
-  CHECK^  // insert: CHECK(${1:cond}, ${2:msg})
-  ```
+Underscore-prefixed internal symbols hide unless the typed prefix itself
+starts with one
 
-- [ ] Completion inside macro arguments with fallback to enclosing context
+```snap
+tests/snap/code_completion/filtering_ranking/01_underscore_filter.cpp
+```
 
-  ```cpp
-  #define WRAP(...) __VA_ARGS__
-  WRAP(some_obj.^)  // should still offer some_obj's members
-  ```
+<!-- END CAPABILITY -->
 
-### Filtering & Ranking
+<!-- BEGIN CAPABILITY: supported -->
 
-<!-- BEGIN GENERATED ITEMS: Filtering & Ranking -->
+**Deprecated tagging**
 
-- [x] Underscore filtering — underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
+A [[deprecated]] candidate carries the Deprecated tag, its plain sibling
+does not
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/code_completion/filtering_ranking/02_deprecated_tag.cpp
+```
 
-  ```cpp
-  // The completion prefixes are undeclared identifiers. The
-  // statements stay semicolon-terminated: an unterminated one puts the
-  // NEXT marker into a recovery context, which completion drops entirely.
-  int _private_thing;
-  int public_thing;
+<!-- END CAPABILITY -->
 
-  int x = pu;
-  int y = _p;
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-  </details>
+**Word-boundary fuzzy match**
 
-- [x] Deprecated tagging — a [[deprecated]] candidate carries the Deprecated tag, its plain sibling does not
+Prefix `fb` matches the word starts of `foo_bar_baz`
 
-  <details>
-  <summary>Example</summary>
+`frobnicate` is only a weak scattered subsequence of `fb` and is dropped;
+`foo_bar_baz` matches on the `foo`/`bar` word boundaries and survives.
 
-  ```cpp
-  // The completion prefix cuts the initializer mid-expression.
-  [[deprecated]] int old_thing(int x);
-  int new_thing(int x);
+```snap
+tests/snap/code_completion/filtering_ranking/03_fuzzy_word_boundary.cpp
+```
 
-  int z = thing
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] Word-boundary fuzzy match — prefix `fb` matches the word starts of `foo_bar_baz`
+**Case-insensitive prefix**
 
-  `frobnicate` is only a weak scattered subsequence of `fb` and is dropped;
-  `foo_bar_baz` matches on the `foo`/`bar` word boundaries and survives.
+A lowercase prefix matches a mixed-case identifier
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/code_completion/filtering_ranking/04_case_insensitive.cpp
+```
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  int foo_bar_baz;
-  int frobnicate;
+<!-- END CAPABILITY -->
 
-  void bar() {
-      int v = fb;
-  }
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-  </details>
+**Prefix outranks subsequence**
 
-- [x] Case-insensitive prefix — a lowercase prefix matches a mixed-case identifier
+An exact-prefix candidate sorts above a scattered subsequence match
 
-  <details>
-  <summary>Example</summary>
+For prefix `fo`, `format_output` is a true prefix and outscores
+`fast_math_operation`, which only matches as a subsequence.
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  int MyLongName;
+```snap
+tests/snap/code_completion/filtering_ranking/05_prefix_beats_subsequence.cpp
+```
 
-  void bar() {
-      int v = mylong;
-  }
-  ```
+<!-- END CAPABILITY -->
 
-  </details>
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] Prefix outranks subsequence — an exact-prefix candidate sorts above a scattered subsequence match
+**Completion inside a word**
 
-  For prefix `fo`, `format_output` is a true prefix and outscores
-  `fast_math_operation`, which only matches as a subsequence.
+Completing in the middle of a word offers both ranges: the editor either
+inserts before the rest of the word or replaces the whole word
 
-  <details>
-  <summary>Example</summary>
+```snap
+tests/snap/code_completion/filtering_ranking/06_inside_a_word.cpp
+```
 
-  ```cpp
-  // The completion prefix dangles as an unfinished statement.
-  int format_output;
-  int fast_math_operation;
+<!-- END CAPABILITY -->
 
-  void bar() {
-      int v = fo;
-  }
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-  </details>
+**Non-ASCII prefix**
+
+A prefix made of non-ASCII identifier characters is replaced, not
+inserted before
+
+```snap
+tests/snap/code_completion/filtering_ranking/07_unicode_prefix.cpp
+```
+
+<!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
@@ -1054,7 +1152,7 @@ All options below live in the `[code_completion]` configuration section.
 - [ ] Reference-count and file-proximity ranking signals
 - [ ] Machine-learned ranking model
 
-## Auto-Include Insertion
+## Auto-include insertion
 
 Not yet implemented. Completing a symbol does not insert `#include` directives.
 
@@ -1090,7 +1188,7 @@ Not yet implemented. Completing a symbol does not insert `#include` directives.
 - [ ] Respect IWYU pragmas and header mappings
 - [ ] Auto-insert `import` for C++20 module symbols
 
-## Documentation in Completions
+## Documentation
 
 Not yet implemented. Completion items do not include documentation.
 
@@ -1107,33 +1205,25 @@ Not yet implemented. Completion items do not include documentation.
 - [ ] Available regardless of where the definition lives (header, source, index)
 - [ ] Propagate template pattern documentation to instantiations
 - [ ] Standard library documentation integration
+- [ ] Macro definitions as documentation ([clangd#1485](https://github.com/clangd/clangd/issues/1485))
 
-## Trigger Characters
+## Trigger characters
 
-Registered: `. < > : " / *`. Space (` `) is planned but not yet merged ([#460](https://github.com/clice-io/clice/pull/460)).
+Registered: `. < > : " /` and space.
 
-| Character | Context         | Behavior                                                                                                  |
-| --------- | --------------- | --------------------------------------------------------------------------------------------------------- |
-| `.`       | Member access   | Semantic completion                                                                                       |
-| `->`      | Pointer member  | `[ ]` Not yet working — dot-to-arrow fix-its not propagated                                               |
-| `::`      | Via `:` trigger | Scope completion                                                                                          |
-| `<`       | `#include <`    | Include path completion                                                                                   |
-| `>`       | Template close  | Semantic completion                                                                                       |
-| `"`       | `#include "`    | Include path completion                                                                                   |
-| `/`       | Path separator  | Include path continuation                                                                                 |
-| `*`       | Pointer deref   | Semantic completion                                                                                       |
-| ` `       | After `import`  | Module name completion (extension-gated) — **pending [#460](https://github.com/clice-io/clice/pull/460)** |
+| Character | Context        | Behavior                                            |
+| --------- | -------------- | --------------------------------------------------- |
+| `.`       | Member access  | Semantic completion                                 |
+| `>`       | Via `->`       | Pointer member completion; any other `>` is ignored |
+| `:`       | Via `::`       | Scope completion                                    |
+| `<`       | `#include <`   | Include path completion                             |
+| `"`       | `#include "`   | Include path completion                             |
+| `/`       | Path separator | Include path continuation                           |
+| ` `       | After `import` | Module name completion (extension-gated)            |
 
-## LSP Protocol Features
+## Protocol
 
 - [ ] `completionItem/resolve` for lazy-loading documentation and details
 - [ ] `CompletionList.isIncomplete` flag for incremental filtering
 - [ ] `commitCharacters` for auto-accepting completions on specific keystrokes
 - [ ] `filterText` / `sortText` for client-side re-filtering
-
-## Changelog
-
-| Date       | Change                                                                | PR                                                 |
-| ---------- | --------------------------------------------------------------------- | -------------------------------------------------- |
-| 2026-04-06 | `#include` path completion and module import completion (flat prefix) | [#394](https://github.com/clice-io/clice/pull/394) |
-| 2024-12-01 | Initial semantic completion                                           | —                                                  |

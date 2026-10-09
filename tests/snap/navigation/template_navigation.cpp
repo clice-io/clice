@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 template <typename T>
 T §(primary)identity(T value) {

@@ -1,0 +1,11 @@
+---
+created_at: 2026-08-02
+input_file: special_call_contexts/01_constructor_aggregate.cpp
+---
+aggregate:
+- Point{int x, ⟦int y⟧}
+
+ctor:
+- Widget(⟦int a⟧, double b)
+- Widget(⟦const Widget &⟧)
+- Widget(⟦Widget &&⟧)

@@ -1,21 +1,15 @@
-#include "command/nvcc.h"
+module;
 
-#include <algorithm>
-#include <format>
-#include <optional>
-#include <ranges>
+#include "modules/prelude.h"
 
-#include "support/filesystem.h"
-#include "support/logging.h"
+#include "support/logging.macros.h"
 
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/Twine.h"
-#include "llvm/Support/Allocator.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Program.h"
-#include "llvm/Support/StringSaver.h"
+module clice;
+
+import :command.nvcc;
+import :support.logging;
+import :vfs.file_system;
+import :vfs.path;
 
 namespace clice {
 
@@ -25,6 +19,13 @@ constexpr llvm::StringLiteral ccbin_prefix = "-ccbin=";
 constexpr llvm::StringLiteral target_directory_prefix = "--target-directory=";
 constexpr llvm::StringLiteral allow_unsupported_flag = "--allow-unsupported-compiler";
 constexpr llvm::StringLiteral gpu_arch_prefix = "-arch=";
+
+/// LLVM's EnvPathSeparator has internal linkage, which no module can export.
+#ifdef _WIN32
+constexpr char path_separator = ';';
+#else
+constexpr char path_separator = ':';
+#endif
 
 /// One GPU architecture named inside an -arch/-gencode value.
 struct ArchToken {
@@ -166,11 +167,11 @@ std::vector<std::string> expand_options_files(llvm::ArrayRef<const char*> argume
             split_list(value, files);
             for(llvm::StringRef file: files) {
                 auto file_path = absolutize(file, directory);
-                auto buffer = llvm::MemoryBuffer::getFile(file_path);
+                auto buffer = vfs::read(file_path);
                 if(!buffer) {
                     LOG_WARN("Cannot read nvcc options file {}: {}",
                              file_path,
-                             buffer.getError().message());
+                             buffer.error().message());
                     continue;
                 }
 
@@ -527,7 +528,8 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     return result;
 }
 
-void collapse_gpu_arch_flags(std::vector<const char*>& flags) {
+std::optional<llvm::SmallVector<std::size_t>>
+    collapse_gpu_archs(llvm::ArrayRef<std::pair<ArchFlagKind, llvm::StringRef>> sequence) {
     struct ActiveArch {
         std::size_t index;
         llvm::SmallVector<ArchToken, 1> tokens;
@@ -538,17 +540,17 @@ void collapse_gpu_arch_flags(std::vector<const char*>& flags) {
     /// --no-offload-arch=all erases everything before it, a specific
     /// --no-offload-arch=sm_NN only its matches.
     llvm::SmallVector<ActiveArch> active;
-    for(std::size_t i = 0; i < flags.size(); i += 1) {
-        llvm::StringRef arg = flags[i];
-        if(arg == "--no-offload-arch=all") {
-            active.clear();
-            continue;
-        }
-        if(arg.starts_with("--no-offload-arch=")) {
+    for(std::size_t i = 0; i < sequence.size(); i += 1) {
+        auto [kind, value] = sequence[i];
+        if(kind == ArchFlagKind::NoOffloadArch) {
+            if(value == "all") {
+                active.clear();
+                continue;
+            }
             llvm::SmallVector<ArchToken> removed;
-            collect_archs(arg.substr(arg.find('=') + 1), removed);
+            collect_archs(value, removed);
             if(removed.empty())
-                return;
+                return std::nullopt;
             auto matched = [&](const ArchToken& token) {
                 return std::ranges::contains(removed, token);
             };
@@ -560,32 +562,32 @@ void collapse_gpu_arch_flags(std::vector<const char*>& flags) {
                 /// A flag naming both erased and surviving architectures
                 /// cannot drop at flag granularity — bail like below.
                 if(!std::ranges::all_of(entry.tokens, matched))
-                    return;
+                    return std::nullopt;
                 active.erase(active.begin() + j);
             }
             continue;
         }
-        if(!arg.starts_with("--cuda-gpu-arch=") && !arg.starts_with("--offload-arch="))
-            continue;
 
         llvm::SmallVector<ArchToken> tokens;
-        collect_archs(arg.substr(arg.find('=') + 1), tokens);
+        collect_archs(value, tokens);
         /// A value without an sm_NN/compute_NN token (a raw clang spelling
         /// like --offload-arch=native in a config append) is outside the
         /// ranking — leave the whole command to clang's own semantics.
         if(tokens.empty())
-            return;
+            return std::nullopt;
         auto rank = arch_rank(*std::ranges::max_element(tokens, {}, arch_rank));
         active.push_back({.index = i, .tokens = std::move(tokens), .rank = rank});
     }
     if(active.size() < 2)
-        return;
+        return llvm::SmallVector<std::size_t>{};
 
     auto best = std::ranges::max(active, {}, &ActiveArch::rank).rank;
-    for(auto& arch: active | std::views::reverse) {
+    llvm::SmallVector<std::size_t> dropped;
+    for(auto& arch: active) {
         if(arch.rank < best)
-            flags.erase(flags.begin() + arch.index);
+            dropped.push_back(arch.index);
     }
+    return dropped;
 }
 
 std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef output) {
@@ -628,7 +630,7 @@ std::expected<NVCCDryrunInfo, std::string> parse_nvcc_dryrun(llvm::StringRef out
 
         if(line.consume_front("PATH=")) {
             llvm::SmallVector<llvm::StringRef> dirs;
-            line.split(dirs, llvm::sys::EnvPathSeparator, -1, false);
+            line.split(dirs, path_separator, -1, false);
             for(auto dir: dirs)
                 info.search_path.emplace_back(dir);
             continue;

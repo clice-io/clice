@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 int apply_lambda(int seed) {
     int §(captured_def)base = seed;

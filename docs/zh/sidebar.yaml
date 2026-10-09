@@ -6,7 +6,7 @@ guide:
     - configuration
 
 features:
-  label: 功能
+  label: 语言服务器
   items:
     - overview
     - completion
@@ -20,8 +20,20 @@ features:
     - document-links
     - document-symbols
     - folding-ranges
+    - selection-ranges
     - formatting
+
+cli:
+  label: 命令行
+  items:
+    - overview
+    - index
+    - query
+    - refactor
+    - analyze
+    - modularize
     - lint
+    - format
 
 design:
   label: 设计
@@ -31,7 +43,7 @@ design:
     - command-resolve
     - symbol-index
     - multi-process
-    - module-graph
+    - task-graph
     - incremental-parse
     - template-resolver
     - dependency-scanning

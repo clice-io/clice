@@ -1,0 +1,7 @@
+---
+created_at: 2026-10-01
+input_file: switch_cases/07_declaring_section.cpp
+---
+declares:
+- [refactor.rewrite.populateSwitch] Add 2 missing enum cases to switch
+  13:0-13:0 => "    case Shape::Triangle:\n    case Shape::Hexagon:\n        break;\n"

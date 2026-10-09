@@ -1,0 +1,44 @@
+# Query
+
+## Overview
+
+`clice query` asks the persisted index a structured question and prints the answer as JSON on stdout — for scripts and coding agents that want the facts a language server has without speaking LSP. It reads the index straight from disk, the same index `clice index` builds and an editor session keeps up to date, so it works while the editor is open and needs no server when it is not.
+
+**Usage**: `clice query --method <question> [--workspace <dir>] [--configuration <tag>] [--fresh] [question options]`
+
+## Questions
+
+- `symbolSearch --query <query> [--limit <n>] [--kind <Kind,...>]` lists the symbols a name query matches, best first, with their kind, file, line, container and id.
+- `definition`, `readSymbol`, `references [--include-declaration]`, `callGraph [--direction callers|callees|both]` and `typeHierarchy [--direction supertypes|subtypes|both]` answer about one symbol, named by `--name <query>` (a name query, optionally narrowed with `--path`), by `--symbol <id>` (the `#<hex>` id an earlier answer carried; for an internal-linkage symbol, such as a `static` function, together with `--path` naming the file the answer found it in) or by `--path <file> --line <n>` (the symbol defined on that line). A name several symbols spell lists them and asks for an id; a name none spells exactly lists the closest matches the same way.
+- `documentSymbols --path <file>` is the file's outline.
+- `compileCommand --path <file>` is the command the editor would compile the file with, and where it came from: the file's own database entry, a host source for a header, a rule's default command, a command borrowed from a nearby unit — for a provisional member (`provisional`) or a file outside the build (`inferred`) — or the fallback. The command is the one the compiler resolves it to, with its target and system include directories; when asking the compiler failed, `toolchainError` says why and the command stays the unresolved driver command.
+- `projectFiles [--filter all|source|header|module]` lists the build's files; `fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` and `impactAnalysis --path <file>` follow the include graph.
+
+Paths are workspace-relative or absolute in questions, absolute in answers; lines are 1-based.
+
+## Name queries
+
+A name query is one string. Spaces separate its terms; quotes and angle brackets keep theirs. One term names the symbol, the others narrow the answer.
+
+| Query                        | Finds                                                                                                                                                                                                                                                      |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `foo`                        | names matching `foo` as a subsequence aligned to their words — `LinLis` finds `LinkedList`, `up` finds `unique_ptr` — the exact name first, then the names starting with the query, then the rest; six letters or more also find names one typo away, last |
+| `"foo"`                      | the whole name, case-sensitive                                                                                                                                                                                                                             |
+| `foo*`, `*_test`, `get?Name` | names the glob matches, case-sensitive once the pattern has an uppercase letter                                                                                                                                                                            |
+| `ns::Foo::bar`               | symbols inside a container whose chain lists `ns` and `Foo` in that order, other containers allowed around them                                                                                                                                            |
+| `::ns::Foo::bar`             | symbols inside exactly that container                                                                                                                                                                                                                      |
+| `ns::*`, `ns::**`            | the container's members; everything below it                                                                                                                                                                                                               |
+| `Widget<int>`                | the specialization spelling those arguments                                                                                                                                                                                                                |
+| `#1a2b3c`                    | the symbol with that id                                                                                                                                                                                                                                    |
+| `src/a.cpp:120`              | the symbols defined on that line                                                                                                                                                                                                                           |
+| `src/a.cpp:120:8`            | the symbol under that cursor, with a 1-based line and byte column                                                                                                                                                                                          |
+| `kind:function,method`       | only these kinds (`--kind` says the same)                                                                                                                                                                                                                  |
+| `path:src/index/`            | symbols declared under that directory; a bare file name matches by name, any other path by its tail                                                                                                                                                        |
+
+## Answers
+
+Every answer is one JSON object: `{"result": ..., "stale": [...]}` on success, `{"error": "...", "stale": [...]}` with exit code 1 when the question cannot be answered (an unknown symbol, a file that does not exist, an option value it does not take), or 2 when the arguments do not parse.
+
+`stale` lists the files whose rows the answer had to leave out because their content on disk no longer matches what was indexed — the positions the index holds for them would point into text that moved. A file that changed only because a header it includes changed keeps answering from its last rows. A symbol whose definition sits in a stale file is reported as not found, with the file named, so a reader can tell "does not exist" from "not indexed yet". Only files the answer consulted are checked: a symbol added to a file after it was indexed is simply absent, since no row leads to that file — `--fresh` is the way to ask about the current disk. The index never sees unsaved editor buffers: the disk is the truth it describes.
+
+`--fresh` brings the index up to date with the disk before answering: while an editor session has the workspace open, its server runs the sweep; otherwise the command runs the indexer itself, building the index from nothing when there is none yet. Either way only the units whose inputs changed are recompiled. Without `--fresh` a workspace with no index answers with an error.

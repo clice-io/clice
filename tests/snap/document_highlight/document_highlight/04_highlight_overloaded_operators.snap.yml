@@ -1,0 +1,36 @@
+---
+created_at: 2026-10-08
+input_file: document_highlight/04_highlight_overloaded_operators.cpp
+---
+meter:
+  - { range: "30:10-30:15", kind: Text }
+  - { range: "33:4-33:9", kind: Write }
+  - { range: "34:4-34:9", kind: Write }
+  - { range: "35:6-35:11", kind: Write }
+  - { range: "36:4-36:9", kind: Write }
+  - { range: "37:18-37:23", kind: Read }
+  - { range: "38:17-38:22", kind: Read }
+  - { range: "39:4-39:9", kind: Write }
+  - { range: "40:4-40:9", kind: Read }
+  - { range: "41:4-41:9", kind: Read }
+
+plus_decl:
+  - { range: "23:10-23:19", kind: Text }
+  - { range: "37:24-37:25", kind: Read }
+  - { range: "38:23-38:32", kind: Read }
+
+plus_use:
+  - { range: "23:10-23:19", kind: Text }
+  - { range: "37:24-37:25", kind: Read }
+  - { range: "38:23-38:32", kind: Read }
+
+reading:
+  - { range: "31:8-31:15", kind: Text }
+  - { range: "32:10-32:17", kind: Write }
+  - { range: "33:12-33:19", kind: Read }
+  - { range: "40:10-40:17", kind: Write }
+  - { range: "41:15-41:22", kind: Write }
+
+stream:
+  - { range: "29:21-29:23", kind: Text }
+  - { range: "32:4-32:6", kind: Read }

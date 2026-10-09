@@ -1,44 +1,20 @@
+module;
+
+#include "modules/prelude.h"
 /// Ported from clangd's Hover.cpp (llvmorg-21.1.8), part of the LLVM
 /// project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
-#include <optional>
-#include <string>
-#include <vector>
+module clice;
 
-#include "compile/compilation_unit.h"
-#include "feature/feature.h"
-#include "semantic/decls.h"
-#include "semantic/display.h"
-#include "semantic/selection.h"
-#include "semantic/semantics.h"
-#include "semantic/symbol.h"
-#include "semantic/types.h"
-
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/ScopedPrinter.h"
-#include "llvm/Support/raw_ostream.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/ASTTypeTraits.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclBase.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/OperationKinds.h"
-#include "clang/AST/RecordLayout.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Basic/Specifiers.h"
-#include "clang/Basic/TokenKinds.h"
-#include "clang/Format/Format.h"
-#include "clang/Tooling/Core/Replacement.h"
-#include "clang/Tooling/Syntax/Tokens.h"
+import :compile.compilation_unit;
+import :compile.selection;
+import :compile.semantics;
+import :feature.feature;
+import :semantic.decls;
+import :semantic.display;
+import :semantic.symbol;
+import :semantic.types;
 
 namespace clice::feature {
 
@@ -187,7 +163,9 @@ auto getter_variable_name(const clang::CXXMethodDecl* method) -> std::optional<l
         return std::nullopt;
     }
 
-    const auto* body = llvm::dyn_cast<clang::CompoundStmt>(method->getBody());
+    // A method of a class template in the preamble may still be late-parsed:
+    // hasBody() holds but the body itself is absent.
+    const auto* body = llvm::dyn_cast_if_present<clang::CompoundStmt>(method->getBody());
     const auto* only_return = (body && body->size() == 1)
                                   ? llvm::dyn_cast<clang::ReturnStmt>(body->body_front())
                                   : nullptr;
@@ -215,7 +193,7 @@ auto setter_variable_name(const clang::CXXMethodDecl* method) -> std::optional<l
         return std::nullopt;
     }
 
-    const auto* body = llvm::dyn_cast<clang::CompoundStmt>(method->getBody());
+    const auto* body = llvm::dyn_cast_if_present<clang::CompoundStmt>(method->getBody());
     if(!body || body->size() == 0 || body->size() > 2) {
         return std::nullopt;
     }
@@ -302,11 +280,14 @@ auto synthesize_documentation(const clang::NamedDecl* decl) -> std::string {
 /// Generate a hover info given the declaration.
 auto decl_hover(const clang::NamedDecl* decl,
                 const display::Options& options,
-                const clang::syntax::TokenBuffer& tb) -> HoverInfo {
+                CompilationUnitRef unit) -> HoverInfo {
     HoverInfo info;
     auto& context = decl->getASTContext();
 
-    info.access_specifier = clang::getAccessSpelling(decl->getAccess()).str();
+    /// Clang gives template parameters public access; only members have one.
+    if(!decl->isTemplateParameter()) {
+        info.access_specifier = clang::getAccessSpelling(decl->getAccess()).str();
+    }
     info.namespace_scope = display::namespace_scope(decl);
     if(!info.namespace_scope->empty()) {
         info.namespace_scope->append("::");
@@ -341,12 +322,10 @@ auto decl_hover(const clang::NamedDecl* decl,
     /// Fill in types and params.
     if(const clang::FunctionDecl* function = underlying_function(decl)) {
         fill_function_type_and_params(info, decl, function, options);
+    } else if(decl->isTemplateParameter()) {
+        info.type = display::template_param_type(decl, options);
     } else if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(decl)) {
         info.type = display::type(context, value->getType(), options);
-    } else if(const auto* type_param = llvm::dyn_cast<clang::TemplateTypeParmDecl>(decl)) {
-        info.type = type_param->wasDeclaredWithTypename() ? "typename" : "class";
-    } else if(const auto* template_param = llvm::dyn_cast<clang::TemplateTemplateParmDecl>(decl)) {
-        info.type = display::template_param_type(template_param, options);
     } else if(const auto* var_template = llvm::dyn_cast<clang::VarTemplateDecl>(decl)) {
         info.type = display::type(context, var_template->getTemplatedDecl()->getType(), options);
     } else if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefNameDecl>(decl)) {
@@ -376,7 +355,12 @@ auto decl_hover(const clang::NamedDecl* decl,
         }
     }
 
-    info.definition = display::definition(decl, options, &tb);
+    info.definition = display::definition(decl, options, [&](clang::SourceRange range) {
+        return unit.expanded_tokens(range).size();
+    });
+    if(decls::is_exported(decl)) {
+        info.definition.insert(0, "export ");
+    }
     return info;
 }
 
@@ -691,13 +675,13 @@ auto attr_hover(const clang::Attr* attr, clang::ASTContext& context) -> std::opt
 
 auto file_directive_hover(CompilationUnitRef unit, std::uint32_t offset)
     -> std::optional<HoverInfo> {
-    auto interested = unit.interested_file();
-    auto directives_it = unit.directives().find(interested);
+    auto main_fid = unit.main_file();
+    auto directives_it = unit.directives().find(main_fid);
     if(directives_it == unit.directives().end()) {
         return std::nullopt;
     }
 
-    auto content = unit.interested_content();
+    auto content = unit.main_content();
     auto* lang_opts = &unit.lang_options();
 
     auto file_name = [&](LocalSourceRange range) -> std::string {
@@ -725,7 +709,7 @@ auto file_directive_hover(CompilationUnitRef unit, std::uint32_t offset)
         /// rejects a cursor inside the argument before find_directive_argument()
         /// can match its range. Remove the same-line restriction once continued
         /// directive hover also handles the spliced argument spelling and range.
-        if(fid != interested || directive_offset < line_start || directive_offset >= line_end)
+        if(fid != main_fid || directive_offset < line_start || directive_offset >= line_end)
             return std::nullopt;
         auto range = find_directive_argument(content, directive_offset, lang_opts);
         if(!range || offset >= range->end || offset < range->begin)
@@ -774,7 +758,7 @@ auto file_directive_hover(CompilationUnitRef unit, std::uint32_t offset)
 /// macro semantics never reach the AST. The card shows the `#define` text,
 /// plus a preview of the expanded tokens at expansion sites.
 auto macro_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::optional<HoverInfo> {
-    auto directives_it = unit.directives().find(unit.interested_file());
+    auto directives_it = unit.directives().find(unit.main_file());
     if(directives_it == unit.directives().end()) {
         return std::nullopt;
     }
@@ -807,15 +791,15 @@ auto macro_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::optional
         if(macro.kind == MacroRef::Kind::Ref) {
             for(auto& expansion:
                 unit.expansions_overlapping(unit.spelled_tokens_touch(macro.loc))) {
-                if(expansion.Spelled.empty() || expansion.Spelled.front().location() != macro.loc ||
-                   expansion.Expanded.empty()) {
+                if(expansion.spelled.front().location() != macro.loc ||
+                   expansion.expanded.empty()) {
                     continue;
                 }
                 /// A conditional reference (#ifdef) never reaches here: it
                 /// expands nothing, so no expansion starts at its token.
                 std::string preview;
                 constexpr std::size_t preview_limit = 1024;
-                for(const auto& token: expansion.Expanded) {
+                for(const auto& token: expansion.expanded) {
                     if(!preview.empty()) {
                         preview += ' ';
                     }
@@ -909,6 +893,21 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
     auto spelled = semantics.spelled_tokens();
     llvm::SmallVector<const clang::NamedDecl*, 4> decls;
 
+    /// Whether the token is a later token the occurrence's name owns: any
+    /// token of `~Foo` or `operator==` names the function, `Foo` the
+    /// destructor rather than the class.
+    auto inside = [&](const NameOccurrence& occurrence, clang::SourceLocation token) {
+        if(occurrence.name_end.isInvalid() || !occurrence.owns_whole_name()) {
+            return false;
+        }
+        auto [fid, offset] = unit.decompose_location(token);
+        auto [begin_fid, begin_offset] =
+            unit.decompose_location(unit.spelling_location(occurrence.location));
+        auto [end_fid, end_offset] =
+            unit.decompose_location(unit.spelling_location(occurrence.name_end));
+        return fid == begin_fid && fid == end_fid && begin_offset < offset && offset <= end_offset;
+    };
+
     for(const auto& token: llvm::reverse(touched)) {
         if(should_ignore_token(token)) {
             continue;
@@ -924,6 +923,7 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
 
         llvm::DenseSet<std::uint32_t> visited;
         llvm::SmallPtrSet<const clang::NamedDecl*, 4> seen;
+        llvm::SmallVector<const clang::NamedDecl*, 4> named;
         for(auto owner: semantics.owners(index)) {
             for(auto n = owner; n != Semantics::invalid; n = semantics.node(n).parent) {
                 /// Owners of a macro token share ancestors; scan each chain
@@ -938,17 +938,21 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
                 }
 
                 for(auto& occurrence: resolve_occurrences(semantics, n, &unit.resolver())) {
-                    auto location = occurrence.location;
-                    if(location.isMacroID()) {
-                        location = unit.spelling_location(location);
-                    }
-                    if(location == token.location() && seen.insert(occurrence.decl).second) {
-                        decls.push_back(occurrence.decl);
+                    if(unit.spelling_location(occurrence.location) == token.location()) {
+                        if(seen.insert(occurrence.decl).second) {
+                            decls.push_back(occurrence.decl);
+                        }
+                    } else if(inside(occurrence, token.location()) &&
+                              !llvm::is_contained(named, occurrence.decl)) {
+                        named.push_back(occurrence.decl);
                     }
                 }
             }
         }
 
+        if(!named.empty()) {
+            return named;
+        }
         if(!decls.empty()) {
             break;
         }
@@ -1011,6 +1015,9 @@ auto format_offset(std::uint64_t offset_in_bits) -> std::string {
     return offset;
 }
 
+/// The noun a hover card heads its title with; empty for the lexical
+/// kinds no card is about. Exhaustive so a new kind fails to compile
+/// rather than silently lose its noun.
 auto symbol_kind_string(SymbolKind kind) -> llvm::StringRef {
     switch(kind) {
         case SymbolKind::Module: return "module";
@@ -1029,8 +1036,26 @@ auto symbol_kind_string(SymbolKind kind) -> llvm::StringRef {
         case SymbolKind::Parameter: return "parameter";
         case SymbolKind::Label: return "label";
         case SymbolKind::Macro: return "macro";
-        default: return "";
+        case SymbolKind::MacroParameter:
+        case SymbolKind::Comment:
+        case SymbolKind::Number:
+        case SymbolKind::Character:
+        case SymbolKind::String:
+        case SymbolKind::Keyword:
+        case SymbolKind::Directive:
+        case SymbolKind::Header:
+        case SymbolKind::Attribute:
+        case SymbolKind::Operator:
+        case SymbolKind::Paren:
+        case SymbolKind::Bracket:
+        case SymbolKind::Brace:
+        case SymbolKind::Angle:
+        case SymbolKind::Conflict:
+        case SymbolKind::Primitive:
+        case SymbolKind::Invalid:
+        case SymbolKind::Identifier: return "";
     }
+    std::unreachable();
 }
 
 /// If the backtick at the offset starts a probable quoted range, return the
@@ -1147,16 +1172,18 @@ void reformat_definition(HoverInfo& info) {
 
 }  // namespace
 
-auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const LineMap& map)
-    -> protocol::Hover {
+auto to_protocol_hover(const HoverInfo& info,
+                       const HoverOptions& options,
+                       const PositionMap& map,
+                       PositionEncoding encoding) -> protocol::Hover {
     auto document = info.present();
 
     protocol::MarkupContent content;
     if(options.parse_comment_as_markdown) {
-        content.kind = protocol::MarkupKind::markdown;
+        content.kind = protocol::MarkupKind::Markdown;
         content.value = document.as_markdown();
     } else {
-        content.kind = protocol::MarkupKind::plain_text;
+        content.kind = protocol::MarkupKind::PlainText;
         content.value = document.as_plain_text();
     }
 
@@ -1165,7 +1192,7 @@ auto to_protocol_hover(const HoverInfo& info, const HoverOptions& options, const
     };
 
     if(info.symbol_range) {
-        result.range = to_range(map, *info.symbol_range);
+        result.range = map.range(*info.symbol_range, encoding);
     }
 
     return result;
@@ -1350,12 +1377,9 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
         .resolve_decltype = true,
         .tag_keyword_prefix = true,
         .show_aka = options.show_aka,
-        .show_tag_members = options.show_tag_members,
-        .max_tag_members = options.max_tag_members,
-        .max_initializer_tokens = options.max_initializer_tokens,
     };
 
-    auto location = unit.create_location(unit.interested_file(), offset);
+    auto location = unit.create_location(unit.main_file(), offset);
     auto tokens = unit.spelled_tokens_touch(location);
 
     /// Early exit if there were no tokens around the cursor.
@@ -1380,10 +1404,14 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
             /// Prefer the identifier token as a fallback highlighting range.
             highlight_range = token_range(token);
         } else if(token.kind() == clang::tok::kw_auto || token.kind() == clang::tok::kw_decltype) {
-            if(auto deduced = types::deduced_type(context, token.location())) {
-                info = deduced_type_hover(*deduced, token, context, display_options);
-                highlight_range = token_range(token);
-                break;
+            auto tree = SelectionTree::create_right(unit, token_range(token));
+            if(const auto* node = tree.common_ancestor()) {
+                if(auto deduced = types::deduced_type(node->data, node->owning_decl());
+                   !deduced.isNull()) {
+                    info = deduced_type_hover(deduced, token, context, display_options);
+                    highlight_range = token_range(token);
+                    break;
+                }
             }
 
             /// If we can't find interesting hover information for this
@@ -1401,7 +1429,7 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
         if(const SelectionTree::Node* node = tree.common_ancestor()) {
             auto targets = decls_at(unit, tokens);
             if(const auto* decl = pick_decl_to_use(targets)) {
-                info = decl_hover(decl, display_options, unit.token_buffer());
+                info = decl_hover(decl, display_options, unit);
 
                 /// Layout info only shown when hovering on the field/class
                 /// itself.
@@ -1444,8 +1472,7 @@ auto hover(CompilationUnitRef unit,
         return std::nullopt;
     }
 
-    LineMap map(unit.interested_content(), unit.line_starts(), encoding);
-    return to_protocol_hover(*info, options, map);
+    return to_protocol_hover(*info, options, unit.positions(), encoding);
 }
 
 }  // namespace clice::feature

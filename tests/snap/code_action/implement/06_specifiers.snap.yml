@@ -1,0 +1,10 @@
+---
+created_at: 2026-10-01
+input_file: implement/06_specifiers.cpp
+---
+channel:
+(no actions)
+
+console:
+- [refactor.rewrite.implementPureVirtuals] Implement pure virtual methods of 'Console'
+  28:29-28:29 => "\n    void log(const char* format, ...) override;\n    void print(...) override;\n    void flush() noexcept override;\n    void sync() noexcept override;\n    void rotate() override;\n    consteval int level() override;\n"

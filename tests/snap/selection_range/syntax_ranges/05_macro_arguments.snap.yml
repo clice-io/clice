@@ -1,0 +1,19 @@
+---
+created_at: 2026-10-08
+input_file: syntax_ranges/05_macro_arguments.cpp
+---
+declared:
+  - { range: "15:8-15:15", text: "counter" }
+  - { range: "15:7-15:16", text: "(counter)" }
+  - { range: "15:0-15:16", text: "DECLARE(counter)" }
+  - { range: "15:0-15:17", text: "DECLARE(counter);" }
+
+expr:
+  - { range: "18:17-18:24", text: "counter" }
+  - { range: "18:17-18:28", text: "counter + 1" }
+  - { range: "18:16-18:29", text: "(counter + 1)" }
+  - { range: "18:11-18:29", text: "TWICE(counter + 1)" }
+  - { range: "18:4-18:29", text: "return TWICE(counter + 1)" }
+  - { range: "18:4-18:30", text: "return TWICE(counter + 1);" }
+  - { range: "17:14-19:1", text: "{ return TWICE(counter + 1); }" }
+  - { range: "17:0-19:1", text: "int doubled() { return TWICE(counter + 1); }" }

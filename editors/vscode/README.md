@@ -8,7 +8,8 @@ configurations, and native C++20 modules support.
 ## Getting started
 
 1. Install this extension — the clice server for your platform is bundled, no
-   download or extra setup needed.
+   download or extra setup needed. Cursor, VSCodium, Windsurf and other VS Code
+   forks install it from [Open VSX](https://open-vsx.org/extension/clice-io/clice).
 2. Open a C++ project with a
    [compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html).
    For CMake: `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`. clice
@@ -27,21 +28,45 @@ downloads live on the [GitHub releases and CI pages](https://github.com/clice-io
 
 ## Settings
 
-| Setting            | Default     | Description                                                            |
-| ------------------ | ----------- | ---------------------------------------------------------------------- |
-| `clice.executable` | _(bundled)_ | Path to a clice binary to use instead of the bundled one.              |
-| `clice.mode`       | `pipe`      | Server transport; `socket` connects to an external server (debugging). |
-| `clice.host`       | `127.0.0.1` | Host for socket mode.                                                  |
-| `clice.port`       | `50051`     | Port for socket mode.                                                  |
+| Setting              | Default     | Description                                                            |
+| -------------------- | ----------- | ---------------------------------------------------------------------- |
+| `clice.executable`   | _(bundled)_ | Path to a clice binary to use instead of the bundled one.              |
+| `clice.mode`         | `pipe`      | Server transport; `socket` connects to an external server (debugging). |
+| `clice.host`         | `127.0.0.1` | Host for socket mode.                                                  |
+| `clice.port`         | `50051`     | Port for socket mode.                                                  |
+| `clice.trace.server` | `off`       | Log LSP traffic to the `clice (LSP trace)` output channel.             |
+
+Changing a server setting offers to restart the server in place — no window
+reload is needed.
+
+## Refactorings
+
+clice's refactorings are behind the lightbulb, `Ctrl+.` and **Refactor...**
+in the editor's context menu. Each also has a command in the Command Palette
+("Clice: Define Out of Line", "Clice: Add Missing Enum Cases to Switch", ...)
+that a key can be bound to; the
+[code action guide](https://docs.clice.io/clice/features/code-action#running-actions)
+lists them.
+
+## Conflicting extensions
+
+Other C/C++ language extensions running next to clice duplicate completion
+and diagnostics. Once clice is up, it detects the Microsoft C/C++
+(cpptools), clangd and ccls extensions and offers to turn their language
+features off and reload the window — cpptools keeps its debugger, only
+IntelliSense is disabled.
 
 ## Troubleshooting
 
 Server logs live in the `clice` output channel, which also prints the
 on-disk log directory at startup (`Session log directory:` — by default
-under `~/.cache/clice/<workspace>-<hash>/logs/`). If the server crashes,
+under `<workspace>/.clice/logs/`). If the server crashes,
 please attach the newest log from there to a
 [GitHub issue](https://github.com/clice-io/clice/issues) — releases ship
 symbol packages that let us reconstruct the exact stack.
+
+For protocol-level debugging, set `clice.trace.server` to `verbose`: every
+LSP message then appears in the `clice (LSP trace)` output channel.
 
 Extension development is documented in the
 [contributor guide](https://docs.clice.io/clice/dev/extension).

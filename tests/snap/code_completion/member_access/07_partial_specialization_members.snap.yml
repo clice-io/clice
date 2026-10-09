@@ -1,0 +1,10 @@
+---
+created_at: 2026-09-21
+input_file: member_access/07_partial_specialization_members.cpp
+---
+pos:
+- { label: "ByPointer", kind: Class, edit: "30:6-30:6" }
+- { label: "operator=", kind: Method, detail: "(…) +2 overloads", edit: "30:6-30:6" }
+- { label: "pointer_field", kind: Field, description: "int", edit: "30:6-30:6" }
+- { label: "template", kind: Keyword, edit: "30:6-30:6" }
+- { label: "~ByPointer", kind: Method, detail: "()", description: "void", edit: "30:6-30:6" }

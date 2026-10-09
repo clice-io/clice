@@ -41,7 +41,7 @@ systemd-run --user --pipe --wait --collect --same-dir \
   -p BindReadOnlyPaths="$PWD" \
   -p BindReadOnlyPaths="$codex_root" \
   -p BindPaths="$HOME/.codex" \
-  codex exec -m gpt-5.6-sol -c model_reasoning_effort=xhigh \
+  codex exec -m gpt-6-astra -c model_reasoning_effort=xhigh \
   --sandbox read-only \
   -o /tmp/clice-triage/verdicts-N.md \
   "Read .claude/skills/triage/rules.md, .github/labels.yml, and every

@@ -1,0 +1,24 @@
+---
+created_at: 2026-08-25
+input_file: find_references/09_refs_macro.cpp
+---
+first:
+  definition:
+    - { file: "${WS}/find_references/09_refs_macro.cpp", range: "11:8-11:15" }
+  declaration:
+    - { file: "${WS}/find_references/09_refs_macro.cpp", range: "11:8-11:15" }
+  references:
+    - { file: "${WS}/find_references/09_refs_macro.cpp", range: "11:8-11:15" }
+    - { file: "${WS}/find_references/09_refs_macro.cpp", range: "13:9-13:16" }
+    - { file: "${WS}/find_references/09_refs_macro.cpp", range: "15:7-15:14" }
+    - { file: "${WS}/find_references/09_refs_macro.cpp", range: "19:8-19:15" }
+    - { file: "${WS}/find_references/09_refs_macro.cpp", range: "23:7-23:14" }
+
+second:
+  definition:
+    - { file: "${WS}/find_references/09_refs_macro.cpp", range: "25:8-25:15" }
+  declaration:
+    - { file: "${WS}/find_references/09_refs_macro.cpp", range: "25:8-25:15" }
+  references:
+    - { file: "${WS}/find_references/09_refs_macro.cpp", range: "25:8-25:15" }
+    - { file: "${WS}/find_references/09_refs_macro.cpp", range: "27:12-27:19" }

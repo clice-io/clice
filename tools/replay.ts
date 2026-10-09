@@ -3,8 +3,8 @@
 /// Usage: node tools/replay.ts tests/smoke/session.jsonl --clice build/clice
 ///
 /// Node builtins only — no npm dependencies — so it runs standalone with
-/// `node tools/replay.ts ...`. LSP framing, response defaults and the
-/// pass/fail rules mirror the former replay.py 1:1.
+/// `node tools/replay.ts ...`. LSP framing and response defaults mirror the
+/// former replay.py; process success uses the same gate as the test client.
 
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -12,6 +12,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Readable, Writable } from "node:stream";
+import {
+    anomalyGateFailure,
+    anomaliesInMessages,
+    logFiles,
+    processGateFailures,
+    serverEnv,
+} from "./process_gate.ts";
+import { TimeoutError, withTimeout } from "./promise.ts";
 
 // tools/ -> repo root.
 const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -161,6 +169,23 @@ function rewriteRecords(records: TraceRecord[], originalWs: string, newWs: strin
     });
 }
 
+/// The replaying process is the client now: the server exits with the
+/// process its initialize names, which in a recording is long gone.
+function claimClientProcess(records: TraceRecord[]): TraceRecord[] {
+    return records.map((rec) => {
+        const parsed = asObject(JSON.parse(rec.msg) as unknown);
+        const params = asObject(parsed["params"]);
+        if (
+            stringField(parsed, "method") !== "initialize" ||
+            typeof params["processId"] !== "number"
+        ) {
+            return rec;
+        }
+        params["processId"] = process.pid;
+        return { ts: rec.ts, msg: JSON.stringify(parsed) };
+    });
+}
+
 function printTraceInfo(name: string, records: TraceRecord[], workspace: string | null): void {
     const methods = new Map<string, number>();
     for (const rec of records) {
@@ -183,27 +208,6 @@ function printTraceInfo(name: string, records: TraceRecord[], workspace: string 
     // Python's sorted(..., key=lambda x: -x[1]) over an insertion-ordered dict.
     const top = [...methods.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
     console.log(`  methods: ${top.map(([m, n]) => `${m}(${n})`).join(", ")}`);
-}
-
-class TimeoutError extends Error {}
-
-/// Reject with a TimeoutError after `ms`; otherwise settle with `promise`.
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-        const timer = setTimeout(() => {
-            reject(new TimeoutError());
-        }, ms);
-        promise.then(
-            (v) => {
-                clearTimeout(timer);
-                resolve(v);
-            },
-            (e: unknown) => {
-                clearTimeout(timer);
-                reject(e instanceof Error ? e : new Error(String(e)));
-            },
-        );
-    });
 }
 
 function sleep(ms: number): Promise<void> {
@@ -353,10 +357,15 @@ async function replayOne(
             displayWs = newWs;
         }
     }
+    records = claimClientProcess(records);
 
     printTraceInfo(name, records, displayWs);
 
-    const env = { ...process.env };
+    // The corpus workspace persists across runs and traces; only logs born
+    // in this session may gate it.
+    const preexistingLogs = new Set(logFiles(displayWs));
+
+    const env = serverEnv();
     if (process.platform === "darwin") {
         const prev = env["ASAN_OPTIONS"] ?? "";
         env["ASAN_OPTIONS"] = prev ? `${prev}:detect_leaks=0` : "detect_leaks=0";
@@ -576,14 +585,18 @@ async function replayOne(
     await waitExitOrKill(proc, exited, 10000);
     await withTimeout(readerPromise, 2000).catch(() => undefined);
 
-    await withTimeout(stderrEnded, 2000).catch(() => undefined);
+    let stderrComplete = true;
+    try {
+        await withTimeout(stderrEnded, 2000);
+    } catch {
+        stderrComplete = false;
+    }
     const stderrData = Buffer.concat(stderrChunks);
-    const returncode = exitStatus(proc);
-    const signalName = proc.signalCode;
+    const stderrText = stderrData.toString("utf8");
 
     const printStderr = (): void => {
         if (stderrData.length > 0) {
-            for (const line of splitLines(stderrData.toString("utf-8")).slice(-20)) {
+            for (const line of splitLines(stderrText).slice(-20)) {
                 console.log(`  | ${line}`);
             }
         }
@@ -594,16 +607,26 @@ async function replayOne(
         return false;
     }
 
-    if (returncode !== null && returncode !== 0) {
-        const sig = signalName !== null ? ` (${signalName})` : "";
-        console.log(`  result: CRASH (exit=${returncode}${sig}, ${elapsed()}s)`);
-        printStderr();
-        return false;
+    const failures = processGateFailures({
+        exitCode: proc.exitCode,
+        signalCode: proc.signalCode,
+        stderrText,
+        stderrComplete,
+        stderrDrainedFromStart: true,
+    });
+    const anomalyFailure = anomalyGateFailure(
+        anomaliesInMessages(anomalies),
+        displayWs,
+        preexistingLogs,
+    );
+    if (anomalyFailure !== null) {
+        failures.push(anomalyFailure);
     }
-
-    if (anomalies.length > 0) {
-        // Anomalies are internal clice bugs; a replay session must be clean.
-        console.log(`  result: FAIL (${anomalies.length} anomaly report(s), ${elapsed()}s)`);
+    if (failures.length > 0) {
+        console.log(`  result: FAIL (${failures.length} process gate failure(s), ${elapsed()}s)`);
+        for (const failure of failures) {
+            console.log(`  gate: ${failure}`);
+        }
         printStderr();
         return false;
     }

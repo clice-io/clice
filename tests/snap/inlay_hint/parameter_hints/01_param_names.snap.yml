@@ -1,0 +1,12 @@
+---
+created_at: 2026-07-31
+input_file: parameter_hints/01_param_names.cpp
+---
+- { pos: "15:9", kind: Parameter, label: "width:", links: ["width ${WS}/parameter_hints/01_param_names.cpp:6:14-6:19"], padding_right: true }
+- { pos: "15:13", kind: Parameter, label: "height:", links: ["height ${WS}/parameter_hints/01_param_names.cpp:6:25-6:31"], padding_right: true }
+- { pos: "16:12", kind: Parameter, label: "x:", links: ["x ${WS}/parameter_hints/01_param_names.cpp:9:14-9:15"], padding_right: true }
+- { pos: "16:15", kind: Parameter, label: "y:", links: ["y ${WS}/parameter_hints/01_param_names.cpp:9:21-9:22"], padding_right: true }
+- { pos: "17:12", kind: Parameter, label: "x:", links: ["x ${WS}/parameter_hints/01_param_names.cpp:9:14-9:15"], padding_right: true }
+- { pos: "17:15", kind: Parameter, label: "y:", links: ["y ${WS}/parameter_hints/01_param_names.cpp:9:21-9:22"], padding_right: true }
+- { pos: "21:18", kind: Parameter, label: "x:", links: ["x ${WS}/parameter_hints/01_param_names.cpp:9:14-9:15"], padding_right: true }
+- { pos: "21:21", kind: Parameter, label: "y:", links: ["y ${WS}/parameter_hints/01_param_names.cpp:9:21-9:22"], padding_right: true }

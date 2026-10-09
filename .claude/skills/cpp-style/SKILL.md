@@ -29,13 +29,35 @@ defending against ghosts.
   that merely shortens lines.
 - **Delete, don't comment out.** Git history is the archive.
 
+- **One behavior difference is one options field.** Two behaviors of the
+  same logic are selected by a boolean in an options struct (`Options{.disk_only}`),
+  not by a subclass, a dummy collaborator, or a parallel code path.
+- **Cross-cutting invariants get a single writer.** Accounting, budgets,
+  ownership and visibility guarantees live in one type whose methods are the
+  only transitions and whose doc comment lists the invariants; before coding,
+  grep every site the invariant touches and funnel them through one helper
+  so a missing site is discoverable. Per-site patches never catch up with a
+  reviewer who re-derives the invariant from the whole diff.
+
 ## Files & Organization
 
-- Headers are `.h` with `#pragma once` — never include guards.
-- Sources are `.cpp`; entry points are `.cc` (`clice.cc`,
-  `src/driver/*.cc`) — a deliberate distinction, revisit when the project
-  moves to C++20 modules.
+- clice is one C++20 module, `clice`. An interface is a partition,
+  `<stem>.cppm` beside its source, named by its path under `src/`
+  (`module clice:vfs.path;`, `tests.unit.*` under `tests/unit/`);
+  sources are implementation units `.cpp`, entry points `.cc` (`clice.cc`,
+  `src/driver/*.cc`).
+- Every module unit but the primary interface (`src/module.cppm`, which
+  exports nothing) opens with `module;` and `#include "modules/prelude.h"`,
+  which imports the third-party module (`modules/`) and `std.compat` and
+  replays their macros; then the macro headers it uses, the module
+  declaration, and one `import :<partition>;` per partition it names.
+- `.h` is left for what a module cannot carry — macros (`*.macros.h`) and
+  platform headers (`vfs/win32.h`) — with `#pragma once`, never include
+  guards.
 - File names are `snake_case`.
+- Every file sees the names of all it imports: a file-local helper can
+  clash with a name of another partition or lose overload resolution and
+  ADL to a library function (`llvm::join`) no header used to bring in.
 - File-local helpers: a single one is `static`; a cluster of them goes in
   one anonymous namespace.
 
@@ -112,6 +134,24 @@ process(result.value());
 - Async code is kota coroutines (`kota::task`, `co_await`) — no callback
   style. A public interface may stay synchronous and drive a coroutine
   internally when the caller has no event loop (see `Toolchain`).
+- Review coroutine code by interleavings, not function by function: list
+  every `co_await` suspension point, the events that can fire while it is
+  suspended (crash, respawn, dispatch, cancellation, another coroutine
+  resuming), and trace the shared state through each chain; then check that
+  what the frame captured before suspending is still valid when it resumes.
+  Bugs here are always cross-function interleavings; a function-level read
+  finds none of them.
+- Cancellation flows down the ownership tree through `task_group::cancel()`;
+  tokens and sources exist only to cross an ownership boundary — the serve
+  mode shutdown source in `MasterServer`, the batch commands' in
+  `BatchLifetime`. Graceful shutdown is not
+  cancellation — kota has no shield, a cancel cascades all the way down — so
+  a shutdown is a cancellable serving phase bounded by `with_token`, then a
+  non-cancellable drain that joins each task in order.
+- `cancellation_token::wait()` completes by cancelling itself. Awaited
+  directly inside `when_any` it propagates that cancellation into the parent
+  frame and skips everything after the `co_await`; wrap it in `with_token`
+  (which catches internally) or add `.catch_cancel()`.
 
 ## Logging
 
@@ -125,6 +165,7 @@ process(result.value());
 - **Variables, member fields, function names**: `snake_case`. Class member fields do NOT use any special suffix/prefix (no trailing `_`, no `m_` prefix).
 - **Class names, template parameter names, enum names**: `PascalCase`. Exception: some class names also use `snake_case` — follow the existing style in the project.
 - **Enum values**: `PascalCase`.
+- **Acronyms stay uppercase in type names**: `PCHFamily`, `ASTProjection`, `TUIndex` — never `PcmFamily`, `AstProjection`.
 - Doc comments on declarations use `///`; the bar for when to write a
   comment at all is in CLAUDE.md.
 
@@ -181,6 +222,7 @@ process(result.value());
 ## Style
 
 - Prefer `[[maybe_unused]]` over `(void)` for intentionally unused variables or parameters.
+- Arithmetic counters step with `x += 1` / `x -= 1`, in `for` heads too — never `++`/`--`; split fused forms like `if(++x > n)` into two statements. Iterators and other types without `+=` are exempt. This applies to code you write or touch, not as a repository-wide sweep.
 
 ## Modern C++ Usage
 

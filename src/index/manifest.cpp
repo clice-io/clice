@@ -1,10 +1,11 @@
-#include "index/manifest.h"
+module;
 
-#include <cstring>
-#include <limits>
-#include <span>
+#include "modules/prelude.h"
 
-#include "index/serialization.h"
+module clice;
+
+import :index.manifest;
+import :index.serialization;
 
 namespace clice::index {
 
@@ -33,6 +34,16 @@ struct ManifestBlob {
     /// contribution_count × (varint fv, 8-byte little-endian rows hash —
     /// hashes are random bits, varint would only inflate them)
     std::vector<std::uint8_t> contributions;
+
+    std::vector<std::uint32_t> absent;
+
+    std::vector<std::uint32_t> imports;
+
+    /// TUManifest::local_fanout as columns: the symbols ascending, each
+    /// one's contribution indices back to back.
+    std::vector<std::uint64_t> local_symbols;
+    std::vector<std::uint32_t> local_file_ends;
+    std::vector<std::uint32_t> local_files;
 };
 
 void write_varint(std::vector<std::uint8_t>& out, std::uint64_t value) {
@@ -71,23 +82,37 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
     blob.format_version = index_format_version;
     blob.global_gen = manifest.global_gen;
     blob.built_at = manifest.built_at;
-    blob.tu_fv = manifest.tu_fv;
+    blob.tu_fv = manifest.tu_fv.raw;
 
     blob.node_count = static_cast<std::uint32_t>(manifest.nodes.size());
-    blob.nodes.reserve(manifest.nodes.size() * 6);
+    blob.nodes.reserve(manifest.nodes.size() * 7);
     for(auto& node: manifest.nodes) {
-        write_varint(blob.nodes, node.fv);
+        write_varint(blob.nodes, node.file);
         write_varint(blob.nodes, node.parent + 1);
         write_varint(blob.nodes, node.line);
+        write_varint(blob.nodes, node.skipped ? 1 : 0);
     }
 
     blob.contribution_count = static_cast<std::uint32_t>(manifest.contributions.size());
     blob.contributions.reserve(manifest.contributions.size() * 10);
     for(auto& [fv, hash]: manifest.contributions) {
-        write_varint(blob.contributions, fv);
+        write_varint(blob.contributions, fv.raw);
         std::uint8_t bytes[8];
         std::memcpy(bytes, &hash, sizeof(hash));
         blob.contributions.insert(blob.contributions.end(), bytes, bytes + sizeof(bytes));
+    }
+
+    for(auto fv: manifest.absent) {
+        blob.absent.push_back(fv.raw);
+    }
+    for(auto fv: manifest.imports) {
+        blob.imports.push_back(fv.raw);
+    }
+
+    for(auto& fanout: manifest.local_fanout) {
+        blob.local_symbols.push_back(fanout.symbol);
+        blob.local_files.insert(blob.local_files.end(), fanout.files.begin(), fanout.files.end());
+        blob.local_file_ends.push_back(static_cast<std::uint32_t>(blob.local_files.size()));
     }
 
     serialize_blob(blob, os);
@@ -100,10 +125,10 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     }
 
     // The counts size reserves below and are untrusted; a node occupies at
-    // least 3 payload bytes (three varints) and a contribution at least 9
+    // least 4 payload bytes (four varints) and a contribution at least 9
     // (varint + 8-byte hash), so a count beyond these bounds cannot be
     // honest and must not reach an allocator.
-    if(blob.node_count > blob.nodes.size() / 3 ||
+    if(blob.node_count > blob.nodes.size() / 4 ||
        blob.contribution_count > blob.contributions.size() / 9) {
         return std::nullopt;
     }
@@ -111,7 +136,7 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
     TUManifest manifest;
     manifest.global_gen = blob.global_gen;
     manifest.built_at = blob.built_at;
-    manifest.tu_fv = blob.tu_fv;
+    manifest.tu_fv = VersionID{blob.tu_fv};
 
     constexpr std::uint64_t id_max = std::numeric_limits<std::uint32_t>::max();
     std::span<const std::uint8_t> nodes(blob.nodes);
@@ -121,23 +146,25 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         std::uint64_t fv = 0;
         std::uint64_t parent = 0;
         std::uint64_t line = 0;
+        std::uint64_t skipped = 0;
         if(!read_varint(nodes, pos, fv) || !read_varint(nodes, pos, parent) ||
-           !read_varint(nodes, pos, line)) {
+           !read_varint(nodes, pos, line) || !read_varint(nodes, pos, skipped)) {
             return std::nullopt;
         }
-        if(fv > id_max || line > id_max) {
+        if(fv > id_max || line > id_max || skipped > 1) {
             return std::nullopt;
         }
-        // Parents may follow their children (the include graph resolves
+        // Parents may follow their children (the include tree resolves
         // parent chains after appending the child), so only bounds are
         // checked; consumers walking parents must carry their own visited
         // set.
         if(parent > blob.node_count) {
             return std::nullopt;
         }
-        manifest.nodes.push_back({static_cast<std::uint32_t>(fv),
-                                  static_cast<std::uint32_t>(parent) - 1,
-                                  static_cast<std::uint32_t>(line)});
+        manifest.nodes.push_back({.file = static_cast<std::uint32_t>(fv),
+                                  .parent = static_cast<std::uint32_t>(parent) - 1,
+                                  .line = static_cast<std::uint32_t>(line),
+                                  .skipped = skipped != 0});
     }
     if(pos != nodes.size()) {
         return std::nullopt;
@@ -157,10 +184,39 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
         std::uint64_t hash = 0;
         std::memcpy(&hash, contributions.data() + pos, sizeof(hash));
         pos += 8;
-        manifest.contributions.emplace_back(static_cast<std::uint32_t>(fv), hash);
+        manifest.contributions.emplace_back(VersionID{static_cast<std::uint32_t>(fv)}, hash);
     }
     if(pos != contributions.size()) {
         return std::nullopt;
+    }
+
+    for(auto fv: blob.absent) {
+        manifest.absent.push_back(VersionID{fv});
+    }
+    for(auto fv: blob.imports) {
+        manifest.imports.push_back(VersionID{fv});
+    }
+
+    if(blob.local_file_ends.size() != blob.local_symbols.size() ||
+       !monotone_ends(blob.local_file_ends, blob.local_files.size()) ||
+       (!blob.local_file_ends.empty() && blob.local_file_ends.back() != blob.local_files.size())) {
+        return std::nullopt;
+    }
+    if(llvm::any_of(blob.local_files,
+                    [&](std::uint32_t index) { return index >= blob.contribution_count; })) {
+        return std::nullopt;
+    }
+    std::uint32_t begin = 0;
+    for(std::size_t i = 0; i < blob.local_symbols.size(); i += 1) {
+        if(i > 0 && blob.local_symbols[i] <= blob.local_symbols[i - 1]) {
+            return std::nullopt;
+        }
+        auto end = blob.local_file_ends[i];
+        manifest.local_fanout.push_back({
+            .symbol = blob.local_symbols[i],
+            .files = {blob.local_files.begin() + begin, blob.local_files.begin() + end},
+        });
+        begin = end;
     }
 
     return manifest;

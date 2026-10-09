@@ -1,0 +1,9 @@
+---
+created_at: 2026-09-21
+input_file: member_access/09_dependent_pointee.cpp
+---
+pos:
+- { label: "Vec", kind: Class, edit: "19:7-19:7" }
+- { label: "data", kind: Field, description: "T *", edit: "19:7-19:7" }
+- { label: "size", kind: Method, detail: "()", description: "int", edit: "19:7-19:7" }
+- { label: "template", kind: Keyword, edit: "19:7-19:7" }

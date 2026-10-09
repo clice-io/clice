@@ -4,32 +4,24 @@
 ///   scan_benchmark [OPTIONS] <compile_commands.json>
 ///
 /// Example:
-///   ./build/RelWithDebInfo/bin/scan_benchmark \
+///   ./build/RelWithDebInfo/bin/bin/scan_benchmark \
 ///       /home/ykiko/C++/clice/.llvm/build-debug/compile_commands.json
 ///
-///   ./build/RelWithDebInfo/bin/scan_benchmark --log-level info --export graph.json \
+///   ./build/RelWithDebInfo/bin/bin/scan_benchmark --log-level info --export graph.json \
 ///       /home/ykiko/C++/clice/.llvm/build-debug/compile_commands.json
 
-#include <algorithm>
-#include <chrono>
-#include <cstdlib>
-#include <fstream>
-#include <map>
-#include <numeric>
-#include <print>
-#include <set>
-#include <thread>
+module;
 
-#include "command/command.h"
-#include "command/toolchain.h"
-#include "support/filesystem.h"
-#include "support/logging.h"
-#include "support/path_pool.h"
-#include "syntax/dependency_graph.h"
+#include "modules/prelude.h"
 
-#include "kota/codec/json/json.h"
-#include "kota/deco/deco.h"
-#include "llvm/Support/FileSystem.h"
+module clice;
+
+import :command.command;
+import :config.config;
+import :project.build;
+import :support.logging;
+import :syntax.dependency_graph;
+import :vfs.file_table;
 
 using namespace clice;
 
@@ -62,11 +54,11 @@ struct GraphExport {
     std::vector<FileNode> files;
 };
 
-void export_graph_json(const PathPool& path_pool,
+void export_graph_json(const FileTable& file_table,
                        const DependencyGraph& graph,
                        llvm::StringRef output_path) {
     // Build reverse module map: path_id -> module_name.
-    llvm::DenseMap<std::uint32_t, llvm::StringRef> path_to_module;
+    llvm::DenseMap<Fid, llvm::StringRef> path_to_module;
     for(auto& [name, path_ids]: graph.modules()) {
         for(auto path_id: path_ids) {
             path_to_module[path_id] = name;
@@ -74,23 +66,23 @@ void export_graph_json(const PathPool& path_pool,
     }
 
     GraphExport export_data;
-    for(std::uint32_t id = 0; id < path_pool.paths.size(); id += 1) {
+    for(std::uint32_t i = 0; i < file_table.spellings.size(); i += 1) {
+        auto id = Fid{i};
         auto inc_ids = graph.get_all_includes(id);
         if(inc_ids.empty()) {
             continue;
         }
 
         FileNode node;
-        node.path = path_pool.paths[id].str();
+        node.path = file_table.resolve(id).str();
 
         auto mod_it = path_to_module.find(id);
         if(mod_it != path_to_module.end()) {
             node.module_name = mod_it->second.str();
         }
 
-        for(auto flagged_id: inc_ids) {
-            auto raw_id = flagged_id & DependencyGraph::PATH_ID_MASK;
-            node.includes.push_back(path_pool.paths[raw_id].str());
+        for(auto inc: inc_ids) {
+            node.includes.push_back(file_table.resolve(inc).str());
         }
 
         export_data.files.push_back(std::move(node));
@@ -159,7 +151,6 @@ void print_report(const ScanReport& report) {
     std::println("    Dir cache pre-pop: {}ms (overlapped with Phase 1)", report.dir_cache_ms);
     std::println("    Phase 1 (read+scan, parallel): {}ms", report.phase1_ms);
     std::println("    Phase 2 (include resolve):     {}ms", report.phase2_ms);
-    std::println("    Phase 3 (graph build):         {}ms", report.phase3_ms);
 
     // Per-wave breakdown.
     if(!report.wave_stats.empty()) {
@@ -219,7 +210,7 @@ void print_report(const ScanReport& report) {
     std::println("===============================================================");
 }
 
-int main(int argc, const char** argv) {
+extern "C++" int main(int argc, const char** argv) {
     auto args = kota::deco::util::argvify(argc, argv);
     auto result = kota::deco::cli::parse<BenchmarkOptions>(args);
 
@@ -269,8 +260,11 @@ int main(int argc, const char** argv) {
     // Load compilation database.
     auto t0 = std::chrono::steady_clock::now();
 
-    CompilationDatabase cdb;
-    Toolchain toolchain;
+    std::optional<FileTable> table_storage;
+    std::optional<CompilationDatabase> cdb_storage;
+    table_storage.emplace();
+    cdb_storage.emplace(*table_storage);
+    auto& cdb = *cdb_storage;
     auto loaded = cdb.load(cdb_path);
     if(!loaded) {
         std::println(stderr, "Error: failed to load {}", cdb_path);
@@ -284,72 +278,21 @@ int main(int argc, const char** argv) {
     std::println("CDB loaded: {} entries in {}ms", count, load_ms);
 
     {
-        std::set<const CompilationInfo*> unique_contexts;
-        std::set<const CanonicalCommand*> unique_canonicals;
-        std::map<const CanonicalCommand*, int> canonical_hist;
-        for(auto& entry: cdb.get_entries()) {
-            unique_contexts.insert(entry.info.ptr);
-            unique_canonicals.insert(entry.info->canonical.ptr);
-            canonical_hist[entry.info->canonical.ptr] += 1;
+        std::set<ConfigID> unique_configs;
+        for(auto& entry: cdb.entries()) {
+            unique_configs.insert(entry.config);
         }
         double dedup_ratio =
-            unique_contexts.empty() ? 0.0 : static_cast<double>(count) / unique_contexts.size();
-        std::println(
-            "Context dedup: {} files -> {} unique contexts ({:.1f}x), {} unique canonicals",
-            count,
-            unique_contexts.size(),
-            dedup_ratio,
-            unique_canonicals.size());
-
-        // If canonical dedup is poor, dump diagnostics.
-        if(unique_canonicals.size() > 200) {
-            // Sort canonicals by frequency (descending).
-            std::vector<std::pair<int, const CanonicalCommand*>> sorted;
-            for(auto& [ptr, cnt]: canonical_hist)
-                sorted.push_back({cnt, ptr});
-            std::ranges::sort(sorted,
-                              std::greater{},
-                              &std::pair<int, const CanonicalCommand*>::first);
-
-            // Show top-5 canonical commands.
-            for(int i = 0; i < std::min(5, (int)sorted.size()); i += 1) {
-                auto [cnt, cmd] = sorted[i];
-                std::println("  canonical[{}] ({} files, {} args):", i, cnt, cmd->arguments.size());
-                for(auto arg: cmd->arguments)
-                    std::println("    {}", arg);
-            }
-
-            // Show a singleton canonical (count==1) to see what per-file arg leaks in.
-            for(auto& [cnt, cmd]: sorted) {
-                if(cnt == 1) {
-                    std::println("  singleton canonical ({} args):", cmd->arguments.size());
-                    for(auto arg: cmd->arguments)
-                        std::println("    {}", arg);
-                    break;
-                }
-            }
-
-            // Find two canonicals that differ by only a few args.
-            if(sorted.size() >= 2) {
-                auto* a = sorted[0].second;
-                auto* b = sorted[1].second;
-                std::println("  --- Canonical diff (top-1 vs top-2) ---");
-                auto max_len = std::max(a->arguments.size(), b->arguments.size());
-                for(std::size_t i = 0; i < max_len; i += 1) {
-                    llvm::StringRef av = i < a->arguments.size() ? a->arguments[i] : "<missing>";
-                    llvm::StringRef bv = i < b->arguments.size() ? b->arguments[i] : "<missing>";
-                    if(av != bv)
-                        std::println("    DIFF[{}]: '{}' vs '{}'", i, av, bv);
-                    else
-                        std::println("    SAME[{}]: '{}'", i, av);
-                }
-            }
-        }
+            unique_configs.empty() ? 0.0 : static_cast<double>(count) / unique_configs.size();
+        std::println("Config dedup: {} files -> {} unique configs ({:.1f}x)",
+                     count,
+                     unique_configs.size(),
+                     dedup_ratio);
     }
 
     std::println("\nRunning {} cold start scan(s)...\n", runs);
 
-    PathPool path_pool;
+    Config config;
     DependencyGraph graph;
     std::vector<std::int64_t> elapsed_times;
     std::vector<std::int64_t> config_times;
@@ -361,15 +304,17 @@ int main(int argc, const char** argv) {
     phase2_times.reserve(runs);
 
     for(int i = 0; i < runs; i += 1) {
-        // True cold start: rebuild CDB (clears toolchain & config caches),
-        // reset PathPool and DependencyGraph.
-        cdb = CompilationDatabase{};
-        toolchain = Toolchain{};
-        cdb.load(cdb_path);
-        path_pool = PathPool{};
+        // True cold start: rebuild CDB (clears toolchain & config caches)
+        // and the DependencyGraph.
+        cdb_storage.reset();
+        table_storage.emplace();
+        cdb_storage.emplace(*table_storage);
+        cdb_storage->load(cdb_path);
         graph = DependencyGraph{};
+        Build build{config, *cdb_storage, *table_storage};
+        build.reset_active("");
 
-        auto report = scan_dependency_graph(cdb, toolchain, path_pool, graph);
+        auto report = scan_dependency_graph(*cdb_storage, graph, build.units(build.members()));
 
         elapsed_times.push_back(report.elapsed_ms);
         config_times.push_back(report.config_ms);
@@ -412,7 +357,7 @@ int main(int argc, const char** argv) {
 
     // Export dependency graph as JSON if requested.
     if(opts.export_path.has_value()) {
-        export_graph_json(path_pool, graph, *opts.export_path);
+        export_graph_json(cdb_storage->files(), graph, *opts.export_path);
     }
 
     return 0;

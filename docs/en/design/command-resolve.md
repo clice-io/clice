@@ -28,50 +28,77 @@ The core task of command processing is to convert the raw driver commands in the
 
 ### Argument Classification
 
-When loading the CDB, each compilation option is classified into one of four categories:
+When loading the CDB, each compilation option is classified into one of seven categories:
 
-- **Discarded**: Options related to build artifacts that the language server does not need. These include output file (`-o`), compile mode (`-c`), dependency scanning (`-M` family), PCH building (`-emit-pch`), and C++20 modules (`-fmodule-file`, etc., managed by the language server itself).
+- **Discarded**: Options related to build artifacts that the language server does not need. These include output file (`-o`), compile mode (`-c`), dependency scanning (`-M` family), PCH building (`-emit-pch`), and options the driver itself would ignore for this input.
 
-- **Codegen-only**: Options that only affect the code generation backend and do not affect semantic analysis. These include position-independent code (`-fPIC`), stack protection (`-fstack-protector`), frame pointer (`-fomit-frame-pointer`), debug info (`-g` family), LTO, etc. They do not change the AST or diagnostic output.
+- **Codegen**: Options that only affect the code generation backend and do not affect semantic analysis. These include position-independent code (`-fPIC`), stack protection (`-fstack-protector`), frame pointer (`-fomit-frame-pointer`), debug info (`-g` family), LTO, etc. They do not change the AST or diagnostic output.
 
   > Note: `-O` and `-fsanitize=` are not in this category despite appearing code-generation-related. `-O` defines the `__OPTIMIZE__` macro, and `-fsanitize=address` affects `__has_feature(address_sanitizer)`. They alter preprocessor state and are therefore semantic options.
 
+- **Diagnostics**: Warning-control options (`-Wall`, `-Wno-*`, `-Werror`). They change which diagnostics are emitted but neither the AST nor toolchain probing results.
+
 - **User-content**: Options that may differ per file but do not affect toolchain probing results. These include include paths (`-I`, `-isystem`, `-iquote`, `-idirafter`), macro definitions (`-D`, `-U`), and forced includes (`-include`). Their meaning is "what this particular file additionally needs."
 
-- **Semantic**: All remaining options -- they affect compilation semantics and play a role in toolchain probing. Examples include `-std=c++20`, `-Wall`, `-target`, `-march=`, etc.
+- **Semantic**: The remaining recognized options -- they affect compilation semantics and play a role in toolchain probing. Examples include `-std=c++20`, `-target`, `-march=`, etc.
+
+- **Input**: The source file itself, which occupies an explicit slot in the parsed command rather than being a plain string among others.
+
+- **Unknown**: Options the parser does not recognize (for example, flags from a compiler newer than clice's embedded LLVM). They participate in command identity, but unknown tokens coming from the CDB are not rendered into the compile commands clice executes; unknown tokens the user wrote in configuration rules are kept.
 
 Classification is based on Clang's own option table (`OptTable`), using option IDs rather than string matching.
 
-### Command Separation
+### Structured Commands
 
-After classification, each compilation command is split into two parts:
+After classification, each command is parsed **once** into a structured configuration (`CompileConfig`): an interned sequence of classified arguments in which the input file occupies an explicit slot. Identical configurations deduplicate to a single instance identified by a stable `ConfigID`; strings are interned for pointer-stable comparison. Everything downstream — toolchain probing, rendering, rules, identity — consumes the structured form; nothing re-parses command strings.
 
-- **`CanonicalCommand`**: Driver path + all semantic options. Represents "the identity and semantic configuration of the compiler."
-- **Patch**: All user-content options. Represents "the include paths and macro definitions this file additionally needs."
+Two derived views matter:
 
-Together with the working directory, these form `CompilationInfo` -- an abstract representation of a file's complete compilation configuration.
+- **Rendering**: the same structured configuration can be rendered on demand as a driver command line (for probing or for handing agents a runnable command) or combined with probe results into frontend arguments. Rendering normalizes alias spellings, so identity is not disturbed by cosmetic variation in the CDB.
+- **Entry identity**: the frontend-relevant view of the configuration, together with the input's slot position and working directory, is hashed into the entry's **identity hash** — the stable identity used for CDB diffing, index snapshot validation, and pinned context choices.
 
-The core purpose of this separation is toolchain probing cache efficiency. Toolchain probing requires actually invoking the compiler driver (e.g., running `g++ -dumpmachine` or `clang++ -###`), typically taking 100ms or more. The probing result depends only on the driver and semantic options -- user-content options (`-I`, `-D`) do not affect the system paths or target triple output by the driver. Therefore, regardless of what different `-I` paths files may have, as long as the semantic options are the same, they can share the same probing result.
-
-In real projects, tens of thousands of files may have only a few dozen distinct `CanonicalCommand` instances, meaning the toolchain needs to be probed only a few dozen times rather than tens of thousands.
-
-Both `CanonicalCommand` and `CompilationInfo` are deduplicated via `ObjectSet` -- instances with identical content exist only once in memory and are shared by pointer. String arguments are interned through `StringSet`, ensuring pointer stability and enabling direct comparison.
+The classification also buys toolchain probing cache efficiency. Probing requires actually invoking the compiler driver (e.g., running `g++ -dumpmachine` or `clang++ -###`), typically taking 100ms or more. The probing result depends only on the driver and probe-relevant options -- user-content options (`-I`, `-D`) do not affect the system paths or target triple output by the driver. Therefore, regardless of what different `-I` paths files may have, files sharing the probe-relevant view share one probing result. In real projects, tens of thousands of files typically collapse to a few dozen distinct probe keys.
 
 ### Compilation Database
 
-`CompilationDatabase` loads `compile_commands.json`, parsing, classifying, and deduplicating each entry into `CompilationEntry` (file path ID -> `CompilationInfo`). All entries are sorted by file path ID for binary search lookups.
+`CompilationDatabase` holds the entries of every loaded **source** — a `compile_commands.json` registered by the configuration or discovered under the workspace. Each source loads, reloads and unloads independently; its entries are parsed and deduplicated into `ConfigID`s and kept in file order, because generators emit a file's several entries in a fixed configuration order. The database stores facts only: it does not decide which of a file's entries wins.
 
-On lookup, `CompilationDatabase` assembles a `CompilationInfo` into a `CompileCommand` -- the final output of the command processing pipeline, containing the complete compilation flags and source file path, ready to be submitted to toolchain probing or the Clang frontend.
+Commands written by hand — a rule's `default_command`, the builtin fallback — go through the same normalization as an entry (`intern_command`), with the input slot synthesized at the end, so a declared command is probed, edited and rendered exactly like a database entry.
 
-For files without a CDB entry (e.g., a file the user opens that is not part of the project), `CompilationDatabase` synthesizes a default command -- selecting `clang` or `clang++ -std=c++20` based on the file extension. CUDA files (`.cu`/`.cuh`) additionally force `-x cuda`: `.cuh` is not an extension clang recognizes, so without it the driver would treat the file as linker input.
+### Build
 
-`CompilationDatabase` also provides the ability to group by configuration: `ConfigGroup` aggregates files that share the same `CompilationInfo`. This is the right granularity for extracting search path configurations during dependency scanning -- different `-I` paths produce different groups. For toolchain probing, the granularity is coarser (user-content options don't affect probing results), so `Toolchain` further deduplicates on top of `ConfigGroup`.
+`Build` is the one reader of the configuration's `[[rules]]` and the one place that knows which command a file compiles with — a function of the configuration, the database and the files recorded as [provisional members](#provisional-members), shared by the server and every CLI entry point (`clice index`, `clice lint`, `clice inspect` load a workspace the same way). Every consumer — the command resolver, the dependency scan, the indexer, the context protocol — asks it rather than the database:
 
-### Configuration Rules
+- **Entries.** A file's database entries in build order: the sources of the rules matching the file first, then those of the other active rules, each in declaration order, discovered sources last; within one source, file order. The first entry is the default selection; a user's pin (`clice/switchContext`) can choose another. Entries never disappear because a pattern does not name their file — the rules only decide priority.
+- **Edits.** The `remove` and `append` lists of every matching active rule, applied in declaration order — a rule's removes before its appends, a later `remove` reaching what an earlier rule appended. A header borrowing a host's command carries the edits of both files, each rule once, so it sees the same macros the host compiles with.
+- **Commands.** What a file compiles under: its entries, or — when it has none — the `default_command` of the first matching rule that declares one, or the command a provisional member borrows. A file with none of these gets the builtin command, whose driver follows the language clang assigns to the extension (`clang++ -std=c++20` for every C++ spelling and for the ambiguous `.h`, `-x cuda --cuda-device-only` for CUDA, plain `clang` for the rest).
+- **Members.** The translation units of the build: files with entries, plus the sources on disk that a `default_command` rule's patterns claim (headers never count), enumerated from the directories the patterns name, then the provisional members. The dependency scan runs every command of every member, so a header reachable through only one of a file's entries still finds that host. The background index admits a member unless a matching rule says `index = false`; that check sits at the index queue, so every path that enqueues work — startup, a database reload, a save — honours it.
 
-Beyond the compilation commands in the CDB itself, users can append or remove compilation options via `[[rules]]` in `clice.toml`. Each rule contains file matching patterns (globs) and lists of options to append or remove.
+### Hosting
 
-When looking up a file's compilation command, matching rules are applied on top of the CDB command -- specified options are first removed from the base command, then new options are appended. This allows users to fine-tune compilation flags at the project level without modifying the build system's output.
+A header without a command of its own compiles as part of a translation unit that includes it. The hosting layer ranks the includers the build compiles in a language the header can be part of — a `.h` in any, a `.hpp` in C++ and the languages built on it (Objective-C++, CUDA), a `.cuh` only in CUDA, so a C++ header is never compiled as C: units whose entries come from the databases the header's own rules name first, then the unit sharing the header's stem, then one in its directory, then path proximity. Units whose indexed compiles gave the header rows join the candidates. The first whose compile enters the header is its default host — by the unit's include tree when one is known (see [Compilation Context](compilation-context.md)), else by the lexical include chain. A file that is no member of the build never hosts.
+
+### Discovery
+
+When no rule declares a source, the build's databases are the `compile_commands.json` files found under the workspace: at startup the root's and those of its direct subdirectories, and whenever a file without an entry is opened, the ones in the directories from the file's up to the root — a project deeper in the tree is loaded the first time one of its files is opened, and never scanned for otherwise. Discovered databases rank after declared ones, shallower before deeper, then by path; a file several of them list compiles under the first by default and offers the others as candidates, while a file only a later database lists takes its command from it. Finding more than one is reported once at startup, with the tagged rules that would turn them into switchable configurations instead. The file tracker keeps discovering on its poll, so a database generated after startup — at the root or in a new subdirectory — loads when it appears. A discovered database that vanishes keeps serving its entries, but yields to the present ones: a `build/` directory regenerated as `out/` hands the files both list to `out/` at once, and takes them back when it returns.
+
+### Inference
+
+A file with neither an entry nor a host, and no matching rule with a `default_command`, borrows the command of a nearby translation unit of its own language — a `.h` matches any, a `.c` never borrows a C++ command and a `.cpp` never a C one, while a C++ source and a C++ module unit lend to each other, so the first module interface of a project of `.cpp` units compiles under their flags. The lender is a unit in the file's directory, the one sharing its stem first and then the first by name; else, for a header, the unit whose header search directories (`-I`, `-isystem`, `-iquote`) contain it, the nearest directory first — the unit's own code finds the header by that path, so its command is the one the header is written for; else the unit closest by path. The borrowed command carries the rule edits of both files — those only the lender matches first, then the file's own — and is labeled `Inferred`: the decision log names the lender, diagnostics about missing files get a guidance note, and the file stays outside the build — a header for good, a source until the user saves it; `clice inspect` resolves it the same way. A unit of the build never lends a command it borrowed itself.
+
+### Provisional Members
+
+A source file of the workspace (outside build trees, the cache and hidden directories) that the user saves in the editor, which no database lists and no rule claims — typically one created after the database was generated — is recorded as a **provisional member**: a member of the build under the command it borrows, while it has a lender and no unit includes it (the part of a unity build keeps compiling in its includer's context). It is scanned like any unit, so its module declaration provides the module to importers and the headers it includes find it as a host; the background index covers it; it lends to no one. Its command, lender and includers are looked at again whenever the build's commands change — a database reload, a file recorded — and the file joins, changes command or leaves the way a database entry would; an include a plain save adds or drops counts from the next of those, or a restart.
+
+The record is kept in the configuration's index library and survives restarts. A database listing the file, or a rule claiming it, takes over and drops the record; a database dropping an entry the file had leaves it outside the build until it is saved again. A deleted provisional member keeps its record, as a vanished unit keeps its entry, so a file that comes back — after a branch switch — is a member at once; only a restart forgets a file that is gone. Opening a file records nothing, and a buffer never written to disk joins nothing: only what is on disk joins the build.
+
+### Resolution
+
+The final command of a file is composed from those layers in a fixed order: the user's selection for the file in the editor (a pinned entry or a pinned host and include occurrence), else the file's own command (its first entry, or the one it borrows as a provisional member), else — for a header — its default host's command, else the first matching rule's `default_command`, else a nearby unit's command (inference), else the builtin; then the rule edits of the file (and of the host or lender it borrows from), then a run's extras (a lint plan's clang-tidy arguments). Selections apply to editor compiles only; background compiles resolve without them and cache nothing, so the index and the CLI see the build's own answer.
+
+Patterns are compiled against absolute paths: a relative pattern is anchored at the configuration file's directory (`..` segments included), or at the workspace root for rules passed through `initializationOptions`; an absolute or `**`-led one matches as written. Rules carrying a `configuration` tag apply only while that tag is active; the distinct tags form the configuration menu, and the active one is resolved at startup from `--configuration`, the persisted selection, or `default_configuration` (see [Compilation Context](compilation-context.md#switching-build-configurations)). When any rule declares a source (a database or a `default_command`), discovery is off: the declaration is the whole intent, and a database sitting at the workspace root is not consulted. Only a configuration declaring no source at all falls back to [discovery](#discovery).
+
+Configuration granularity is preserved throughout the pipeline: search-path extraction for dependency scanning is per effective command (different `-I` sets produce different search configs), while toolchain probing deduplicates further still, since user-content options do not affect probe results.
 
 ### Toolchain
 
@@ -79,7 +106,7 @@ When looking up a file's compilation command, matching rules are applied on top 
 
 **Compiler family identification.** `Toolchain` identifies the compiler family from the executable name -- the `CompilerFamily` enum includes GCC, Clang, MSVC, ClangCL, NVCC, Intel, and Zig. The identification logic handles various naming variants: version suffixes (`clang++-17`), architecture prefixes (`arm-none-eabi-g++`), and Windows `.exe` suffixes. The family determines which probing strategy is used.
 
-**Caching strategy.** Probing results are cached by (driver path, file extension, non-user-content flags). File extension is part of the cache key because `.c` and `.cpp` may trigger different driver rules. Failed probes are also cached (negative caching) to avoid retrying the same nonexistent compiler repeatedly.
+**Caching strategy.** The cache has two layers. The **probe layer** caches raw driver invocation results, keyed by the probe-relevant shape of the command (driver, probe-relevant flags, input kind — `.c` and `.cpp` may trigger different driver rules; the working directory joins the key when the command is sensitive to it). The **synthesis layer** turns probe results into the per-input-kind flag sets that command rendering consumes. Failed probes are cached too (negative caching), but transient failures are retried after a cooldown rather than being remembered forever.
 
 ### Search Paths
 
@@ -101,12 +128,12 @@ This four-tier model corresponds to Clang's internal search layout. Paths within
 CDB loading uses simdjson for streaming JSON parsing, processing entries one by one:
 
 1. Read each entry's `directory`, `file`, and `arguments` (or `command`) fields
-2. Filter out non-C/C++ files (e.g., `.rc`, `.asm`, `.def`)
-3. Resolve relative file paths to absolute paths
-4. Classify each option in the `arguments` field, routing them into canonical or patch
-5. Absolutize relative paths in include path options (resolved against `directory`)
-6. Deduplicate `CanonicalCommand` and `CompilationInfo` via `ObjectSet`
-7. Sort all entries by file path ID
+2. Expand response files (`@file`), driver-mode aware, tolerating UTF-16 encoded files and nesting
+3. Translate NVCC commands into an equivalent clang CUDA invocation
+4. Filter out non-C/C++ files (e.g., `.rc`, `.asm`, `.def`)
+5. Resolve relative file paths to absolute paths
+6. Parse and classify each option once into the structured configuration, absolutizing relative include paths against `directory`
+7. Deduplicate identical configurations into shared `ConfigID`s
 
 The parsing process also handles a special case: CMake-generated CDBs sometimes contain `-Xclang -include-pch -Xclang <pchfile>` sequences (CMake's PCH workaround), which are detected and discarded during loading.
 
@@ -142,7 +169,7 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 
 - **Why don't user-content options participate in the toolchain cache key?**
 
-  This is the core benefit of the two-level separation design. `-I` and `-D` do not change the system paths, target triple, or language defaults output by the compiler driver. Excluding them from the cache key reduces the number of keys from "one per file" to "one per configuration." A project with tens of thousands of files typically has only a few dozen distinct cache keys, requiring only a few dozen subprocess calls at startup.
+  This is the core benefit of the classification design. `-I` and `-D` do not change the system paths, target triple, or language defaults output by the compiler driver. Excluding them from the cache key reduces the number of keys from "one per file" to "one per configuration." A project with tens of thousands of files typically has only a few dozen distinct cache keys, requiring only a few dozen subprocess calls at startup.
 
 - **Why must search path deduplication precisely match Clang's behavior?**
 
@@ -158,9 +185,13 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 
 - **How are files without a CDB entry handled?**
 
-  A default command is synthesized. Based on the file extension, either `clang` or `clang++ -std=c++20` is selected, and the resource dir is injected. This ensures basic semantic analysis remains available even when a file is not in the CDB. For header files, the system also attempts to find a source file that includes it via the dependency graph and uses that source file's compilation command as context (see [Compilation Context](compilation-context.md)).
+  A header first looks for a source file that includes it through the dependency graph and borrows that file's command (see [Compilation Context](compilation-context.md)). Otherwise the first matching rule with a `default_command` supplies the command — the way to describe a project whose files all share one set of flags, or a scratch directory. A file with none of those borrows a nearby unit's command (see [Inference](#inference)); only one with no compatible unit either gets the builtin command: `clang` or `clang++ -std=c++20` based on the file's language, with the resource dir injected, so basic semantic analysis remains available and a guidance note explains that the command was guessed. Saving such a source in the editor makes it a [provisional member](#provisional-members).
 
 ## Known Limitations
+
+- **Discovery never scans the tree.** A nested project's database loads when one of its files is opened; until then its units are not indexed. A rule naming the database (or `default_command`) covers it from the start.
+
+- **Only the editor's saves add files to the build.** A source that appears on disk any other way — a checkout, a copy in a file manager, a generator — and that no database lists borrows a command for the editor but stays outside the build (not indexed, providing no module, hosting no header) until it is saved in the editor once or a regenerated database lists it. Provisional members are recorded per build configuration.
 
 - **Incomplete support for some compiler families.** Intel compilers (`icc`, `icx`, `dpcpp`) are recognized but currently fall through to the generic Clang driver path without dedicated probing logic, so their special system paths may not be correctly discovered. NVCC has dedicated probing (parsing `nvcc --dryrun` output into a clang CUDA invocation), but only with a GCC or Clang host compiler -- nvcc driving MSVC `cl` is not supported yet, and multi-architecture commands parse the newest architecture only.
 
@@ -169,3 +200,5 @@ After the four tiers are concatenated, deduplication begins from the Angled tier
 - **Global impact of configuration rules.** `[[rules]]` in `clice.toml` can append or remove options from compilation commands. If the user modifies a rule that affects all files (e.g., appending a global `-I`), all files' compilation configurations change, potentially triggering a full re-index. There is currently no mechanism to detect which rule changes actually affect which files.
 
 - **MSVC-style option parsing.** On non-Windows systems, MSVC-style option prefixes (`/U`, `/D`, `/I`) must be handled specially to prevent Unix absolute paths (such as `/Users/...`) from being misparsed as MSVC options. This is currently resolved by dynamically adjusting option visibility based on the driver name, but edge cases may still exist.
+
+- **Compiler launchers are not recognized.** CDB commands wrapped in a launcher (`ccache g++ ...`, `sccache clang++ ...`) are parsed as if the launcher were the compiler, so family identification and toolchain probing target the wrong binary. Strip the launcher from the compilation database, or override the flags with configuration rules.

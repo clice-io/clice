@@ -1,0 +1,12 @@
+[
+  {
+    "directory": ".",
+    "file": "main.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DP2", "main.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "../shared/generated.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DP2", "../shared/generated.cpp"]
+  }
+]

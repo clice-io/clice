@@ -1,42 +1,43 @@
-// Test cases ported from clangd's HoverTests.cpp (llvmorg-21.1.8), part of the LLVM project,
-// licensed under Apache License v2.0 with LLVM Exceptions.
-
-// Function definition via using declaration.
-namespace using_func {
-namespace ns {
-  void foo();
+namespace imported_function {
+namespace library {
+void open();
 }
-int main() {
-  using ns::foo;
-  §(01_using_function)foo();
+void invoke() {
+    using library::open;
+    §(01_using_function)open();
 }
 }
 
-// Using declaration with two possible function declarations.
-namespace using_overloads {
-namespace ns { void foo(int); void foo(char); }
-using ns::foo;
-template <typename T> void bar() { §(02_using_overloads)foo(T{}); }
+namespace imported_overloads {
+namespace library {
+void write(long);
+void write(char);
+}
+using library::write;
+template <typename T> void invoke() {
+    §(02_using_overloads)write(T{});
+}
 }
 
-// Hover at the declaration site of a using declaration.
-namespace using_decl_site {
-namespace ns { void bar(int); }
-using ns::§(03_using_decl_site)bar;
+namespace declaration_site {
+namespace library {
+void close(long);
+}
+using library::§(03_using_decl_site)close;
 }
 
-// Type imported through a using declaration.
-namespace using_type {
-struct B { using value_type = int; };
-struct D : B {
-  using B::value_type;
-  §(04_using_type)value_type x;
+namespace imported_type {
+struct Base {
+    using index_type = long;
+};
+struct Derived : Base {
+    using Base::index_type;
+    §(04_using_type)index_type index;
 };
 }
 
-// Using directive through a namespace alias.
-namespace alias_directive {
-namespace original { }
-namespace alias = original;
-using namespace §(05_alias_directive)alias;
+namespace namespace_alias {
+namespace implementation {}
+namespace api = implementation;
+using namespace §(05_alias_directive)api;
 }

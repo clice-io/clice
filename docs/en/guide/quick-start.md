@@ -22,7 +22,7 @@ See [build from source](../dev/build.md) for detailed instructions.
 
 For clice to correctly understand your code (e.g., find header file locations), you need to provide a `compile_commands.json` file, also known as a [compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html). The compilation database provides compilation options for each source file.
 
-By default, clice searches your workspace root and each of its immediate subdirectories (e.g. `build/`) for `compile_commands.json`, using the first one it finds. You can specify exact paths with the `compile_commands_paths` option in [clice.toml](./configuration.md).
+By default, clice loads every `compile_commands.json` in your workspace root and its immediate subdirectories (e.g. `build/`), and the ones above a file when you open it — a nested project's database loads the first time one of its files is opened. This discovery is off as soon as any rule declares a source, a database or a `default_command` alike. You can name the databases explicitly with the `compile_commands` option in [clice.toml](./configuration.md), and describe files that have no database entry with a rule's `default_command`.
 
 ### CMake
 
@@ -98,3 +98,17 @@ Or configure the Xmake VS Code extension to auto-generate:
 ### Others
 
 For any other build system, use [catter](https://github.com/clice-io/catter) — a fake-compiler approach that works with any build system.
+
+## Pre-build the Index (Optional)
+
+Background indexing starts automatically when you open the project in an
+editor. For large projects you can also build the index ahead of time from
+the command line:
+
+```bash
+clice index --workspace /path/to/project
+```
+
+The run is resumable — interrupting it with Ctrl-C saves progress, and the
+next invocation continues where it left off instead of starting over.
+`clice index --stats` prints what the persisted index currently contains.

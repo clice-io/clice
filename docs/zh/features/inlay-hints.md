@@ -1,209 +1,614 @@
-# Inlay Hints
+# 内联提示
+
+<!-- The capability sections below are generated from the snapshot fixtures in
+     tests/snap/inlay_hint/. Do not edit the regions between the GENERATED
+     markers by hand — edit the fixture spec headers and run
+     `node tools/docs/feature.ts update`. -->
+
+clice 为代码中未显式给出的信息渲染内联标注：调用处的参数名、推导出的类型，以及按位置进行聚合初始化时对应的字段名。提示类别可以通过 `[inlay_hints]` 配置节单独开关；下面各节介绍默认开启的类别。
 
 ## 参数名提示
 
-- [x] 调用点处的命名参数提示
-- [x] 参数名与实参名一致时跳过
-- [x] 语义明确的单参数调用跳过
-- [x] 展开参数包（`underlying_pack_type` 检测）
-- [x] 从定义（不仅是声明）解析参数名
-- [x] 转发函数参数解析 — 对 `std::make_unique`、`emplace_back` 等显示底层构造函数参数（[clangd#2324](https://github.com/clangd/clangd/issues/2324)）
+<!-- BEGIN GENERATED ITEMS: parameter_hints -->
 
-  ```cpp
-  struct Widget { Widget(int width, int height); };
-  auto p = std::make_unique<Widget>(800, 600);
-  //                                ^^^  ^^^
-  //                          width: 800, height: 600（而非 __args: 800, __args: 600）
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-- [x] 函数指针和 `operator()` 参数提示（[clangd#1734](https://github.com/clangd/clangd/issues/1734)、[clangd#1742](https://github.com/clangd/clangd/issues/1742)）
+**参数名提示**
 
-  ```cpp
-  void (*callback)(int status, const char* msg);
-  callback(0, "ok");
-  //       ^   ^^
-  //  status: 0, msg: "ok"
+在函数和构造函数的调用处显示参数名
 
-  auto cmp = [](int a, int b) { return a < b; };
-  cmp(1, 2);
-  //  ^  ^
-  //  a: 1, b: 2
-  ```
+```snap
+tests/snap/inlay_hint/parameter_hints/01_param_names.cpp
+```
 
-- [ ] 模板参数提示 — 显示推导/显式的模板参数（[clangd#2583](https://github.com/clangd/clangd/issues/2583)）
+<!-- END CAPABILITY -->
 
-  ```cpp
-  template<typename T, typename U>
-  auto convert(U val) -> T;
-  convert<float>(42);
-  //      ^^^^^  ^^
-  //   T: float, val: 42
-  ```
+<!-- BEGIN CAPABILITY: supported clangd#1877 -->
 
-- [ ] 大小写不敏感的参数名匹配 — `aParam` 应在实参为 `param` 时抑制提示（[clangd#2248](https://github.com/clangd/clangd/issues/2248)）
+**提示抑制**
 
-- [x] 当行内注释已标注参数名时抑制提示（[clangd#1877](https://github.com/clangd/clangd/issues/1877)）
+具名实参和 `/*name=*/` 注释会抑制参数名提示
 
-  ```cpp
-  draw(/*x=*/10, /*y=*/20);  // 无需提示 — 行内注释已起到相同作用
-  ```
+```snap
+tests/snap/inlay_hint/parameter_hints/02_param_suppression.cpp
+```
 
-- [x] 默认参数值提示
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**设置函数和内置函数的提示抑制**
+
+`setX(x)` 和 `std::move`/`std::forward` 的实参不显示提示
+
+```snap
+tests/snap/inlay_hint/parameter_hints/03_param_setters_builtins.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1123 -->
+
+**可修改引用标记**
+
+用 `&` 标记通过非常量左值引用传递的实参
+
+```snap
+tests/snap/inlay_hint/parameter_hints/04_param_references.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2324 -->
+
+**转发解析**
+
+经包装函数转发的参数包会解析出目标函数的参数名
+
+```snap
+tests/snap/inlay_hint/parameter_hints/05_param_forwarding.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**来自定义的参数名**
+
+声明中的未命名参数使用定义中的参数名，并去掉开头的下划线
+
+```snap
+tests/snap/inlay_hint/parameter_hints/06_param_definition_names.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1734 clangd#1742 -->
+
+**函数指针和调用运算符**
+
+间接调用仍会显示参数名
+
+```snap
+tests/snap/inlay_hint/parameter_hints/07_param_function_objects.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1777 -->
+
+**推导 `this`**
+
+显式对象参数从不显示提示（C++23）
+
+```snap
+tests/snap/inlay_hint/parameter_hints/08_param_deducing_this.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**待决调用（dependent calls）**
+
+即使只能在模板内部确定被调用者，也会显示参数名
+
+根据实参数量筛选候选函数；只有筛选后剩下唯一候选函数时，才会显示参数名。因此，如果调用仍可能匹配多个重载，就不显示提示，以免猜测。
+
+```snap
+tests/snap/inlay_hint/parameter_hints/09_param_dependent.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**未展开的参数包**
+
+代码中显式写出的参数包展开会打破实参与形参的一一对应关系，停止显示提示
+
+```snap
+tests/snap/inlay_hint/parameter_hints/10_param_packs.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2620 -->
+
+**调用处的宏**
+
+以宏形式书写的实参会显示提示；宏体内生成的调用不显示提示
+
+```snap
+tests/snap/inlay_hint/parameter_hints/11_param_macros.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**隐式构造函数调用**
+
+代码中未显式写出的转换本身不会产生提示
+
+```snap
+tests/snap/inlay_hint/parameter_hints/12_param_implicit_conversions.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**伪对象表达式（pseudo-object expressions）**
+
+MS 属性访问不显示提示；显式写出的下标操作仍会显示访问器的参数名
+
+```snap
+tests/snap/inlay_hint/parameter_hints/13_param_pseudo_objects.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1034 -->
+
+**显式实例化**
+
+显式实例化定义不会添加重复提示，其中显式写出的模板实参仍正常显示提示
+
+```snap
+tests/snap/inlay_hint/parameter_hints/14_param_explicit_instantiation.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#2248 -->
+
+**宽松名称匹配**
+
+参数名 `aParam` 目前还无法抑制实参 `param` 的提示
+
+```snap
+tests/snap/inlay_hint/parameter_hints/15_param_case_insensitive.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#1364 -->
+
+**继承构造函数**
+
+调用通过 `using Base::Base` 继承的构造函数时，参数名会丢失
+
+```snap
+tests/snap/inlay_hint/parameter_hints/16_param_inherited_constructors.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**未命名参数**
+
+未命名参数不显示参数名提示，但可修改引用仍会显示 `&`
+
+```snap
+tests/snap/inlay_hint/parameter_hints/17_param_anonymous.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**运算符和字面量**
+
+运算符语法和用户定义字面量不显示提示；成员初始化器和默认成员初始化器会显示提示
+
+```snap
+tests/snap/inlay_hint/parameter_hints/18_param_operators.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**构造函数实参中的参数包**
+
+外层调用可以解析；展开内部的提示仍然缺失
+
+```snap
+tests/snap/inlay_hint/parameter_hints/19_param_pack_constructors.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**默认实参的参数名**
+
+默认实参提示中的参数名会链接到对应的参数，与参数名提示相同
+
+```snap
+tests/snap/inlay_hint/parameter_hints/20_param_default_arguments.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
 
 ## 类型提示
 
-- [x] `auto` 推导类型提示
-- [x] Structured binding 类型提示
-- [x] Lambda 返回类型提示
-- [x] Range-based for 循环变量类型提示
-- [ ] Lambda init-capture 类型提示（[clangd#1163](https://github.com/clangd/clangd/issues/1163)）
+<!-- BEGIN GENERATED ITEMS: type_hints -->
 
-  ```cpp
-  auto f = [val = compute()] {};
-  //        ^^^ : int
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-- [ ] 依赖 `auto` 类型提示 — 即使在模板体内也显示有意义的推导类型（[clangd#2275](https://github.com/clangd/clangd/issues/2275)）
+**`auto` 变量的类型推导**
 
-- [x] 推导失败时不显示类型提示（[clangd#1475](https://github.com/clangd/clangd/issues/1475)）
+提示显示变量的完整类型，包括限定符
 
-- [ ] 类型已显式指定时不显示类型提示（[clangd#1749](https://github.com/clangd/clangd/issues/1749)）
+```snap
+tests/snap/inlay_hint/type_hints/01_type_auto.cpp
+```
 
-  ```cpp
-  auto x = static_cast<int>(val);  // 无需类型提示 — 已是显式的
-  auto y = int{42};                 // 同上
-  ```
+<!-- END CAPABILITY -->
 
-- [ ] 优先显示脱糖类型 — 显示 `std::vector<int>` 而非 typedef 别名（[clangd#1298](https://github.com/clangd/clangd/issues/1298)、[clangd#1668](https://github.com/clangd/clangd/issues/1668)）
+<!-- BEGIN CAPABILITY: supported clangd#1298 clangd#1357 -->
 
-  ```cpp
-  using IntVec = std::vector<int>;
-  IntVec create();
-  auto v = create();
-  //   ^ : std::vector<int>（而非 IntVec）
-  ```
+**类型语法糖的长度限制**
 
-- [x] 可配置的类型提示长度限制（[clangd#1357](https://github.com/clangd/clangd/issues/1357)）
+别名保留原写法；类型过长时，改用保留语法糖的名称
 
-- [ ] 缩写类型提示与可展开标签部件 — 使用 LSP `InlayHintLabelPart` 允许展开截断的类型（[clangd#2269](https://github.com/clangd/clangd/issues/2269)）
+```snap
+tests/snap/inlay_hint/type_hints/02_type_sugar.cpp
+```
 
-  ```
-  auto it = map.begin();
-  //   ^^ : map<str…, int>::iterator  [点击展开]
-  ```
+<!-- END CAPABILITY -->
 
-- [ ] 抑制明显的作用域以缩短提示（[clangd#2270](https://github.com/clangd/clangd/issues/2270)）
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  // 在 namespace foo 内部：
-  auto x = create();
-  //   ^ : Bar（而非 foo::Bar）
-  ```
+**结构化绑定（structured bindings）**
 
-## Designator 提示
+每个绑定都显示其规范类型的提示；聚合对象本身不显示提示
 
-- [ ] 聚合初始化 designator（`.field =`）— 对位置式聚合初始化显示字段名
+```snap
+tests/snap/inlay_hint/type_hints/03_type_structured_bindings.cpp
+```
 
-  ```cpp
-  struct Point { int x, y, z; };
-  Point p = {1, 2, 3};
-  //         ^  ^  ^
-  //    .x = 1, .y = 2, .z = 3
-  ```
+<!-- END CAPABILITY -->
 
-- [ ] 括号聚合初始化（C++20）（[clangd#2540](https://github.com/clangd/clangd/issues/2540)）
+<!-- BEGIN CAPABILITY: supported clangd#1163 -->
 
-  ```cpp
-  Point p(1, 2, 3);
-  //      ^  ^  ^
-  // .x = 1, .y = 2, .z = 3
-  ```
+**Lambda**
 
-- [ ] 紧凑的数组 designator 格式（[clangd#2303](https://github.com/clangd/clangd/issues/2303)）
+变量、推导出的返回类型和初始化捕获都会显示提示
 
-  ```cpp
-  int arr[] = {10, 20, 30};
-  //           ^^  ^^  ^^
-  //      [0]= 10, [1]= 20, [2]= 30
-  ```
+```snap
+tests/snap/inlay_hint/type_hints/04_type_lambdas.cpp
+```
 
-## 隐式转换提示
+<!-- END CAPABILITY -->
 
-- [ ] 在调用点和赋值处显示隐式类型转换（[clangd#2254](https://github.com/clangd/clangd/issues/2254)）
+<!-- BEGIN CAPABILITY: supported -->
 
-  ```cpp
-  void process(double val);
-  process(42);
-  //      ^^
-  //      (double) 42  — 隐式 int→double 转换
+**返回类型推导**
 
-  std::string s = "hello";
-  //              ^^^^^^^
-  //    (std::string) "hello"  — 隐式 const char*→string 转换
-  ```
+推导出的返回类型以 `-> T` 的形式显示在参数列表之后
 
-## 引用 / 指针提示
+```snap
+tests/snap/inlay_hint/type_hints/05_type_auto_return.cpp
+```
 
-- [x] 显示 `&` / `&&` 以指示实参通过可变引用传递（[clangd#1123](https://github.com/clangd/clangd/issues/1123)）
+<!-- END CAPABILITY -->
 
-  ```cpp
-  void sort(std::vector<int>& v);
-  sort(data);
-  //   ^^^^
-  //   &data  — 通过可变引用传递
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-## 模板参数提示
+**`decltype` 写法**
 
-- [ ] CTAD 推导的模板参数（[clangd#2331](https://github.com/clangd/clangd/issues/2331)）
+在显式写出的 `decltype` 旁显示其实际类型
 
-  ```cpp
-  std::pair p(1, 3.14);
-  //        ^ <int, double>
-  ```
+```snap
+tests/snap/inlay_hint/type_hints/06_type_decltype.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`auto` 参数**
+
+模板恰好只有一个实例时，会显示推导出的类型
+
+```snap
+tests/snap/inlay_hint/type_hints/07_type_auto_params.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#1749 -->
+
+**显式写出的初始化器**
+
+类型转换和函数式类型转换仍会显示多余的提示
+
+```snap
+tests/snap/inlay_hint/type_hints/08_type_explicit_source.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#2275 -->
+
+**待决 `auto`**
+
+未实例化的模板体内不显示推导提示
+
+```snap
+tests/snap/inlay_hint/type_hints/09_type_dependent.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**作用域省略**
+
+提示中省略命名空间限定符，保留类作用域
+
+```snap
+tests/snap/inlay_hint/type_hints/10_type_scopes.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**基于元组协议的绑定**
+
+提示显示规范类型，而非 `tuple_element<I, T>::type`
+
+```snap
+tests/snap/inlay_hint/type_hints/11_type_bindings_tuple.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#2275 -->
+
+**已实例化的模板**
+
+实例化后的模板体不会在模板原始定义处重复显示提示；对于依赖模板参数的 `auto`，
+在恰好只有一个实例化时可显示推导出的类型
+
+```snap
+tests/snap/inlay_hint/type_hints/12_type_conflicting_instantiations.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1535 -->
+
+**可点击的类型名**
+
+类型提示中的每个类型名都链接到其声明：点击即跳转到定义，悬停则显示该类型的悬停卡片
+
+对于在定义之前已有声明的类，链接指向那个声明，从那里执行“跳转到定义”即可到达定义。模板实参各自单独链接；内置类型和标点符号保持为纯文本。
+
+```snap
+tests/snap/inlay_hint/type_hints/13_type_links/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 指派符提示
+
+<!-- BEGIN GENERATED ITEMS: designator_hints -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2303 -->
+
+**字段和索引指派符**
+
+按位置进行聚合初始化时显示 `.field=` 和 `[index]=`
+
+```snap
+tests/snap/inlay_hint/designator_hints/01_designator_basic.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**嵌套聚合体**
+
+显式写出花括号时递归处理；省略花括号时展平为 `.outer.inner=`
+
+```snap
+tests/snap/inlay_hint/designator_hints/02_designator_nested.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**匿名成员**
+
+指派符路径中省略匿名联合体和结构体
+
+```snap
+tests/snap/inlay_hint/designator_hints/03_designator_anonymous.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**指派符提示抑制**
+
+已写出的指派符和 `/*name=*/` 注释会使对应的初始化器不再显示指派符提示
+
+```snap
+tests/snap/inlay_hint/designator_hints/04_designator_suppression.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**仅限聚合体**
+
+构造函数调用、拷贝和惯用的零初始化写法不产生指派符提示
+
+```snap
+tests/snap/inlay_hint/designator_hints/05_designator_aggregates_only.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**有误的初始化器**
+
+无法通过编译的初始化器旁仍会显示指派符提示
+
+```snap
+tests/snap/inlay_hint/designator_hints/06_designator_recovery.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2540 -->
+
+**圆括号聚合初始化**
+
+C++20 的 `Point(1, 2)` 写法目前还没有提示
+
+```snap
+tests/snap/inlay_hint/designator_hints/07_designator_parenthesized.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**库中的数组类型**
+
+类似 `std::array` 的包装类型只有一个成员数组，指派符中不会出现这个成员
+
+```snap
+tests/snap/inlay_hint/designator_hints/08_designator_library_array.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 其他提示类型
+
+<!-- BEGIN GENERATED ITEMS: other_hint_kinds -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2583 -->
+
+**模板参数提示**
+
+目前尚未在调用点显示模板实参提示
+
+```snap
+tests/snap/inlay_hint/other_hint_kinds/01_template_parameter_hints.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2331 -->
+
+**CTAD 实参**
+
+CTAD 目前尚不显示推导出的类模板实参
+
+```snap
+tests/snap/inlay_hint/other_hint_kinds/02_ctad_arguments.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2254 -->
+
+**隐式转换提示**
+
+调用点的隐式转换目前还没有提示
+
+```snap
+tests/snap/inlay_hint/other_hint_kinds/03_conversion_hints.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
 
 ## 块结尾提示
 
-- [x] 长代码块关闭花括号后显示声明名（[clangd#1634](https://github.com/clangd/clangd/issues/1634)）
+默认关闭（`inlay_hints.block_end`）。对于至少跨两行的代码块，clice 会在右花括号后显示其所结束结构的名称——包括函数、类型、命名空间和控制流语句：
 
-  ```cpp
-  void Widget::processData(const Config& cfg) {
-      // ... 50+ 行 ...
-  } // Widget::processData
-  ```
+```cpp
+void Widget::process(const Config& cfg) {
+    // ...
+} // Widget::process
 
-- [ ] `#endif` 提示 — 显示对应的宏条件（[clangd#2487](https://github.com/clangd/clangd/issues/2487)）
+namespace detail {
+    // ...
+} // namespace detail
 
-  ```cpp
-  #ifdef _WIN32
-      // ...
-  #endif // _WIN32
-  ```
+while (running) {
+    // ...
+} // while running
+```
 
-## 交互功能
+如果条件能以简短文本表示，就会为 `if`/`while`/`switch`/`for` 显示条件摘要；`else if` 链仅提示为 `// if`。超过 60 个字符的标签不会显示。
 
-- [x] 范围过滤结果（丢弃请求范围外的提示；AST 遍历不受范围限制）
-- [x] 左锚定提示（参数名在实参前）
-- [x] 右锚定提示（类型在变量名后）
-- [ ] 可点击的类型名 — 通过 LSP `InlayHintLabelPart` 在提示中的类型名上 go-to-definition（[clangd#1535](https://github.com/clangd/clangd/issues/1535)）
+一个相关设想是用 `#endif` 提示显示与之匹配的条件（[clangd#2487](https://github.com/clangd/clangd/issues/2487)），但该功能尚未实现。
 
-  ```
-  auto widget = create();
-  //   ^^^^^^ : Widget  ← 点击 "Widget" 跳转到 Widget 的定义
-  ```
+## 默认实参提示
 
-## 提示正确性
+默认关闭（`inlay_hints.default_arguments`）。依赖默认实参的调用点会显示省略的内容，超过类型名长度限制时会缩写：
 
-应正确处理的已知问题：
+```cpp
+void log(int level, bool flush = true, int repeat = 1);
+log(2);
+//     ^ , flush: true, repeat: 1
+```
 
-- [ ] 嵌套宏调用不应产生错误的参数名提示（[clangd#2620](https://github.com/clangd/clangd/issues/2620)）
-- [ ] 显式函数模板实例化时不应产生重复提示（[clangd#1034](https://github.com/clangd/clangd/issues/1034)）
-- [ ] 从派生类调用继承构造函数时应显示参数提示（[clangd#1364](https://github.com/clangd/clangd/issues/1364)）
-- [ ] 协程返回模板类型时不应丢失参数提示（[clangd#2437](https://github.com/clangd/clangd/issues/2437)）
-- [x] C++23 deducing `this` — 提示显示中去除显式对象参数（[clangd#1777](https://github.com/clangd/clangd/issues/1777)）
+## 配置
 
-## 变更记录
+`clice.toml` 的 `[inlay_hints]` 配置节（或通过 `initializationOptions` 提供的同名键）控制所有类别：`enabled`、`parameters`、`deduced_types`、`designators`、`block_end`、`default_arguments` 和 `type_name_limit`。详见[配置指南](../guide/configuration.md#inlay-hints)。配置更改会在服务器重启后生效，无需重新编译。
 
-| 日期 | 变更                                 | PR  |
-| ---- | ------------------------------------ | --- |
-| —    | 参数名提示、类型提示、范围作用域查询 | —   |
+## 交互行为
+
+- 请求按范围限定：请求范围之外的提示会被丢弃。
+- 参数提示锚定在实参左侧；类型提示和指派符提示锚定在声明一侧，通过 LSP 的间距标志控制间距，而不嵌入空格。
+- 内容完全相同的重复提示（例如模板实例化产生的提示）会合并为一条。
+- 提示中的类型名、参数名和指派符字段都是链接：点击会跳转到所指符号的定义，悬停则显示该符号的悬停卡片。符号存在声明时，链接指向该声明，这样从链接处执行“跳转到定义”即可到达定义。链接随提示一起发给客户端；不支持 LSP 3.17 内联提示的客户端只收到纯文本。
+
+## 其他已知不足
+
+- [ ] 通过 `InlayHintLabelPart` 为缩写类型提示提供可展开的标签部分（[clangd#2269](https://github.com/clangd/clangd/issues/2269)）
+- [ ] 根据作用域缩写类型名——在 `namespace foo` 内显示 `Bar` 而不是 `foo::Bar`（[clangd#2270](https://github.com/clangd/clangd/issues/2270)）
+- [ ] 协程返回模板类型时丢失参数提示（[clangd#2437](https://github.com/clangd/clangd/issues/2437)）

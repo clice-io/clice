@@ -2,63 +2,63 @@
 created_at: 2026-07-28
 input_file: getter_setter.cpp
 ---
-01_getter: { range: "7:24-7:25" }
-### method `y`  
+01_getter: { range: "7:11-7:19" }
+### method `getLevel`  
 
 ---
-→ `float`  
-Trivial accessor for `Y`.  
+→ `double`  
+Trivial accessor for `level`.  
 
 ---
 ```cpp
-// In X
-public: float y()
+// In Gauge
+public: double getLevel()
 ```
 
-02_setter: { range: "12:23-12:27" }
-### method `setY`  
+02_setter: { range: "12:9-12:17" }
+### method `setAngle`  
 
 ---
 → `void`  
 Parameters:  
-- `float v`
+- `double value`
 
-Trivial setter for `Y`.  
+Trivial setter for `angle`.  
 
 ---
 ```cpp
-// In X
-public: void setY(float v)
+// In Dial
+public: void setAngle(double value)
 ```
 
-03_setter_builder: { range: "17:21-17:25" }
-### method `setY`  
+03_setter_builder: { range: "17:13-17:21" }
+### method `setWidth`  
 
 ---
-→ `X &`  
+→ `Builder &`  
 Parameters:  
-- `float v`
+- `double value`
 
-Trivial setter for `Y`.  
+Trivial setter for `width`.  
 
 ---
 ```cpp
-// In X
-public: X &setY(float v)
+// In Builder
+public: Builder &setWidth(double value)
 ```
 
-04_setter_move: { range: "22:23-22:27" }
-### method `setY`  
+04_setter_move: { range: "25:9-25:18" }
+### method `setOffset`  
 
 ---
 → `void`  
 Parameters:  
-- `float v`
+- `double value`
 
-Trivial setter for `Y`.  
+Trivial setter for `offset`.  
 
 ---
 ```cpp
-// In X
-public: void setY(float v)
+// In Mover
+public: void setOffset(double value)
 ```

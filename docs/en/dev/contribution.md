@@ -7,7 +7,7 @@ Please refer to [build](./build.md) to build clice, and [test and debug](./test-
 ## Before Submitting
 
 1. **Format**: Run `pixi run format` to format all source files.
-2. **Tests**: All three test suites must pass (`pixi run test`).
+2. **Tests**: All four test suites — unit, integration, smoke and snapshot — must pass (`pixi run test`).
 3. **Commit messages**: Use [conventional commits](https://www.conventionalcommits.org/):
 
    ```

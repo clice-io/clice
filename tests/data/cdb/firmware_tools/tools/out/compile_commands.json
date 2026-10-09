@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "../..",
+    "file": "tools/gen.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DTOOL", "tools/gen.cpp"]
+  }
+]

@@ -1,0 +1,6 @@
+---
+created_at: 2026-10-08
+input_file: type_link_scopes.cpp
+---
+- { pos: "10:10", kind: Type, label: ": List<Widget>::Widget", links: ["List ${WS}/type_link_scopes.cpp:6:7-6:11", "Widget ${WS}/type_link_scopes.cpp:3:7-3:13", "Widget ${WS}/type_link_scopes.cpp:7:11-7:17"] }
+- { pos: "10:15", kind: Type, label: "-> List<Widget>::Widget", links: ["List ${WS}/type_link_scopes.cpp:6:7-6:11", "Widget ${WS}/type_link_scopes.cpp:3:7-3:13", "Widget ${WS}/type_link_scopes.cpp:7:11-7:17"] }

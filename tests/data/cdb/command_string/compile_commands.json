@@ -1,0 +1,7 @@
+[
+  {
+    "directory": ".",
+    "file": "main.cpp",
+    "command": "clang++ -std=c++20 -DCMD -c main.cpp -o main.o"
+  }
+]

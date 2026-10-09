@@ -1,0 +1,47 @@
+---
+created_at: 2026-10-08
+input_file: syntax_ranges/04_template_lists.cpp
+---
+call_arg:
+  - { range: "22:20-22:23", text: "int" }
+  - { range: "22:19-22:24", text: "<int>" }
+  - { range: "22:11-22:24", text: "identity<int>" }
+  - { range: "22:11-22:27", text: "identity<int>(3)" }
+  - { range: "22:0-22:27", text: "int same = identity<int>(3)" }
+  - { range: "22:0-22:28", text: "int same = identity<int>(3);" }
+
+member_arg:
+  - { range: "29:33-29:36", text: "int" }
+  - { range: "29:27-29:36", text: "long, int" }
+  - { range: "29:26-29:37", text: "<long, int>" }
+  - { range: "29:12-29:37", text: "Factory{}.make<long, int>" }
+  - { range: "29:12-29:40", text: "Factory{}.make<long, int>(4)" }
+  - { range: "29:0-29:40", text: "long made = Factory{}.make<long, int>(4)" }
+  - { range: "29:0-29:41", text: "long made = Factory{}.make<long, int>(4);" }
+
+nested_arg:
+  - { range: "20:15-20:19", text: "long" }
+  - { range: "20:15-20:25", text: "long, char" }
+  - { range: "20:14-20:26", text: "<long, char>" }
+  - { range: "20:10-20:26", text: "Pair<long, char>" }
+  - { range: "20:5-20:26", text: "int, Pair<long, char>" }
+  - { range: "20:4-20:27", text: "<int, Pair<long, char>>" }
+  - { range: "20:0-20:27", text: "Pair<int, Pair<long, char>>" }
+  - { range: "20:0-20:47", text: "Pair<int, Pair<long, char>> nested{1, {2, 'c'}}" }
+  - { range: "20:0-20:48", text: "Pair<int, Pair<long, char>> nested{1, {2, 'c'}};" }
+
+param:
+  - { range: "7:29-7:35", text: "Second" }
+  - { range: "7:23-7:35", text: "class Second" }
+  - { range: "7:10-7:35", text: "class First, class Second" }
+  - { range: "7:9-7:36", text: "<class First, class Second>" }
+  - { range: "7:0-11:1", text: "template <class First, class Second> struct Pair…" }
+  - { range: "7:0-11:2", text: "template <class First, class Second> struct Pair…" }
+
+type_arg:
+  - { range: "18:10-18:14", text: "long" }
+  - { range: "18:5-18:14", text: "int, long" }
+  - { range: "18:4-18:15", text: "<int, long>" }
+  - { range: "18:0-18:15", text: "Pair<int, long>" }
+  - { range: "18:0-18:26", text: "Pair<int, long> pair{1, 2}" }
+  - { range: "18:0-18:27", text: "Pair<int, long> pair{1, 2};" }

@@ -9,8 +9,13 @@
 /// server cannot compile utils.h at all.
 
 import * as proto from "vscode-languageserver-protocol";
-import { withTimeout } from "@clice/tools/client";
+import { waitUntil, withTimeout } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
+import {
+    wireKeys,
+    type CurrentContextResult,
+    type SwitchContextResult,
+} from "@clice/tools/protocol";
 
 /// clice/queryContext on a header should return source files that include it.
 test("query context returns host sources", async ({ session }) => {
@@ -46,16 +51,22 @@ test("query context source file returns cdb entries", async ({ session }) => {
     expect(result.contexts.length).toBe(1);
 });
 
-/// clice/currentContext should return null context by default.
-test("current context default null", async ({ session }) => {
+/// Without a choice, clice/currentContext names the host picked
+/// automatically, as the listing does.
+test("current context automatic", async ({ session }) => {
     const { client } = await session("header_context");
     await client.openAndWait("main.cpp");
 
     const [utilsUri] = client.open("utils.h");
 
     const result = await client.currentContext(utilsUri);
-    expect(result).not.toBeNull();
-    expect(result.context, "Default context should be null (no explicit override)").toBeNull();
+    expect(Object.keys(result).sort()).toEqual(
+        [...wireKeys<CurrentContextResult>()(["automatic", "context", "epoch"])].sort(),
+    );
+    expect(result.automatic).toBe(true);
+    const listed = await client.queryContext(utilsUri);
+    expect(result.context).toEqual(listed.contexts.find((c) => c.uri.includes("main.cpp")));
+    expect(result.epoch).toBe(listed.epoch);
 });
 
 /// switchContext should set the active context, currentContext should reflect it.
@@ -69,6 +80,11 @@ test("switch context and current context", async ({ session }) => {
     const switchResult = await client.switchContext(utilsUri, mainUri);
     expect(switchResult).not.toBeNull();
     expect(switchResult.success).toBe(true);
+    // The C++ and TS shapes of the reply are hand-written on both sides; a
+    // field added to one and not the other shows up here.
+    expect(Object.keys(switchResult).sort()).toEqual(
+        [...wireKeys<SwitchContextResult>()(["stale", "success"])].sort(),
+    );
 
     // Verify currentContext now returns main.cpp.
     const current = await client.currentContext(utilsUri);
@@ -79,6 +95,7 @@ test("switch context and current context", async ({ session }) => {
         "After switchContext, currentContext should return the active context",
     ).not.toBeNull();
     expect(ctx!.uri).toContain("main.cpp");
+    expect(current.automatic).toBe(false);
 });
 
 /// Full flow: open, query, switch, verify hover works in header context.
@@ -96,9 +113,9 @@ test("full context flow", async ({ session }) => {
     const contextUris = query.contexts.map((c) => c.uri);
     expect(contextUris.some((u) => u.includes("main.cpp"))).toBe(true);
 
-    // 4. currentContext on utils.h -> should be null (default).
+    // 4. currentContext on utils.h -> picked automatically.
     const current = await client.currentContext(utilsUri);
-    expect(current.context).toBeNull();
+    expect(current.automatic).toBe(true);
 
     // 5. switchContext on utils.h to main.cpp.
     const switched = await client.switchContext(utilsUri, mainUri);
@@ -106,6 +123,7 @@ test("full context flow", async ({ session }) => {
 
     // 6. currentContext on utils.h -> should now be main.cpp.
     const current2 = await client.currentContext(utilsUri);
+    expect(current2.automatic).toBe(false);
     const ctx = current2.context;
     expect(ctx).not.toBeNull();
     expect(ctx!.uri).toContain("main.cpp");
@@ -123,6 +141,27 @@ test("full context flow", async ({ session }) => {
         errors.length,
         `Header should have no errors after switchContext, got: ${JSON.stringify(errors)}`,
     ).toBe(0);
+});
+
+/// Document highlights in a header name what its includer's context declares.
+test("document highlight in context", async ({ session }) => {
+    const { client } = await session("header_context");
+    await client.openAndWait("main.cpp");
+    const [utilsUri] = await client.openAndWait("utils.h");
+
+    const point = await client.documentHighlightAt(utilsUri, 6, 18); // 'Point'
+    expect(point).toEqual([
+        {
+            range: { start: { line: 6, character: 16 }, end: { line: 6, character: 21 } },
+            kind: proto.DocumentHighlightKind.Read,
+        },
+    ]);
+
+    const param = await client.documentHighlightAt(utilsUri, 7, 20); // 'p'
+    expect(param?.map((h) => [h.range.start.line, h.range.start.character, h.kind])).toEqual([
+        [6, 22, proto.DocumentHighlightKind.Text],
+        [7, 20, proto.DocumentHighlightKind.Read],
+    ]);
 });
 
 /// queryContext on a deeply nested header (main.cpp -> utils.h -> inner.h)
@@ -209,21 +248,74 @@ test("switch between two hosts", async ({ session }) => {
     const [aUri] = await client.openAndWait("a.cpp");
     const [bUri] = await client.openAndWait("b.cpp");
     const [sharedUri] = client.open("shared.h");
+    expect((await client.currentContext(sharedUri)).context?.uri).toBe(aUri);
 
-    const hoverGetValueContains = async (text: string): Promise<boolean> => {
-        const hover = await client.hoverAt(sharedUri, 0, 12); // 'get_value'
-        expect(hover, "Hover on get_value should work").not.toBeNull();
-        return JSON.stringify(hover!.contents).includes(text);
-    };
+    /// switchContext only flips server state; the recompile under the new
+    /// host is asynchronous (pull model), so the hover polls until it lands.
+    const hoverGetValueShows = (text: string, host: string) =>
+        waitUntil(
+            async () => {
+                const hover = await client.hoverAt(sharedUri, 0, 12); // 'get_value'
+                return hover !== null && JSON.stringify(hover.contents).includes(text);
+            },
+            { timeout: 10_000, interval: 500, description: `${text} under host ${host}` },
+        );
 
     // Host a.cpp: VALUE_TYPE is int.
     let switched = await client.switchContext(sharedUri, aUri);
     expect(switched.success).toBe(true);
-    expect(await hoverGetValueContains("int"), "Expected int under host a.cpp").toBe(true);
+    await hoverGetValueShows("int", "a.cpp");
 
     // Host b.cpp: VALUE_TYPE is float. This exercises the cached-context
     // invalidation branch (active context differs from cached host).
     switched = await client.switchContext(sharedUri, bUri);
     expect(switched.success).toBe(true);
-    expect(await hoverGetValueContains("float"), "Expected float under host b.cpp").toBe(true);
+    await hoverGetValueShows("float", "b.cpp");
+
+    // The reset leaves the cached b.cpp context for the one picked
+    // automatically.
+    expect((await client.resetContext(sharedUri)).success).toBe(true);
+    await hoverGetValueShows("int", "a.cpp");
+    const current = await client.currentContext(sharedUri);
+    expect(current.automatic).toBe(true);
+    expect(current.context?.uri).toBe(aUri);
+});
+
+/// A switch and its reset keep the document open: the server recompiles
+/// the unchanged text and publishes for it.
+test("switch republishes diagnostics", async ({ session }) => {
+    const { client } = await session("header_context");
+    const [mainUri] = await client.openAndWait("main.cpp");
+    const [utilsUri] = await client.openAndWait("utils.h");
+
+    let arrived = client.armDiagnostics(utilsUri);
+    expect((await client.switchContext(utilsUri, mainUri)).success).toBe(true);
+    await withTimeout(arrived, 30_000, "diagnostics after the switch");
+    expect((await client.currentContext(utilsUri)).automatic).toBe(false);
+
+    arrived = client.armDiagnostics(utilsUri);
+    expect((await client.resetContext(utilsUri)).success).toBe(true);
+    await withTimeout(arrived, 30_000, "diagnostics after the reset");
+    const current = await client.currentContext(utilsUri);
+    expect(current.automatic).toBe(true);
+    expect(current.context?.uri).toContain("main.cpp");
+});
+
+/// A source a rule's default command claims compiles under that command,
+/// which the listing does not offer, even where another unit includes it.
+test("default command unit names no host", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write(
+        "clice.toml",
+        '[[rules]]\npatterns = ["src/**"]\ndefault_command = "clang++ -std=c++20"\n',
+    );
+    workspace.write("src/part.cpp", "int part() { return 1; }\n");
+    workspace.write("src/main.cpp", '#include "part.cpp"\nint main() { return part(); }\n');
+    await client.initialize(workspace);
+
+    await client.openAndWait("src/main.cpp");
+    const [part] = await client.openAndWait("src/part.cpp");
+    const current = await client.currentContext(part);
+    expect(current.automatic).toBe(true);
+    expect(current.context).toBeNull();
 });

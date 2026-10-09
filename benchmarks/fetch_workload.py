@@ -101,8 +101,8 @@ def main() -> int:
     print(f"\nworkload ready: {root}")
     print(f"compile_commands.json: {cdb}")
     print("suggested runs:")
-    print(f"  ./build/RelWithDebInfo/bin/scan_benchmark {cdb}")
-    print(f"  ./build/RelWithDebInfo/bin/pipeline_benchmark --limit 100 {cdb}")
+    print(f"  ./build/RelWithDebInfo/bin/bin/scan_benchmark {cdb}")
+    print(f"  ./build/RelWithDebInfo/bin/bin/pipeline_benchmark --limit 100 {cdb}")
     scenario = workload.get("scenario")
     if scenario:
         print(

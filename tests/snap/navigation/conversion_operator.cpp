@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 struct Number {
     int value;

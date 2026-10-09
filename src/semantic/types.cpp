@@ -1,18 +1,16 @@
-/// Parts of this file (deduced_type and its visitor) are ported from
+module;
+
+#include "modules/prelude.h"
+/// Parts of this file (deduced_type and its helpers) are ported from
 /// clangd's AST.cpp (llvmorg-21.1.8), part of the LLVM project, licensed
 /// under Apache License v2.0 with LLVM Exceptions. See
 /// https://llvm.org/LICENSE.txt for license information.
 
-#include "semantic/types.h"
+module clice;
 
-#include "semantic/decls.h"
-#include "semantic/resolver.h"
-
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/Type.h"
+import :semantic.decls;
+import :semantic.resolver;
+import :semantic.types;
 
 namespace clice::types {
 
@@ -32,8 +30,34 @@ const clang::NamedDecl* decl_of_impl(const void* T) {
 
 auto decls_of(clang::QualType type, TemplateResolver* resolver)
     -> llvm::SmallVector<const clang::NamedDecl*, 1> {
+    /// Sugar spelling no name of its own gives way to the type it wraps.
+    while(!type.isNull()) {
+        const clang::Type* written = type.getTypePtr();
+        if(auto* subst = llvm::dyn_cast<clang::SubstTemplateTypeParmType>(written)) {
+            type = subst->getReplacementType();
+        } else if(auto* paren = llvm::dyn_cast<clang::ParenType>(written)) {
+            type = paren->getInnerType();
+        } else if(auto* attributed = llvm::dyn_cast<clang::AttributedType>(written)) {
+            type = attributed->getModifiedType();
+        } else if(auto* macro = llvm::dyn_cast<clang::MacroQualifiedType>(written)) {
+            type = macro->getUnderlyingType();
+        } else {
+            break;
+        }
+    }
+
     if(type.isNull()) {
         return {};
+    }
+
+    /// A type alias is what the type names, whatever it stands for.
+    if(const auto* TT = llvm::dyn_cast<clang::TypedefType>(type.getTypePtr())) {
+        return {TT->getDecl()};
+    }
+
+    /// using ns::Widget; — the written name imports the type it names.
+    if(const auto* UT = llvm::dyn_cast<clang::UsingType>(type.getTypePtr())) {
+        return {UT->getDecl()->getTargetDecl()};
     }
 
     /// Dependent names carry no declaration structurally; resolve them
@@ -141,6 +165,40 @@ auto unwrap(clang::TypeLoc type, bool unwrap_function_type) -> clang::TypeLoc {
     return type;
 }
 
+auto unwrap(clang::QualType type) -> clang::QualType {
+    while(!type.isNull()) {
+        const clang::Type* written = type.getTypePtr();
+        if(auto* paren = llvm::dyn_cast<clang::ParenType>(written)) {
+            type = paren->getInnerType();
+        } else if(auto* adjusted = llvm::dyn_cast<clang::AdjustedType>(written)) {
+            type = adjusted->getOriginalType();
+        } else if(auto* pointer = llvm::dyn_cast<clang::PointerType>(written)) {
+            type = pointer->getPointeeType();
+        } else if(auto* reference = llvm::dyn_cast<clang::ReferenceType>(written)) {
+            type = reference->getPointeeType();
+        } else if(auto* array = llvm::dyn_cast<clang::ArrayType>(written)) {
+            type = array->getElementType();
+        } else if(auto* deduced = llvm::dyn_cast<clang::DeducedType>(written);
+                  deduced && deduced->getDeducedKind() == clang::DeducedKind::Deduced) {
+            type = deduced->getDeducedType();
+        } else if(auto* decltype_type = llvm::dyn_cast<clang::DecltypeType>(written);
+                  decltype_type && decltype_type->isSugared()) {
+            type = decltype_type->getUnderlyingType();
+        } else {
+            break;
+        }
+    }
+    return type;
+}
+
+auto destructor_of(clang::QualType type) -> const clang::CXXDestructorDecl* {
+    auto* RD = type->getAsCXXRecordDecl();
+    if(!RD || !RD->hasDefinition() || RD->hasTrivialDestructor()) {
+        return nullptr;
+    }
+    return RD->getDestructor();
+}
+
 auto declared_type(const clang::TypeDecl* decl) -> clang::QualType {
     assert(decl);
     clang::ASTContext& context = decl->getASTContext();
@@ -182,181 +240,138 @@ auto contained_auto_param_type(clang::TypeLoc type) -> clang::TemplateTypeParmTy
     return {};
 }
 
-/// Computes the deduced type at a given location by visiting the relevant
-/// nodes. We use this to display the actual type when hovering over an "auto"
-/// keyword or "decltype()" expression.
-/// FIXME: This could have been a lot simpler by visiting AutoTypeLocs but it
-/// seems that the AutoTypeLocs that can be visited along with their AutoType do
-/// not have the deduced type set. Instead, we have to go to the appropriate
-/// DeclaratorDecl/FunctionDecl and work our back to the AutoType that does have
-/// a deduced type set. The AST should be improved to simplify this scenario.
-class DeducedTypeVisitor : public clang::RecursiveASTVisitor<DeducedTypeVisitor> {
-public:
-    DeducedTypeVisitor(clang::SourceLocation searched_location) :
-        searched_location(searched_location) {}
+/// The deduced return type of a function whose return type holds the
+/// placeholder:
+/// - auto foo() {}
+/// - auto& foo() {}
+/// - auto foo() -> int {}
+/// - auto foo() -> decltype(1+1) {}
+/// - operator auto() const { return 10; }
+auto deduced_return_type(const clang::FunctionDecl* function) -> clang::QualType {
+    auto returned = function->getReturnType();
+    if(const auto* AT = returned->getContainedAutoType();
+       AT && AT->getDeducedKind() == clang::DeducedKind::Deduced) {
+        return AT->getDeducedType();
+    }
+    /// auto in a trailing return type just points to a DecltypeType and
+    /// getContainedAutoType does not unwrap it.
+    if(const auto* DT = llvm::dyn_cast<clang::DecltypeType>(returned)) {
+        return DT->getUnderlyingType();
+    }
+    return returned;
+}
 
-    /// Handle auto initializers:
-    /// - auto i = 1;
-    /// - decltype(auto) i = 1;
-    /// - auto& i = 1;
-    /// - auto* i = &a;
-    bool VisitDeclaratorDecl(clang::DeclaratorDecl* decl) {
-        if(!decl->getTypeSourceInfo() ||
-           !decl->getTypeSourceInfo()->getTypeLoc().getContainedAutoTypeLoc() ||
-           decl->getTypeSourceInfo()->getTypeLoc().getContainedAutoTypeLoc().getNameLoc() !=
-               searched_location) {
-            return true;
-        }
-
-        if(auto* type = decl->getType()->getContainedAutoType()) {
-            deduced = type->desugar();
-        }
-        return true;
+/// The type an abbreviated template's `auto` parameter took, when the
+/// template was instantiated exactly once.
+auto deduced_param_type(const clang::ParmVarDecl* param, clang::TemplateTypeParmTypeLoc written)
+    -> clang::QualType {
+    /// We expect the TTP to be attached to this function template.
+    const auto* templated = llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext());
+    auto* template_decl = templated ? templated->getDescribedFunctionTemplate() : nullptr;
+    if(!template_decl) {
+        return {};
     }
 
-    /// Handle auto return types:
-    /// - auto foo() {}
-    /// - auto& foo() {}
-    /// - auto foo() -> int {}
-    /// - auto foo() -> decltype(1+1) {}
-    /// - operator auto() const { return 10; }
-    bool VisitFunctionDecl(clang::FunctionDecl* decl) {
-        if(!decl->getTypeSourceInfo()) {
-            return true;
-        }
+    auto* params = template_decl->getTemplateParameters();
+    auto* found = llvm::find(params->asArray(), written.getDecl());
+    assert(found != params->end() && "auto TTP is not from enclosing function?");
 
-        /// Loc of auto in return type (c++14).
-        auto location = decl->getReturnTypeSourceRange().getBegin();
-
-        /// Loc of "auto" in operator auto().
-        if(location.isInvalid() && llvm::isa<clang::CXXConversionDecl>(decl)) {
-            location = decl->getTypeSourceInfo()->getTypeLoc().getBeginLoc();
-        }
-
-        /// Loc of "auto" in function with trailing return type (c++11).
-        if(location.isInvalid()) {
-            location = decl->getSourceRange().getBegin();
-        }
-
-        if(location != searched_location) {
-            return true;
-        }
-
-        const clang::AutoType* type = decl->getReturnType()->getContainedAutoType();
-        if(type && !type->getDeducedType().isNull()) {
-            deduced = type->getDeducedType();
-        } else if(auto* decltype_type =
-                      llvm::dyn_cast<clang::DecltypeType>(decl->getReturnType())) {
-            /// auto in a trailing return type just points to a DecltypeType
-            /// and getContainedAutoType does not unwrap it.
-            if(!decltype_type->getUnderlyingType().isNull()) {
-                deduced = decltype_type->getUnderlyingType();
-            }
-        } else if(!decl->getReturnType().isNull()) {
-            deduced = decl->getReturnType();
-        }
-        return true;
+    // The helper keeps its clangd signature, which speaks mutable pointers;
+    // it only reads through them.
+    auto* instantiation = llvm::dyn_cast_or_null<clang::FunctionDecl>(
+        decls::only_instantiation(const_cast<clang::FunctionDecl*>(templated)));
+    if(!instantiation) {
+        return {};
     }
 
-    /// Handle non-auto decltype, e.g.:
-    /// - auto foo() -> decltype(expr) {}
-    /// - decltype(expr);
-    bool VisitDecltypeTypeLoc(clang::DecltypeTypeLoc type_loc) {
-        if(type_loc.getBeginLoc() != searched_location) {
-            return true;
-        }
-
-        /// A DecltypeType's underlying type can be another DecltypeType! E.g.
-        ///   int I = 0;
-        ///   decltype(I) J = I;
-        ///   decltype(J) K = J;
-        const auto* type = llvm::dyn_cast<clang::DecltypeType>(type_loc.getTypePtr());
-        while(type && !type->getUnderlyingType().isNull()) {
-            deduced = type->getUnderlyingType();
-            type = llvm::dyn_cast<clang::DecltypeType>(deduced.getTypePtr());
-        }
-        return true;
+    const auto* args = instantiation->getTemplateSpecializationArgs();
+    if(args->size() != params->size()) {
+        /// No weird variadic stuff.
+        return {};
     }
-
-    /// Handle functions/lambdas with `auto` typed parameters.
-    /// We deduce the type if there's exactly one instantiation visible.
-    bool VisitParmVarDecl(clang::ParmVarDecl* param) {
-        if(!param->getType()->isDependentType()) {
-            return true;
-        }
-
-        /// 'auto' here does not name an AutoType, but an implicit template param.
-        clang::TemplateTypeParmTypeLoc auto_loc =
-            contained_auto_param_type(param->getTypeSourceInfo()->getTypeLoc());
-        if(auto_loc.isNull() || auto_loc.getNameLoc() != searched_location) {
-            return true;
-        }
-
-        /// We expect the TTP to be attached to this function template.
-        /// Find the template and the param index.
-        auto* templated = llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext());
-        if(!templated) {
-            return true;
-        }
-
-        auto* template_decl = templated->getDescribedFunctionTemplate();
-        if(!template_decl) {
-            return true;
-        }
-
-        int index = param_index(*template_decl, *auto_loc.getDecl());
-        if(index < 0) {
-            assert(false && "auto TTP is not from enclosing function?");
-            return true;
-        }
-
-        /// Now find the instantiation and the deduced template type arg.
-        auto* instantiation =
-            llvm::dyn_cast_or_null<clang::FunctionDecl>(decls::only_instantiation(templated));
-        if(!instantiation) {
-            return true;
-        }
-
-        const auto* args = instantiation->getTemplateSpecializationArgs();
-        if(args->size() != template_decl->getTemplateParameters()->size()) {
-            /// No weird variadic stuff.
-            return true;
-        }
-
-        deduced = args->get(index).getAsType();
-        return true;
-    }
-
-    static int param_index(const clang::TemplateDecl& template_decl, clang::NamedDecl& param) {
-        int index = 0;
-        for(auto* decl: *template_decl.getTemplateParameters()) {
-            if(&param == decl) {
-                return index;
-            }
-            index += 1;
-        }
-        return -1;
-    }
-
-    clang::SourceLocation searched_location;
-
-    clang::QualType deduced;
-};
+    return args->get(found - params->begin()).getAsType();
+}
 
 }  // namespace
 
-auto deduced_type(clang::ASTContext& context, clang::SourceLocation loc)
-    -> std::optional<clang::QualType> {
-    if(!loc.isValid()) {
-        return std::nullopt;
+auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clang::QualType {
+    if(const auto* loc = written.get<clang::TypeLoc>()) {
+        if(auto decltype_loc = loc->getAs<clang::DecltypeTypeLoc>()) {
+            /// A DecltypeType's underlying type can be another DecltypeType! E.g.
+            ///   int I = 0;
+            ///   decltype(I) J = I;
+            ///   decltype(J) K = J;
+            clang::QualType deduced;
+            const auto* type = decltype_loc.getTypePtr();
+            while(type && !type->getUnderlyingType().isNull()) {
+                deduced = type->getUnderlyingType();
+                type = llvm::dyn_cast<clang::DecltypeType>(deduced.getTypePtr());
+            }
+            return deduced;
+        }
     }
 
-    DeducedTypeVisitor visitor(loc);
-    visitor.TraverseAST(context);
-    if(visitor.deduced.isNull()) {
-        return std::nullopt;
+    const auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(owner);
+    if(!declarator || !declarator->getTypeSourceInfo()) {
+        return {};
     }
-    return visitor.deduced;
+
+    /// The leading `auto` of a trailing return type belongs to the function
+    /// itself.
+    if(written.get<clang::Decl>() == owner) {
+        const auto* function = llvm::dyn_cast<clang::FunctionDecl>(owner);
+        const auto* proto =
+            function ? function->getType()->getAs<clang::FunctionProtoType>() : nullptr;
+        return proto && proto->hasTrailingReturn() ? deduced_return_type(function)
+                                                   : clang::QualType();
+    }
+
+    const auto* loc = written.get<clang::TypeLoc>();
+    if(!loc) {
+        return {};
+    }
+    auto declared = declarator->getTypeSourceInfo()->getTypeLoc();
+
+    /// 'auto' of a parameter does not name an AutoType, but an implicit
+    /// template parameter.
+    if(auto param_loc = loc->getAs<clang::TemplateTypeParmTypeLoc>()) {
+        const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(declarator);
+        if(!param || contained_auto_param_type(declared) != param_loc) {
+            return {};
+        }
+        return deduced_param_type(param, param_loc);
+    }
+
+    auto auto_loc = loc->getAs<clang::AutoTypeLoc>();
+    if(!auto_loc) {
+        return {};
+    }
+    /// The placeholder of `owner`'s own type, not one below it (`new auto`
+    /// in an initializer or a body).
+    auto declares = [&](clang::TypeLoc type) {
+        auto contained = type.getContainedAutoTypeLoc();
+        return contained && contained.getNameLoc() == auto_loc.getNameLoc();
+    };
+
+    if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declarator)) {
+        /// `operator auto()` spells its placeholder in the name; a function
+        /// declared through an alias (`id<decltype(auto(0))()> f;`) has no
+        /// return type of its own written.
+        clang::TypeLoc returned;
+        if(llvm::isa<clang::CXXConversionDecl>(function)) {
+            returned = function->getNameInfo().getNamedTypeInfo()->getTypeLoc();
+        } else if(auto proto = function->getFunctionTypeLoc()) {
+            returned = proto.getReturnLoc();
+        }
+        return returned && declares(returned) ? deduced_return_type(function) : clang::QualType();
+    }
+
+    if(!declares(declared)) {
+        return {};
+    }
+    // A structured binding of an array declares the array type itself.
+    const auto* type = declarator->getType()->getContainedAutoType();
+    return type ? type->desugar() : clang::QualType();
 }
 
 }  // namespace clice::types

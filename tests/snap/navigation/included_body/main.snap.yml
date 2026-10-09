@@ -1,0 +1,28 @@
+---
+created_at: 2026-10-01
+input_file: included_body/main.cpp
+---
+big:
+  definition:
+    - { file: "${WS}/included_body/main.cpp", range: "11:4-11:7" }
+  declaration:
+    - { file: "${WS}/included_body/main.cpp", range: "11:4-11:7" }
+  references:
+    - { file: "${WS}/included_body/main.cpp", range: "11:4-11:7" }
+  callHierarchy:
+    - { name: "big", kind: Function, file: "${WS}/included_body/main.cpp", range: "11:0-16:1", selection: "11:4-11:7" }
+  outgoingCalls:
+    - { name: "leaf", kind: Function, file: "${WS}/included_body/main.cpp", range: "7:0-9:1", selection: "7:4-7:8", fromRanges: ["13:9-13:19", "14:13-14:17"] }
+
+leaf:
+  definition:
+    - { file: "${WS}/included_body/main.cpp", range: "7:4-7:8" }
+  declaration:
+    - { file: "${WS}/included_body/main.cpp", range: "7:4-7:8" }
+  references:
+    - { file: "${WS}/included_body/main.cpp", range: "7:4-7:8" }
+    - { file: "${WS}/included_body/main.cpp", range: "14:13-14:17" }
+  callHierarchy:
+    - { name: "leaf", kind: Function, file: "${WS}/included_body/main.cpp", range: "7:0-9:1", selection: "7:4-7:8" }
+  incomingCalls:
+    - { name: "big", kind: Function, file: "${WS}/included_body/main.cpp", range: "11:0-16:1", selection: "11:4-11:7", fromRanges: ["13:9-13:19", "14:13-14:17"] }

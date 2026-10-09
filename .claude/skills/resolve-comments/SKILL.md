@@ -1,43 +1,25 @@
 ---
 name: resolve-comments
-description: Pull unresolved review threads of the current PR, apply the fixes in the worktree, resolve the threads, and return a compact summary. Runs in a forked context so the GraphQL plumbing and comment bodies never touch the main conversation.
-context: fork
+description: Pull unresolved review threads of the current PR, apply the fixes in the worktree, resolve the threads, and return a compact summary. Runs inline; the digest script keeps the bot boilerplate out of the conversation.
 ---
 
 Handle one round of review comments for the current branch's PR.
 
 ## Fetch
 
-Discover the PR number with `gh pr view --json number`, then pull the
-threads (space `gh` calls with `sleep 1` — API rate limits are a real
-concern):
-
 ```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $pr: Int!) {
-  repository(owner: $owner, name: $repo) {
-    pullRequest(number: $pr) {
-      reviewThreads(first: 100) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          isResolved
-          isOutdated
-          path
-          line
-          comments(first: 10) { nodes { author { login } body } }
-        }
-      }
-    }
-  }
-}' -F owner=clice-io -F repo=clice -F pr=<N> \
-  --jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved | not))'
+python3 .claude/skills/pr/scripts/comments.py            # current branch's PR
+python3 .claude/skills/pr/scripts/comments.py <N> --all  # resolved threads too
 ```
 
-Always select by `isResolved == false` — never filter by timestamps.
-While `hasNextPage` is true, fetch the next page with
-`reviewThreads(first: 100, after: "<endCursor>")` — never report from a
-partial listing.
+One screen per round: every unresolved thread (all pages, selected by
+`isResolved == false` — never by timestamps) with its id, location,
+author, severity and the comment text stripped of badges, AI prompts and
+tracking markup, followed by the findings bots post in review bodies
+instead of inline threads (the codex connector puts P2 items there with a
+permalink). Handle those like threads; they have nothing to resolve, so
+list them as handled in the report. Space any extra `gh` calls with
+`sleep 1` — API rate limits are a real concern.
 
 ## Handle each thread
 
@@ -61,6 +43,34 @@ how it is phrased.
   in the report — chosen approach, rejected alternative, and why. The
   maintainer reviews these in one batch after the CI flow finishes;
   anything overturned becomes follow-up work or a dedicated refactor PR.
+- Low-priority corner case — a state no user workflow reaches, a
+  transition the plan never asked to handle: no code. Record it as an
+  accepted limitation in the report's Decisions block; reproducibility
+  alone is not a reason to fix.
+
+## Convergence
+
+The bots review the whole diff on every push and remember nothing: a
+thread resolved with a rationale is re-derived and re-posted next push,
+and every mechanism a fix adds — a cache, a set, a period, an enum
+value, a second removal path — is a new surface with its own edge cases
+for the next round. A push that answers findings by adding mechanism
+guarantees the next round has findings.
+
+When a third consecutive round brings new threads, stop fixing and
+review the whole branch against its plan before touching another
+thread: list the mechanisms the fix commits added that the plan did not
+ask for, and whether each answers a user-visible failure or only a
+reviewer's hypothetical. Strip the ones that only answer hypotheticals
+(they are the churn), keep the plan's shape, record the remaining edges
+as accepted limitations, and push once. Threads the bots post after
+that get a rationale and a resolve, no code, unless one names a
+user-visible defect.
+
+If that review shows the plan's model itself is wrong — the reviewer is
+re-deriving an invariant the design cannot hold, not pointing at a
+missing branch — stop resolving and ask the maintainer before any
+further code: that is a design decision, not a review round.
 
 ## Resolve
 

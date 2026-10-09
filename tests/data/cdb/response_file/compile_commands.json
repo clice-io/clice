@@ -1,0 +1,7 @@
+[
+  {
+    "directory": ".",
+    "file": "main.cpp",
+    "arguments": ["clang++", "@flags.rsp", "main.cpp"]
+  }
+]

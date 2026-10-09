@@ -1,19 +1,10 @@
-#include "command/argument_parser.h"
+module;
 
-#include <format>
-#include <span>
-#include <string_view>
-#include <utility>
+#include "modules/prelude.h"
 
-#include <kota/deco/option.h>
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringTable.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/Driver/Types.h"
-#include "clang/Options/OptionUtils.h"
+module clice;
+
+import :command.argument_parser;
 
 namespace clice {
 
@@ -55,25 +46,28 @@ constexpr std::string_view str_at(unsigned offset) {
     return {ref.data(), ref.size()};
 }
 
+/// Plain enum: Options.inc combines these with bitwise-or, which needs the
+/// implicit conversion an enum class forbids.
+enum ClangDriverFlag : unsigned {
+    HelpHidden = eo::HelpHidden,
+    RenderAsInput = eo::RenderAsInput,
+    RenderJoined = eo::RenderJoined,
+    Ignored = 1u << 4,
+    LinkOption = 1u << 5,
+    LinkerInput = 1u << 6,
+    NoArgumentUnused = 1u << 7,
+    NoXarchOption = 1u << 8,
+    TargetSpecific = 1u << 9,
+    Unsupported = 1u << 10,
+};
+
 }  // namespace detail
 
 const eo::OptTable& table() {
     using enum eo::Kind;
+    using enum detail::ClangDriverFlag;
     using detail::prefixes;
     using detail::str_at;
-
-    enum ClangDriverFlag : unsigned {
-        HelpHidden = eo::HelpHidden,
-        RenderAsInput = eo::RenderAsInput,
-        RenderJoined = eo::RenderJoined,
-        Ignored = 1u << 4,
-        LinkOption = 1u << 5,
-        LinkerInput = 1u << 6,
-        NoArgumentUnused = 1u << 7,
-        NoXarchOption = 1u << 8,
-        TargetSpecific = 1u << 9,
-        Unsupported = 1u << 10,
-    };
 
     constexpr static eo::Option option_infos[] = {
 #define OPTION(PREFIXES_OFFSET,                                                                    \
@@ -122,6 +116,15 @@ const eo::OptTable& table() {
 using namespace option;
 
 bool is_discarded_option(unsigned id) {
+    /// Options the driver accepts and ignores (gcc compat knobs, e.g. the
+    /// per-file -frandom-seed=<output> bazel stamps on every command): a
+    /// per-file value here must not fracture probe and identity keys.
+    /// Deliberately also drops clang's -Wignored-optimization-argument
+    /// compat warnings for them — under -Werror those abort the analysis.
+    if(auto opt = option::table().option(id); opt && opt->has_flag(option::detail::Ignored)) {
+        return true;
+    }
+
     switch(id) {
         /// Input file, unknown args, and output — we manage these ourselves.
         /// -main-file-name is per-file input identity injected by to_argv()
@@ -140,6 +143,7 @@ bool is_discarded_option(unsigned id) {
         /// PCH building.
         case OPT_emit_pch:
         case OPT_include_pch:
+        case OPT__SLASH_Yc:
         case OPT__SLASH_Yu:
         case OPT__SLASH_Fp:
 
@@ -184,12 +188,54 @@ bool is_user_content_option(unsigned id) {
     }
 }
 
-bool is_include_path_option(unsigned id) {
+bool names_path(unsigned id, llvm::StringRef value) {
+    if(value.empty() || value.starts_with("=") || value.starts_with("$SYSROOT")) {
+        return false;
+    }
     switch(id) {
         case OPT_I:
         case OPT_isystem:
         case OPT_iquote:
-        case OPT_idirafter: return true;
+        case OPT_idirafter:
+        case OPT_isystem_after:
+        case OPT_cxx_isystem:
+        case OPT_stdlibxx_isystem:
+        case OPT_F:
+        case OPT_iframework:
+        case OPT_isysroot:
+        case OPT__sysroot_EQ:
+        case OPT__SLASH_imsvc:
+        case OPT__SLASH_winsysroot:
+        case OPT_B:
+        case OPT_gcc_toolchain:
+        case OPT_gcc_install_dir_EQ:
+        case OPT_cuda_path_EQ:
+        case OPT_hip_path_EQ:
+        case OPT_rocm_path_EQ:
+        case OPT_rocm_device_lib_path_EQ:
+        case OPT_resource_dir:
+        case OPT_config_system_dir_EQ:
+        case OPT_config_user_dir_EQ:
+        case OPT_fprebuilt_module_path:
+        case OPT_fmodules_cache_path:
+        case OPT_fmodule_map_file:
+        case OPT_ivfsoverlay:
+        case OPT_fsanitize_ignorelist_EQ:
+        case OPT_fsanitize_system_ignorelist_EQ:
+        case OPT_fsanitize_coverage_allowlist:
+        case OPT_fsanitize_coverage_ignorelist:
+        case OPT_fprofile_list_EQ:
+        case OPT_fxray_attr_list:
+        case OPT_fxray_always_instrument:
+        case OPT_fxray_never_instrument:
+        case OPT_fprofile_instr_use_EQ:
+        case OPT_fprofile_use_EQ:
+        case OPT_fprofile_sample_use_EQ:
+        case OPT_fprofile_remapping_file_EQ:
+        case OPT_fbuild_session_file:
+        case OPT_working_directory:
+        case OPT_working_directory_EQ: return true;
+        case OPT_config: return value.contains('/') || value.contains('\\');
         default: return false;
     }
 }
@@ -334,16 +380,6 @@ std::string canonicalize(llvm::ArrayRef<std::string> args, ArgsProfile profile) 
     return buf;
 }
 
-std::string canonical_command_hash(llvm::ArrayRef<std::string> args, llvm::StringRef directory) {
-    auto canonical = canonicalize(args, ArgsProfile::Frontend);
-    // Identical argv can still mean different compiles when relative paths
-    // (-include config.h) resolve against different working directories.
-    canonical += '\0';
-    canonical += directory;
-    auto hash = llvm::xxh3_64bits(llvm::StringRef(canonical));
-    return std::format("{:016x}", hash);
-}
-
 std::string print_argv(llvm::ArrayRef<const char*> args) {
     std::string buf;
     llvm::raw_string_ostream os(buf);
@@ -377,8 +413,9 @@ unsigned default_visibility(llvm::StringRef driver) {
     if(is_cl(name) || is_cl(name.rtrim("0123456789.-"))) {
         return ~0u;
     }
-    /// Exclude CLOption to prevent /U, /D, /I from matching Unix paths.
-    return ~static_cast<unsigned>(CLOption);
+    /// Exclude the slash-prefixed CL and DXC options (/D and /I carry both
+    /// bits) to prevent /U, /D, /I from matching Unix paths.
+    return ~static_cast<unsigned>(CLOption | DXCOption);
 }
 
 bool is_c_family_file(llvm::StringRef filename) {

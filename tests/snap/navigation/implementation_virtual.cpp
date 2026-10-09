@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 struct §(base)Shape {
     virtual int §(base_method)area() = 0;

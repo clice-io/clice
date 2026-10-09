@@ -1,5 +1,2 @@
-## # clice configuration
-
-[project]
-# Enable clang-tidy diagnostics.
+[diagnostics]
 clang_tidy = true

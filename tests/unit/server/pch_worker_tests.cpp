@@ -1,12 +1,14 @@
-#include <algorithm>
-#include <string>
-#include <vector>
+module;
 
-#include "test/test.h"
-#include "server/protocol/worker.h"
-#include "server/state/workspace.h"
-#include "server/worker_test_helpers.h"
-#include "syntax/scan.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :project.project;
+import :syntax.scan;
+import :tests.unit.server.worker_test_helpers;
+import :tests.unit.test.test;
+import :worker.protocol;
 
 namespace clice::testing {
 
@@ -18,9 +20,9 @@ namespace {
 //   2. Stateful worker compiles a file using the PCH
 // ============================================================================
 
-TEST_SUITE(PCHWorker) {
+ZEST_SUITE(PCHWorker) {
 
-TEST_CASE(BuildPCHThenCompile) {
+ZEST_CASE(BuildPCHThenCompile) {
     TempDir tmp;
 
     tmp.touch("common.h",
@@ -35,14 +37,13 @@ TEST_CASE(BuildPCHThenCompile) {
     auto dir = std::string(tmp.root);
 
     WorkerHandle sl;
-    ASSERT_TRUE(sl.spawn());
+    ZASSERT(sl.spawn());
 
     std::string pch_path;
     bool phase1_done = false;
 
     sl.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::BuildPCH;
+        worker::BuildPCHParams params;
         params.file = main_file;
         params.directory = dir;
         params.arguments = {"clang++",
@@ -53,38 +54,38 @@ TEST_CASE(BuildPCHThenCompile) {
                             "-I",
                             dir,
                             main_file};
-        params.text = main_text;
+        params.content = main_text;
         params.preamble_bound = compute_preamble_bound(main_text);
         params.output_path = tmp.path("preamble.pch");
         params.index_output_path = tmp.path("preamble.pch.idx");
 
         auto result = co_await sl.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        CO_ASSERT_TRUE(result.value().success);
+        ZASSERT(result);
+        ZASSERT(result.value().success);
         pch_path = result.value().output_path;
-        EXPECT_FALSE(pch_path.empty());
+        ZEXPECT(!pch_path.empty());
 
         phase1_done = true;
         sl.peer->close_output();
     });
 
-    ASSERT_TRUE(phase1_done);
-    ASSERT_FALSE(pch_path.empty());
+    ZASSERT(phase1_done);
+    ZASSERT(!pch_path.empty());
 
     // Verify the PCH file exists on disk.
-    ASSERT_TRUE(llvm::sys::fs::exists(pch_path));
+    ZASSERT(llvm::sys::fs::exists(pch_path));
 
     // The worker wrote the paired preamble envelope: it must load and
     // carry the preamble's document links (the #include of common.h).
     auto state = load_pch_envelope(tmp.path("preamble.pch.idx"));
-    ASSERT_TRUE(state != nullptr);
+    ZASSERT(state != nullptr);
     bool has_common_link = std::ranges::any_of(state->links(), [&](auto& link) {
         return llvm::StringRef(link.target).ends_with("common.h");
     });
-    EXPECT_TRUE(has_common_link);
+    ZEXPECT(has_common_link);
 
     WorkerHandle sf;
-    ASSERT_TRUE(sf.spawn(4ULL * 1024 * 1024 * 1024));
+    ZASSERT(sf.spawn(true));
 
     bool phase2_done = false;
 
@@ -106,20 +107,20 @@ TEST_CASE(BuildPCHThenCompile) {
         params.pch = {pch_path, preamble_bound};
 
         auto result = co_await sf.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().version, 1);
+        ZASSERT(result);
+        ZEXPECT(result.value().version == 1);
 
         phase2_done = true;
         sf.peer->close_output();
     });
 
-    ASSERT_TRUE(phase2_done);
+    ZASSERT(phase2_done);
 
     // Cleanup PCH temp file.
     std::remove(pch_path.c_str());
 }
 
-TEST_CASE(BlobWriteFailure) {
+ZEST_CASE(BlobWriteFailure) {
     TempDir tmp;
 
     tmp.touch("common.h",
@@ -131,12 +132,11 @@ TEST_CASE(BlobWriteFailure) {
     auto dir = std::string(tmp.root);
 
     WorkerHandle sl;
-    ASSERT_TRUE(sl.spawn());
+    ZASSERT(sl.spawn());
 
     bool done = false;
     sl.run([&]() -> kota::task<> {
-        worker::BuildParams params;
-        params.kind = worker::BuildKind::BuildPCH;
+        worker::BuildPCHParams params;
         params.file = main_file;
         params.directory = dir;
         params.arguments = {"clang++",
@@ -147,7 +147,7 @@ TEST_CASE(BlobWriteFailure) {
                             "-I",
                             dir,
                             main_file};
-        params.text = main_text;
+        params.content = main_text;
         params.preamble_bound = compute_preamble_bound(main_text);
         params.output_path = tmp.path("preamble.pch");
         // Unwritable blob path: the whole build must fail (the PCH is only
@@ -155,18 +155,18 @@ TEST_CASE(BlobWriteFailure) {
         params.index_output_path = tmp.path("no_such_dir/preamble.pch.idx");
 
         auto result = co_await sl.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_FALSE(result.value().success);
-        EXPECT_FALSE(result.value().has_user_errors);
+        ZASSERT(result);
+        ZEXPECT(!result.value().success);
+        ZEXPECT(!result.value().has_user_errors);
 
         done = true;
         sl.peer->close_output();
     });
 
-    ASSERT_TRUE(done);
+    ZASSERT(done);
 }
 
-TEST_CASE(CompileWithoutPCHStillWorks) {
+ZEST_CASE(CompileWithoutPCHStillWorks) {
     TempDir tmp;
 
     tmp.touch("common.h",
@@ -179,7 +179,7 @@ TEST_CASE(CompileWithoutPCHStillWorks) {
     auto dir = std::string(tmp.root);
 
     WorkerHandle sf;
-    ASSERT_TRUE(sf.spawn(4ULL * 1024 * 1024 * 1024));
+    ZASSERT(sf.spawn(true));
 
     bool compile_done = false;
 
@@ -199,17 +199,17 @@ TEST_CASE(CompileWithoutPCHStillWorks) {
         // pch left as default (empty path, 0 bound).
 
         auto result = co_await sf.peer->send_request(params);
-        CO_ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result.value().version, 1);
+        ZASSERT(result);
+        ZEXPECT(result.value().version == 1);
 
         compile_done = true;
         sf.peer->close_output();
     });
 
-    ASSERT_TRUE(compile_done);
+    ZASSERT(compile_done);
 }
 
-};  // TEST_SUITE(PCHWorker)
+};  // ZEST_SUITE(PCHWorker)
 
 }  // namespace
 }  // namespace clice::testing

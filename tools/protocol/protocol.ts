@@ -1,13 +1,8 @@
 /// Typed definitions of clice's custom LSP extensions — the single source
 /// shared by the integration tests and the VSCode extension. Wire shapes
-/// mirror src/server/protocol/extension.h (camelCase on the wire).
+/// mirror src/server/extension.h (camelCase on the wire).
 
-import {
-    NotificationType,
-    RequestType,
-    RequestType0,
-    type Range,
-} from "vscode-languageserver-protocol";
+import { RequestType, RequestType0 } from "vscode-languageserver-protocol";
 
 /// A selectable compilation context of a file.
 export interface ContextItem {
@@ -18,9 +13,9 @@ export interface ContextItem {
     /// compile configurations).
     uri: string;
 
-    /// For header contexts: which include of the header in its direct
-    /// includer this context represents (0-based, in directive order).
-    /// Present only when the header is included more than once.
+    /// For header contexts: which place the host's compile enters the
+    /// header this context represents (0-based, in the order it does).
+    /// Present only when it enters the header more than once.
     occurrence?: number;
 
     /// For source compile configurations: canonical hash identifying the
@@ -51,7 +46,17 @@ export interface CurrentContextParams {
 }
 
 export interface CurrentContextResult {
+    /// The context the file compiles under, as queryContext lists it:
+    /// the user's choice, else the one picked automatically; null when
+    /// the file borrows no context and has no entry of its own.
     context: ContextItem | null;
+
+    /// Whether no choice of the user's is in force.
+    automatic: boolean;
+
+    /// The listing generation it answers under (QueryContextResult.epoch):
+    /// a listing of another epoch is out of date.
+    epoch: number;
 }
 
 export const CurrentContextRequest = new RequestType<
@@ -81,24 +86,70 @@ export interface SwitchContextResult {
     success: boolean;
 
     /// The request referenced an outdated queryContext listing.
-    stale?: boolean;
+    stale: boolean;
 }
 
 export const SwitchContextRequest = new RequestType<SwitchContextParams, SwitchContextResult, void>(
     "clice/switchContext",
 );
 
-/// Pushed after each compile: the preprocessor-inactive regions of the
-/// file under its current compilation context. Clients typically render
-/// them dimmed.
-export interface InactiveRegionsParams {
+/// clice/resetContext: drop the user's choice, back to the automatic one.
+export interface ResetContextParams {
     uri: string;
-    regions: Range[];
 }
 
-export const InactiveRegionsNotification = new NotificationType<InactiveRegionsParams>(
-    "clice/inactiveRegions",
+export const ResetContextRequest = new RequestType<ResetContextParams, SwitchContextResult, void>(
+    "clice/resetContext",
 );
+
+/// clice/listConfigurations: the build configuration menu (the distinct
+/// `configuration` tags of the rules) and the names the selection layers
+/// hold.
+export interface ListConfigurationsResult {
+    /// Declared tags in declaration order; empty when the rules declare none.
+    configurations: string[];
+
+    /// The configuration this server process runs.
+    active: string;
+
+    /// The persisted selection, applied at the next server start; empty
+    /// when none was made.
+    selected: string;
+
+    /// The configuration active when nothing selects one.
+    defaultConfiguration: string;
+}
+
+/// clice/listConfigurations: the menu of the project serving `uri`;
+/// without one, of the first project over a folder.
+export interface ListConfigurationsParams {
+    uri?: string;
+}
+
+export const ListConfigurationsRequest = new RequestType<
+    ListConfigurationsParams,
+    ListConfigurationsResult,
+    void
+>("clice/listConfigurations");
+
+/// clice/switchConfiguration: persist `name` as the selected configuration.
+/// The running server keeps its configuration; the choice takes effect when
+/// the client restarts it.
+export interface SwitchConfigurationParams {
+    name: string;
+    /// The project, as in ListConfigurationsParams.
+    uri?: string;
+}
+
+export interface SwitchConfigurationResult {
+    success: boolean;
+}
+
+export const SwitchConfigurationRequest = new RequestType<
+    SwitchConfigurationParams,
+    SwitchConfigurationResult,
+    void
+>("clice/switchConfiguration");
 
 /// clice/internal/poll — TEST-ONLY, not a stable API. Synchronously runs
 /// one file-tracker tick (stat → diff → events → dispatch → effects) and
@@ -108,6 +159,12 @@ export const InactiveRegionsNotification = new NotificationType<InactiveRegionsP
 export interface PollParams {
     /// Which loop to tick: "cdb" or "workspace".
     loop: "cdb" | "workspace";
+    /// CDB loop only; defaults to true. A forced tick reloads unconditionally,
+    /// skipping the (size, mtime) stamp gate and the two-tick settling
+    /// debounce, so one request applies a change deterministically. `false`
+    /// runs the production tick: a rewrite is noticed only through its stamp,
+    /// and a changed stamp must hold for two consecutive ticks to reload.
+    force?: boolean;
 }
 
 export interface PollResult {
@@ -135,7 +192,8 @@ export const LogFloodRequest = new RequestType<LogFloodParams, LogFloodResult, v
 
 /// clice/internal/stats — TEST-ONLY, not a stable API. Ownership gauges
 /// for memory-lifecycle regression tests: each leak class is pinned by a
-/// deterministic counter instead of brittle RSS assertions.
+/// deterministic counter instead of brittle RSS assertions; and the counts
+/// of freshness checks, which pin what a request looks at.
 export interface StatsResult {
     pchLoadedStates: number;
     pchStateBytes: number;
@@ -143,7 +201,26 @@ export interface StatsResult {
     indexShardContentBytes: number;
     lastSaveShards: number;
     pendingTmpFiles: number;
-    [key: string]: number;
+    pchCacheEntries: number;
+    headerContexts: number;
+    synthesizedContexts: number;
+    sessions: number;
+    /// Freshness checks of files answered by a look at the disk, and from a
+    /// look not yet due.
+    checksLooked: number;
+    checksTrusted: number;
+    /// Preprocessor passes that looked for a unit's imports.
+    importScans: number;
 }
 
 export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/stats");
+
+/// The keys of a wire type, for pinning a live reply's shape against the
+/// hand-written C++ struct: the listing is checked complete at compile
+/// time (a key the type gains must be added here), and a test compares it
+/// with the reply's `Object.keys`.
+export function wireKeys<T>() {
+    return <const K extends readonly (keyof T)[]>(
+        keys: Exclude<keyof T, K[number]> extends never ? K : never,
+    ): readonly (keyof T)[] => keys;
+}

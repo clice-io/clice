@@ -1,226 +1,337 @@
-#include "test/test.h"
-#include "syntax/completion.h"
+module;
 
-#include "llvm/ADT/DenseMap.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.completion;
+import :syntax.dependency_graph;
+import :syntax.scan;
+import :tests.unit.test.test;
 
 namespace clice::testing {
 namespace {
 
-TEST_SUITE(DetectCompletionContext) {
+ZEST_SUITE(FollowsAccessOperator) {
 
-TEST_CASE(IncludeAngled) {
+ZEST_CASE(MemberAccess) {
+    ZEXPECT(follows_access_operator("w.", 2));
+    ZEXPECT(follows_access_operator("p->", 3));
+    ZEXPECT(follows_access_operator("std::", 5));
+}
+
+ZEST_CASE(PackEllipsis) {
+    ZEXPECT(!follows_access_operator("template <typename..", 20));
+    ZEXPECT(!follows_access_operator("template <typename...", 21));
+}
+
+ZEST_CASE(NumericLiteral) {
+    ZEXPECT(!follows_access_operator("float f = 3.", 12));
+    ZEXPECT(!follows_access_operator("x = 0x1F.", 9));
+    ZEXPECT(follows_access_operator("x1.", 3));
+    ZEXPECT(follows_access_operator("f(1).", 5));
+}
+
+ZEST_CASE(TemplateDelimiters) {
+    ZEXPECT(!follows_access_operator("template<", 9));
+    ZEXPECT(!follows_access_operator("template<typename T>", 20));
+}
+
+ZEST_CASE(PostfixDecrement) {
+    ZEXPECT(!follows_access_operator("while (x-->", 11));
+}
+
+ZEST_CASE(NonAsciiOperand) {
+    ZEXPECT(follows_access_operator("vé2.", 5));
+}
+
+ZEST_CASE(CursorBeforeOperator) {
+    // Only the text up to the cursor counts.
+    ZEXPECT(!follows_access_operator("w.x", 1));
+}
+
+};  // ZEST_SUITE(FollowsAccessOperator)
+
+ZEST_SUITE(DetectCompletionContext) {
+
+ZEST_CASE(IncludeAngled) {
     auto ctx = detect_completion_context("#include <vec", 13);
-    EXPECT_EQ(ctx.kind, CompletionContext::IncludeAngled);
-    EXPECT_EQ(ctx.prefix, "vec");
+    ZEXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    ZEXPECT(ctx.prefix == "vec");
 }
 
-TEST_CASE(IncludeQuoted) {
+ZEST_CASE(IncludeQuoted) {
     auto ctx = detect_completion_context("#include \"my_header", 19);
-    EXPECT_EQ(ctx.kind, CompletionContext::IncludeQuoted);
-    EXPECT_EQ(ctx.prefix, "my_header");
+    ZEXPECT(ctx.kind == CompletionContext::IncludeQuoted);
+    ZEXPECT(ctx.prefix == "my_header");
 }
 
-TEST_CASE(IncludeAngledWithSpaces) {
+ZEST_CASE(IncludeAngledWithSpaces) {
     auto ctx = detect_completion_context("  #  include  <sys/", 19);
-    EXPECT_EQ(ctx.kind, CompletionContext::IncludeAngled);
-    EXPECT_EQ(ctx.prefix, "sys/");
+    ZEXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    ZEXPECT(ctx.prefix == "sys/");
 }
 
-TEST_CASE(IncludeEmpty) {
+ZEST_CASE(IncludeEmpty) {
     auto ctx = detect_completion_context("#include <", 10);
-    EXPECT_EQ(ctx.kind, CompletionContext::IncludeAngled);
-    EXPECT_EQ(ctx.prefix, "");
+    ZEXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    ZEXPECT(ctx.prefix == "");
 }
 
-TEST_CASE(CursorInsideKeyword) {
+ZEST_CASE(CursorInsideKeyword) {
     // A keyword is only "typed" once the cursor passed its end.
-    EXPECT_EQ(detect_completion_context("#include", 5).kind, CompletionContext::None);
-    EXPECT_EQ(detect_completion_context("import", 3).kind, CompletionContext::None);
+    ZEXPECT(detect_completion_context("#include", 5).kind == CompletionContext::None);
+    ZEXPECT(detect_completion_context("import", 3).kind == CompletionContext::None);
 }
 
-TEST_CASE(CursorAtNewline) {
+ZEST_CASE(CursorAtNewline) {
     // A cursor sitting on a line's terminating newline still completes the
     // statement that line opened.
     auto ctx = detect_completion_context("import std\nint x;", 10);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "std");
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == "std");
 }
 
-TEST_CASE(CrlfLineEndings) {
+ZEST_CASE(CrlfLineEndings) {
     auto ctx = detect_completion_context("#include <a>\r\n#include <ve", 26);
-    EXPECT_EQ(ctx.kind, CompletionContext::IncludeAngled);
-    EXPECT_EQ(ctx.prefix, "ve");
+    ZEXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    ZEXPECT(ctx.prefix == "ve");
 }
 
-TEST_CASE(ImportSimple) {
+ZEST_CASE(ImportSimple) {
     auto ctx = detect_completion_context("import std", 10);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "std");
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == "std");
 }
 
-TEST_CASE(ExportImport) {
+ZEST_CASE(ExportImport) {
     auto ctx = detect_completion_context("export import my_mod", 20);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "my_mod");
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == "my_mod");
 }
 
-TEST_CASE(ImportWithSemicolon) {
-    auto ctx = detect_completion_context("import std;\n", 7);
-    EXPECT_EQ(ctx.kind, CompletionContext::None);
+ZEST_CASE(ImportWithSemicolon) {
+    auto ctx = detect_completion_context("import st;\n", 9);
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == "st");
+    ZEXPECT(ctx.closed);
+    ZEXPECT(detect_completion_context("import std;\n", 11).kind == CompletionContext::None);
 }
 
-TEST_CASE(ImportEmpty) {
+ZEST_CASE(ImportClosedPastComments) {
+    ZEXPECT(detect_completion_context("import st /* x */ [[a]];", 9).closed);
+    ZEXPECT(!detect_completion_context("import st // a; b\nint x;", 9).closed);
+    ZEXPECT(!detect_completion_context("import st\nint x;", 9).closed);
+}
+
+ZEST_CASE(ImportEmpty) {
     auto ctx = detect_completion_context("import ", 7);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "");
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == "");
 }
 
-TEST_CASE(NormalCode) {
+ZEST_CASE(NormalCode) {
     auto ctx = detect_completion_context("int main() {", 12);
-    EXPECT_EQ(ctx.kind, CompletionContext::None);
+    ZEXPECT(ctx.kind == CompletionContext::None);
 }
 
-TEST_CASE(MultilineAtSecondLine) {
+ZEST_CASE(MultilineAtSecondLine) {
     std::string text = "#include <vector>\n#include <str";
     auto ctx = detect_completion_context(text, text.size());
-    EXPECT_EQ(ctx.kind, CompletionContext::IncludeAngled);
-    EXPECT_EQ(ctx.prefix, "str");
+    ZEXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    ZEXPECT(ctx.prefix == "str");
 }
 
-TEST_CASE(NotImportKeyword) {
+ZEST_CASE(NotImportKeyword) {
     auto ctx = detect_completion_context("importlib foo", 13);
-    EXPECT_EQ(ctx.kind, CompletionContext::None);
+    ZEXPECT(ctx.kind == CompletionContext::None);
 }
 
-TEST_CASE(HashOnly) {
+ZEST_CASE(HashOnly) {
     auto ctx = detect_completion_context("#", 1);
-    EXPECT_EQ(ctx.kind, CompletionContext::None);
+    ZEXPECT(ctx.kind == CompletionContext::None);
 }
 
-TEST_CASE(ImportDottedPrefix) {
+ZEST_CASE(ImportDottedPrefix) {
     auto ctx = detect_completion_context("import std.io", 13);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "std.io");
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == "std.io");
 }
 
-TEST_CASE(ImportPartitionPrefix) {
+ZEST_CASE(ImportPartitionPrefix) {
     auto ctx = detect_completion_context("import :core", 12);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, ":core");
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == ":core");
 }
 
-TEST_CASE(ImportPartitionEmpty) {
+ZEST_CASE(ImportPartitionEmpty) {
     auto ctx = detect_completion_context("import :", 8);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, ":");
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == ":");
 }
 
-TEST_CASE(ImportWithLeadingSpaces) {
+ZEST_CASE(ImportWithLeadingSpaces) {
     auto ctx = detect_completion_context("  import std", 12);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "std");
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == "std");
 }
 
-TEST_CASE(ExportImportEmpty) {
+ZEST_CASE(ExportImportEmpty) {
     auto ctx = detect_completion_context("export import ", 14);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "");
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == "");
 }
 
-TEST_CASE(ImportAfterNewline) {
+ZEST_CASE(ImportAfterNewline) {
     std::string text = "module foo;\nimport ";
     auto ctx = detect_completion_context(text, text.size());
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "");
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == "");
 }
 
-TEST_CASE(ImportCursorMidLine) {
+ZEST_CASE(ImportCursorMidLine) {
     // The prefix is truncated at the cursor; trailing text is ignored.
     auto ctx = detect_completion_context("import std.io", 10);
-    EXPECT_EQ(ctx.kind, CompletionContext::Import);
-    EXPECT_EQ(ctx.prefix, "std");
+    ZEXPECT(ctx.kind == CompletionContext::Import);
+    ZEXPECT(ctx.prefix == "std");
 }
 
-};  // TEST_SUITE(DetectCompletionContext)
+ZEST_CASE(IncludeReplaceSpan) {
+    // The last path component through its untyped rest, delimiter excluded.
+    auto ctx = detect_completion_context("#include <sys/ty.h>", 16);
+    ZEXPECT(ctx.prefix == "sys/ty");
+    ZEXPECT(ctx.replace.begin == 14u);
+    ZEXPECT(ctx.replace.end == 18u);
+}
 
-TEST_SUITE(CompleteModuleImport) {
+ZEST_CASE(IncludeNameWithSpaces) {
+    auto closed = detect_completion_context("#include \"my header.h\"", 12);
+    ZEXPECT(closed.replace.end == 21u);
+    auto open = detect_completion_context("#include \"my header.h", 12);
+    ZEXPECT(open.replace.end == 12u);
+}
 
-TEST_CASE(PrefixMatch) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    modules[1] = "std";
-    modules[2] = "std.io";
-    modules[3] = "std.net";
-    modules[4] = "my_lib";
+ZEST_CASE(ImportReplaceSpan) {
+    auto ctx = detect_completion_context("import std.io", 10);
+    ZEXPECT(ctx.replace.begin == 7u);
+    ZEXPECT(ctx.replace.end == 13u);
+}
 
-    auto results = complete_module_import(modules, "std");
-    EXPECT_EQ(results.size(), 3u);
+ZEST_CASE(ImportMemberAccess) {
+    ZEXPECT(detect_completion_context("import->x", 8).kind == CompletionContext::None);
+}
+
+};  // ZEST_SUITE(DetectCompletionContext)
+
+ZEST_SUITE(CompleteModuleImport) {
+
+ZEST_CASE(PrefixMatch) {
+    clice::DependencyGraph modules;
+    modules.add_module("std", Fid{1});
+    modules.add_module("std.io", Fid{2});
+    modules.add_module("std.net", Fid{3});
+    modules.add_module("my_lib", Fid{4});
+
+    auto results = complete_module_import(modules, "std", {});
+    ZEXPECT(results.size() == 3u);
     for(auto& name: results) {
-        EXPECT_TRUE(name.starts_with("std"));
+        ZEXPECT(name.starts_with("std"));
     }
 }
 
-TEST_CASE(EmptyPrefix) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    modules[1] = "std";
-    modules[2] = "my_lib";
+ZEST_CASE(EmptyPrefix) {
+    clice::DependencyGraph modules;
+    modules.add_module("std", Fid{1});
+    modules.add_module("my_lib", Fid{2});
 
-    auto results = complete_module_import(modules, "");
-    EXPECT_EQ(results.size(), 2u);
+    auto results = complete_module_import(modules, "", {});
+    ZEXPECT(results.size() == 2u);
 }
 
-TEST_CASE(NoMatch) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    modules[1] = "std";
-    modules[2] = "my_lib";
+ZEST_CASE(NoMatch) {
+    clice::DependencyGraph modules;
+    modules.add_module("std", Fid{1});
+    modules.add_module("my_lib", Fid{2});
 
-    auto results = complete_module_import(modules, "xyz");
-    EXPECT_TRUE(results.empty());
+    auto results = complete_module_import(modules, "xyz", {});
+    ZEXPECT(results.empty());
 }
 
-TEST_CASE(EmptyModules) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    auto results = complete_module_import(modules, "std");
-    EXPECT_TRUE(results.empty());
+ZEST_CASE(EmptyModules) {
+    clice::DependencyGraph modules;
+    auto results = complete_module_import(modules, "std", {});
+    ZEXPECT(results.empty());
 }
 
-TEST_CASE(DottedPrefix) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    modules[1] = "std";
-    modules[2] = "std.io";
-    modules[3] = "std.core";
-    modules[4] = "boost.asio";
+ZEST_CASE(DottedPrefix) {
+    clice::DependencyGraph modules;
+    modules.add_module("std", Fid{1});
+    modules.add_module("std.io", Fid{2});
+    modules.add_module("std.core", Fid{3});
+    modules.add_module("boost.asio", Fid{4});
 
-    auto results = complete_module_import(modules, "std.");
-    EXPECT_EQ(results.size(), 2u);
+    auto results = complete_module_import(modules, "std.", {});
+    ZEXPECT(results.size() == 2u);
     for(auto& name: results) {
-        EXPECT_TRUE(name.starts_with("std."));
+        ZEXPECT(name.starts_with("std."));
     }
 }
 
-TEST_CASE(PartitionPrefix) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    modules[1] = "foo";
-    modules[2] = "foo:core";
-    modules[3] = "foo:utils";
-    modules[4] = "bar:impl";
+ZEST_CASE(PrefixIsFullName) {
+    clice::DependencyGraph modules;
+    modules.add_module("std", Fid{1});
+    modules.add_module("std.io", Fid{2});
 
-    auto results = complete_module_import(modules, "foo:");
-    EXPECT_EQ(results.size(), 2u);
-    for(auto& name: results) {
-        EXPECT_TRUE(name.starts_with("foo:"));
-    }
+    auto results = complete_module_import(modules, "std", {});
+    ZEXPECT(results.size() == 2u);
 }
 
-TEST_CASE(PrefixIsFullName) {
-    llvm::DenseMap<std::uint32_t, std::string> modules;
-    modules[1] = "std";
-    modules[2] = "std.io";
+ZEST_CASE(OwnPartitionsOnly) {
+    clice::DependencyGraph modules;
+    modules.add_module("foo", Fid{1});
+    modules.add_module("foo:core", Fid{2});
+    modules.add_module("foo:utils", Fid{3});
+    modules.add_module("bar", Fid{4});
+    modules.add_module("bar:impl", Fid{5});
 
-    auto results = complete_module_import(modules, "std");
-    EXPECT_EQ(results.size(), 2u);
+    auto names = complete_module_import(modules, "", {.module_name = "foo"});
+    ZEXPECT(names == std::vector<std::string>{":core", ":utils", "bar"});
+    auto partitions = complete_module_import(modules, ":", {.module_name = "foo:utils"});
+    ZEXPECT(partitions == std::vector<std::string>{":core"});
+    ZEXPECT(complete_module_import(modules, ":", {}).empty());
+    ZEXPECT(complete_module_import(modules, "foo:", {.module_name = "foo"}).empty());
 }
 
-};  // TEST_SUITE(CompleteModuleImport)
+ZEST_CASE(DottedModuleNames) {
+    clice::DependencyGraph modules;
+    modules.add_module("a", Fid{1});
+    modules.add_module("a.b", Fid{2});
+    modules.add_module("a.b:p", Fid{3});
+    modules.add_module("a.b:q", Fid{4});
+    modules.add_module("a:r", Fid{5});
+
+    auto names = complete_module_import(modules, "", {.module_name = "a.b:q"});
+    ZEXPECT(names == std::vector<std::string>{":p", "a"});
+}
+
+ZEST_CASE(InterfaceSkipsInternal) {
+    clice::DependencyGraph modules;
+    modules.add_module("m", Fid{1});
+    modules.add_module("m:api", Fid{2});
+    modules.add_module("m:detail", Fid{3}, true);
+
+    std::vector<std::string> interface_only{":api"};
+    std::vector<std::string> both{":api", ":detail"};
+    ZEXPECT(complete_module_import(modules, ":", {.module_name = "m", .is_interface_unit = true}) ==
+            interface_only);
+    ZEXPECT(complete_module_import(modules, ":", {.module_name = "m"}) == both);
+    ZEXPECT(complete_module_import(modules, ":", {.module_name = "m:impl"}) == both);
+    ZEXPECT(
+        complete_module_import(modules, ":", {.module_name = "m:api", .is_interface_unit = true})
+            .empty());
+}
+
+};  // ZEST_SUITE(CompleteModuleImport)
 
 }  // namespace
 }  // namespace clice::testing

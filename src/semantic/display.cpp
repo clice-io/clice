@@ -1,32 +1,17 @@
+module;
+
+#include "modules/prelude.h"
+
 /// Parts of this file are ported from clangd's AST.cpp, Hover.cpp,
 /// InlayHints.cpp and CodeCompletionStrings.cpp (llvmorg-21.1.8), part of
 /// the LLVM project, licensed under Apache License v2.0 with LLVM
 /// Exceptions. See https://llvm.org/LICENSE.txt for license information.
 
-#include "semantic/display.h"
+module clice;
 
-#include "semantic/types.h"
-#include "support/format.h"
-
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Format.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/JSON.h"
-#include "llvm/Support/SaveAndRestore.h"
-#include "llvm/Support/ScopedPrinter.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/ASTDiagnostic.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/RawCommentList.h"
-#include "clang/AST/StmtVisitor.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Sema/CodeCompleteConsumer.h"
-#include "clang/Tooling/Syntax/Tokens.h"
+import :semantic.display;
+import :semantic.types;
+import :support.format;
 
 namespace clice::display {
 
@@ -42,7 +27,9 @@ auto derive_policy(clang::ASTContext& context, const Options& options) -> clang:
     policy.PolishForDeclaration = options.polish_for_declaration;
     policy.ConstantsAsWritten = options.constants_as_written;
     policy.SuppressTemplateArgsInCXXConstructors = options.suppress_ctor_template_args;
-    policy.AnonymousTagLocations = options.anonymous_tag_locations;
+    policy.AnonymousTagNameStyle = std::to_underlying(
+        options.anonymous_tag_locations ? clang::PrintingPolicy::AnonymousTagMode::SourceLocation
+                                        : clang::PrintingPolicy::AnonymousTagMode::Plain);
     return policy;
 }
 
@@ -107,14 +94,23 @@ auto template_specialization_arg_locs(const clang::NamedDecl& decl)
     return std::nullopt;
 }
 
-/// The template arguments of a template specialization as written in the
-/// source code. Empty if the decl is not a specialization.
+}  // namespace
+
 std::string template_args(const clang::NamedDecl& decl) {
     std::string args;
     llvm::raw_string_ostream os(args);
     clang::PrintingPolicy policy(decl.getASTContext().getLangOpts());
     if(auto arg_locs = template_specialization_arg_locs(decl)) {
         clang::printTemplateArgumentList(os, *arg_locs, policy);
+    } else if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(&decl)) {
+        /// An explicit specialization's written arguments are not always
+        /// recorded; the converted ones spell the same specialization. An
+        /// explicitly specialized member of a class template reports the
+        /// same kind but has no argument list of its own.
+        if(const auto* args = function->getTemplateSpecializationArgs();
+           args && function->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            clang::printTemplateArgumentList(os, args->asArray(), policy);
+        }
     } else if(auto* record = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(&decl)) {
         /// FIXME: Fix cases when getTypeAsWritten returns null inside clang
         /// AST, e.g. friend decls. Currently we fallback to template
@@ -128,6 +124,8 @@ std::string template_args(const clang::NamedDecl& decl) {
     return args;
 }
 
+namespace {
+
 /// The qualified name of the decl, skipping unwritten scopes like inline
 /// and anonymous namespaces.
 std::string qualified_name(const clang::NamedDecl& decl) {
@@ -140,7 +138,8 @@ std::string qualified_name(const clang::NamedDecl& decl) {
     /// (unnamed struct), not (unnamed struct at /path/to/foo.cc:42:1).
     /// In the language server, context is usually available and paths are
     /// mostly noise.
-    policy.AnonymousTagLocations = false;
+    policy.AnonymousTagNameStyle =
+        std::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
     decl.printQualifiedName(os, policy);
     assert(!llvm::StringRef(name).starts_with("::"));
     return name;
@@ -254,7 +253,7 @@ namespace {
 /// corners (deduction guides print the plain template name, literal
 /// operators keep a space after `operator ""`); unifying the two printers
 /// is a deliberate, snapshot-reviewed change.
-std::string bare_name(const clang::NamedDecl* decl) {
+std::string bare_name(const clang::NamedDecl* decl, const Options& options) {
     llvm::SmallString<128> result;
 
     /// Use the language options of the declaration's context so that C++ types
@@ -270,20 +269,33 @@ std::string bare_name(const clang::NamedDecl* decl) {
             break;
         }
 
-        case clang::DeclarationName::CXXConstructorName: {
-            result += name.getCXXNameType().getAsString(policy);
-            break;
-        }
-
+        case clang::DeclarationName::CXXConstructorName:
         case clang::DeclarationName::CXXDestructorName: {
-            result += '~';
-            result += name.getCXXNameType().getAsString(policy);
+            if(name.getNameKind() == clang::DeclarationName::CXXDestructorName) {
+                result += '~';
+            }
+            auto type = name.getCXXNameType();
+            /// The type prints with its scope and, for a class template's
+            /// own members, with the template's parameters; the option asks
+            /// for the class's name alone.
+            auto* record = options.suppress_ctor_template_args ? type->getAsRecordDecl() : nullptr;
+            if(record) {
+                result += record->getName();
+            } else {
+                result += type.getAsString(policy);
+            }
             break;
         }
 
         case clang::DeclarationName::CXXConversionFunctionName: {
             result += "operator ";
-            result += name.getCXXNameType().getAsString(policy);
+            /// The name holds the canonical type (`operator int *` for
+            /// `operator Handle`); the declaration keeps the type as written.
+            auto type = name.getCXXNameType();
+            if(auto* conversion = llvm::dyn_cast<clang::CXXConversionDecl>(decl)) {
+                type = conversion->getConversionType();
+            }
+            result += type.getAsString(policy);
             break;
         }
 
@@ -332,7 +344,7 @@ auto name_of(const clang::NamedDecl* decl, const Options& options) -> std::strin
     assert(decl);
 
     if(!options.qualified) {
-        return bare_name(decl);
+        return bare_name(decl, options);
     }
 
     std::string name;
@@ -376,8 +388,12 @@ auto name_of(const clang::NamedDecl* decl, const Options& options) -> std::strin
         qualifier.print(os, policy);
     }
 
-    /// Print the name itself.
-    decl->getDeclName().print(os, policy);
+    /// Print the name itself — a conversion's as declared, see bare_name.
+    if(llvm::isa<clang::CXXConversionDecl>(decl)) {
+        os << bare_name(decl, options);
+    } else {
+        decl->getDeclName().print(os, policy);
+    }
 
     /// Print template arguments.
     os << template_args(*decl);
@@ -632,6 +648,29 @@ auto namespace_scope(const clang::Decl* decl) -> std::string {
     return "";
 }
 
+auto restored_scope(clang::QualType type, const Options& options) -> clang::NestedNameSpecifier {
+    /// Complex cases (pointers/references, cv-qualifiers) are not
+    /// attempted, mirroring the tag-keyword special case of type().
+    if(!options.suppress_scope || type.isNull() || type.hasQualifiers()) {
+        return std::nullopt;
+    }
+    if(auto* AT = llvm::dyn_cast<clang::AutoType>(type.getTypePtr());
+       AT && AT->isDeduced() && !AT->getDeducedType().isNull()) {
+        type = AT->getDeducedType();
+    }
+
+    bool scope_suppressed = false;
+    if(auto* tag = llvm::dyn_cast<clang::TagType>(type.getTypePtr())) {
+        scope_suppressed = tag->isCanonicalUnqualified();
+    } else if(auto* TST = llvm::dyn_cast<clang::TemplateSpecializationType>(type.getTypePtr())) {
+        scope_suppressed = !TST->getTemplateName().getAsDependentTemplateName();
+    }
+    if(!scope_suppressed || type.hasQualifiers()) {
+        return std::nullopt;
+    }
+    return type->getPrefix();
+}
+
 auto type(clang::ASTContext& context, clang::QualType type, const Options& options) -> Type {
     clang::PrintingPolicy policy = derive_policy(context, options);
 
@@ -659,34 +698,8 @@ auto type(clang::ASTContext& context, clang::QualType type, const Options& optio
         }
     }
 
-    /// Class scopes carry meaning, but SuppressScope also drops two of
-    /// them: the computed scope of a canonical tag (a deduced `auto`
-    /// prints as its deduced, canonical type) and the written qualifier
-    /// of a template-id. Print those back. Every other node (typedefs,
-    /// dependent names, written tag types) prints its written qualifier
-    /// regardless of the policy — restoring theirs would duplicate it.
-    /// Complex cases (pointers/references, cv-qualifiers) are not
-    /// attempted, mirroring the tag-keyword special case above.
-    if(policy.SuppressScope && !type.isNull() && !type.hasQualifiers()) {
-        auto printed = type;
-        if(auto* AT = llvm::dyn_cast<clang::AutoType>(printed.getTypePtr());
-           AT && AT->isDeduced() && !AT->getDeducedType().isNull()) {
-            printed = AT->getDeducedType();
-        }
-
-        bool scope_suppressed = false;
-        if(auto* tag = llvm::dyn_cast<clang::TagType>(printed.getTypePtr())) {
-            scope_suppressed = tag->isCanonicalUnqualified();
-        } else if(auto* TST =
-                      llvm::dyn_cast<clang::TemplateSpecializationType>(printed.getTypePtr())) {
-            scope_suppressed = !TST->getTemplateName().getAsDependentTemplateName();
-        }
-
-        if(scope_suppressed && !printed.hasQualifiers()) {
-            if(auto prefix = printed->getPrefix()) {
-                prefix.print(os, policy);
-            }
-        }
+    if(auto scope = restored_scope(type, options)) {
+        scope.print(os, policy);
     }
     type.print(os, policy);
 
@@ -771,13 +784,13 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
     }
 
     /// Show enums symbolically, not numerically like APValue::printPretty().
-    if(type->isEnumeralType() && constant.Val.isInt() &&
-       constant.Val.getInt().getSignificantBits() <= 64) {
-        /// Compare to int64_t to avoid bit-width match requirements.
-        std::int64_t value = constant.Val.getInt().getExtValue();
+    if(type->isEnumeralType() && constant.Val.isInt()) {
         for(const clang::EnumConstantDecl* enumerator:
             type->castAs<clang::EnumType>()->getDecl()->enumerators()) {
-            if(enumerator->getInitVal() == value) {
+            if(llvm::APSInt::isSameValue(enumerator->getInitVal(), constant.Val.getInt())) {
+                if(constant.Val.getInt().getSignificantBits() > 64) {
+                    return enumerator->getNameAsString();
+                }
                 return llvm::formatv("{0} ({1})",
                                      enumerator->getNameAsString(),
                                      print_hex(constant.Val.getInt()))
@@ -795,10 +808,24 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
             .str();
     }
 
-    return constant.Val.getAsString(context, type);
+    /// Arrays show their first elements only, as in diagnostics.
+    clang::PrintingPolicy policy = context.getPrintingPolicy();
+    policy.EntireContentsOfLargeArray = false;
+    std::string value;
+    llvm::raw_string_ostream os(value);
+    constant.Val.printPretty(os, policy, type, &context);
+    return value;
 }
 
 namespace {
+
+/// An `#embed` or a string literal is a single token of any length.
+auto printed_length(const clang::Expr& expr, const clang::PrintingPolicy& policy) -> std::size_t {
+    std::string text;
+    llvm::raw_string_ostream os(text);
+    expr.printPretty(os, nullptr, policy);
+    return text.size();
+}
 
 /// Default argument might exist but be unavailable, in the case of unparsed
 /// arguments for example. This function returns the default argument if it is
@@ -951,160 +978,25 @@ auto template_param_type(const clang::NamedDecl* param, const Options& options) 
     return {};
 }
 
-namespace {
-
-bool has_large_initializer(const clang::Expr* init,
-                           const clang::syntax::TokenBuffer* tb,
-                           std::int32_t max_tokens) {
-    return max_tokens >= 0 && init && tb &&
-           tb->expandedTokens(init->getSourceRange()).size() > static_cast<std::size_t>(max_tokens);
-}
-
-auto member_initializer(const clang::Decl* decl) -> const clang::Expr* {
-    if(const auto* field = llvm::dyn_cast<clang::FieldDecl>(decl)) {
-        return field->getInClassInitializer();
+auto definition(const clang::Decl* decl,
+                const Options& options,
+                llvm::function_ref<std::size_t(clang::SourceRange)> token_count) -> std::string {
+    assert(decl);
+    clang::PrintingPolicy policy = derive_policy(decl->getASTContext(), options);
+    if(auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        if(auto* init = var->getInit()) {
+            /// Initializers might be huge and result in lots of memory allocations
+            /// in some catastrophic cases. Such long lists are not useful in hover
+            /// cards anyway.
+            if(token_count(init->getSourceRange()) > 200 || printed_length(*init, policy) > 500) {
+                policy.SuppressInitializers = true;
+            }
+        }
     }
-    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
-        return var->getInit();
-    }
-    return nullptr;
-}
 
-auto print_decl_head(const clang::Decl* decl, clang::PrintingPolicy policy) -> std::string {
     std::string definition;
     llvm::raw_string_ostream os(definition);
     decl->print(os, policy);
-
-    /// TerseOutput leaves tag definitions with an empty body. Keep Clang's rendering of the
-    /// template prefix, attributes and bases, then replace that body with our summary.
-    auto body = definition.rfind('{');
-    if(body != std::string::npos) {
-        definition.resize(body);
-    }
-    return definition;
-}
-
-void print_enum_definition(const clang::EnumDecl* decl,
-                           llvm::raw_ostream& os,
-                           clang::PrintingPolicy policy,
-                           const Options& options) {
-    os << print_decl_head(decl, policy);
-    os << " {";
-    std::size_t count = 0;
-    for(const clang::EnumConstantDecl* enumerator: decl->enumerators()) {
-        if(count == static_cast<std::size_t>(options.max_tag_members)) {
-            os << "\n...";
-            break;
-        }
-        ++count;
-        os << '\n';
-        enumerator->print(os, policy);
-        if(!enumerator->getInitExpr() && !enumerator->getType()->isDependentType()) {
-            os << " = " << llvm::toString(enumerator->getInitVal(), 10);
-        }
-        os << ',';
-    }
-    os << "\n}";
-}
-
-/// Methods are intentionally omitted: this is a compact data/type summary, not a member list.
-bool not_method_member(const clang::Decl* decl) {
-    if(llvm::isa<clang::FieldDecl, clang::TypedefNameDecl, clang::TypeAliasTemplateDecl>(*decl)) {
-        return true;
-    }
-    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
-        return var->isStaticDataMember();
-    }
-    return llvm::isa<clang::TagDecl, clang::ClassTemplateDecl>(*decl);
-}
-
-void print_record_definition(const clang::RecordDecl* decl,
-                             llvm::raw_ostream& os,
-                             clang::PrintingPolicy policy,
-                             const clang::syntax::TokenBuffer* tb,
-                             const Options& options) {
-    os << print_decl_head(decl, policy);
-    os << " {";
-    std::size_t count = 0;
-    const clang::AccessSpecDecl* pending_access = nullptr;
-    for(const clang::Decl* member: decl->decls()) {
-        if(member->isImplicit()) {
-            continue;
-        }
-        if(const auto* access = llvm::dyn_cast<clang::AccessSpecDecl>(member)) {
-            pending_access = access;
-            continue;
-        }
-        if(!not_method_member(member)) {
-            continue;
-        }
-        if(options.max_tag_members >= 0 &&
-           count == static_cast<std::size_t>(options.max_tag_members)) {
-            os << "\n// ...";
-            break;
-        }
-        ++count;
-
-        /// Delay the label until a visible member follows it. This avoids a dangling `private:`
-        /// section when that section contains methods only.
-        if(pending_access) {
-            os << '\n' << clang::getAccessSpelling(pending_access->getAccess()) << ':';
-            pending_access = nullptr;
-        }
-        os << '\n';
-
-        /// We don't print the body of nested types, for simplicity and clarity.
-        if(llvm::isa<clang::TagDecl, clang::ClassTemplateDecl>(*member)) {
-            os << print_decl_head(member, policy) << ";";
-            continue;
-        }
-
-        clang::PrintingPolicy member_policy = policy;
-        if(has_large_initializer(member_initializer(member), tb, options.max_initializer_tokens)) {
-            member_policy.SuppressInitializers = true;
-        }
-        member->print(os, member_policy);
-        os << ';';
-    }
-    os << "\n}";
-}
-
-}  // namespace
-
-auto definition(const clang::Decl* decl,
-                const Options& options,
-                const clang::syntax::TokenBuffer* tb) -> std::string {
-    assert(decl);
-    clang::PrintingPolicy policy = derive_policy(decl->getASTContext(), options);
-    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
-        /// Initializers might be huge and result in lots of memory allocations in some
-        /// catastrophic cases. Such long lists are not useful in hover cards anyway.
-        if(has_large_initializer(var->getInit(), tb, options.max_initializer_tokens)) {
-            policy.SuppressInitializers = true;
-        }
-    }
-
-    std::string definition;
-    llvm::raw_string_ostream os(definition);
-
-    if(const auto* record = llvm::dyn_cast<clang::RecordDecl>(decl);
-       record && record->getDefinition()) {
-        if(options.show_tag_members) {
-            print_record_definition(record->getDefinition(), os, policy, tb, options);
-        } else {
-            os << print_decl_head(record->getDefinition(), policy);
-        }
-    } else if(const auto* enum_decl = llvm::dyn_cast<clang::EnumDecl>(decl);
-              enum_decl && enum_decl->getDefinition()) {
-        if(options.show_tag_members) {
-            print_enum_definition(enum_decl->getDefinition(), os, policy, options);
-        } else {
-            os << print_decl_head(enum_decl->getDefinition(), policy);
-        }
-    } else {
-        decl->print(os, policy);
-    }
-
     return definition;
 }
 

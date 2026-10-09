@@ -1,18 +1,20 @@
-#include <algorithm>
-#include <format>
-#include <set>
+module;
 
-#include "test/test.h"
-#include "test/tester.h"
-#include "feature/feature.h"
-#include "index/serialization.h"
-#include "index/shard.h"
-#include "index/tu_index.h"
-#include "semantic/selection.h"
+#include "modules/prelude.h"
 
-#include "llvm/Support/thread.h"
-#include "llvm/Support/xxhash.h"
-#include "clang/Basic/Stack.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :compile.selection;
+import :feature.feature;
+import :index.serialization;
+import :index.shard;
+import :index.tu_index;
+import :support.logging;
+import :tests.unit.test.envelope_mirror;
+import :tests.unit.test.test;
+import :tests.unit.test.tester;
 
 namespace clice::testing {
 
@@ -20,7 +22,7 @@ namespace lsp = kota::ipc::lsp;
 
 namespace {
 
-TEST_SUITE(tu_index, Tester) {
+ZEST_SUITE(tu_index, Tester) {
 
 /// One file's rows read back out of its envelope section through the
 /// Shard reader — every assertion below therefore exercises the full
@@ -61,7 +63,7 @@ void decode_index(const std::string& envelope) {
     tu_index = {};
     tu_index.view = index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(envelope));
     auto& view = tu_index.view;
-    ASSERT_TRUE(view.loaded());
+    ZASSERT(view.loaded());
 
     auto main_path = view.path_count() - 1;
     for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
@@ -73,22 +75,79 @@ void decode_index(const std::string& envelope) {
         }
     }
 
-    view.iterate_symbols(
-        [&](index::SymbolHash hash, const index::SymbolIdentity& identity, llvm::StringRef bitmap) {
-            auto& symbol = tu_index.symbols[hash];
-            symbol.name = identity.name.str();
-            symbol.kind = identity.kind;
-            symbol.scope = identity.scope;
-            symbol.reference_files =
-                index::read_bitmap(bitmap.data(), bitmap.size()).value_or(Bitmap{});
-            return true;
-        });
+    auto record = [&](index::SymbolHash hash, const index::SymbolIdentity& identity) {
+        auto& symbol = tu_index.symbols[hash];
+        symbol.name = identity.name.str();
+        symbol.args = identity.args.str();
+        symbol.parent = identity.parent;
+        symbol.kind = identity.kind;
+        symbol.scope = identity.scope;
+        symbol.flags = identity.flags;
+        symbol.file = identity.file;
+        return &symbol;
+    };
+    view.iterate_symbols([&](index::SymbolHash hash,
+                             const index::SymbolIdentity& identity,
+                             llvm::ArrayRef<std::uint32_t> references) {
+        record(hash, identity)->reference_files.addMany(references.size(), references.data());
+        return true;
+    });
+    // A function's locals are named by their sections only.
+    auto record_locals = [&](const DecodedRows& rows) {
+        auto record_local = [&](index::SymbolHash hash) {
+            if(!tu_index.symbols.contains(hash)) {
+                if(auto identity = view.find_symbol(hash)) {
+                    ZEXPECT(identity->scope == index::SymbolScope::FileLocal);
+                    record(hash, *identity);
+                }
+            }
+        };
+        for(auto& occurrence: rows.occurrences) {
+            record_local(occurrence.target);
+        }
+        for(auto& hash: llvm::make_first_range(rows.relations)) {
+            record_local(hash);
+        }
+    };
+    record_locals(tu_index.main_file_index);
+    for(auto& rows: llvm::make_second_range(tu_index.file_indices)) {
+        record_locals(rows);
+    }
+}
+
+/// The one symbol with this name (and specialization arguments) in the
+/// decoded table.
+std::pair<index::SymbolHash, index::Symbol> symbol_named(llvm::StringRef name,
+                                                         llvm::StringRef args = "",
+                                                         std::optional<SymbolKind> kind = {}) {
+    std::optional<std::pair<index::SymbolHash, index::Symbol>> found;
+    for(auto& [hash, symbol]: tu_index.symbols) {
+        if(symbol.name == name && symbol.args == args &&
+           (!kind || symbol.kind.value() == kind->value())) {
+            if(found) {
+                LOG_FATAL("symbol {}{} is not unique", name, args);
+            }
+            found.emplace(hash, symbol);
+        }
+    }
+    if(!found) {
+        LOG_FATAL("no symbol {}{}", name, args);
+    }
+    return *found;
+}
+
+bool has(const index::Symbol& symbol, index::SymbolFlags flag) {
+    return index::has_flag(symbol.flags, flag);
+}
+
+int scope(llvm::StringRef name) {
+    return static_cast<int>(symbol_named(name).second.scope);
 }
 
 void build_index(llvm::StringRef code,
                  std::source_location location = std::source_location::current()) {
     add_main("main.cpp", code);
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
     decode_index(index::build_tu_index(*unit));
 }
@@ -104,7 +163,7 @@ auto select(llvm::StringRef pos) -> std::vector<index::Occurrence> {
 
     std::vector<index::Occurrence> occurrences;
     while(it != index.occurrences.end()) {
-        if(it->range.contains(offset)) {
+        if(it->range.touches(offset)) {
             occurrences.emplace_back(*it);
             it++;
             continue;
@@ -121,11 +180,28 @@ void EXPECT_SELECT(llvm::StringRef pos,
     auto expected = range(expect_range);
     auto occurrences = select(pos);
 
-    ASSERT_FALSE(occurrences.empty());
+    ZASSERT(!occurrences.empty());
 
     /// FIXME: Make eq pretty print reflectable struct.
-    ASSERT_EQ(dump(occurrences.front().range), dump(expected));
+    ZASSERT(dump(occurrences.front().range) == dump(expected));
 };
+
+/// Whether the main file holds a symbol-pair row of `kind` from the
+/// symbol at marker `source` to the one at marker `target`.
+bool has_pair(llvm::StringRef source, RelationKind::Kind kind, llvm::StringRef target) {
+    auto sources = select(source);
+    auto targets = select(target);
+    if(sources.empty() || targets.empty()) {
+        return false;
+    }
+    auto it = tu_index.main_file_index.relations.find(sources.front().target);
+    if(it == tu_index.main_file_index.relations.end()) {
+        return false;
+    }
+    return llvm::any_of(it->second, [&](const index::Relation& relation) {
+        return relation.kind == kind && relation.target_symbol == targets.front().target;
+    });
+}
 
 void GO_TO_DEFINITION(llvm::StringRef pos,
                       llvm::StringRef definition,
@@ -133,11 +209,11 @@ void GO_TO_DEFINITION(llvm::StringRef pos,
     auto expected = range(definition);
     auto occurrences = select(pos);
 
-    ASSERT_EQ(occurrences.size(), 1U);
+    ZASSERT(occurrences.size() == 1U);
 
     auto& index = tu_index.main_file_index;
     auto it = index.relations.find(occurrences.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+    ZASSERT(it != index.relations.end());
     ///<< std::format("Cannot find target: {}", occurrences.front().target);
 
     auto& relations = it->second;
@@ -145,12 +221,12 @@ void GO_TO_DEFINITION(llvm::StringRef pos,
         return relation.kind == RelationKind::Definition;
     });
 
-    ASSERT_TRUE(target != relations.end());
+    ZASSERT(target != relations.end());
     ///   << std::format("Fail to find definition in {}", dump(relations));
-    ASSERT_EQ(dump(target->range), dump(expected));
+    ZASSERT(dump(target->range) == dump(expected));
 }
 
-TEST_CASE(Basic) {
+ZEST_CASE(Basic) {
     build_index(R"(
             int §(1)⟦f§(1)oo⟧();
 
@@ -160,15 +236,15 @@ TEST_CASE(Basic) {
         )");
 
     auto& index = tu_index.main_file_index;
-    ASSERT_EQ(index.relations.size(), 2U);
-    ASSERT_EQ(index.occurrences.size(), 3U);
+    ZASSERT(index.relations.size() == 2U);
+    ZASSERT(index.occurrences.size() == 3U);
 
     EXPECT_SELECT("1", "1");
     EXPECT_SELECT("2", "2");
     EXPECT_SELECT("3", "3");
 }
 
-TEST_CASE(ClassTemplate) {
+ZEST_CASE(ClassTemplate) {
     build_index(R"(
             template <typename T, typename U>
             struct §(primary_decl)foo;
@@ -213,7 +289,7 @@ TEST_CASE(ClassTemplate) {
     GO_TO_DEFINITION("implicit_full", "full_spec");
 }
 
-TEST_CASE(FunctionTemplate) {
+ZEST_CASE(FunctionTemplate) {
     build_index(R"(
             template <typename T> void §(primary_decl)foo();
 
@@ -240,7 +316,7 @@ TEST_CASE(FunctionTemplate) {
     GO_TO_DEFINITION("implicit_spec", "spec");
 }
 
-TEST_CASE(InstantiationLocalCollapse) {
+ZEST_CASE(InstantiationLocalCollapse) {
     build_index(R"(
             struct Fn {
                 template <typename T>
@@ -260,11 +336,11 @@ TEST_CASE(InstantiationLocalCollapse) {
         for(auto& occurrence: occurrences) {
             targets.insert(occurrence.target);
         }
-        EXPECT_EQ(targets.size(), 1U);
+        ZEXPECT(targets.size() == 1U);
     }
 }
 
-TEST_CASE(LambdaCaptureCollapse) {
+ZEST_CASE(LambdaCaptureCollapse) {
     build_index(R"(
             struct Fn {
                 template <typename T>
@@ -286,11 +362,11 @@ TEST_CASE(LambdaCaptureCollapse) {
         for(auto& occurrence: occurrences) {
             targets.insert(occurrence.target);
         }
-        EXPECT_EQ(targets.size(), 1U);
+        ZEXPECT(targets.size() == 1U);
     }
 }
 
-TEST_CASE(AliasTemplate) {
+ZEST_CASE(AliasTemplate) {
     build_index(R"(
             template <typename T>
             using §(primary)⟦foo⟧ = T;
@@ -301,7 +377,7 @@ TEST_CASE(AliasTemplate) {
     GO_TO_DEFINITION("implicit_primary", "primary");
 }
 
-TEST_CASE(VarTemplate) {
+ZEST_CASE(VarTemplate) {
     build_index(R"(
             template <typename T, typename U>
             extern int §(primary_decl)foo;
@@ -341,7 +417,7 @@ TEST_CASE(VarTemplate) {
     GO_TO_DEFINITION("implicit_full", "full_spec");
 }
 
-TEST_CASE(Concept) {
+ZEST_CASE(Concept) {
     build_index(R"(
             template <typename T>
             concept §(primary)⟦§(primary)foo⟧ = true;
@@ -356,7 +432,7 @@ TEST_CASE(Concept) {
     GO_TO_DEFINITION("implicit2", "primary");
 }
 
-TEST_CASE(Reference) {
+ZEST_CASE(Reference) {
     build_index(R"(
             int §(decl)foo = 42;
 
@@ -367,19 +443,19 @@ TEST_CASE(Reference) {
 
     auto& index = tu_index.main_file_index;
     auto occurrences = select("ref");
-    ASSERT_EQ(occurrences.size(), 1U);
+    ZASSERT(occurrences.size() == 1U);
 
     auto it = index.relations.find(occurrences.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+    ZASSERT(it != index.relations.end());
 
     auto& relations = it->second;
     auto ref = std::ranges::find_if(relations, [](const index::Relation& r) {
         return r.kind == RelationKind::Reference;
     });
-    ASSERT_TRUE(ref != relations.end());
+    ZASSERT(ref != relations.end());
 }
 
-TEST_CASE(BaseAndDerived) {
+ZEST_CASE(BaseAndDerived) {
     build_index(R"(
             struct §(base)⟦§(base)Base⟧ {
                 virtual void foo() {}
@@ -390,33 +466,76 @@ TEST_CASE(BaseAndDerived) {
             };
         )");
 
-    auto& index = tu_index.main_file_index;
-    auto base_occs = select("base");
-    auto derived_occs = select("derived");
-    ASSERT_FALSE(base_occs.empty());
-    ASSERT_FALSE(derived_occs.empty());
-    auto base_hash = base_occs.front().target;
-    auto derived_hash = derived_occs.front().target;
-
-    auto has_pair =
-        [&](index::SymbolHash source, RelationKind::Kind kind, index::SymbolHash target) {
-            auto it = index.relations.find(source);
-            if(it == index.relations.end()) {
-                return false;
-            }
-            for(auto& r: it->second) {
-                if(r.kind == kind && r.target_symbol == target) {
-                    return true;
-                }
-            }
-            return false;
-        };
-
-    ASSERT_TRUE(has_pair(derived_hash, RelationKind::Base, base_hash));
-    ASSERT_TRUE(has_pair(base_hash, RelationKind::Derived, derived_hash));
+    ZASSERT(has_pair("derived", RelationKind::Base, "base"));
+    ZASSERT(has_pair("base", RelationKind::Derived, "derived"));
 }
 
-TEST_CASE(CallerAndCallee) {
+ZEST_CASE(SpecializationRelations) {
+    build_index(R"(
+            template <class T>
+            struct §(box)Box {
+                void §(get)get();
+                static int §(count)count;
+            };
+            template <>
+            struct §(box_char)Box<char> {};
+            template <class T>
+            struct §(box_ptr)Box<T*> {};
+            template <>
+            void Box<int>::§(get_int)get() {}
+            template <>
+            int Box<long>::§(count_long)count = 0;
+
+            template <class T>
+            void §(fn)fn(T) {}
+            template <class T>
+            void §(fn_ptr)fn(T*) {}
+            template <>
+            void §(fn_int)fn<int>(int*) {}
+
+            template <class T>
+            constexpr int §(width)width = 0;
+            template <>
+            constexpr int §(width_char)width<char> = 1;
+            template <class T>
+            constexpr int §(width_ptr)width<T*> = 2;
+
+            template <class T>
+            struct Outer {
+                struct §(inner)Inner;
+            };
+            template <>
+            struct Outer<int>::§(inner_int)Inner {};
+
+            template struct Box<short>;
+            Box<double> used;
+        )");
+
+    for(auto [primary, specialization]: {
+            std::pair{"box",    "box_char"  },
+            std::pair{"box",    "box_ptr"   },
+            std::pair{"get",    "get_int"   },
+            std::pair{"count",  "count_long"},
+            std::pair{"fn_ptr", "fn_int"    },
+            std::pair{"width",  "width_char"},
+            std::pair{"width",  "width_ptr" },
+            std::pair{"inner",  "inner_int" },
+    }) {
+        ZASSERT(has_pair(primary, RelationKind::Specialization, specialization));
+        ZASSERT(has_pair(specialization, RelationKind::Primary, primary));
+    }
+    // The overload the specialization does not specialize stays unrelated.
+    ZASSERT(select("fn").size() == 1U);
+    ZASSERT(!has_pair("fn", RelationKind::Specialization, "fn_int"));
+
+    // Instantiations, explicit or implicit, specialize nothing.
+    auto& rows = tu_index.main_file_index.relations[select("box").front().target];
+    ZASSERT(llvm::count_if(rows, [](const index::Relation& relation) {
+                return relation.kind == RelationKind::Specialization;
+            }) == 2);
+}
+
+ZEST_CASE(CallerAndCallee) {
     build_index(R"(
             void §(callee_def)callee() {}
 
@@ -429,11 +548,11 @@ TEST_CASE(CallerAndCallee) {
 
     // Find caller symbol and check for Callee relation.
     auto caller_occs = select("caller_def");
-    ASSERT_FALSE(caller_occs.empty());
+    ZASSERT(!caller_occs.empty());
     auto caller_hash = caller_occs.front().target;
 
     auto caller_it = index.relations.find(caller_hash);
-    ASSERT_TRUE(caller_it != index.relations.end());
+    ZASSERT(caller_it != index.relations.end());
 
     bool found_callee = false;
     for(auto& r: caller_it->second) {
@@ -442,15 +561,15 @@ TEST_CASE(CallerAndCallee) {
             break;
         }
     }
-    ASSERT_TRUE(found_callee);
+    ZASSERT(found_callee);
 
     // Find callee symbol and check for Caller relation.
     auto callee_occs = select("callee_def");
-    ASSERT_FALSE(callee_occs.empty());
+    ZASSERT(!callee_occs.empty());
     auto callee_hash = callee_occs.front().target;
 
     auto callee_it = index.relations.find(callee_hash);
-    ASSERT_TRUE(callee_it != index.relations.end());
+    ZASSERT(callee_it != index.relations.end());
 
     bool found_caller = false;
     for(auto& r: callee_it->second) {
@@ -459,10 +578,10 @@ TEST_CASE(CallerAndCallee) {
             break;
         }
     }
-    ASSERT_TRUE(found_caller);
+    ZASSERT(found_caller);
 }
 
-TEST_CASE(MethodCallerCallee) {
+ZEST_CASE(MethodCallerCallee) {
     build_index(R"(
             void §(callee_def)callee() {}
 
@@ -478,15 +597,15 @@ TEST_CASE(MethodCallerCallee) {
     // Calls inside a method body produce call edges, with the method as
     // the caller.
     auto method_occs = select("method_def");
-    ASSERT_FALSE(method_occs.empty());
+    ZASSERT(!method_occs.empty());
     auto method_hash = method_occs.front().target;
 
     auto callee_occs = select("callee_def");
-    ASSERT_FALSE(callee_occs.empty());
+    ZASSERT(!callee_occs.empty());
     auto callee_hash = callee_occs.front().target;
 
     auto method_it = index.relations.find(method_hash);
-    ASSERT_TRUE(method_it != index.relations.end());
+    ZASSERT(method_it != index.relations.end());
 
     bool found_callee = false;
     for(auto& r: method_it->second) {
@@ -495,10 +614,10 @@ TEST_CASE(MethodCallerCallee) {
             break;
         }
     }
-    ASSERT_TRUE(found_callee);
+    ZASSERT(found_callee);
 
     auto callee_it = index.relations.find(callee_hash);
-    ASSERT_TRUE(callee_it != index.relations.end());
+    ZASSERT(callee_it != index.relations.end());
 
     bool found_caller = false;
     for(auto& r: callee_it->second) {
@@ -507,10 +626,10 @@ TEST_CASE(MethodCallerCallee) {
             break;
         }
     }
-    ASSERT_TRUE(found_caller);
+    ZASSERT(found_caller);
 }
 
-TEST_CASE(UsingRelationKey) {
+ZEST_CASE(UsingRelationKey) {
     build_index(R"(
             namespace ns { void §(target)foo(); }
             using ns::§(use)⟦§(use)foo⟧;
@@ -522,11 +641,11 @@ TEST_CASE(UsingRelationKey) {
     // its occurrence references, so looking the occurrence's symbol up in
     // the relations always finds the using site.
     auto use_occs = select("use");
-    ASSERT_FALSE(use_occs.empty());
+    ZASSERT(!use_occs.empty());
     auto hash = use_occs.front().target;
 
     auto it = index.relations.find(hash);
-    ASSERT_TRUE(it != index.relations.end());
+    ZASSERT(it != index.relations.end());
 
     bool found_use = false;
     for(auto& r: it->second) {
@@ -535,10 +654,10 @@ TEST_CASE(UsingRelationKey) {
             break;
         }
     }
-    ASSERT_TRUE(found_use);
+    ZASSERT(found_use);
 }
 
-TEST_CASE(CtorInitMemberRef) {
+ZEST_CASE(CtorInitMemberRef) {
     build_index(R"(
             struct S {
                 int §(def)⟦x⟧;
@@ -549,7 +668,7 @@ TEST_CASE(CtorInitMemberRef) {
     GO_TO_DEFINITION("use", "def");
 }
 
-TEST_CASE(DesignatedInitRef) {
+ZEST_CASE(DesignatedInitRef) {
     build_index(R"(
             struct Point {
                 int §(def)⟦x⟧;
@@ -562,7 +681,7 @@ TEST_CASE(DesignatedInitRef) {
     GO_TO_DEFINITION("use", "def");
 }
 
-TEST_CASE(RewrittenOperatorRef) {
+ZEST_CASE(RewrittenOperatorRef) {
     build_index(R"(
             namespace std {
             struct strong_ordering {
@@ -577,7 +696,7 @@ TEST_CASE(RewrittenOperatorRef) {
 
             struct S {
                 int v;
-                auto §(def)⟦operator⟧<=>(const S&) const = default;
+                auto §(def)⟦operator<=>⟧(const S&) const = default;
             };
 
             bool lt(S a, S b) { return a §(use)< b; }
@@ -588,7 +707,7 @@ TEST_CASE(RewrittenOperatorRef) {
     GO_TO_DEFINITION("use", "def");
 }
 
-TEST_CASE(DependentWeakReference) {
+ZEST_CASE(DependentWeakReference) {
     build_index(R"(
             template <typename T>
             struct Base {
@@ -604,13 +723,13 @@ TEST_CASE(DependentWeakReference) {
     /// The dependent name resolves through the template resolver to the
     /// pattern's member; both sites share one symbol.
     auto use_occs = select("use");
-    ASSERT_FALSE(use_occs.empty());
+    ZASSERT(!use_occs.empty());
     auto target_occs = select("target");
-    ASSERT_FALSE(target_occs.empty());
-    ASSERT_EQ(use_occs.front().target, target_occs.front().target);
+    ZASSERT(!target_occs.empty());
+    ZASSERT(use_occs.front().target == target_occs.front().target);
 
     auto it = index.relations.find(use_occs.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+    ZASSERT(it != index.relations.end());
 
     bool found_weak = false;
     for(auto& r: it->second) {
@@ -619,10 +738,10 @@ TEST_CASE(DependentWeakReference) {
             break;
         }
     }
-    ASSERT_TRUE(found_weak);
+    ZASSERT(found_weak);
 }
 
-TEST_CASE(TypeDefinitionRelations) {
+ZEST_CASE(TypeDefinitionRelations) {
     build_index(R"(
             struct §(s)⟦§(s)S⟧ {};
 
@@ -635,34 +754,12 @@ TEST_CASE(TypeDefinitionRelations) {
             enum §(e)⟦§(e)E⟧ { §(ec)⟦§(ec)A⟧ };
         )");
 
-    auto& index = tu_index.main_file_index;
-
-    auto has_type_definition = [&](llvm::StringRef source, llvm::StringRef target) {
-        auto source_occs = select(source);
-        auto target_occs = select(target);
-        if(source_occs.empty() || target_occs.empty()) {
-            return false;
-        }
-        auto source_hash = source_occs.front().target;
-        auto target_hash = target_occs.front().target;
-        auto it = index.relations.find(source_hash);
-        if(it == index.relations.end()) {
-            return false;
-        }
-        for(auto& r: it->second) {
-            if(r.kind == RelationKind::TypeDefinition && r.target_symbol == target_hash) {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    ASSERT_TRUE(has_type_definition("field", "s"));
-    ASSERT_TRUE(has_type_definition("alias", "s"));
-    ASSERT_TRUE(has_type_definition("ec", "e"));
+    ZASSERT(has_pair("field", RelationKind::TypeDefinition, "s"));
+    ZASSERT(has_pair("alias", RelationKind::TypeDefinition, "s"));
+    ZASSERT(has_pair("ec", RelationKind::TypeDefinition, "e"));
 }
 
-TEST_CASE(ConstructorDestructorRelations) {
+ZEST_CASE(ConstructorDestructorRelations) {
     build_index(R"(
             struct §(s)⟦§(s)S⟧ {
                 §(ctor)S();
@@ -673,13 +770,13 @@ TEST_CASE(ConstructorDestructorRelations) {
     auto& index = tu_index.main_file_index;
     auto class_occs = select("s");
     auto ctor_occs = select("ctor");
-    ASSERT_FALSE(class_occs.empty());
-    ASSERT_FALSE(ctor_occs.empty());
+    ZASSERT(!class_occs.empty());
+    ZASSERT(!ctor_occs.empty());
     auto class_hash = class_occs.front().target;
     auto ctor_hash = ctor_occs.front().target;
 
     auto it = index.relations.find(class_hash);
-    ASSERT_TRUE(it != index.relations.end());
+    ZASSERT(it != index.relations.end());
 
     bool found_ctor = false;
     bool found_dtor = false;
@@ -691,12 +788,12 @@ TEST_CASE(ConstructorDestructorRelations) {
             found_dtor = true;
         }
     }
-    ASSERT_TRUE(found_ctor);
-    ASSERT_TRUE(found_dtor);
+    ZASSERT(found_ctor);
+    ZASSERT(found_dtor);
 
     // The constructor points back at its class for go-to-type-definition.
     auto ctor_it = index.relations.find(ctor_hash);
-    ASSERT_TRUE(ctor_it != index.relations.end());
+    ZASSERT(ctor_it != index.relations.end());
 
     bool found_type = false;
     for(auto& r: ctor_it->second) {
@@ -704,10 +801,10 @@ TEST_CASE(ConstructorDestructorRelations) {
             found_type = true;
         }
     }
-    ASSERT_TRUE(found_type);
+    ZASSERT(found_type);
 }
 
-TEST_CASE(MacroRelations) {
+ZEST_CASE(MacroRelations) {
     build_index(R"(
             #define §(def)⟦§(def)FOO⟧ 1
             int x = §(use)⟦§(use)FOO⟧;
@@ -716,12 +813,12 @@ TEST_CASE(MacroRelations) {
     auto& index = tu_index.main_file_index;
     auto def_occs = select("def");
     auto use_occs = select("use");
-    ASSERT_FALSE(def_occs.empty());
-    ASSERT_FALSE(use_occs.empty());
-    ASSERT_EQ(def_occs.front().target, use_occs.front().target);
+    ZASSERT(!def_occs.empty());
+    ZASSERT(!use_occs.empty());
+    ZASSERT(def_occs.front().target == use_occs.front().target);
 
     auto it = index.relations.find(def_occs.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+    ZASSERT(it != index.relations.end());
 
     bool found_definition = false;
     bool found_reference = false;
@@ -733,19 +830,101 @@ TEST_CASE(MacroRelations) {
             found_reference = true;
         }
     }
-    ASSERT_TRUE(found_definition);
-    ASSERT_TRUE(found_reference);
+    ZASSERT(found_definition);
+    ZASSERT(found_reference);
 }
 
-TEST_CASE(ModuleName) {
+ZEST_CASE(MacroDefinedOperand) {
+    build_index(R"(
+            #define §(def)FOO 1
+            #if defined(§(paren)⟦§(paren)FOO⟧) && defined §(bare)⟦§(bare)FOO⟧
+            #endif
+        )");
+
+    auto target = select("def").front().target;
+    auto& relations = tu_index.main_file_index.relations[target];
+    for(auto name: {"paren", "bare"}) {
+        auto occurrences = select(name);
+        ZASSERT(occurrences.size() == 1U);
+        ZASSERT(occurrences.front().target == target);
+        ZASSERT(std::ranges::any_of(relations, [&](const index::Relation& relation) {
+            return relation.kind == RelationKind::Reference && relation.range == range(name);
+        }));
+    }
+}
+
+ZEST_CASE(DependentOperatorUnreferenced) {
+    build_index(R"(
+        struct Id {};
+        bool operator==(const Id&, const Id&);
+        int operator<=>(const Id&, const Id&);
+
+        template <typename T>
+        struct Box {
+            T* ptr;
+            bool empty() const { return ptr == nullptr; }
+            bool same(const Box& other) const { return this != &other; }
+            bool ordered(T a, T b) const { return a >= b; }
+        };
+    )");
+
+    for(auto name: {"operator==", "operator<=>"}) {
+        auto& relations = tu_index.main_file_index.relations[symbol_named(name).first];
+        ZASSERT(relations.size() == 1U);
+        ZASSERT(relations.front().kind == RelationKind::Declaration);
+    }
+}
+
+ZEST_CASE(PastedFragmentUses) {
+    add_file("kinds.inc", "KIND(red)\nKIND(green)\n");
+    add_file("decls.inc", "int helper();\nint value = helper();\n");
+    add_file("take.h", "constexpr int fallback = 1;\nint take(int x = fallback);\n");
+    add_main("main.cpp", R"(
+        #include "decls.inc"
+        #include "take.h"
+        int take(int x) { return x; }
+        enum Color { red, green };
+        int pick(Color color) {
+            switch(color) {
+        #define KIND(name) case name: return helper();
+        #include §(paste)⟦"kinds.inc"⟧
+        #undef KIND
+            }
+            return 0;
+        }
+    )");
+    ZASSERT(compile());
+    decode_index(index::build_tu_index(*unit));
+
+    auto pasted_at = [&](llvm::StringRef name) {
+        std::vector<LocalSourceRange> ranges;
+        for(auto& relation: tu_index.main_file_index.relations[symbol_named(name).first]) {
+            if(relation.kind == RelationKind::Pasted) {
+                ranges.push_back(relation.range);
+            }
+        }
+        return ranges;
+    };
+    for(auto name: {"red", "green", "helper"}) {
+        auto ranges = pasted_at(name);
+        ZASSERT(ranges.size() == 1U);
+        ZASSERT(ranges.front() == range("paste"));
+    }
+    ZASSERT(pasted_at("Color").empty());
+    ZASSERT(pasted_at("fallback").empty());
+}
+
+ZEST_CASE(ModuleName) {
     build_index(R"(export module §(m)⟦§(m)foo⟧;)");
 
     auto& index = tu_index.main_file_index;
     auto occs = select("m");
-    ASSERT_FALSE(occs.empty());
+    ZASSERT(!occs.empty());
+    ZASSERT(occs.front().target == unit->module_entity("foo"));
+    ZASSERT(symbol_named("foo").second.kind.value() == SymbolKind(SymbolKind::Module).value());
 
     auto it = index.relations.find(occs.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+    ZASSERT(it != index.relations.end());
 
     bool found_definition = false;
     for(auto& r: it->second) {
@@ -753,20 +932,20 @@ TEST_CASE(ModuleName) {
             found_definition = true;
         }
     }
-    ASSERT_TRUE(found_definition);
+    ZASSERT(found_definition);
 }
 
-TEST_CASE(ModulePartitionName) {
+ZEST_CASE(ModulePartitionName) {
     build_index(R"(export module §(m)⟦§(m)foo:part⟧;)");
 
     // The occurrence spans the whole written name, partition included.
     auto occs = select("m");
-    ASSERT_FALSE(occs.empty());
-    ASSERT_EQ(occs.front().range, range("m"));
+    ZASSERT(!occs.empty());
+    ZASSERT(occs.front().range == range("m"));
 
     auto& index = tu_index.main_file_index;
     auto it = index.relations.find(occs.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+    ZASSERT(it != index.relations.end());
 
     bool found_definition = false;
     for(auto& r: it->second) {
@@ -774,10 +953,55 @@ TEST_CASE(ModulePartitionName) {
             found_definition = true;
         }
     }
-    ASSERT_TRUE(found_definition);
+    ZASSERT(found_definition);
 }
 
-TEST_CASE(ImplementationUnitReference) {
+ZEST_CASE(InternalPartitionName) {
+    build_index(R"(module §(m)⟦§(m)foo:part⟧;)");
+
+    // An internal partition defines the partition it declares.
+    auto occs = select("m");
+    ZASSERT(!occs.empty());
+    ZASSERT(occs.front().range == range("m"));
+
+    auto& index = tu_index.main_file_index;
+    auto it = index.relations.find(occs.front().target);
+    ZASSERT(it != index.relations.end());
+    ZEXPECT(llvm::any_of(it->second, [](auto& r) { return r.kind == RelationKind::Definition; }));
+}
+
+ZEST_CASE(ImportedDeclarationsSkipped) {
+    add_files("main.cpp", R"(
+#[widget.h]
+struct Widget {
+    int value;
+};
+
+#[foo.cppm]
+module;
+#include "widget.h"
+export module foo;
+export Widget make();
+
+#[main.cpp]
+import foo;
+
+int main() {
+    return §(use)make().value;
+}
+)");
+    ZASSERT(compile_with_modules());
+    decode_index(index::build_tu_index(*unit));
+
+    // The module's own unit indexes its declarations and the headers behind
+    // them; an importer's index holds what it parsed.
+    ZEXPECT(tu_index.file_indices.empty());
+    auto occs = select("use");
+    ZASSERT(!occs.empty());
+    ZEXPECT(occs.front().target == symbol_named("make").first);
+}
+
+ZEST_CASE(ImplementationUnitReference) {
     add_files("main.cpp", R"(
 #[foo.cppm]
 export module foo;
@@ -786,31 +1010,31 @@ export int x = 1;
 #[main.cpp]
 module §(m)⟦§(m)foo⟧;
 )");
-    ASSERT_TRUE(compile_with_modules());
+    ZASSERT(compile_with_modules());
     decode_index(index::build_tu_index(*unit));
 
     // An implementation unit's declaration is a Reference, not a Definition.
     auto occs = select("m");
-    ASSERT_FALSE(occs.empty());
-    ASSERT_EQ(occs.front().range, range("m"));
+    ZASSERT(!occs.empty());
+    ZASSERT(occs.front().range == range("m"));
 
     auto& index = tu_index.main_file_index;
     auto it = index.relations.find(occs.front().target);
-    ASSERT_TRUE(it != index.relations.end());
+    ZASSERT(it != index.relations.end());
 
     bool found_reference = false;
     for(auto& r: it->second) {
         if(r.kind == RelationKind::Definition) {
-            ASSERT_TRUE(false);
+            ZASSERT(false);
         }
         if(r.kind == RelationKind::Reference) {
             found_reference = true;
         }
     }
-    ASSERT_TRUE(found_reference);
+    ZASSERT(found_reference);
 }
 
-TEST_CASE(OverrideRelation) {
+ZEST_CASE(OverrideRelation) {
     build_index(R"(
             struct Base {
                 virtual void method() {}
@@ -844,11 +1068,11 @@ TEST_CASE(OverrideRelation) {
         check_relations(idx);
     }
 
-    ASSERT_TRUE(found_interface);
-    ASSERT_TRUE(found_implementation);
+    ZASSERT(found_interface);
+    ZASSERT(found_implementation);
 }
 
-TEST_CASE(DeclarationAndDefinition) {
+ZEST_CASE(DeclarationAndDefinition) {
     build_index(R"(
             int §(decl)foo();
 
@@ -859,11 +1083,11 @@ TEST_CASE(DeclarationAndDefinition) {
 
     // Find the declaration occurrence and verify Declaration relation exists.
     auto decl_occs = select("decl");
-    ASSERT_FALSE(decl_occs.empty());
+    ZASSERT(!decl_occs.empty());
     auto symbol_hash = decl_occs.front().target;
 
     auto it = index.relations.find(symbol_hash);
-    ASSERT_TRUE(it != index.relations.end());
+    ZASSERT(it != index.relations.end());
 
     bool found_decl = false;
     bool found_def = false;
@@ -875,11 +1099,40 @@ TEST_CASE(DeclarationAndDefinition) {
             found_def = true;
         }
     }
-    ASSERT_TRUE(found_decl);
-    ASSERT_TRUE(found_def);
+    ZASSERT(found_decl);
+    ZASSERT(found_def);
 }
 
-TEST_CASE(CrossFileHeaderIndex) {
+ZEST_CASE(MacroDefinitionExtent) {
+    build_index(R"(
+        #define MAKE_FN(name) int name() { return 42; }
+        §(ext)⟦MAKE_FN(generated)⟧
+    )");
+
+    auto [hash, symbol] = symbol_named("generated");
+    auto& relations = tu_index.main_file_index.relations[hash];
+    auto definition = std::ranges::find_if(relations, [](const index::Relation& relation) {
+        return relation.kind == RelationKind::Definition;
+    });
+    ZASSERT(definition != relations.end());
+    ZASSERT(dump(definition->definition_range()) == dump(range("ext")));
+}
+
+ZEST_CASE(SpelledInMacroRedeclarations) {
+    build_index(R"(
+        #define FWD(name) class name;
+        FWD(Written)
+        class Written {};
+
+        #define MAKE(name) class name {};
+        MAKE(Generated)
+    )");
+
+    ZASSERT(!has(symbol_named("Written").second, index::SymbolFlags::SpelledInMacro));
+    ZASSERT(has(symbol_named("Generated").second, index::SymbolFlags::SpelledInMacro));
+}
+
+ZEST_CASE(CrossFileHeaderIndex) {
     add_file("header.h", R"(
             #pragma once
             int §(hdr_func)⟦§(hdr_func)helper⟧();
@@ -891,15 +1144,15 @@ TEST_CASE(CrossFileHeaderIndex) {
                 return §(use_helper)helper();
             }
         )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     decode_index(index::build_tu_index(*unit));
 
     // The header should have its own FileIndex (separate from main).
-    ASSERT_TRUE(tu_index.file_indices.size() >= 1U);
+    ZASSERT(tu_index.file_indices.size() >= 1U);
 
     // The main file should have a reference to helper.
     auto& main_index = tu_index.main_file_index;
-    ASSERT_FALSE(main_index.occurrences.empty());
+    ZASSERT(!main_index.occurrences.empty());
 
     // Find 'helper' reference in main file.
     auto use_offset = point("use_helper");
@@ -907,12 +1160,12 @@ TEST_CASE(CrossFileHeaderIndex) {
                                        use_offset,
                                        {},
                                        [](const index::Occurrence& o) { return o.range.end; });
-    ASSERT_TRUE(it != main_index.occurrences.end());
-    ASSERT_TRUE(it->range.contains(use_offset));
+    ZASSERT(it != main_index.occurrences.end());
+    ZASSERT(it->range.touches(use_offset));
 
     // The helper symbol should exist in the TU symbol table.
     auto helper_hash = it->target;
-    ASSERT_TRUE(tu_index.symbols.contains(helper_hash));
+    ZASSERT(tu_index.symbols.contains(helper_hash));
 
     // The helper's declaration should be in the header's rows.
     bool found_in_header = false;
@@ -926,10 +1179,59 @@ TEST_CASE(CrossFileHeaderIndex) {
         if(found_in_header)
             break;
     }
-    ASSERT_TRUE(found_in_header);
+    ZASSERT(found_in_header);
 }
 
-TEST_CASE(SymbolKinds) {
+ZEST_CASE(KnownVariantsSkipped) {
+    add_file("header.h", R"(
+            #pragma once
+            int only_in_header(int parameter);
+            static int internal();
+            int shared();
+        )");
+    add_main("main.cpp", R"(
+            #include "header.h"
+            int user() { return shared(); }
+        )");
+    ZASSERT(compile());
+    auto full = index::build_tu_index(*unit);
+    auto full_view = index::TUIndex::from_bytes(full);
+    ZASSERT(full_view.loaded());
+    auto main_id = full_view.path_count() - 1;
+    std::uint32_t header = full_view.section_count();
+    for(std::uint32_t i = 0; i < full_view.section_count(); i += 1) {
+        if(full_view.section_path(i) != main_id) {
+            header = i;
+        }
+    }
+    ZASSERT(header < full_view.section_count());
+    std::vector<std::uint64_t> known = {full_view.section_hash(header)};
+    auto table_names = [](const index::TUIndex& view) {
+        std::vector<std::string> names;
+        view.iterate_symbols([&](index::SymbolHash,
+                                 const index::SymbolIdentity& identity,
+                                 llvm::ArrayRef<std::uint32_t>) {
+            names.emplace_back(identity.name);
+            return true;
+        });
+        std::ranges::sort(names);
+        return names;
+    };
+    ZASSERT(table_names(full_view) ==
+            std::vector<std::string>{"internal", "only_in_header", "shared", "user"});
+
+    // The stored header travels as its hash alone, and the external
+    // symbols only it names stay out of the table; the main file's rows,
+    // every symbol they name and the internal ones still travel.
+    decode_index(index::build_tu_index(*unit, {.known_variants = known}));
+    auto& view = tu_index.view;
+    ZASSERT(view.section_hash(header) == known.front());
+    ZASSERT(view.section_blob(header).empty());
+    ZASSERT(!view.section_blob(*view.section_of(main_id)).empty());
+    ZASSERT(table_names(view) == std::vector<std::string>{"internal", "shared", "user"});
+}
+
+ZEST_CASE(SymbolKinds) {
     build_index(R"(
             struct §(cls)MyClass {};
             enum §(enm)MyEnum { A, B };
@@ -940,10 +1242,10 @@ TEST_CASE(SymbolKinds) {
 
     auto check_kind = [&](llvm::StringRef name, SymbolKind expected) {
         auto occs = select(name);
-        ASSERT_FALSE(occs.empty());
+        ZASSERT(!occs.empty());
         auto hash = occs.front().target;
-        ASSERT_TRUE(tu_index.symbols.contains(hash));
-        ASSERT_EQ(tu_index.symbols[hash].kind.value(), expected.value());
+        ZASSERT(tu_index.symbols.contains(hash));
+        ZASSERT(tu_index.symbols[hash].kind.value() == expected.value());
     };
 
     check_kind("cls", SymbolKind::Struct);
@@ -953,16 +1255,16 @@ TEST_CASE(SymbolKinds) {
     check_kind("ns", SymbolKind::Namespace);
 }
 
-TEST_CASE(LookupOccurrence) {
+ZEST_CASE(LookupOccurrence) {
     build_index(R"(
         int §(x)⟦fo§(x)o⟧();
         int §(ref)⟦fo§(ref)o⟧() { return 0; }
     )");
 
     auto& fi = tu_index.main_file_index;
-    ASSERT_FALSE(fi.occurrences.empty());
+    ZASSERT(!fi.occurrences.empty());
     const index::Shard& shard = tu_index.view.shard_of(tu_index.view.path_count() - 1);
-    ASSERT_TRUE(shard.loaded());
+    ZASSERT(shard.loaded());
 
     auto x_range = range("x");
     std::optional<index::Occurrence> found;
@@ -970,61 +1272,61 @@ TEST_CASE(LookupOccurrence) {
         found = occ;
         return true;
     });
-    ASSERT_TRUE(found.has_value());
-    EXPECT_EQ(found->range.begin, x_range.begin);
-    EXPECT_EQ(found->range.end, x_range.end);
+    ZASSERT(found);
+    ZEXPECT(found->range.begin == x_range.begin);
+    ZEXPECT(found->range.end == x_range.end);
 
     found.reset();
     shard.lookup(point("ref"), [&](const index::Occurrence& occ) {
         found = occ;
         return true;
     });
-    ASSERT_TRUE(found.has_value());
-    EXPECT_EQ(found->target, fi.occurrences.front().target);
+    ZASSERT(found);
+    ZEXPECT(found->target == fi.occurrences.front().target);
 
     found.reset();
     shard.lookup(0, [&](const index::Occurrence& occ) {
         found = occ;
         return false;
     });
-    EXPECT_FALSE(found.has_value());
+    ZEXPECT(!found.has_value());
 }
 
-TEST_CASE(LookupRelation) {
+ZEST_CASE(LookupRelation) {
     build_index(R"(
         void §(decl)⟦fo§(decl)o⟧();
         void §(def)⟦fo§(def)o⟧() {}
     )");
 
     const index::Shard& shard = tu_index.view.shard_of(tu_index.view.path_count() - 1);
-    ASSERT_TRUE(shard.loaded());
+    ZASSERT(shard.loaded());
 
     std::optional<index::Occurrence> occ;
     shard.lookup(point("decl"), [&](const index::Occurrence& o) {
         occ = o;
         return false;
     });
-    ASSERT_TRUE(occ.has_value());
+    ZASSERT(occ);
 
     auto def_range = range("def");
     bool found_def = false;
     shard.lookup(occ->target, RelationKind::Definition, [&](const index::Relation& r) {
         found_def = true;
-        EXPECT_EQ(r.range.begin, def_range.begin);
-        EXPECT_EQ(r.range.end, def_range.end);
+        ZEXPECT(r.range.begin == def_range.begin);
+        ZEXPECT(r.range.end == def_range.end);
         return false;
     });
-    EXPECT_TRUE(found_def);
+    ZEXPECT(found_def);
 
     bool found_any = false;
     shard.lookup(occ->target, RelationKind::Caller, [&](const index::Relation&) {
         found_any = true;
         return false;
     });
-    EXPECT_FALSE(found_any);
+    ZEXPECT(!found_any);
 }
 
-TEST_CASE(ScopeExternal) {
+ZEST_CASE(ScopeExternal) {
     build_index(R"(
             int global_var = 0;
             void global_func() {}
@@ -1041,15 +1343,15 @@ TEST_CASE(ScopeExternal) {
     std::set<std::string> found;
     for(auto& [hash, symbol]: tu_index.symbols) {
         if(expected.contains(symbol.name)) {
-            ASSERT_EQ(static_cast<int>(symbol.scope),
-                      static_cast<int>(index::SymbolScope::External));
+            ZASSERT(static_cast<int>(symbol.scope) ==
+                    static_cast<int>(index::SymbolScope::External));
             found.insert(symbol.name);
         }
     }
-    ASSERT_EQ(found, expected);
+    ZASSERT(found == expected);
 }
 
-TEST_CASE(ScopeFileLocal) {
+ZEST_CASE(ScopeFileLocal) {
     build_index(R"(
             void foo() {
                 int local_var = 42;
@@ -1061,15 +1363,15 @@ TEST_CASE(ScopeFileLocal) {
     std::set<std::string> found;
     for(auto& [hash, symbol]: tu_index.symbols) {
         if(expected.contains(symbol.name)) {
-            ASSERT_EQ(static_cast<int>(symbol.scope),
-                      static_cast<int>(index::SymbolScope::FileLocal));
+            ZASSERT(static_cast<int>(symbol.scope) ==
+                    static_cast<int>(index::SymbolScope::FileLocal));
             found.insert(symbol.name);
         }
     }
-    ASSERT_EQ(found, expected);
+    ZASSERT(found == expected);
 }
 
-TEST_CASE(ScopeTULocal) {
+ZEST_CASE(ScopeTULocal) {
     build_index(R"(
             static int static_var = 0;
             static void static_func() {}
@@ -1080,15 +1382,281 @@ TEST_CASE(ScopeTULocal) {
     std::set<std::string> found;
     for(auto& [hash, symbol]: tu_index.symbols) {
         if(expected.contains(symbol.name)) {
-            ASSERT_EQ(static_cast<int>(symbol.scope),
-                      static_cast<int>(index::SymbolScope::TULocal));
+            ZASSERT(static_cast<int>(symbol.scope) ==
+                    static_cast<int>(index::SymbolScope::TULocal));
             found.insert(symbol.name);
         }
     }
-    ASSERT_EQ(found, expected);
+    ZASSERT(found == expected);
 }
 
-TEST_CASE(PreambleDefaultArgument) {
+ZEST_CASE(ScopeModuleLinkage) {
+    build_index(R"(
+            export module m;
+            int module_var = 0;
+            export int exported_var = 0;
+            static int static_var = 0;
+        )");
+
+    ZASSERT(scope("module_var") == static_cast<int>(index::SymbolScope::External));
+    ZASSERT(scope("exported_var") == static_cast<int>(index::SymbolScope::External));
+    ZASSERT(scope("static_var") == static_cast<int>(index::SymbolScope::TULocal));
+}
+
+ZEST_CASE(ExportedFlag) {
+    build_index(R"(
+            export module m;
+            export int exported_var = 0;
+            export {
+                int block_fn();
+                struct Exported { void member(); };
+            }
+            export namespace api { int nested(); }
+            export template <typename Param> concept Small = sizeof(Param) < 4;
+            namespace detail { export int open(); }
+            namespace hidden { int closed(); }
+            int module_var = 0;
+            int block_fn() { return 0; }
+        )");
+
+    auto exported = [&](llvm::StringRef name) {
+        return has(symbol_named(name).second, index::SymbolFlags::Exported);
+    };
+    ZASSERT(exported("exported_var"));
+    ZASSERT(exported("block_fn"));
+    ZASSERT(exported("Exported"));
+    ZASSERT(exported("nested"));
+    ZASSERT(exported("Small"));
+    ZASSERT(exported("detail"));
+    ZASSERT(!exported("hidden"));
+    ZASSERT(!exported("Param"));
+    ZASSERT(!exported("member"));
+    ZASSERT(!exported("module_var"));
+}
+
+ZEST_CASE(AnonymousScopeFlag) {
+    build_index(R"(
+            enum { unnamed_value };
+            struct Holder { union { int union_member; }; };
+            struct { int declarator_member; } unnamed_object;
+        )");
+
+    auto anonymous = [&](llvm::StringRef member) {
+        auto parent = symbol_named(member).second.parent;
+        return has(tu_index.symbols[parent], index::SymbolFlags::AnonymousScope);
+    };
+    ZASSERT(anonymous("unnamed_value"));
+    ZASSERT(anonymous("union_member"));
+    ZASSERT(!anonymous("declarator_member"));
+}
+
+ZEST_CASE(ScopeNoLinkage) {
+    build_index(R"(
+            enum { unnamed_value };
+            struct { int unnamed_field; } unnamed_object;
+            struct Holder { enum { member_value }; };
+            namespace { enum { hidden_value }; using hidden_alias = int; }
+            typedef void (*callback)(int prototype_param);
+            void host() { enum { local_value }; }
+        )");
+
+    ZASSERT(scope("unnamed_value") == static_cast<int>(index::SymbolScope::External));
+    ZASSERT(scope("unnamed_field") == static_cast<int>(index::SymbolScope::External));
+    ZASSERT(scope("member_value") == static_cast<int>(index::SymbolScope::External));
+    ZASSERT(scope("callback") == static_cast<int>(index::SymbolScope::External));
+    ZASSERT(scope("hidden_value") == static_cast<int>(index::SymbolScope::TULocal));
+    ZASSERT(scope("hidden_alias") == static_cast<int>(index::SymbolScope::TULocal));
+    ZASSERT(scope("prototype_param") == static_cast<int>(index::SymbolScope::FileLocal));
+    ZASSERT(scope("local_value") == static_cast<int>(index::SymbolScope::FileLocal));
+}
+
+ZEST_CASE(ScopeCEnumerator) {
+    add_main("main.c", R"c(
+            enum color { red };
+            void host(void) { enum { local_value }; }
+        )c");
+    ZASSERT(compile("-std=c17"));
+    decode_index(index::build_tu_index(*unit));
+
+    ZASSERT(scope("red") == static_cast<int>(index::SymbolScope::External));
+    ZASSERT(scope("local_value") == static_cast<int>(index::SymbolScope::FileLocal));
+}
+
+ZEST_CASE(BareNameAndParentChain) {
+    build_index(R"(
+        namespace ns { struct Outer { struct Inner { void method(); }; }; }
+        void ns::Outer::Inner::method() {}
+        namespace ns { inline namespace v1 { enum Color { Red }; } }
+        void local_host() { struct Local { int field; }; }
+    )");
+
+    auto [ns, ns_symbol] = symbol_named("ns");
+    auto [outer, outer_symbol] = symbol_named("Outer");
+    auto [inner, inner_symbol] = symbol_named("Inner");
+    auto [method, method_symbol] = symbol_named("method");
+    ZASSERT(ns_symbol.parent == 0u);
+    ZASSERT(outer_symbol.parent == ns);
+    ZASSERT(inner_symbol.parent == outer);
+    ZASSERT(method_symbol.parent == inner);
+
+    auto [v1, v1_symbol] = symbol_named("v1");
+    ZASSERT(has(v1_symbol, index::SymbolFlags::InlineNamespace));
+    ZASSERT(v1_symbol.parent == ns);
+    auto [color, color_symbol] = symbol_named("Color");
+    ZASSERT(color_symbol.parent == v1);
+    ZASSERT(symbol_named("Red").second.parent == color);
+
+    auto [host, host_symbol] = symbol_named("local_host");
+    auto [local, local_symbol] = symbol_named("Local");
+    ZASSERT(local_symbol.parent == host);
+    ZASSERT(symbol_named("field").second.parent == local);
+}
+
+ZEST_CASE(SpecializationArguments) {
+    build_index(R"(
+        template <typename T> struct Box { T value; };
+        template <> struct Box<int> { int value; };
+        template <typename T> struct Box<T*> { T* value; };
+        template <typename T> T identity(T t) { return t; }
+        template <> int identity<int>(int t) { return t; }
+        Box<int> a;
+        Box<double> b;
+        Box<char*> c;
+    )");
+
+    auto [primary, primary_symbol] = symbol_named("Box");
+    ZASSERT(has(primary_symbol, index::SymbolFlags::Template));
+    ZASSERT(!has(primary_symbol, index::SymbolFlags::Specialization));
+    ZASSERT(has(primary_symbol, index::SymbolFlags::Completable));
+
+    auto [full, full_symbol] = symbol_named("Box", "<int>");
+    ZASSERT(has(full_symbol, index::SymbolFlags::Specialization));
+    ZASSERT(!has(full_symbol, index::SymbolFlags::Template));
+    ZASSERT(!has(full_symbol, index::SymbolFlags::Completable));
+
+    auto [partial, partial_symbol] = symbol_named("Box", "<T *>");
+    ZASSERT(has(partial_symbol, index::SymbolFlags::Specialization));
+    ZASSERT(has(partial_symbol, index::SymbolFlags::Template));
+
+    // Members of the full specialization hang off it; the primary's
+    // members and every instantiation's off the primary.
+    std::set<index::SymbolHash> value_parents;
+    for(auto& [hash, symbol]: tu_index.symbols) {
+        if(symbol.name == "value") {
+            value_parents.insert(symbol.parent);
+        }
+    }
+    ZASSERT(value_parents == (std::set<index::SymbolHash>{primary, full, partial}));
+
+    auto [function, function_symbol] = symbol_named("identity", "<int>");
+    ZASSERT(has(function_symbol, index::SymbolFlags::Specialization));
+    ZASSERT(has(symbol_named("identity").second, index::SymbolFlags::Template));
+}
+
+ZEST_CASE(SymbolFacts) {
+    build_index(R"(
+        [[deprecated]] void old();
+        struct { int in_anonymous; } anonymous_instance;
+        #define DECLARE(name) void name();
+        DECLARE(spelled)
+        enum Unscoped { Plain };
+        struct Holder {
+            enum Nested { Inner };
+            enum class Scoped { Hidden };
+            Holder();
+            ~Holder();
+            operator int();
+            void member();
+        };
+        bool operator==(Holder, Holder);
+        namespace n { struct Scoped { Scoped(); ~Scoped(); }; }
+    )");
+
+    ZASSERT(has(symbol_named("old").second, index::SymbolFlags::Deprecated));
+    auto holder = symbol_named("Holder", "", SymbolKind::Struct).second;
+    ZASSERT(!has(holder, index::SymbolFlags::Deprecated));
+
+    auto [anonymous, anonymous_symbol] = symbol_named("(anonymous struct)");
+    ZASSERT(has(anonymous_symbol, index::SymbolFlags::Unnamed));
+    ZASSERT(symbol_named("in_anonymous").second.parent == anonymous);
+
+    ZASSERT(has(symbol_named("spelled").second, index::SymbolFlags::SpelledInMacro));
+    ZASSERT(!has(symbol_named("old").second, index::SymbolFlags::SpelledInMacro));
+    ZASSERT(!has(symbol_named("old").second, index::SymbolFlags::SystemHeader));
+
+    ZASSERT(has(symbol_named("old").second, index::SymbolFlags::Completable));
+    ZASSERT(has(symbol_named("Plain").second, index::SymbolFlags::Completable));
+    ZASSERT(has(symbol_named("Inner").second, index::SymbolFlags::Completable));
+    ZASSERT(!has(symbol_named("Hidden").second, index::SymbolFlags::Completable));
+    ZASSERT(!has(symbol_named("member").second, index::SymbolFlags::Completable));
+    ZASSERT(has(symbol_named("DECLARE").second, index::SymbolFlags::Completable));
+
+    using index::NameForm;
+    ZASSERT(index::name_form(symbol_named("member").second.flags) == NameForm::Identifier);
+    ZASSERT(index::name_form(holder.flags) == NameForm::Identifier);
+    ZASSERT(index::name_form(symbol_named("~Holder").second.flags) == NameForm::Destructor);
+    ZASSERT(index::name_form(symbol_named("operator int").second.flags) == NameForm::Conversion);
+    ZASSERT(index::name_form(symbol_named("operator==").second.flags) == NameForm::Operator);
+    auto [holder_class, holder_symbol] = symbol_named("Holder", "", SymbolKind::Struct);
+    auto constructor = symbol_named("Holder", "", SymbolKind::Method).second;
+    ZASSERT(index::name_form(constructor.flags) == NameForm::Constructor);
+    ZASSERT(constructor.parent == holder_class);
+
+    // A scoped class's constructor and destructor spell the class's own
+    // name, never its qualifier.
+    auto [scoped, scoped_symbol] = symbol_named("Scoped", "", SymbolKind::Struct);
+    ZASSERT(symbol_named("Scoped", "", SymbolKind::Method).second.parent == scoped);
+    ZASSERT(symbol_named("~Scoped").second.parent == scoped);
+}
+
+ZEST_CASE(CanonicalFile) {
+    add_file("header.h", R"(
+        int declared_twice();
+        int header_only();
+        inline int header_defined() { return 1; }
+    )");
+    add_main("main.cpp", R"(
+        #include "header.h"
+        int declared_twice();
+        int declared_twice() { return header_only() + header_defined(); }
+        int main_only();
+    )");
+    ZASSERT(compile());
+    decode_index(index::build_tu_index(*unit));
+
+    auto main_path = tu_index.view.path_count() - 1;
+    auto header_path = [&] {
+        for(std::uint32_t id = 0; id < tu_index.view.path_count(); id += 1) {
+            if(tu_index.view.path(id).ends_with("header.h")) {
+                return id;
+            }
+        }
+        LOG_FATAL("header.h is not in the path table");
+    }();
+
+    auto twice = symbol_named("declared_twice").second;
+    ZASSERT(has(twice, index::SymbolFlags::HasDefinition));
+    ZASSERT(twice.file == main_path);
+
+    auto only = symbol_named("header_only").second;
+    ZASSERT(!has(only, index::SymbolFlags::HasDefinition));
+    ZASSERT(only.file == header_path);
+
+    auto defined = symbol_named("header_defined").second;
+    ZASSERT(has(defined, index::SymbolFlags::HasDefinition));
+    ZASSERT(defined.file == header_path);
+    ZASSERT(has(defined, index::SymbolFlags::Completable));
+
+    // A main-file-only build keeps no header rows: a symbol the main file
+    // merely uses has no declaring row at all.
+    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
+    auto used = symbol_named("header_only").second;
+    ZASSERT(!has(used, index::SymbolFlags::HasDefinition));
+    ZASSERT(used.file == index::no_file);
+    ZASSERT(symbol_named("main_only").second.file == tu_index.view.path_count() - 1);
+}
+
+ZEST_CASE(PreambleDefaultArgument) {
     // An out-of-line definition inherits the default argument expression
     // from the in-class declaration; its DeclRefExpr is located in the
     // preamble header, whose FileID is loaded from the PCH.
@@ -1102,7 +1670,7 @@ struct Foo {
 #include "foo.h"
 int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
 )");
-    ASSERT_TRUE(compile_with_pch());
+    ZASSERT(compile_with_pch());
 
     // A full build keeps the preamble rows: this proves the row exists
     // (so the gate test below cannot pass vacuously) and that the loaded
@@ -1112,17 +1680,17 @@ int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
     for(auto& [path_id, index]: tu_index.file_indices) {
         found |= tu_index.view.path(path_id).ends_with("foo.h");
     }
-    ASSERT_TRUE(found);
+    ZASSERT(found);
 
-    decode_index(index::build_tu_index(*unit, true));
+    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
 
     // Rows resolving into the preamble are dropped: the preamble's own
     // index covers them. Only the main file's rows remain.
-    ASSERT_TRUE(tu_index.file_indices.empty());
+    ZASSERT(tu_index.file_indices.empty());
     EXPECT_SELECT("1", "def");
 }
 
-TEST_CASE(PreambleBaseSpecifier) {
+ZEST_CASE(PreambleBaseSpecifier) {
     // A forward declaration reaches the definition's base specifiers via
     // the shared DefinitionData; their source ranges are in the preamble
     // header, whose FileID is loaded from the PCH.
@@ -1135,7 +1703,7 @@ struct Derived : Base {};
 struct Derived;
 Derived* use();
 )");
-    ASSERT_TRUE(compile_with_pch());
+    ZASSERT(compile_with_pch());
 
     // Full build: the base-specifier rows land in the preamble header
     // and its loaded fid resolves to the header's path.
@@ -1144,17 +1712,17 @@ Derived* use();
     for(auto& [path_id, index]: tu_index.file_indices) {
         found |= tu_index.view.path(path_id).ends_with("bar.h");
     }
-    ASSERT_TRUE(found);
+    ZASSERT(found);
 
-    decode_index(index::build_tu_index(*unit, true));
+    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
 
-    ASSERT_TRUE(tu_index.file_indices.empty());
-    ASSERT_FALSE(tu_index.main_file_index.occurrences.empty());
+    ZASSERT(tu_index.file_indices.empty());
+    ZASSERT(!tu_index.main_file_index.occurrences.empty());
 }
 
-TEST_CASE(HeaderMacroDropped) {
+ZEST_CASE(HeaderMacroDropped) {
     // Macro occurrences flow through the same gate: a definition in an
-    // included header is dropped from an interested-only build, while
+    // included header is dropped from an main-file-only build, while
     // the reference in the main file is kept.
     add_file("baz.h", R"(
 #define BAZ 1
@@ -1163,17 +1731,17 @@ TEST_CASE(HeaderMacroDropped) {
 #include "baz.h"
 int x = §(1)BAZ;
 )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
 
-    decode_index(index::build_tu_index(*unit, true));
-    ASSERT_TRUE(tu_index.file_indices.empty());
-    ASSERT_FALSE(tu_index.main_file_index.occurrences.empty());
+    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
+    ZASSERT(tu_index.file_indices.empty());
+    ZASSERT(!tu_index.main_file_index.occurrences.empty());
 }
 
-TEST_CASE(UnknownFidFallback) {
+ZEST_CASE(UnknownFidFallback) {
     // A preamble header's loaded FileID is unknown to a graph built
-    // without indexed fids; lookups must degrade to the interested
-    // file instead of crashing.
+    // without indexed fids; lookups must degrade to the main file
+    // instead of crashing.
     add_file("foo.h", R"(
 struct Foo {};
 )");
@@ -1181,16 +1749,16 @@ struct Foo {};
 #include "foo.h"
 int x = 1;
 )");
-    ASSERT_TRUE(compile_with_pch());
+    ZASSERT(compile_with_pch());
 
-    auto graph = index::IncludeGraph::from(*unit);
+    auto tree = index::IncludeTree::from(*unit);
     auto fid = unit->file_id(TestVFS::path("foo.h"));
-    ASSERT_TRUE(fid.isValid());
-    ASSERT_EQ(graph.include_location_id(fid), static_cast<std::uint32_t>(-1));
-    ASSERT_EQ(graph.path_id(fid), static_cast<std::uint32_t>(graph.paths.size() - 1));
+    ZASSERT(fid.isValid());
+    ZASSERT(tree.node_of(fid) == static_cast<std::uint32_t>(-1));
+    ZASSERT(tree.path_id(fid) == static_cast<std::uint32_t>(tree.paths.size() - 1));
 }
 
-TEST_CASE(PreambleFidResolved) {
+ZEST_CASE(PreambleFidResolved) {
     // When a preamble header's fid is passed as an indexed fid, its
     // include chain is recovered through the SourceManager even though
     // this parse's preprocessor callbacks never saw the include.
@@ -1201,18 +1769,18 @@ struct Foo {};
 #include "foo.h"
 int x = 1;
 )");
-    ASSERT_TRUE(compile_with_pch());
+    ZASSERT(compile_with_pch());
 
     auto fid = unit->file_id(TestVFS::path("foo.h"));
-    ASSERT_TRUE(fid.isValid());
+    ZASSERT(fid.isValid());
 
-    auto graph = index::IncludeGraph::from(*unit, {fid});
-    auto include = graph.include_location_id(fid);
-    ASSERT_TRUE(include != static_cast<std::uint32_t>(-1));
-    ASSERT_TRUE(graph.path(graph.path_id(fid)).ends_with("foo.h"));
+    auto tree = index::IncludeTree::from(*unit, {fid});
+    auto node = tree.node_of(fid);
+    ZASSERT(node != static_cast<std::uint32_t>(-1));
+    ZASSERT(tree.paths[tree.path_id(fid)].ends_with("foo.h"));
 }
 
-TEST_CASE(DeepExpressionChain) {
+ZEST_CASE(DeepExpressionChain) {
     // Doubling macros expand to a ~32k-term binary expression chain.
     // Regression test: indexing such an AST must not overflow the stack.
     std::string code = "#define A0 1+1\n";
@@ -1229,20 +1797,19 @@ TEST_CASE(DeepExpressionChain) {
     // sanitized builds (and Windows main threads only get 1MB). 32MB is
     // an empirical bound with margin, not a derived number.
     bool compiled = false;
-    llvm::thread compile_thread(std::optional<unsigned>(4 * clang::DesiredStackSize),
-                                [&] { compiled = compile(); });
+    llvm::thread compile_thread(std::optional<unsigned>(32u << 20), [&] { compiled = compile(); });
     compile_thread.join();
-    ASSERT_TRUE(compiled);
+    ZASSERT(compiled);
 
     // Index on a deliberately tight stack: the traversal must use
     // constant stack space however deep the expression is, so any
     // reintroduced per-node recursion crashes here deterministically
     // instead of only on production workers with deeper files.
     feature::InactiveScan scan;
-    llvm::thread index_thread(std::optional<unsigned>(clang::DesiredStackSize / 4), [&] {
+    llvm::thread index_thread(std::optional<unsigned>(2u << 20), [&] {
         // Mirror the stateful worker's post-compile sequence.
         scan = feature::inactive_regions(*unit);
-        decode_index(index::build_tu_index(*unit, true));
+        decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
 
         // The semantic map must also serve token classification and a
         // selection at the giant expansion's invocation on this stack:
@@ -1254,7 +1821,7 @@ TEST_CASE(DeepExpressionChain) {
     });
     index_thread.join();
 
-    ASSERT_TRUE(scan.regions.empty());
+    ZASSERT(scan.regions.empty());
 
     // The traversal must have actually reached the decl behind the chain,
     // not bailed out early: expect an occurrence exactly at `bomb`.
@@ -1262,10 +1829,10 @@ TEST_CASE(DeepExpressionChain) {
     auto bomb = std::ranges::find(occurrences, bomb_offset, [](index::Occurrence& occurrence) {
         return occurrence.range.begin;
     });
-    ASSERT_TRUE(bomb != occurrences.end());
+    ZASSERT(bomb != occurrences.end());
 }
 
-TEST_CASE(SuperQualifierRef) {
+ZEST_CASE(SuperQualifierRef) {
     add_main("main.cpp", R"(
             struct Base {
                 void m();
@@ -1282,13 +1849,13 @@ TEST_CASE(SuperQualifierRef) {
     for(auto& arg: owned_args) {
         params.arguments.push_back(arg.c_str());
     }
-    ASSERT_TRUE(try_compile());
+    ZASSERT(try_compile());
     decode_index(index::build_tu_index(*unit));
 
     GO_TO_DEFINITION("use", "def");
 }
 
-TEST_CASE(EnvelopeSections) {
+ZEST_CASE(EnvelopeSections) {
     add_file("header.h", R"(
             #pragma once
             inline int §(hdr)helper() { return 1; }
@@ -1297,53 +1864,53 @@ TEST_CASE(EnvelopeSections) {
             #include "header.h"
             int main() { return §(use)helper(); }
         )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     decode_index(index::build_tu_index(*unit));
-    ASSERT_FALSE(tu_index.file_indices.empty());
+    ZASSERT(!tu_index.file_indices.empty());
 
     auto& view = tu_index.view;
-    ASSERT_TRUE(view.built_at() > 0);
+    ZASSERT(view.built_at() > 0);
 
-    // Sections ascend by path id and the interested file's rows are the
+    // Sections ascend by path id and the main file's rows are the
     // last path id's section.
     for(std::uint32_t i = 1; i < view.section_count(); i += 1) {
-        ASSERT_TRUE(view.section_path(i - 1) < view.section_path(i));
+        ZASSERT(view.section_path(i - 1) < view.section_path(i));
     }
     auto main_section = view.section_of(view.path_count() - 1);
-    ASSERT_TRUE(main_section.has_value());
+    ZASSERT(main_section);
 
     // Every section's hash is the byte identity of its blob, the blob
     // loads as a self-contained single-variant shard under that identity,
     // and the whole envelope passes the persisted-load gate.
-    ASSERT_TRUE(view.shards_verify());
+    ZASSERT(view.shards_verify());
     for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
         auto blob = view.section_blob(i);
-        ASSERT_EQ(view.section_hash(i), llvm::xxh3_64bits(blob));
+        ZASSERT(view.section_hash(i) == llvm::xxh3_64bits(blob));
         auto shard = index::Shard::from_bytes(blob);
-        ASSERT_TRUE(shard.loaded());
-        ASSERT_EQ(shard.variants().size(), std::size_t(1));
-        ASSERT_EQ(shard.variants().front(), view.section_hash(i));
+        ZASSERT(shard.loaded());
+        ZASSERT(shard.variants().size() == std::size_t(1));
+        ZASSERT(shard.variants().front() == view.section_hash(i));
     }
 
     // The graph travels with the envelope: every path resolves and the
     // consumed-content hash column covers the whole table.
     for(std::uint32_t id = 0; id < view.path_count(); id += 1) {
-        ASSERT_FALSE(view.path(id).empty());
-        ASSERT_TRUE(view.path_hash(id) != 0);
+        ZASSERT(!view.path(id).empty());
+        ZASSERT(view.path_hash(id) != 0);
     }
 
     // Symbols read back identically through iteration and point lookup.
-    ASSERT_FALSE(tu_index.symbols.empty());
+    ZASSERT(!tu_index.symbols.empty());
     for(auto& [hash, symbol]: tu_index.symbols) {
         auto identity = view.find_symbol(hash);
-        ASSERT_TRUE(identity.has_value());
-        ASSERT_EQ(identity->name, llvm::StringRef(symbol.name));
-        ASSERT_EQ(identity->kind.value(), symbol.kind.value());
-        ASSERT_EQ(static_cast<int>(identity->scope), static_cast<int>(symbol.scope));
+        ZASSERT(identity);
+        ZASSERT(identity->name == llvm::StringRef(symbol.name));
+        ZASSERT(identity->kind.value() == symbol.kind.value());
+        ZASSERT(static_cast<int>(identity->scope) == static_cast<int>(symbol.scope));
     }
 }
 
-TEST_CASE(CorruptSectionBytesRejected) {
+ZEST_CASE(CorruptSectionBytesRejected) {
     // The persisted-load gate must reject any flipped section byte, in
     // particular flips that still form a structurally valid shard (an
     // opaque hash field, say) — only the byte hash catches those, and
@@ -1352,11 +1919,11 @@ TEST_CASE(CorruptSectionBytesRejected) {
             int value = 1;
             int main() { return value; }
         )");
-    ASSERT_TRUE(compile());
+    ZASSERT(compile());
     decode_index(index::build_tu_index(*unit));
 
     auto& view = tu_index.view;
-    ASSERT_TRUE(view.section_count() > 0);
+    ZASSERT(view.section_count() > 0);
     auto blob = view.section_blob(0);
     auto offset = static_cast<std::size_t>(blob.data() - view.bytes().data());
 
@@ -1372,13 +1939,13 @@ TEST_CASE(CorruptSectionBytesRejected) {
         if(index::Shard::from_bytes(reloaded.section_blob(0)).loaded()) {
             structurally_valid_flip = true;
         }
-        ASSERT_FALSE(reloaded.shards_verify());
+        ZASSERT(!reloaded.shards_verify());
     }
-    ASSERT_TRUE(structurally_valid_flip);
+    ZASSERT(structurally_valid_flip);
 }
 
-TEST_CASE(FromRejectsHostileInput) {
-    ASSERT_FALSE(index::TUIndex::from_bytes("not a flatbuffer at all").loaded());
+ZEST_CASE(FromRejectsHostileInput) {
+    ZASSERT(!index::TUIndex::from_bytes("not a flatbuffer at all").loaded());
 
     build_index(R"(
             int foo() { return 42; }
@@ -1386,154 +1953,197 @@ TEST_CASE(FromRejectsHostileInput) {
     auto bytes = tu_index.view.bytes();
 
     // Sanity: the intact envelope loads, so the rejections below are earned.
-    ASSERT_TRUE(index::TUIndex::from_bytes(bytes).loaded());
+    ZASSERT(index::TUIndex::from_bytes(bytes).loaded());
 
-    ASSERT_FALSE(index::TUIndex::from_bytes(bytes.substr(0, bytes.size() / 2)).loaded());
+    ZASSERT(!index::TUIndex::from_bytes(bytes.substr(0, bytes.size() / 2)).loaded());
 
     // Bytes 4-7 carry the buffer identifier; a blob from another format
     // must be rejected up front.
-    ASSERT_TRUE(bytes.size() > 8);
+    ZASSERT(bytes.size() > 8);
     std::string clobbered(bytes.data(), bytes.size());
     for(std::size_t i = 4; i < 8; i += 1) {
         clobbered[i] = 'X';
     }
-    ASSERT_FALSE(index::TUIndex::from_bytes(clobbered).loaded());
+    ZASSERT(!index::TUIndex::from_bytes(clobbered).loaded());
 }
 
-TEST_CASE(FromRejectsStaleFormatVersion) {
+ZEST_CASE(FromRejectsStaleFormatVersion) {
     // Only the version slot and the path table are written: every other
     // field reads back absent, which is structurally valid — the verdict
-    // must hinge on the version value. Field order MUST mirror the
-    // envelope layout (tu_index.cpp): format_version is slot 0.
-    struct VersionAndPaths {
-        std::uint32_t format_version = 0;
-        std::int64_t built_at = 0;
-        std::vector<std::string> paths = {"/proj/main.cpp"};
-    };
-
-    auto bytes_of = [](const std::vector<std::uint8_t>& blob) {
-        return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
-    };
-
-    auto stale = kota::codec::fbs::to_bytes(
-        VersionAndPaths{.format_version = index::index_format_version + 1});
-    ASSERT_TRUE(stale.has_value());
-    ASSERT_FALSE(index::TUIndex::from_bytes(bytes_of(*stale)).loaded());
+    // must hinge on the version value.
+    EnvelopeMirror stale;
+    stale.format_version = index::index_format_version + 1;
+    stale.paths = {"/proj/main.cpp"};
+    ZASSERT(!index::TUIndex::from_bytes(stale.bytes()).loaded());
 
     // Positive control: the same shape carrying the current version loads,
     // so the rejection above comes from the value, not the blob's shape.
-    auto current =
-        kota::codec::fbs::to_bytes(VersionAndPaths{.format_version = index::index_format_version});
-    ASSERT_TRUE(current.has_value());
-    ASSERT_TRUE(index::TUIndex::from_bytes(bytes_of(*current)).loaded());
+    auto current = stale;
+    current.format_version = index::index_format_version;
+    ZASSERT(index::TUIndex::from_bytes(current.bytes()).loaded());
 }
 
-/// Hand-built envelopes for hostile-input tests. Field order MUST mirror
-/// the envelope layout (tu_index.cpp).
-struct MirrorSection {
-    std::uint32_t path_id = 0;
-    std::uint64_t hash = 0;
-    std::vector<std::uint8_t> blob;
-};
+ZEST_CASE(FromRejectsReservedParents) {
+    // Symbol parents become DenseSet keys in a query's container walk; the
+    // sentinel values must fail the envelope as a whole.
+    EnvelopeMirror honest;
+    honest.paths = {"/proj/main.cpp"};
+    honest.add_symbol(42, {.name = "sym", .parent = 7});
+    ZASSERT(index::TUIndex::from_bytes(honest.bytes()).loaded());
 
-struct MirrorEnvelope {
-    std::uint32_t format_version = index::index_format_version;
-    std::int64_t built_at = 0;
-    std::vector<std::string> paths;
-    std::vector<std::uint64_t> path_hashes;
-    std::vector<index::IncludeLocation> locations;
-    index::SymbolTable symbols{};
-    std::vector<MirrorSection> sections;
-};
+    EnvelopeMirror hostile = honest;
+    hostile.sym_parents[0] = ~std::uint64_t(0);
+    ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    hostile.sym_parents[0] = ~std::uint64_t(0) - 1;
+    ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+}
 
-std::string mirror_bytes(const MirrorEnvelope& envelope) {
-    auto bytes = kota::codec::fbs::to_bytes(envelope);
-    if(!bytes) {
-        return {};
+ZEST_CASE(FromRejectsSymbolColumns) {
+    // Merged reference files persist behind versions that match the disk,
+    // so a malformed table must fail the envelope as a whole, never merge
+    // in part.
+    EnvelopeMirror honest;
+    honest.paths = {"/proj/a.h", "/proj/main.cpp"};
+    honest.add_symbol(42, {.name = "first", .file = 0}, {0, 1});
+    honest.add_symbol(43, {.name = "second"}, {1});
+    auto bytes = honest.bytes();
+    auto view = index::TUIndex::from_bytes(bytes);
+    ZASSERT(view.loaded());
+    auto second = view.find_symbol(43);
+    ZASSERT(second);
+    ZASSERT(second->name == "second");
+
+    {
+        // Lookups binary-search the hashes.
+        auto hostile = honest;
+        std::swap(hostile.sym_hashes[0], hostile.sym_hashes[1]);
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
-    return std::string(bytes->begin(), bytes->end());
+    {
+        auto hostile = honest;
+        hostile.sym_hashes[1] = hostile.sym_hashes[0];
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
+    {
+        auto hostile = honest;
+        hostile.sym_hashes[1] = ~std::uint64_t(0);
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
+    {
+        auto hostile = honest;
+        hostile.sym_references.back() = 2;
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
+    {
+        auto hostile = honest;
+        hostile.sym_files[1] = 2;
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
+    {
+        auto hostile = honest;
+        hostile.sym_name_ends[0] = 100;
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
+    {
+        auto hostile = honest;
+        hostile.sym_kinds.pop_back();
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
 }
 
-TEST_CASE(FromRejectsOutOfRangePathIds) {
+ZEST_CASE(FromRejectsOutOfRangeParents) {
+    // A node's parent indexes the node table in every consumer; only
+    // another node or the root sentinel is acceptable.
+    EnvelopeMirror honest;
+    honest.paths = {"/proj/main.cpp", "/proj/a.h"};
+    honest.nodes.push_back({.file = 1, .parent = ~0u, .line = 1});
+    honest.nodes.push_back({.file = 1, .parent = 0, .line = 2});
+    ZASSERT(index::TUIndex::from_bytes(honest.bytes()).loaded());
+
+    EnvelopeMirror hostile = honest;
+    hostile.nodes.back().parent = 2;
+    ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+}
+
+ZEST_CASE(FromRejectsOutOfRangePathIds) {
     // Structural verification does not constrain field values, and the
     // merge pipeline dereferences every decoded path id against the path
     // table without further checks — an envelope pointing outside its own
-    // table must be rejected as a whole. Symbol reference-file ids are
-    // deliberately not gated here: ProjectIndex::merge bounds them, pinned
-    // by project_index_tests.
+    // table must be rejected as a whole (the symbol table's ids: see
+    // FromRejectsSymbolColumns).
 
     // Positive control first: the same shapes with in-range ids load, so
     // the rejections below come from the hostile values.
-    MirrorEnvelope honest;
+    EnvelopeMirror honest;
     honest.paths = {"/proj/main.cpp"};
-    honest.locations.push_back({.path_id = 0, .line = 1, .include = 0});
+    honest.nodes.push_back({.file = 0, .parent = 0, .line = 1});
     honest.sections.push_back({.path_id = 0});
-    ASSERT_TRUE(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+    ZASSERT(index::TUIndex::from_bytes(honest.bytes()).loaded());
 
     {
-        MirrorEnvelope hostile;
+        EnvelopeMirror hostile;
         hostile.paths = {"/proj/main.cpp"};
-        hostile.locations.push_back({.path_id = 7, .line = 1, .include = 0});
-        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        hostile.nodes.push_back({.file = 7, .parent = 0, .line = 1});
+        ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
-        MirrorEnvelope hostile;
+        EnvelopeMirror hostile;
         hostile.paths = {"/proj/main.cpp"};
         hostile.sections.push_back({.path_id = 7});  // Only path id 0 exists.
-        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
 }
 
-TEST_CASE(FromRejectsEmptyPathTable) {
-    // The builder ends every path table with the interested file, and
+ZEST_CASE(FromRejectsEmptyPathTable) {
+    // The builder ends every path table with the main file, and
     // consumers address path_count() - 1 unchecked — an envelope with no
     // paths at all is corrupt.
-    MirrorEnvelope hostile;
-    ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+    EnvelopeMirror hostile;
+    ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
 }
 
-TEST_CASE(FromRejectsUnsortedSections) {
+ZEST_CASE(FromRejectsUnsortedSections) {
     // section_of binary-searches the section table by path id; a repeated
     // or out-of-order id would attribute one file's rows to another.
 
     // Positive control: the ascending shape loads.
-    MirrorEnvelope honest;
+    EnvelopeMirror honest;
     honest.paths = {"/proj/a.h", "/proj/main.cpp"};
     honest.sections.push_back({.path_id = 0});
     honest.sections.push_back({.path_id = 1});
-    ASSERT_TRUE(index::TUIndex::from_bytes(mirror_bytes(honest)).loaded());
+    ZASSERT(index::TUIndex::from_bytes(honest.bytes()).loaded());
 
     {
-        MirrorEnvelope hostile;
+        EnvelopeMirror hostile;
         hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
         hostile.sections.push_back({.path_id = 1});
         hostile.sections.push_back({.path_id = 0});
-        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
-        MirrorEnvelope hostile;
+        EnvelopeMirror hostile;
         hostile.paths = {"/proj/a.h", "/proj/main.cpp"};
         hostile.sections.push_back({.path_id = 1});
         hostile.sections.push_back({.path_id = 1});
-        ASSERT_FALSE(index::TUIndex::from_bytes(mirror_bytes(hostile)).loaded());
+        ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
 }
 
-TEST_CASE(AbsentPathHashesReadZero) {
+ZEST_CASE(AbsentPathHashesReadZero) {
     // The hash column may be shorter than the path table on a foreign
     // envelope (structurally valid: the field reads back empty); absent
     // entries read as 0, "unavailable".
-    MirrorEnvelope envelope;
+    EnvelopeMirror envelope;
     envelope.paths = {"/proj/a.h", "/proj/main.cpp"};
     envelope.path_hashes = {7};
-    auto bytes = mirror_bytes(envelope);
+    auto bytes = envelope.bytes();
     auto view = index::TUIndex::from_bytes(bytes);
-    ASSERT_TRUE(view.loaded());
-    ASSERT_EQ(view.path_hash(0), 7u);
-    ASSERT_EQ(view.path_hash(1), 0u);
+    ZASSERT(view.loaded());
+    ZASSERT(view.path_hash(0) == 7u);
+    ZASSERT(view.path_hash(1) == 0u);
 }
 
-};  // TEST_SUITE(tu_index)
+};  // ZEST_SUITE(tu_index)
 
 }  // namespace
 }  // namespace clice::testing

@@ -1,0 +1,8 @@
+---
+created_at: 2026-07-31
+input_file: token_correctness/04_template_destructor.cpp
+---
+- { loc: "8:4", text: "~", kind: method, modifiers: [declaration, constructorOrDestructor] }
+- { loc: "8:5", text: "Holder", kind: struct, modifiers: [templated] }
+- { loc: "12:11", text: "~", kind: method, modifiers: [definition, constructorOrDestructor] }
+- { loc: "12:12", text: "Holder", kind: struct, modifiers: [templated] }

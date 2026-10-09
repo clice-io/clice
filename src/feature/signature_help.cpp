@@ -1,7 +1,10 @@
-#include "feature/feature.h"
+module;
 
-#include "clang/Sema/CodeCompleteConsumer.h"
-#include "clang/Sema/Sema.h"
+#include "modules/prelude.h"
+
+module clice;
+
+import :feature.feature;
 
 namespace clice::feature {
 
@@ -25,7 +28,8 @@ public:
         auto range = llvm::make_range(candidates, candidates + candidate_count);
 
         auto policy = sema.getPrintingPolicy();
-        policy.AnonymousTagLocations = false;
+        policy.AnonymousTagNameStyle =
+            std::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
         policy.SuppressStrongLifetime = true;
         policy.SuppressUnwrittenScope = true;
         policy.SuppressScope = true;
@@ -55,9 +59,9 @@ public:
                 }
 
                 protocol::ParameterInformation parameter;
-                auto begin = static_cast<protocol::uinteger>(buffer.size());
+                auto begin = lsp::encoded_length(buffer.str(), PositionEncoding::UTF16);
                 param.print(stream, policy);
-                auto end = static_cast<protocol::uinteger>(buffer.size());
+                auto end = lsp::encoded_length(buffer.str(), PositionEncoding::UTF16);
                 parameter.label = std::tuple<protocol::uinteger, protocol::uinteger>{begin, end};
                 signature.parameters->push_back(std::move(parameter));
             };

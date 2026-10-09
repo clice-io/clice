@@ -13,9 +13,16 @@ import { WORKSPACE_PLACEHOLDER } from "../snapshot.ts";
 /// whitespace, so a fixture path containing spaces would stay partly
 /// native (none does).
 function normalizeRoots(contents: string, root: string): string {
-    const forms = [...new Set([root, fs.realpathSync.native(root)])]
-        .flatMap((form) => [form.split(path.sep).join("/"), form])
-        .sort((a, b) => b.length - a.length);
+    // Paths also arrive the way clice spells them: forward slashes and,
+    // on Windows, a lowercase drive.
+    const forms = [
+        ...new Set(
+            [root, fs.realpathSync.native(root)].flatMap((form) => {
+                const slashed = form.split(path.sep).join("/");
+                return [form, slashed, slashed.replace(/^[A-Z]:/, (drive) => drive.toLowerCase())];
+            }),
+        ),
+    ].sort((a, b) => b.length - a.length);
     let out = contents;
     for (const form of forms) {
         // Boundary-guarded on both sides: `/mnt/work` must not eat into

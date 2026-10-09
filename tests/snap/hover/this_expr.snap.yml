@@ -2,34 +2,34 @@
 created_at: 2026-07-28
 input_file: this_expr.cpp
 ---
-01_this_class: { range: "7:13-7:17" }
+01_this_class: { range: "3:15-3:19" }
 ### `this`  
 
 ---
 ```cpp
-ns::Foo1 *
+ordinary_class::Session *
 ```
 
-02_this_template_class: { range: "17:13-17:17" }
+02_this_template_class: { range: "11:15-11:19" }
 ### `this`  
 
 ---
 ```cpp
-const ns::Foo2<T> *
+const class_template::Buffer<T> *
 ```
 
-03_this_specialization: { range: "28:13-28:17" }
+03_this_specialization: { range: "20:15-20:19" }
 ### `this`  
 
 ---
 ```cpp
-ns::Foo3<int> *
+full_specialization::Holder<long> *
 ```
 
-04_this_partial_specialization: { range: "39:13-39:17" }
+04_this_partial_specialization: { range: "29:15-29:19" }
 ### `this`  
 
 ---
 ```cpp
-const ns::Foo4<int, F> *
+const partial_specialization::Pair<long, U> *
 ```

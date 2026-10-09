@@ -1,21 +1,16 @@
-/// Parts of this file (only_instantiation, resolve_forwarding_params,
-/// proto_type_loc and the forwarding-call analysis) are ported from
-/// clangd's AST.cpp and InlayHints.cpp (llvmorg-21.1.8), part of the LLVM
-/// project, licensed under Apache License v2.0 with LLVM Exceptions. See
-/// https://llvm.org/LICENSE.txt for license information.
+module;
 
-#include "semantic/decls.h"
+#include "modules/prelude.h"
+/// Parts of this file (only_instantiation, proto_type_loc) are ported from
+/// clangd's AST.cpp and InlayHints.cpp (llvmorg-21.1.8), and
+/// resolve_forwarding_params follows clangd's resolveForwardingParameters;
+/// LLVM project, licensed under Apache License v2.0 with LLVM Exceptions.
+/// See https://llvm.org/LICENSE.txt for license information.
 
-#include "semantic/unifier.h"
+module clice;
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallSet.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/Specifiers.h"
+import :semantic.decls;
+import :semantic.unifier;
 
 namespace clice::decls {
 
@@ -32,6 +27,23 @@ bool is_templated(const clang::Decl* decl) {
     }
 
     return false;
+}
+
+bool is_exported(const clang::Decl* decl) {
+    // A concept's or alias template's parameters sit in the enclosing
+    // context, the `export` block included.
+    if(decl->isTemplateParameter() ||
+       !decl->getDeclContext()->getRedeclContext()->isFileContext()) {
+        return false;
+    }
+    // Clang marks what a named module exports visible to importers — a
+    // namespace too once it holds an exported declaration.
+    return llvm::any_of(decl->redecls(), [](const clang::Decl* redecl) {
+        auto* module = redecl->getOwningModule();
+        return module && module->isNamedModule() &&
+               redecl->getModuleOwnershipKind() ==
+                   clang::Decl::ModuleOwnershipKind::VisibleWhenImported;
+    });
 }
 
 namespace {
@@ -74,21 +86,10 @@ bool is_instantiation(const clang::Decl* decl) {
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
         return clang::isTemplateInstantiation(var->getTemplateSpecializationKind());
     }
-    return false;
-}
-
-bool is_member_specialization(const clang::Decl* decl) {
-    if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
-        return function->getInstantiatedFromMemberFunction() != nullptr;
-    }
-    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
-        return var->getInstantiatedFromStaticDataMember() != nullptr;
-    }
+    /// A member class of a class template specialization, instantiated
+    /// along with it or explicitly (`template struct Outer<int>::Inner;`).
     if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
-        return record->getInstantiatedFromMemberClass() != nullptr;
-    }
-    if(const auto* enum_decl = llvm::dyn_cast<clang::EnumDecl>(decl)) {
-        return enum_decl->getInstantiatedFromMemberEnum() != nullptr;
+        return clang::isTemplateInstantiation(record->getTemplateSpecializationKind());
     }
     return false;
 }
@@ -98,8 +99,8 @@ namespace {
 /// The pattern an undeclared specialization would be instantiated from:
 /// match the partial specializations against the written arguments the way
 /// real instantiation would. Falls back to the primary template when no
-/// partial matches, the match is ambiguous, or the winner is constrained
-/// (constraint satisfaction needs Sema).
+/// partial matches, the match is ambiguous, or the winner's match could not
+/// be verified (see deduce_arguments).
 template <typename Partial, typename Spec>
 const clang::NamedDecl* undeclared_pattern(const Spec* spec) {
     auto* primary = spec->getSpecializedTemplate();
@@ -109,43 +110,25 @@ const clang::NamedDecl* undeclared_pattern(const Spec* spec) {
     llvm::SmallVector<Partial*> partials;
     primary->getPartialSpecializations(partials);
 
-    auto matches = [&](Partial* partial) {
-        llvm::SmallVector<clang::TemplateArgument> deduced;
-        return types::deduce_arguments(context,
-                                       partial->getTemplateParameters(),
-                                       partial->getTemplateArgs().asArray(),
-                                       arguments,
-                                       deduced);
-    };
-
-    Partial* best = nullptr;
-    llvm::SmallVector<Partial*, 4> matched;
+    llvm::SmallVector<types::PartialMatch<Partial>, 4> matched;
     for(auto* partial: partials) {
-        if(matches(partial)) {
-            matched.push_back(partial);
-            if(!best || types::more_specialized(context, partial, best)) {
-                best = partial;
-            }
+        llvm::SmallVector<clang::TemplateArgument> deduced;
+        auto deduction = types::deduce_arguments(context,
+                                                 partial->getTemplateParameters(),
+                                                 partial->getTemplateArgs().asArray(),
+                                                 arguments,
+                                                 deduced);
+        if(deduction != types::Deduction::Failed) {
+            matched.push_back(
+                {.partial = partial, .verified = deduction == types::Deduction::Matched});
         }
     }
 
-    if(!best) {
+    auto choice = types::select_partial(context, matched);
+    if(choice.verdict != types::PartialVerdict::Selected) {
         return primary->getTemplatedDecl();
     }
-
-    /// Real instantiation diagnoses ambiguity; degrade to the primary
-    /// rather than picking arbitrarily.
-    for(auto* partial: matched) {
-        if(partial != best && !types::more_specialized(context, best, partial)) {
-            return primary->getTemplatedDecl();
-        }
-    }
-
-    if(best->getTemplateParameters()->hasAssociatedConstraints()) {
-        return primary->getTemplatedDecl();
-    }
-
-    return best;
+    return choice.winner;
 }
 
 const clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clang::Decl* D) {
@@ -162,10 +145,25 @@ const clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clan
 
 }  // namespace
 
+/// An explicit specialization named before it is declared keeps that
+/// first, undeclared node as its canonical declaration.
+template <typename Spec>
+bool explicitly_specialized(const Spec* spec) {
+    for(auto* redecl: spec->redecls()) {
+        if(llvm::cast<Spec>(redecl)->getSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+            return true;
+        }
+    }
+    return false;
+}
+
 auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
     assert(decl);
     if(auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {
         auto kind = CTSD->getTemplateSpecializationKind();
+        if(kind == clang::TSK_Undeclared && explicitly_specialized(CTSD)) {
+            return CTSD;
+        }
         if(kind == clang::TSK_Undeclared) {
             /// Instantiation is lazy: an undeclared specialization carries no
             /// pattern link yet. Select the pattern instantiation would use so
@@ -190,6 +188,9 @@ auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* 
 
     if(auto VTSD = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(decl)) {
         if(VTSD->getSpecializationKind() == clang::TSK_Undeclared) {
+            if(explicitly_specialized(VTSD)) {
+                return VTSD;
+            }
             return undeclared_pattern<clang::VarTemplatePartialSpecializationDecl>(VTSD);
         }
     }
@@ -368,272 +369,175 @@ auto underlying_pack_type(const clang::ParmVarDecl* param) -> const clang::Templ
 
 namespace {
 
-// This visitor walks over the body of an instantiated function template.
-// The template accepts a parameter pack and the visitor records whether
-// the pack parameters were forwarded to another call. For example, given:
-//
-// template <typename T, typename... Args>
-// auto make_unique(Args... args) {
-//   return unique_ptr<T>(new T(args...));
-// }
-//
-// When called as `make_unique<std::string>(2, 'x')` this yields a function
-// `make_unique<std::string, int, char>` with two parameters.
-// The visitor records that those two parameters are forwarded to the
-// `constructor std::string(int, char);`.
-//
-// This information is recorded in the `ForwardingInfo` split into fully
-// resolved parameters (passed as argument to a parameter that is not an
-// expanded template type parameter pack) and forwarding parameters (passed to a
-// parameter that is an expanded template type parameter pack).
-class ForwardingCallVisitor : public clang::RecursiveASTVisitor<ForwardingCallVisitor> {
-public:
-    ForwardingCallVisitor(llvm::ArrayRef<const clang::ParmVarDecl*> Parameters) :
-        Parameters{Parameters}, PackType{underlying_pack_type(Parameters.front())} {}
+bool is_std_forward(const clang::FunctionDecl* callee) {
+    auto* name = callee->getIdentifier();
+    return name && name->getName() == "forward" && callee->isInStdNamespace();
+}
 
-    bool VisitCallExpr(clang::CallExpr* E) {
-        auto* Callee = getCalleeDeclOrUniqueOverload(E);
-        if(Callee) {
-            handleCall(Callee, E->arguments());
-        }
-        return !Info.has_value();
+/// The parameter `arg` passes on unchanged: named directly, through
+/// `std::forward`, or through the copy or move building a by-value
+/// parameter, implicit nodes aside.
+const clang::ParmVarDecl* passed_param(const clang::Expr* arg) {
+    arg = arg->IgnoreImplicitAsWritten();
+    if(auto* construct = llvm::dyn_cast<clang::CXXConstructExpr>(arg);
+       construct && construct->getConstructor()->isCopyOrMoveConstructor()) {
+        arg = construct->getArg(0)->IgnoreImplicitAsWritten();
     }
-
-    bool VisitCXXConstructExpr(clang::CXXConstructExpr* E) {
-        auto* Callee = E->getConstructor();
-        if(Callee) {
-            handleCall(Callee, E->arguments());
+    if(auto* call = llvm::dyn_cast<clang::CallExpr>(arg)) {
+        if(auto* callee = call->getDirectCallee();
+           callee && is_std_forward(callee) && call->getNumArgs() == 1) {
+            arg = call->getArg(0)->IgnoreImplicitAsWritten();
         }
-        return !Info.has_value();
     }
+    auto* ref = llvm::dyn_cast<clang::DeclRefExpr>(arg);
+    return ref ? llvm::dyn_cast<clang::ParmVarDecl>(ref->getDecl()) : nullptr;
+}
 
-    // The expanded parameter pack to be resolved
-    llvm::ArrayRef<const clang::ParmVarDecl*> Parameters;
-    // The type of the parameter pack
-    const clang::TemplateTypeParmType* PackType;
-
-    struct ForwardingInfo {
-        // If the parameters were resolved to another FunctionDecl, these are its
-        // first non-variadic parameters (i.e. the first entries of the parameter
-        // pack that are passed as arguments bound to a non-pack parameter.)
-        llvm::ArrayRef<const clang::ParmVarDecl*> Head;
-        // If the parameters were resolved to another FunctionDecl, these are its
-        // variadic parameters (i.e. the entries of the parameter pack that are
-        // passed as arguments bound to a pack parameter.)
-        llvm::ArrayRef<const clang::ParmVarDecl*> Pack;
-        // If the parameters were resolved to another FunctionDecl, these are its
-        // last non-variadic parameters (i.e. the last entries of the parameter pack
-        // that are passed as arguments bound to a non-pack parameter.)
-        llvm::ArrayRef<const clang::ParmVarDecl*> Tail;
-        // If the parameters were resolved to another FunctionDecl, this
-        // is it.
-        std::optional<clang::FunctionDecl*> PackTarget;
+/// The run of `params`, parameters of `fn`, that `fn`'s trailing type
+/// parameter pack expanded to; empty, at the end of `params`, when none.
+auto expanded_pack(const clang::FunctionDecl* fn, llvm::ArrayRef<const clang::ParmVarDecl*> params)
+    -> llvm::ArrayRef<const clang::ParmVarDecl*> {
+    auto* pack = function_pack_type(fn);
+    auto expanded = [pack](const clang::ParmVarDecl* param) {
+        return pack && underlying_pack_type(param) == pack;
     };
+    return params.drop_until(expanded).take_while(expanded);
+}
 
-    // The output of this visitor
-    std::optional<ForwardingInfo> Info;
-
-private:
-    // inspects the given callee with the given args to check whether it
-    // contains Parameters, and sets Info accordingly.
-    void handleCall(clang::FunctionDecl* Callee, typename clang::CallExpr::arg_range Args) {
-        // Skip functions with less parameters, they can't be the target.
-        if(Callee->parameters().size() < Parameters.size())
-            return;
-        if(llvm::any_of(Args,
-                        [](const clang::Expr* E) { return isa<clang::PackExpansionExpr>(E); })) {
-            return;
-        }
-        auto PackLocation = findPack(Args);
-        if(!PackLocation)
-            return;
-        llvm::ArrayRef<clang::ParmVarDecl*> MatchingParams =
-            Callee->parameters().slice(*PackLocation, Parameters.size());
-        // Check whether the function has a parameter pack as the last template
-        // parameter
-        if(const auto* TTPT = function_pack_type(Callee)) {
-            // In this case: Separate the parameters into head, pack and tail
-            auto IsExpandedPack = [&](const clang::ParmVarDecl* P) {
-                return underlying_pack_type(P) == TTPT;
-            };
-            ForwardingInfo FI;
-            FI.Head = MatchingParams.take_until(IsExpandedPack);
-            FI.Pack = MatchingParams.drop_front(FI.Head.size()).take_while(IsExpandedPack);
-            FI.Tail = MatchingParams.drop_front(FI.Head.size() + FI.Pack.size());
-            FI.PackTarget = Callee;
-            Info = FI;
-            return;
-        }
-        // Default case: assume all parameters were fully resolved
-        ForwardingInfo FI;
-        FI.Head = MatchingParams;
-        Info = FI;
+/// The function `call` calls; for a call left dependent on an overloaded
+/// name, the only candidate taking as many arguments.
+const clang::FunctionDecl* callee_of(const clang::CallExpr* call) {
+    if(auto* fn = call->getDirectCallee()) {
+        return fn;
     }
-
-    // Returns the beginning of the expanded pack represented by Parameters
-    // in the given arguments, if it is there.
-    std::optional<size_t> findPack(typename clang::CallExpr::arg_range Args) {
-        // find the argument directly referring to the first parameter
-        assert(Parameters.size() <= static_cast<size_t>(llvm::size(Args)));
-        for(auto Begin = Args.begin(), End = Args.end() - Parameters.size() + 1; Begin != End;
-            ++Begin) {
-            if(const auto* RefArg = unwrapForward(*Begin)) {
-                if(Parameters.front() != RefArg->getDecl())
-                    continue;
-                // Check that this expands all the way until the last parameter.
-                // It's enough to look at the last parameter, because it isn't possible
-                // to expand without expanding all of them.
-                auto ParamEnd = Begin + Parameters.size() - 1;
-                RefArg = unwrapForward(*ParamEnd);
-                if(!RefArg || Parameters.back() != RefArg->getDecl())
-                    continue;
-                return std::distance(Args.begin(), Begin);
-            }
-        }
-        return std::nullopt;
-    }
-
-    static clang::FunctionDecl* getCalleeDeclOrUniqueOverload(clang::CallExpr* E) {
-        clang::Decl* CalleeDecl = E->getCalleeDecl();
-        auto* Callee = llvm::dyn_cast_or_null<clang::FunctionDecl>(CalleeDecl);
-        if(!Callee) {
-            if(auto* Lookup = dyn_cast<clang::UnresolvedLookupExpr>(E->getCallee())) {
-                Callee = resolveOverload(Lookup, E);
-            }
-        }
-        // Ignore the callee if the number of arguments is wrong (deal with va_args)
-        if(Callee && Callee->getNumParams() == E->getNumArgs())
-            return Callee;
+    auto* lookup = llvm::dyn_cast<clang::UnresolvedLookupExpr>(call->getCallee());
+    if(!lookup || lookup->requiresADL()) {
         return nullptr;
     }
-
-    static clang::FunctionDecl* resolveOverload(clang::UnresolvedLookupExpr* Lookup,
-                                                clang::CallExpr* E) {
-        clang::FunctionDecl* MatchingDecl = nullptr;
-        if(!Lookup->requiresADL()) {
-            // Check whether there is a single overload with this number of
-            // parameters
-            for(auto* Candidate: Lookup->decls()) {
-                if(auto* FuncCandidate = llvm::dyn_cast_or_null<clang::FunctionDecl>(Candidate)) {
-                    if(FuncCandidate->getNumParams() == E->getNumArgs()) {
-                        if(MatchingDecl) {
-                            // there are multiple candidates - abort
-                            return nullptr;
-                        }
-                        MatchingDecl = FuncCandidate;
-                    }
-                }
-            }
+    const clang::FunctionDecl* unique = nullptr;
+    for(auto* candidate: lookup->decls()) {
+        auto* fn = llvm::dyn_cast<clang::FunctionDecl>(candidate);
+        if(!fn || fn->getNumParams() != call->getNumArgs()) {
+            continue;
         }
-        return MatchingDecl;
+        if(unique) {
+            return nullptr;
+        }
+        unique = fn;
+    }
+    return unique;
+}
+
+/// Finds the first call in a function body that passes `pack`, parameters
+/// of that function, on as consecutive arguments, and the callee
+/// parameters receiving them. For example, in
+///
+///   template <typename T, typename... Args>
+///   auto make_unique(Args... args) {
+///     return unique_ptr<T>(new T(args...));
+///   }
+///
+/// `make_unique<std::string>(2, 'x')` passes its two parameters on to the
+/// constructor `std::string(int, char)`.
+struct PackForwardFinder : clang::RecursiveASTVisitor<PackForwardFinder> {
+    llvm::ArrayRef<const clang::ParmVarDecl*> pack;
+
+    const clang::FunctionDecl* callee = nullptr;
+    llvm::ArrayRef<const clang::ParmVarDecl*> params;
+
+    bool VisitCallExpr(clang::CallExpr* call) {
+        auto* fn = callee_of(call);
+        if(!fn) {
+            return true;
+        }
+        llvm::ArrayRef<const clang::Expr*> args(call->getArgs(), call->getNumArgs());
+        // The object a member operator is called on binds a parameter only
+        // when it is the explicit object.
+        if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(fn);
+           method && !method->isExplicitObjectMemberFunction() &&
+           llvm::isa<clang::CXXOperatorCallExpr>(call)) {
+            args = args.drop_front();
+        }
+        match(fn, args);
+        return !callee;
     }
 
-    // Tries to get to the underlying argument by unwrapping implicit nodes and
-    // std::forward.
-    const static clang::DeclRefExpr* unwrapForward(const clang::Expr* E) {
-        auto is_std_forward = [](const clang::FunctionDecl* Callee) {
-            if(!Callee) {
-                return false;
-            }
-            if(Callee->getBuiltinID() == clang::Builtin::BIforward) {
-                return true;
-            }
-            const auto* callee_name = Callee->getIdentifier();
-            if(!callee_name || callee_name->getName() != "forward") {
-                return false;
-            }
-            // Walk up through inline namespaces (e.g. std::__1::forward).
-            for(const clang::DeclContext* DC = Callee->getDeclContext(); DC; DC = DC->getParent()) {
-                if(const auto* NS = llvm::dyn_cast<clang::NamespaceDecl>(DC)) {
-                    if(NS->getName() == "std" && NS->getParent()->isTranslationUnit()) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        };
+    bool VisitCXXConstructExpr(clang::CXXConstructExpr* construct) {
+        match(construct->getConstructor(), {construct->getArgs(), construct->getNumArgs()});
+        return !callee;
+    }
 
-        E = E->IgnoreImplicitAsWritten();
-        // There might be an implicit copy/move constructor call on top of the
-        // forwarded arg.
-        // FIXME: Maybe mark implicit calls in the AST to properly filter here.
-        if(const auto* Const = llvm::dyn_cast<clang::CXXConstructExpr>(E))
-            if(Const->getConstructor()->isCopyOrMoveConstructor())
-                E = Const->getArg(0)->IgnoreImplicitAsWritten();
-        if(const auto* Call = llvm::dyn_cast<clang::CallExpr>(E)) {
-            if(is_std_forward(Call->getDirectCallee())) {
-                return llvm::dyn_cast<clang::DeclRefExpr>(
-                    Call->getArg(0)->IgnoreImplicitAsWritten());
+    /// `args` bind `fn`'s parameters in order.
+    void match(const clang::FunctionDecl* fn, llvm::ArrayRef<const clang::Expr*> args) {
+        // Positions line up only when every parameter has its argument,
+        // defaults included; the arguments past them go to a C variadic
+        // `...`. A dependent call may bind otherwise (an explicit object
+        // left out of its arguments).
+        auto named = fn->getNumParams();
+        if(args.size() < named || (args.size() > named && !fn->isVariadic())) {
+            return;
+        }
+        args = args.take_front(named);
+        // A written expansion, left in a dependent call, stands for any
+        // number of arguments: the ones after it bind unknown parameters.
+        if(llvm::any_of(args, llvm::IsaPred<clang::PackExpansionExpr>)) {
+            return;
+        }
+        auto passes = [](const clang::Expr* arg, const clang::ParmVarDecl* param) {
+            return passed_param(arg) == param;
+        };
+        for(std::size_t start = 0; start + pack.size() <= args.size(); start += 1) {
+            if(llvm::equal(args.slice(start, pack.size()), pack, passes)) {
+                callee = fn;
+                params = fn->parameters().slice(start, pack.size());
+                return;
             }
         }
-        return llvm::dyn_cast<clang::DeclRefExpr>(E);
     }
 };
 
 }  // namespace
 
-auto resolve_forwarding_params(const clang::FunctionDecl* D, unsigned MaxDepth)
+auto resolve_forwarding_params(const clang::FunctionDecl* decl, unsigned max_depth)
     -> llvm::SmallVector<const clang::ParmVarDecl*> {
-    assert(D);
-    auto params = D->parameters();
-
-    // If the function has a template parameter pack
-    if(const auto* TTPT = function_pack_type(D)) {
-        // Split the parameters into head, pack and tail
-        auto IsExpandedPack = [TTPT](const clang::ParmVarDecl* P) {
-            return underlying_pack_type(P) == TTPT;
-        };
-        llvm::ArrayRef<const clang::ParmVarDecl*> Head = params.take_until(IsExpandedPack);
-        llvm::ArrayRef<const clang::ParmVarDecl*> Pack =
-            params.drop_front(Head.size()).take_while(IsExpandedPack);
-        llvm::ArrayRef<const clang::ParmVarDecl*> Tail =
-            params.drop_front(Head.size() + Pack.size());
-        llvm::SmallVector<const clang::ParmVarDecl*> Result(params.size());
-        // Fill in non-pack parameters
-        auto* HeadIt = std::copy(Head.begin(), Head.end(), Result.begin());
-        auto TailIt = std::copy(Tail.rbegin(), Tail.rend(), Result.rbegin());
-        // Recurse on pack parameters
-
-        size_t Depth = 0;
-
-        const clang::FunctionDecl* CurrentFunction = D;
-        llvm::SmallSet<const clang::FunctionTemplateDecl*, 4> SeenTemplates;
-        if(const auto* Template = D->getPrimaryTemplate()) {
-            SeenTemplates.insert(Template);
-        }
-
-        while(!Pack.empty() && CurrentFunction && Depth < MaxDepth) {
-            // Find call expressions involving the pack
-            ForwardingCallVisitor V{Pack};
-            V.TraverseStmt(CurrentFunction->getBody());
-            if(!V.Info) {
-                break;
-            }
-            // If we found something: Fill in non-pack parameters
-            auto Info = *V.Info;
-            HeadIt = std::copy(Info.Head.begin(), Info.Head.end(), HeadIt);
-            TailIt = std::copy(Info.Tail.rbegin(), Info.Tail.rend(), TailIt);
-            // Prepare next recursion level
-            Pack = Info.Pack;
-            CurrentFunction = Info.PackTarget.value_or(nullptr);
-            Depth++;
-            // If we are recursing into a previously encountered function: Abort
-            if(CurrentFunction) {
-                if(const auto* Template = CurrentFunction->getPrimaryTemplate()) {
-                    bool NewFunction = SeenTemplates.insert(Template).second;
-                    if(!NewFunction) {
-                        return {params.begin(), params.end()};
-                    }
-                }
-            }
-        }
-
-        // Fill in the remaining unresolved pack parameters
-        HeadIt = std::copy(Pack.begin(), Pack.end(), HeadIt);
-        assert(TailIt.base() == HeadIt);
-        return Result;
+    assert(decl);
+    llvm::ArrayRef<const clang::ParmVarDecl*> own = decl->parameters();
+    llvm::SmallVector<const clang::ParmVarDecl*> resolved(own.begin(), own.end());
+    // The pack still being followed, as parameters of `function`, and where
+    // its first element stands in `resolved`.
+    const clang::FunctionDecl* function = decl;
+    auto pack = expanded_pack(decl, own);
+    std::size_t offset = pack.data() - own.data();
+    llvm::SmallPtrSet<const clang::FunctionTemplateDecl*, 4> seen;
+    if(auto* primary = decl->getPrimaryTemplate()) {
+        seen.insert(primary);
     }
-    return {params.begin(), params.end()};
+    for(unsigned depth = 0; !pack.empty() && depth < max_depth; depth += 1) {
+        PackForwardFinder finder{.pack = pack};
+        finder.TraverseStmt(function->getBody());
+        if(!finder.callee) {
+            break;
+        }
+        // A template reached again recurses over its own pack (`f(rest...)`
+        // peeling one argument per step): no parameter is its target.
+        if(auto* primary = finder.callee->getPrimaryTemplate();
+           primary && !seen.insert(primary).second) {
+            return {own.begin(), own.end()};
+        }
+        llvm::copy(finder.params, resolved.begin() + offset);
+        auto next = expanded_pack(finder.callee, finder.params);
+        offset += next.data() - finder.params.data();
+        pack = next;
+        function = finder.callee;
+    }
+    return resolved;
+}
+
+bool binds_mutable_reference(const clang::ParmVarDecl* param, const clang::ParmVarDecl* forwarded) {
+    auto forwarded_type = forwarded->getType();
+    return param->getType()->isLValueReferenceType() && forwarded_type->isLValueReferenceType() &&
+           !forwarded_type.getNonReferenceType().isConstQualified() &&
+           !underlying_pack_type(forwarded);
 }
 
 auto proto_type_loc(clang::Expr* expr) -> clang::FunctionProtoTypeLoc {

@@ -1,0 +1,56 @@
+---
+created_at: 2026-10-08
+input_file: syntax_ranges/02_statement_semicolon.cpp
+---
+call:
+  - { range: "23:12-23:16", text: "bump" }
+  - { range: "23:4-23:16", text: "counter.bump" }
+  - { range: "23:4-23:18", text: "counter.bump()" }
+  - { range: "23:4-23:19", text: "counter.bump();" }
+  - { range: "23:4-25:11", text: "counter.bump(); int next = counter.count + 1; re…" }
+  - { range: "22:27-26:1", text: "{ counter.bump(); int next = counter.count + 1; …" }
+  - { range: "22:0-26:1", text: "void run(Counter& counter) { counter.bump(); int…" }
+
+global:
+  - { range: "17:4-17:9", text: "limit" }
+  - { range: "17:0-17:14", text: "int limit = 10" }
+  - { range: "17:0-17:15", text: "int limit = 10;" }
+
+local:
+  - { range: "24:8-24:12", text: "next" }
+  - { range: "24:4-24:32", text: "int next = counter.count + 1" }
+  - { range: "24:4-24:33", text: "int next = counter.count + 1;" }
+  - { range: "23:4-25:11", text: "counter.bump(); int next = counter.count + 1; re…" }
+  - { range: "22:27-26:1", text: "{ counter.bump(); int next = counter.count + 1; …" }
+  - { range: "22:0-26:1", text: "void run(Counter& counter) { counter.bump(); int…" }
+
+member:
+  - { range: "13:8-13:13", text: "count" }
+  - { range: "13:4-13:13", text: "int count" }
+  - { range: "13:4-13:14", text: "int count;" }
+  - { range: "13:4-14:16", text: "int count; void bump();" }
+  - { range: "12:15-15:1", text: "{ int count; void bump(); }" }
+  - { range: "12:0-15:1", text: "struct Counter { int count; void bump(); }" }
+  - { range: "12:0-15:2", text: "struct Counter { int count; void bump(); };" }
+
+method:
+  - { range: "14:9-14:13", text: "bump" }
+  - { range: "14:4-14:15", text: "void bump()" }
+  - { range: "14:4-14:16", text: "void bump();" }
+  - { range: "13:4-14:16", text: "int count; void bump();" }
+  - { range: "12:15-15:1", text: "{ int count; void bump(); }" }
+  - { range: "12:0-15:1", text: "struct Counter { int count; void bump(); }" }
+  - { range: "12:0-15:2", text: "struct Counter { int count; void bump(); };" }
+
+ret:
+  - { range: "25:4-25:10", text: "return" }
+  - { range: "25:4-25:11", text: "return;" }
+  - { range: "23:4-25:11", text: "counter.bump(); int next = counter.count + 1; re…" }
+  - { range: "22:27-26:1", text: "{ counter.bump(); int next = counter.count + 1; …" }
+  - { range: "22:0-26:1", text: "void run(Counter& counter) { counter.bump(); int…" }
+
+templated:
+  - { range: "20:2-20:7", text: "twice" }
+  - { range: "20:0-20:16", text: "T twice(T value)" }
+  - { range: "20:0-20:17", text: "T twice(T value);" }
+  - { range: "19:0-20:17", text: "template <class T> T twice(T value);" }

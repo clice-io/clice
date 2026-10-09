@@ -1,48 +1,21 @@
-#include <cstdint>
-#include <optional>
-#include <ranges>
-#include <utility>
-#include <vector>
+module;
 
-#include "compile/compilation_unit.h"
-#include "feature/feature.h"
-#include "semantic/decls.h"
-#include "semantic/semantics.h"
-#include "semantic/symbol.h"
-#include "syntax/token.h"
+#include "modules/prelude.h"
 
-#include "llvm/ADT/DenseMap.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/DeclObjC.h"
-#include "clang/Basic/TokenKinds.h"
+module clice;
+
+import :compile.compilation_unit;
+import :compile.semantics;
+import :feature.feature;
+import :feature.lexical_classify;
+import :semantic.decls;
+import :semantic.symbol;
+import :syntax.lexer;
+import :syntax.token;
 
 namespace clice::feature {
 
 namespace {
-
-/// The classification of one token: a kind and its modifiers.
-struct Classified {
-    SymbolKind kind = SymbolKind::Invalid;
-    std::uint32_t modifiers = 0;
-};
-
-/// Merge a candidate into the running classification: differing kinds
-/// collapse to Conflict, and only the modifiers every candidate agrees on
-/// survive — a token combining resolutions from several instantiations
-/// must not depend on the order the instantiations were written in.
-void combine(Classified& result, Classified candidate) {
-    if(candidate.kind == SymbolKind::Invalid) {
-        return;
-    }
-    if(result.kind == SymbolKind::Invalid) {
-        result = candidate;
-        return;
-    }
-    result.modifiers &= candidate.modifiers;
-    if(result.kind != candidate.kind) {
-        result.kind = SymbolKind::Conflict;
-    }
-}
 
 /// Whether a declaration name is backed by source text that should be highlighted.
 bool can_highlight_name(clang::DeclarationName name) {
@@ -256,7 +229,7 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
     return {kind, modifiers};
 }
 
-/// Classifies every spelled token of the interested file in one ordered
+/// Classifies every spelled token of the main file in one ordered
 /// pass over the semantic map: lexical kinds straight from the token kind,
 /// macros/includes/imports/attributes from the owning SemanticNode, and
 /// declaration names by collecting the decls anchored at the token from its
@@ -268,9 +241,10 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
 /// (a virtual file rendering the expansion with full semantic tokens).
 class SemanticTokensCollector {
 public:
-    explicit SemanticTokensCollector(CompilationUnitRef unit) :
-        unit(unit), semantics(unit.semantics()), content(unit.interested_content()),
-        comments(semantics.comments()) {}
+    SemanticTokensCollector(CompilationUnitRef unit,
+                            llvm::ArrayRef<std::uint32_t> inactive_regions) :
+        unit(unit), semantics(unit.semantics()), content(unit.main_content()),
+        comments(semantics.comments()), inactive_regions(inactive_regions) {}
 
     auto collect() -> std::vector<SemanticToken> {
         precompute_semantics();
@@ -303,14 +277,14 @@ private:
             semantic = it->second;
         }
 
-        /// Semantic classification beats the lexical directive kinds; any
-        /// other disagreement is a Conflict, matching the historical rule.
-        Classified result = semantic;
-        if(result.kind == SymbolKind::Invalid) {
-            result = lexical;
-        } else if(lexical.kind != SymbolKind::Invalid && lexical.kind != SymbolKind::Directive &&
-                  lexical.kind != SymbolKind::Header && lexical.kind != result.kind) {
-            result.kind = SymbolKind::Conflict;
+        Classified result = settle(semantic, lexical);
+
+        /// Unclassified tokens in an inactive region (bare identifiers,
+        /// punctuation) still need a token to carry the Inactive modifier
+        /// — a region edge line holding only a `}` would otherwise have
+        /// nothing to dim.
+        if(result.kind == SymbolKind::Invalid && inactive(range)) {
+            result.kind = SymbolKind::Identifier;
         }
 
         if(result.kind != SymbolKind::Invalid) {
@@ -322,82 +296,10 @@ private:
     /// produced by a real lexer, so keywords are already resolved), plus a
     /// small state machine for preprocessor directive context.
     Classified classify_lexical(const clang::syntax::Token& token, std::uint32_t offset) {
-        Classified lexical;
-        bool is_identifier_like = clang::tok::isAnyIdentifier(token.kind());
-
-        switch(token.kind()) {
-            case clang::tok::numeric_constant: lexical.kind = SymbolKind::Number; break;
-
-            /// Character literals
-            case clang::tok::char_constant:
-            case clang::tok::wide_char_constant:
-            case clang::tok::utf8_char_constant:
-            case clang::tok::utf16_char_constant:
-            case clang::tok::utf32_char_constant: lexical.kind = SymbolKind::Character; break;
-
-            /// String literals
-            case clang::tok::string_literal:
-            case clang::tok::wide_string_literal:
-            case clang::tok::utf8_string_literal:
-            case clang::tok::utf16_string_literal:
-            case clang::tok::utf32_string_literal: lexical.kind = SymbolKind::String; break;
-
-            /// Fundamental and Clang/GNU builtin types; `__fp16` lexes as
-            /// `kw_half`.
-            case clang::tok::kw_bool:
-            case clang::tok::kw_char:
-            case clang::tok::kw_wchar_t:
-            case clang::tok::kw_char8_t:
-            case clang::tok::kw_char16_t:
-            case clang::tok::kw_char32_t:
-            case clang::tok::kw_double:
-            case clang::tok::kw_float:
-            case clang::tok::kw_int:
-            case clang::tok::kw_long:
-            case clang::tok::kw_short:
-            case clang::tok::kw_signed:
-            case clang::tok::kw_unsigned:
-            case clang::tok::kw_void:
-            case clang::tok::kw_half:
-            case clang::tok::kw__BitInt:
-            case clang::tok::kw__Bool:
-            case clang::tok::kw__Complex:
-            case clang::tok::kw__Decimal128:
-            case clang::tok::kw__Decimal32:
-            case clang::tok::kw__Decimal64:
-            case clang::tok::kw__ExtInt:
-            case clang::tok::kw__Float16:
-            case clang::tok::kw__Imaginary:
-            case clang::tok::kw___bf16:
-            case clang::tok::kw___float128:
-            case clang::tok::kw___ibm128:
-            case clang::tok::kw___int64:
-            case clang::tok::kw___int128: {
-                lexical.kind = SymbolKind::Primitive;
-                is_identifier_like = true;
-                break;
-            }
-
-            /// PP directive hash
-            case clang::tok::hash: break;
-
-            default: {
-                if(clang::tok::getKeywordSpelling(token.kind())) {
-                    lexical.kind = SymbolKind::Keyword;
-                    is_identifier_like = true;
-                    break;
-                } else if(auto* punctuator = clang::tok::getPunctuatorSpelling(token.kind())) {
-                    /// Alternative operator spellings (and, or, not, ...) lex
-                    /// as their punctuator kinds but are written as words.
-                    auto spelling = content.substr(offset, token.length());
-                    if(!spelling.empty() && llvm::isAlpha(spelling.front()) &&
-                       spelling != punctuator) {
-                        lexical.kind = SymbolKind::Keyword;
-                    }
-                }
-                break;
-            }
-        }
+        auto lexical_class =
+            classify_lexical_kind(token.kind(), content.substr(offset, token.length()));
+        Classified lexical{lexical_class.kind, 0};
+        bool is_identifier_like = lexical_class.identifier_like;
 
         /// Move the directive state machine to classify tokens in a PP directive.
         switch(directive_context) {
@@ -415,8 +317,7 @@ private:
                 }
 
                 auto spelling = content.substr(offset, token.length());
-                if(spelling == "include" || spelling == "include_next" || spelling == "import" ||
-                   spelling == "embed") {
+                if(takes_header_name(spelling)) {
                     directive_context = DirectiveContext::InIncludeName;
                 } else if(spelling == "define") {
                     directive_context = DirectiveContext::AfterDefine;
@@ -583,20 +484,9 @@ private:
                     auto* import = node.get<Import>();
                     anchor(import->location, {SymbolKind::Keyword, 0}, true);
                     for(auto location: import->name_locations) {
-                        auto index = spelled_index(location);
-                        if(!index) {
-                            continue;
+                        if(auto index = spelled_index(location)) {
+                            combine(token_semantics[*index], {SymbolKind::Module, 0});
                         }
-                        /// A partition import (`import :part;`) reports the
-                        /// component location at its leading colon; the
-                        /// written name is the next spelled token. The colon
-                        /// itself stays unpainted, matching the module
-                        /// declaration side.
-                        if(spelled[*index].kind() == clang::tok::colon &&
-                           *index + 1 < spelled.size()) {
-                            *index += 1;
-                        }
-                        combine(token_semantics[*index], {SymbolKind::Module, 0});
                     }
                     break;
                 }
@@ -614,12 +504,16 @@ private:
                     /// keywords the lexical pass paints on its own, and the
                     /// separators stay unpainted, matching the import side.
                     anchor_offset(module->keyword.begin, {SymbolKind::Keyword, 0});
+                    Classified name{SymbolKind::Module,
+                                    unit.defines_module()
+                                        ? SymbolModifiers::to_mask(SymbolModifiers::Definition)
+                                        : 0};
                     for(auto& part: module->name_parts) {
-                        anchor_offset(part.begin, {SymbolKind::Module, 0});
+                        anchor_offset(part.begin, name);
                     }
                     if(module->kind == LexicalInfo::ModuleDeclaration::Kind::Declaration) {
                         for(auto& part: module->partition_parts) {
-                            anchor_offset(part.begin, {SymbolKind::Module, 0});
+                            anchor_offset(part.begin, name);
                         }
                     }
                     break;
@@ -695,16 +589,24 @@ private:
         return false;
     }
 
-    void emit(LocalSourceRange range, SymbolKind kind, std::uint32_t modifiers) {
-        if(!tokens.empty()) {
-            auto& last = tokens.back();
-            if(last.range.end == range.begin && last.kind == kind && last.modifiers == modifiers) {
-                last.range.end = range.end;
-                return;
-            }
+    /// Whether `range` overlaps an inactive region. Emitted ranges ascend,
+    /// so one cursor over the sorted disjoint regions suffices.
+    bool inactive(LocalSourceRange range) {
+        while(next_region + 1 < inactive_regions.size() &&
+              inactive_regions[next_region + 1] <= range.begin) {
+            next_region += 2;
         }
+        return next_region + 1 < inactive_regions.size() &&
+               inactive_regions[next_region] < range.end;
+    }
 
-        tokens.push_back({.range = range, .kind = kind, .modifiers = modifiers});
+    /// The single exit of every token — lexical, semantic and comment
+    /// streams alike — so the Inactive modifier cannot miss a path.
+    void emit(LocalSourceRange range, SymbolKind kind, std::uint32_t modifiers) {
+        if(inactive(range)) {
+            modifiers |= SymbolModifiers::to_mask(SymbolModifiers::Inactive);
+        }
+        append_token(tokens, range, kind, modifiers);
     }
 
     enum class DirectiveContext : std::uint8_t {
@@ -726,66 +628,35 @@ private:
     std::size_t next_comment = 0;
     /// Cursor of has_logical_newline over `comments`.
     std::size_t newline_scan_comment = 0;
+    llvm::ArrayRef<std::uint32_t> inactive_regions;
+    /// Cursor of inactive() over `inactive_regions`.
+    std::size_t next_region = 0;
     std::vector<SemanticToken> tokens;
 };
 
 class SemanticTokenEncoder {
 public:
-    SemanticTokenEncoder(CompilationUnitRef unit,
+    SemanticTokenEncoder(const PositionMap& map,
                          PositionEncoding encoding,
                          protocol::SemanticTokens& output) :
-        map(unit.interested_content(), unit.line_starts(), encoding), encoding(encoding),
-        output(output) {}
+        map(map), encoding(encoding), output(output) {}
 
     void append(const SemanticToken& token) {
-        auto content = map.content();
-        if(!token.range.valid() || token.range.end <= token.range.begin ||
-           token.range.end > content.size()) {
+        if(token.range.end <= token.range.begin || token.range.end > map.size()) {
             return;
         }
 
-        auto begin = token.range.begin;
-        auto end = token.range.end;
-        auto begin_position = to_position(map, begin);
-        auto end_position = to_position(map, end);
-        if(!begin_position || !end_position)
-            return;
-        auto begin_line = static_cast<std::uint32_t>(begin_position->line);
-        auto begin_char = static_cast<std::uint32_t>(begin_position->character);
-        auto end_line = static_cast<std::uint32_t>(end_position->line);
-        auto end_char = static_cast<std::uint32_t>(end_position->character);
-
-        if(begin_line == end_line) [[likely]] {
-            emit(begin_line, begin_char, end_char - begin_char, token.kind, token.modifiers);
-            return;
-        }
+        auto begin = map.position(token.range.begin, encoding);
+        auto end = map.position(token.range.end, encoding);
 
         // LSP semantic tokens have no multiline support (unless the client
         // negotiates the capability), so split the token into per-line pieces.
-        auto chunk = content.substr(begin, end - begin);
-        std::uint32_t line = begin_line;
-        std::uint32_t character = begin_char;
-        std::uint32_t chunk_offset = 0;
-        std::uint32_t piece_size = 0;
-
-        for(char c: chunk) {
-            piece_size += 1;
-            if(c != '\n') {
-                continue;
-            }
-
-            auto length = lsp::encoded_length(chunk.substr(chunk_offset, piece_size), encoding);
-            emit(line, character, length, token.kind, token.modifiers);
-
-            line += 1;
-            character = 0;
-            chunk_offset += piece_size;
-            piece_size = 0;
-        }
-
-        if(piece_size > 0) {
-            auto length = lsp::encoded_length(chunk.substr(chunk_offset), encoding);
-            emit(line, character, length, token.kind, token.modifiers);
+        for(auto line = begin->line; line <= end->line; line += 1) {
+            auto start = line == begin->line ? begin->character : 0;
+            auto stop = line == end->line
+                            ? end->character
+                            : map.position(map.line_bounds(line)->end, encoding)->character;
+            emit(line, start, stop - start, token.kind, token.modifiers);
         }
     }
 
@@ -815,7 +686,7 @@ private:
     }
 
 private:
-    lsp::LineMap map;
+    PositionMap map;
     PositionEncoding encoding;
     protocol::SemanticTokens& output;
     std::uint32_t last_line = 0;
@@ -825,18 +696,30 @@ private:
 }  // namespace
 
 auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken> {
-    SemanticTokensCollector collector(unit);
+    auto scan = inactive_regions(unit);
+    SemanticTokensCollector collector(unit, scan.regions);
     return collector.collect();
 }
 
 auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
     -> protocol::SemanticTokens {
-    auto tokens = semantic_tokens(unit);
+    return semantic_tokens_to_protocol(semantic_tokens(unit), unit.positions(), encoding);
+}
 
+auto semantic_tokens(CompilationUnitRef unit,
+                     llvm::ArrayRef<std::uint32_t> inactive_regions,
+                     PositionEncoding encoding) -> protocol::SemanticTokens {
+    SemanticTokensCollector collector(unit, inactive_regions);
+    return semantic_tokens_to_protocol(collector.collect(), unit.positions(), encoding);
+}
+
+auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
+                                 const PositionMap& map,
+                                 PositionEncoding encoding) -> protocol::SemanticTokens {
     protocol::SemanticTokens result;
     result.data.reserve(tokens.size() * 5);
 
-    SemanticTokenEncoder encoder(unit, encoding, result);
+    SemanticTokenEncoder encoder(map, encoding, result);
     for(const auto& token: tokens) {
         encoder.append(token);
     }

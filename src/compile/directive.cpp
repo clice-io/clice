@@ -1,12 +1,13 @@
-#include "compile/directive.h"
+module;
 
-#include "compile/implement.h"
-#include "syntax/lexer.h"
+#include "modules/prelude.h"
 
-#include "clang/Basic/Module.h"
-#include "clang/Lex/MacroArgs.h"
-#include "clang/Lex/MacroInfo.h"
-#include "clang/Lex/Preprocessor.h"
+module clice;
+
+import :compile.directive;
+import :compile.implement;
+import :syntax.lexer;
+import :vfs.path;
 
 namespace clice {
 
@@ -19,22 +20,20 @@ public:
 private:
     void add_condition(clang::SourceLocation location,
                        Condition::BranchKind kind,
-                       Condition::ConditionValue value,
-                       clang::SourceRange cond_range) {
+                       Condition::ConditionValue value) {
         auto& directive = unit->directives[unit.file_id(location)];
-        directive.conditions.emplace_back(kind, value, location, cond_range);
+        directive.conditions.emplace_back(kind, value, location);
     }
 
     void add_condition(clang::SourceLocation loc,
                        Condition::BranchKind kind,
-                       clang::PPCallbacks::ConditionValueKind value,
-                       clang::SourceRange condition_range) {
+                       clang::PPCallbacks::ConditionValueKind value) {
         Condition::ConditionValue cond_value =
             value == clang::PPCallbacks::CVK_False          ? Condition::False
             : value == clang::PPCallbacks::CVK_True         ? Condition::True
             : value == clang::PPCallbacks::CVK_NotEvaluated ? Condition::Skipped
                                                             : Condition::None;
-        add_condition(loc, kind, cond_value, condition_range);
+        add_condition(loc, kind, cond_value);
     }
 
     /// `negated` flips the recorded truth for #ifndef/#elifndef: the
@@ -50,7 +49,7 @@ private:
             add_macro(def, MacroRef::Ref, name.getLocation());
         }
         bool taken = negated ? def == nullptr : def != nullptr;
-        add_condition(loc, kind, taken ? Condition::True : Condition::False, name.getLocation());
+        add_condition(loc, kind, taken ? Condition::True : Condition::False);
     }
 
     void add_macro(const clang::MacroInfo* def, MacroRef::Kind kind, clang::SourceLocation loc) {
@@ -103,18 +102,55 @@ public:
         });
     }
 
+    /// A lookup that found nothing still consulted the disk: a file created
+    /// at any place it looked changes what the compile sees. Every such
+    /// place — the directory the includer was opened from, for a quoted
+    /// name, then each search directory the lookup walks — is recorded as
+    /// an absent input, spelled as clang looked: `..` resolves past a
+    /// symlinked directory.
+    void add_absent(llvm::StringRef name, bool angled, clang::SourceLocation location) {
+        auto& absent = unit->absent;
+        auto& files = unit->instance->getFileManager();
+        auto add = [&](llvm::StringRef directory) {
+            llvm::SmallString<256> candidate(directory);
+            path::append(candidate, name);
+            files.makeAbsolutePath(candidate);
+            absent.insert(Spelling::absolute(candidate).str());
+        };
+        if(path::is_absolute(name)) {
+            absent.insert(Spelling::absolute(name).str());
+            return;
+        }
+        if(!angled) {
+            if(auto includer = unit->SM().getFileEntryRefForID(unit.file_id(location))) {
+                add(includer->getDir().getName());
+            }
+        }
+        auto& search = unit->instance->getPreprocessor().getHeaderSearchInfo();
+        for(auto it = angled ? search.angled_dir_begin() : search.quoted_dir_begin();
+            it != search.search_dir_end();
+            ++it) {
+            if(auto directory = it->getDirRef()) {
+                add(directory->getName());
+            }
+        }
+    }
+
     void InclusionDirective(clang::SourceLocation hash_loc,
                             const clang::Token& include_tok,
-                            llvm::StringRef,
-                            bool,
+                            llvm::StringRef file_name,
+                            bool is_angled,
                             clang::CharSourceRange,
-                            clang::OptionalFileEntryRef,
+                            clang::OptionalFileEntryRef file,
                             llvm::StringRef,
                             llvm::StringRef,
                             const clang::Module*,
                             bool,
                             clang::SrcMgr::CharacteristicKind) override {
         prev_fid = unit.file_id(hash_loc);
+        if(!file) {
+            add_absent(file_name, is_angled, hash_loc);
+        }
 
         /// An `IncludeDirective` call is always followed by either a `LexedFileChanged`
         /// or a `FileSkipped`. so we cannot get the file id of included file here.
@@ -164,67 +200,96 @@ public:
             if(!import.name.empty())
                 import.name += '.';
             import.name += name.getIdentifierInfo()->getName();
-            import.name_locations.emplace_back(name.getLoc());
         }
-
         import.full_name = M ? M->getFullModuleName() : import.name;
+
+        // Clang reports a C++20 module name flattened into one component
+        // at its first token — a partition's at its colon — so the written
+        // identifiers are lexed back from there. A name spelled by a macro
+        // has no written tokens past the reported one.
+        auto start = names.front().getLoc();
+        if(start.isMacroID()) {
+            import.name_locations.push_back(start);
+            return;
+        }
+        auto [name_fid, offset] = unit.decompose_location(start);
+        Lexer lexer(unit.file_content(name_fid).substr(offset),
+                    {.lang_opts = &unit.lang_options()});
+        auto token = lexer.advance();
+        if(token.kind == clang::tok::colon) {
+            token = lexer.advance();
+        }
+        while(token.is_identifier()) {
+            import.name_locations.push_back(
+                unit.create_location(name_fid, offset + token.range.begin));
+            if(lexer.advance().kind != clang::tok::period) {
+                break;
+            }
+            token = lexer.advance();
+        }
     }
 
     void HasInclude(clang::SourceLocation location,
-                    llvm::StringRef,
-                    bool,
+                    llvm::StringRef file_name,
+                    bool is_angled,
                     clang::OptionalFileEntryRef file,
                     clang::SrcMgr::CharacteristicKind) override {
+        // The filename may come from a macro's argument: record where it
+        // is spelled.
+        location = unit.file_location(location);
         unit->directives[unit.file_id(location)].has_includes.emplace_back(file, location);
+        if(!file) {
+            add_absent(file_name, is_angled, location);
+        }
     }
 
-    void PragmaDirective(clang::SourceLocation loc,
-                         clang::PragmaIntroducerKind introducer) override {
-        // Ignore other cases except starts with `#pragma`.
-        if(introducer != clang::PragmaIntroducerKind::PIK_HashPragma)
-            return;
-
-        clang::FileID fid = unit.file_id(loc);
-
-        llvm::StringRef content = unit.file_content(fid);
-        std::uint32_t offset = unit.file_offset(loc);
-        llvm::StringRef that_line =
-            content.substr(offset).take_until([](char ch) { return ch == '\n'; });
-
-        // Classify by the first argument token: substring matching would
-        // misfire on lines like `#pragma message("see endregion below")`.
-        // Lexing starts at the reported `#` (a suffix keeps the NUL
-        // terminator), not at the physical line start — the tail of a
-        // multiline comment may sit before the introducer.
-        Pragma::Kind kind = Pragma::Other;
-        Lexer lexer(content.substr(offset), {.lang_opts = &unit.lang_options()});
-        lexer.advance();  // the introducer `#`
-        lexer.advance();  // the `pragma` keyword
-        if(lexer.advance_if("region")) {
-            kind = Pragma::Region;
-        } else if(lexer.advance_if("endregion")) {
-            kind = Pragma::EndRegion;
+    void PragmaDirective(clang::SourceLocation loc, clang::PragmaIntroducerKind kind) override {
+        if(kind != clang::PIK_HashPragma) {
+            auto fid = unit.file_id(unit.expansion_location(loc));
+            unit->directives[fid].pragma_operators.push_back(loc);
         }
+    }
 
-        auto& directive = unit->directives[fid];
-        directive.pragmas.emplace_back(Pragma{
-            that_line,
-            kind,
-            loc,
-        });
+    void PragmaDebug(clang::SourceLocation, llvm::StringRef command) override {
+        // `dump` leaves the rest of its line to the parser, which prints
+        // it. Nothing here wants the dump printed.
+        if(command == "dump") {
+            unit->instance->getPreprocessor().DiscardUntilEndOfDirective();
+        }
+    }
+
+    void PragmaDiagnosticPush(clang::SourceLocation loc, llvm::StringRef) override {
+        add_diagnostic_pragma({.kind = DiagnosticPragma::Push, .loc = loc});
+    }
+
+    void PragmaDiagnosticPop(clang::SourceLocation loc, llvm::StringRef) override {
+        add_diagnostic_pragma({.kind = DiagnosticPragma::Pop, .loc = loc});
+    }
+
+    void PragmaDiagnostic(clang::SourceLocation loc,
+                          llvm::StringRef,
+                          clang::diag::Severity severity,
+                          llvm::StringRef flag) override {
+        add_diagnostic_pragma(
+            {.kind = DiagnosticPragma::Map, .severity = severity, .flag = flag.str(), .loc = loc});
+    }
+
+    void add_diagnostic_pragma(DiagnosticPragma pragma) {
+        auto fid = unit.file_id(unit.expansion_location(pragma.loc));
+        unit->directives[fid].diagnostic_pragmas.push_back(std::move(pragma));
     }
 
     void If(clang::SourceLocation loc,
-            clang::SourceRange cond_range,
+            clang::SourceRange,
             clang::PPCallbacks::ConditionValueKind value) override {
-        add_condition(loc, Condition::If, value, cond_range);
+        add_condition(loc, Condition::If, value);
     }
 
     void Elif(clang::SourceLocation loc,
-              clang::SourceRange cond_range,
+              clang::SourceRange,
               clang::PPCallbacks::ConditionValueKind value,
               clang::SourceLocation) override {
-        add_condition(loc, Condition::Elif, value, cond_range);
+        add_condition(loc, Condition::Elif, value);
     }
 
     void Ifdef(clang::SourceLocation loc,
@@ -241,11 +306,9 @@ public:
     }
 
     /// Invoke when #elif is skipped.
-    void Elifdef(clang::SourceLocation loc,
-                 clang::SourceRange cond_range,
-                 clang::SourceLocation) override {
+    void Elifdef(clang::SourceLocation loc, clang::SourceRange, clang::SourceLocation) override {
         /// FIXME: should we try to evaluate the condition to compute the macro reference?
-        add_condition(loc, Condition::Elifdef, Condition::Skipped, cond_range);
+        add_condition(loc, Condition::Elifdef, Condition::Skipped);
     }
 
     /// Invoke when #ifndef is taken.
@@ -263,18 +326,16 @@ public:
     }
 
     // Invoke when #elifndef is skipped.
-    void Elifndef(clang::SourceLocation loc,
-                  clang::SourceRange cond_range,
-                  clang::SourceLocation) override {
-        add_condition(loc, Condition::Elifndef, Condition::Skipped, cond_range);
+    void Elifndef(clang::SourceLocation loc, clang::SourceRange, clang::SourceLocation) override {
+        add_condition(loc, Condition::Elifndef, Condition::Skipped);
     }
 
     void Else(clang::SourceLocation loc, clang::SourceLocation if_loc) override {
-        add_condition(loc, Condition::Else, Condition::None, clang::SourceRange());
+        add_condition(loc, Condition::Else, Condition::None);
     }
 
     void Endif(clang::SourceLocation loc, clang::SourceLocation if_loc) override {
-        add_condition(loc, Condition::EndIf, Condition::None, clang::SourceRange());
+        add_condition(loc, Condition::EndIf, Condition::None);
     }
 
     void MacroDefined(const clang::Token& name, const clang::MacroDirective* md) override {
@@ -287,6 +348,14 @@ public:
                       const clang::MacroDefinition& definition,
                       clang::SourceRange range,
                       const clang::MacroArgs* args) override {
+        if(auto def = definition.getMacroInfo()) {
+            add_macro(def, MacroRef::Ref, name.getLocation());
+        }
+    }
+
+    void Defined(const clang::Token& name,
+                 const clang::MacroDefinition& definition,
+                 clang::SourceRange) override {
         if(auto def = definition.getMacroInfo()) {
             add_macro(def, MacroRef::Ref, name.getLocation());
         }

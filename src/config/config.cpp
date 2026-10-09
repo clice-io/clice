@@ -1,0 +1,440 @@
+module;
+
+#include "modules/prelude.h"
+
+#include "support/anomaly.macros.h"
+#include "support/logging.macros.h"
+
+module clice;
+
+import :config.config;
+import :feature.feature;
+import :support.logging;
+import :support.shell;
+import :vfs.file_system;
+import :vfs.path;
+
+namespace clice {
+
+/// Replace all occurrences of ${workspace} with the workspace root.
+/// No-op when workspace_root is empty, to avoid producing paths like "/cache"
+/// from "${workspace}/cache".
+static void substitute_workspace(std::string& value, llvm::StringRef workspace_root) {
+    if(workspace_root.empty())
+        return;
+    std::size_t pos = 0;
+    while((pos = value.find(path::workspace_anchor, pos)) != std::string::npos) {
+        value.replace(pos, path::workspace_anchor.size(), workspace_root);
+        pos += workspace_root.size();
+    }
+}
+
+/// A path-valued setting as written: `${workspace}` substituted, a leading
+/// `~` expanded to the home directory, a relative one anchored at `anchor`.
+/// Nullopt for a relative one with no anchor to hold it (a rootless
+/// project's setting).
+static std::optional<Spelling> setting_path(std::string value,
+                                            const Spelling& anchor,
+                                            CanonicalRef workspace_root) {
+    substitute_workspace(value, workspace_root);
+    if(llvm::StringRef(value).starts_with("~")) {
+        llvm::SmallString<256> expanded;
+        llvm::sys::fs::expand_tilde(value, expanded);
+        value = std::string(expanded);
+    }
+    if(path::is_absolute(value)) {
+        return Spelling::absolute(value);
+    }
+    if(anchor.empty()) {
+        return std::nullopt;
+    }
+    return Spelling(value, anchor);
+}
+
+/// The physical cores this process may run on, clangd's default too: a
+/// hyper-thread adds little to a compile, while every worker costs a TU's
+/// memory.
+static std::uint32_t physical_parallelism() {
+    auto logical = kota::sys::parallelism();
+    auto physical = llvm::get_physical_cores();
+    return physical > 0 ? std::min(static_cast<std::uint32_t>(physical), logical) : logical;
+}
+
+std::uint32_t default_stateless_worker_count() {
+    // Config is constructed on every worker request (QueryParams /
+    // build params carry one); query the core count once, not per request.
+    const static std::uint32_t count = std::max(physical_parallelism() / 2, 2u);
+    return count;
+}
+
+std::uint32_t default_max_stateless_worker_count() {
+    const static std::uint32_t count = physical_parallelism();
+    return count;
+}
+
+/// Compile one pattern against absolute paths: the literal directory before
+/// the first wildcard segment is anchored (a relative one at `anchor`) and
+/// resolved like every path the file table names — a symlinked directory
+/// matches the files it holds — and the wildcard tail follows verbatim.
+/// A `**`-led pattern matches anywhere and enumerates from the workspace.
+static std::optional<CompiledRule::Pattern> compile_pattern(std::string pattern,
+                                                            const Spelling& anchor,
+                                                            CanonicalRef workspace_root) {
+    // A substituted workspace root is path, never glob syntax.
+    substitute_workspace(pattern, kota::GlobPattern::escape(workspace_root.str()));
+    std::string text = pattern;
+    CanonicalPath root = workspace_root;
+    if(!pattern.starts_with("**")) {
+        auto [directory, rest] = kota::GlobPattern::split_root(pattern);
+        root = CanonicalPath(Spelling(directory, anchor));
+        text = kota::GlobPattern::escape(root.str());
+        if(!text.ends_with('/')) {
+            text += '/';
+        }
+        text += rest;
+    }
+    auto glob = kota::GlobPattern::create(text);
+    if(!glob) {
+        LOG_WARN("Invalid glob pattern in rule: {}: {}", pattern, glob.error().message);
+        return std::nullopt;
+    }
+    return CompiledRule::Pattern{.glob = std::move(*glob), .root = std::move(root)};
+}
+
+void Config::finalize(CanonicalRef workspace_root) {
+    auto& p = project;
+
+    // Validation, not default-filling: zero workers or a zero memory
+    // budget is never a runnable configuration, so an explicit 0 falls
+    // back to the field's born-valid default with a warning.
+    ProjectConfig defaults;
+    auto reject_zero = [](auto& field, const auto& fallback, llvm::StringRef name) {
+        if(field.value == 0) {
+            LOG_WARN("{} = 0 is invalid; using {}", name, fallback);
+            field = fallback.value;
+        }
+    };
+    reject_zero(p.stateful_worker_count, defaults.stateful_worker_count, "stateful_worker_count");
+    reject_zero(p.stateless_worker_count,
+                defaults.stateless_worker_count,
+                "stateless_worker_count");
+    reject_zero(p.min_stateless_worker_count,
+                defaults.min_stateless_worker_count,
+                "min_stateless_worker_count");
+
+    this->workspace_root = workspace_root;
+    CanonicalRef root = this->workspace_root;
+    Spelling root_anchor(root);
+
+    if(p.cache_dir.empty() && !root.empty()) {
+        p.cache_dir = path::join(root, ".clice");
+        p.cache_dir_defaulted = true;
+    }
+    if(p.logging_dir.empty() && !p.cache_dir.empty())
+        p.logging_dir = path::join(p.cache_dir, "logs");
+
+    // A path still relative here came from initializationOptions (load()
+    // anchored a file's own) and resolves against the workspace root; the
+    // file table's name for it is the one kept, whatever the user wrote.
+    for(std::string* dir: std::initializer_list<std::string*>{&p.cache_dir, &p.logging_dir}) {
+        if(dir->empty()) {
+            continue;
+        }
+        auto spelled = setting_path(*dir, root_anchor, root);
+        if(!spelled) {
+            LOG_GUIDANCE("{} is relative in a project without a folder; ignored", *dir);
+            dir->clear();
+            continue;
+        }
+        *dir = CanonicalPath(*spelled).str();
+    }
+
+    compiled_rules.clear();
+    auto compile = [&](const ConfigRule& rule) -> std::optional<CompiledRule> {
+        // A rule read from a file anchors at the file's directory, one from
+        // initializationOptions at the workspace root; a project without a
+        // folder has nothing to anchor one at.
+        auto anchor =
+            rule.directory.empty() ? root_anchor : Spelling::absolute(std::string(rule.directory));
+        if(anchor.empty()) {
+            LOG_GUIDANCE(
+                "Rules need a workspace folder to anchor their paths; a rule "
+                "without one is ignored");
+            return std::nullopt;
+        }
+        CompiledRule compiled;
+        for(auto& pattern: rule.patterns) {
+            if(auto compiled_pattern = compile_pattern(pattern, anchor, root)) {
+                compiled.patterns.push_back(std::move(*compiled_pattern));
+            }
+        }
+        // Without a valid pattern the rule can match nothing; its declared
+        // databases still load, since entries apply regardless of patterns.
+        if(compiled.patterns.empty() && !rule.patterns.empty()) {
+            LOG_WARN("Rule matches no file: all of its glob patterns failed to compile");
+            compiled.unmatchable = true;
+        }
+        compiled.configuration = rule.configuration;
+        for(auto& database: rule.compile_commands) {
+            auto full = *setting_path(database, anchor, root);
+            // The directory form is told from the file form by extension
+            // everywhere else; only the filesystem knows a directory
+            // spelled with a .json suffix.
+            if(vfs::is_directory(full.str())) {
+                full = Spelling("compile_commands.json", full);
+            }
+            compiled.compile_commands.push_back(std::move(full));
+        }
+        // A string spelling is tokenized before `${workspace}` is
+        // substituted, so a root with spaces stays one argument.
+        if(auto* spelling = std::get_if<std::string>(&rule.default_command)) {
+            compiled.default_command = tokenize_command(*spelling);
+        } else {
+            compiled.default_command = std::get<std::vector<std::string>>(rule.default_command);
+        }
+        for(auto& arg: compiled.default_command) {
+            substitute_workspace(arg, root);
+        }
+        compiled.directory = std::move(anchor);
+        compiled.append.assign(rule.append.begin(), rule.append.end());
+        compiled.remove.assign(rule.remove.begin(), rule.remove.end());
+        for(auto* flags: {&compiled.append, &compiled.remove}) {
+            for(auto& flag: *flags) {
+                substitute_workspace(flag, root);
+            }
+        }
+        compiled.index = rule.index;
+        compiled.lint = rule.lint;
+        compiled.format = rule.format;
+        return compiled;
+    };
+    for(auto& rule: rules) {
+        if(auto compiled = compile(rule)) {
+            compiled_rules.push_back(std::move(*compiled));
+        }
+    }
+    auto tags = configurations();
+    if(!tags.empty() && default_configuration.empty()) {
+        LOG_WARN("Rules declare configurations {} but default_configuration is unset; using {}",
+                 llvm::join(tags, ", "),
+                 tags.front());
+    } else if(!default_configuration.empty() &&
+              !llvm::is_contained(tags, llvm::StringRef(default_configuration))) {
+        LOG_WARN("default_configuration = {} names no rule's configuration", default_configuration);
+    }
+}
+
+bool CompiledRule::has_default_command() const {
+    return !default_command.empty();
+}
+
+bool CompiledRule::declares_sources() const {
+    return !compile_commands.empty() || (has_default_command() && !unmatchable);
+}
+
+bool CompiledRule::matches(CanonicalRef path) const {
+    if(unmatchable) {
+        return false;
+    }
+    return patterns.empty() || std::ranges::any_of(patterns, [&](const Pattern& pattern) {
+               return pattern.glob.match(llvm::StringRef(path));
+           });
+}
+
+llvm::SmallVector<const CompiledRule*> Config::matching_rules(CanonicalRef path,
+                                                              llvm::StringRef configuration) const {
+    llvm::SmallVector<const CompiledRule*> result;
+    for(auto& rule: compiled_rules) {
+        if((rule.configuration.empty() || rule.configuration == configuration) &&
+           rule.matches(path)) {
+            result.push_back(&rule);
+        }
+    }
+    return result;
+}
+
+llvm::SmallVector<llvm::StringRef> Config::configurations() const {
+    llvm::SmallVector<llvm::StringRef> tags;
+    for(auto& rule: compiled_rules) {
+        if(!rule.configuration.empty() && !llvm::is_contained(tags, rule.configuration)) {
+            tags.push_back(rule.configuration);
+        }
+    }
+    return tags;
+}
+
+/// Codec config the published schema is generated under, for its
+/// `additionalProperties: false`: a key load() warns about as unknown is
+/// one the schema rejects — the same typo surfaces both ways.
+struct DenyUnknownKeys {
+    constexpr static bool deny_unknown_fields = true;
+};
+
+static ConfigIssue make_issue(ConfigIssue::Severity severity,
+                              llvm::StringRef path,
+                              const kota::codec::rich_error& error) {
+    ConfigIssue issue;
+    issue.severity = severity;
+    issue.file = path.str();
+    issue.message = error.to_string();
+    if(error.location) {
+        issue.line = static_cast<std::uint32_t>(error.location->line);
+        issue.column = static_cast<std::uint32_t>(error.location->column);
+    }
+    return issue;
+}
+
+std::optional<Config> Config::load(llvm::StringRef path,
+                                   CanonicalRef workspace_root,
+                                   std::vector<ConfigIssue>* issues,
+                                   bool finalized) {
+    auto content = vfs::read(path);
+    if(!content)
+        return std::nullopt;
+
+    kota::codec::UnknownFields unknown;
+    auto result = [&] {
+        kota::codec::scoped_context<kota::codec::UnknownFields> collecting(unknown);
+        return kota::codec::toml::from_string<Config>((*content)->getBuffer());
+    }();
+    if(!result) {
+        LOG_ERROR("Invalid clice.toml {}: {}", path, result.error().to_string());
+        if(issues)
+            issues->push_back(make_issue(ConfigIssue::Severity::Error, path, result.error()));
+        return std::nullopt;
+    }
+
+    if(issues) {
+        for(auto& entry: unknown.entries) {
+            LOG_WARN("clice.toml {}: {}", path, entry.to_string());
+            issues->push_back(make_issue(ConfigIssue::Severity::Warning, path, entry));
+        }
+    }
+
+    auto config = std::move(*result);
+    auto directory = Spelling::absolute(path).parent();
+    for(auto& rule: config.rules) {
+        rule.directory = directory.str();
+    }
+    for(std::string* dir: std::initializer_list<std::string*>{&config.project.cache_dir,
+                                                              &config.project.logging_dir}) {
+        if(!dir->empty()) {
+            *dir = setting_path(*dir, directory, workspace_root)->str();
+        }
+    }
+    if(finalized)
+        config.finalize(workspace_root);
+    LOG_INFO("Loaded config from {}", path);
+    return config;
+}
+
+std::optional<Config> Config::load_from_json(llvm::StringRef json, CanonicalRef workspace_root) {
+    auto config = kota::codec::json::from_string<Config>(json);
+    if(!config) {
+        LOG_WARN("Failed to parse initializationOptions JSON: {}", config.error().message);
+        return std::nullopt;
+    }
+
+    config->finalize(workspace_root);
+    LOG_INFO("Loaded config from initializationOptions");
+    return std::move(*config);
+}
+
+Config Config::load_from_workspace(CanonicalRef workspace_root,
+                                   std::vector<ConfigIssue>* issues,
+                                   std::string* loaded_path,
+                                   bool finalized) {
+    if(loaded_path)
+        loaded_path->clear();
+
+    auto config = [&] {
+        bool found = false;
+        if(!workspace_root.empty()) {
+            for(auto name: config_file_names) {
+                auto config_path = path::join(llvm::StringRef(workspace_root), name);
+                if(!vfs::exists(config_path))
+                    continue;
+                found = true;
+                if(loaded_path)
+                    *loaded_path = config_path;
+                if(auto config = load(config_path, workspace_root, issues, /*finalized=*/false))
+                    return std::move(*config);
+                // Present but malformed: fall through to defaults, but
+                // surface the situation clearly so users know their config
+                // wasn't applied.
+                LOG_WARN("Falling back to default configuration because {} is invalid",
+                         config_path);
+            }
+        }
+        if(!found) {
+            LOG_INFO("No clice.toml found in {}, using default configuration", workspace_root);
+        }
+        return Config();
+    }();
+    if(finalized) {
+        config.finalize(workspace_root);
+        config.keep_own_cache_dir();
+    }
+    return config;
+}
+
+/// Where a cache directory outside its workspace root records its owner.
+constexpr static llvm::StringRef cache_owner_file = "owner";
+
+std::string cache_dir_owner(llvm::StringRef cache_dir) {
+    auto owner = vfs::read(path::join(cache_dir, cache_owner_file), vfs::Read::Bytes);
+    return owner ? (*owner)->getBuffer().trim().str() : std::string();
+}
+
+/// A recorded owner that no longer exists (a moved or deleted checkout)
+/// claims nothing.
+static bool live_owner(llvm::StringRef owner, llvm::StringRef root) {
+    return !owner.empty() && owner != root && vfs::is_directory(owner);
+}
+
+bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef workspace_root) {
+    return !path::under(CanonicalPath(Spelling::absolute(cache_dir)), workspace_root) &&
+           live_owner(cache_dir_owner(cache_dir), workspace_root);
+}
+
+void claim_cache_dir(llvm::StringRef cache_dir, CanonicalRef root) {
+    auto owner = cache_dir_owner(cache_dir);
+    // One inside the root is the root's, whatever it records — a copied
+    // checkout carries the original's record along.
+    if(owner == root.str() || (!path::under(CanonicalPath(Spelling::absolute(cache_dir)), root) &&
+                               live_owner(owner, root))) {
+        return;
+    }
+    if(auto error = vfs::write(path::join(cache_dir, cache_owner_file), root.str() + "\n")) {
+        LOG_WARN("Cannot record the owner of cache directory {}: {}", cache_dir, error.message());
+    }
+}
+
+void Config::keep_own_cache_dir() {
+    auto& p = project;
+    if(p.cache_dir.empty() || !owned_elsewhere(p.cache_dir, workspace_root)) {
+        return;
+    }
+    auto own = path::join(workspace_root, ".clice");
+    path::canonicalize(own);
+    LOG_GUIDANCE("Cache directory {} serves the project at {}; {} keeps its cache in {}",
+                 p.cache_dir,
+                 cache_dir_owner(p.cache_dir),
+                 workspace_root,
+                 own);
+    if(path::under(p.logging_dir, p.cache_dir)) {
+        p.logging_dir = path::join(own, "logs");
+    }
+    p.cache_dir = std::move(own);
+    p.cache_dir_defaulted = true;
+}
+
+std::expected<std::string, std::string> Config::json_schema() {
+    auto schema = kota::codec::json::schema_string<Config, DenyUnknownKeys>(/*pretty=*/true);
+    if(!schema) {
+        return std::unexpected(schema.error().message);
+    }
+    return std::move(*schema);
+}
+
+}  // namespace clice

@@ -1,80 +1,79 @@
-# Build from Source
+# 从源码构建
 
-clice 依赖 C++23 特性，需要使用高版本的 C++ 编译器。同时，我们需要链接 LLVM/Clang 库来解析 AST。为了加快构建速度，默认配置会下载我们发布的 [clice-llvm](https://github.com/clice-io/clice-llvm) 预编译包。这要求你的本地环境与预编译环境保持较高的一致性（尤其是开启 Address Sanitizer 或 LTO 时）。
+clice 依赖 C++23 特性，需要使用现代 C++ 工具链。同时还需要链接 LLVM/Clang 以解析 AST。两者都来自 clice-io 的 clang 工具链 [xclang](https://github.com/clice-io/xclang)：[Bazel](https://bazel.build) 使用 xclang 的工具链构建 clice，并链接同一 xclang 版本预编译的 LLVM/Clang 库，工具链和库都由 Bazel 自行下载。二者必须匹配：这些库里是 ThinLTO bitcode，只有该版本的工具链能读取。
 
-为了简化环境设置并保证可复现性，我们**强烈推荐**使用 [pixi](https://pixi.prefix.dev/latest) 来管理开发环境。所有的依赖版本均严格定义在 `pixi.toml` 中。
+为了简化环境配置并确保构建可复现，我们**强烈推荐**使用 [pixi](https://pixi.prefix.dev/latest) 管理开发环境。依赖版本固定在 `pixi.toml` 中；Bazel 的依赖版本固定在 `MODULE.bazel` 中。
 
-如果你不想使用 pixi，请参考下方的 [Manual Build](#manual-build) 章节。
+## 快速开始
 
-## Quick Start
+请按照[官方指南](https://pixi.prefix.dev/latest/installation)安装 pixi。
 
-请参考 [pixi](https://pixi.prefix.dev/latest/installation) 官方指南安装 pixi。
-
-我们内置了一系列任务，以下命令可直接完成编译并运行测试：
+我们提供了多项任务；以下命令会构建并运行测试：
 
 ```shell
-# configure && build（默认 RelWithDebInfo）
+# build (default RelWithDebInfo) into build/RelWithDebInfo
 pixi run build
 
-# 单元测试 + 集成测试 + 冒烟测试 + 快照测试
+# unit + integration + smoke + snap tests
 pixi run test
 ```
 
-细粒度任务（第一个参数指定构建类型）：
+如需使用粒度更细的任务（第一个参数用于指定构建类型）：
 
 ```shell
-pixi run cmake-config Debug
-pixi run cmake-build Debug
+pixi run build Debug
 pixi run unit-test Debug
 pixi run integration-test Debug
 pixi run smoke-test Debug
 pixi run snap-test Debug
 ```
 
+`pixi run build` 用 Bazel 构建 `//:dist`。每种构建类型都有自己的目录 `build/<type>`，其中的 `bin` 就是 Bazel 为该类型生成的输出树：clice 位于 `build/<type>/bin/bin/clice`，与之并列的是资源目录 `build/<type>/bin/lib/clang`，clice 从中读取 clang 的头文件；测试和编辑器都从这里运行它。
+
 > [!TIP]
-> 如果你想直接使用 `cmake`, `ninja`, `clang++` 等命令进行开发，请运行 `pixi shell` 进入已配置好环境变量的终端。
+> 运行 `pixi shell` 可进入已配置好所有环境变量的 shell，在其中用 `npx bazel` 直接调用 Bazel。
 
-## Manual Build
+## Bazel
 
-如果你打算手动构建，请务必先确认你的工具链满足 `pixi.toml` 中定义的版本要求。
-
-> 兼容性说明：理论上 clice 不依赖特定编译器的扩展，可以使用主流编译器（GCC/Clang/MSVC）编译。但我们仅在 CI 中保证特定版本的 Clang 能通过测试。对于其他编译器或版本，我们提供**尽力而为 (Best Effort)** 的支持。如果遇到问题，欢迎提交 Issue 或 PR。
-
-### CMake
+Bazel 通过 [bazelisk](https://github.com/bazelbuild/bazelisk) 运行。bazelisk 是仓库中的一个 npm 包（由 `npm install` 安装），它会下载 `.bazelversion` 指定的 Bazel 版本：
 
 ```shell
-cmake -B build/RelWithDebInfo -G Ninja \
-    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake \
-    -DCLICE_ENABLE_TEST=ON
-
-cmake --build build/RelWithDebInfo
+npx bazel build //:bin/clice //:bin/unit_tests
 ```
 
-> 注意：`CMAKE_TOOLCHAIN_FILE` 是可选的。如果你使用的工具链与我们完全一致，可以使用预定义的 `cmake/toolchain.cmake`，否则请移除该选项。
+构建类型即 `bazel/clice.bazelrc` 中定义的配置：
 
-### CMake 选项
+| 配置                      | 作用                                      |
+| ------------------------- | ----------------------------------------- |
+| `--config=RelWithDebInfo` | 默认配置：开启优化，带调试信息            |
+| `--config=Debug`          | 轻度优化（`-O1`），启用 Address Sanitizer |
 
-| 选项                   | 默认值 | 效果                                                                |
-| ---------------------- | ------ | ------------------------------------------------------------------- |
-| LLVM_INSTALL_PATH      | ""     | 使用自定义路径的 LLVM 库来构建 clice                                |
-| CLICE_ENABLE_TEST      | OFF    | 构建单元测试和基准测试基础设施                                      |
-| CLICE_ENABLE_BENCHMARK | OFF    | 构建基准测试                                                        |
-| CLICE_ENABLE_LTO       | OFF    | 为所有目标启用 ThinLTO                                              |
-| CLICE_USE_LIBCXX       | OFF    | 使用 libc++（添加 `-stdlib=libc++`），LLVM 库也必须使用 libc++ 编译 |
-| CLICE_CI_ENVIRONMENT   | OFF    | 启用 `CLICE_CI_ENVIRONMENT` 宏，部分测试仅在 CI 环境运行            |
-| CLICE_OFFLINE_BUILD    | OFF    | 禁用配置阶段的网络下载                                              |
+`--` 之后的选项会经由 `pixi run build` 传给 Bazel，例如 `pixi run build RelWithDebInfo -- //:package`。
 
-## About LLVM
+`--platforms=@xclang//platforms:<triple>` 可以为宿主操作系统的另一种架构构建，例如在 x86_64 Linux 上使用 `--platforms=@xclang//platforms:aarch64-unknown-linux-gnu`。
 
-clice 调用 Clang API 来解析 C++ 代码，因此必须链接 LLVM/Clang 库。由于 clice 使用了 Clang 的私有头文件（这些文件通常不包含在发行版中），不能直接使用系统安装的 LLVM 包。
+LLVM/Clang 库是 ThinLTO bitcode，每次链接程序都要重做它们的代码生成，每个程序要花几分钟。lld 会把生成的结果存进缓存 `/var/tmp/xclang-thinlto`（Windows 上是 `C:/xclang-thinlto`），之后的链接只需几秒。
 
-主要有两种方式解决这个依赖问题：
+`npx bazel build //:package //:symbols` 会构建发布归档和符号包（即供 `scripts/symbolize.py` 使用的 clice GSYM）：`build/<type>/bin` 中的 `clice.tar.gz` 和 `clice-symbol.tar.xz`（Windows 上为 `.zip`）。
 
-1. 我们在 [clice-llvm](https://github.com/clice-io/clice-llvm/releases) 上会发布使用的 LLVM 版本的预编译二进制，用于 CI 或者 release 构建。在构建时 cmake 默认会从此处下载 LLVM 库然后使用。
+`npx bazel run @compdb//:refresh` 会在仓库根目录写出 clice 自身源码的 `compile_commands.json`，这样 clice 也能用于开发它自己的代码。
+
+在 Windows 上，Bazel 默认的输出根目录层级过深，超出了 Windows 路径的限制；请在 `%USERPROFILE%\.bazelrc` 中指定一个较短的路径：
+
+```
+startup --output_user_root=C:/b
+```
+
+在 Windows 上，Bazel 还需要 Bash，可由 [Git for Windows](https://gitforwindows.org) 提供。
+
+## 关于 LLVM
+
+clice 调用 Clang API 解析 C++ 代码，因此必须链接 LLVM/Clang，而且必须是 clice 所针对的那个版本，因此无法直接使用系统提供的 LLVM 软件包。
+
+每个 [xclang](https://github.com/clice-io/xclang/releases) 版本都会为全部六个目标发布预编译的 LLVM/Clang 库（`libclang-*` 压缩包），由该版本自己的工具链构建；xclang 的 Bazel 模块把这些库声明为仓库（repository），Bazel 会连同工具链一起下载它们。
 
 > [!IMPORTANT]
 >
-> 对于 debug 版本的 LLVM 库，构建的时候我们开启了 address sanitizer，而 address sanitizer 依赖于 compiler rt，它对编译器版本十分敏感。所以如果使用 debug 版本，请确保你的 clang 的 compiler rt 版本与 `pixi.toml` 中的定义严格一致。
+> 调试构建会启用 Address Sanitizer，并链接 xclang 为 x86_64 Linux 和 arm64 macOS 发布的 ASan 插桩库；其他目标没有这类库，也没有调试构建：`modules/` 中第三方库的模块没有为这些目标提供调试配置，这些目标上不带 `NDEBUG` 的编译会停在该模块的 `#error` 处。
 
-2. 自行构建一套与当前环境一致的 LLVM/Clang。如果默认的预编译二进制文件在你的系统上因 ABI 或库版本不兼容而运行失败，或者你需要一个自定义的 Debug 版本，那么我们推荐你使用此方法从头编译 LLVM 库。我们提供了一个脚本 `scripts/build-llvm.py` 用于构建所需要的 LLVM 库，也可以参考 LLVM 的官方构建教程 [Building LLVM with CMake](https://llvm.org/docs/CMake.html)。
+自行构建的 LLVM/Clang 可通过 `--repo_env=XCLANG_LIBCLANG_ROOT=<directory>` 替换发布版的库（ASan 版本用 `XCLANG_LIBCLANG_ASAN_ROOT`）；它必须按 xclang 的方式构建，即使用 xclang 的 `scripts/toolchain.ts`；参见 [xclang](https://github.com/clice-io/xclang)。

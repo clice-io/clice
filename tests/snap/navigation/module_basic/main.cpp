@@ -1,4 +1,4 @@
-/// - verify: server
+// - verify: server
 
 import §(import_name)math;
 

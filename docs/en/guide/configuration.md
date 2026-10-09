@@ -1,8 +1,22 @@
+---
+outline: 2
+---
+
 # Configuration
 
 clice reads configuration from `clice.toml` in the workspace root, or from `.clice/config.toml` if the former does not exist. Configuration can also be passed via LSP `initializationOptions` (JSON format); values from `initializationOptions` override the config file, and defaults fill in whatever remains unset after the merge.
 
 Configuration is read once at server startup. Changing it — either file — requires restarting the server; there is no hot reload.
+
+A JSON schema of the whole configuration is published at [`clice-config.schema.json`](/clice-config.schema.json); editors that validate TOML or JSON against a schema can point at it.
+
+Relative paths and patterns in the file resolve against the directory of the configuration file itself; values passed through `initializationOptions` resolve against the workspace root.
+
+## Several Folders
+
+Each workspace folder the editor opens is a project of its own, with its own `clice.toml`, compilation databases and cache directory, as long as it holds a `clice.toml` or a `compile_commands.json` (in the folder itself or one of its immediate subdirectories, where discovery looks). A folder with neither that sits inside another open folder is part of that folder's project instead; and inside a folder, a directory holding its own `clice.toml` or database serves, as a project of its own, the files the folder's project does not build. A file opened outside every folder belongs to the nearest directory above it holding a `clice.toml` or a `compile_commands.json` (directly or in its `build/` directory), which is then served as if it were open, unless a served project loads that database already. A file is compiled by the project whose database lists it; a header without an entry of its own borrows a host from a project whose sources include it, preferring the project whose folder holds it. Workspace symbol search spans every project, and navigation — references, definitions and declarations, call and type hierarchies, implementations — reaches into the projects that declare the symbol in the same file. A file open in the editor answers only through the project serving it, so its unsaved edits are what every query sees.
+
+`initializationOptions` apply to every project, and a cache directory serves one project: a directory outside the project records the project that first used it, and another project, in this server or a later `clice index` run alike, falls back to the one its `clice.toml` names, then to `.clice` in its folder, and runs without a cache when those are taken too. An absolute `cache_dir` in `initializationOptions` therefore goes to the first folder only. The worker counts are the largest any folder asks for at startup. Listing or switching configurations acts on the project of the file the request names — in VS Code, the active editor's — else on the first folder.
 
 ## Variable Substitution
 
@@ -12,267 +26,470 @@ The following variable is supported in string values:
 | -------------- | ---------------------------------------------- |
 | `${workspace}` | The workspace directory provided by the client |
 
-## Project
+## Workspace
 
-### `project.clang_tidy`
+Top-level options, written before any section.
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `false` |
+<!-- BEGIN GENERATED CONFIG: root -->
 
-Enable experimental clang-tidy diagnostics. **Not yet wired** — the option is parsed but has no effect currently.
+<div class="config-option">
 
-### `project.cache_dir`
+| Option                  | Type     | Default |
+| ----------------------- | -------- | ------- |
+| `default_configuration` | `string` | `""`    |
 
-| Type     | Default                                                             |
-| -------- | ------------------------------------------------------------------- |
-| `string` | `$XDG_CACHE_HOME/clice/<workspace>-<hash>` or `${workspace}/.clice` |
+The build configuration to fall back on when neither `--configuration` nor a persisted selection names one: a tag declared on rules. When rules carry tags and this names none of them, the first declared tag is used and a warning is logged.
 
-Directory for the unified on-disk cache (PCH, PCM, and index artifacts all live here). The default uses XDG_CACHE_HOME (or `~/.cache`) with a per-workspace subdirectory named after the workspace directory plus a short hash, e.g. `~/.cache/clice/myproject-1a2b3c4d`. Falls back to `${workspace}/.clice` if the XDG directory cannot be created. The resolved paths are printed at startup in the effective configuration dump (visible in your editor's clice output panel).
+</div>
 
-### `project.logging_dir`
+<!-- END GENERATED CONFIG -->
 
-| Type     | Default             |
-| -------- | ------------------- |
-| `string` | `${cache_dir}/logs` |
+## `[project]`
 
-Directory for log files. Each server session logs into its own timestamped subdirectory; the startup log line `Session log directory:` shows the exact path.
+<!-- BEGIN GENERATED CONFIG: project -->
 
-### `project.compile_commands_paths`
+<div class="config-option">
 
-| Type              | Default |
-| ----------------- | ------- |
-| `array of string` | `[]`    |
+| Option      | Type     | Default |
+| ----------- | -------- | ------- |
+| `cache_dir` | `string` | `""`    |
 
-Paths to search for `compile_commands.json` files. Entries can be direct file paths or directories (clice looks for `compile_commands.json` inside). When empty (the default), clice searches the workspace root and then each of its immediate subdirectories, using the first `compile_commands.json` it finds.
+Directory for the unified on-disk cache (PCH, PCM and index artifacts). Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. The resolved path is printed at startup.
 
-### `project.enable_indexing`
+</div>
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+<div class="config-option">
 
-Enable background indexing for cross-TU features (find references, workspace symbols, etc.).
+| Option        | Type     | Default |
+| ------------- | -------- | ------- |
+| `logging_dir` | `string` | `""`    |
 
-### `project.idle_timeout_ms`
+Directory for log files; empty derives `${cache_dir}/logs`. Each server session logs into its own timestamped subdirectory.
 
-| Type  | Default |
-| ----- | ------- |
-| `int` | `3000`  |
+</div>
 
-Idle time (milliseconds) before starting background indexing after the last edit.
+<div class="config-option">
 
-### `project.stateful_worker_count`
+| Option            | Type   | Default |
+| ----------------- | ------ | ------- |
+| `enable_indexing` | `bool` | `true`  |
 
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | `2`     |
+Build the background index that serves cross-TU features (find references, workspace symbols, ...).
 
-Number of stateful worker processes. These hold ASTs in memory and serve queries (hover, semantic tokens, etc.).
+</div>
 
-### `project.stateless_worker_count`
+<div class="config-option">
 
-| Type     | Default           |
-| -------- | ----------------- |
-| `uint32` | `max(cores/2, 2)` |
+| Option     | Type     | Default |
+| ---------- | -------- | ------- |
+| `readonly` | `string` | `"off"` |
 
-Number of stateless worker processes spawned at startup. These handle ephemeral tasks (PCH/PCM builds, completion, signature help).
+Read-only serving for open files: "off" targets a full AST for every open file — builds are pulled by the first request that needs them, with the index answering in the meantime; "on" never builds a PCH — reads serve from the index alone (a cold file jumps the indexing queue), while completion and signature help still compile on demand without a preamble; "auto" starts every file as "on", switches it to "off" at the first edit intent (edit, completion, signature help, context switch), and falls back to "off" for a file the index cannot serve. Feature routing always answers from the best source currently available.
 
-### `project.min_stateless_worker_count`
+</div>
 
-| Type     | Default    |
-| -------- | ---------- |
-| `uint32` | `0` (auto) |
+<div class="config-option">
 
-Lower bound for dynamic scale-down of stateless workers. `0` resolves to an automatic minimum.
+| Option            | Type     | Default |
+| ----------------- | -------- | ------- |
+| `idle_timeout_ms` | `uint32` | `3000`  |
 
-### `project.max_stateless_worker_count`
+Idle delay in milliseconds before background indexing starts.
 
-| Type     | Default    |
-| -------- | ---------- |
-| `uint32` | `0` (auto) |
+</div>
 
-Upper bound for dynamic scale-up of stateless workers. `0` resolves to the CPU core count.
+<div class="config-option">
 
-### `project.worker_memory_limit`
+| Option       | Type   | Default |
+| ------------ | ------ | ------- |
+| `test_hooks` | `bool` | `false` |
 
-| Type     | Default             |
-| -------- | ------------------- |
-| `uint64` | `4294967296` (4 GB) |
+Enable the clice/internal test hooks used by the test harness.
 
-Per-worker memory limit in bytes. **Not yet enforced** — the option is parsed but memory-based eviction/restart is not implemented yet.
+</div>
 
-## Tracker
+<div class="config-option">
 
-The file tracker polls for changes that happen outside the editor (a `git checkout`, a regenerated `compile_commands.json`, code generators writing headers) so the server picks them up without a restart. Setting an interval to `0` disables that polling loop.
+| Option                  | Type     | Default |
+| ----------------------- | -------- | ------- |
+| `stateful_worker_count` | `uint32` | `2`     |
 
-### `tracker.cdb_poll_seconds`
+Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); `0` is invalid and falls back to the default.
 
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | `3`     |
+</div>
 
-Interval for re-checking the compilation database file.
+<div class="config-option">
 
-### `tracker.workspace_poll_seconds`
+| Option                   | Type     | Default |
+| ------------------------ | -------- | ------- |
+| `stateless_worker_count` | `uint32` | —       |
 
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | `30`    |
+Number of stateless workers started — they handle ephemeral tasks (PCH/PCM builds, completion, signature help, background indexing) — and the most that background indexing keeps busy at once; defaults to half the machine's physical cores, at least 2. `0` is invalid and falls back to that default.
 
-Interval for sweeping workspace files for on-disk changes.
+</div>
 
-## Hover
+<div class="config-option">
 
-The `[hover]` section controls how hover cards render. Changes take effect after a server restart.
+| Option                       | Type     | Default |
+| ---------------------------- | -------- | ------- |
+| `min_stateless_worker_count` | `uint32` | `1`     |
 
-### `hover.parse_comment_as_markdown`
+Lower bound for dynamic stateless-worker scaling; `0` is invalid and falls back to the default.
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+</div>
 
-Render the hover card as markdown. `false` produces plain text for clients that cannot display markdown.
+<div class="config-option">
 
-### `hover.show_aka`
+| Option                       | Type     | Default |
+| ---------------------------- | -------- | ------- |
+| `max_stateless_worker_count` | `uint32` | —       |
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+Upper bound for dynamic stateless-worker scaling, which only interactive work that finds every worker busy reaches; `0` means the machine's physical cores, which is also the default.
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
+## `[tracker]`
+
+clice looks at files on disk in the background to notice changes made outside the editor (a `git checkout`, a regenerated `compile_commands.json`, an agent or a code generator writing files), so the server picks them up without a restart. A workspace file is also looked at before every request that depends on it; headers the toolchain installed are looked at every few minutes, whenever their environment is updated, and at every save. Setting `workspace_poll_seconds` to `0` turns the background polling off.
+
+<!-- BEGIN GENERATED CONFIG: tracker -->
+
+<div class="config-option">
+
+| Option                   | Type     | Default |
+| ------------------------ | -------- | ------- |
+| `workspace_poll_seconds` | `uint32` | `30`    |
+
+Longest interval in seconds between two background looks at a workspace file: the interval doubles at every look that finds the file unchanged, up to this. 0 disables background polling, compilation databases included.
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
+## `[diagnostics]`
+
+The `[diagnostics]` section controls the diagnostics clice publishes for open files.
+
+<!-- BEGIN GENERATED CONFIG: diagnostics -->
+
+<div class="config-option">
+
+| Option       | Type   | Default |
+| ------------ | ------ | ------- |
+| `clang_tidy` | `bool` | `true`  |
+
+Run clang-tidy on open files and offer its fixes, with the checks the nearest `.clang-tidy` configures (a small default set without one). Checks too slow for an editor, and those unreliable on code being edited, are left out; files `clice lint` does not check get none. `NOLINT` comments also silence compiler warnings only while this runs.
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
+## `[hover]`
+
+The `[hover]` section controls how hover cards render.
+
+<!-- BEGIN GENERATED CONFIG: hover -->
+
+<div class="config-option">
+
+| Option                      | Type   | Default |
+| --------------------------- | ------ | ------- |
+| `parse_comment_as_markdown` | `bool` | `true`  |
+
+Render the hover card as markdown; `false` produces plain text for clients that cannot display it.
+
+</div>
+
+<div class="config-option">
+
+| Option     | Type   | Default |
+| ---------- | ------ | ------- |
+| `show_aka` | `bool` | `true`  |
 
 Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.
 
-### `hover.show_tag_members`
+</div>
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+<!-- END GENERATED CONFIG -->
 
-Show members when rendering complete record and enum definitions.
+## `[inlay_hints]`
 
-### `hover.max_tag_members`
+The `[inlay_hints]` section controls which inlay hint categories the server produces. A client-side refresh then requests hints with the updated values; no recompile is involved.
 
-| Type    | Default |
-| ------- | ------- |
-| `int32` | `20`    |
+<!-- BEGIN GENERATED CONFIG: inlay_hints -->
 
-Maximum number of displayed members in a record or enum definition. `-1` means no limit.
+<div class="config-option">
 
-### `hover.max_initializer_tokens`
-
-| Type    | Default |
-| ------- | ------- |
-| `int32` | `200`   |
-
-Member initializers with more tokens than this limit are omitted. `-1` never omits initializers.
-
-## Inlay Hints
-
-The `[inlay_hints]` section controls which inlay hint categories the server produces. Configuration changes take effect after a server restart; a client-side refresh then requests hints with the updated values. No recompile is involved.
-
-### `inlay_hints.enabled`
-
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+| Option    | Type   | Default |
+| --------- | ------ | ------- |
+| `enabled` | `bool` | `true`  |
 
 Master switch: `false` disables all inlay hints.
 
-### `inlay_hints.parameters`
+</div>
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+<div class="config-option">
+
+| Option       | Type   | Default |
+| ------------ | ------ | ------- |
+| `parameters` | `bool` | `true`  |
 
 Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`, including `&` markers for arguments passed by mutable reference.
 
-### `inlay_hints.deduced_types`
+</div>
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+<div class="config-option">
 
-Deduced type hints for `auto` variables, structured bindings, and deduced return types.
+| Option          | Type   | Default |
+| --------------- | ------ | ------- |
+| `deduced_types` | `bool` | `true`  |
 
-### `inlay_hints.designators`
+Deduced type hints for `auto` variables, structured bindings and deduced return types.
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `true`  |
+</div>
 
-Field designator hints in aggregate initialization, e.g. `Point{.x=1, .y=2}` for `Point{1, 2}`.
+<div class="config-option">
 
-### `inlay_hints.block_end`
+| Option        | Type   | Default |
+| ------------- | ------ | ------- |
+| `designators` | `bool` | `true`  |
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `false` |
+Field designator hints in aggregate initialization, e.g. `.x=` and `.y=` in `Point{1, 2}`.
+
+</div>
+
+<div class="config-option">
+
+| Option      | Type   | Default |
+| ----------- | ------ | ------- |
+| `block_end` | `bool` | `false` |
 
 `// name` hints after the closing brace of long blocks (functions, types, namespaces, control flow).
 
-### `inlay_hints.default_arguments`
+</div>
 
-| Type   | Default |
-| ------ | ------- |
-| `bool` | `false` |
+<div class="config-option">
+
+| Option              | Type   | Default |
+| ------------------- | ------ | ------- |
+| `default_arguments` | `bool` | `false` |
 
 Show the default arguments a call omitted, abbreviated when long.
 
-### `inlay_hints.type_name_limit`
+</div>
 
-| Type     | Default |
-| -------- | ------- |
-| `uint32` | `32`    |
+<div class="config-option">
 
-Maximum length for printed type names; longer types fall back to a sugared spelling or are dropped. `0` means no limit.
+| Option            | Type     | Default |
+| ----------------- | -------- | ------- |
+| `type_name_limit` | `uint32` | `32`    |
 
-## Rules
+Byte budget for rendered hint text: over-long deduced types fall back to a sugared spelling or are dropped, over-long default arguments are abbreviated. `0` means no limit.
 
-`[[rules]]` is an array of rule objects. Rules are matched in declaration order — later rules override earlier ones.
+</div>
 
-### `[rules].patterns`
+<!-- END GENERATED CONFIG -->
 
-| Type              | Default |
-| ----------------- | ------- |
-| `array of string` | `[]`    |
+## `[code_completion]`
 
-Glob patterns for matching file paths:
+The `[code_completion]` section controls completion item assembly.
 
-- `*` — matches one or more characters in a path segment
-- `?` — matches a single character in a path segment
-- `**` — matches any number of path segments, including zero
-- `{}` — groups conditions (e.g., `**/*.{h,cpp}`)
-- `[]` — character range (e.g., `example.[0-9]`)
-- `[!...]` — negated character range
+<!-- BEGIN GENERATED CONFIG: code_completion -->
 
-### `[rules].append`
+<div class="config-option">
 
-| Type              | Default |
-| ----------------- | ------- |
-| `array of string` | `[]`    |
+| Option                   | Type   | Default |
+| ------------------------ | ------ | ------- |
+| `enable_keyword_snippet` | `bool` | `false` |
 
-Flags to append to the compilation command. Example: `["-std=c++20", "-DNDEBUG"]`.
+Complete statements such as `if` and `for` as snippets with placeholders for their parts; otherwise only the keyword is inserted. Ignored for clients without snippet support.
 
-### `[rules].remove`
+</div>
 
-| Type              | Default |
-| ----------------- | ------- |
-| `array of string` | `[]`    |
+<div class="config-option">
 
-Flags to remove from the compilation command. Example: `["-Wall", "-Werror"]`.
+| Option                              | Type   | Default |
+| ----------------------------------- | ------ | ------- |
+| `enable_function_arguments_snippet` | `bool` | `false` |
+
+Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet. Ignored for clients without snippet support.
+
+</div>
+
+<div class="config-option">
+
+| Option                              | Type   | Default |
+| ----------------------------------- | ------ | ------- |
+| `enable_template_arguments_snippet` | `bool` | `false` |
+
+Insert template arguments as a snippet when completing a class, alias or variable template. Ignored for clients without snippet support.
+
+</div>
+
+<div class="config-option">
+
+| Option                          | Type   | Default |
+| ------------------------------- | ------ | ------- |
+| `insert_paren_in_function_call` | `bool` | `false` |
+
+Insert parentheses when completing a function call, unless the name is already followed by one; with snippet support the cursor lands between them.
+
+</div>
+
+<div class="config-option">
+
+| Option             | Type   | Default |
+| ------------------ | ------ | ------- |
+| `bundle_overloads` | `bool` | `true`  |
+
+Collapse an overload set into a single completion item.
+
+</div>
+
+<div class="config-option">
+
+| Option  | Type     | Default |
+| ------- | -------- | ------- |
+| `limit` | `uint32` | `0`     |
+
+Maximum number of completion items (not yet implemented).
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
+## `[[rules]]`
+
+A rule names files by pattern and says where they take their compile commands from and how those commands are edited. Every rule matching a file applies, in declaration order: an earlier rule's databases rank first among the file's candidates, the first matching rule with a `default_command` supplies the command of a file without an entry, `append` and `remove` accumulate with a later `remove` cancelling an earlier `append`, and `index = false` on any matching rule keeps the file out of the index. A rule carrying a `configuration` tag applies only while that configuration is active; the distinct tags form the configuration menu.
+
+<!-- BEGIN GENERATED CONFIG: rules -->
+
+<div class="config-option">
+
+| Option     | Type              | Default |
+| ---------- | ----------------- | ------- |
+| `patterns` | `array of string` | `[]`    |
+
+Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed), or at the workspace root for a rule passed through initializationOptions; an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.
+
+</div>
+
+<div class="config-option">
+
+| Option          | Type     | Default |
+| --------------- | -------- | ------- |
+| `configuration` | `string` | `""`    |
+
+Build configuration tag. A tagged rule applies only while that configuration is active; an untagged rule always applies. The distinct tags form the configuration menu; `--configuration`, the persisted selection and `default_configuration` pick the active one, in that order.
+
+</div>
+
+<div class="config-option">
+
+| Option             | Type              | Default |
+| ------------------ | ----------------- | ------- |
+| `compile_commands` | `array of string` | `[]`    |
+
+Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the workspace root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the workspace's databases. When no rule declares a source, every compile_commands.json in the workspace root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened.
+
+</div>
+
+<div class="config-option">
+
+| Option            | Type                          | Default |
+| ----------------- | ----------------------------- | ------- |
+| `default_command` | `string` or `array of string` | `""`    |
+
+The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the directory of the configuration file it was read from (the workspace root for a rule passed through initializationOptions), and the matching source files on disk join the background index (unless the rule turns `index` off) — enumerated at startup and again on every workspace poll, so a file created later compiles when opened and joins the index within a poll period. Omitted means none.
+
+</div>
+
+<div class="config-option">
+
+| Option   | Type              | Default |
+| -------- | ----------------- | ------- |
+| `append` | `array of string` | `[]`    |
+
+Compilation flags appended for matching files, e.g. `["-std=c++20", "-DNDEBUG"]`.
+
+</div>
+
+<div class="config-option">
+
+| Option   | Type              | Default |
+| -------- | ----------------- | ------- |
+| `remove` | `array of string` | `[]`    |
+
+Compilation flags removed for matching files, e.g. `["-Wall"]`.
+
+</div>
+
+<div class="config-option">
+
+| Option  | Type   | Default |
+| ------- | ------ | ------- |
+| `index` | `bool` | `true`  |
+
+Whether matching translation units join the background index. `false` keeps them out; they still compile when opened and still host the headers they include. Any matching rule saying `false` wins.
+
+</div>
+
+<div class="config-option">
+
+| Option | Type   | Default |
+| ------ | ------ | ------- |
+| `lint` | `bool` | `true`  |
+
+Whether `clice lint` checks matching files. `false` keeps them out: their findings are dropped and a translation unit they head is not parsed, unless `--index` needs it for the index. Files outside the workspace are never checked. Any matching rule saying `false` wins.
+
+</div>
+
+<div class="config-option">
+
+| Option   | Type   | Default |
+| -------- | ------ | ------- |
+| `format` | `bool` | `true`  |
+
+Whether `clice format` formats matching files. `false` keeps them out. Files outside the workspace are never formatted. Any matching rule saying `false` wins.
+
+</div>
+
+<!-- END GENERATED CONFIG -->
 
 ## Example
 
 ```toml
-[project]
-compile_commands_paths = ["${workspace}/build", "${workspace}/cmake-build-debug"]
-clang_tidy = true
-
 [[rules]]
-patterns = ["**/*"]
+compile_commands = ["build"]
 append = ["-std=c++23"]
 
 [[rules]]
-patterns = ["**/test/**"]
+patterns = ["test/**"]
 append = ["-DTEST_MODE"]
 ```
+
+Two build directories as switchable configurations, and a project without a compilation database:
+
+```toml
+default_configuration = "debug"
+
+[[rules]]
+configuration = "debug"
+compile_commands = ["build/debug"]
+
+[[rules]]
+configuration = "release"
+compile_commands = ["build/release"]
+```
+
+```toml
+[[rules]]
+patterns = ["src/**", "include/**"]
+default_command = "arm-none-eabi-gcc -std=c23 -mcpu=cortex-m4 -Iinclude"
+```
+
+## Switching Configurations
+
+The `configuration` tags on rules form a menu, and one tag is active per project; untagged rules always apply. The active one is, in priority order, the `--configuration <tag>` argument (accepted by `clice serve`, `clice index`, `clice lint` and `clice inspect`), the persisted selection, or `default_configuration`. A selection is made from the editor — in VS Code the status bar shows the active configuration and clicking it opens the menu, other clients call `clice/switchConfiguration` — and is stored in `state.json` under `cache_dir`, never in `clice.toml`; it takes effect when the server is started again, which the VS Code extension does on its own. Each configuration keeps its own index under `cache_dir`, so switching back and forth never reindexes what a configuration already indexed. The tags are also how the batch commands choose an index: `clice index --configuration release` builds the release index, and `clice index --stats` reports the index of the configuration it resolves the same way.

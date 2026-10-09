@@ -1,0 +1,554 @@
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :project.build;
+import :project.configuration;
+import :vfs.file_system;
+import :vfs.path;
+
+namespace clice {
+
+void Build::reset_active(llvm::StringRef configuration) {
+    assert(configuration.empty() ? config.configurations().empty()
+                                 : declares_configuration(config, configuration));
+    claimed_sources.reset();
+    records.clear();
+    provisional.clear();
+    records_generation += 1;
+    active = configuration.str();
+}
+
+llvm::SmallVector<const CompiledRule*> Build::matching(CanonicalRef path) const {
+    return config.matching_rules(path, active);
+}
+
+static bool rule_active(const CompiledRule& rule, llvm::StringRef active) {
+    return rule.configuration.empty() || rule.configuration == active;
+}
+
+bool Build::declares_sources() const {
+    return llvm::any_of(config.compiled_rules, [&](const CompiledRule& rule) {
+        return rule_active(rule, active) && rule.declares_sources();
+    });
+}
+
+llvm::SmallVector<Spelling> Build::declared_sources() const {
+    llvm::SmallVector<Spelling> result;
+    for(auto& rule: config.compiled_rules) {
+        if(!rule_active(rule, active)) {
+            continue;
+        }
+        for(auto& database: rule.compile_commands) {
+            if(!llvm::is_contained(result, database)) {
+                result.push_back(database);
+            }
+        }
+    }
+    return result;
+}
+
+llvm::SmallVector<SourceID, 4> Build::declared_ids() const {
+    llvm::SmallVector<SourceID, 4> declared;
+    bool declares = declares_sources();
+    for(auto& rule: config.compiled_rules) {
+        if(rule_active(rule, active) || declares) {
+            for(auto& database: rule.compile_commands) {
+                if(auto id = cdb.find_source(database)) {
+                    declared.push_back(*id);
+                }
+            }
+        }
+    }
+    return declared;
+}
+
+bool Build::discovered(SourceID id) const {
+    return !llvm::is_contained(declared_ids(), id);
+}
+
+llvm::SmallVector<SourceID, 4> Build::source_order(CanonicalRef path) const {
+    auto matched = matching(path);
+    llvm::SmallVector<SourceID, 4> order;
+    auto declared = declared_ids();
+    auto add_sources = [&](const CompiledRule& rule) {
+        for(auto& database: rule.compile_commands) {
+            if(auto id = cdb.find_source(database); id && !llvm::is_contained(order, *id)) {
+                order.push_back(*id);
+            }
+        }
+    };
+    for(auto& rule: config.compiled_rules) {
+        if(rule_active(rule, active) && llvm::is_contained(matched, &rule)) {
+            add_sources(rule);
+        }
+    }
+    for(auto& rule: config.compiled_rules) {
+        if(rule_active(rule, active) && !llvm::is_contained(matched, &rule)) {
+            add_sources(rule);
+        }
+    }
+    llvm::SmallVector<SourceID, 4> discovered;
+    for(std::size_t i = 0; i < cdb.source_count(); i += 1) {
+        auto id = SourceID(i);
+        if(!llvm::is_contained(order, id) && !llvm::is_contained(declared, id)) {
+            discovered.push_back(id);
+        }
+    }
+    // A vanished database keeps serving its entries, but one regenerated
+    // elsewhere takes over the files both list.
+    auto rank = [&](SourceID id) {
+        auto source = cdb.source_path(id);
+        auto depth = llvm::count_if(source, [](char c) { return path::is_separator(c); });
+        return std::tuple(!cdb.present(id), depth, source);
+    };
+    std::ranges::sort(discovered, {}, rank);
+    order.append(discovered);
+    return order;
+}
+
+llvm::SmallVector<CompilationEntry, 2> Build::entries(Fid file) const {
+    auto all = cdb.candidate_entries(file);
+    if(all.empty()) {
+        return {};
+    }
+    llvm::SmallVector<CompilationEntry, 2> result;
+    for(auto id: source_order(files.resolve(file))) {
+        for(auto& entry: all) {
+            if(entry.source == id) {
+                result.push_back(entry);
+            }
+        }
+    }
+    return result;
+}
+
+llvm::SmallVector<Candidate, 2> Build::commands(Fid file) {
+    llvm::SmallVector<Candidate, 2> result;
+    for(auto& entry: entries(file)) {
+        result.push_back({.config = entry.config, .source = CommandSource::CDBExact});
+    }
+    if(result.empty()) {
+        if(auto id = default_command(files.resolve(file))) {
+            result.push_back({.config = *id, .source = CommandSource::Default});
+        } else if(auto it = provisional.find(file); it != provisional.end()) {
+            result.push_back({.config = it->second, .source = CommandSource::Inferred});
+        }
+    }
+    return result;
+}
+
+Edits Build::edits(llvm::ArrayRef<CanonicalRef> paths) const {
+    llvm::SmallVector<const CompiledRule*> matched;
+    for(auto path: paths) {
+        for(auto* rule: matching(path)) {
+            if(!llvm::is_contained(matched, rule)) {
+                matched.push_back(rule);
+            }
+        }
+    }
+    return edits_of(matched);
+}
+
+Edits Build::edits_of(llvm::ArrayRef<const CompiledRule*> matched) const {
+    Edits result;
+    for(auto& rule: config.compiled_rules) {
+        if(!llvm::is_contained(matched, &rule)) {
+            continue;
+        }
+        if(!rule.remove.empty()) {
+            result.edits.push_back({.kind = CommandEdit::Kind::Remove,
+                                    .flags = rule.remove,
+                                    .directory = rule.directory});
+        }
+        if(!rule.append.empty()) {
+            result.edits.push_back({.kind = CommandEdit::Kind::Append,
+                                    .flags = rule.append,
+                                    .directory = rule.directory});
+        }
+    }
+    return result;
+}
+
+const CompiledRule* Build::default_rule(CanonicalRef path) const {
+    for(auto* rule: matching(path)) {
+        if(rule->has_default_command()) {
+            return rule;
+        }
+    }
+    return nullptr;
+}
+
+std::optional<ConfigID> Build::command_of(const CompiledRule& rule) {
+    llvm::SmallVector<const char*, 16> argv;
+    for(auto& arg: rule.default_command) {
+        argv.push_back(arg.c_str());
+    }
+    return cdb.intern_command(rule.directory, argv);
+}
+
+std::optional<ConfigID> Build::default_command(CanonicalRef path) {
+    auto* rule = default_rule(path);
+    return rule ? command_of(*rule) : std::nullopt;
+}
+
+ConfigID Build::builtin(CanonicalRef path) {
+    // Every C++ spelling (.cc, .cxx, .C, .hh) gets clang++, and so does the
+    // ambiguous .h; C, Objective-C and unknown extensions get clang.
+    namespace types = clang::driver::types;
+    auto type = suffix_type(path);
+    llvm::SmallVector<const char*, 8> arguments;
+    if(path::extension(path) == ".cuh" || (type != types::TY_INVALID && types::isCuda(type))) {
+        // Device-only pins the same device-side view NVCC-backed commands
+        // default to, instead of whichever job the toolchain query happens
+        // to pick from a two-sided compilation; a rule appending
+        // --cuda-host-only still wins as the later flag.
+        arguments = {"clang++", "-std=c++20", "-x", "cuda", "--cuda-device-only"};
+    } else if(type != types::TY_INVALID && types::isCXX(type)) {
+        arguments = {"clang++", "-std=c++20"};
+    } else if(type == types::TY_CHeader) {
+        // C++ by default, like clangd; -x forces TU semantics instead of a
+        // precompiled-header job.
+        arguments = {"clang++", "-std=c++20", "-x", "c++"};
+    } else {
+        arguments = {"clang"};
+    }
+    // Run from the file's own directory, like a compile nobody wrote down.
+    return *cdb.intern_command(Spelling(path.parent()), arguments);
+}
+
+CommandRef Build::resolve(Fid file,
+                          ConfigID base,
+                          CommandSource source,
+                          llvm::ArrayRef<CanonicalRef> paths,
+                          llvm::StringRef language_path,
+                          llvm::ArrayRef<std::string> extra_prepend,
+                          llvm::ArrayRef<std::string> extra_append) {
+    auto edit = edits(paths);
+    auto applied = cdb.apply_rules(base, edit.options(extra_prepend, extra_append));
+    return {file, applied, cdb.input_kind(applied, language_path), source};
+}
+
+std::string Build::edit_hash(llvm::ArrayRef<CanonicalRef> paths) const {
+    auto edit = edits(paths);
+    if(edit.empty()) {
+        return {};
+    }
+    llvm::StringRef root = config.workspace_root;
+    std::string joined;
+    for(auto& item: edit.edits) {
+        joined += item.kind == CommandEdit::Kind::Remove ? 'r' : 'a';
+        llvm::SmallString<256> storage;
+        joined += path::portable(item.directory.str(), root, storage);
+        joined += '\0';
+        for(llvm::StringRef flag: item.flags) {
+            // The rule's `${workspace}` put back, so a moved checkout
+            // keeps the hash.
+            while(!root.empty()) {
+                auto at = flag.find(root);
+                if(at == llvm::StringRef::npos) {
+                    break;
+                }
+                joined += flag.take_front(at);
+                joined += path::workspace_anchor;
+                flag = flag.drop_front(at + root.size());
+            }
+            joined += flag;
+            joined += '\0';
+        }
+        joined += '\1';
+    }
+    return std::format("{:016x}", llvm::xxh3_64bits(joined));
+}
+
+bool Build::indexed(CanonicalRef path) const {
+    return llvm::all_of(matching(path), [](const CompiledRule* rule) { return rule->index; });
+}
+
+bool Build::inside(CanonicalRef path, bool CompiledRule::* field) const {
+    if(!path::under(path, config.workspace_root)) {
+        return false;
+    }
+    return llvm::all_of(matching(path), [&](const CompiledRule* rule) { return rule->*field; });
+}
+
+bool Build::lintable(CanonicalRef path) const {
+    return inside(path, &CompiledRule::lint);
+}
+
+bool Build::formattable(CanonicalRef path) const {
+    return inside(path, &CompiledRule::format);
+}
+
+llvm::SmallVector<CommandRef> Build::units(llvm::ArrayRef<Fid> members) {
+    llvm::SmallVector<CommandRef> result;
+    for(auto member: members) {
+        auto path = files.resolve(member);
+        // Two databases listing the file with the same command make one
+        // unit: the scan would only read it twice.
+        auto first = result.size();
+        for(auto& command: commands(member)) {
+            auto unit = resolve(member, command.config, command.source, path, path);
+            bool seen = llvm::any_of(llvm::ArrayRef(result).drop_front(first),
+                                     [&](const CommandRef& other) {
+                                         return other.config == unit.config &&
+                                                other.input.value == unit.input.value;
+                                     });
+            if(!seen) {
+                result.push_back(unit);
+            }
+        }
+    }
+    return result;
+}
+
+std::vector<Fid> Build::members() {
+    std::vector<Fid> result;
+    llvm::DenseSet<Fid> seen;
+    for(auto& entry: cdb.entries()) {
+        if(seen.insert(entry.file).second && !entries(entry.file).empty()) {
+            result.push_back(entry.file);
+        }
+    }
+    if(!claimed_sources) {
+        claimed_sources.emplace();
+        claim_sources(walk_sources(source_walk()), *claimed_sources);
+    }
+    for(auto file: *claimed_sources) {
+        if(seen.insert(file).second) {
+            result.push_back(file);
+        }
+    }
+    auto borrowing = llvm::to_vector(llvm::make_first_range(provisional));
+    std::ranges::sort(borrowing, {}, [&](Fid file) { return files.resolve(file); });
+    llvm::append_range(result, borrowing);
+    return result;
+}
+
+bool Build::record(Fid file) {
+    if(!records.insert(file).second) {
+        return false;
+    }
+    records_generation += 1;
+    return true;
+}
+
+void Build::forget(Fid file) {
+    if(records.erase(file)) {
+        records_generation += 1;
+    }
+    provisional.erase(file);
+}
+
+std::optional<ConfigID> Build::borrow(Fid file, std::optional<ConfigID> command) {
+    assert(records.contains(file) && "only a recorded file borrows");
+    std::optional<ConfigID> before;
+    if(auto it = provisional.find(file); it != provisional.end()) {
+        before = it->second;
+    }
+    if(command) {
+        provisional[file] = *command;
+    } else {
+        provisional.erase(file);
+    }
+    return before;
+}
+
+ConfigID Build::lend(ConfigID command, CanonicalRef lender, CanonicalRef file) {
+    auto own = matching(file);
+    auto matched = matching(lender);
+    llvm::erase_if(matched,
+                   [&](const CompiledRule* rule) { return llvm::is_contained(own, rule); });
+    return cdb.apply_rules(command, edits_of(matched).options());
+}
+
+llvm::SmallVector<Fid> Build::refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked) {
+    std::vector<Fid> current;
+    claim_sources(walked, current);
+    llvm::SmallVector<Fid> appeared;
+    if(claimed_sources) {
+        llvm::DenseSet<Fid> known(claimed_sources->begin(), claimed_sources->end());
+        for(auto file: current) {
+            if(!known.contains(file)) {
+                appeared.push_back(file);
+            }
+        }
+    }
+    claimed_sources = std::move(current);
+    return appeared;
+}
+
+bool Build::default_source(CanonicalRef path) {
+    if(is_source_path(path)) {
+        return true;
+    }
+    // A header claims no translation unit of its own; an extensionless file
+    // does when its rule's command forces a source language.
+    if(suffix_type(path) != clang::driver::types::TY_INVALID || path::extension(path) == ".cuh") {
+        return false;
+    }
+    auto* rule = default_rule(path);
+    if(!rule || rule->patterns.empty()) {
+        return false;
+    }
+    auto command = command_of(*rule);
+    if(!command) {
+        return false;
+    }
+    auto forced = cdb.forced_language(*command);
+    return !forced.empty() && !forced.ends_with("-header");
+}
+
+bool Build::unit(Fid file) {
+    return declared(file) || provisional.contains(file);
+}
+
+bool Build::declared(Fid file) {
+    if(!entries(file).empty()) {
+        return true;
+    }
+    auto path = files.resolve(file);
+    return default_command(path).has_value() && default_source(path);
+}
+
+llvm::SmallVector<const CompiledRule*> Build::claimants() const {
+    llvm::SmallVector<const CompiledRule*> result;
+    for(auto& rule: config.compiled_rules) {
+        if(rule_active(rule, active) && rule.has_default_command() && !rule.unmatchable) {
+            result.push_back(&rule);
+        }
+    }
+    return result;
+}
+
+Build::SourceWalk Build::source_walk() const {
+    SourceWalk walk;
+    auto rules = claimants();
+    if(rules.empty()) {
+        return walk;
+    }
+
+    // Where the claimed files can be: each pattern's literal directory, the
+    // whole workspace for a rule without patterns. A root inside another
+    // is walked as part of it.
+    auto add_root = [&](CanonicalRef root) {
+        if(!root.empty() && !llvm::is_contained(walk.roots, root)) {
+            walk.roots.emplace_back(root);
+        }
+    };
+    for(auto* rule: rules) {
+        if(rule->patterns.empty()) {
+            add_root(config.workspace_root);
+        }
+        for(auto& pattern: rule->patterns) {
+            add_root(pattern.root);
+            walk.patterned.emplace_back(pattern.root);
+        }
+    }
+    llvm::erase_if(walk.roots, [&](const CanonicalPath& root) {
+        return llvm::any_of(walk.roots, [&](const CanonicalPath& other) {
+            return other != root && path::under(root, other);
+        });
+    });
+    if(!config.project.cache_dir.empty()) {
+        walk.cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
+    }
+    return walk;
+}
+
+void Build::claim_sources(llvm::ArrayRef<CanonicalPath> walked, std::vector<Fid>& out) {
+    auto rules = claimants();
+    llvm::DenseSet<Fid> seen(out.begin(), out.end());
+    for(auto& path: walked) {
+        auto matched = matching(path);
+        if(!llvm::any_of(rules, [&](const CompiledRule* rule) {
+               return llvm::is_contained(matched, rule);
+           })) {
+            continue;
+        }
+        if(!default_source(path)) {
+            continue;
+        }
+        auto file = files.intern(path);
+        if(seen.insert(file).second) {
+            out.push_back(file);
+        }
+    }
+}
+
+std::vector<CanonicalPath> walk_sources(const Build::SourceWalk& walk) {
+    std::vector<CanonicalPath> walked;
+    for(auto& root: walk.roots) {
+        vfs::walk(root, [&](const vfs::Entry& entry) {
+            // The walk spells paths natively, under the root; only an
+            // entry that is itself a symlink names a file elsewhere.
+            llvm::SmallString<256> storage;
+            auto spelled = path::canonical(entry.path, storage);
+            if(entry.type == llvm::sys::fs::file_type::directory_file) {
+                auto name = path::filename(spelled);
+                return name != ".git" && (name != path::filename(walk.cache_dir) ||
+                                          CanonicalRef(root).entry(spelled) != walk.cache_dir);
+            }
+            auto path = entry.type == llvm::sys::fs::file_type::regular_file
+                            ? CanonicalRef(root).entry(spelled)
+                            : CanonicalPath(Spelling::absolute(spelled));
+            if(suffix_type(path) != clang::driver::types::TY_INVALID ||
+               llvm::any_of(walk.patterned, [&](const CanonicalPath& patterned) {
+                   return path::under(path, patterned);
+               })) {
+                walked.push_back(std::move(path));
+            }
+            return false;
+        });
+    }
+    return walked;
+}
+
+/// Whether a workspace directory holds no sources a refactoring edits:
+/// hidden, a package cache, the cache directory or a build tree.
+static bool outside_sources(CanonicalRef dir, CanonicalRef cache_dir) {
+    auto name = path::filename(dir);
+    return name.starts_with(".") || name == "node_modules" || dir == cache_dir ||
+           vfs::exists(path::join(dir, "CMakeCache.txt")) ||
+           vfs::exists(path::join(dir, "build.ninja"));
+}
+
+std::vector<CanonicalPath> workspace_sources(CanonicalRef root, CanonicalRef cache_dir) {
+    std::vector<CanonicalPath> found;
+    vfs::walk(root, [&](const vfs::Entry& entry) {
+        llvm::SmallString<256> storage;
+        auto spelled = path::canonical(entry.path, storage);
+        if(entry.type == llvm::sys::fs::file_type::directory_file) {
+            return !outside_sources(root.entry(spelled), cache_dir);
+        }
+        if(entry.type != llvm::sys::fs::file_type::regular_file) {
+            return false;
+        }
+        auto path = root.entry(spelled);
+        if(clang::driver::types::isAcceptedByClang(suffix_type(path)) ||
+           is_context_header_path(path) || path.str().ends_with(".cuh")) {
+            found.push_back(std::move(path));
+        }
+        return false;
+    });
+    return found;
+}
+
+bool workspace_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) {
+    if(!path::under(file, root) || file == root) {
+        return false;
+    }
+    bool inside = true;
+    path::walk_ancestors(CanonicalRef(file).parent(), [&](CanonicalRef dir) {
+        if(dir == root) {
+            return false;
+        }
+        inside = !outside_sources(dir, cache_dir);
+        return inside;
+    });
+    return inside;
+}
+
+}  // namespace clice

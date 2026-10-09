@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "pairs": [
+    { "kind": "heading", "en": "50914177fae4a662", "zh": "50914177fae4a662" },
+    { "kind": "heading", "en": "7337f3d0aa29e9a8", "zh": "a166cd4942b3a912" },
+    { "kind": "paragraph", "en": "c44a6f365b299083", "zh": "2af0252176c5805f" },
+    { "kind": "paragraph", "en": "ea1fcb6ee5f1b2af", "zh": "328312a40effdc3f" },
+    { "kind": "paragraph", "en": "a74c46b1541ab5bb", "zh": "d453578d16c92fdd" },
+    { "kind": "paragraph", "en": "5c47a53344e6d6d2", "zh": "6bf136d7bcf23449" },
+    { "kind": "heading", "en": "d0ec75d8b469013f", "zh": "3ef466e4fd5a6294" },
+    { "kind": "listItem", "en": "865deae15f1508df", "zh": "c098d7b24917b16b" },
+    { "kind": "listItem", "en": "52e6f720f1cac609", "zh": "d8fa2e14189979e5" },
+    { "kind": "listItem", "en": "5add10a169e74e95", "zh": "2d060896ae4254b5" },
+    { "kind": "paragraph", "en": "641d464990c953d4", "zh": "e48c2ac71b1e21b1" },
+    { "kind": "heading", "en": "8de825eefcb3921b", "zh": "3842459372b04e41" },
+    { "kind": "paragraph", "en": "2dafd716623ebf15", "zh": "eec68778770d23b2" },
+    { "kind": "listItem", "en": "7ee433e7b175e05f", "zh": "5286e95387b8381a" },
+    { "kind": "listItem", "en": "93c9305736c1b424", "zh": "9c81ba2f08bf9924" },
+    { "kind": "listItem", "en": "664d0b04430a449e", "zh": "ba1028eaacc5d954" },
+    { "kind": "listItem", "en": "b13a69ddf8f19902", "zh": "7328bd2bed963a91" },
+    { "kind": "listItem", "en": "39647259fd40470f", "zh": "84a75f5c36701ec7" },
+    { "kind": "listItem", "en": "c8d64197de6c55f9", "zh": "eb79304dd6a6bdc2" },
+    { "kind": "listItem", "en": "0a191df425ab336d", "zh": "3b45ed594aaa230f" },
+    { "kind": "listItem", "en": "221546e2bf5631c9", "zh": "c9e153e912aedda3" },
+    { "kind": "listItem", "en": "7aa983cce82a60a1", "zh": "470cf8dc204c89d9" },
+    { "kind": "listItem", "en": "7d5cb972acabc77c", "zh": "f1c93d1a557571f2" },
+    { "kind": "listItem", "en": "aaa6645538061aa1", "zh": "e914ac470aa1d45e" },
+    { "kind": "listItem", "en": "c8dd5e624a4a9200", "zh": "becb3228bb6c2bd9" }
+  ]
+}

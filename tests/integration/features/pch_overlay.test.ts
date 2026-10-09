@@ -118,6 +118,22 @@ test("preamble include hover", async ({ session }) => {
     expect(await client.hoverAt(uri, 0, 16)).toBeNull();
 });
 
+test("include hover past the preamble", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("foo.h", "inline void foo() {}\n");
+    workspace.write(
+        "main.cpp",
+        'int include(int value);\n#include "foo.h"\nint use(int value) { return include(value); }\n',
+    );
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace, { initializationOptions: NO_INDEXING });
+
+    const [uri] = await client.openAndWait("main.cpp");
+    const hover = await client.hoverAt(uri, 1, 12);
+    expect(JSON.stringify(hover?.contents)).toContain(workspace.displayPath("foo.h"));
+    expect(await client.hoverAt(uri, 2, 38), "a call named include is no directive").not.toBeNull();
+});
+
 test("preamble links survive restart", async ({ session }) => {
     const workspace = session.tmpdir();
     workspace.pinCacheDir();

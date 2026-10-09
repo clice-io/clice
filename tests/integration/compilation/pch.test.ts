@@ -1,8 +1,73 @@
 /// Integration tests for PCH (precompiled header) functionality in MasterServer.
 
-import { cliceTest, expect } from "../fixtures.ts";
+import * as fs from "node:fs";
+import { MTIME_GRANULARITY, sleep, waitUntil } from "@clice/tools/client";
+import { cliceTest, expect, test as sessionTest } from "../fixtures.ts";
 
 const test = cliceTest("pch_test");
+
+sessionTest("unchanged preamble keeps its pch", async ({ session }) => {
+    // The standard library's lookups (`#include_next`, `__has_include`)
+    // fail in some directories on the way: none of that is a change.
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", "#include <iostream>\nint main() { return 0; }\n");
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+
+    const [uri] = await client.openAndWait("main.cpp");
+    const [pch] = workspace.pchFiles();
+    const built = fs.statSync(pch!).mtimeMs;
+    await sleep(MTIME_GRANULARITY);
+    await client.completionAt(uri, 1, 0);
+    expect(fs.statSync(pch!).mtimeMs, "the pch was rebuilt").toBe(built);
+});
+
+/// A preamble with errors keeps its PCH, which body edits reuse. The
+/// missing header showing up is a new input.
+sessionTest("pch with errors waits for its inputs", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    const text = (n: number) =>
+        `#include "generated.h"\nint main() { return generated() + ${n}; }\n`;
+    workspace.write("main.cpp", text(0));
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+    const builds = () => client.drainedStderr().toString("utf8").split("PCH built for").length - 1;
+
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(uri);
+    for (let n = 1; n <= 3; n++) {
+        client.change(uri, n, text(n));
+        await client.waitForRecompile(uri);
+    }
+    expect(builds()).toBe(1);
+
+    workspace.write("generated.h", "#pragma once\ninline int generated() { return 1; }\n");
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+    await waitUntil(() => builds() >= 2, {
+        timeout: 10_000,
+        interval: 100,
+        description: "the rebuilt PCH",
+    });
+    expect(builds()).toBe(2);
+});
+
+/// A header that shows up in a search directory missing at the build is no
+/// input the PCH recorded: a save retries a preamble that had errors.
+sessionTest("pch with errors retries on save", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", '#include "generated.h"\nint main() { return generated(); }\n');
+    workspace.writeCDB(["main.cpp"], { extraArgs: [`-I${workspace.path("gen")}`] });
+    await client.initialize(workspace);
+    const [uri] = await client.openAndWait("main.cpp");
+    client.assertHasErrors(uri);
+
+    workspace.write("gen/generated.h", "#pragma once\ninline int generated() { return 1; }\n");
+    client.save(uri);
+    await client.waitForRecompile(uri);
+    client.assertCleanCompile(uri);
+    expect(workspace.pchFiles()).toHaveLength(1);
+});
 
 test("pch diagnostics on open", async ({ client }) => {
     // Opening a file with #include should trigger PCH build and return clean diagnostics.

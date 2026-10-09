@@ -13,7 +13,7 @@
 /// Options:
 ///   --server clice|clangd    which server to drive (default clice)
 ///   --binary <path>          server executable (default: clice from
-///                            build/RelWithDebInfo/bin, clangd from PATH)
+///                            build/RelWithDebInfo/bin/bin, clangd from PATH)
 ///   --file <rel>             file to open/edit (default: first CDB entry)
 ///   --position <line:char>   position for warm requests (default: derived
 ///                            from the file's first call-like identifier)
@@ -117,7 +117,7 @@ function parseOptions(): Options {
     const binary =
         values.binary ??
         (server === "clice"
-            ? path.join(REPO_ROOT, "build", "RelWithDebInfo", "bin", "clice")
+            ? path.join(REPO_ROOT, "build", "RelWithDebInfo", "bin", "bin", "clice")
             : "clangd");
 
     const scenarios = (values.scenario ?? [...ALL_SCENARIOS]).map((name) => {
@@ -152,7 +152,9 @@ function parseOptions(): Options {
 
     return {
         server,
-        binary,
+        // A bare name stays a PATH lookup; a path is anchored here, before
+        // the clangd process is started from the CDB directory instead.
+        binary: path.basename(binary) === binary ? binary : path.resolve(binary),
         workspace: path.resolve(values.workspace),
         cdbDir: "",
         file: values.file ?? null,
@@ -263,9 +265,10 @@ function firstCDBEntry(cdbPath: string): string {
     if (first === undefined) {
         fail(`empty compile_commands.json at ${cdbPath}`);
     }
-    return path.isAbsolute(first.file)
-        ? first.file
-        : path.join(first.directory ?? path.dirname(cdbPath), first.file);
+    // A relative `directory` anchors at the database's own location, the
+    // way the server resolves it.
+    const directory = path.resolve(path.dirname(cdbPath), first.directory ?? ".");
+    return path.isAbsolute(first.file) ? first.file : path.join(directory, first.file);
 }
 
 function nowMs(): number {
@@ -347,39 +350,38 @@ function serverArgs(opts: Options): string[] {
         : ["--background-index", `--compile-commands-dir=${opts.cdbDir}`];
 }
 
-/// CliceClient.initialize defaults worker counts to 1 and zeroes the
-/// tracker polling loops for cheap deterministic tests; a benchmark must
-/// run the server's real defaults (stateful 2, stateless cores/2, tracker
-/// 3s/30s, from src/server/state/config.h) including the background
-/// activity those loops generate.
+/// Only what the comparison must pin; everything else runs at the
+/// server's real defaults (see startServer), including the background
+/// activity the tracker's polling loops generate.
 function initializationOptions(opts: Options): Record<string, unknown> {
     return {
+        // Pin clice to the CDB selected for the comparison: a workspace
+        // clice.toml may declare databases elsewhere, while the clangd run
+        // always receives opts.cdbDir — the A/B must open the file under
+        // the same compilation command. The overlay replaces the file's
+        // rules wholesale, so none of its flag edits apply either, matching
+        // clangd.
+        rules: [{ compile_commands: [opts.cdbDir] }],
         project: {
-            // Pin clice to the CDB selected for the comparison: a workspace
-            // clice.toml may configure compile_commands_paths elsewhere,
-            // while the clangd run always receives opts.cdbDir — the A/B
-            // must open the file under the same compilation command.
-            compile_commands_paths: [opts.cdbDir],
             // Pin logs to where result() reads them (logFiles searches
             // <workspace>/.clice/logs); a clice.toml logging_dir would
             // otherwise send the worker perf lines elsewhere.
             logging_dir: path.join(opts.workspace, ".clice", "logs"),
-            stateful_worker_count: 2,
-            // availableParallelism respects cpusets and container CPU
-            // quotas; os.cpus() is the host's full list.
-            stateless_worker_count: Math.max(Math.floor(os.availableParallelism() / 2), 2),
-        },
-        tracker: {
-            cdb_poll_seconds: 3,
-            workspace_poll_seconds: 30,
         },
     };
 }
 
 async function startServer(opts: Options): Promise<CliceClient> {
-    const client = CliceClient.start(opts.binary, { args: serverArgs(opts) });
+    const client = CliceClient.start(opts.binary, {
+        args: serverArgs(opts),
+        // A relative CDB `directory` anchors at the database for clice but
+        // at the process cwd for clangd; running clangd from the CDB
+        // directory makes both servers compile under the same command.
+        cwd: opts.server === "clangd" ? opts.cdbDir : undefined,
+    });
     await client.initialize(new Workspace(opts.workspace), {
         initializationOptions: initializationOptions(opts),
+        testDefaults: false,
     });
     return client;
 }

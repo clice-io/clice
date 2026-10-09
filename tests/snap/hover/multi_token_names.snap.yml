@@ -1,0 +1,92 @@
+---
+created_at: 2026-10-02
+input_file: multi_token_names.cpp
+---
+01_dtor_tilde: { range: "4:4-4:5" }
+### method `~Vec`  
+
+---
+```cpp
+// In Vec
+public: ~Vec()
+```
+
+02_dtor_class: { range: "4:5-4:8" }
+### method `~Vec`  
+
+---
+```cpp
+// In Vec
+public: ~Vec()
+```
+
+03_eq_keyword: { range: "5:9-5:17" }
+### `operator==`  
+
+---
+→ `bool`  
+Parameters:  
+- `const Vec & other`
+
+---
+```cpp
+// In Vec
+public: bool operator==(const Vec &other) const
+```
+
+04_eq_symbol: { range: "5:17-5:19" }
+### `operator==`  
+
+---
+→ `bool`  
+Parameters:  
+- `const Vec & other`
+
+---
+```cpp
+// In Vec
+public: bool operator==(const Vec &other) const
+```
+
+05_conv_keyword: { range: "6:4-6:12" }
+### method `operator Handle *`  
+
+---
+```cpp
+// In Vec
+public: operator Handle *() const
+```
+
+06_conv_type: { range: "6:13-6:19" }
+### struct `Handle`  
+
+---
+```cpp
+struct Handle {}
+```
+
+07_literal_keyword: { range: "9:19-9:27" }
+### function `operator""_km`  
+
+---
+→ `unsigned long long`  
+Parameters:  
+- `unsigned long long value`
+
+---
+```cpp
+unsigned long long operator""_km(unsigned long long value)
+```
+
+08_literal_suffix: { range: "9:27-9:32" }
+### function `operator""_km`  
+
+---
+→ `unsigned long long`  
+Parameters:  
+- `unsigned long long value`
+
+---
+```cpp
+unsigned long long operator""_km(unsigned long long value)
+```

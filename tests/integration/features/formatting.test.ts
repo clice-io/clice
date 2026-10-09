@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as proto from "vscode-languageserver-protocol";
 import { test, expect } from "../fixtures.ts";
 
@@ -72,3 +73,25 @@ test("format already formatted", async ({ session }) => {
 
     client.close(uri);
 });
+
+test.skipIf(process.platform === "win32")(
+    "style found beside the opened name",
+    async ({ session }) => {
+        const { client, workspace } = session.tmp();
+        workspace.write("third_party/lib.cpp", UNFORMATTED);
+        workspace.write("third_party/.clang-format", "BasedOnStyle: LLVM\n");
+        workspace.write(
+            "src/.clang-format",
+            "BasedOnStyle: LLVM\nIndentWidth: 8\nAllowShortFunctionsOnASingleLine: None\n",
+        );
+        fs.symlinkSync(workspace.path("third_party/lib.cpp"), workspace.path("src/lib.cpp"));
+        workspace.writeCDB(["src/lib.cpp"]);
+        await client.initialize(workspace);
+
+        const [uri] = await client.openAndWait("src/lib.cpp");
+        const edits = await client.formatDocument(uri);
+        expect(applyEdits(UNFORMATTED, edits ?? [])).toBe(
+            "int add(int a, int b) {\n        return a + b;\n}\n",
+        );
+    },
+);

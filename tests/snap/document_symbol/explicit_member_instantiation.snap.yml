@@ -1,0 +1,9 @@
+---
+created_at: 2026-10-01
+input_file: explicit_member_instantiation.cpp
+---
+- { name: "Outer", kind: Struct, range: "7:0-12:1", selection_range: "7:7-7:12", detail: "template struct" }
+-   { name: "Inner", kind: Struct, range: "8:4-11:5", selection_range: "8:11-8:16", detail: "struct" }
+-     { name: "k", kind: Field, range: "9:8-9:13", selection_range: "9:12-9:13", detail: "int" }
+-     { name: "f", kind: Method, range: "10:8-10:19", selection_range: "10:13-10:14", detail: "void ()" }
+- { name: "Inner", kind: Struct, range: "14:0-14:33", selection_range: "14:28-14:33", detail: "struct" }

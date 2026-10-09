@@ -1,0 +1,6 @@
+---
+created_at: 2026-09-27
+input_file: symbols/16_overloads_across_scopes.cpp
+---
+pos:
+- { label: "draw", kind: Function, detail: "(…) +2 overloads", edit: "21:4-21:7" }

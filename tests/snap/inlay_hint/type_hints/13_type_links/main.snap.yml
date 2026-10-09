@@ -1,0 +1,8 @@
+---
+created_at: 2026-10-08
+input_file: type_hints/13_type_links/main.cpp
+---
+- { pos: "21:13", kind: Type, label: ": Pair<Widget, Gadget>", links: ["Pair ${WS}/type_hints/13_type_links/main.cpp:15:7-15:11", "Widget ${WS}/type_hints/13_type_links/widget.h:2:7-2:13", "Gadget ${WS}/type_hints/13_type_links/widget.h:8:7-8:13"] }
+- { pos: "22:14", kind: Type, label: ": const Widget *", links: ["Widget ${WS}/type_hints/13_type_links/widget.h:2:7-2:13"] }
+- { pos: "22:22", kind: Parameter, label: "id:", links: ["id ${WS}/type_hints/13_type_links/main.cpp:18:23-18:25"], padding_right: true }
+- { pos: "23:11", kind: Parameter, label: "width:", links: ["width ${WS}/type_hints/13_type_links/widget.h:10:16-10:21"], padding_right: true }

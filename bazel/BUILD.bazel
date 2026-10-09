@@ -1,0 +1,112 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+package(default_visibility = ["//:__pkg__"])
+
+config_setting(
+    name = "opt",
+    values = {"compilation_mode": "opt"},
+)
+
+config_setting(
+    name = "opt_macos",
+    constraint_values = ["@platforms//os:macos"],
+    values = {"compilation_mode": "opt"},
+)
+
+# The LLVM and clang libraries clice links; each brings what it depends on.
+LLVM_LIBRARIES = [
+    "LLVMFrontendOpenMP",
+    "LLVMOption",
+    "LLVMSupport",
+    "LLVMTargetParser",
+    "clangAST",
+    "clangASTMatchers",
+    "clangBasic",
+    "clangDriver",
+    "clangFormat",
+    "clangFrontend",
+    "clangLex",
+    "clangOptions",
+    "clangSema",
+    "clangSerialization",
+    "clangTidy",
+    "clangTidyAbseilModule",
+    "clangTidyAlteraModule",
+    "clangTidyAndroidModule",
+    "clangTidyBoostModule",
+    "clangTidyBugproneModule",
+    "clangTidyCERTModule",
+    "clangTidyConcurrencyModule",
+    "clangTidyCppCoreGuidelinesModule",
+    "clangTidyDarwinModule",
+    "clangTidyFuchsiaModule",
+    "clangTidyGoogleModule",
+    "clangTidyLLVMLibcModule",
+    "clangTidyLLVMModule",
+    "clangTidyLinuxKernelModule",
+    "clangTidyMiscModule",
+    "clangTidyModernizeModule",
+    "clangTidyObjCModule",
+    "clangTidyOpenMPModule",
+    "clangTidyPerformanceModule",
+    "clangTidyPortabilityModule",
+    "clangTidyReadabilityModule",
+    "clangTidyUtils",
+    "clangTidyZirconModule",
+    "clangTooling",
+    "clangToolingCore",
+    "clangToolingInclusions",
+    "clangToolingInclusionsStdlib",
+    "clangToolingSyntax",
+]
+
+# libclang's ThinLTO bitcode: every link of it redoes LLVM's code
+# generation, which lld's cache (clice.bazelrc) keeps from one link to the
+# next.
+cc_library(
+    name = "llvm",
+    deps = ["@libclang//:" + lib for lib in LLVM_LIBRARIES],
+)
+
+# The canonical target triples: the release assets are named after them, and
+# the version carries the one of the build.
+TRIPLES = {
+    "linux_x86_64": "x86_64-unknown-linux-gnu",
+    "linux_aarch64": "aarch64-unknown-linux-gnu",
+    "macos_x86_64": "x86_64-apple-darwin",
+    "macos_aarch64": "aarch64-apple-darwin",
+    "windows_x86_64": "x86_64-w64-mingw32",
+    "windows_aarch64": "aarch64-w64-mingw32",
+}
+
+[config_setting(
+    name = setting,
+    constraint_values = [
+        "@platforms//os:" + setting.split("_", 1)[0],
+        "@platforms//cpu:" + setting.split("_", 1)[1],
+    ],
+) for setting in TRIPLES]
+
+# Stamped from bazel/workspace_status.mjs: the one source whose compile a new
+# version reruns (src/version.h).
+genrule(
+    name = "version_cpp",
+    outs = ["version.cpp"],
+    cmd = select({
+        ":" + setting: """
+version=$$(sed -n 's/^STABLE_CLICE_VERSION //p' bazel-out/stable-status.txt)
+cat > $@ <<EOF
+#include "version.h"
+
+namespace clice {
+
+const std::string_view version = "$$version";
+const std::string_view target = "%s";
+
+}  // namespace clice
+EOF
+""" % triple
+        for setting, triple in TRIPLES.items()
+    }),
+    stamp = 1,
+)
