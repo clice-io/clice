@@ -1,24 +1,29 @@
 /// # Members on type hover
 ///
-/// - status: partial
+/// - status: supported
 /// - issues: clangd#959
+/// - config: {"max_members": 2}
 ///
 /// Hovering an enum or struct type lists its members
 ///
-/// The card names the type (and a struct's layout), but the member list is
-/// not expanded — the body renders as `{}`.
+/// A class lists its data members and member types, an enum its
+/// enumerators with their values; member functions are left out. The
+/// `max_members` option caps the list, 20 entries by default, and `0`
+/// turns it off.
 
 namespace members {
 
 enum Col§(enum_type)or {
     Red,
-    Green,
+    Green = 4,
     Blue,
 };
 
 struct Poi§(struct_type)nt {
-    int x;
-    int y;
+    using Scalar = double;
+    Scalar x;
+    Scalar y;
+    Scalar length() const;
 };
 
 }

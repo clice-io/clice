@@ -978,25 +978,285 @@ auto template_param_type(const clang::NamedDecl* param, const Options& options) 
     return {};
 }
 
+namespace {
+
+using TokenCount = llvm::function_ref<std::size_t(clang::SourceRange)>;
+
+/// Initializers might be huge and result in lots of memory allocations in
+/// some catastrophic cases. Such long lists are not useful in hover cards
+/// anyway.
+bool is_huge(const clang::Expr* init, const clang::PrintingPolicy& policy, TokenCount token_count) {
+    return init &&
+           (token_count(init->getSourceRange()) > 200 || printed_length(*init, policy) > 500);
+}
+
+auto initializer(const clang::Decl& member) -> const clang::Expr* {
+    if(const auto* field = llvm::dyn_cast<clang::FieldDecl>(&member)) {
+        return field->getInClassInitializer();
+    }
+    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(&member)) {
+        return var->getInit();
+    }
+    if(const auto* var_template = llvm::dyn_cast<clang::VarTemplateDecl>(&member)) {
+        return var_template->getTemplatedDecl()->getInit();
+    }
+    return nullptr;
+}
+
+/// Clang's terse rendering of a tag declaration — template prefix,
+/// attributes, bases — without the empty body it gives a definition: "{}"
+/// for a C++ class, "{\n}" for an enum or a C struct.
+auto tag_head(const clang::Decl& decl, const clang::PrintingPolicy& policy) -> std::string {
+    std::string text;
+    llvm::raw_string_ostream os(text);
+    decl.print(os, policy);
+    llvm::StringRef head = text;
+    if(head.consume_back("{}") || head.consume_back("{\n}")) {
+        head = head.rtrim();
+    }
+    return head.str();
+}
+
+/// Whether the tag is declared on its own, as a nested type or an
+/// anonymous struct or union, not inside another member's declaration as in
+/// `struct item* first;` or `char raw[sizeof(struct { ... })];`. An
+/// instantiation leaves that to its pattern.
+bool is_free_standing(const clang::TagDecl& tag) {
+    const clang::TagDecl* written = &tag;
+    if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(&tag);
+       record && record->getInstantiatedFromMemberClass()) {
+        written = record->getInstantiatedFromMemberClass();
+    } else if(const auto* enum_decl = llvm::dyn_cast<clang::EnumDecl>(&tag);
+              enum_decl && enum_decl->getInstantiatedFromMemberEnum()) {
+        written = enum_decl->getInstantiatedFromMemberEnum();
+    }
+    return written->isFreeStanding();
+}
+
+/// Whether a class summary lists the member: its data and the types it
+/// declares. A type declared twice is listed once, and a specialization of
+/// a member template is left to the template.
+bool is_listed(const clang::Decl& member) {
+    if(member.isImplicit() || !member.isFirstDecl() ||
+       llvm::isa<clang::ClassTemplateSpecializationDecl, clang::VarTemplateSpecializationDecl>(
+           member)) {
+        return false;
+    }
+    return llvm::isa<clang::FieldDecl,
+                     clang::VarDecl,
+                     clang::VarTemplateDecl,
+                     clang::TypedefNameDecl,
+                     clang::TypeAliasTemplateDecl,
+                     clang::TagDecl,
+                     clang::ClassTemplateDecl>(member);
+}
+
+/// Whether a field or a typedef is declared along with the tag, as `a` and
+/// `b` are in `struct { ... } a, *b;`: its type is spelled from the tag on,
+/// and is the tag behind pointers and arrays. Locations tell where the AST
+/// does not: an instantiation drops the type's tie to the declaration that
+/// defines it.
+bool declared_with(const clang::Decl& member, const clang::TagDecl& tag) {
+    clang::SourceLocation type_start;
+    clang::QualType type;
+    if(const auto* field = llvm::dyn_cast<clang::FieldDecl>(&member);
+       field && !field->isImplicit()) {
+        type_start = field->getTypeSpecStartLoc();
+        type = field->getType();
+    } else if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefDecl>(&member)) {
+        type_start = typedef_decl->getTypeSourceInfo()->getTypeLoc().getBeginLoc();
+        type = typedef_decl->getUnderlyingType();
+    } else {
+        return false;
+    }
+    return type_start == tag.getBeginLoc() && types::unwrap(type)->getAs<clang::TagType>();
+}
+
+/// Prints the body of a tag definition as a summary: the enumerators of an
+/// enum, the data members and member types of a class. Member functions are
+/// left out: code completion lists them with their documentation, and here
+/// they would crowd out the data that makes up the type.
+struct MemberPrinter {
+    llvm::raw_ostream& os;
+    const clang::PrintingPolicy& policy;
+    TokenCount token_count;
+
+    /// How many more members to print, those of nested unnamed tags included.
+    std::uint32_t budget;
+
+    /// Whether one more member fits; marks the cut when it does not.
+    bool fits() {
+        if(budget == 0) {
+            os << "\n// ...";
+            return false;
+        }
+        budget -= 1;
+        return true;
+    }
+
+    void body(const clang::TagDecl& tag) {
+        os << " {";
+        if(const auto* enum_decl = llvm::dyn_cast<clang::EnumDecl>(&tag)) {
+            enumerators(*enum_decl);
+        } else if(tag.isCompleteDefinition()) {
+            members(llvm::cast<clang::RecordDecl>(tag));
+        } else {
+            /// An instantiation defines a member class only once it is used.
+            os << "\n// ...";
+        }
+        os << "\n}";
+    }
+
+    void enumerators(const clang::EnumDecl& decl) {
+        llvm::StringRef separator;
+        for(const clang::EnumConstantDecl* enumerator: decl.enumerators()) {
+            os << separator;
+            separator = ",";
+            if(!fits()) {
+                return;
+            }
+            os << '\n' << enumerator->getName();
+            if(const clang::Expr* init = enumerator->getInitExpr();
+               init && !is_huge(init, policy, token_count)) {
+                os << " = ";
+                init->printPretty(os, nullptr, policy);
+            } else if(!enumerator->getType()->isDependentType()) {
+                os << " = " << llvm::toString(enumerator->getInitVal(), 10);
+            }
+        }
+    }
+
+    void members(const clang::RecordDecl& record) {
+        auto access = record.isClass() ? clang::AS_private : clang::AS_public;
+        auto decls = record.decls();
+        for(auto it = decls.begin(); it != decls.end(); ++it) {
+            const clang::Decl* member = *it;
+            if(!is_listed(*member)) {
+                continue;
+            }
+
+            const auto* tag = llvm::dyn_cast<clang::TagDecl>(member);
+            llvm::SmallVector<const clang::Decl*> declarators;
+            auto last = it;
+            if(tag) {
+                /// A tag mentioned or defined inside a declarator, as in
+                /// `struct { ... } a[sizeof(struct B)], *b;`, comes between.
+                for(auto next = std::next(it); next != decls.end(); ++next) {
+                    if(declared_with(**next, *tag)) {
+                        declarators.push_back(*next);
+                        last = next;
+                    } else if(!llvm::isa<clang::TagDecl>(*next)) {
+                        break;
+                    }
+                }
+                if(declarators.empty() && !is_free_standing(*tag)) {
+                    continue;
+                }
+            }
+            if(!fits()) {
+                return;
+            }
+
+            /// C has no access control: its members have AS_none.
+            if(member->getAccess() != access && member->getAccess() != clang::AS_none) {
+                access = member->getAccess();
+                os << '\n' << clang::getAccessSpelling(access) << ':';
+            }
+            os << '\n';
+
+            if(tag) {
+                if(!declarators.empty()) {
+                    specifiers(*declarators.front());
+                }
+                /// A named type has its own hover card; an unnamed one shows
+                /// its members only here.
+                os << tag_head(*tag, policy);
+                if(!tag->getDeclName()) {
+                    body(*tag);
+                }
+                auto declarator_policy = policy;
+                declarator_policy.SuppressSpecifiers = true;
+                llvm::StringRef separator = " ";
+                for(const clang::Decl* declarator: declarators) {
+                    os << separator;
+                    separator = ", ";
+                    print(*declarator, declarator_policy);
+                }
+                it = last;
+            } else if(llvm::isa<clang::ClassTemplateDecl>(member)) {
+                os << tag_head(*member, policy);
+            } else {
+                print(*member, policy);
+            }
+            os << ';';
+        }
+    }
+
+    /// The specifiers the declarators in `const struct { ... } a, *b;`
+    /// share; each of them prints without.
+    void specifiers(const clang::Decl& declarator) {
+        clang::QualType type;
+        if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefDecl>(&declarator)) {
+            os << "typedef ";
+            type = typedef_decl->getUnderlyingType();
+        } else {
+            const auto& field = llvm::cast<clang::FieldDecl>(declarator);
+            if(field.isMutable()) {
+                os << "mutable ";
+            }
+            type = field.getType();
+        }
+        types::unwrap(type).getQualifiers().print(os, policy, /*appendSpaceIfNonEmpty=*/true);
+    }
+
+    void print(const clang::Decl& member, clang::PrintingPolicy member_policy) {
+        if(is_huge(initializer(member), member_policy, token_count)) {
+            member_policy.SuppressInitializers = true;
+        }
+        member.print(os, member_policy);
+    }
+};
+
+}  // namespace
+
 auto definition(const clang::Decl* decl,
                 const Options& options,
                 llvm::function_ref<std::size_t(clang::SourceRange)> token_count) -> std::string {
     assert(decl);
     clang::PrintingPolicy policy = derive_policy(decl->getASTContext(), options);
-    if(auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
-        if(auto* init = var->getInit()) {
-            /// Initializers might be huge and result in lots of memory allocations
-            /// in some catastrophic cases. Such long lists are not useful in hover
-            /// cards anyway.
-            if(token_count(init->getSourceRange()) > 200 || printed_length(*init, policy) > 500) {
-                policy.SuppressInitializers = true;
-            }
-        }
+    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
+       var && is_huge(var->getInit(), policy, token_count)) {
+        policy.SuppressInitializers = true;
     }
 
     std::string definition;
     llvm::raw_string_ostream os(definition);
-    decl->print(os, policy);
+    const auto* class_template = llvm::dyn_cast<clang::ClassTemplateDecl>(decl);
+    const auto* tag =
+        llvm::dyn_cast<clang::TagDecl>(class_template ? class_template->getTemplatedDecl() : decl);
+    if(!tag || !tag->getDefinition()) {
+        decl->print(os, policy);
+        return definition;
+    }
+
+    /// The head comes from the definition too: only a definition prints its
+    /// bases. tag_head() relies on the terse body.
+    assert(options.terse);
+    tag = tag->getDefinition();
+    if(class_template) {
+        os << tag_head(*llvm::cast<clang::CXXRecordDecl>(tag)->getDescribedClassTemplate(), policy);
+    } else {
+        os << tag_head(*tag, policy);
+    }
+    if(options.max_members > 0) {
+        MemberPrinter printer{
+            .os = os,
+            .policy = policy,
+            .token_count = token_count,
+            .budget = options.max_members,
+        };
+        printer.body(*tag);
+    }
     return definition;
 }
 

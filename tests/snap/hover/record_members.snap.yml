@@ -1,0 +1,225 @@
+---
+created_at: 2026-10-09
+input_file: record_members.cpp
+---
+before_definition: { range: "154:0-154:5" }
+### struct `Later`  
+
+---
+```cpp
+// In namespace forward_declared
+struct Later {
+  int value;
+}
+```
+
+class_sections: { range: "42:4-42:10" }
+### class `Widget`  
+
+---
+```cpp
+// In namespace access_sections
+class Widget : public Base {
+  int id;
+
+public:
+  using Size = unsigned long;
+  template <typename T> using Pointer = T *;
+  static constexpr int limit = 4;
+  enum class Kind : int;
+  struct Node;
+  struct Forward;
+  template <typename T> struct Nested;
+
+private:
+  static int instances;
+  mutable int cache = 0;
+  unsigned int flags : 3;
+}
+```
+
+declarator_specifiers: { range: "149:0-149:6" }
+### struct `Device`  
+
+---
+```cpp
+// In namespace declarator_specifiers
+struct Device {
+  volatile struct {
+    unsigned int control;
+    unsigned int status;
+  } registers;
+  mutable struct {
+    int hits;
+  } cache;
+  const struct Limits limits{0, 1};
+  typedef struct Handle *HandlePtr;
+  struct {
+    int id;
+  } queue[8], *head;
+}
+```
+
+derived: { range: "180:0-180:6" }
+### struct `Square`  
+
+---
+```cpp
+// In namespace derived_members
+struct Square final : Shape {
+  int length;
+}
+```
+
+explicit_specialization: { range: "110:0-110:3" }
+### struct `Box<bool>`  
+
+---
+```cpp
+// In namespace templates
+template <> struct Box<bool> {
+  unsigned char bits;
+}
+```
+
+functions_only: { range: "53:0-53:7" }
+### struct `Service`  
+
+---
+```cpp
+// In namespace functions_only
+struct Service {}
+```
+
+implicit_instantiation: { range: "108:0-108:3" }
+### struct `Box<int>`  
+
+---
+```cpp
+// In namespace templates
+template <> struct Box<int> {
+  using value_type = int;
+  int value;
+  template <typename U> static constexpr bool holds;
+  template <typename U> struct Rebind;
+  struct Inner;
+}
+```
+
+instantiated_unnamed: { range: "128:0-128:8" }
+### struct `Expected<long>`  
+
+---
+```cpp
+// In namespace instantiated_unnamed
+template <> struct Expected<long> {
+  union {
+    long value;
+    int error;
+  };
+  struct {
+    long low;
+    long high;
+  } range, *last;
+  enum { capacity = sizeof(long) };
+  struct {
+    // ...
+  } *lazy;
+  bool has_error : 1;
+}
+```
+
+nested_type: { range: "43:12-43:16" }
+### struct `Node`  
+
+---
+```cpp
+// In Widget
+public: struct Node {
+  int hidden;
+}
+```
+
+partial_specialization: { range: "109:0-109:3" }
+### struct `Box<int *>`  
+
+---
+```cpp
+// In namespace templates
+template <> struct Box<int *> {
+  int *pointer;
+}
+```
+
+primary_declaration: { range: "106:29-106:32" }
+### struct `Box`  
+
+---
+```cpp
+// In namespace templates
+template <typename T> struct Box {
+  using value_type = T;
+  T value;
+  template <typename U> static constexpr bool holds = false;
+  template <typename U> struct Rebind;
+  struct Inner;
+}
+```
+
+primary_use: { range: "107:32-107:35" }
+### struct `Box`  
+
+---
+```cpp
+// In namespace templates
+template <typename T> struct Box {
+  using value_type = T;
+  T value;
+  template <typename U> static constexpr bool holds = false;
+  template <typename U> struct Rebind;
+  struct Inner;
+}
+```
+
+redeclared_nested: { range: "170:0-170:4" }
+### class `Tree`  
+
+---
+```cpp
+// In namespace redeclared_nested
+class Tree {
+  struct Node;
+  template <typename T> struct Visitor;
+  Node *root;
+}
+```
+
+unnamed_members: { range: "81:0-81:5" }
+### struct `Value`  
+
+---
+```cpp
+// In namespace unnamed_members
+struct Value {
+  enum { inline_capacity = 16 };
+  int kind;
+  union {
+    long integer;
+    double decimal;
+  };
+  struct {
+    int x;
+    int y;
+  } position, *previous;
+  struct Named named;
+  union {
+    int bits;
+    float real;
+  } aligned[2] alignas(8);
+  typedef struct {
+    int first;
+    int second;
+  } Pair;
+  static struct(unnamed) shared;
+}
+```

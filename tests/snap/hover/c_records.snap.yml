@@ -1,0 +1,51 @@
+---
+created_at: 2026-10-09
+input_file: c_records.cpp
+---
+c_inner_tags: { range: "34:7-34:13" }
+### struct `Packed`  
+
+---
+```cpp
+struct Packed {
+  char raw[16];
+  typeof(struct(unnamed)) typed;
+  void (*callback)(struct(unnamed) *);
+  _Atomic(struct(unnamed)) atomic;
+  int tail;
+}
+```
+
+c_mentions: { range: "22:7-22:10" }
+### struct `ops`  
+
+---
+```cpp
+struct ops {
+  int (*open)(struct inode *, struct file *);
+  const struct item *first;
+  int count;
+}
+```
+
+c_struct: { range: "14:7-14:12" }
+### struct `Point`  
+
+---
+\- flags: ["-x", "c", "-std=c11"]  
+
+---
+```cpp
+struct Point {
+  int x;
+  union {
+    int tag;
+    float weight;
+  };
+  struct {
+    int width;
+    int height;
+  } size;
+  enum { Small = 0, Large = 1 } scale;
+}
+```

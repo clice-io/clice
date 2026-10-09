@@ -8,7 +8,9 @@ input_file: type_information/08_instantiation_args.cpp
 ---
 ```cpp
 // In namespace instantiation_args
-template <> struct Wrapper<int> {}
+template <> struct Wrapper<int> {
+  int value;
+}
 ```
 
 02_call: { range: "23:10-23:18" }
