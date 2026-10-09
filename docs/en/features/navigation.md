@@ -1718,8 +1718,9 @@ tests/snap/switch_source_header/switch_source_header/01_header_source/main.cpp
 A header under `include/` finds its source under `src/`, ahead of another file of the same name that defines none of its declarations
 
 Away from the header's own directory, a file of the same name counts
-only when it includes the header: `tools/shape.cpp` does not, and is no
-counterpart.
+only when one of the two includes the other — `tools/shape.cpp` includes
+nothing and is no counterpart — and of those only the nearest:
+`src/legacy/shape.cpp` lies a directory deeper than `src/shape.cpp`.
 
 ```snap
 tests/snap/switch_source_header/switch_source_header/02_split_layout/main.cpp
@@ -1767,7 +1768,10 @@ tests/snap/switch_source_header/switch_source_header/05_module_units/main.cpp
 
 **Partition beside its implementation**
 
-An internal partition declaring what an implementation unit of the same name defines pairs with that unit, ahead of the primary interface
+An internal partition and the implementation unit of the same name defining its declarations switch to each other directly
+
+The implementation unit also lists the primary interface of its module,
+after the partition.
 
 ```snap
 tests/snap/switch_source_header/switch_source_header/06_module_partition/main.cpp
@@ -1783,6 +1787,18 @@ A header that defines everything it declares, and a `.def` fragment, have no cou
 
 ```snap
 tests/snap/switch_source_header/switch_source_header/07_no_counterpart/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Template definitions apart**
+
+A header and the `.tpp` file it includes for its template definitions switch to each other
+
+```snap
+tests/snap/switch_source_header/switch_source_header/08_template_definitions/main.cpp
 ```
 
 <!-- END CAPABILITY -->

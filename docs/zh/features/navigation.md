@@ -1528,7 +1528,7 @@ tests/snap/switch_source_header/switch_source_header/01_header_source/main.cpp
 
 `include/` 下的头文件能找到 `src/` 下的源文件，并把它排在另一个同名、但未定义该头文件任何声明的文件之前
 
-在头文件所在目录之外，同名文件只有包含了该头文件才算数：`tools/shape.cpp` 没有包含它，因此不是配对文件。
+在头文件所在目录之外，同名文件只有在两者中一方包含另一方时才算数（`tools/shape.cpp` 什么都没有包含，因此不是配对文件），而且其中只取最近的那个：`src/legacy/shape.cpp` 比 `src/shape.cpp` 深一层目录。
 
 ```snap
 tests/snap/switch_source_header/switch_source_header/02_split_layout/main.cpp
@@ -1576,7 +1576,9 @@ tests/snap/switch_source_header/switch_source_header/05_module_units/main.cpp
 
 **分区与其实现单元**
 
-内部分区声明了同名实现单元所定义的内容时，会与该单元配对，并排在主接口之前
+内部分区与定义其声明的同名实现单元之间可以直接相互切换
+
+该实现单元还会列出其模块的主接口，排在分区之后。
 
 ```snap
 tests/snap/switch_source_header/switch_source_header/06_module_partition/main.cpp
@@ -1592,6 +1594,18 @@ tests/snap/switch_source_header/switch_source_header/06_module_partition/main.cp
 
 ```snap
 tests/snap/switch_source_header/switch_source_header/07_no_counterpart/main.cpp
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模板定义分开存放**
+
+头文件与它为存放模板定义而包含的 `.tpp` 文件之间可以相互切换
+
+```snap
+tests/snap/switch_source_header/switch_source_header/08_template_definitions/main.cpp
 ```
 
 <!-- END CAPABILITY -->
