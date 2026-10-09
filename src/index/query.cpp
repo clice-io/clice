@@ -343,6 +343,60 @@ void IndexQuery::for_each_relation(SymbolHash hash,
     }
 }
 
+const Shard* IndexQuery::declaring_rows(Fid file) const {
+    if(auto source = serving(file)) {
+        return source->rows;
+    }
+    return live && live->is_open(file) ? index.shard(file) : nullptr;
+}
+
+void IndexQuery::each_live_file(SymbolHash hash,
+                                RelationKind kind,
+                                llvm::function_ref<void(Fid)> visit) const {
+    // One source's rows arrive together.
+    Fid last;
+    for_each_relation(hash,
+                      {},
+                      kind,
+                      Order::LiveFirst,
+                      {.shard = false, .preamble = false, .overlay = false},
+                      [&](const RowSource& source, const Relation&) {
+                          if(source.file != last) {
+                              last = source.file;
+                              visit(source.file);
+                          }
+                          return true;
+                      });
+}
+
+Fid IndexQuery::definition_file(SymbolHash hash) const {
+    Fid found;
+    each_live_file(hash, RelationKind::Definition, [&](Fid file) {
+        if(!found.valid()) {
+            found = file;
+        }
+    });
+    if(found.valid()) {
+        return found;
+    }
+    auto identity = index.identity_of(hash);
+    if(!identity || !has_flag(identity->flags, SymbolFlags::HasDefinition)) {
+        return {};
+    }
+    // The table never retracts a definition: a file reindexed or edited
+    // without it keeps the record until another unit defines the symbol.
+    Fid file{identity->file};
+    auto* rows = declaring_rows(file);
+    bool defines = false;
+    if(rows) {
+        rows->lookup(hash, RelationKind::Definition, [&](const Relation&) {
+            defines = true;
+            return false;
+        });
+    }
+    return defines ? file : Fid{};
+}
+
 std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t offset) const {
     auto source = serving(file);
     if(!source) {

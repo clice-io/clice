@@ -151,6 +151,33 @@ export const SwitchConfigurationRequest = new RequestType<
     void
 >("clice/switchConfiguration");
 
+/// clice/counterparts: the files `uri` pairs with — a header's sources, a
+/// source's headers, a module's interface and implementation units — best
+/// first.
+export interface CounterpartsParams {
+    uri: string;
+}
+
+export interface Counterpart {
+    uri: string;
+
+    /// What pairs it with the file, for the user to read ("same name",
+    /// "defines 12 of 15 declarations").
+    reasons: string[];
+}
+
+export interface CounterpartsResult {
+    candidates: Counterpart[];
+
+    /// The candidate to go to without asking; null when the user should
+    /// pick, and when there is none.
+    preferred: string | null;
+}
+
+export const CounterpartsRequest = new RequestType<CounterpartsParams, CounterpartsResult, void>(
+    "clice/counterparts",
+);
+
 /// clice/internal/poll — TEST-ONLY, not a stable API. Synchronously runs
 /// one file-tracker tick (stat → diff → events → dispatch → effects) and
 /// responds only once the effects are applied, so integration tests can
@@ -211,6 +238,9 @@ export interface StatsResult {
     checksTrusted: number;
     /// Preprocessor passes that looked for a unit's imports.
     importScans: number;
+    /// Whether no project has background indexing queued or running: what
+    /// the index serves is all it will serve until the next change.
+    indexIdle: boolean;
     /// The builds each file went through, while test hooks are on.
     builds: FileBuilds[];
 }

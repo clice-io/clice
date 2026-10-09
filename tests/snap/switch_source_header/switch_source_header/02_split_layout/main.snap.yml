@@ -1,0 +1,14 @@
+---
+created_at: 2026-10-09
+input_file: switch_source_header/02_split_layout/main.cpp
+---
+"include/geometry/shape.h":
+  preferred: "${WS}/switch_source_header/02_split_layout/src/shape.cpp"
+  candidates:
+    - { file: "${WS}/switch_source_header/02_split_layout/src/shape.cpp", reasons: ["defines 2 of 2 declarations", "same name"] }
+    - { file: "${WS}/switch_source_header/02_split_layout/tests/shape.cpp", reasons: ["same name"] }
+
+"src/shape.cpp":
+  preferred: "${WS}/switch_source_header/02_split_layout/include/geometry/shape.h"
+  candidates:
+    - { file: "${WS}/switch_source_header/02_split_layout/include/geometry/shape.h", reasons: ["declares 2 of 2 definitions", "same name"] }

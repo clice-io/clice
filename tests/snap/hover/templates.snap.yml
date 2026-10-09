@@ -329,7 +329,9 @@ typename... Types
 ---
 ```cpp
 // In namespace injected_name
-template <typename T> struct Link {}
+template <typename T> struct Link {
+  Link<T> *next;
+}
 ```
 
 30_dependent_method: { range: "167:14-167:19" }
@@ -451,7 +453,7 @@ struct Item {}
 ---
 ```cpp
 // In namespace explicit_instantiation
-template <> struct Box<Item>
+template <> struct Box<Item> {}
 ```
 
 41_function_directive: { range: "240:14-240:17" }

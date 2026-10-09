@@ -1,0 +1,53 @@
+---
+created_at: 2026-10-09
+input_file: enum_members.cpp
+---
+dependent: { range: "31:4-31:8" }
+### enum `Size`  
+
+---
+```cpp
+// In Holder<T>
+public: enum Size { None, Bytes = sizeof(T), Twice }
+```
+
+empty: { range: "25:0-25:3" }
+### enum `Tag`  
+
+---
+```cpp
+// In namespace empty
+enum class Tag : int {}
+```
+
+implicit_values: { range: "5:0-5:5" }
+### enum `Level`  
+
+---
+```cpp
+// In namespace implicit_values
+enum Level { Low = 0, Medium = 10, High = 11 }
+```
+
+scoped: { range: "20:0-20:8" }
+### enum `Ordering`  
+
+---
+```cpp
+// In namespace scoped
+enum class Ordering : signed char { Less = -1, Equal = 0, Greater = 1 }
+```
+
+written_values: { range: "15:0-15:10" }
+### enum `Permission`  
+
+---
+```cpp
+// In namespace written_values
+enum Permission : unsigned int {
+  Read = 1 << 0,
+  Write = 1 << 1,
+  Execute = 1 << 2,
+  All = Read | Write | Execute
+}
+```

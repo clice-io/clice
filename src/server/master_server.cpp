@@ -163,7 +163,7 @@ void MasterServer::initialize() {
              pool_opts.stateless_count);
 
     pool_opts.log_dir = session_log_dir;
-    if(test_hooks()) {
+    if(projects.front()->project.config.project.test_hooks.value) {
         pool.probe = &probe;
     }
     if(pool.start(pool_opts)) {
@@ -855,7 +855,7 @@ void MasterServer::schedule_shutdown() {
 }
 
 bool MasterServer::test_hooks() const {
-    return projects.front()->project.config.project.test_hooks.value;
+    return pool.probe != nullptr;
 }
 
 /// Whether the project has work settle() waits for. A queue no round will

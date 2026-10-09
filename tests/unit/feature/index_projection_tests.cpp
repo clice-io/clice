@@ -577,7 +577,8 @@ ZEST_CASE(LinksFromEdges) {
 
 ZEST_CASE(HoverDefinitionShape) {
     // The stored extent is the whole definition; the card shows what the
-    // AST card prints.
+    // AST card prints, except that a type keeps an empty body: the AST
+    // card's member summary needs the AST.
     auto card = [](SymbolKind::Kind kind,
                    llvm::StringRef text,
                    index::SymbolFlags flags = index::SymbolFlags::None) {

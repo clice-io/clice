@@ -54,9 +54,9 @@ import { renderMarkdownTable, rewriteRegions, type RegionMarkers } from "./gener
 
 // feature -> doc path (relative to repo root). Extend as more features
 // adopt fixture-generated docs. Several corpora may feed one doc page
-// (navigation.md aggregates the navigation, document_highlight and
-// workspace_symbol corpora); their fixtures must then use disjoint section
-// keys.
+// (navigation.md aggregates the navigation, document_highlight,
+// switch_source_header and workspace_symbol corpora); their fixtures must
+// then use disjoint section keys.
 const FEATURES: Record<string, string> = {
     code_action: "docs/en/features/code-action.md",
     code_completion: "docs/en/features/completion.md",
@@ -70,6 +70,7 @@ const FEATURES: Record<string, string> = {
     selection_range: "docs/en/features/selection-ranges.md",
     semantic_tokens: "docs/en/features/semantic-tokens.md",
     signature_help: "docs/en/features/signature-help.md",
+    switch_source_header: "docs/en/features/navigation.md",
     workspace_symbol: "docs/en/features/navigation.md",
 };
 
@@ -84,7 +85,7 @@ const OVERVIEW_ROWS: { name: string; page: string; keys?: string[]; label?: stri
     {
         name: "Code Navigation",
         page: "navigation",
-        keys: ["navigation", "document_highlight", "workspace_symbol"],
+        keys: ["navigation", "document_highlight", "switch_source_header", "workspace_symbol"],
     },
     { name: "Document Links", page: "document-links", keys: ["document_links"] },
     { name: "Semantic Tokens", page: "semantic-tokens", keys: ["semantic_tokens"] },

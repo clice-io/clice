@@ -11,5 +11,8 @@ Size: 16 bytes, alignment 8 bytes
 ---
 ```cpp
 // In namespace layout
-struct Widget {}
+struct Widget {
+  int id;
+  double value;
+}
 ```

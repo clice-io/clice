@@ -2,23 +2,58 @@
 created_at: 2026-08-23
 input_file: special_hover_targets/01_type_members_on_hover.cpp
 ---
-enum_type: { range: "12:5-12:10" }
-### enum `Color`  
+default:
+  enum_type: { range: "15:5-15:10" }
+  ### enum `Color`  
 
----
-```cpp
-// In namespace members
-enum Color {}
-```
+  ---
+  ```cpp
+  // In namespace members
+  enum Color { Red = 0, Green = 4, Blue = 5 }
+  ```
 
-struct_type: { range: "18:7-18:12" }
-### struct `Point`  
+  struct_type: { range: "21:7-21:12" }
+  ### struct `Point`  
 
----
-Size: 8 bytes, alignment 4 bytes  
+  ---
+  Size: 16 bytes, alignment 8 bytes  
 
----
-```cpp
-// In namespace members
-struct Point {}
-```
+  ---
+  ```cpp
+  // In namespace members
+  struct Point {
+    using Scalar = double;
+    Scalar x;
+    Scalar y;
+  }
+  ```
+
+configured:
+  enum_type: { range: "15:5-15:10" }
+  ### enum `Color`  
+
+  ---
+  ```cpp
+  // In namespace members
+  enum Color {
+    Red = 0,
+    Green = 4,
+    // ...
+  }
+  ```
+
+  struct_type: { range: "21:7-21:12" }
+  ### struct `Point`  
+
+  ---
+  Size: 16 bytes, alignment 8 bytes  
+
+  ---
+  ```cpp
+  // In namespace members
+  struct Point {
+    using Scalar = double;
+    Scalar x;
+    // ...
+  }
+  ```

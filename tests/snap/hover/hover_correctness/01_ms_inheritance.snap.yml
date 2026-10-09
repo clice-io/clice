@@ -20,5 +20,7 @@ struct_hover: { range: "12:7-12:13" }
 ---
 ```cpp
 // In namespace ms
-struct Widget {}
+struct Widget {
+  int value;
+}
 ```

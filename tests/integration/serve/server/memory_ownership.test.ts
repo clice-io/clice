@@ -130,6 +130,7 @@ serve.files({
                 "checksTrusted",
                 "importScans",
                 "headerContexts",
+                "indexIdle",
                 "synthesizedContexts",
                 "indexInmemoryShards",
                 "indexShardContentBytes",

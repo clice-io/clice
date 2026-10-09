@@ -766,14 +766,16 @@ tests/snap/hover/macro_hover/06_preamble_define_hover.cpp
 
 <!-- BEGIN GENERATED ITEMS: special_hover_targets -->
 
-<!-- BEGIN CAPABILITY: partial clangd#959 -->
+<!-- BEGIN CAPABILITY: supported clangd#959 -->
 
 **Members on type hover**
 
 Hovering an enum or struct type lists its members
 
-The card names the type (and a struct's layout), but the member list is
-not expanded — the body renders as `{}`.
+A class lists its data members and member types, an enum its
+enumerators with their values; member functions are left out. The
+`max_members` option caps the list, 20 entries by default, and `0`
+turns it off.
 
 ```snap
 tests/snap/hover/special_hover_targets/01_type_members_on_hover.cpp

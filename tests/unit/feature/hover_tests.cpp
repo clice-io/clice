@@ -639,6 +639,47 @@ ZEST_CASE(disable_show_aka) {
     check_sym_range();
 }
 
+ZEST_CASE(max_members_option) {
+    feature::HoverOptions options;
+    options.max_members = 0;
+
+    run_info(R"cpp(
+    struct Record { int field; };
+    Re§cord record;
+  )cpp",
+             options);
+    ZASSERT(info);
+    ZEXPECT(info->definition == "struct Record");
+
+    run_info(R"cpp(
+    enum Value { one, two };
+    Va§lue value;
+  )cpp",
+             options);
+    ZASSERT(info);
+    ZEXPECT(info->definition == "enum Value");
+}
+
+ZEST_CASE(tag_members_no_crash) {
+    run_info(R"cpp(
+    struct Record {
+        struct { int x; } method();
+        int field;
+    };
+    Re§cord record;
+  )cpp");
+    ZASSERT(info);
+
+    run_info(R"cpp(
+    struct Record {
+        int get() const;
+        __declspec(property(get = get)) struct { int x; } property;
+    };
+    Re§cord record;
+  )cpp");
+    ZASSERT(info);
+}
+
 ZEST_CASE(big_ints_no_crash) {
     // APInt64 wrap around.
     run_info(R"cpp(
