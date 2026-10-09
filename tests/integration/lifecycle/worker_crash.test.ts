@@ -37,10 +37,15 @@ function crashing(env: Record<string, string> = {}) {
 }
 
 /// A workspace whose crashes are the compile's own: clang-tidy, whose
-/// crash a compile first retries without (clang_tidy.test.ts), stays off.
+/// crash a compile first retries without (clang_tidy.test.ts), stays off;
+/// so does indexing, whose rows of the disk text would answer the requests
+/// a crashed compile leaves unanswered.
 function crashWorkspace(session: SessionFactory): Workspace {
     const workspace = session.tmpdir();
-    workspace.write("clice.toml", "[diagnostics]\nclang_tidy = false\n");
+    workspace.write(
+        "clice.toml",
+        "[diagnostics]\nclang_tidy = false\n\n[project]\nenable_indexing = false\n",
+    );
     return workspace;
 }
 
@@ -489,9 +494,7 @@ test("hung compile is killed", async ({ session }) => {
     );
     workspace.writeCDB(["hang.cpp"], { extraArgs: ["-fconstexpr-steps=2147483647"] });
     const client = session.spawn(workspace, crashing({ CLICE_TEST_REQUEST_DEADLINE_MS: "2000" }));
-    await client.initialize(workspace, {
-        initializationOptions: { project: { enable_indexing: false } },
-    });
+    await client.initialize(workspace);
 
     const [uri] = client.open("hang.cpp");
     expect(await client.hoverAt(uri, 0, 16)).toBeNull();
