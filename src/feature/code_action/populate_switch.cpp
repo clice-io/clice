@@ -137,7 +137,7 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
         .title = std::format("Add {} missing enum case{} to switch",
                              missing.size(),
                              missing.size() == 1 ? "" : "s"),
-        .kind = protocol::CodeActionKind::RefactorRewrite,
+        .kind = action_kind::populate_switch,
         .edits = {{{offset, offset}, std::move(text)}},
     });
 }

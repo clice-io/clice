@@ -178,7 +178,7 @@ void expand_macro(CompilationUnitRef unit,
 
         out.push_back(CodeAction{
             .title = std::format("Expand macro '{}'", unit.token_spelling(name.location())),
-            .kind = protocol::CodeActionKind::RefactorInline,
+            .kind = action_kind::expand_macro,
             .edits = {{{begin, end}, std::move(text)}},
         });
         return;

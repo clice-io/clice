@@ -6,7 +6,7 @@ expression:
 (no actions)
 
 independent:
-- [refactor.rewrite] Add 2 missing enum cases to switch
+- [refactor.rewrite.populateSwitch] Add 2 missing enum cases to switch
   34:0-34:0 => "    case Mode::Write:\n    case Mode::Append:\n        break;\n"
 
 value:

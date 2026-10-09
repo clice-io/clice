@@ -39,6 +39,15 @@ downloads live on the [GitHub releases and CI pages](https://github.com/clice-io
 Changing a server setting offers to restart the server in place — no window
 reload is needed.
 
+## Refactorings
+
+clice's refactorings are behind the lightbulb, `Ctrl+.` and **Refactor...**
+in the editor's context menu. Each also has a command in the Command Palette
+("Clice: Define Out of Line", "Clice: Add Missing Enum Cases to Switch", ...)
+that a key can be bound to; the
+[code action guide](https://docs.clice.io/clice/features/code-action#running-actions)
+lists them.
+
 ## Conflicting extensions
 
 Other C/C++ language extensions running next to clice duplicate completion

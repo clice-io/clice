@@ -136,7 +136,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         .title = std::format("Replace '{}' with '{}'",
                              content.substr(range->begin, range->length()),
                              printed),
-        .kind = protocol::CodeActionKind::RefactorRewrite,
+        .kind = action_kind::expand_deduced_type,
         .edits = {{*range, std::move(printed)}},
     });
 }

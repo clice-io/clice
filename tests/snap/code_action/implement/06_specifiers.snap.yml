@@ -6,5 +6,5 @@ channel:
 (no actions)
 
 console:
-- [refactor.rewrite] Implement pure virtual methods of 'Console'
+- [refactor.rewrite.implementPureVirtuals] Implement pure virtual methods of 'Console'
   28:29-28:29 => "\n    void log(const char* format, ...) override;\n    void print(...) override;\n    void flush() noexcept override;\n    void sync() noexcept override;\n    void rotate() override;\n    consteval int level() override;\n"

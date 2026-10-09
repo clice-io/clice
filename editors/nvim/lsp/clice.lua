@@ -9,6 +9,8 @@
 ---   compile command of a source file listed with several.
 --- - `:LspCliceSwitchConfiguration`: select the build configuration (the `configuration` tags of
 ---   the `clice.toml` rules) clice runs from its next start.
+--- - `:LspCliceRefactor {kind}`: apply the refactoring of a code action kind at the cursor, such as
+---   `refactor.rewrite.populateSwitch`, offering a choice when several apply.
 --- - `:LspCliceSwitchSourceHeader`: open the file the buffer pairs with — a header's source, a
 ---   source's header, a module's interface or implementation — or pick one when several qualify.
 
@@ -205,6 +207,17 @@ return {
     vim.api.nvim_buf_create_user_command(bufnr, 'LspCliceSwitchConfiguration', function()
       switch_configuration(client, bufnr)
     end, { desc = 'Switch the build configuration' })
+    vim.api.nvim_buf_create_user_command(bufnr, 'LspCliceRefactor', function(command)
+      vim.lsp.buf.code_action({ context = { only = { command.args } }, apply = true })
+    end, {
+      nargs = 1,
+      complete = function(lead)
+        return vim.tbl_filter(function(kind)
+          return vim.startswith(kind, 'refactor.') and vim.startswith(kind, lead)
+        end, client.server_capabilities.codeActionProvider.codeActionKinds)
+      end,
+      desc = 'Apply the refactoring of a code action kind',
+    })
     vim.api.nvim_buf_create_user_command(bufnr, 'LspCliceSwitchSourceHeader', function()
       switch_source_header(client, bufnr)
     end, { desc = 'Switch between source and header' })

@@ -3,5 +3,5 @@ created_at: 2026-10-01
 input_file: implement/05_shared_signatures.cpp
 ---
 file:
-- [refactor.rewrite] Implement pure virtual methods of 'File'
+- [refactor.rewrite.implementPureVirtuals] Implement pure virtual methods of 'File'
   16:30-16:30 => "\n    void close() override;\n    void flush() noexcept override;\n"

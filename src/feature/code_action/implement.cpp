@@ -148,7 +148,7 @@ void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
     if(auto edit = insert_members(unit, record, lines)) {
         out.push_back(CodeAction{
             .title = std::format("Implement pure virtual methods of '{}'", record->getName()),
-            .kind = protocol::CodeActionKind::RefactorRewrite,
+            .kind = action_kind::implement_pure_virtuals,
             .edits = {std::move(*edit)},
         });
     }

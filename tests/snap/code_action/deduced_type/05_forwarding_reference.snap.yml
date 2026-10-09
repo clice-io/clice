@@ -6,12 +6,12 @@ array:
 (no actions)
 
 lvalue:
-- [refactor.rewrite] Replace 'auto&&' with 'int&'
+- [refactor.rewrite.expandDeducedType] Replace 'auto&&' with 'int&'
   10:4-10:10 => "int&"
 
 pointer:
 (no actions)
 
 rvalue:
-- [refactor.rewrite] Replace 'auto' with 'int'
+- [refactor.rewrite.expandDeducedType] Replace 'auto' with 'int'
   11:4-11:8 => "int"
