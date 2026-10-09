@@ -18,9 +18,9 @@ if (process.platform === "linux") {
 
         // Fast deaths push the lone stateful worker into its respawn
         // backoff. SIGUSR2 names no request and, unlike a kill from outside
-        // (SIGKILL), counts as the worker failing by itself. The request
-        // after each waits for the worker to come back instead of answering
-        // empty; the last one waits out the longest backoff.
+        // (SIGKILL), counts as the worker failing by itself. A compile after
+        // each waits for the worker to come back instead of answering empty;
+        // the last one waits out the longest backoff.
         let previous = 0;
         for (let kill = 1; kill <= 3; kill++) {
             const [pid] = s.client.workerPids("SF-");
@@ -34,6 +34,12 @@ if (process.platform === "linux") {
             );
             process.kill(previous, "SIGUSR2");
             await died;
+            // A hover may be answered without a worker; a compile is not.
+            s.edit("main.cpp", { after: 'int x = "s";', insert: "\n" });
+            expect(
+                (await s.errors("main.cpp")).length,
+                `errors after kill ${kill}`,
+            ).toBeGreaterThan(0);
             expect(await s.hover(at("main.cpp", "int a|dd("))).not.toBeNull();
         }
 
