@@ -3526,6 +3526,44 @@ ZEST_CASE(BoostRearmsIdleTimer) {
     ZASSERT(f.pump.failed().size() == 1u);
 }
 
+ZEST_CASE(BoostSparesRunningRound) {
+    // A file boosted while the running round has it in flight is queued
+    // past the round and leads the next one. Moved into the running round,
+    // it would run there a second time and push the round's last file out.
+    IndexerFixture f;
+    f.project.config.project.enable_indexing.value = true;
+    f.project.config.project.idle_timeout_ms.value = 0;
+
+    llvm::SmallVector<Fid> files;
+    for(auto name: {"/fake/a.cpp", "/fake/b.cpp", "/fake/c.cpp"}) {
+        files.push_back(f.project.file_table.intern(Spelling::absolute(name)));
+        f.pump.enqueue(files.back(), ReindexReason::DepsOnly);
+    }
+
+    // Asked for each dispatched deps-only slot: the boost lands while the
+    // second file is claimed.
+    std::vector<llvm::SmallVector<Fid>> rounds(1);
+    f.pump.compiled_by_session = [&](Fid id) {
+        if(rounds.size() == 1 && rounds.front().size() == 1) {
+            f.pump.boost(id);
+        }
+        rounds.back().push_back(id);
+        return false;
+    };
+    auto conn = f.pump.on_progress_changed.connect([&] {
+        if(f.pump.progress().stage == IndexPump::Progress::Stage::End) {
+            rounds.emplace_back();
+        }
+    });
+    f.pump.schedule();
+    f.loop.run();
+
+    ZEXPECT(rounds.size() == 3u);
+    ZEXPECT(rounds[0] == files);
+    ZEXPECT(rounds[1] == llvm::SmallVector<Fid>{files[1]});
+    ZEXPECT(f.pump.is_idle());
+}
+
 };  // ZEST_SUITE(IndexReports)
 
 /// Forwards to a real database and logs the blob kinds of each write.

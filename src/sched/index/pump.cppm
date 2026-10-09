@@ -216,6 +216,9 @@ private:
     /// queue is compacted once a round has fully drained.
     std::vector<Fid> index_queue;
     std::size_t index_queue_pos = 0;
+    /// Where the running round's slots end. A slot past it waits for the
+    /// next round and may be a file the running round has in flight.
+    std::size_t round_end = 0;
 
     /// The pending-reindex debt: claim/settle bookkeeping, tickets and
     /// the crash-requeue budget live in the ledger. The pump-side rules
@@ -292,7 +295,6 @@ private:
     /// run_index_task per live slot, bounded by the feeder window.
     kota::task<> run_round_feeder(kota::task_group<>& workers,
                                   RoundState& round,
-                                  std::size_t round_end,
                                   std::size_t total,
                                   std::size_t& dispatched);
 
