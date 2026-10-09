@@ -124,6 +124,17 @@
       {
         "command": "clice.loadMoreContexts",
         "title": "Clice: Load More Compilation Contexts"
+      },
+      {
+        "command": "clice.switchSourceHeader",
+        "title": "Clice: Switch Source/Header"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "clice.switchSourceHeader",
+        "key": "alt+o",
+        "when": "editorTextFocus && (editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp)"
       }
     ],
     "semanticTokenTypes": [
@@ -250,6 +261,10 @@
         },
         {
           "command": "clice.queryContexts",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
+        },
+        {
+          "command": "clice.switchSourceHeader",
           "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp"
         }
       ],

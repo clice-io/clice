@@ -19,6 +19,7 @@ import { registerAliasRedirect } from "./feature/aliases";
 import { registerBuildConfiguration } from "./feature/configuration";
 import { registerCompilationContext } from "./feature/context";
 import { registerConflictCheck } from "./feature/conflicts";
+import { registerCounterparts } from "./feature/counterparts";
 import { registerInactiveRegions } from "./feature/inactive";
 
 let client: ClientHandle | undefined;
@@ -350,6 +351,7 @@ export async function activate(context: ExtensionContext) {
     registerBuildConfiguration(client, context);
     registerCompilationContext(client, context);
     registerConflictCheck(client, context);
+    registerCounterparts(client, context);
     registerAliasRedirect(context);
 
     await startServer(context);

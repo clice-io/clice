@@ -242,6 +242,15 @@ test("answers from the persisted index", async ({ session }) => {
         "includes",
     );
     expect(deps.result?.includes.map((d) => asUri(d.path))).toEqual([ws.uri("a.h")]);
+
+    const counterparts = await query<{
+        candidates: { path: string; reasons: string[] }[];
+        preferred: string | null;
+    }>(ws, "counterparts", "--path", "a.h");
+    expect(counterparts.result?.candidates.map((c) => [asUri(c.path), ...c.reasons])).toEqual([
+        [ws.uri("main.cpp"), "defines 1 of 1 declaration"],
+    ]);
+    expect(asUri(counterparts.result!.preferred!)).toBe(ws.uri("main.cpp"));
 });
 
 test("workspace spelled with a climb", async ({ session }) => {

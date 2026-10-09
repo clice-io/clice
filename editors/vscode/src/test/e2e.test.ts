@@ -396,6 +396,24 @@ suite("clice E2E", function () {
         assert.ok(automatic.automatic, "the reset leaves the automatic context");
     });
 
+    test("switch source/header without a counterpart", async function () {
+        this.timeout(60 * 1000);
+        const folder = workspaceFolder();
+        if (path.basename(folder.uri.fsPath) !== "header_context") {
+            this.skip();
+        }
+        assert.ok(document, "main file was not opened (earlier test failed)");
+
+        // utils.h defines everything it declares: the command reports that
+        // and leaves the editor where it was.
+        await vscode.window.showTextDocument(document);
+        await vscode.commands.executeCommand("clice.switchSourceHeader");
+        assert.strictEqual(
+            vscode.window.activeTextEditor?.document.uri.toString(),
+            document.uri.toString(),
+        );
+    });
+
     test("completion", async function () {
         this.timeout(60 * 1000);
         assert.ok(document, "main file was not opened (earlier test failed)");

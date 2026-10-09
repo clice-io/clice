@@ -343,6 +343,27 @@ void IndexQuery::for_each_relation(SymbolHash hash,
     }
 }
 
+Fid IndexQuery::definition_file(SymbolHash hash) const {
+    Fid found;
+    for_each_relation(hash,
+                      {},
+                      RelationKind::Definition,
+                      Order::LiveFirst,
+                      {.shard = false, .preamble = false, .overlay = false},
+                      [&](const RowSource& source, const Relation&) {
+                          found = source.file;
+                          return false;
+                      });
+    if(found.valid()) {
+        return found;
+    }
+    auto identity = index.identity_of(hash);
+    if(!identity || !has_flag(identity->flags, SymbolFlags::HasDefinition)) {
+        return {};
+    }
+    return Fid{identity->file};
+}
+
 std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t offset) const {
     auto source = serving(file);
     if(!source) {

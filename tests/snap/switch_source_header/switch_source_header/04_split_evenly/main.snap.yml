@@ -1,0 +1,8 @@
+---
+created_at: 2026-10-09
+input_file: switch_source_header/04_split_evenly/main.cpp
+---
+"codec.h":
+  candidates:
+    - { file: "${WS}/switch_source_header/04_split_evenly/decode.cpp", reasons: ["defines 1 of 2 declarations"] }
+    - { file: "${WS}/switch_source_header/04_split_evenly/encode.cpp", reasons: ["defines 1 of 2 declarations"] }

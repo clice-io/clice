@@ -39,3 +39,5 @@ Zed runs its built-in clangd for C and C++ as well. To use clice alone:
   }
 }
 ```
+
+Zed's `editor: switch source header` asks clangd alone, so it does nothing once clangd is off, and an extension cannot add the command for clice.

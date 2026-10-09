@@ -19,6 +19,7 @@ import {
 } from "vscode-languageserver-protocol/node";
 import { URI } from "vscode-uri";
 import {
+    CounterpartsRequest,
     CurrentContextRequest,
     ListConfigurationsRequest,
     LogFloodRequest,
@@ -28,6 +29,7 @@ import {
     StatsRequest,
     SwitchConfigurationRequest,
     SwitchContextRequest,
+    type CounterpartsResult,
     type CurrentContextResult,
     type ListConfigurationsResult,
     type LogFloodResult,
@@ -1243,6 +1245,10 @@ export class CliceClient {
             SwitchConfigurationRequest,
             uri === undefined ? { name } : { name, uri },
         );
+    }
+
+    counterparts(uri: string): Promise<CounterpartsResult> {
+        return this.sendRequest(CounterpartsRequest, { uri });
     }
 
     /// clice/internal/poll (test hook): run one tracker tick and apply its
