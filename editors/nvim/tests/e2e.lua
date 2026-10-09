@@ -194,7 +194,12 @@ if scenario.context then
     local function wait_for_context(automatic)
         local deadline = vim.uv.hrtime() + 10e9
         while vim.uv.hrtime() < deadline do
-            if request('clice/currentContext', text_document).automatic == automatic then
+            local current = request('clice/currentContext', text_document)
+            if
+                current.automatic == automatic
+                and type(current.context) == 'table'
+                and vim.fs.basename(vim.uri_to_fname(current.context.uri)) == scenario.context
+            then
                 return true
             end
             vim.wait(200)

@@ -4,13 +4,13 @@ Neovim 0.11 or later.
 
 ## Setup
 
-[nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) carries a copy of [`lsp/clice.lua`](lsp/clice.lua); with it installed:
+[nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) carries a copy of [`lsp/clice.lua`](lsp/clice.lua), updated after this one; with it installed:
 
 ```lua
 vim.lsp.enable('clice')
 ```
 
-Without nvim-lspconfig, copy `lsp/clice.lua` into the `lsp/` directory of your config, or add this directory to `runtimepath`, which also dims inactive preprocessor branches (`plugin/clice.lua`). The config runs `clice` from `PATH`; to run another binary:
+For this directory's config, without nvim-lspconfig or ahead of its copy, copy `lsp/clice.lua` into the `after/lsp/` directory of your config, which takes precedence over nvim-lspconfig's; or append this directory to `runtimepath`, which also dims inactive preprocessor branches (`plugin/clice.lua`). The config runs `clice` from `PATH`; to run another binary:
 
 ```lua
 vim.lsp.config('clice', { cmd = { '/path/to/clice', 'serve' } })
@@ -49,13 +49,11 @@ vim.api.nvim_create_autocmd('LspAttach', {
     vim.lsp.inlay_hint.enable(true, { bufnr = args.buf })
     -- `import ` completes module names.
     vim.lsp.completion.enable(true, client.id, args.buf, { autotrigger = true })
-    vim.wo[0][0].foldmethod = 'expr'
-    vim.wo[0][0].foldexpr = 'v:lua.vim.lsp.foldexpr()'
-    vim.wo[0][0].foldtext = 'v:lua.vim.lsp.foldtext()'
-    vim.api.nvim_create_autocmd('CursorHold', { buffer = args.buf, callback = vim.lsp.buf.document_highlight })
-    vim.api.nvim_create_autocmd('CursorMoved', { buffer = args.buf, callback = vim.lsp.buf.clear_references })
+    local group = vim.api.nvim_create_augroup('clice-highlight-' .. args.buf, {})
+    vim.api.nvim_create_autocmd('CursorHold', { group = group, buffer = args.buf, callback = vim.lsp.buf.document_highlight })
+    vim.api.nvim_create_autocmd('CursorMoved', { group = group, buffer = args.buf, callback = vim.lsp.buf.clear_references })
   end,
 })
 ```
 
-Call and type hierarchies are `vim.lsp.buf.incoming_calls()`, `outgoing_calls()` and `typehierarchy('subtypes' | 'supertypes')`.
+Folding by clice's ranges, with their collapsed text, is `vim.lsp.foldexpr()` and `vim.lsp.foldtext()` (`:help vim.lsp.foldexpr()`). Call and type hierarchies are `vim.lsp.buf.incoming_calls()`, `outgoing_calls()` and `typehierarchy('subtypes' | 'supertypes')`.
