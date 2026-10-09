@@ -627,6 +627,11 @@ test("withholds rows the disk moved on from", async ({ session }) => {
     );
     expect(header.result?.symbols.map((s) => s.name)).toContain("Animal");
     expect(header.stale).toEqual([]);
+
+    // The edited file's definitions no longer vouch for a pairing.
+    const pairs = await query<{ candidates: unknown[] }>(ws, "counterparts", "--path", "a.h");
+    expect(pairs.result?.candidates).toEqual([]);
+    expect(pairs.stale.map(asUri)).toEqual([ws.uri("main.cpp")]);
 });
 
 test("fresh runs the batch indexer", async ({ session }) => {

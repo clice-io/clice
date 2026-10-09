@@ -343,6 +343,13 @@ void IndexQuery::for_each_relation(SymbolHash hash,
     }
 }
 
+const Shard* IndexQuery::declaring_rows(Fid file) const {
+    if(auto source = serving(file)) {
+        return source->rows;
+    }
+    return live && live->is_open(file) ? index.shard(file) : nullptr;
+}
+
 Fid IndexQuery::definition_file(SymbolHash hash) const {
     Fid found;
     for_each_relation(hash,
@@ -363,11 +370,8 @@ Fid IndexQuery::definition_file(SymbolHash hash) const {
     }
     // The table never retracts a definition: a file reindexed or edited
     // without it keeps the record until another unit defines the symbol.
-    // The rows serving the file say whether it still does — an open
-    // buffer's own when they are current, else the file's shard.
     Fid file{identity->file};
-    auto source = serving(file);
-    auto* rows = source ? source->rows : index.shard(file);
+    auto* rows = declaring_rows(file);
     bool defines = false;
     if(rows) {
         rows->lookup(hash, RelationKind::Definition, [&](const Relation&) {

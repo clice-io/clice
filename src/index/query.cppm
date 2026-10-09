@@ -303,6 +303,13 @@ public:
     /// indexed), then disk shards.
     std::optional<Site> first_site(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
+    /// The rows saying which symbols a file declares and defines, for a
+    /// question positions play no part in: the rows serving the file, else
+    /// for a buffer edited since its last compile the shard of its disk
+    /// text — the edit moved positions, not most of what the file declares.
+    /// Null for a closed file whose rows the freshness gate withholds.
+    const Shard* declaring_rows(Fid file) const;
+
     /// The file defining an external symbol: an open buffer's own rows
     /// first — a buffer its own compile serves stays out of the project
     /// table until it closes — else the definition the project table

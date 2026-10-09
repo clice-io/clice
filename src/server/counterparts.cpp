@@ -95,15 +95,10 @@ struct Pairing {
         return it->second;
     }
 
-    /// The rows saying what a file declares and defines: those serving it,
-    /// else its shard even when the text has moved on from it — positions
-    /// play no part in pairing, and a buffer edited since its last compile
-    /// must not lose its evidence.
     const index::Shard* rows_of(Fid other) {
         auto [it, inserted] = rows.try_emplace(other);
         if(inserted) {
-            auto source = ctx.query.serving(other);
-            it->second = source ? source->rows : ctx.project.project_index.shard(other);
+            it->second = ctx.query.declaring_rows(other);
         }
         return it->second;
     }
