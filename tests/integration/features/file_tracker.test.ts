@@ -41,6 +41,14 @@ int feature_off() { return 0; }
 #endif
 `;
 
+/// Initialize and let the index round that starts at once end: it looks at
+/// the files a case then changes, and would report their changes before the
+/// case's own polls do.
+async function start(client: CliceClient, workspace: Workspace): Promise<void> {
+    await client.initialize(workspace);
+    await client.sync();
+}
+
 async function eventsOf(
     client: CliceClient,
     loop: "cdb" | "workspace",
@@ -53,7 +61,7 @@ test("cdb flag change recompiles", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", GATED_MAIN);
     workspace.writeCDB(["main.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     const mainUri = workspace.uri("main.cpp");
     await client.openAndWait("main.cpp");
@@ -70,7 +78,7 @@ test("cdb stamped tick settles", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", GATED_MAIN);
     workspace.writeCDB(["main.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     const stamped = { force: false };
     expect(await eventsOf(client, "cdb", stamped), "unchanged stamp must be quiet").toBe(0);
@@ -87,7 +95,7 @@ test("cdb new entry indexed", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", "int main() { return 0; }\n");
     workspace.writeCDB(["main.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     const mainUri = workspace.uri("main.cpp");
     await client.openAndWait("main.cpp");
@@ -107,7 +115,7 @@ test("cdb removed entry recheck", async ({ session }) => {
     workspace.write("header.h", "inline int shared() { return 0; }\n");
     workspace.write("gone.cpp", '#include "header.h"\n');
     workspace.writeCDB(["gone.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     const headerUri = workspace.uri("header.h");
     let result = await client.queryContext(headerUri);
@@ -124,7 +132,7 @@ test("cdb appears after startup", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", GATED_MAIN);
     workspace.write("lib.cpp", "int lib_entry() { return 1; }\n");
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     const mainUri = workspace.uri("main.cpp");
     await client.openAndWait("main.cpp");
@@ -151,7 +159,7 @@ test("checkout updates workspace", async ({ session }) => {
     const closedV1 = '#include "header.h"\nint use_target() { return TARGET(); }\n';
     workspace.write("closed.cpp", closedV1);
     workspace.writeCDB(["main.cpp", "closed.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     const headerUri = workspace.uri("header.h");
     const mainUri = workspace.uri("main.cpp");
@@ -188,7 +196,7 @@ test("checkout under an open header", async ({ session }) => {
     workspace.write("header.h", HEADER_V1);
     workspace.write("closed.cpp", '#include "header.h"\nint use_target() { return TARGET(); }\n');
     workspace.writeCDB(["closed.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     const headerUri = workspace.uri("header.h");
     const closedUri = workspace.uri("closed.cpp");
@@ -217,7 +225,7 @@ test("macro include change reindexes", async ({ session }) => {
         '#define HEADER "header.h"\n#include HEADER\nint use_target() { return TARGET(); }\n',
     );
     workspace.writeCDB(["closed.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     const headerUri = workspace.uri("header.h");
     const closedUri = workspace.uri("closed.cpp");
@@ -242,7 +250,7 @@ test("created header reaches includers", async ({ session }) => {
     workspace.write("open.cpp", '#include "gen.h"\nint use_a() { return make(); }\n');
     workspace.write("closed.cpp", '#include "gen.h"\nint use_b() { return make(); }\n');
     workspace.writeCDB(["open.cpp", "closed.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     const [openUri] = await client.openAndWait("open.cpp");
     client.assertHasErrors(openUri, "gen.h does not exist yet");
@@ -265,7 +273,7 @@ test("dependency change keeps buffer rows", async ({ session }) => {
     workspace.write("b.cpp", '#include "h.h"\nint use_b() { return shared_sym; }\n');
     workspace.write("c.cpp", "int shared_sym = 1;\n");
     workspace.writeCDB(["a.cpp", "b.cpp", "c.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     const [aUri] = await client.openAndWait("a.cpp");
     expect(await client.waitForIndex(aUri, "use_b")).toBe(true);
@@ -293,7 +301,7 @@ test("touch emits no events", async ({ session }) => {
     workspace.write("header.h", HEADER_V1);
     workspace.write("main.cpp", '#include "header.h"\n');
     workspace.writeCDB(["main.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     expect(await eventsOf(client, "workspace")).toBe(0);
 
@@ -343,7 +351,7 @@ test("cdb flag change reindexes closed", async ({ session }) => {
     workspace.write("main.cpp", "int main() { return 0; }\n");
     workspace.write("lib.cpp", GATED_LIB);
     workspace.writeCDB(["main.cpp", "lib.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     const mainUri = workspace.uri("main.cpp");
     await client.openAndWait("main.cpp");
@@ -368,7 +376,7 @@ test("rewrite before first tick reported", async ({ session }) => {
     workspace.write("header.h", HEADER_V1);
     workspace.write("closed.cpp", '#include "header.h"\nint use_target() { return TARGET(); }\n');
     workspace.writeCDB(["closed.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     const headerUri = workspace.uri("header.h");
     const closedUri = workspace.uri("closed.cpp");
@@ -393,11 +401,14 @@ test("delete while open reported", async ({ session }) => {
     workspace.write("header.h", HEADER_V1);
     workspace.write("main.cpp", '#include "header.h"\nint main() { return VALUE; }\n');
     workspace.writeCDB(["main.cpp"]);
-    await client.initialize(workspace);
+    await start(client, workspace);
 
     // A buffer shadows the disk for its own file's compile only: the
-    // removal is main.cpp's news while the header is still open.
+    // removal is main.cpp's news while the header is still open. Settled
+    // first: an index run looking at the header after the removal would
+    // report it before the poll does.
     const [header] = client.open("header.h");
+    await client.sync();
     expect(await eventsOf(client, "workspace")).toBe(0);
     workspace.rm("header.h");
     expect(await eventsOf(client, "workspace"), "an open file's removal is reported").toBe(1);
