@@ -175,12 +175,12 @@ export interface ServeOptions {
     /// Files written over the project before the server starts; the whole
     /// workspace of a case without a project.
     files?: Record<string, string>;
-    /// "<request> <file>", as "tuRun src/registry.cpp": the worker running
-    /// the first such request dies the way a kill from outside ends it,
-    /// naming no request (CLICE_TEST_KILL_REQUEST). The case ends checking
-    /// that the kill happened and that the worker crashes it reports are
-    /// the only anomalies.
-    killOn?: string;
+    /// A request of a file, as `{ request: "tuRun", file: "src/registry.cpp" }`:
+    /// the worker running the first such request dies the way a kill from
+    /// outside ends it, naming no request (CLICE_TEST_KILL_REQUEST). The case
+    /// ends checking that the kill happened and that the one worker crash it
+    /// reports is the only anomaly.
+    killOn?: { request: string; file: string };
 }
 
 /// A hold on the next reply of a build (clice/internal/hold).
@@ -271,9 +271,7 @@ export class Serve {
         }
         const s = new Serve(session, project, workspace, manifest, options);
         if (options.killOn !== undefined) {
-            const space = options.killOn.indexOf(" ");
-            const request = options.killOn.slice(0, space);
-            const file = options.killOn.slice(space + 1);
+            const { request, file } = options.killOn;
             workspace.write(s.killFile(), `${request} ${workspace.displayPath(file)}`);
         }
         await s.start();
@@ -613,6 +611,15 @@ export class Serve {
             const changes = new Map<string, proto.TextEdit[]>();
             for (const change of edit.documentChanges ?? []) {
                 if ("textDocument" in change) {
+                    // An editor refuses an edit computed for another version
+                    // of the buffer.
+                    const file = this.relative(change.textDocument.uri);
+                    const { version } = change.textDocument;
+                    if (version !== null && version !== this.documents.get(file)?.version) {
+                        throw new Error(
+                            `the edit is for ${file} v${version}, which is not the open buffer`,
+                        );
+                    }
                     changes.set(
                         change.textDocument.uri,
                         change.edits.filter((item): item is proto.TextEdit => "newText" in item),
@@ -742,15 +749,16 @@ export class Serve {
         if (client !== null && !client.disposed) {
             await client.shutdown({ verbose: failed });
         }
-        if (this.options.killOn !== undefined) {
+        const killOn = this.options.killOn;
+        if (killOn !== undefined) {
             if (!this.workspace.exists(`${this.killFile()}.taken`)) {
-                throw new Error(`killOn: no worker ran ${JSON.stringify(this.options.killOn)}`);
+                throw new Error(`killOn: no worker ran ${killOn.request} ${killOn.file}`);
             }
-            const others = anomaliesInLogFiles(this.workspace.root).filter(
-                (anomaly) => !anomaly.startsWith("WorkerCrash "),
-            );
-            if (others.length > 0) {
-                throw new Error(`anomalies besides the worker crash:\n${others.join("\n")}`);
+            const anomalies = anomaliesInLogFiles(this.workspace.root);
+            if (anomalies.length !== 1 || anomalies[0]?.startsWith("WorkerCrash ") !== true) {
+                throw new Error(
+                    `killOn: one worker crash expected, the logs have:\n${anomalies.join("\n")}`,
+                );
             }
         }
     }

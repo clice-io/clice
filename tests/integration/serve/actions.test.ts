@@ -1,6 +1,7 @@
 /// The action layer against a real server: each action ends on the event it
 /// names.
 
+import { actionsOf } from "@clice/tools/client/edits";
 import { at, expect, serve } from "../fixtures.ts";
 
 serve("tiny")("buffer edits reach the compile", async ({ s }) => {
@@ -43,5 +44,15 @@ serve.files({ "main.cpp": "int main() {\n    auto value = 1;\n    return value;\
         expect(text).toContain("    int value = 1;");
         expect(diagnostics).toEqual([]);
         expect(s.disk.read("main.cpp")).toContain("auto value");
+    },
+);
+
+serve.files({ "main.cpp": "int main() {\n    auto value = 1;\n    return value;\n}\n" })(
+    "an edit for an older buffer is refused",
+    async ({ s }) => {
+        await s.clean("main.cpp");
+        const [action] = actionsOf(await s.codeActions(at("main.cpp", "auto value")));
+        s.edit("main.cpp", { before: "int main", insert: "\n" });
+        await expect(s.apply(action?.edit ?? {})).rejects.toThrow("not the open buffer");
     },
 );

@@ -132,7 +132,10 @@ function servedProjects(node: ts.Node, source: ts.SourceFile): string[] | Error 
         list = findConst(source, list.text);
     }
     if (list !== undefined && ts.isArrayLiteralExpression(list)) {
-        return list.elements.flatMap((element) => literal(element) ?? []);
+        const projects = list.elements.map((element) => literal(element));
+        return projects.every((project) => project !== undefined)
+            ? projects
+            : new Error("serve.each() names a project the check cannot read");
     }
     const table =
         list !== undefined &&
@@ -145,11 +148,15 @@ function servedProjects(node: ts.Node, source: ts.SourceFile): string[] | Error 
     if (declaration === undefined || !ts.isObjectLiteralExpression(declaration)) {
         return new Error("serve.each() names its projects in a way the check cannot read");
     }
-    return declaration.properties.flatMap((property) =>
-        property.name !== undefined && ts.isStringLiteral(property.name)
-            ? [property.name.text]
-            : [],
+    const projects = declaration.properties.map((property) =>
+        property.name !== undefined &&
+        (ts.isStringLiteral(property.name) || ts.isIdentifier(property.name))
+            ? property.name.text
+            : undefined,
     );
+    return projects.every((project) => project !== undefined)
+        ? projects
+        : new Error("serve.each() names a project the check cannot read");
 }
 
 /// The projects behind a test call's callee: `serve(...)`, a constant

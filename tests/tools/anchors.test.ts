@@ -32,13 +32,20 @@ test("a missing anchor is reported", () => {
             '    s.disk.edit(s.file("registry"), { replace: "#include", with: "" });',
             '    at("include/shapes/registry.h", "int registry_count();");',
             "});",
+            "const KINDS = { tiny: 1 };",
+            'serve.each(Object.keys(KINDS))("z", async ({ s }) => {',
+            '    s.edit("main.cpp", { remove: "gone" });',
+            "});",
+            'serve.each(["tiny", name])("w", async () => {});',
         ].join("\n"),
     );
     try {
         expect(checkAnchors([file])).toEqual([
+            "case.test.ts:14: serve.each() names a project the check cannot read",
             'case.test.ts:3: tiny: main.cpp has "return" more than once',
             'case.test.ts:7: shapes/modules: src/registry.cpp has no "#include"',
             "case.test.ts:8: shapes/modules: no file include/shapes/registry.h",
+            'case.test.ts:12: tiny: main.cpp has no "gone"',
         ]);
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });

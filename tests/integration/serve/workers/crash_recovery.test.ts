@@ -3,7 +3,7 @@
 
 import { expect, serve } from "../../fixtures.ts";
 
-serve("shapes/headers", { killOn: "tuRun src/registry.cpp" })(
+serve("shapes/headers", { killOn: { request: "tuRun", file: "src/registry.cpp" } })(
     "crash during indexing",
     async ({ s }) => {
         await s.indexed();
