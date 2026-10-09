@@ -849,7 +849,7 @@ std::optional<std::pair<BuildKind, llvm::StringRef>> probed_build(const Params& 
 /// superseded — comes back cancelled whatever the worker had done.
 template <typename Result>
 bool build_ran(const Result& result, bool sent) {
-    return sent && (result.has_value() || result.error().code != dispatch_errc::cancelled);
+    return sent && (result.has_value() || result.error().code != worker::dispatch_errc::cancelled);
 }
 
 template <typename Params>
