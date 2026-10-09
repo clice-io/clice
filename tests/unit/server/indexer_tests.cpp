@@ -3526,6 +3526,46 @@ ZEST_CASE(BoostRearmsIdleTimer) {
     ZASSERT(f.pump.failed().size() == 1u);
 }
 
+ZEST_CASE(AwaitIdleSpansRounds) {
+    // A file queued while a round runs gets a round of its own; a waiter
+    // sleeps through the boundary and wakes once both ended.
+    IndexerFixture f;
+    f.project.config.project.enable_indexing.value = true;
+    f.project.config.project.idle_timeout_ms.value = 0;
+
+    auto a = f.project.file_table.intern(Spelling::absolute("/fake/a.cpp"));
+    auto b = f.project.file_table.intern(Spelling::absolute("/fake/b.cpp"));
+    f.pump.enqueue(a, ReindexReason::ContentChanged);
+
+    bool grew = false;
+    int ends = 0;
+    auto conn = f.pump.on_progress_changed.connect([&] {
+        auto stage = f.pump.progress().stage;
+        if(stage == IndexPump::Progress::Stage::Report && !grew) {
+            grew = true;
+            f.pump.enqueue(b, ReindexReason::ContentChanged);
+        }
+        if(stage == IndexPump::Progress::Stage::End) {
+            ends += 1;
+        }
+    });
+
+    int ends_at_wake = 0;
+    auto waiter = [&]() -> kota::task<> {
+        co_await f.pump.await_idle();
+        ends_at_wake = ends;
+    };
+    f.pump.schedule();
+    auto task = waiter();
+    f.loop.schedule(task);
+    f.loop.run();
+
+    ZASSERT(grew);
+    ZASSERT(ends == 2);
+    ZASSERT(ends_at_wake == 2);
+    ZASSERT(f.pump.is_idle());
+}
+
 };  // ZEST_SUITE(IndexReports)
 
 /// Forwards to a real database and logs the blob kinds of each write.

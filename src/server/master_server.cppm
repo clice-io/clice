@@ -11,6 +11,7 @@ import :server.session;
 import :support.anomaly;
 import :support.signal;
 import :worker.pool;
+import :worker.probe;
 
 namespace clice {
 
@@ -186,6 +187,20 @@ public:
 
     void schedule_shutdown();
 
+    /// Whether the test hooks the harness asks for at initialize time are
+    /// on (project.test_hooks of the first project).
+    bool test_hooks() const;
+
+    /// Test hook (clice/internal/sync): wait until no project has work in
+    /// flight — no round of the task graph, no index round running or
+    /// queued — and the quiet held across a few loop turns: work a request
+    /// or a deferred drain starts surfaces a turn or two after it was asked
+    /// for.
+    kota::task<> settle();
+
+    /// What settle() still waits for, one line each; empty once settled.
+    std::vector<std::string> pending_work();
+
     kota::cancellation_token shutdown_token() const {
         return shutdown_source.token();
     }
@@ -194,6 +209,9 @@ public:
 
     /// The process's fid space, shared by every project.
     FileTable files;
+
+    /// Fed by the pool while test hooks are on (see WorkerPool::probe).
+    BuildProbe probe;
 
     /// The workers every project compiles and indexes on.
     WorkerPool pool;

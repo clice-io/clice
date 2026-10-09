@@ -238,6 +238,13 @@ public:
     /// and every round's completion has fired.
     bool idle() const;
 
+    /// The nodes whose round is in flight.
+    llvm::SmallVector<NodeId> compiling() const;
+
+    /// Wait until no round is in flight: the rounds running now, and the
+    /// ones they and their waiters spawn, have all landed.
+    kota::task<> await_rounds();
+
     /// Structural sanity that holds at every drain boundary: a compiling
     /// node has an unfinished round, and a finished round never leaves the
     /// compiling flag behind.

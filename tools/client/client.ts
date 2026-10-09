@@ -20,14 +20,19 @@ import {
 import { URI } from "vscode-uri";
 import {
     CurrentContextRequest,
+    HeldNotification,
+    HoldRequest,
     ListConfigurationsRequest,
     LogFloodRequest,
     PollRequest,
     QueryContextRequest,
+    ReleaseRequest,
     ResetContextRequest,
     StatsRequest,
     SwitchConfigurationRequest,
     SwitchContextRequest,
+    SyncRequest,
+    type BuildKind,
     type CurrentContextResult,
     type ListConfigurationsResult,
     type LogFloodResult,
@@ -36,6 +41,8 @@ import {
     type StatsResult,
     type SwitchConfigurationResult,
     type SwitchContextResult,
+    type SyncParams,
+    type SyncResult,
 } from "../protocol/protocol.ts";
 import {
     anomalyGateFailure,
@@ -145,8 +152,9 @@ export interface StartOptions {
 
 export interface InitializeOptions {
     initializationOptions?: Record<string, unknown> | undefined;
-    /// Whether to overlay the test defaults — one worker of each kind and
-    /// background polling off — onto the initialization options.
+    /// Whether to overlay the test defaults — one worker of each kind,
+    /// background polling off, no idle wait before background indexing, and
+    /// the test hooks on — onto the initialization options.
     /// A benchmark switches them off to run the server's real defaults,
     /// which stay spelled in one place: the C++ config initializers.
     testDefaults?: boolean | undefined;
@@ -172,8 +180,11 @@ interface Transport {
 /// the cache pinned into the workspace (so `.clice/` cleanup prevents a
 /// stale PCH) and, unless switched off, the test defaults — one worker of
 /// each kind (halves the per-test spawn cost; tests needing more pass their
-/// own counts) and background polling disabled (tests drive ticks
-/// deterministically through the clice/internal/poll hook).
+/// own counts), background polling disabled (tests drive ticks
+/// deterministically through the clice/internal/poll hook), background
+/// indexing without the idle wait that batches an editor's keystrokes
+/// (tests wait through clice/internal/sync, not the clock), and the test
+/// hooks on.
 export function initializationOptionsFor(
     ws: Workspace,
     options: InitializeOptions,
@@ -189,6 +200,8 @@ export function initializationOptionsFor(
     if (options.testDefaults ?? true) {
         project["stateless_worker_count"] ??= 1;
         project["stateful_worker_count"] ??= 1;
+        project["idle_timeout_ms"] ??= 0;
+        project["test_hooks"] ??= true;
         tracker["workspace_poll_seconds"] ??= 0;
     }
     initializationOptions["project"] = project;
@@ -234,6 +247,10 @@ export class CliceClient {
 
     private diagnosticsWaiters = new Map<string, (() => void)[]>();
     private publishes = new Map<string, number>();
+    /// Holds whose reply the server parked (clice/internal/held), and the
+    /// waiters of the ones not parked yet.
+    private parked = new Set<number>();
+    private parkWaiters = new Map<number, () => void>();
 
     // Retention cap for drained stderr: long stress runs mirror the whole
     // server log, and the teardown scans only need the tail (sanitizer
@@ -280,6 +297,11 @@ export class CliceClient {
         });
         this.onNotification(proto.LogMessageNotification.type, (p) => {
             this.logMessages.push(p);
+        });
+        this.onNotification(HeldNotification, (p) => {
+            this.parked.add(p.id);
+            this.parkWaiters.get(p.id)?.();
+            this.parkWaiters.delete(p.id);
         });
         this.connection.onRequest(proto.WorkDoneProgressCreateRequest.type, (p) => {
             this.progressTokens.push(String(p.token));
@@ -1264,6 +1286,35 @@ export class CliceClient {
     /// clice/internal/logFlood (test hook): deterministic stderr volume.
     logFlood(count: number, size: number): Promise<LogFloodResult> {
         return this.sendRequest(LogFloodRequest, { count, size });
+    }
+
+    /// clice/internal/sync (test hook): answers once the server has no work
+    /// left, or at the deadline with the work still pending.
+    sync(params: SyncParams = {}): Promise<SyncResult> {
+        return this.sendRequest(SyncRequest, params);
+    }
+
+    /// clice/internal/hold (test hook): park the next reply of a `kind`
+    /// build of `uri`; returns the hold's id.
+    async hold(kind: BuildKind, uri: string): Promise<number> {
+        return (await this.sendRequest(HoldRequest, { kind, uri })).id;
+    }
+
+    /// Resolves once the hold parked a reply (clice/internal/held).
+    parkedBy(id: number): Promise<void> {
+        if (this.parked.has(id)) {
+            return Promise.resolve();
+        }
+        return new Promise((resolve) => {
+            this.parkWaiters.set(id, resolve);
+        });
+    }
+
+    /// clice/internal/release (test hook): let the parked reply go on, or
+    /// drop a hold no reply reached.
+    async release(id: number): Promise<void> {
+        this.parked.delete(id);
+        await this.sendRequest(ReleaseRequest, { id });
     }
 }
 

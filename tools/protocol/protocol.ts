@@ -2,7 +2,7 @@
 /// shared by the integration tests and the VSCode extension. Wire shapes
 /// mirror src/server/extension.h (camelCase on the wire).
 
-import { RequestType, RequestType0 } from "vscode-languageserver-protocol";
+import { NotificationType, RequestType, RequestType0 } from "vscode-languageserver-protocol";
 
 /// A selectable compilation context of a file.
 export interface ContextItem {
@@ -211,9 +211,76 @@ export interface StatsResult {
     checksTrusted: number;
     /// Preprocessor passes that looked for a unit's imports.
     importScans: number;
+    /// The builds each file went through, while test hooks are on.
+    builds: FileBuilds[];
+}
+
+export interface FileBuilds {
+    uri: string;
+    compile: number;
+    pch: number;
+    pcm: number;
+    index: number;
 }
 
 export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/stats");
+
+/// clice/internal/sync — TEST-ONLY, present while project.test_hooks is on.
+/// Answers once the server has no work left: no compile, PCH or PCM build
+/// and no index round in flight or queued, a round's save included — and it
+/// stayed so for a few loop turns.
+export interface SyncParams {
+    /// How long to wait before answering with the work still pending; four
+    /// minutes by default.
+    deadlineMs?: number;
+    /// Tick the workspace loop first, so changes on disk are part of the work
+    /// waited for.
+    poll?: boolean;
+}
+
+export interface SyncResult {
+    /// URIs of the files whose latest index attempt failed for good.
+    failed: string[];
+    /// Index state remains that no save committed.
+    unsaved: boolean;
+    /// What still ran at the deadline, one line each; empty once settled.
+    pending: string[];
+}
+
+export const SyncRequest = new RequestType<SyncParams, SyncResult, void>("clice/internal/sync");
+
+/// The builds a hold can park the reply of.
+export type BuildKind = "compile" | "pch" | "pcm" | "index";
+
+/// clice/internal/hold — TEST-ONLY, present while project.test_hooks is on.
+/// Parks the next reply of a build of `kind` for the file between its arrival
+/// and its delivery: to the server the build is still in flight.
+/// clice/internal/held announces the parked reply; clice/internal/release
+/// lets it go on, or drops a hold no reply reached.
+export interface HoldParams {
+    kind: BuildKind;
+    uri: string;
+}
+
+export interface HoldResult {
+    id: number;
+}
+
+export const HoldRequest = new RequestType<HoldParams, HoldResult, void>("clice/internal/hold");
+
+export interface ReleaseParams {
+    id: number;
+}
+
+export const ReleaseRequest = new RequestType<ReleaseParams, Record<string, never>, void>(
+    "clice/internal/release",
+);
+
+export interface HeldParams {
+    id: number;
+}
+
+export const HeldNotification = new NotificationType<HeldParams>("clice/internal/held");
 
 /// The keys of a wire type, for pinning a live reply's shape against the
 /// hand-written C++ struct: the listing is checked complete at compile

@@ -199,6 +199,69 @@ struct StatsResult {
 
     /// Preprocessor passes that looked for a unit's imports.
     std::uint64_t import_scans = 0;
+
+    /// The builds each file went through, while test hooks are on (see
+    /// BuildProbe); empty otherwise.
+    struct FileBuilds {
+        std::string uri;
+        std::uint32_t compile = 0;
+        std::uint32_t pch = 0;
+        std::uint32_t pcm = 0;
+        std::uint32_t index = 0;
+    };
+
+    std::vector<FileBuilds> builds;
+};
+
+/// clice/internal/sync — TEST-ONLY, present while project.test_hooks is on.
+/// Answers once the server has no work left: no compile, PCH or PCM build
+/// and no index round in flight or queued, a round's save included — and
+/// it stayed so for a few loop turns, so work an earlier message starts
+/// late is waited for too. Absent from capabilities and user docs.
+struct SyncParams {
+    /// How long to wait before answering with the work still pending;
+    /// four minutes by default.
+    std::optional<std::uint32_t> deadline_ms;
+
+    /// Tick the workspace loop first (see PollParams), so changes on disk
+    /// are part of the work waited for.
+    std::optional<bool> poll;
+};
+
+struct SyncResult {
+    /// Files whose latest index attempt failed for good.
+    std::vector<std::string> failed;
+
+    /// Index state remains that no save committed.
+    bool unsaved = false;
+
+    /// What still ran at the deadline, one line each; empty once settled.
+    std::vector<std::string> pending;
+};
+
+/// clice/internal/hold — TEST-ONLY, present while project.test_hooks is on.
+/// Parks the next reply of a build of `kind` ("compile", "pch", "pcm" or
+/// "index") for the file between its arrival and its delivery: to the
+/// server the build is still in flight. clice/internal/held announces the
+/// parked reply; clice/internal/release lets it go on (see BuildProbe).
+struct HoldParams {
+    std::string kind;
+    std::string uri;
+};
+
+struct HoldResult {
+    std::uint64_t id = 0;
+};
+
+struct ReleaseParams {
+    std::uint64_t id = 0;
+};
+
+struct ReleaseResult {};
+
+/// Notification: the hold parked a reply.
+struct HeldParams {
+    std::uint64_t id = 0;
 };
 
 }  // namespace clice::ext

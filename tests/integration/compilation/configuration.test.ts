@@ -100,15 +100,15 @@ test("restart activates the selection", async ({ session }) => {
 
 test("each configuration keeps its own index", async ({ session }) => {
     const { client, workspace } = await session("cdb/two_configurations");
-    const [main] = await client.openAndWait("main.cpp");
-    expect(await client.waitForIndex(main, "debug_only")).toBe(true);
+    expect((await client.sync()).failed).toEqual([]);
+    expect(await client.workspaceSymbols("debug_only")).toHaveLength(1);
     expect(await sweptLog(client), "the cold start indexes").toContain("] Indexing ");
     expect(hasLibrary(workspace, "debug")).toBe(true);
     expect(workspace.indexLibrary("release")).toBeUndefined();
 
     const release = await switchAndRestart(session, client, workspace, "release");
-    const [main2] = await release.openAndWait("main.cpp");
-    expect(await release.waitForIndex(main2, "release_only")).toBe(true);
+    expect((await release.sync()).failed).toEqual([]);
+    expect(await release.workspaceSymbols("release_only")).toHaveLength(1);
     expect(hasLibrary(workspace, "release")).toBe(true);
     expect(
         (await release.workspaceSymbols("debug_only"))?.length ?? 0,
@@ -118,8 +118,8 @@ test("each configuration keeps its own index", async ({ session }) => {
     // Back under debug the persisted library serves as is: the sweep's
     // hash gate finds nothing changed, so no unit is indexed again.
     const debug = await switchAndRestart(session, release, workspace, "debug");
-    const [main3] = await debug.openAndWait("main.cpp");
-    expect(await debug.waitForIndex(main3, "debug_only")).toBe(true);
+    expect((await debug.sync()).failed).toEqual([]);
+    expect(await debug.workspaceSymbols("debug_only")).toHaveLength(1);
     const log = await sweptLog(debug);
     expect(log, "no unit was reindexed").not.toContain("] Indexing ");
     expect(log).not.toContain("reindexing");

@@ -8,6 +8,7 @@ module;
 
 module clice;
 
+import :sched.graph;
 import :server.features;
 import :server.lsp_client;
 import :server.master_server;
@@ -17,6 +18,7 @@ import :support.logging;
 import :support.process;
 import :vfs.file_system;
 import :vfs.path;
+import :worker.probe;
 
 namespace clice {
 
@@ -161,6 +163,9 @@ void MasterServer::initialize() {
              pool_opts.stateless_count);
 
     pool_opts.log_dir = session_log_dir;
+    if(test_hooks()) {
+        pool.probe = &probe;
+    }
     if(pool.start(pool_opts)) {
         lifecycle = ServerLifecycle::Ready;
         wire();
@@ -847,6 +852,69 @@ void MasterServer::schedule_shutdown() {
         return;
     lifecycle = ServerLifecycle::ShuttingDown;
     shutdown_source.cancel();
+}
+
+bool MasterServer::test_hooks() const {
+    return projects.front()->project.config.project.test_hooks.value;
+}
+
+/// Whether the project has work settle() waits for. A queue no round will
+/// take, indexing being off, is none.
+static bool working(ProjectServer& project) {
+    return !project.sched.graph.compiling().empty() ||
+           (project.project.config.project.enable_indexing.value && !project.sched.pump.is_idle());
+}
+
+kota::task<> MasterServer::settle() {
+    int quiet = 0;
+    while(quiet < 3) {
+        auto busy = llvm::find_if(projects, [](auto& project) { return working(*project); });
+        if(busy == projects.end()) {
+            quiet += 1;
+            co_await kota::yield();
+            continue;
+        }
+        quiet = 0;
+        // Held: a folder removed meanwhile does not take the project along.
+        auto project = *busy;
+        co_await project->sched.graph.await_rounds();
+        if(project->project.config.project.enable_indexing.value) {
+            co_await project->sched.pump.await_idle();
+        }
+    }
+}
+
+std::vector<std::string> MasterServer::pending_work() {
+    std::vector<std::string> lines;
+    for(auto& hold: probe.holds()) {
+        if(hold.parked) {
+            lines.push_back(std::format("{} {}: reply parked by hold {}",
+                                        build_kind_name(hold.kind),
+                                        files.display(files.intern(Spelling::absolute(hold.file))),
+                                        hold.id));
+        }
+    }
+    for(auto& project: projects) {
+        for(auto id: project->sched.graph.compiling()) {
+            auto file = [&] {
+                return files.display(Fid{static_cast<std::uint32_t>(id.key)});
+            };
+            switch(id.family) {
+                case Family::AST: lines.push_back(std::format("compile {}", file())); break;
+                case Family::TURun: lines.push_back(std::format("index {}", file())); break;
+                case Family::PCM: lines.push_back(std::format("pcm {}", file())); break;
+                case Family::PCH: lines.push_back(std::format("pch #{}", id.key)); break;
+            }
+        }
+        auto& pump = project->sched.pump;
+        if(project->project.config.project.enable_indexing.value && !pump.is_idle()) {
+            lines.push_back(std::format("index round at {}/{}, {} files queued",
+                                        pump.progress().completed,
+                                        pump.progress().total,
+                                        pump.pending_files()));
+        }
+    }
+    return lines;
 }
 
 kota::task<> MasterServer::drain() {

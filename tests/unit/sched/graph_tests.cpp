@@ -313,6 +313,38 @@ ZEST_CASE(concurrent_requests_share) {
     });
 }
 
+ZEST_CASE(await_rounds_covers_deps) {
+    // The wait ends only once no round is in flight: the dependency round
+    // the first one spawns after the wait began counts too.
+    ManualFamily mf;
+    mf.adj[a(1)] = {a(2)};
+    graph.register_family(FamA, mf.runner());
+
+    Probe probe;
+    bool settled = false;
+    execute([&]() -> kota::task<> {
+        auto waiter = [&]() -> kota::task<> {
+            co_await graph.await_rounds();
+            settled = true;
+        };
+        auto driver = [&]() -> kota::task<> {
+            co_await mf.gate(a(2)).started.wait();
+            ZEXPECT(!settled);
+            mf.open({a(2)});
+            co_await mf.gate(a(1)).started.wait();
+            ZEXPECT(!settled);
+            ZEXPECT(graph.compiling() == llvm::SmallVector<NodeId>{a(1)});
+            mf.open({a(1)});
+        };
+
+        co_await kota::when_all(run_request(a(1), probe), waiter(), driver());
+
+        ZEXPECT(settled);
+        ZEXPECT(probe.outcome == JoinOutcome::Success);
+        ZEXPECT(graph.compiling().empty());
+    });
+}
+
 ZEST_CASE(cross_family_edge) {
     // A FamA node depending on a FamB node: the edge crosses families and
     // update() cascades across it.

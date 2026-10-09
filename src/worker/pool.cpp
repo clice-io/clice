@@ -15,6 +15,7 @@ import :support.logging;
 import :vfs.file_system;
 import :vfs.path;
 import :worker.pool;
+import :worker.probe;
 
 namespace clice {
 
@@ -320,6 +321,10 @@ kota::task<> WorkerPool::stop() {
     LOG_INFO("WorkerPool stopping...");
     stop_scope.cancel();
     fail_pending_requests();
+    // A parked reply would hold its round, and the drain behind it, forever.
+    if(probe) {
+        probe->release_all();
+    }
     capacity_returned.set();
 
     for(auto& w: stateless_workers)

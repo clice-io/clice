@@ -460,6 +460,28 @@ bool TaskGraph::idle() const {
     });
 }
 
+llvm::SmallVector<NodeId> TaskGraph::compiling() const {
+    llvm::SmallVector<NodeId> ids;
+    for(auto& [id, node]: nodes) {
+        if(node.compiling) {
+            ids.push_back(id);
+        }
+    }
+    return ids;
+}
+
+kota::task<> TaskGraph::await_rounds() {
+    while(true) {
+        auto it = ranges::find_if(nodes, [](const auto& entry) { return entry.second.compiling; });
+        if(it == nodes.end()) {
+            co_return;
+        }
+        // Held across the wait: the landing may replace the node's round.
+        auto round = it->second.round;
+        co_await round->completion.wait();
+    }
+}
+
 bool TaskGraph::consistent() const {
     return ranges::all_of(nodes, [](const auto& entry) {
         const auto& node = entry.second;

@@ -75,9 +75,16 @@ test("save writes only dirty shards", async ({ session }) => {
         files.push(name);
     }
     workspace.writeCDB(files);
-    await client.initialize(workspace);
-
-    const [uri] = await client.openAndWait("file0.cpp");
+    // Open before the project starts: its first round leaves the open file
+    // to the file's own compile.
+    let uri = "";
+    await client.initialize(workspace, {
+        beforeInitialized: () => {
+            [uri] = client.open("file0.cpp");
+            return Promise.resolve();
+        },
+    });
+    await client.waitForRecompile(uri);
     expect(await client.waitForIndex(uri, "func_3"), "background index did not finish").toBe(true);
     await waitStats(client, (s) => s.indexInmemoryShards === 0, "initial round did not settle");
 
@@ -162,6 +169,7 @@ test("cancel storm leaves no tmp", async ({ session }) => {
     expect(Object.keys(stats).sort()).toEqual(
         [
             ...wireKeys<StatsResult>()([
+                "builds",
                 "checksLooked",
                 "checksTrusted",
                 "importScans",
