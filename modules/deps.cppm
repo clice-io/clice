@@ -23129,7 +23129,6 @@ using ::kota::ipc::Result;
 using ::kota::ipc::StreamTransport;
 using ::kota::ipc::Transport;
 using ::kota::ipc::basic_request_context;
-using ::kota::ipc::frame;
 using ::kota::ipc::lsp_config;
 using ::kota::ipc::request_options;
 }
