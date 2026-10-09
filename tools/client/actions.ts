@@ -22,6 +22,7 @@ import { withTimeout } from "../promise.ts";
 import type { CliceClient } from "./client.ts";
 import { actionsOf, applyTextEdits } from "./edits.ts";
 import { runProcess } from "./process.ts";
+import { DATA_DIR, generateCDB } from "../compile_commands.ts";
 import { looseManifest, materialize, writeDatabase, type Manifest } from "./project.ts";
 import { cliceExecutable, type SessionFactory } from "./session.ts";
 import type { Workspace } from "./workspace.ts";
@@ -181,6 +182,19 @@ export interface ServeOptions {
     /// ends checking that the kill happened and that the one worker crash it
     /// reports is the only anomaly.
     killOn?: { request: string; file: string };
+    /// The units and arguments of a case without a project, in place of
+    /// every source a unit with the default arguments.
+    manifest?: Manifest;
+    /// A data workspace (tests/data/<data>) copied as the case's workspace,
+    /// its database generated when it has a CMakeLists.txt. A bridge for
+    /// cases not yet on a sample project.
+    data?: string;
+    /// Environment of the server over the test defaults.
+    env?: Record<string, string>;
+    /// The case crashes or misleads the server on purpose: anomalies do not
+    /// fail it, and Debug builds do not trap on them. The case asserts the
+    /// anomalies it expects itself.
+    anomalies?: boolean;
 }
 
 /// A hold on the next reply of a build (clice/internal/hold).
@@ -233,7 +247,9 @@ export class Serve {
     readonly workspace: Workspace;
     readonly manifest: Manifest;
 
-    private readonly session: SessionFactory;
+    /// The session the case's servers come from: an escape hatch for what
+    /// the actions do not express (a second server, custom arguments).
+    readonly session: SessionFactory;
     private readonly options: ServeOptions;
     private server: CliceClient | null = null;
     private readonly documents = new Map<string, Document>();
@@ -261,12 +277,23 @@ export class Serve {
     ): Promise<Serve> {
         const workspace = session.tmpdir();
         const files = options.files ?? {};
-        const manifest =
-            project === null ? looseManifest(Object.keys(files)) : materialize(project, workspace);
+        let manifest: Manifest;
+        if (project !== null) {
+            manifest = materialize(project, workspace);
+        } else if (options.data !== undefined) {
+            fs.cpSync(path.join(DATA_DIR, options.data), workspace.root, { recursive: true });
+            workspace.rm(".clice");
+            if (workspace.exists("CMakeLists.txt")) {
+                generateCDB(workspace.root);
+            }
+            manifest = { units: {} };
+        } else {
+            manifest = options.manifest ?? looseManifest(Object.keys(files));
+        }
         for (const [file, text] of Object.entries(files)) {
             workspace.write(file, text);
         }
-        if (project === null) {
+        if (project === null && options.data === undefined) {
             writeDatabase(workspace, manifest);
         }
         const s = new Serve(session, project, workspace, manifest, options);
@@ -483,16 +510,16 @@ export class Serve {
     /// before it left.
     start(): Promise<void> {
         return this.steps.run("start the server", async () => {
-            const env: Record<string, string> = {};
-            if (this.options.killOn !== undefined) {
-                env["CLICE_TEST_KILL_REQUEST"] = this.workspace.path(this.killFile());
-                // A worker crash is an anomaly, which a Debug build traps.
+            const env: Record<string, string> = { ...this.options.env };
+            const anomalies = this.options.anomalies === true || this.options.killOn !== undefined;
+            if (anomalies) {
+                // A Debug build traps on an anomaly.
                 env["CLICE_ANOMALY_NO_TRAP"] = "1";
             }
-            const client = this.session.spawn(this.workspace, {
-                env,
-                allowAnomaly: this.options.killOn !== undefined,
-            });
+            if (this.options.killOn !== undefined) {
+                env["CLICE_TEST_KILL_REQUEST"] = this.workspace.path(this.killFile());
+            }
+            const client = this.session.spawn(this.workspace, { env, allowAnomaly: anomalies });
             this.server = client;
             await client.initialize(this.workspace, {
                 initializationOptions: this.options.config,
@@ -761,6 +788,12 @@ export class Serve {
                 );
             }
         }
+    }
+
+    /// The running server's client: an escape hatch for messages the
+    /// actions do not send (raw protocol, a notification of its own).
+    get client(): CliceClient {
+        return this.live();
     }
 
     private live(): CliceClient {
