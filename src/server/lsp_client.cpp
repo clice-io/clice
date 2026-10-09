@@ -1197,6 +1197,12 @@ void LSPClient::register_extensions() {
                     protocol::ErrorCode::InvalidParams,
                     R"(a hold names a kind of "compile", "pch", "pcm" or "index", and a file URI)"});
             }
+            // The stopping pool released every hold; a later one would park
+            // a reply the shutdown waits on.
+            if(past_shutdown(srv.lifecycle)) {
+                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
+                                                     "the server is shutting down"});
+            }
             // The spelling the builds send the file under.
             auto file = srv.files.resolve(srv.files.intern(*path));
             co_return to_raw(ext::HoldResult{srv.probe.hold(*kind, std::string(file))});

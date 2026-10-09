@@ -32,12 +32,14 @@ std::optional<BuildKind> parse_build_kind(llvm::StringRef name);
 /// while test hooks are on (project.test_hooks, see WorkerPool::probe): how
 /// many builds of each kind a worker ran per file, and holds that park a
 /// build's reply between its arrival and its delivery. Parked, the build is
-/// still in flight to the master — its round has not landed — so a test
-/// acts inside the window a slow build would open, without making one slow.
+/// still in flight to the master — its round has not landed, the requests
+/// waiting on it wait on — though its worker is free again: a test acts
+/// while the master waits for a build, without making one slow.
 class BuildProbe {
 public:
-    /// Builds a worker ran, or died running, per file, indexed by
-    /// BuildKind.
+    /// Builds a worker ran to their end — answered, or died running — per
+    /// file, indexed by BuildKind. One the master withdrew (preempted,
+    /// superseded) is not counted and passes every hold.
     llvm::StringMap<std::array<std::uint32_t, build_kind_names.size()>> builds;
 
     /// A worker ran a build of `kind` for `file` and its reply arrived:
@@ -45,7 +47,8 @@ public:
     /// hold claims one reply, the first to arrive after it was placed.
     kota::task<> returned(BuildKind kind, llvm::StringRef file);
 
-    /// Hold the next reply of `kind` for `file`; returns the hold's id.
+    /// Hold the next reply of `kind` for `file`, whenever it comes; returns
+    /// the hold's id.
     std::uint64_t hold(BuildKind kind, std::string file);
 
     /// Let the reply the hold parked go on, or drop a hold no reply reached

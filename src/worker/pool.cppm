@@ -844,13 +844,21 @@ std::optional<std::pair<BuildKind, llvm::StringRef>> probed_build(const Params& 
     }
 }
 
+/// Whether a worker ran the build to its end: the request reached it, and it
+/// answered or died running it. A request the master withdrew — preempted,
+/// superseded — comes back cancelled whatever the worker had done.
+template <typename Result>
+bool build_ran(const Result& result, bool sent) {
+    return sent && (result.has_value() || result.error().code != dispatch_errc::cancelled);
+}
+
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
                                                 const Params& params,
                                                 kota::ipc::request_options opts) {
     bool sent = false;
     auto result = co_await dispatch_stateful(path_id, params, std::move(opts), sent);
-    if(auto build = probed_build(params); build && sent && probe) {
+    if(auto build = probed_build(params); build && probe && build_ran(result, sent)) {
         co_await probe->returned(build->first, build->second);
     }
     co_return std::move(result);
@@ -862,7 +870,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                  kota::cancellation_token cancel) {
     bool sent = false;
     auto result = co_await dispatch_stateless(params, priority, std::move(cancel), sent);
-    if(auto build = probed_build(params); build && sent && probe) {
+    if(auto build = probed_build(params); build && probe && build_ran(result, sent)) {
         co_await probe->returned(build->first, build->second);
     }
     co_return std::move(result);
