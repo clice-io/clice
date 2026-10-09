@@ -350,17 +350,32 @@ const Shard* IndexQuery::declaring_rows(Fid file) const {
     return live && live->is_open(file) ? index.shard(file) : nullptr;
 }
 
-Fid IndexQuery::definition_file(SymbolHash hash) const {
-    Fid found;
+void IndexQuery::each_live_file(SymbolHash hash,
+                                RelationKind kind,
+                                llvm::function_ref<void(Fid)> visit) const {
+    // One source's rows arrive together.
+    Fid last;
     for_each_relation(hash,
                       {},
-                      RelationKind::Definition,
+                      kind,
                       Order::LiveFirst,
                       {.shard = false, .preamble = false, .overlay = false},
                       [&](const RowSource& source, const Relation&) {
-                          found = source.file;
-                          return false;
+                          if(source.file != last) {
+                              last = source.file;
+                              visit(source.file);
+                          }
+                          return true;
                       });
+}
+
+Fid IndexQuery::definition_file(SymbolHash hash) const {
+    Fid found;
+    each_live_file(hash, RelationKind::Definition, [&](Fid file) {
+        if(!found.valid()) {
+            found = file;
+        }
+    });
     if(found.valid()) {
         return found;
     }

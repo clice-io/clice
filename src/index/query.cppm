@@ -310,9 +310,16 @@ public:
     /// Null for a closed file whose rows the freshness gate withholds.
     const Shard* declaring_rows(Fid file) const;
 
-    /// The file defining an external symbol: an open buffer's own rows
-    /// first — a buffer its own compile serves stays out of the project
-    /// table until it closes — else the definition the project table
+    /// The open buffers whose own rows carry a relation of `kind` for the
+    /// symbol, each once: what a buffer its own compile serves knows before
+    /// the project table does — the table hears of the buffer only once it
+    /// closes.
+    void each_live_file(SymbolHash hash,
+                        RelationKind kind,
+                        llvm::function_ref<void(Fid)> visit) const;
+
+    /// The file defining an external symbol: an open buffer defining it
+    /// (each_live_file) first, else the definition the project table
     /// records, while that file's rows still hold it. Invalid when neither
     /// knows one; of several files defining the symbol, one. Never walks
     /// the files referencing the symbol, so it costs the same for a symbol

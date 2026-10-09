@@ -120,7 +120,8 @@ struct Pairing {
 
     /// The files on the other side sharing the file's declarations and
     /// definitions: where each declaration is defined, and which interface
-    /// files referencing a definition's symbol declare it.
+    /// files declare a definition's symbol — open buffers, and the files
+    /// the project table lists as referencing it.
     void pair_by_declarations() {
         auto* own = rows_of(file);
         if(!own) {
@@ -137,10 +138,9 @@ struct Pairing {
             }
             return true;
         });
-        auto& table = ctx.project.project_index;
         for(auto [hash, bits]: written) {
-            auto identity = table.identity_of(hash);
-            if(!identity || !separable(identity->kind)) {
+            auto symbol = ctx.query.symbol_info(hash, file);
+            if(!symbol || !separable(symbol->kind)) {
                 continue;
             }
             if(side == Side::Interface) {
@@ -157,26 +157,29 @@ struct Pairing {
             if(!(bits & defines)) {
                 continue;
             }
-            bool declared = false;
-            table.each_reference_file(hash, [&](Fid other) {
-                if(other == file || side_of(other) != Side::Interface) {
-                    return;
+            llvm::SmallDenseSet<Fid, 4> declaring;
+            auto consider = [&](Fid other) {
+                return other != file && side_of(other) == Side::Interface;
+            };
+            ctx.query.each_live_file(hash, RelationKind::Declaration, [&](Fid other) {
+                if(consider(other)) {
+                    declaring.insert(other);
                 }
-                auto* other_rows = rows_of(other);
+            });
+            ctx.project.project_index.each_reference_file(hash, [&](Fid other) {
+                auto* other_rows = consider(other) ? rows_of(other) : nullptr;
                 if(!other_rows) {
                     return;
                 }
-                bool declaring = false;
                 other_rows->lookup(hash, RelationKind::Declaration, [&](const index::Relation&) {
-                    declaring = true;
+                    declaring.insert(other);
                     return false;
                 });
-                if(declaring) {
-                    found[other].overlap += 1;
-                    declared = true;
-                }
             });
-            paired += declared ? 1 : 0;
+            for(auto other: declaring) {
+                found[other].overlap += 1;
+            }
+            paired += declaring.empty() ? 0 : 1;
         }
     }
 
