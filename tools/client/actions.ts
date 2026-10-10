@@ -452,6 +452,13 @@ export class Serve {
             this.steps.note(`disk: remove ${file}`);
             fs.rmSync(this.workspace.path(file));
         },
+        mtime: (file: string): Date => fs.statSync(this.workspace.path(file)).mtime,
+        /// Set the file's modification time, as a tool restoring or
+        /// backdating it does.
+        touch: (file: string, mtime: Date): void => {
+            this.steps.note(`disk: touch ${file} at ${mtime.toISOString()}`);
+            fs.utimesSync(this.workspace.path(file), mtime, mtime);
+        },
         /// Write the compilation database `manifest` describes at `at`.
         database: (manifest: Manifest, at = "compile_commands.json"): void => {
             const units = Object.keys(manifest.units).join(", ");
@@ -780,11 +787,12 @@ export class Serve {
         return this.ask("stats", (client) => client.stats());
     }
 
-    /// Look at the disk once (clice/internal/poll): the database (`force`
-    /// looks past its stamp) or every known file of the workspace. Returns
-    /// the number of file events the look produced.
+    /// Look at the disk once (clice/internal/poll): the database or every
+    /// known file of the workspace. A database look reloads at once unless
+    /// `force` is false, which keeps the background loop's stamp check and
+    /// debounce. Returns the number of file events the look produced.
     poll(loop: "cdb" | "workspace", options: { force?: boolean } = {}): Promise<number> {
-        const forced = options.force === true ? " forced" : "";
+        const forced = options.force === false ? " by its stamp" : "";
         return this.ask(
             `poll ${loop}${forced}`,
             async (client) => (await client.poll(loop, options)).events,
@@ -1046,6 +1054,23 @@ export class Serve {
                 (diagnostic) => diagnostic.severity === proto.DiagnosticSeverity.Error,
             ),
         );
+    }
+
+    /// The diagnostics of `file` from a compile the pull ran: fails when
+    /// the pull was answered without one, or without a publish.
+    recompiled(file: string): Promise<proto.Diagnostic[]> {
+        return this.steps.run(`recompiled ${file}`, async () => {
+            const before = (await this.counts()).files[file];
+            const diagnostics = await this.diagnostics(file);
+            const after = (await this.counts()).files[file];
+            if ((after?.compile ?? 0) <= (before?.compile ?? 0)) {
+                throw new Error(`${file} answered without compiling again`);
+            }
+            if ((after?.publish ?? 0) <= (before?.publish ?? 0)) {
+                throw new Error(`${file} compiled again without publishing`);
+            }
+            return diagnostics;
+        });
     }
 
     /// The server settled with every unit indexed.

@@ -125,3 +125,19 @@ serve.files({ "main.cpp": "int main() { return missing; }\n" })(
         expect(await s.serverRequests("workspace/semanticTokens/refresh")).toBe(0);
     },
 );
+
+serve.files({ "main.cpp": "int main() { return 0; }\n" })(
+    "recompiled proves a compile",
+    async ({ s }) => {
+        await s.clean("main.cpp");
+        await expect(s.recompiled("main.cpp"), "nothing changed").rejects.toThrow(
+            "answered without compiling again",
+        );
+        s.edit("main.cpp", { replace: "0", with: "missing" });
+        expect(await s.recompiled("main.cpp")).toHaveLength(1);
+
+        const old = new Date(s.disk.mtime("main.cpp").getTime() - 60_000);
+        s.disk.touch("main.cpp", old);
+        expect(s.disk.mtime("main.cpp").getTime()).toBe(old.getTime());
+    },
+);
