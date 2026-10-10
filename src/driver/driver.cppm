@@ -2,8 +2,6 @@ module;
 
 #include "modules/prelude.h"
 
-#include <stdio.h>
-
 #ifdef _WIN32
 #include <io.h>
 #include <print>
@@ -86,16 +84,18 @@ inline void add_commands(kota::deco::cli::SubCommander& root, const char* self_p
 }
 
 /// Write command output. stdout carries the command's answer. On a pipe
-/// or a socket a write fails only because the reader went away (`clice … |
-/// head`), whatever error the kernel reports for it, which depends on the
-/// descriptor and the timing (EPIPE, ECONNRESET, ENOTCONN on macOS, EINVAL
-/// on Windows); the process then ends as a command-line tool does there:
-/// by SIGPIPE, which clice otherwise ignores (a dead worker's pipe must
-/// not take the master down), or on Windows, which has none, quietly with
-/// 141, the status a POSIX shell reports for it. Any other failure (a full
-/// disk under a redirect) is reported and exits 1. stderr carries progress
-/// and complaints, which, like log lines, are dropped when they cannot be
-/// written: a progress line must not end a run before it saves.
+/// or a socket, a write fails only because the reader went away (`clice …
+/// | head`), under whatever error the kernel picks for the descriptor and
+/// the timing (EPIPE, ECONNRESET, ENOTCONN on macOS, EINVAL on Windows),
+/// and the process ends as a command-line tool does there: by SIGPIPE,
+/// which clice otherwise ignores (a dead worker's pipe must not take the
+/// master down), or on Windows, which has none, quietly with 141, the
+/// status a POSIX shell reports for it. The exception is EAGAIN: a
+/// non-blocking pipe, shared from a parent's own, refuses while its reader
+/// lags. That and any other failure (a full disk under a redirect) are
+/// reported and exit 1. stderr carries progress and complaints, which,
+/// like log lines, are dropped when they cannot be written: a progress
+/// line must not end a run before it saves.
 inline void write_output(std::FILE* stream, std::string_view text) {
     int fd = ::fileno(stream);
 #ifdef _WIN32
@@ -114,7 +114,7 @@ inline void write_output(std::FILE* stream, std::string_view text) {
         return;
     }
     int error = errno;
-    if(is_pipe_or_socket(fd)) {
+    if(error != EAGAIN && is_pipe_or_socket(fd)) {
 #ifdef _WIN32
         std::_Exit(141);
 #else

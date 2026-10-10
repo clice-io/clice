@@ -50,16 +50,12 @@ function spawnInspect(file: string, stdout: "pipe" | number): ChildProcess {
     );
 }
 
-async function endOf(
-    child: ChildProcess,
-): Promise<{ exit: { code: number | null; signal: string | null }; stderr: string }> {
+async function endOf(child: ChildProcess) {
     let stderr = "";
-    child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+    child.stderr!.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
     return { exit: await exitOf(child), stderr };
 }
 
-/// How a command ends once its output's reader is gone: by SIGPIPE, as a
-/// command-line tool does, or on Windows, which has none, with 141.
 const READER_GONE =
     process.platform === "win32" ? { code: 141, signal: null } : { code: null, signal: "SIGPIPE" };
 
@@ -335,9 +331,10 @@ test("closed reader ends quietly", async ({ session }) => {
     const ws = session.tmpdir();
     ws.write("big.cpp", bigSource());
     const child = spawnInspect(ws.path("big.cpp"), "pipe");
-    child.stdout?.once("data", () => child.stdout?.destroy());
+    child.stdout!.once("data", () => child.stdout!.destroy());
     const { exit, stderr } = await endOf(child);
-    expect(exit, stderr).toEqual(READER_GONE);
+    expect(exit, `stderr: ${stderr}`).toEqual(READER_GONE);
+    expect(stderr).not.toContain("Cannot write the output");
 });
 
 test.skipIf(process.platform === "win32")(
@@ -355,17 +352,48 @@ test.skipIf(process.platform === "win32")(
         const child = spawnInspect(ws.path("main.cpp"), writer);
         fs.closeSync(writer);
         const { exit, stderr } = await endOf(child);
-        expect(exit, stderr).toEqual(READER_GONE);
+        expect(exit, `stderr: ${stderr}`).toEqual(READER_GONE);
+        expect(stderr).not.toContain("Cannot write the output");
     },
 );
 
-test.runIf(process.platform === "linux")("full output device fails", async ({ session }) => {
+test.skipIf(process.platform !== "linux")(
+    "full nonblocking pipe is an error",
+    async ({ session }) => {
+        const ws = session.tmpdir();
+        ws.write("big.cpp", bigSource());
+        // The reader stays but never reads. The write end goes in as fd 3,
+        // for the shell to dup: Node makes a child's fds 0-2 blocking, and
+        // on macOS every fd it hands over.
+        const fifo = ws.path("out.fifo");
+        execFileSync("mkfifo", [fifo]);
+        const reader = fs.openSync(fifo, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
+        const writer = fs.openSync(fifo, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+        const inspect = [
+            "inspect",
+            "document_symbol",
+            ws.path("big.cpp"),
+            "--flags",
+            '["-std=c++23"]',
+        ];
+        const child = spawn("sh", ["-c", 'exec "$0" "$@" >&3', cliceExecutable(), ...inspect], {
+            stdio: ["ignore", "ignore", "pipe", writer],
+        });
+        fs.closeSync(writer);
+        const { exit, stderr } = await endOf(child);
+        fs.closeSync(reader);
+        expect(exit, `stderr: ${stderr}`).toEqual({ code: 1, signal: null });
+        expect(stderr).toContain("Cannot write the output: Resource temporarily unavailable");
+    },
+);
+
+test("unwritable output is an error", async ({ session }) => {
     const ws = session.tmpdir();
     ws.write("main.cpp", "int main() { return 0; }\n");
-    const full = fs.openSync("/dev/full", "w");
-    const child = spawnInspect(ws.path("main.cpp"), full);
-    fs.closeSync(full);
+    const readOnly = fs.openSync(ws.path("main.cpp"), "r");
+    const child = spawnInspect(ws.path("main.cpp"), readOnly);
+    fs.closeSync(readOnly);
     const { exit, stderr } = await endOf(child);
-    expect(exit, stderr).toEqual({ code: 1, signal: null });
-    expect(stderr).toContain("Cannot write the output: No space left on device");
+    expect(exit, `stderr: ${stderr}`).toEqual({ code: 1, signal: null });
+    expect(stderr).toContain("Cannot write the output");
 });

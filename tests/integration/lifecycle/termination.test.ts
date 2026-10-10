@@ -1,5 +1,5 @@
 /// How a server ends when its client goes away abruptly: the client closes
-/// the server's input, kills it, or dies itself.
+/// the server's input or output, kills it, or dies itself.
 
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
