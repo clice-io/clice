@@ -131,6 +131,78 @@ test("shutdown releases a parked reply", async ({ session }) => {
     await hover;
 });
 
+test("gate parks a compile in its worker", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", "int main() { return missing; }\n");
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+    await client.sync();
+
+    const [uri] = client.open("main.cpp");
+    const gate = await client.gate("compile", uri);
+    const pulled = client.pullDiagnostics(uri);
+    await client.parkedBy(gate);
+    const file = workspace.displayPath("main.cpp");
+    expect((await client.sync({ deadlineMs: 1_000 })).pending).toEqual([
+        expect.stringMatching(/^request textDocument\/diagnostic \d+$/),
+        expect.stringMatching(
+            new RegExp(
+                `^clice/worker/compile .*main\\.cpp: work parked in its worker by gate ${gate}$`,
+            ),
+        ),
+        `compile ${file}`,
+    ]);
+
+    await client.release(gate);
+    expect(await pulled).toHaveLength(1);
+    expect((await client.sync()).pending).toEqual([]);
+});
+
+test("gate parks a completion in its worker", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", "struct S { int field; };\nint main() { S s; return s.field; }\n");
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+    await client.sync();
+
+    const [uri] = client.open("main.cpp");
+    await client.pullDiagnostics(uri);
+    const gate = await client.gate("completion", uri);
+    const source = new proto.CancellationTokenSource();
+    const completion = client
+        .sendRequest(
+            proto.CompletionRequest.type,
+            { textDocument: { uri }, position: { line: 1, character: 31 } },
+            source.token,
+        )
+        .then(
+            () => "answered",
+            (error: unknown) => (error as { code?: number }).code,
+        );
+    await client.parkedBy(gate);
+    // The cancel reaches the worker while the completion is its work.
+    source.cancel();
+    await client.release(gate);
+    expect(await completion).toBe(proto.LSPErrorCodes.RequestCancelled);
+    expect((await client.sync()).pending).toEqual([]);
+});
+
+test("shutdown releases a gate", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("main.cpp", "int main() { return 0; }\n");
+    workspace.writeCDB(["main.cpp"]);
+    await client.initialize(workspace);
+    await client.sync();
+
+    const [uri] = client.open("main.cpp");
+    const gate = await client.gate("compile", uri);
+    const pulled = client.pullDiagnostics(uri).catch(() => null);
+    await client.parkedBy(gate);
+    // The exit gate fails a server that does not exit.
+    await client.shutdown();
+    await pulled;
+});
+
 test("holds name a build and a file", async ({ session }) => {
     const { client, workspace } = session.tmp();
     workspace.write("main.cpp", "int main() { return 0; }\n");

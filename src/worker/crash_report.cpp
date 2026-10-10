@@ -26,6 +26,7 @@ module clice;
 
 import :vfs.file_system;
 import :worker.crash_report;
+import :worker.gate;
 import :worker.protocol;
 
 namespace clice {
@@ -66,6 +67,8 @@ void report_crash() {
 CrashScope::CrashScope(std::string tag) : tag(std::move(tag)) {
     running_tag = this->tag.data();
     running_size = this->tag.size();
+
+    park_at_test_gate(this->tag);
 
     // Tests crash the request whose tag contains CLICE_TEST_CRASH_REQUEST
     // right here — any kind of request, attributed like a real crash.

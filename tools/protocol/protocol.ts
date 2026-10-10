@@ -300,6 +300,20 @@ export interface HoldResult {
 
 export const HoldRequest = new RequestType<HoldParams, HoldResult, void>("clice/internal/hold");
 
+/// clice/internal/gate — TEST-ONLY, present while project.test_hooks is on.
+/// Parks the work of the next request named `request` for the file in its
+/// worker, where the work starts: the worker is busy with it. `request` is
+/// the worker request's name as its crash tag spells it ("compile",
+/// "completion", "signatureHelp", "format", "buildPch", "tuRun",
+/// "query:Hover"). The reply is a hold id: clice/internal/held announces the
+/// park, clice/internal/release lets the work go on.
+export interface GateParams {
+    request: string;
+    uri: string;
+}
+
+export const GateRequest = new RequestType<GateParams, HoldResult, void>("clice/internal/gate");
+
 export interface ReleaseParams {
     id: number;
 }

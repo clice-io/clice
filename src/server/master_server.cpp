@@ -914,6 +914,12 @@ std::vector<std::string> MasterServer::pending_work(const kota::ipc::JSONPeer& e
                                         hold.id));
         }
     }
+    for(auto& gate: probe.gates()) {
+        if(gate.parked) {
+            lines.push_back(
+                std::format("{}: work parked in its worker by gate {}", gate.tag, gate.id));
+        }
+    }
     for(auto& project: projects) {
         for(auto id: project->sched.graph.compiling()) {
             auto file = [&] {

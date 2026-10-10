@@ -282,6 +282,14 @@ struct HoldResult {
     std::uint64_t id = 0;
 };
 
+/// clice/internal/gate: park the work of the next request named so in its
+/// worker (BuildProbe::gate). `request` is the worker request's name as its
+/// crash tag spells it ("compile", "completion", "query:Hover", "tuRun").
+struct GateParams {
+    std::string request;
+    std::string uri;
+};
+
 struct ReleaseParams {
     std::uint64_t id = 0;
 };

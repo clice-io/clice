@@ -833,6 +833,47 @@ export class Serve {
         };
     }
 
+    /// Park the work of the next `request` for `file` in its worker, where
+    /// the work starts (clice/internal/gate): the worker is busy with it, so
+    /// a cancel, an edit or a death lands mid-work. `request` names the
+    /// worker request as killOn does ("compile", "completion", "tuRun",
+    /// "query:Hover"). Resolves once the gate is in place.
+    async gate(request: string, file: string): Promise<Hold> {
+        const id = await this.ask(`gate ${request} ${file}`, (client) =>
+            client.gate(request, this.uri(file)),
+        );
+        return {
+            id,
+            reached: () =>
+                this.ask(`gate ${id} parks the ${request} of ${file} in its worker`, (client) =>
+                    client.parkedBy(id),
+                ),
+            release: () => this.ask(`release gate ${id}`, (client) => client.release(id)),
+        };
+    }
+
+    /// Run `body` while the work of a `request` for `file` is parked in its
+    /// worker, as `inFlight` does for a build's reply: the gate is placed,
+    /// `begin` sends the request, `body` runs once the work is parked, and
+    /// the work goes on after `body`, failing or not.
+    inWorker<T>(
+        request: string,
+        file: string,
+        begin: () => void,
+        body: () => T | Promise<T>,
+    ): Promise<T> {
+        return this.steps.run(`while the ${request} of ${file} is in its worker`, async () => {
+            const gate = await this.gate(request, file);
+            begin();
+            await gate.reached();
+            try {
+                return await body();
+            } finally {
+                await gate.release();
+            }
+        });
+    }
+
     /// Start a server on the workspace; its cache is the one a server
     /// before it left. `launch` holds for this server only, in place of the
     /// case's.

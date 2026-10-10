@@ -1245,6 +1245,29 @@ void LSPClient::register_extensions() {
         });
 
     peer.on_request(
+        "clice/internal/gate",
+        [this, hooks_off](RequestContext& ctx, const ext::GateParams& params) -> RawResult {
+            auto& srv = this->server;
+            if(!srv.test_hooks()) {
+                co_await kota::fail(hooks_off());
+            }
+            auto path = uri_to_path(params.uri);
+            if(params.request.empty() || !path) {
+                co_await kota::fail(
+                    kota::ipc::Error{protocol::ErrorCode::InvalidParams,
+                                     "a gate names a worker request and a file URI"});
+            }
+            if(past_shutdown(srv.lifecycle)) {
+                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
+                                                     "the server is shutting down"});
+            }
+            // The spelling the requests send the file under.
+            auto file = std::string(srv.files.resolve(srv.files.intern(*path)));
+            auto tag = std::format("clice/worker/{} {}", params.request, file);
+            co_return to_raw(ext::HoldResult{srv.probe.gate(std::move(tag))});
+        });
+
+    peer.on_request(
         "clice/internal/release",
         [this, hooks_off](RequestContext& ctx, const ext::ReleaseParams& params) -> RawResult {
             auto& srv = this->server;

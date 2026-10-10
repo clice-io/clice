@@ -187,6 +187,14 @@ void WorkerPool::install_evict_handler(WorkerProcess& worker, std::size_t index)
         });
 }
 
+void WorkerPool::install_gate_handler(WorkerProcess& worker) {
+    worker.peer->on_notification([this](const worker::GateParkedParams& params) {
+        if(probe) {
+            probe->gate_parked(params.id);
+        }
+    });
+}
+
 bool WorkerPool::spawn_worker(bool stateful) {
     auto& workers = stateful ? stateful_workers : stateless_workers;
     auto index = workers.size();
@@ -207,6 +215,7 @@ bool WorkerPool::spawn_worker(bool stateful) {
 
     if(stateful)
         install_evict_handler(workers[index], index);
+    install_gate_handler(workers[index]);
     worker_tasks.spawn(monitor_worker(index, stateful));
     if(!stateful)
         on_stateless_capacity.emit();
@@ -240,6 +249,7 @@ bool WorkerPool::respawn_worker(std::size_t index, bool stateful) {
 
     if(stateful)
         install_evict_handler(w, index);
+    install_gate_handler(w);
     worker_tasks.spawn(monitor_worker(index, stateful));
 
     if(!stateful) {

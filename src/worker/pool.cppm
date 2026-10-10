@@ -807,6 +807,10 @@ private:
 
     void install_evict_handler(WorkerProcess& worker, std::size_t index);
 
+    /// Hand the worker's gate parks (a test gate, see BuildProbe::gate) to
+    /// the probe.
+    void install_gate_handler(WorkerProcess& worker);
+
     kota::task<> monitor_worker(std::size_t index, bool stateful);
 
     /// The sends without the probe, which parks a reply only once its
@@ -918,6 +922,9 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     auto death = assigned.death;
     sent = true;
     Dispatch dispatch(*this, idx, true, worker::crash_tag(params), worker::is_build<Params>);
+    if(probe) {
+        probe->sending(dispatch.tag, peer);
+    }
     auto result = co_await peer->send_request(params, opts);
     if(result.has_value() || !worker::is_transport_error(result.error()))
         co_return std::move(result);
@@ -990,6 +997,9 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
 
     sent = true;
     Dispatch dispatch(*this, idx, false, worker::crash_tag(params), worker::is_build<Params>);
+    if(probe) {
+        probe->sending(dispatch.tag, peer);
+    }
     auto result = co_await peer->send_request(params, {.token = preempt_src->token()});
     // The worker link broke mid-request: declare the slot dead now so a
     // caller-side retry cannot land on the same corpse before the monitor

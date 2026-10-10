@@ -51,14 +51,29 @@ public:
     /// the hold's id.
     std::uint64_t hold(BuildKind kind, std::string file);
 
-    /// Let the reply the hold parked go on, or drop a hold no reply reached
-    /// yet. False when no hold has the id.
+    /// Gate the next request whose crash tag (worker::crash_tag) is `tag`:
+    /// its work parks in the worker where it starts (see
+    /// install_test_gates), the worker busy with it. Returns the gate's id,
+    /// drawn with the holds'.
+    std::uint64_t gate(std::string tag);
+
+    /// A request of `tag` is about to go to the worker behind `peer`: the
+    /// gate waiting for one, if any, goes ahead of it. Called with every
+    /// request the pool sends.
+    void sending(llvm::StringRef tag, const std::shared_ptr<kota::ipc::BincodePeer>& peer);
+
+    /// The worker parked the work of a gated request.
+    void gate_parked(std::uint64_t id);
+
+    /// Let the reply the hold parked, or the work the gate parked, go on;
+    /// or drop a hold or gate nothing reached yet. False when none has the
+    /// id.
     bool release(std::uint64_t id);
 
-    /// Release every hold: a stopping pool parks no reply.
+    /// Release every hold and gate: a stopping pool parks nothing.
     void release_all();
 
-    /// A hold parked a reply; carries the hold's id.
+    /// A hold parked a reply, or a gate a request's work; carries its id.
     Signal<std::uint64_t> on_held;
 
     struct Hold {
@@ -73,13 +88,31 @@ public:
         std::shared_ptr<kota::event> released = std::make_shared<kota::event>();
     };
 
+    struct Gate {
+        std::uint64_t id;
+        std::string tag;
+
+        /// The gated request went to a worker, the one behind `worker`.
+        bool sent = false;
+        std::weak_ptr<kota::ipc::BincodePeer> worker;
+
+        /// The worker parked the request's work.
+        bool parked = false;
+    };
+
     /// The holds placed and not released, in placement order.
     llvm::ArrayRef<Hold> holds() const {
         return placed;
     }
 
+    /// The gates placed and not released, in placement order.
+    llvm::ArrayRef<Gate> gates() const {
+        return standing;
+    }
+
 private:
     std::vector<Hold> placed;
+    std::vector<Gate> standing;
     std::uint64_t next_id = 1;
 };
 

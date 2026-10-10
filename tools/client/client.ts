@@ -22,6 +22,7 @@ import {
     CounterpartsRequest,
     CurrentContextRequest,
     HeldNotification,
+    GateRequest,
     HoldRequest,
     ListConfigurationsRequest,
     LogFloodRequest,
@@ -1162,8 +1163,7 @@ export class CliceClient {
     async inactiveLines(uri: string): Promise<number[]> {
         const result = await this.semanticTokensFull(uri);
         const provider = this.initResult?.capabilities.semanticTokensProvider as
-            | proto.SemanticTokensOptions
-            | undefined;
+            proto.SemanticTokensOptions | undefined;
         const bit = provider?.legend.tokenModifiers.indexOf("inactive") ?? -1;
         if (bit < 0) {
             throw new Error("server legend misses the inactive modifier");
@@ -1339,6 +1339,12 @@ export class CliceClient {
     /// build of `uri`; returns the hold's id.
     async hold(kind: BuildKind, uri: string): Promise<number> {
         return (await this.sendRequest(HoldRequest, { kind, uri })).id;
+    }
+
+    /// clice/internal/gate (test hook): park the work of the next `request`
+    /// for the file in its worker; returns the gate's hold id.
+    async gate(request: string, uri: string): Promise<number> {
+        return (await this.sendRequest(GateRequest, { request, uri })).id;
     }
 
     /// Resolves once the hold parked a reply (clice/internal/held).
