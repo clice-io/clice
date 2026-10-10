@@ -9,31 +9,39 @@ async function indexedSymbol(s: Serve, name: string): Promise<boolean> {
     return ((await s.workspaceSymbols(name)) ?? []).some((symbol) => symbol.name === name);
 }
 
-serve.files({
+serve("shapes/headers", {
     // The cache where `clice index` looks for it.
-    "clice.toml": '[project]\ncache_dir = "${workspace}/.clice"\n',
-    "a.h": "#pragma once\ninline int alpha() { return 1; }\n",
-    "main.cpp": '#include "a.h"\nint app_entry() { return alpha(); }\n',
+    files: { "clice.toml": '[project]\ncache_dir = "${workspace}/.clice"\n' },
 })("index reports header losing host", async ({ s }) => {
-    // Standalone-index a.h: edit it on disk while its buffer is open, so the
-    // close sees the shard/disk mismatch and reindexes the header with
-    // main.cpp as its borrowed host. `beta` can only come from that reindex —
-    // the tracker loops are off and main.cpp is never touched again.
-    expect(await indexedSymbol(s, "alpha"), "TU never indexed").toBe(true);
-    await s.compiled("a.h");
-    s.disk.edit("a.h", {
-        after: "inline int alpha() { return 1; }\n",
-        insert: "inline int beta() { return 2; }\n",
+    // Standalone-index the limits header, which only the registry includes:
+    // edit it on disk while its buffer is open, so the close sees the
+    // shard/disk mismatch and reindexes the header with the registry as its
+    // borrowed host. `registry_reserve` can only come from that reindex — the
+    // tracker loops are off and the registry is never touched again.
+    expect(await indexedSymbol(s, "registry_limit"), "TU never indexed").toBe(true);
+    await s.compiled(s.file("limits"));
+    s.disk.edit(s.file("limits"), {
+        after: "inline constexpr int registry_limit = 64;\n",
+        insert: "inline constexpr int registry_reserve = 8;\n",
     });
-    s.close("a.h");
-    expect(await indexedSymbol(s, "beta"), "header never standalone-indexed").toBe(true);
+    s.close(s.file("limits"));
+    expect(await indexedSymbol(s, "registry_reserve"), "header never standalone-indexed").toBe(
+        true,
+    );
     await s.stop();
 
-    // Offline, the host's command changes and its include of a.h vanishes:
-    // reconciliation drops the header's index and no TU can host it any more,
-    // so the batch run must report the header as lost coverage.
-    s.disk.write("main.cpp", "int app_entry() { return 0; }\n");
-    s.disk.database({ ...s.manifest, units: { "main.cpp": ["-DHOST_V2"] } });
+    // Offline, the host's command changes and its include of the header
+    // vanishes: reconciliation drops the header's index and no TU can host
+    // it any more, so the batch run must report the header as lost coverage.
+    s.disk.edit(
+        s.file("registry"),
+        { remove: '#include "registry_limits.h"\n' },
+        { replace: "< registry_limit", with: "< 64" },
+    );
+    s.disk.database({
+        ...s.manifest,
+        units: { ...s.manifest.units, [s.file("registry")]: ["-DHOST_V2"] },
+    });
 
     const second = await s.cli("index", "--workers", "2");
     expect(second.status, `stderr: ${second.stderr}`).toBe(1);
@@ -48,7 +56,7 @@ serve.files({
     expect(third.stderr).toContain("stays uncovered");
 
     // Only deleting the file settles the debt.
-    s.disk.rm("a.h");
+    s.disk.rm(s.file("limits"));
     const fourth = await s.cli("index", "--workers", "2");
     expect(fourth.status, `stderr: ${fourth.stderr}`).toBe(0);
 });

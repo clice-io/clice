@@ -11,14 +11,10 @@ import { expect, serve } from "../../fixtures.ts";
 const POINT = "#pragma once\nstruct Point { int x; int y; };\n";
 const GET_X = "inline int get_x(Point p) { return p.x; }\n";
 
-serve.files({
-    "types.h": POINT,
-    "helper.h": `#pragma once\n#include "types.h"\n${GET_X}`,
-    "main.cpp": '#include "helper.h"\nint main() { return get_x({1, 2}); }\n',
-})("self contained skips synthesis", async ({ s }) => {
+serve("shapes/headers")("self contained skips synthesis", async ({ s }) => {
     // A self-contained header borrows a command but gets no prefix.
-    await s.compiled("main.cpp");
-    await s.clean("helper.h");
+    await s.compiled(s.file("main"));
+    await s.clean(s.file("circle"));
     expect(
         (await s.stats()).synthesizedContexts,
         "Self-contained headers must not synthesize a prefix",
@@ -43,36 +39,32 @@ serve.files(NEEDS_POINT)("fallback on missing context", async ({ s }) => {
     ).toBe(1);
 });
 
-serve.files({
-    "shared.h": "VALUE_TYPE get_value();\n",
-    "a.cpp": '#define VALUE_TYPE int\n#include "shared.h"\nint main() { return 0; }\n',
-    "b.cpp": '#define VALUE_TYPE float\n#include "shared.h"\nfloat f() { return 0; }\n',
-})("choice persisted across sessions", async ({ s }) => {
+serve("shapes/headers")("choice persisted across sessions", async ({ s }) => {
     // A switchContext choice is restored on didOpen in a later session.
-    await s.compiled("a.cpp");
-    await s.compiled("b.cpp");
-    s.open("shared.h");
-    const sw = await s.switchContext("shared.h", "b.cpp");
+    await s.compiled(s.file("circle_impl"));
+    await s.compiled(s.file("test"));
+    s.open(s.file("circle"));
+    const sw = await s.switchContext(s.file("circle"), s.file("test"));
     expect(sw.success).toBe(true);
     await s.stop();
 
     await s.start();
-    s.open("shared.h");
-    const current = await s.currentContext("shared.h");
+    s.open(s.file("circle"));
+    const current = await s.currentContext(s.file("circle"));
     const ctx = current.context;
     expect(
-        ctx?.uri.includes("b.cpp") ?? false,
+        ctx?.uri.endsWith(s.file("test")) ?? false,
         `Persisted context choice should be restored on didOpen, got: ${JSON.stringify(current)}`,
     ).toBe(true);
     expect(current.automatic).toBe(false);
 
     // A reset is persisted too.
-    expect((await s.resetContext("shared.h")).success).toBe(true);
+    expect((await s.resetContext(s.file("circle"))).success).toBe(true);
     await s.stop();
 
     await s.start();
-    s.open("shared.h");
-    expect((await s.currentContext("shared.h")).automatic).toBe(true);
+    s.open(s.file("circle"));
+    expect((await s.currentContext(s.file("circle"))).automatic).toBe(true);
 });
 
 serve.files({
@@ -273,20 +265,15 @@ serve.files({
     await s.clean("guard.h");
 });
 
-serve.files({
-    "mode.h":
-        "#pragma once\n#ifdef FAST\ninline int mode() { return 1; }\n" +
-        "#else\ninline int mode() { return 2; }\n#endif\n",
-    "a.cpp": '#define FAST\n#include "mode.h"\nint main() { return mode(); }\n',
-})("pinned host synthesizes", async ({ s }) => {
+serve("shapes/headers")("pinned host synthesizes", async ({ s }) => {
     // A host the user picks is picked for its preprocessor state, even for
     // a header that compiles on its own.
-    await s.compiled("a.cpp");
-    await s.compiled("mode.h");
+    await s.compiled(s.file("test"));
+    await s.compiled(s.file("circle"));
     expect((await s.stats()).synthesizedContexts, "Self-contained on its own").toBe(0);
 
-    expect((await s.switchContext("mode.h", "a.cpp")).success).toBe(true);
-    expect(await s.recompiled("mode.h")).toEqual([]);
+    expect((await s.switchContext(s.file("circle"), s.file("test"))).success).toBe(true);
+    expect(await s.recompiled(s.file("circle"))).toEqual([]);
     expect((await s.stats()).synthesizedContexts).toBe(1);
 });
 

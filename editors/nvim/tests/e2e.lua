@@ -34,19 +34,19 @@ end
 -- which file the definition request must land in.
 -- Keep in sync with editors/vscode/src/test/e2e.test.ts.
 local scenarios = {
-    hello_world = {
+    tiny = {
         file = 'main.cpp',
         symbol = 'add(1, 2)',
         index_symbol = 'add',
         definition_file = 'main.cpp',
     },
-    hover_on_imported_symbol = {
-        file = 'use.cpp',
-        symbol = 'magic_number()',
-        index_symbol = 'magic_number',
-        definition_file = 'defs.cppm',
+    modules = {
+        file = 'app/main.cpp',
+        symbol = 'Circle c(2.0)',
+        index_symbol = 'shapes::Circle',
+        definition_file = 'circle.cppm',
     },
-    header_context = {
+    contexts = {
         file = 'utils.h',
         symbol = 'distance(p',
         index_symbol = 'calc',

@@ -22,7 +22,7 @@ async function indexes(s: Serve, name: string): Promise<boolean> {
     return ((await s.workspaceSymbols(name)) ?? []).some((symbol) => symbol.name === name);
 }
 
-serve.data("cdb/nested_projects")("nested projects load on open", async ({ s }) => {
+serve("layouts/nested_projects")("nested projects load on open", async ({ s }) => {
     expect(
         await s.errors("group-a/p1/main.cpp"),
         "opening a file registers its project's database",
@@ -38,7 +38,7 @@ serve.data("cdb/nested_projects")("nested projects load on open", async ({ s }) 
     expect(await indexes(s, "p1_main")).toBe(true);
 });
 
-serve.data("cdb/root_over_sub")("root wins over subdirectory", async ({ s }) => {
+serve("layouts/root_over_sub")("root wins over subdirectory", async ({ s }) => {
     await s.compiled("main.cpp");
     expect(await s.inactiveLines("main.cpp"), "the root's command applies").toEqual([3]);
     expect(await s.errors("extra.cpp"), "the subdirectory's database fills the gap").toEqual([]);
@@ -49,7 +49,7 @@ serve.data("cdb/root_over_sub")("root wins over subdirectory", async ({ s }) => 
     );
 });
 
-serve.data("cdb/two_out_dirs")("overlapping databases offer both", async ({ s }) => {
+serve("layouts/two_out_dirs")("overlapping databases offer both", async ({ s }) => {
     await s.compiled("main.cpp");
     expect(await s.inactiveLines("main.cpp"), "out_debug comes first by name").toEqual([1]);
     const contexts = await s.contexts("main.cpp");

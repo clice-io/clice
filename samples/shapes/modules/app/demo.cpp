@@ -12,3 +12,10 @@ int demo() {
 int demo_precision() {
     return shapes_precision;
 }
+
+int demo_capacity() {
+    shapes::Circle circle = shapes::make_circle(1.0);
+    const shapes::Shape& shape = circle;
+    shapes::registry_add(shape);
+    return shapes::registry_capacity();
+}

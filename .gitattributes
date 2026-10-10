@@ -5,7 +5,6 @@ pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff
 # (which reads from disk) match the content sent by didOpen in tests.
 # tests/snap fixtures additionally pin their snapshots' offsets and the
 # sha256 handshake between clice inspect and the TS harness.
-tests/data/** text eol=lf
 samples/** text eol=lf
 tests/snap/** text eol=lf
 

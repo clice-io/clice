@@ -12,7 +12,9 @@ function format(s: Serve, file: string): Promise<proto.TextEdit[] | null> {
     return s.request<proto.TextEdit[] | null>("textDocument/formatting", file, OPTIONS);
 }
 
-const test = serve.data("formatting");
+const test = serve("tiny", {
+    files: { ".clang-format": "BasedOnStyle: LLVM\nIndentWidth: 4\nColumnLimit: 80\n" },
+});
 
 test("format document", async ({ s }) => {
     await s.compiled("main.cpp");

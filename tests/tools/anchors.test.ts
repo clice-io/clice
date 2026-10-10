@@ -29,7 +29,7 @@ test("a missing anchor is reported", () => {
             "});",
             'serve.each(["shapes/headers", "shapes/modules"])("y", async ({ s }) => {',
             '    at("app/main.cpp", "registry_|count()");',
-            '    s.disk.edit(s.file("registry"), { replace: "#include", with: "" });',
+            '    s.disk.edit(s.file("registry"), { replace: "shapes/registry.h", with: "" });',
             '    at("include/shapes/registry.h", "int registry_count();");',
             "});",
             "const KINDS = { tiny: 1 };",
@@ -37,15 +37,24 @@ test("a missing anchor is reported", () => {
             '    s.edit("main.cpp", { remove: "gone" });',
             "});",
             'serve.each(["tiny", name])("w", async () => {});',
+            'const loose = serve.files({ "main.cpp": "" }).skipIf(false);',
+            'loose("v", async () => {',
+            '    at("main.cpp", "|absent");',
+            "});",
+            'const bound = serve("tiny").skipIf(false);',
+            'bound("u", async () => {',
+            '    at("main.cpp", "|absent");',
+            "});",
         ].join("\n"),
     );
     try {
         expect(checkAnchors([file])).toEqual([
             "case.test.ts:14: serve.each() names a project the check cannot read",
             'case.test.ts:3: tiny: main.cpp has "return" more than once',
-            'case.test.ts:7: shapes/modules: src/registry.cpp has no "#include"',
+            'case.test.ts:7: shapes/modules: src/registry.cpp has no "shapes/registry.h"',
             "case.test.ts:8: shapes/modules: no file include/shapes/registry.h",
             'case.test.ts:12: tiny: main.cpp has no "gone"',
+            'case.test.ts:21: tiny: main.cpp has no "absent"',
         ]);
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
@@ -58,10 +67,9 @@ test("variants name the same files", () => {
     const names = variants.map((variant) => {
         const files = readManifest(variant).files ?? {};
         for (const [name, file] of Object.entries(files)) {
-            expect(
-                fs.existsSync(path.join(SAMPLES_DIR, variant, file)),
-                `${variant} ${name}`,
-            ).toBe(true);
+            expect(fs.existsSync(path.join(SAMPLES_DIR, variant, file)), `${variant} ${name}`).toBe(
+                true,
+            );
         }
         return Object.keys(files).sort();
     });

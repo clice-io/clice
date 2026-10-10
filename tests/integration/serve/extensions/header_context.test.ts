@@ -16,7 +16,7 @@ import {
     type SwitchContextResult,
 } from "@clice/tools/protocol";
 
-const test = serve.data("header_context");
+const test = serve("contexts");
 
 /// clice/queryContext on a header should return source files that include it.
 test("query context returns host sources", async ({ s }) => {
@@ -44,7 +44,7 @@ test("query context source file returns cdb entries", async ({ s }) => {
 
     const result = await s.contexts("main.cpp");
     expect(result).not.toBeNull();
-    // header_context workspace has exactly 1 CDB entry for main.cpp.
+    // The database has exactly 1 entry for main.cpp.
     expect(result.total).toBe(1);
     expect(result.contexts.length).toBe(1);
 });
@@ -191,8 +191,10 @@ test("deep nested switch context and hover", async ({ s }) => {
     expect(hover, "Hover on inner_origin should work after switchContext").not.toBeNull();
 });
 
+const configs = serve("tiny", { units: { "main.cpp": [["-DCONFIG_A"], ["-DCONFIG_B"]] } });
+
 /// queryContext on a source file with multiple CDB entries should return all.
-serve.data("multi_context")("query context multiple cdb entries", async ({ s }) => {
+configs("query context multiple cdb entries", async ({ s }) => {
     await s.compiled("main.cpp");
 
     const result = await s.contexts("main.cpp");
@@ -215,15 +217,11 @@ serve.data("multi_context")("query context multiple cdb entries", async ({ s }) 
 
 /// Switching a header between two hosts with different macro setups must
 /// recompile it under the new host's preamble.
-serve.files({
-    "shared.h": "VALUE_TYPE get_value();\n",
-    "a.cpp": '#define VALUE_TYPE int\n#include "shared.h"\nint main() { return 0; }\n',
-    "b.cpp": '#define VALUE_TYPE float\n#include "shared.h"\nfloat f() { return 0; }\n',
-})("switch between two hosts", async ({ s }) => {
-    await s.compiled("a.cpp");
-    await s.compiled("b.cpp");
+test("switch between two hosts", async ({ s }) => {
+    await s.compiled("int_host.cpp");
+    await s.compiled("real_host.cpp");
     s.open("shared.h");
-    expect((await s.currentContext("shared.h")).context?.uri).toBe(s.uri("a.cpp"));
+    expect((await s.currentContext("shared.h")).context?.uri).toBe(s.uri("int_host.cpp"));
 
     /// switchContext only flips server state; a diagnostics pull waits for
     /// the recompile under the new host.
@@ -232,24 +230,24 @@ serve.files({
         expect(s.show(await s.hover(at("shared.h", "get_|value")))).toContain(text);
     };
 
-    // Host a.cpp: VALUE_TYPE is int.
-    let switched = await s.switchContext("shared.h", "a.cpp");
+    // Host int_host.cpp: VALUE_TYPE is int.
+    let switched = await s.switchContext("shared.h", "int_host.cpp");
     expect(switched.success).toBe(true);
     await hoverGetValueShows("int");
 
-    // Host b.cpp: VALUE_TYPE is float. This exercises the cached-context
+    // Host real_host.cpp: VALUE_TYPE is float. This exercises the cached-context
     // invalidation branch (active context differs from cached host).
-    switched = await s.switchContext("shared.h", "b.cpp");
+    switched = await s.switchContext("shared.h", "real_host.cpp");
     expect(switched.success).toBe(true);
     await hoverGetValueShows("float");
 
-    // The reset leaves the cached b.cpp context for the one picked
+    // The reset leaves the cached real_host.cpp context for the one picked
     // automatically.
     expect((await s.resetContext("shared.h")).success).toBe(true);
     await hoverGetValueShows("int");
     const current = await s.currentContext("shared.h");
     expect(current.automatic).toBe(true);
-    expect(current.context?.uri).toBe(s.uri("a.cpp"));
+    expect(current.context?.uri).toBe(s.uri("int_host.cpp"));
 });
 
 /// A switch and its reset keep the document open: the server recompiles

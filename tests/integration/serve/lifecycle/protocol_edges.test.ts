@@ -12,8 +12,8 @@ const TEST_TOML =
     '[project]\ncache_dir = "${workspace}/.clice"\nenable_indexing = false\n' +
     "\n[tracker]\nworkspace_poll_seconds = 0\n";
 
-const test = serve.data("hello_world");
-const unshaken = serve.data("hello_world", { launch: { handshake: false } });
+const test = serve("tiny");
+const unshaken = serve("tiny", { launch: { handshake: false } });
 
 function messageText(d: proto.Diagnostic): string {
     return typeof d.message === "string" ? d.message : d.message.value;
@@ -37,18 +37,17 @@ unshaken("open before initialize", async ({ s }) => {
 
 /// One file under two names: real/main.cpp and link/main.cpp through a
 /// symlink, which Windows grants only with privileges.
-const linked = serve
-    .files(
-        { "real/main.cpp": "int main() { return 0; }\n" },
-        {
-            setup: (workspace) => {
-                fs.symlinkSync(workspace.path("real"), workspace.path("link"));
-            },
+const linked = serve.files(
+    { "real/main.cpp": "int main() { return 0; }\n" },
+    {
+        setup: (workspace) => {
+            fs.symlinkSync(workspace.path("real"), workspace.path("link"));
         },
-    )
-    .skipIf(process.platform === "win32");
+    },
+);
+const noSymlinks = process.platform === "win32";
 
-linked("second name for an open file", async ({ s }) => {
+linked.skipIf(noSymlinks)("second name for an open file", async ({ s }) => {
     // One file, one buffer: a document naming an open file through a
     // symlink shares the first document's answers while their texts agree,
     // gets none once they diverge, never edits the first document's
@@ -85,7 +84,7 @@ linked("second name for an open file", async ({ s }) => {
     expect((await s.stats()).sessions, "the closed second name stays closed").toBe(0);
 });
 
-linked("second name takes over on close", async ({ s }) => {
+linked.skipIf(noSymlinks)("second name takes over on close", async ({ s }) => {
     await s.compiled("real/main.cpp");
     s.open("link/main.cpp");
     s.edit("link/main.cpp", { replace: "return 0", with: "return undefined_name" });
@@ -104,7 +103,7 @@ unshaken("close before initialize", async ({ s }) => {
     // would be on the wire before the initialize response), and the closed
     // session must not be replayed.
     expect(await s.pushed("main.cpp")).toBeUndefined();
-    await expect(s.hover(at("main.cpp", "|#include"))).rejects.toThrow("Document not open");
+    await expect(s.hover(at("main.cpp", "|int add"))).rejects.toThrow("Document not open");
     // The file closed before ready went through the reindex queue; a normal
     // open/compile cycle must still work afterwards.
     expect(await s.errors("main.cpp")).toEqual([]);
@@ -113,12 +112,12 @@ unshaken("close before initialize", async ({ s }) => {
 test("change without open", async ({ s }) => {
     // No didOpen baseline: the edit must be dropped.
     s.client.change(s.uri("main.cpp"), 1, "int broken(");
-    await expect(s.hover(at("main.cpp", "|#include"))).rejects.toThrow("Document not open");
+    await expect(s.hover(at("main.cpp", "|int add"))).rejects.toThrow("Document not open");
     // The dropped edit must not poison a later open.
     expect(await s.errors("main.cpp")).toEqual([]);
 });
 
-serve.files({ "main.cpp": "int foo() { return 1; }\n" })("desync range clamped", async ({ s }) => {
+test("desync range clamped", async ({ s }) => {
     await s.compiled("main.cpp");
 
     // An incremental edit whose range lies outside the buffer: the views have
@@ -128,7 +127,7 @@ serve.files({ "main.cpp": "int foo() { return 1; }\n" })("desync range clamped",
     s.client.changeRange(s.uri("main.cpp"), 2, outside, "oops");
 
     // Requests keep being served, now against the clamped buffer.
-    expect(await s.hover(at("main.cpp", "int |foo"))).not.toBeNull();
+    expect(await s.hover(at("main.cpp", "int |add"))).not.toBeNull();
 
     // The appended "oops" makes the TU ill-formed: errors prove the edit was
     // applied rather than dropped.
@@ -147,7 +146,7 @@ test("version regression tolerated", async ({ s }) => {
     // A version that goes backwards is a client bug; the edit is applied anyway
     // (and warned about server-side).
     s.client.change(s.uri("main.cpp"), 3, s.disk.read("main.cpp") + "\nint bad(\n");
-    await s.hover(at("main.cpp", "|#include"));
+    await s.hover(at("main.cpp", "|int add"));
     expect((await s.errors("main.cpp")).length).toBeGreaterThan(0);
 });
 
@@ -157,10 +156,7 @@ test("version regression tolerated", async ({ s }) => {
 /// raw client.
 const PRE_INITIALIZED: Launch = { args: ["serve", "--workspace=${workspace}"], handshake: false };
 
-const late = serve.files(
-    { "main.cpp": "int add(int a, int b) { return a + b; }\n", "clice.toml": TEST_TOML },
-    { launch: PRE_INITIALIZED },
-);
+const late = serve("tiny", { files: { "clice.toml": TEST_TOML }, launch: PRE_INITIALIZED });
 
 late("replay after late handshake", async ({ s }) => {
     // The server is pre-initialized (ready); the client has not done its
@@ -214,10 +210,11 @@ late("no stale replay", async ({ s }) => {
     expect(s.client.errors(uri).length).toBeGreaterThan(0);
 });
 
-serve.files(
-    { "main.cpp": "int x = 1;\n", "clice.toml": TEST_TOML },
-    { databases: false, launch: PRE_INITIALIZED },
-)("startup guidance delivered", async ({ s }) => {
+serve("tiny", {
+    files: { "clice.toml": TEST_TOML },
+    databases: false,
+    launch: PRE_INITIALIZED,
+})("startup guidance delivered", async ({ s }) => {
     // No compile_commands.json: the headless workspace load emits guidance
     // without waiting for any handshake; the client must still receive it
     // (drained from the server's notify log).

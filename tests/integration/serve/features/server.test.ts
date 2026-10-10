@@ -1,15 +1,16 @@
 /// Integration tests for the clice MasterServer.
 
 import * as proto from "vscode-languageserver-protocol";
+import type { Serve } from "@clice/tools/actions";
 import { runProcess } from "@clice/tools/client";
 import { at, cliceExecutable, expect, serve } from "../../fixtures.ts";
 
-const test = serve.data("hello_world");
+const test = serve("tiny");
+const stdlib = serve("stdlib");
 
-const ADD = at("main.cpp", "add(int a");
-const FIRST_LINE = at("main.cpp", "#include <iostream>");
-const FIRST_TEN = at("main.cpp", "#include <");
-const LINES_0_TO_10 = { start: { line: 0, character: 0 }, end: { line: 10, character: 0 } };
+function wholeFile(s: Serve, file: string): proto.Range {
+    return s.range(at(file, s.disk.read(file)));
+}
 
 function capabilityEnabled(capability: unknown): boolean {
     return capability !== undefined && capability !== null && capability !== false;
@@ -95,7 +96,9 @@ test("shutdown exit", async ({ s }) => {
 test("feature requests after close", async ({ s }) => {
     s.open("main.cpp");
     s.close("main.cpp");
-    await expect(s.hover(FIRST_LINE)).rejects.toThrow("Document not open");
+    await expect(s.hover(at("main.cpp", "int add(int lhs, int rhs) {"))).rejects.toThrow(
+        "Document not open",
+    );
 });
 
 test("incremental change", async ({ s }) => {
@@ -125,23 +128,23 @@ test("close clears diagnostics", async ({ s }) => {
 
 test("hover before compile", async ({ s }) => {
     s.open("main.cpp");
-    await s.hover(FIRST_LINE);
+    await s.hover(at("main.cpp", "int add(int lhs, int rhs) {"));
     s.close("main.cpp");
 });
 
 test("completion request", async ({ s }) => {
     await s.compiled("main.cpp");
-    await s.completion(FIRST_LINE);
+    await s.completion(at("main.cpp", "int add(int lhs, int rhs) {"));
 });
 
 test("signature help request", async ({ s }) => {
     await s.compiled("main.cpp");
-    await s.signatureHelp(FIRST_LINE);
+    await s.signatureHelp(at("main.cpp", "int add(int lhs, int rhs) {"));
 });
 
 test("definition request", async ({ s }) => {
     await s.compiled("main.cpp");
-    await s.definition(ADD);
+    await s.definition(at("main.cpp", "add(int lhs"));
 });
 
 test("document symbol request", async ({ s }) => {
@@ -161,17 +164,21 @@ test("semantic tokens request", async ({ s }) => {
 
 test("inlay hint request", async ({ s }) => {
     await s.compiled("main.cpp");
-    await s.request("textDocument/inlayHint", "main.cpp", { range: LINES_0_TO_10 });
+    await s.request("textDocument/inlayHint", "main.cpp", { range: wholeFile(s, "main.cpp") });
 });
 
 test("code action request", async ({ s }) => {
     await s.compiled("main.cpp");
-    await s.codeActions(FIRST_TEN, { span: true });
+    await s.codeActions(at("main.cpp", "int add(int lhs, int rhs) {"), { span: true });
 });
 
-test("document link request", async ({ s }) => {
-    await s.compiled("main.cpp");
-    expect(await s.request("textDocument/documentLink", "main.cpp")).not.toBeNull();
+stdlib("document link request", async ({ s }) => {
+    await s.compiled("report.cpp");
+    const links = await s.request<proto.DocumentLink[] | null>(
+        "textDocument/documentLink",
+        "report.cpp",
+    );
+    expect(links?.length, "each standard header is linked").toBe(3);
 });
 
 test("rapid changes stress", async ({ s }) => {
@@ -219,17 +226,18 @@ test("format range out of range", async ({ s }) => {
 });
 
 /// Exercise all feature requests after compilation completes.
-test("all features after compile wait", async ({ s }) => {
-    await s.compiled("main.cpp");
+stdlib("all features after compile wait", async ({ s }) => {
+    await s.compiled("report.cpp");
+    const report = at("report.cpp", "report(const");
 
-    expect(await s.hover(ADD)).not.toBeNull();
-    await s.completion(at("main.cpp", '"|hello world"'));
-    await s.signatureHelp(FIRST_LINE);
-    await s.definition(ADD);
-    expect(await s.request("textDocument/documentSymbol", "main.cpp")).not.toBeNull();
-    expect(await s.request("textDocument/foldingRange", "main.cpp")).not.toBeNull();
-    expect(await s.request("textDocument/semanticTokens/full", "main.cpp")).not.toBeNull();
-    expect(await s.request("textDocument/documentLink", "main.cpp")).not.toBeNull();
-    await s.codeActions(FIRST_TEN, { span: true });
-    await s.request("textDocument/inlayHint", "main.cpp", { range: LINES_0_TO_10 });
+    expect(await s.hover(report)).not.toBeNull();
+    await s.completion(at("report.cpp", '"|: "'));
+    await s.signatureHelp(at("report.cpp", "#include <map>"));
+    await s.definition(report);
+    expect(await s.request("textDocument/documentSymbol", "report.cpp")).not.toBeNull();
+    expect(await s.request("textDocument/foldingRange", "report.cpp")).not.toBeNull();
+    expect(await s.request("textDocument/semanticTokens/full", "report.cpp")).not.toBeNull();
+    expect(await s.request("textDocument/documentLink", "report.cpp")).not.toBeNull();
+    await s.codeActions(at("report.cpp", "#include <map>"), { span: true });
+    await s.request("textDocument/inlayHint", "report.cpp", { range: wholeFile(s, "report.cpp") });
 });

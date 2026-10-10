@@ -25,6 +25,7 @@
 /// reply's ranges, so that one still answers ContentModified.
 
 import * as proto from "vscode-languageserver-protocol";
+import type { Serve } from "@clice/tools/actions";
 import { at, expect, serve, type Loc } from "../../fixtures.ts";
 
 const FEATURES: { method: string; where: string | Loc; extra?: object }[] = [
@@ -82,45 +83,43 @@ function labels(list: proto.CompletionList | proto.CompletionItem[] | null | und
     return (Array.isArray(list) ? list : (list?.items ?? [])).map((item) => item.label);
 }
 
-const PROBE = "int extra_value;\nint probe = extra_";
-
 // The buffer moves on while the completion's worker works on the old text,
 // then while it waits for the PCH of a new preamble.
-serve.files({
-    "pre.h": "#pragma once\n",
-    "more.h": "#pragma once\n",
-    "main.cpp": `#include "pre.h"\n${PROBE}`,
-})("edit mid-flight still completes", async ({ s }) => {
-    const probe = at("main.cpp", "int probe = extra_|");
-    await s.compiled("main.cpp");
+serve("shapes/headers")("edit mid-flight still completes", async ({ s }) => {
+    const main = s.file("main");
+    const probe = at(s.file("main"), "shapes::ar|");
+    await s.compiled(main);
     let served: Promise<proto.CompletionItem[] | proto.CompletionList | null> =
         Promise.resolve(null);
     await s.inWorker(
         "completion",
-        "main.cpp",
+        main,
         () => {
             served = s.completion(probe);
         },
         () => {
-            s.edit("main.cpp", { after: "int probe = extra_", insert: "v" });
+            s.edit(s.file("main"), { after: "shapes::ar", insert: "e" });
         },
     );
-    expect(labels(await served)).toContain("extra_value");
+    expect(labels(await served)).toContain("area");
 
     let moved: Promise<unknown> = Promise.resolve();
     await s.inFlight(
         "pch",
-        "main.cpp",
+        main,
         () => {
             // A new preamble, whose PCH the completion waits for.
-            s.edit("main.cpp", { after: '#include "pre.h"\n', insert: '#include "more.h"\n' });
+            s.edit(s.file("main"), {
+                after: '#include "shapes/registry.h"\n',
+                insert: '#include "shapes/draft.h"\n',
+            });
             moved = s.completion(probe).then(
                 () => null,
                 (error: unknown) => error,
             );
         },
         () => {
-            s.edit("main.cpp", { before: '#include "pre.h"', insert: "int moved;\n" });
+            s.edit(s.file("main"), { before: '#include "shapes/c_api.h"', insert: "int moved;\n" });
         },
     );
     expect(await moved).toMatchObject({ code: proto.LSPErrorCodes.ContentModified });
@@ -146,53 +145,58 @@ function edit(uri: string, text: string): proto.NotificationMessage {
 }
 
 const READ_WITH_AN_EDIT = [
-    { method: "textDocument/hover", params: { position: { line: 0, character: 4 } } },
+    { method: "textDocument/hover", where: at("main.cpp", "int a|dd(") },
     {
         method: "textDocument/formatting",
-        params: { options: { tabSize: 4, insertSpaces: true } },
+        where: "main.cpp",
+        extra: { options: { tabSize: 4, insertSpaces: true } },
     },
 ];
 
-serve.files({ "main.cpp": "int value = 1;\n" }).for(READ_WITH_AN_EDIT)(
+const tiny = serve("tiny");
+
+tiny.for(READ_WITH_AN_EDIT)(
     "$method read with an edit answers ContentModified",
-    async ({ method, params }, { s }) => {
+    async ({ method, where, extra }, { s }) => {
         await s.compiled("main.cpp");
         const uri = s.uri("main.cpp");
+        const position = typeof where === "string" ? {} : { position: s.position(where).position };
         const replies = await s.client.sendTogether([
-            request(method, method, { textDocument: { uri }, ...params }),
-            edit(uri, "int  value = 2;\n"),
+            request(method, method, { textDocument: { uri }, ...position, ...extra }),
+            edit(uri, s.disk.read("main.cpp").replace("add(1, 2)", "add(1,  2)")),
         ]);
         expect(replies.get(method)?.error?.code).toBe(proto.LSPErrorCodes.ContentModified);
     },
 );
 
-const completing = serve.files({ "main.cpp": PROBE });
+/// A completion at `loc` read together with what `after` sends of its
+/// file's uri and text.
+async function completeWith(
+    s: Serve,
+    loc: Loc,
+    after: (uri: string, text: string) => proto.NotificationMessage[],
+): Promise<Map<string, proto.ResponseMessage>> {
+    await s.compiled(loc.file);
+    const { uri, position } = s.position(loc);
+    return s.client.sendTogether([
+        request("completion", "textDocument/completion", { textDocument: { uri }, position }),
+        ...after(uri, s.disk.read(loc.file)),
+    ]);
+}
 
-completing("completion read with an edit is served", async ({ s }) => {
-    await s.compiled("main.cpp");
-    const uri = s.uri("main.cpp");
-    const replies = await s.client.sendTogether([
-        request("completion", "textDocument/completion", {
-            textDocument: { uri },
-            position: { line: 1, character: 18 },
-        }),
-        edit(uri, PROBE + "v"),
+tiny("completion read with an edit is served", async ({ s }) => {
+    const replies = await completeWith(s, at("main.cpp", "value = ad|d(1, 2)"), (uri, text) => [
+        edit(uri, text.replace("value = ad", "value = add")),
     ]);
     const served = replies.get("completion")?.result as proto.CompletionList | null;
-    expect(labels(served)).toContain("extra_value");
+    expect(labels(served)).toContain("add");
 });
 
-completing("completion read with a reopen answers ContentModified", async ({ s }) => {
-    await s.compiled("main.cpp");
-    const uri = s.uri("main.cpp");
-    const replies = await s.client.sendTogether([
-        request("completion", "textDocument/completion", {
-            textDocument: { uri },
-            position: { line: 1, character: 18 },
-        }),
+tiny("completion read with a reopen answers ContentModified", async ({ s }) => {
+    const replies = await completeWith(s, at("main.cpp", "value = ad|d(1, 2)"), (uri, text) => [
         notification(proto.DidCloseTextDocumentNotification.method, { textDocument: { uri } }),
         notification(proto.DidOpenTextDocumentNotification.method, {
-            textDocument: { uri, languageId: "cpp", version: 1, text: PROBE },
+            textDocument: { uri, languageId: "cpp", version: 1, text },
         }),
     ]);
     expect(replies.get("completion")?.error?.code).toBe(proto.LSPErrorCodes.ContentModified);

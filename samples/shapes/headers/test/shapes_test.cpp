@@ -1,4 +1,5 @@
-#include "shapes/circle.h"
+#include "shapes/shapes.h"
+#include "shapes/shape.h"
 
 int main() {
     shapes::Circle c(1.0);

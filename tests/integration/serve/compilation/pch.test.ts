@@ -3,20 +3,17 @@
 
 import { at, expect, serve } from "../../fixtures.ts";
 
-serve.files({ "main.cpp": "#include <iostream>\nint main() { return 0; }\n" })(
-    "unchanged preamble keeps its pch",
-    async ({ s }) => {
-        // The standard library's lookups (`#include_next`, `__has_include`)
-        // fail in some directories on the way: none of that is a change.
-        await s.clean("main.cpp");
-        const built = s.workspace.pchFiles();
-        expect(built).toHaveLength(1);
-        await s.completion(at("main.cpp", "|int main"));
-        await s.sync();
-        expect((await s.counts()).pch, "the pch was rebuilt").toBe(1);
-        expect(s.workspace.pchFiles()).toEqual(built);
-    },
-);
+serve("stdlib")("unchanged preamble keeps its pch", async ({ s }) => {
+    // The standard library's lookups (`#include_next`, `__has_include`)
+    // fail in some directories on the way: none of that is a change.
+    await s.clean("report.cpp");
+    const built = s.workspace.pchFiles();
+    expect(built).toHaveLength(1);
+    await s.completion(at("report.cpp", "|std::string report("));
+    await s.sync();
+    expect((await s.counts()).pch, "the pch was rebuilt").toBe(1);
+    expect(s.workspace.pchFiles()).toEqual(built);
+});
 
 /// A preamble with errors keeps its PCH, which body edits reuse. The
 /// missing header showing up is a new input.
@@ -51,72 +48,70 @@ serve.files(
     expect(s.workspace.pchFiles()).toHaveLength(1);
 });
 
-const test = serve.data("pch_test");
+const test = serve("shapes/headers");
 
 test("pch diagnostics on open", async ({ s }) => {
-    await s.clean("main.cpp");
-    expect((await s.counts()).files["main.cpp"]?.publish).toBeGreaterThan(0);
-    s.close("main.cpp");
+    await s.clean(s.file("main"));
+    expect((await s.counts()).files[s.file("main")]?.publish).toBeGreaterThan(0);
+    s.close(s.file("main"));
 });
 
 test("pch body edit triggers recompile", async ({ s }) => {
-    await s.compiled("main.cpp");
-    s.edit("main.cpp", { replace: "return result;", with: "return result + 1;" });
-    await s.diagnostics("main.cpp");
-    expect((await s.counts()).files["main.cpp"]).toMatchObject({ compile: 2, pch: 1 });
-    s.close("main.cpp");
+    await s.compiled(s.file("registry"));
+    s.edit(s.file("registry"), { replace: "return registered;", with: "return registered + 1;" });
+    await s.diagnostics(s.file("registry"));
+    expect((await s.counts()).files[s.file("registry")]).toMatchObject({ compile: 2, pch: 1 });
+    s.close(s.file("registry"));
 });
 
-test("no pch for no includes", async ({ s }) => {
-    await s.clean("no_includes.cpp");
+serve("tiny")("no pch for no includes", async ({ s }) => {
+    await s.clean("main.cpp");
     const counts = await s.counts();
-    expect(counts.files["no_includes.cpp"]?.publish).toBeGreaterThan(0);
+    expect(counts.files["main.cpp"]?.publish).toBeGreaterThan(0);
     expect(counts.pch).toBe(0);
-    s.close("no_includes.cpp");
+    s.close("main.cpp");
 });
 
 test("hover on local symbol", async ({ s }) => {
-    await s.compiled("main.cpp");
-    expect(await s.hover(at("main.cpp", "int |add(int a, int b) {"))).not.toBeNull();
-    s.close("main.cpp");
+    await s.compiled(s.file("registry"));
+    expect(await s.hover(at(s.file("registry"), "int |registry_count() {"))).not.toBeNull();
+    s.close(s.file("registry"));
 });
 
 test("completion with pch", async ({ s }) => {
-    await s.compiled("main.cpp");
-    s.edit("main.cpp", { text: s.disk.read("main.cpp") + "\nPoi" });
-    expect(await s.completion(at("main.cpp", "\nPoi|"))).not.toBeNull();
-    s.close("main.cpp");
+    await s.compiled(s.file("main"));
+    s.edit(s.file("main"), { replace: "shapes::Circle c(2.0);", with: "shapes::Circ" });
+    expect(await s.completion(at(s.file("main"), "shapes::Circ|"))).not.toBeNull();
+    s.close(s.file("main"));
 });
 
 test("preamble edit then hover", async ({ s }) => {
-    await s.clean("main.cpp");
+    await s.clean(s.file("registry"));
     // A project-local header, not a system one (<cstdio>): the PCH rebuild
     // stays fast on macOS CI.
-    s.edit("main.cpp", {
-        replace: '#include "common.h"\n',
-        with: '#include "common.h"\n#include "common.h"\n',
+    s.edit(s.file("registry"), {
+        replace: '#include "shapes/registry.h"\n',
+        with: '#include "shapes/registry.h"\n#include "shapes/registry.h"\n',
     });
-    expect(await s.errors("main.cpp"), "Expected no errors after preamble edit").toEqual([]);
+    expect(await s.errors(s.file("registry")), "Expected no errors after preamble edit").toEqual(
+        [],
+    );
     expect(
-        await s.hover(at("main.cpp", "int |add(int a, int b) {")),
+        await s.hover(at(s.file("registry"), "int |registry_count() {")),
         "Hover failed after preamble edit",
     ).not.toBeNull();
-    s.close("main.cpp");
+    s.close(s.file("registry"));
 });
 
 test("preamble edit multiple times", async ({ s }) => {
-    await s.compiled("main.cpp");
-    const body = s.disk.read("main.cpp").split("\n").slice(1).join("\n");
+    await s.compiled(s.file("registry"));
     for (let i = 0; i < 3; i++) {
-        let includes = '#include "common.h"\n';
-        for (let j = 0; j < i + 1; j++) {
-            includes += `// edit ${j}\n`;
-        }
-        s.edit("main.cpp", { text: includes + body });
-        await s.diagnostics("main.cpp");
+        s.edit(s.file("registry"), { before: "\nnamespace shapes {", insert: `// edit ${i}\n` });
+        await s.diagnostics(s.file("registry"));
     }
-    expect(await s.errors("main.cpp"), "Expected no errors after multiple preamble edits").toEqual(
-        [],
-    );
-    s.close("main.cpp");
+    expect(
+        await s.errors(s.file("registry")),
+        "Expected no errors after multiple preamble edits",
+    ).toEqual([]);
+    s.close(s.file("registry"));
 });

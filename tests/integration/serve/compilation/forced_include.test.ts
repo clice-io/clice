@@ -1,51 +1,55 @@
 /// Integration tests for forced includes (`-include`): the dependency graph
 /// scans them like any included header.
 
+import { readManifest } from "@clice/tools/project";
 import { expect, serve } from "../../fixtures.ts";
 
-serve.files(
-    {
-        "force.h": "#define FORCED 1\n",
-        "header.h": "inline int header() { return FORCED; }\n",
-        "main.cpp": '#include "header.h"\nint main() { return header(); }\n',
-        "other.cpp": "int other() { return FORCED; }\n",
+const FORCE_H = "#define FORCED 1\n";
+
+const HEADERS = readManifest("shapes/headers");
+const MODULES = readManifest("shapes/modules");
+const FAST = MODULES.files!["fast"]!;
+const FAST_ARGS = MODULES.units![FAST] as string[];
+
+serve("shapes/headers", {
+    files: { "force.h": FORCE_H },
+    databases: {
+        "compile_commands.json": {
+            ...HEADERS,
+            args: [...(HEADERS.args ?? []), "-include", "force.h"],
+        },
     },
-    { manifest: { args: ["-include", "force.h"], units: { "main.cpp": [], "other.cpp": [] } } },
-)("edits pay no import scan", async ({ s }) => {
-    expect(await s.errors("main.cpp")).toEqual([]);
-    expect(await s.errors("header.h")).toEqual([]);
-    s.edit("main.cpp", { replace: "header();", with: "header() + 1;" });
-    await s.compiled("main.cpp");
-    s.edit("header.h", { replace: "FORCED", with: "FORCED + 1" });
-    expect(await s.errors("header.h"), "the header compiles through its host").toEqual([]);
+})("edits pay no import scan", async ({ s }) => {
+    expect(await s.errors(s.file("main"))).toEqual([]);
+    expect(await s.errors(s.file("circle"))).toEqual([]);
+    s.edit(s.file("main"), {
+        replace: "shapes::registry_count();",
+        with: "shapes::registry_count() + 1;",
+    });
+    await s.compiled(s.file("main"));
+    s.edit(s.file("circle"), { replace: "double pi = SHAPES_PI;", with: "double pi = FORCED;" });
+    expect(await s.errors(s.file("circle")), "the header compiles through its host").toEqual([]);
     await s.indexed();
-    const symbols = (await s.workspaceSymbols("other")) ?? [];
+    const symbols = (await s.workspaceSymbols("registry_reset")) ?? [];
     expect(
-        symbols.some((symbol) => symbol.name === "other"),
+        symbols.some((symbol) => symbol.name === "registry_reset"),
         "the closed unit is indexed",
     ).toBe(true);
 
     expect((await s.stats()).importScans).toBe(0);
 });
 
-serve.files(
-    {
-        "force.h": "#define FORCED 1\n",
-        "main.cpp": "int main() { return FORCED; }\n",
-        "a.cppm": "export module A;\nexport int a() { return 1; }\n",
-        "user.cpp": "import A;\nint user() { return a(); }\n",
-    },
-    {
-        config: { project: { enable_indexing: false } },
-        manifest: {
-            cxx: ["-std=c++20"],
-            units: { "main.cpp": ["-include", "force.h"], "a.cppm": [], "user.cpp": [] },
-        },
-    },
-)("modules elsewhere cost nothing", async ({ s }) => {
-    await s.compiled("main.cpp");
-    s.edit("main.cpp", { replace: "FORCED;", with: "FORCED + 1;" });
-    await s.clean("main.cpp");
+serve("shapes/modules", {
+    config: { project: { enable_indexing: false } },
+    files: { "force.h": FORCE_H },
+    units: { [FAST]: [...FAST_ARGS, "-include", "force.h"] },
+})("modules elsewhere cost nothing", async ({ s }) => {
+    await s.compiled(s.file("fast"));
+    s.edit(s.file("fast"), {
+        replace: "int fast_precision() {\n    return shapes_precision;",
+        with: "int fast_precision() {\n    return shapes_precision + FORCED;",
+    });
+    await s.clean(s.file("fast"));
     expect((await s.stats()).importScans).toBe(0);
 });
 

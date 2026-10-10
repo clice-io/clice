@@ -4,16 +4,29 @@
 /// other bytes than the one before — the scan's included — is a change.
 
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { MTIME_GRANULARITY } from "@clice/tools/client";
 import type { Serve, ServeOptions } from "@clice/tools/actions";
-import type { Manifest } from "@clice/tools/project";
+import { SAMPLES_DIR, readManifest, type Manifest } from "@clice/tools/project";
 import { at, expect, serve, type Loc } from "../../fixtures.ts";
 
-const GATED_MAIN = `#ifndef FEATURE
-#error missing FEATURE
-#endif
-int main() { return 0; }
-`;
+const SHAPES = readManifest("shapes/headers");
+const FAST = SHAPES.files!["fast"]!;
+const REGISTRY = SHAPES.files!["registry"]!;
+
+/// The shapes database with fast.cpp built under `args` alone.
+function fastUnder(...args: string[]): Manifest {
+    return { ...SHAPES, units: { ...SHAPES.units, [FAST]: args } };
+}
+
+/// fast.cpp built without SHAPES_FAST: its #error fires.
+const FAST_UNSET: ServeOptions = { units: { [FAST]: [] } };
+
+/// Inserted into the config header, turns the fast mode off for every
+/// includer: fast.cpp then defines exact_precision, not fast_precision.
+const FAST_OFF = "#undef SHAPES_FAST\n#define SHAPES_FAST 0\n";
+
+const NO_INDEX = { config: { project: { enable_indexing: false } } };
 
 const HEADER_V1 = `#define VALUE 1
 #define TARGET alpha
@@ -26,15 +39,6 @@ const HEADER_V2 = `#define VALUE 2
 inline int alpha() { return 1; }
 inline int beta() { return 2; }
 `;
-
-const GATED_LIB = `#ifdef FEATURE
-int feature_on() { return 1; }
-#else
-int feature_off() { return 0; }
-#endif
-`;
-
-const CLOSED = '#include "header.h"\nint use_target() { return TARGET(); }\n';
 
 const CXX = ["-std=c++17"];
 
@@ -58,135 +62,131 @@ async function indexes(s: Serve, name: string): Promise<boolean> {
     return symbols.some((symbol) => symbol.name === name);
 }
 
-const ALPHA = at("header.h", "alpha()");
-const BETA = at("header.h", "beta()");
+/// Write `file` back with the sample's text, after the case removed it.
+function restore(s: Serve, file: string): void {
+    s.disk.write(file, fs.readFileSync(path.join(SAMPLES_DIR, s.project!, file), "utf8"));
+}
 
-serve.files({ "main.cpp": GATED_MAIN }, cxx17(["main.cpp"]))(
-    "cdb flag change recompiles",
-    async ({ s }) => {
-        expect(await s.errors("main.cpp"), "gate must fire without -DFEATURE").not.toEqual([]);
-
-        s.disk.database(manifest(["main.cpp"], ["-DFEATURE"]));
-        expect(await s.poll("cdb")).toBe(1);
-        expect(await s.errors("main.cpp"), "open file must pick up the new flags").toEqual([]);
+/// The detail header is gone when the server starts.
+const NO_DETAIL: ServeOptions = {
+    setup: (workspace) => {
+        workspace.rm(SHAPES.files!["detail"]!);
     },
-);
+};
 
-serve.files({ "main.cpp": GATED_MAIN }, cxx17(["main.cpp"]))(
-    "cdb stamped tick settles",
-    async ({ s }) => {
-        const stamped = { force: false };
-        expect(await s.poll("cdb", stamped), "unchanged stamp must be quiet").toBe(0);
+serve("shapes/headers", FAST_UNSET)("cdb flag change recompiles", async ({ s }) => {
+    expect(await s.errors(s.file("fast")), "gate must fire without -DSHAPES_FAST").not.toEqual([]);
 
-        s.disk.database(manifest(["main.cpp"], ["-DFEATURE"]));
-        expect(await s.poll("cdb", stamped), "a fresh stamp only arms the settling debounce").toBe(
-            0,
-        );
-        expect(await s.poll("cdb", stamped), "the settled stamp reloads").toBe(1);
-    },
-);
-
-serve.files({ "main.cpp": "int main() { return 0; }\n" }, cxx17(["main.cpp"]))(
-    "cdb new entry indexed",
-    async ({ s }) => {
-        await s.compiled("main.cpp");
-
-        s.disk.write("lib.cpp", "int lib_entry() { return 1; }\n");
-        s.disk.database(manifest(["main.cpp", "lib.cpp"]));
-        expect(await s.poll("cdb")).toBe(1);
-
-        await s.indexed();
-        expect(await indexes(s, "lib_entry"), "file added to the CDB was never indexed").toBe(true);
-    },
-);
-
-serve.files(
-    { "header.h": "inline int shared() { return 0; }\n", "gone.cpp": '#include "header.h"\n' },
-    cxx17(["gone.cpp"]),
-)("cdb removed entry recheck", async ({ s }) => {
-    let result = await s.contexts("header.h");
-    expect(result.total, "gone.cpp must host the header initially").toBeGreaterThanOrEqual(1);
-
-    s.disk.database(manifest([]));
+    s.disk.database(SHAPES);
     expect(await s.poll("cdb")).toBe(1);
-
-    result = await s.contexts("header.h");
-    expect(result.total, "removed entry must stop hosting the header").toBe(0);
+    expect(await s.errors(s.file("fast")), "open file must pick up the new flags").toEqual([]);
 });
 
-serve.files(
-    { "main.cpp": GATED_MAIN, "lib.cpp": "int lib_entry() { return 1; }\n" },
-    { databases: false },
-)("cdb appears after startup", async ({ s }) => {
-    expect(await s.errors("main.cpp"), "guessed command cannot define FEATURE").not.toEqual([]);
+serve("shapes/headers", FAST_UNSET)("cdb stamped tick settles", async ({ s }) => {
+    const stamped = { force: false };
+    expect(await s.poll("cdb", stamped), "unchanged stamp must be quiet").toBe(0);
 
-    // The editor was opened first; cmake runs later.
-    s.disk.database(manifest(["main.cpp", "lib.cpp"], ["-DFEATURE"]));
-    expect(await s.poll("cdb")).toBe(1);
-
-    expect(await s.errors("main.cpp"), "open file must switch to the discovered CDB").toEqual([]);
-    await s.indexed();
-    expect(
-        await indexes(s, "lib_entry"),
-        "closed file from the discovered CDB was never indexed",
-    ).toBe(true);
+    s.disk.database(SHAPES);
+    expect(await s.poll("cdb", stamped), "a fresh stamp only arms the settling debounce").toBe(0);
+    expect(await s.poll("cdb", stamped), "the settled stamp reloads").toBe(1);
 });
 
-serve.files(
-    {
-        "header.h": HEADER_V1,
-        "main.cpp":
-            '#include "header.h"\nstatic_assert(VALUE == 2, "");\nint main() { return 0; }\n',
-        "closed.cpp": CLOSED,
-    },
-    cxx17(["main.cpp", "closed.cpp"]),
-)("checkout updates workspace", async ({ s }) => {
-    expect(await s.errors("main.cpp"), "static_assert must fire against header V1").not.toEqual([]);
+serve("shapes/headers", { units: { [REGISTRY]: null } })("cdb new entry indexed", async ({ s }) => {
+    await s.compiled(s.file("main"));
     await s.indexed();
-    expect(
-        await referrers(s, ALPHA),
-        "initial index never resolved the closed TU's alpha call",
-    ).toContain("closed.cpp");
+    expect(await indexes(s, "registry_reset"), "a source outside the CDB is indexed").toBe(false);
 
-    expect(await s.poll("workspace")).toBe(0);
+    s.disk.database(SHAPES);
+    expect(await s.poll("cdb")).toBe(1);
 
-    // Simulate git checkout: rewrite files on disk, no didSave.
-    s.disk.write("header.h", HEADER_V2);
-    s.disk.write("closed.cpp", CLOSED + "int checkout_added() { return 3; }\n");
-    expect(await s.poll("workspace")).toBe(2);
-
-    expect(await s.errors("main.cpp"), "open file must compile against the new header").toEqual([]);
     await s.indexed();
-    expect(
-        await referrers(s, BETA),
-        "closed TU was not reindexed against the new header",
-    ).toContain("closed.cpp");
-    expect(await indexes(s, "checkout_added"), "closed TU's own disk change was not indexed").toBe(
+    expect(await indexes(s, "registry_reset"), "file added to the CDB was never indexed").toBe(
         true,
     );
 });
 
-serve.files({ "header.h": HEADER_V1, "closed.cpp": CLOSED }, cxx17(["closed.cpp"]))(
-    "checkout under an open header",
-    async ({ s }) => {
-        await s.indexed();
-        expect(await referrers(s, ALPHA)).toContain("closed.cpp");
-        s.open("header.h");
-        expect(await s.poll("workspace")).toBe(0);
+serve("shapes/headers")("cdb removed entry recheck", async ({ s }) => {
+    let result = await s.contexts(s.file("circle"));
+    expect(result.total, "its includers must host the header initially").toBeGreaterThanOrEqual(1);
 
-        // The editor reloads a clean buffer after a checkout: didChange, no
-        // didSave. The buffer shadows the disk for the header's own compile
-        // only, so the closed includer sees the checkout while it stays open.
-        s.disk.write("header.h", HEADER_V2);
-        s.edit("header.h", { text: HEADER_V2 });
-        expect(await s.poll("workspace")).toBe(1);
-        await s.indexed();
-        expect(
-            await referrers(s, BETA),
-            "closed TU was not reindexed while the header stayed open",
-        ).toContain("closed.cpp");
-    },
-);
+    s.disk.database({ units: {} });
+    expect(await s.poll("cdb")).toBe(1);
+
+    result = await s.contexts(s.file("circle"));
+    expect(result.total, "removed entries must stop hosting the header").toBe(0);
+});
+
+serve("shapes/headers", { databases: false })("cdb appears after startup", async ({ s }) => {
+    expect(await s.errors(s.file("fast")), "guessed command cannot define SHAPES_FAST").not.toEqual(
+        [],
+    );
+
+    // The editor was opened first; cmake runs later.
+    s.disk.database(s.manifest);
+    expect(await s.poll("cdb")).toBe(1);
+
+    expect(await s.errors(s.file("fast")), "open file must switch to the discovered CDB").toEqual(
+        [],
+    );
+    await s.indexed();
+    expect(
+        await indexes(s, "registry_reset"),
+        "closed file from the discovered CDB was never indexed",
+    ).toBe(true);
+});
+
+serve("shapes/headers")("checkout updates workspace", async ({ s }) => {
+    const area = at(s.file("circle"), "double are|a");
+    await s.clean(s.file("main"));
+    await s.indexed();
+    expect(
+        await referrers(s, area),
+        "initial index never resolved the closed TU's area call",
+    ).toContain(s.file("circle_impl"));
+
+    expect(await s.poll("workspace")).toBe(0);
+
+    // Simulate git checkout of a rename: rewrite files on disk, no didSave.
+    s.disk.edit(s.file("circle"), { replace: "double area(", with: "double area_of(" });
+    s.disk.edit(
+        s.file("circle_impl"),
+        { replace: "return area(", with: "return area_of(" },
+        { replace: "double area(", with: "double area_of(" },
+    );
+    expect(await s.poll("workspace")).toBe(2);
+
+    expect(
+        await s.errors(s.file("main")),
+        "open file must compile against the new header",
+    ).not.toEqual([]);
+    await s.indexed();
+    const sites = s.show(await s.references(area));
+    expect(sites, "closed TU was not reindexed against the new header").toContain(
+        "src/circle.cpp: return area_of(*this);",
+    );
+    expect(sites, "closed TU's own disk change was not indexed").toContain(
+        "src/circle.cpp: double area_of(const Circle& circle) {",
+    );
+});
+
+serve("shapes/headers")("checkout under an open header", async ({ s }) => {
+    await s.indexed();
+    expect(await indexes(s, "fast_precision")).toBe(true);
+    s.open(s.file("config"));
+    expect(await s.poll("workspace")).toBe(0);
+
+    // The editor reloads a clean buffer after a checkout: didChange, no
+    // didSave. The buffer shadows the disk for the header's own compile
+    // only, so the closed includer sees the checkout while it stays open.
+    s.disk.edit(s.file("config"), { after: "#define SHAPES_API\n", insert: FAST_OFF });
+    s.edit(s.file("config"), { after: "#define SHAPES_API\n", insert: FAST_OFF });
+    expect(await s.poll("workspace")).toBe(1);
+    await s.indexed();
+    expect(
+        await indexes(s, "exact_precision"),
+        "closed TU was not reindexed while the header stayed open",
+    ).toBe(true);
+});
 
 serve.files(
     {
@@ -197,7 +197,7 @@ serve.files(
     cxx17(["closed.cpp"]),
 )("macro include change reindexes", async ({ s }) => {
     await s.indexed();
-    expect(await referrers(s, ALPHA)).toContain("closed.cpp");
+    expect(await referrers(s, at("header.h", "alpha()"))).toContain("closed.cpp");
     expect(await s.poll("workspace")).toBe(0);
 
     // Only the compile resolves the include: the header is watched and its
@@ -205,189 +205,166 @@ serve.files(
     s.disk.write("header.h", HEADER_V2);
     expect(await s.poll("workspace")).toBe(1);
     await s.indexed();
-    expect(await referrers(s, BETA), "the macro includer was not reindexed").toContain(
-        "closed.cpp",
-    );
+    expect(
+        await referrers(s, at("header.h", "beta()")),
+        "the macro includer was not reindexed",
+    ).toContain("closed.cpp");
 });
 
 // Where a failed include looked is watched: creating the header there
 // recompiles the open includer and reindexes the closed one.
-serve.files(
-    {
-        "open.cpp": '#include "gen.h"\nint use_a() { return make(); }\n',
-        "closed.cpp": '#include "gen.h"\nint use_b() { return make(); }\n',
-    },
-    cxx17(["open.cpp", "closed.cpp"]),
-)("created header reaches includers", async ({ s }) => {
-    expect(await s.errors("open.cpp"), "gen.h does not exist yet").not.toEqual([]);
+serve("shapes/headers", NO_DETAIL)("created header reaches includers", async ({ s }) => {
+    expect(await s.errors(s.file("demo")), "the detail header does not exist yet").not.toEqual([]);
     await s.indexed();
-    expect(await indexes(s, "use_b")).toBe(true);
+    expect(await referrers(s, at(s.file("circle"), "double are|a("))).toContain(
+        s.file("circle_impl"),
+    );
 
-    s.disk.write("gen.h", "int make();\n");
+    restore(s, s.file("detail"));
     expect(await s.poll("workspace")).toBe(1);
-    expect(await s.errors("open.cpp"), "the open includer must find the new header").toEqual([]);
+    expect(await s.errors(s.file("demo")), "the open includer must find the new header").toEqual(
+        [],
+    );
     await s.indexed();
     expect(
-        await referrers(s, at("gen.h", "make")),
+        await referrers(s, at(s.file("detail"), "square(double")),
         "the closed includer was not reindexed",
-    ).toContain("closed.cpp");
+    ).toContain(s.file("circle_impl"));
 });
 
 // The includer's index predates the header: its own run must not take
 // that index's word that the includer never enters it.
-serve.files(
-    { "closed.cpp": '#include "gen.h"\nint use_b() { return make(); }\n' },
-    cxx17(["closed.cpp"]),
-)("created header indexes in its includer", async ({ s }) => {
+serve("shapes/headers", NO_DETAIL)("created header indexes in its includer", async ({ s }) => {
     await s.indexed();
-    s.disk.write("gen.h", "int make();\n");
+    restore(s, s.file("detail"));
     expect(await s.poll("workspace")).toBe(1);
     await s.indexed();
-    expect(await referrers(s, at("gen.h", "make"))).toContain("closed.cpp");
+    expect(await referrers(s, at(s.file("detail"), "square(double"))).toContain(
+        s.file("circle_impl"),
+    );
 });
 
-serve.files(
-    {
-        "h.h": "#pragma once\nextern int shared_sym;\n",
-        "a.cpp": '#include "h.h"\nint use_a() { return shared_sym; }\n',
-        "b.cpp": '#include "h.h"\nint use_b() { return shared_sym; }\n',
-        "c.cpp": "int shared_sym = 1;\n",
-    },
-    cxx17(["a.cpp", "b.cpp", "c.cpp"]),
-)("dependency change keeps buffer rows", async ({ s }) => {
-    await s.compiled("a.cpp");
+serve("shapes/headers")("dependency change keeps buffer rows", async ({ s }) => {
+    await s.compiled(s.file("main"));
     await s.indexed();
-    expect(await indexes(s, "use_b")).toBe(true);
-    await s.compiled("b.cpp");
-    s.edit("b.cpp", { after: "return shared_sym; }\n", insert: "// unsaved\n" });
-    await s.compiled("b.cpp");
-    const bSites = async () =>
-        ((await s.references(at("a.cpp", "shared_sym"))) ?? []).filter(
-            (site) => s.relative(site.uri) === "b.cpp",
+    expect(await indexes(s, "demo")).toBe(true);
+    await s.compiled(s.file("demo"));
+    s.edit(s.file("demo"), { after: "square(2.0);\n}\n", insert: "// unsaved\n" });
+    await s.compiled(s.file("demo"));
+    const demoSites = async () =>
+        ((await s.references(at(s.file("main"), "registry_count()"))) ?? []).filter(
+            (site) => s.relative(site.uri) === s.file("demo"),
         ).length;
-    expect(await bSites()).toBe(1);
+    expect(await demoSites()).toBe(1);
 
-    // The header moves on disk: b.cpp's compile is stale, its buffer is
+    // The header moves on disk: demo.cpp's compile is stale, its buffer is
     // not, so the rows it compiled from these very bytes keep serving.
     // Settled first, as in "delete while open reported".
     await s.sync();
     expect(await s.poll("workspace")).toBe(0);
-    s.disk.write("h.h", "#pragma once\n// moved\nextern int shared_sym;\n");
+    s.disk.edit(s.file("circle"), { after: "#pragma once\n", insert: "// moved\n" });
     expect(await s.poll("workspace")).toBe(1);
-    expect(await bSites(), "an edited buffer's rows vanished on a dependency change").toBe(1);
+    expect(await demoSites(), "an edited buffer's rows vanished on a dependency change").toBe(1);
 });
 
-serve.files({ "header.h": HEADER_V1, "main.cpp": '#include "header.h"\n' }, cxx17(["main.cpp"]))(
-    "touch emits no events",
-    async ({ s }) => {
-        expect(await s.poll("workspace")).toBe(0);
+serve("shapes/headers")("touch emits no events", async ({ s }) => {
+    const circle = s.file("circle");
+    expect(await s.poll("workspace")).toBe(0);
 
-        // mtime bump, identical bytes: the content-hash check must stay
-        // silent.
-        s.disk.write("header.h", HEADER_V1);
-        s.disk.touch("header.h", new Date(s.disk.mtime("header.h").getTime() + MTIME_GRANULARITY));
-        expect(await s.poll("workspace")).toBe(0);
+    // mtime bump, identical bytes: the content-hash check must stay
+    // silent.
+    s.disk.write(circle, s.disk.read(circle));
+    s.disk.touch(circle, new Date(s.disk.mtime(circle).getTime() + MTIME_GRANULARITY));
+    expect(await s.poll("workspace")).toBe(0);
+});
+
+serve("shapes/headers", { ...FAST_UNSET, config: { tracker: { workspace_poll_seconds: 1 } } })(
+    "cdb polling loop live",
+    async ({ s }) => {
+        expect(await s.errors(s.file("fast"))).not.toEqual([]);
+        await s.indexed();
+
+        // No hook: the polling loop reloads the database on its own, and the
+        // reindex the new flags queue is the event waited for.
+        const reindex = await s.hold("index", s.file("fast"));
+        s.disk.database(SHAPES);
+        await reindex.reached();
+        await reindex.release();
+        expect(
+            await s.errors(s.file("fast")),
+            "the polling loop must reload the CDB on its own",
+        ).toEqual([]);
     },
 );
 
-serve.files(
-    { "main.cpp": GATED_MAIN },
-    cxx17(["main.cpp"], [], { config: { tracker: { workspace_poll_seconds: 1 } } }),
-)("cdb polling loop live", async ({ s }) => {
-    expect(await s.errors("main.cpp")).not.toEqual([]);
+serve("shapes/headers")("cdb flag change reindexes closed", async ({ s }) => {
+    await s.compiled(s.file("main"));
     await s.indexed();
-
-    // No hook: the polling loop reloads the database on its own, and the
-    // reindex the new flags queue is the event waited for.
-    const reindex = await s.hold("index", "main.cpp");
-    s.disk.database(manifest(["main.cpp"], ["-DFEATURE"]));
-    await reindex.reached();
-    await reindex.release();
-    expect(await s.errors("main.cpp"), "the polling loop must reload the CDB on its own").toEqual(
-        [],
+    expect(await indexes(s, "fast_precision"), "closed file was never indexed initially").toBe(
+        true,
     );
-});
 
-serve.files(
-    { "main.cpp": "int main() { return 0; }\n", "lib.cpp": GATED_LIB },
-    cxx17(["main.cpp", "lib.cpp"]),
-)("cdb flag change reindexes closed", async ({ s }) => {
-    await s.compiled("main.cpp");
-    await s.indexed();
-    expect(await indexes(s, "feature_off"), "closed file was never indexed initially").toBe(true);
-
-    // Only lib.cpp's flags change; its bytes do not. Content-based staleness
-    // cannot see this — the CDB delta must force the reindex.
-    s.disk.database(manifest(["main.cpp", "lib.cpp"], ["-DFEATURE"]));
+    // Only fast.cpp's flags change; its bytes do not. Content-based
+    // staleness cannot see this — the CDB delta must force the reindex.
+    s.disk.database(fastUnder("-DSHAPES_FAST=0"));
     expect(await s.poll("cdb")).toBe(1);
 
     await s.indexed();
     expect(
-        await indexes(s, "feature_on"),
+        await indexes(s, "exact_precision"),
         "closed file was not reindexed after its flags changed",
     ).toBe(true);
 });
 
-serve.files({ "header.h": HEADER_V1, "closed.cpp": CLOSED }, cxx17(["closed.cpp"]))(
-    "rewrite before first tick reported",
-    async ({ s }) => {
-        await s.indexed();
-        expect(
-            await referrers(s, ALPHA),
-            "initial index never resolved the closed TU's alpha call",
-        ).toContain("closed.cpp");
+serve("shapes/headers")("rewrite before first tick reported", async ({ s }) => {
+    await s.indexed();
+    expect(
+        await indexes(s, "fast_precision"),
+        "initial index never compiled the closed TU's fast branch",
+    ).toBe(true);
 
-        // No seeding tick: the first one judges the header against the bytes
-        // the startup scan read.
-        s.disk.write("header.h", HEADER_V2);
-        expect(await s.poll("workspace")).toBe(1);
-        await s.indexed();
-        expect(
-            await referrers(s, BETA),
-            "closed TU was not reindexed against the rewritten header",
-        ).toContain("closed.cpp");
-    },
-);
+    // No seeding tick: the first one judges the header against the bytes
+    // the startup scan read.
+    s.disk.edit(s.file("config"), { after: "#define SHAPES_API\n", insert: FAST_OFF });
+    expect(await s.poll("workspace")).toBe(1);
+    await s.indexed();
+    expect(
+        await indexes(s, "exact_precision"),
+        "closed TU was not reindexed against the rewritten header",
+    ).toBe(true);
+});
 
-serve.files(
-    { "header.h": HEADER_V1, "main.cpp": '#include "header.h"\nint main() { return VALUE; }\n' },
-    cxx17(["main.cpp"]),
-)("delete while open reported", async ({ s }) => {
+serve("shapes/headers")("delete while open reported", async ({ s }) => {
     // A buffer shadows the disk for its own file's compile only: the
-    // removal is main.cpp's news while the header is still open.
-    s.open("header.h");
+    // removal is its includers' news while the header is still open.
+    s.open(s.file("circle"));
     // Settled: work still running would look at the header and report its
     // removal before the poll does.
     await s.sync();
     expect(await s.poll("workspace")).toBe(0);
-    s.disk.rm("header.h");
+    s.disk.rm(s.file("circle"));
     expect(await s.poll("workspace"), "an open file's removal is reported").toBe(1);
-    s.close("header.h");
+    s.close(s.file("circle"));
     expect(await s.poll("workspace"), "reported once").toBe(0);
 });
 
-serve.files(
-    {
-        "h.h": "#pragma once\ninline int helper() { return 1; }\n",
-        "a.cpp": '#include "h.h"\nint use() { return helper(); }\n',
-    },
-    cxx17(["a.cpp"], [], { config: { project: { enable_indexing: false } } }),
-)("unchanged save no recompile", async ({ s }) => {
-    s.open("h.h");
-    expect(await s.errors("a.cpp")).toEqual([]);
+serve("shapes/headers", NO_INDEX)("unchanged save no recompile", async ({ s }) => {
+    const main = s.file("main");
+    s.open(s.file("circle"));
+    expect(await s.errors(main)).toEqual([]);
 
     // A recompile of the host counts a compile and publishes fresh
     // diagnostics; a hover on a clean AST does neither.
     const host = async () => {
         await s.sync();
-        const builds = (await s.counts()).files["a.cpp"];
+        const builds = (await s.counts()).files[main];
         return { compile: builds?.compile, publish: builds?.publish };
     };
-    const hover = () => s.hover(at("a.cpp", "helper()"));
+    const hover = () => s.hover(at(s.file("main"), "area(c)"));
     const settled = await host();
     await hover();
     expect(await host(), "control: a clean AST serves the hover").toEqual(settled);
-    s.save("h.h");
+    s.save(s.file("circle"));
     await hover();
     expect(await host(), "saving unchanged bytes must not dirty the host").toEqual(settled);
 });
@@ -397,23 +374,22 @@ serve.files(
 // must first read the database with it.
 const FUTURE = new Date(Date.now() + 3_600_000);
 
-serve.files(
-    { "main.cpp": "#ifndef NEW\n#error missing NEW\n#endif\nint main() { return 0; }\n" },
-    cxx17(["main.cpp"], ["-DOLD"], {
-        config: { project: { enable_indexing: false } },
-        setup: (workspace) => {
-            fs.utimesSync(workspace.path("compile_commands.json"), FUTURE, FUTURE);
-        },
-    }),
-)("same stamp cdb rewrite applied", async ({ s }) => {
+serve("shapes/headers", {
+    // As long as -DSHAPES_FAST, which the rewrite puts in its place.
+    units: { [FAST]: ["-USHAPES_FAST"] },
+    ...NO_INDEX,
+    setup: (workspace) => {
+        fs.utimesSync(workspace.path("compile_commands.json"), FUTURE, FUTURE);
+    },
+})("same stamp cdb rewrite applied", async ({ s }) => {
     const cdb = s.workspace.path("compile_commands.json");
-    expect(await s.errors("main.cpp")).toHaveLength(1);
+    expect(await s.errors(s.file("fast"))).toHaveLength(1);
 
     const stamped = { force: false };
     expect(await s.poll("cdb", stamped)).toBe(0);
     // In place, same length, same mtime: only the content tells.
     const before = fs.statSync(cdb, { bigint: true });
-    s.disk.edit("compile_commands.json", { replace: "-DOLD", with: "-DNEW" });
+    s.disk.database(fastUnder("-DSHAPES_FAST"));
     fs.utimesSync(cdb, FUTURE, FUTURE);
     const after = fs.statSync(cdb, { bigint: true });
     expect(after.size).toBe(before.size);
@@ -422,7 +398,9 @@ serve.files(
     // The new content settles like any rewrite: seen on two polls.
     expect(await s.poll("cdb", stamped)).toBe(0);
     expect(await s.poll("cdb", stamped)).toBe(1);
-    expect(await s.errors("main.cpp"), "the rewritten flag must reach the open file").toEqual([]);
+    expect(await s.errors(s.file("fast")), "the rewritten flag must reach the open file").toEqual(
+        [],
+    );
 });
 
 /// Flags giving the TU a sysroot inside the workspace: the driver adds its
@@ -455,29 +433,22 @@ serve.files(
 
 // Finding the PCH stale, the request rebuilds it: the check, the PCH's
 // preparation and its build share one look at each header.
-serve.files(
-    {
-        "a.h": "#pragma once\ninline int a() { return 1; }\n",
-        "b.h": "#pragma once\ninline int b() { return 2; }\n",
-        "main.cpp": '#include "a.h"\n#include "b.h"\nint main() { return a() + b(); }\n',
-    },
-    cxx17(["main.cpp"], [], { config: { project: { enable_indexing: false } } }),
-)("stale request looks once", async ({ s }) => {
-    await s.compiled("main.cpp");
+serve("shapes/headers", NO_INDEX)("stale request looks once", async ({ s }) => {
+    await s.compiled(s.file("main"));
 
     const looked = async (request: () => Promise<unknown>) => {
         const before = await s.stats();
         await request();
         return (await s.stats()).checksLooked - before.checksLooked;
     };
-    const hover = () => s.hover(at("main.cpp", "main()"));
-    const completion = () => s.completion(at("main.cpp", "return |a()"));
+    const hover = () => s.hover(at(s.file("main"), "int |main()"));
+    const completion = () => s.completion(at(s.file("main"), "return |static_cast"));
     const freshHover = await looked(hover);
     const freshCompletion = await looked(completion);
 
-    s.disk.write("b.h", "#pragma once\ninline int b() { return 22; }\n");
+    s.disk.edit(s.file("polygon"), { after: "#pragma once\n", insert: "// rewritten\n" });
     expect(await looked(hover)).toBe(freshHover);
-    s.disk.write("a.h", "#pragma once\ninline int a() { return 11; }\n");
+    s.disk.edit(s.file("circle"), { after: "#pragma once\n", insert: "// rewritten\n" });
     expect(await looked(completion)).toBe(freshCompletion);
 });
 
@@ -486,7 +457,7 @@ serve.files(
         "sysroot/usr/include/installed.h": "#define INSTALLED 1\n",
         "main.cpp": '#include <installed.h>\nstatic_assert(INSTALLED == 2, "");\n',
     },
-    cxx17(["main.cpp"], SYSROOT, { config: { project: { enable_indexing: false } } }),
+    cxx17(["main.cpp"], SYSROOT, NO_INDEX),
 )("save looks at installed headers", async ({ s }) => {
     expect(await s.errors("main.cpp"), "the installed header defines 1").not.toEqual([]);
 
@@ -499,22 +470,22 @@ serve.files(
     expect(await s.errors("main.cpp"), "the save must look at the installed header").toEqual([]);
 });
 
-serve.files(
-    { "header.h": HEADER_V1, "closed.cpp": CLOSED },
-    cxx17(["closed.cpp"], [], { config: { tracker: { workspace_poll_seconds: 1 } } }),
-)("background ticks see a rewrite", async ({ s }) => {
-    await s.indexed();
-    expect(await referrers(s, ALPHA)).toContain("closed.cpp");
+serve("shapes/headers", { config: { tracker: { workspace_poll_seconds: 1 } } })(
+    "background ticks see a rewrite",
+    async ({ s }) => {
+        await s.indexed();
+        expect(await indexes(s, "fast_precision")).toBe(true);
 
-    // No hook, no save, and the index answers without looking at the disk:
-    // only a tick can see the rewrite, and the reindex it queues is the
-    // event waited for.
-    const reindex = await s.hold("index", "closed.cpp");
-    s.disk.write("header.h", HEADER_V2);
-    await reindex.reached();
-    await reindex.release();
-    await s.indexed();
-    expect(await referrers(s, BETA), "a background tick must see the rewrite").toContain(
-        "closed.cpp",
-    );
-});
+        // No hook, no save, and the index answers without looking at the
+        // disk: only a tick can see the rewrite, and the reindex it queues
+        // is the event waited for.
+        const reindex = await s.hold("index", s.file("fast"));
+        s.disk.edit(s.file("config"), { after: "#define SHAPES_API\n", insert: FAST_OFF });
+        await reindex.reached();
+        await reindex.release();
+        await s.indexed();
+        expect(await indexes(s, "exact_precision"), "a background tick must see the rewrite").toBe(
+            true,
+        );
+    },
+);

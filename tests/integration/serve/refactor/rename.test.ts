@@ -2,34 +2,12 @@
 /// the engine `clice refactor rename` plans by.
 
 import * as proto from "vscode-languageserver-protocol";
-import type { Serve } from "@clice/tools/actions";
+import type { Loc, Serve } from "@clice/tools/actions";
 import { applyTextEdits } from "@clice/tools/client/edits";
 import { canonicalUri } from "@clice/tools/workspace";
 import { at, expect, serve } from "../../fixtures.ts";
 
-const HEADER = [
-    "#pragma once",
-    "int compute(int x);",
-    "struct Widget { Widget(); int value; };",
-    "#define CALL compute(1)",
-    "",
-].join("\n");
-const MAIN = [
-    '#include "a.h"',
-    "int compute(int x) { return x; }",
-    "Widget::Widget() : value(0) {}",
-    "int use() { return compute(2) + CALL; }",
-    "int main() { Widget w; return use() + w.value; }",
-    "",
-].join("\n");
-const OTHER = ['#include "a.h"', "int again() { return compute(3); }", ""].join("\n");
-
-const project = serve.files({
-    "clice.toml": '[project]\ncache_dir = "${workspace}/.clice"\n',
-    "a.h": HEADER,
-    "main.cpp": MAIN,
-    "other.cpp": OTHER,
-});
+const project = serve("shapes/headers");
 
 /// The edits a rename reply makes to `file`, and the buffer version they
 /// were computed for.
@@ -43,66 +21,88 @@ function changeOf(edit: proto.WorkspaceEdit | null, s: Serve, file: string) {
     return null;
 }
 
-const COMPUTE = at("main.cpp", "int co|mpute(int x) {");
-
-function rename(s: Serve, newName: string) {
-    return s.request<proto.WorkspaceEdit | null>("textDocument/rename", COMPUTE, { newName });
+function rename(s: Serve, loc: Loc, newName: string) {
+    return s.request<proto.WorkspaceEdit | null>("textDocument/rename", loc, { newName });
 }
 
 project("renames from the editor", async ({ s }) => {
-    await s.compiled("main.cpp");
+    await s.compiled(s.file("circle_impl"));
     await s.indexed();
 
-    const prepared = await s.request("textDocument/prepareRename", COMPUTE);
+    const area = at(s.file("circle_impl"), "double ar|ea(const Circle& circle) {");
+    const prepared = await s.request("textDocument/prepareRename", area);
+    const { position } = s.position(at(s.file("circle_impl"), "double |area(const Circle&"));
     expect(prepared).toEqual({
-        range: { start: { line: 1, character: 4 }, end: { line: 1, character: 11 } },
-        placeholder: "compute",
+        range: {
+            start: position,
+            end: { ...position, character: position.character + "area".length },
+        },
+        placeholder: "area",
     });
 
     const notices: string[] = [];
     s.client.onNotification(proto.ShowMessageNotification.type, (params) => {
         notices.push(params.message);
     });
-    const edit = await rename(s, "evaluate");
-    const main = changeOf(edit, s, "main.cpp");
-    expect(main?.version).toBe(0);
-    expect(applyTextEdits(MAIN, main!.edits)).toBe(
-        MAIN.replace("int compute", "int evaluate").replace("compute(2)", "evaluate(2)"),
+    const edit = await rename(s, area, "surface");
+    const renamed = (file: string) =>
+        applyTextEdits(s.disk.read(file), changeOf(edit, s, file)!.edits);
+    expect(
+        (edit?.documentChanges ?? [])
+            .map((change) => ("textDocument" in change ? s.relative(change.textDocument.uri) : ""))
+            .sort(),
+    ).toEqual([s.file("circle"), s.file("circle_impl"), s.file("main"), s.file("test")].sort());
+    expect(changeOf(edit, s, s.file("circle_impl"))?.version).toBe(0);
+    expect(renamed(s.file("circle_impl"))).toBe(
+        s.disk
+            .read(s.file("circle_impl"))
+            .replace("return area(", "return surface(")
+            .replace("double area(", "double surface("),
     );
-    const header = changeOf(edit, s, "a.h");
-    expect(header?.version).toBeNull();
-    expect(applyTextEdits(HEADER, header!.edits)).toBe(
-        HEADER.replace("int compute", "int evaluate"),
+    expect(changeOf(edit, s, s.file("circle"))?.version).toBeNull();
+    expect(renamed(s.file("circle"))).toBe(
+        s.disk.read(s.file("circle")).replace("double area(", "double surface("),
     );
-    const other = changeOf(edit, s, "other.cpp");
-    expect(applyTextEdits(OTHER, other!.edits)).toBe(OTHER.replace("compute", "evaluate"));
+    for (const caller of [s.file("main"), s.file("test")]) {
+        expect(renamed(caller)).toBe(
+            s.disk.read(caller).replace("shapes::area(c)", "shapes::surface(c)"),
+        );
+    }
     // The notice goes out with the reply or as a send the server
     // scheduled, which sync waits for.
     await s.sync();
-    expect(notices.join("\n")).toContain("#define CALL compute(1)");
+    expect(notices.join("\n")).toContain("#define SHAPES_AREA(circle) shapes::area(circle)");
 });
 
 project("the editor hears why not", async ({ s }) => {
-    await s.compiled("main.cpp");
+    await s.compiled(s.file("circle_impl"));
     await s.indexed();
 
     await expect(
-        s.request("textDocument/prepareRename", at("main.cpp", "compute(2) + C|ALL")),
+        s.request("textDocument/prepareRename", at(s.file("circle"), "= SHAPES_|PI;")),
     ).rejects.toThrow("macro");
-    await expect(rename(s, "use")).resolves.not.toBeNull();
-    await expect(rename(s, "Widget")).rejects.toThrow("already declared in the same scope");
-    expect(await s.request("textDocument/prepareRename", at("main.cpp", "#include"))).toBeNull();
+    const area = at(s.file("circle_impl"), "double ar|ea(const Circle& circle) {");
+    await expect(rename(s, area, "registry_count")).resolves.not.toBeNull();
+    await expect(rename(s, area, "Circle")).rejects.toThrow("already declared in the same scope");
+    expect(
+        await s.request(
+            "textDocument/prepareRename",
+            at(s.file("circle_impl"), '#include "shapes/circle.h"'),
+        ),
+    ).toBeNull();
 });
 
-serve.files(
-    { "main.cpp": "int compute();\nint use() { return compute(); }\n" },
-    { databases: false, launch: { folders: [] } },
-)("a rootless server refuses up front", async ({ s }) => {
-    await s.compiled("main.cpp");
+serve("tiny", { databases: false, launch: { folders: [] } })(
+    "a rootless server refuses up front",
+    async ({ s }) => {
+        await s.compiled("main.cpp");
 
-    const loc = at("main.cpp", "int c|ompute");
-    await expect(s.request("textDocument/prepareRename", loc)).rejects.toThrow("workspace folder");
-    await expect(s.request("textDocument/rename", loc, { newName: "evaluate" })).rejects.toThrow(
-        "workspace folder",
-    );
-});
+        const loc = at("main.cpp", "int a|dd(");
+        await expect(s.request("textDocument/prepareRename", loc)).rejects.toThrow(
+            "workspace folder",
+        );
+        await expect(
+            s.request("textDocument/rename", loc, { newName: "evaluate" }),
+        ).rejects.toThrow("workspace folder");
+    },
+);

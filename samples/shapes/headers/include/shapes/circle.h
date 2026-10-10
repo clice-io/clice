@@ -31,4 +31,8 @@ public:
 
 double area(const Circle& circle);
 
+Circle make_circle(double radius);
+
 }  // namespace shapes
+
+#define SHAPES_AREA(circle) shapes::area(circle)

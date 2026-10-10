@@ -1,8 +1,9 @@
 /// Integration tests for clice configuration (clice.toml + initializationOptions).
 ///
-/// Each workspace's main.cpp references a macro that is only defined when the
-/// rule's `-D<macro>=...` is applied. When rules are applied, compilation is
-/// clean; otherwise an undeclared-identifier diagnostic surfaces.
+/// The rules cases write a main.cpp that references a macro only defined
+/// when the rule's `-D<macro>=...` is applied. When rules are applied,
+/// compilation is clean; otherwise an undeclared-identifier diagnostic
+/// surfaces.
 
 import * as proto from "vscode-languageserver-protocol";
 import type { Serve } from "@clice/tools/actions";
@@ -12,7 +13,16 @@ function messageText(d: proto.Diagnostic): string {
     return typeof d.message === "string" ? d.message : d.message.value;
 }
 
-serve.data("config_rules_no_config")("baseline without rules", async ({ s }) => {
+/// A main.cpp that compiles only when a rule defines `macro`.
+function needing(macro: string): Record<string, string> {
+    return {
+        "main.cpp": `int value() {\n    return ${macro};\n}\n\nint main() {\n    return value();\n}\n`,
+    };
+}
+
+const TOML_RULES = '[[rules]]\npatterns = ["**/*.cpp"]\nappend = ["-DFROM_TOML"]\n';
+
+serve("tiny", { files: needing("FROM_INIT") })("baseline without rules", async ({ s }) => {
     const errors = await s.errors("main.cpp");
     expect(errors.length, "Expected diagnostics without any rules applied").toBeGreaterThan(0);
     expect(
@@ -21,25 +31,30 @@ serve.data("config_rules_no_config")("baseline without rules", async ({ s }) => 
     ).toBe(true);
 });
 
-serve.data("config_rules_toml")("rules from toml", async ({ s }) => {
-    await s.clean("main.cpp");
-    const symbols = await s.request<proto.DocumentSymbol[] | null>(
-        "textDocument/documentSymbol",
-        "main.cpp",
-    );
-    expect(symbols && symbols.length > 0, "Expected document symbols for value()/main()").toBe(
-        true,
-    );
-    expect(await s.hover(at("main.cpp", "int |main"))).not.toBeNull();
-});
+serve("tiny", { files: { ...needing("FROM_TOML"), "clice.toml": TOML_RULES } })(
+    "rules from toml",
+    async ({ s }) => {
+        await s.clean("main.cpp");
+        const symbols = await s.request<proto.DocumentSymbol[] | null>(
+            "textDocument/documentSymbol",
+            "main.cpp",
+        );
+        expect(symbols && symbols.length > 0, "Expected document symbols for value()/main()").toBe(
+            true,
+        );
+        expect(await s.hover(at("main.cpp", "int |main"))).not.toBeNull();
+    },
+);
 
-serve.data("config_rules_no_config", {
+serve("tiny", {
+    files: needing("FROM_INIT"),
     config: { rules: [{ patterns: ["**/*.cpp"], append: ["-DFROM_INIT=1"] }] },
 })("rules from init options", async ({ s }) => {
     await s.clean("main.cpp");
 });
 
-serve.data("config_rules_toml", {
+serve("tiny", {
+    files: { ...needing("FROM_TOML"), "clice.toml": TOML_RULES },
     config: { rules: [{ patterns: ["**/*.cpp"], append: ["-DUNRELATED"] }] },
 })("init options replaces toml rules", async ({ s }) => {
     const errors = await s.errors("main.cpp");
@@ -53,7 +68,8 @@ serve.data("config_rules_toml", {
     ).toBe(true);
 });
 
-serve.data("config_rules_no_config", {
+serve("tiny", {
+    files: needing("FROM_INIT"),
     config: { rules: [{ patterns: ["**/does_not_match.cpp"], append: ["-DFROM_INIT=1"] }] },
 })("rules pattern mismatch", async ({ s }) => {
     expect(
@@ -62,9 +78,7 @@ serve.data("config_rules_no_config", {
     ).toBeGreaterThan(0);
 });
 
-const MAIN = "int main() { return 0; }\n";
-
-serve.files({ "clice.toml": '[project]\ntest_hooks = "yes"\n', "main.cpp": MAIN })(
+serve("tiny", { files: { "clice.toml": '[project]\ntest_hooks = "yes"\n' } })(
     "config type error diagnostic",
     async ({ s }) => {
         // Wrong value type → Error diagnostic on the clice.toml URI; the config
@@ -77,7 +91,7 @@ serve.files({ "clice.toml": '[project]\ntest_hooks = "yes"\n', "main.cpp": MAIN 
     },
 );
 
-serve.files({ "clice.toml": "[project]\nclang_tdy = true\n", "main.cpp": MAIN })(
+serve("tiny", { files: { "clice.toml": "[project]\nclang_tdy = true\n" } })(
     "config unknown key diagnostic",
     async ({ s }) => {
         // Typo'd key → Warning diagnostic; the rest of the config still applies.
@@ -88,7 +102,7 @@ serve.files({ "clice.toml": "[project]\nclang_tdy = true\n", "main.cpp": MAIN })
     },
 );
 
-serve.files({ "clice.toml": '[project]\ntest_hooks = "yes"\n', "main.cpp": MAIN })(
+serve("tiny", { files: { "clice.toml": '[project]\ntest_hooks = "yes"\n' } })(
     "config diagnostic clears after fix",
     async ({ s }) => {
         expect(
@@ -104,7 +118,7 @@ serve.files({ "clice.toml": '[project]\ntest_hooks = "yes"\n', "main.cpp": MAIN 
     },
 );
 
-serve.files({})("config dump logged", async ({ s }) => {
+serve("tiny")("config dump logged", async ({ s }) => {
     // The startup log is the discoverable record of the resolved paths.
     // Shut down before reading so the startup log is fully flushed to disk.
     await s.stop();

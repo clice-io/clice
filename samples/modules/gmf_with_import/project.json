@@ -1,10 +1,6 @@
 {
-  "cxx": [
-    "-std=c++20"
-  ],
-  "args": [
-    "-I."
-  ],
+  "cxx": ["-std=c++20"],
+  "args": ["-I."],
   "units": {
     "base.cppm": [],
     "combined.cppm": []

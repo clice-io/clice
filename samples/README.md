@@ -1,9 +1,9 @@
 # Sample projects
 
-Hand-written C++ workspaces every suite shares: the serve tests
-(`tests/integration/serve`), the unit tests (`samples_dir()`), the editor
-tests, and anyone trying clice by hand. Nothing runs in this tree: users
-work on a copy.
+Hand-written C++ workspaces every suite shares: the integration tests
+(`tests/integration`), the unit tests (`samples_dir()`), the editor tests,
+the smoke replays, and anyone trying clice by hand. Nothing runs in this
+tree: users work on a copy.
 
 ```sh
 node tools/sample.ts shapes/headers /tmp/shapes   # copy + compile_commands.json
@@ -11,14 +11,15 @@ node tools/sample.ts shapes/headers /tmp/shapes   # copy + compile_commands.json
 
 ## What is here
 
-| Sample | What it is | Used for |
-|---|---|---|
-| `tiny` | One `main.cpp`, no includes | Anything that only needs a file that compiles |
-| `shapes/headers` | A small geometry library, a program and a test program on headers | Scenarios across files: headers and their sources, a header two units include with different `-D`, templates, a class hierarchy, a call chain, a C unit |
-| `shapes/modules` | The same library on C++20 modules, file for file | The same scenarios on modules: interfaces, partitions, implementation units, importers |
-| `stdlib` | One unit on `<map>`, `<string>`, `<vector>` | A real standard-library preamble; kept apart so no other sample pays for it |
-| `layouts/*` | Directory layouts with hand-written databases or `clice.toml` | Database discovery, configurations, nested projects |
-| `modules/*` | One module topology each: chains, diamonds, cycles, partitions | Module dependency handling |
+| Sample           | What it is                                                                                                                                | Used for                                                                                                                                                |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tiny`           | One `main.cpp`, no includes                                                                                                               | Anything that only needs a file that compiles                                                                                                           |
+| `shapes/headers` | A small geometry library, a program and a test program on headers                                                                         | Scenarios across files: headers and their sources, a header two units include with different `-D`, templates, a class hierarchy, a call chain, a C unit |
+| `shapes/modules` | The same library on C++20 modules, file for file                                                                                          | The same scenarios on modules: interfaces, partitions, implementation units, importers                                                                  |
+| `contexts`       | Headers that compile only inside their includers: a two-level chain over an earlier include, and a header two sources prepare differently | Header contexts: synthesized preambles, listing, switching and resetting hosts                                                                          |
+| `stdlib`         | One unit on `<map>`, `<string>`, `<vector>`                                                                                               | A real standard-library preamble; kept apart so no other sample pays for it                                                                             |
+| `layouts/*`      | Directory layouts with hand-written databases or `clice.toml`                                                                             | Database discovery, configurations, nested projects                                                                                                     |
+| `modules/*`      | One module topology each: chains, diamonds, cycles, partitions                                                                            | Module dependency handling                                                                                                                              |
 
 ## Manifests
 

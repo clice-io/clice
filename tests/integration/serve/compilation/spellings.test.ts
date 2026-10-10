@@ -160,20 +160,17 @@ serve.files(
     expect(definition.map((location) => location.uri)).toEqual([s.uri("inc/h.h")]);
 });
 
-serve.files({ "main.cpp": "int main() { return 0; }\n" })(
-    "document without a file is not served",
-    async ({ s }) => {
-        const untitled = "untitled:Untitled-1";
-        await s.client.sendNotification(proto.DidOpenTextDocumentNotification.type, {
-            textDocument: {
-                uri: untitled,
-                languageId: "cpp",
-                version: 0,
-                text: "int main() {}\n",
-            },
-        });
-        await expect(s.client.hoverAt(untitled, 0, 5)).rejects.toThrow("Document not open");
-        expect(await s.client.referencesAt(untitled, 0, 5), "no place in the index").toEqual([]);
-        expect(await s.errors("main.cpp"), "the server keeps serving files").toEqual([]);
-    },
-);
+serve("tiny")("document without a file is not served", async ({ s }) => {
+    const untitled = "untitled:Untitled-1";
+    await s.client.sendNotification(proto.DidOpenTextDocumentNotification.type, {
+        textDocument: {
+            uri: untitled,
+            languageId: "cpp",
+            version: 0,
+            text: "int main() {}\n",
+        },
+    });
+    await expect(s.client.hoverAt(untitled, 0, 5)).rejects.toThrow("Document not open");
+    expect(await s.client.referencesAt(untitled, 0, 5), "no place in the index").toEqual([]);
+    expect(await s.errors("main.cpp"), "the server keeps serving files").toEqual([]);
+});

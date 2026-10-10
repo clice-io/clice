@@ -3,7 +3,7 @@
 import * as proto from "vscode-languageserver-protocol";
 import { expect, serve } from "../../fixtures.ts";
 
-const test = serve.data("hello_world");
+const test = serve("tiny");
 
 test("initialize", ({ s }) => {
     const { initResult } = s;

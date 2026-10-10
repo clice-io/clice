@@ -34,4 +34,6 @@ public:
 
 double area(const Circle& circle);
 
+Circle make_circle(double radius);
+
 }  // namespace shapes

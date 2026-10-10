@@ -10,9 +10,11 @@ function cxx20(units: Record<string, string[]>) {
     return { manifest: { cxx: ["-std=c++20"], units } };
 }
 
-/// The names the index lists for `query`.
+/// The module names the index lists for `query`.
 async function names(s: Serve, query: string): Promise<string[]> {
-    return ((await s.workspaceSymbols(query)) ?? []).map((symbol) => symbol.name);
+    return ((await s.workspaceSymbols(query)) ?? [])
+        .filter((symbol) => symbol.kind === proto.SymbolKind.Module)
+        .map((symbol) => symbol.name);
 }
 
 /// The lines of a rendered reply that point into `file`.
@@ -23,89 +25,92 @@ function into(s: Serve, reply: unknown, file: string): string[] {
         .filter((line) => line.startsWith(`${file}: `));
 }
 
-serve.data("modules/single_module_no_deps")("single module no deps", async ({ s }) => {
-    await s.clean("mod_a.cppm");
-});
-
-/// Opening mod_b that imports mod_a should trigger dependency compilation.
-serve.data("modules/chained_modules")("chained modules", async ({ s }) => {
-    await s.clean("mod_b.cppm");
-});
-
-serve.data("modules/diamond_modules")("diamond modules", async ({ s }) => {
-    await s.clean("top.cppm");
-});
-
-serve.data("modules/dotted_module_name")("dotted module name", async ({ s }) => {
-    await s.clean("app.cppm");
-});
-
-/// Implementation unit (module M; without export) should compile using the
-/// interface PCM.
-serve.data("modules/module_implementation_unit")("module implementation unit", async ({ s }) => {
-    await s.clean("greeter_impl.cpp");
-});
-
-/// A regular .cpp that imports a module should get PCM deps compiled first.
-serve.data("modules/consumer_imports_module")("consumer imports module", async ({ s }) => {
-    await s.clean("main.cpp");
-});
-
-/// Partitions should be compiled in correct dependency order.
-serve.data("modules/module_partitions")("module partitions", async ({ s }) => {
-    await s.clean("lib.cppm");
-});
-
-serve.data("modules/partition_interface")("partition interface", async ({ s }) => {
-    await s.clean("primary.cppm");
-});
-
-serve.data("modules/partition_chain")("partition chain", async ({ s }) => {
-    await s.clean("sys.cppm");
-});
-
-/// Internal partitions (`module M:part;`) import other partitions and are
-/// imported by the other units of M, among them an implementation unit,
-/// which imports the primary interface implicitly.
-serve.data("modules/internal_partitions")("internal partitions", async ({ s }) => {
-    for (const file of [
+/// The units of each module topology, in the order the case compiles them
+/// clean: the first one opened builds the modules it imports on demand.
+const TOPOLOGIES = {
+    "modules/single_module_no_deps": ["mod_a.cppm"],
+    "modules/chained_modules": ["mod_b.cppm"],
+    "modules/diamond_modules": ["top.cppm"],
+    "modules/dotted_module_name": ["app.cppm"],
+    // An implementation unit (`module M;` without export) compiles using
+    // the interface PCM.
+    "modules/module_implementation_unit": ["greeter_impl.cpp"],
+    // Partitions are compiled in dependency order.
+    "modules/module_partitions": ["lib.cppm"],
+    "modules/partition_interface": ["primary.cppm"],
+    "modules/partition_chain": ["sys.cppm"],
+    // Internal partitions (`module M:part;`) import other partitions and
+    // are imported by the other units of M, among them an implementation
+    // unit, which imports the primary interface implicitly.
+    "modules/internal_partitions": [
         "detail.cppm",
         "util.cppm",
         "api.cppm",
         "lib.cppm",
         "impl.cpp",
         "main.cpp",
-    ]) {
+    ],
+    // Re-exported symbols (export import) are accessible through the wrapper.
+    "modules/re_export": ["user.cppm"],
+    "modules/global_module_fragment": ["gmf.cppm"],
+    "modules/gmf_with_import": ["combined.cppm"],
+    "modules/independent_modules": ["x.cppm", "y.cppm"],
+    "modules/deep_chain": ["m5.cppm"],
+    "modules/partition_with_gmf": ["cfg.cppm"],
+    "modules/partition_with_external_import": ["app.cppm"],
+};
+
+serve.each(Object.keys(TOPOLOGIES))("compiles clean", async ({ s }) => {
+    for (const file of TOPOLOGIES[s.project as keyof typeof TOPOLOGIES]) {
         await s.clean(file);
     }
 });
 
-serve.data("modules/internal_partitions")("internal partition definition", async ({ s }) => {
-    await s.compiled("impl.cpp");
-    await s.indexed();
-    expect(await names(s, "Lib:util"), "Index not ready").toContain("Lib:util");
-    expect(into(s, await s.definition(at("impl.cpp", "import :|util;")), "util.cppm")).toEqual([
-        "util.cppm: module Lib:util;",
-    ]);
+/// Circular module imports should not hang the server.
+///
+/// The CompileGraph's cycle detection should prevent deadlock. We verify
+/// the server settles and stays responsive by opening a non-cyclic file
+/// afterwards.
+serve("modules/circular_module_dependency")("circular module dependency", async ({ s }) => {
+    s.open("cycle_a.cppm");
+    await s.sync();
+    await s.clean("ok.cppm");
 });
 
-const PICK_V1 = "export module m;\nexport int pick(int v) { return v; }\n";
+/// A regular .cpp that imports a module should get PCM deps compiled first.
+serve("shapes/modules")("consumer imports module", async ({ s }) => {
+    await s.clean(s.file("main"));
+});
 
-// Adds an overload the closed importer's call prefers: only a reindex of
-// the importer against the new interface points the call at it.
-const PICK_V2 =
-    "export module m;\nexport int pick(int v) { return v; }\nexport int pick(long v) { return 2; }\n";
+serve("shapes/modules")("internal partition definition", async ({ s }) => {
+    await s.compiled(s.file("circle_impl"));
+    await s.indexed();
+    expect(await names(s, "shapes:detail"), "Index not ready").toContain("shapes:detail");
+    expect(
+        into(
+            s,
+            await s.definition(at(s.file("circle_impl"), "import :|detail;")),
+            s.file("detail"),
+        ),
+    ).toEqual([`${s.file("detail")}: module shapes:detail;`]);
+});
 
-serve.files(
-    { "m.cppm": PICK_V1, "closed.cpp": "import m;\nint use() { return pick(1L); }\n" },
-    cxx20({ "m.cppm": [], "closed.cpp": [] }),
-)("module save reindexes importers", async ({ s }) => {
-    const call = "closed.cpp: int use() { return pick(1L); }";
-    await s.compiled("m.cppm");
+/// An overload of `area` the importer's call on a non-const Circle
+/// prefers: only a reindex of the importer against the new interface
+/// points the call at it. The case inserts it, so the sample lacks it.
+const PREFERRED = "area(Circle& circle)";
+
+serve("shapes/modules")("module save reindexes importers", async ({ s }) => {
+    const call = `${s.file("main")}: double total = shapes::area(c) + triangle.measure() + shapes_circle_area(1.0);`;
+    await s.compiled(s.file("circle"));
     await s.indexed();
     expect(
-        into(s, await s.references(at("m.cppm", "int |pick(int")), "closed.cpp"),
-        "initial index never produced the importer's pick(int) reference",
+        into(
+            s,
+            await s.references(at(s.file("circle"), "double |area(const Circle&")),
+            s.file("main"),
+        ),
+        "initial index never produced the importer's area(const Circle&) reference",
     ).toEqual([call]);
 
     // The next server's startup sweep finds the importer fresh and never
@@ -113,75 +118,111 @@ serve.files(
     // to it.
     await s.stop();
     await s.start({ config: { project: { idle_timeout_ms: 10 } } });
-    await s.compiled("m.cppm");
-    s.edit("m.cppm", { text: PICK_V2 });
+    await s.compiled(s.file("circle"));
+    s.edit(s.file("circle"), {
+        after: "double area(const Circle& circle);",
+        insert: `\n\ndouble ${PREFERRED};`,
+    });
     // The rewrite must stat newer than the text the importer was indexed against.
-    s.disk.write("m.cppm", PICK_V2);
-    s.disk.touch("m.cppm", new Date(s.disk.mtime("m.cppm").getTime() + MTIME_GRANULARITY));
-    s.save("m.cppm", { write: false });
+    s.disk.edit(s.file("circle"), {
+        after: "double area(const Circle& circle);",
+        insert: `\n\ndouble ${PREFERRED};`,
+    });
+    s.disk.touch(
+        s.file("circle"),
+        new Date(s.disk.mtime(s.file("circle")).getTime() + MTIME_GRANULARITY),
+    );
+    s.save(s.file("circle"), { write: false });
     await s.sync();
 
     expect(
-        into(s, await s.references(at("m.cppm", "int |pick(long")), "closed.cpp"),
+        into(s, await s.references(at(s.file("circle"), PREFERRED)), s.file("main")),
         "the importer was not reindexed after the module save",
     ).toEqual([call]);
-    expect(into(s, await s.references(at("m.cppm", "int |pick(int")), "closed.cpp")).toEqual([]);
+    expect(
+        into(
+            s,
+            await s.references(at(s.file("circle"), "double |area(const Circle&")),
+            s.file("main"),
+        ),
+    ).toEqual([]);
 });
 
-/// Re-exported symbols (export import) should be accessible through the wrapper.
-serve.data("modules/re_export")("re export", async ({ s }) => {
-    await s.clean("user.cppm");
-});
-
-serve.data("modules/export_block")("export block", async ({ s }) => {
+serve.files(
+    {
+        "block.cppm":
+            "export module Block;\nexport {\nint alpha() { return 1; }\nint beta() { return 2; }\nnamespace ns {\nint gamma() { return 3; }\n}\n}\n",
+        "consumer.cppm":
+            "export module Consumer;\nimport Block;\nexport int total() { return alpha() + beta() + ns::gamma(); }\n",
+    },
+    cxx20({ "block.cppm": [], "consumer.cppm": [] }),
+)("export block", async ({ s }) => {
     await s.clean("consumer.cppm");
 });
 
-serve.data("modules/global_module_fragment")("global module fragment", async ({ s }) => {
-    await s.clean("gmf.cppm");
-});
-
-serve.data("modules/private_module_fragment")("private module fragment", async ({ s }) => {
+serve.files(
+    {
+        "priv.cppm":
+            "export module Priv;\nexport int public_fn();\nmodule : private;\nint public_fn() { return 42; }\nint private_helper() { return 7; }\n",
+    },
+    cxx20({ "priv.cppm": [] }),
+)("private module fragment", async ({ s }) => {
     await s.clean("priv.cppm");
 });
 
-serve.data("modules/export_namespace")("export namespace", async ({ s }) => {
+serve.files(
+    {
+        "ns.cppm":
+            "export module NS;\nexport namespace math {\nint add(int a, int b) { return a + b; }\nint mul(int a, int b) { return a * b; }\n}\n",
+        "calc.cppm":
+            "export module Calc;\nimport NS;\nexport int compute() { return math::add(3, math::mul(4, 5)); }\n",
+    },
+    cxx20({ "ns.cppm": [], "calc.cppm": [] }),
+)("export namespace", async ({ s }) => {
     await s.clean("calc.cppm");
 });
 
-serve.data("modules/gmf_with_import")("gmf with import", async ({ s }) => {
-    await s.clean("combined.cppm");
-});
-
-serve.data("modules/independent_modules")("independent modules", async ({ s }) => {
-    await s.clean("x.cppm");
-    await s.clean("y.cppm");
-});
-
-serve.data("modules/template_export")("template export", async ({ s }) => {
+serve.files(
+    {
+        "tmpl.cppm":
+            "export module Tmpl;\nexport template <typename T>\nT identity(T x) { return x; }\nexport template <typename T, typename U>\nauto pair_sum(T a, U b) { return a + b; }\n",
+        "use_tmpl.cppm":
+            "export module UseTmpl;\nimport Tmpl;\nexport int test() { return identity(42) + pair_sum(1, 2); }\n",
+    },
+    cxx20({ "tmpl.cppm": [], "use_tmpl.cppm": [] }),
+)("template export", async ({ s }) => {
     await s.clean("use_tmpl.cppm");
 });
 
-serve.data("modules/class_export_and_inheritance")(
-    "class export and inheritance",
-    async ({ s }) => {
-        await s.clean("circle.cppm");
-    },
-);
-
-/// Closing and reopening a modified module file should recompile without errors.
-serve.data("modules/save_recompile")("save recompile", async ({ s }) => {
-    // Open and compile Mid (which triggers Leaf PCM build).
-    await s.clean("mid.cppm");
-    await s.compiled("leaf.cppm");
-
-    // Close Leaf, modify on disk, and reopen with new content.
-    s.close("leaf.cppm");
-    s.disk.write("leaf.cppm", "export module Leaf;\nexport int leaf() { return 100; }\n");
-    await s.clean("leaf.cppm");
+serve("shapes/modules")("class export and inheritance", async ({ s }) => {
+    await s.clean(s.file("circle"));
 });
 
-serve.data("modules/module_compile_error")("module compile error", async ({ s }) => {
+/// Closing and reopening a modified module file should recompile without errors.
+serve("shapes/modules")("save recompile", async ({ s }) => {
+    // Open and compile the circle partition (which triggers the shape
+    // partition's PCM build).
+    await s.clean(s.file("circle"));
+    await s.compiled(s.file("shape"));
+
+    // Close the shape partition, modify it on disk, and reopen it with the
+    // new content.
+    s.close(s.file("shape"));
+    s.disk.edit(s.file("shape"), {
+        after: "virtual const char* name() const = 0;",
+        insert: "\n\n    virtual int corners() const {\n        return 0;\n    }",
+    });
+    await s.clean(s.file("shape"));
+});
+
+serve.files(
+    {
+        "good.cppm": "export module Good;\nexport int good() { return 1; }\n",
+        "bad.cppm":
+            "export module Bad;\nimport Good;\n\nexport int bad() {\n    return UNDEFINED_SYMBOL;\n}\n",
+    },
+    cxx20({ "good.cppm": [], "bad.cppm": [] }),
+)("module compile error", async ({ s }) => {
     const diagnostics = await s.compiled("bad.cppm");
     expect(diagnostics.length, "Expected diagnostics for undefined symbol").toBeGreaterThan(0);
     const errors = diagnostics.filter((d) => d.severity === proto.DiagnosticSeverity.Error);
@@ -392,69 +433,48 @@ serve.files(
     ).toEqual(["1 err_module_not_found"]);
 });
 
-/// A 5-level module chain (m1->m2->...->m5) should compile correctly.
-serve.data("modules/deep_chain")("deep chain", async ({ s }) => {
-    await s.clean("m5.cppm");
-});
-
-serve.data("modules/partition_with_gmf")("partition with gmf", async ({ s }) => {
-    await s.clean("cfg.cppm");
-});
-
-serve.data("modules/partition_with_external_import")(
-    "partition with external import",
-    async ({ s }) => {
-        await s.clean("app.cppm");
-    },
-);
-
 /// Hover on a symbol imported from a module should return type info.
-serve.data("modules/hover_on_imported_symbol")("hover on imported symbol", async ({ s }) => {
-    await s.clean("use.cpp");
-    const hover = await s.hover(at("use.cpp", "return |magic_number"));
+serve("shapes/modules")("hover on imported symbol", async ({ s }) => {
+    await s.clean(s.file("main"));
+    const hover = await s.hover(at(s.file("main"), "shapes::|area(c)"));
     expect(hover, "Hover on imported symbol should return info").not.toBeNull();
     expect(hover!.contents).not.toBeNull();
 });
 
 /// Plain .cpp with no modules should compile normally (CompileGraph null path).
-serve.data("modules/no_modules_plain_cpp")("no modules plain cpp", async ({ s }) => {
-    await s.clean("plain.cpp");
+serve("tiny")("no modules plain cpp", async ({ s }) => {
+    await s.clean("main.cpp");
 });
 
-/// Circular module imports should not hang the server.
-///
-/// The CompileGraph's cycle detection should prevent deadlock. We verify
-/// the server settles and stays responsive by opening a non-cyclic file
-/// afterwards.
-serve.data("modules/circular_module_dependency")("circular module dependency", async ({ s }) => {
-    s.open("cycle_a.cppm");
-    await s.sync();
-    await s.clean("ok.cppm");
-});
-
-serve.data("modules/consumer_imports_module")("import definition", async ({ s }) => {
-    await s.compiled("main.cpp");
+serve("shapes/modules")("import definition", async ({ s }) => {
+    await s.compiled(s.file("main"));
     await s.indexed();
-    expect(await names(s, "Math"), "Index not ready").toContain("Math");
-    expect(into(s, await s.definition(at("main.cpp", "import M|ath;")), "math.cppm")).toEqual([
-        "math.cppm: export module Math;",
-    ]);
+    expect(await names(s, "shapes"), "Index not ready").toContain("shapes");
+    expect(
+        into(s, await s.definition(at(s.file("main"), "import s|hapes;")), s.file("library")),
+    ).toEqual([`${s.file("library")}: export module shapes;`]);
 
     // Cursor on the `import` keyword itself must not navigate to the module.
-    expect(into(s, await s.definition(at("main.cpp", "im|port Math;")), "math.cppm")).toEqual([]);
-});
-
-serve.data("modules/module_implementation_unit")("module decl definition", async ({ s }) => {
-    // `module Greeter;` in the implementation unit navigates to the interface.
-    await s.compiled("greeter_impl.cpp");
-    await s.indexed();
-    expect(await names(s, "Greeter"), "Index not ready").toContain("Greeter");
     expect(
-        into(s, await s.definition(at("greeter_impl.cpp", "module G|reeter;")), "greeter.cppm"),
-    ).toEqual(["greeter.cppm: export module Greeter;"]);
+        into(s, await s.definition(at(s.file("main"), "im|port shapes;")), s.file("library")),
+    ).toEqual([]);
 });
 
-serve.data("modules/dotted_module_name")("dotted import definition", async ({ s }) => {
+serve("shapes/modules")("module decl definition", async ({ s }) => {
+    // `module shapes;` in the implementation unit navigates to the interface.
+    await s.compiled(s.file("circle_impl"));
+    await s.indexed();
+    expect(await names(s, "shapes"), "Index not ready").toContain("shapes");
+    expect(
+        into(
+            s,
+            await s.definition(at(s.file("circle_impl"), "module s|hapes;")),
+            s.file("library"),
+        ),
+    ).toEqual([`${s.file("library")}: export module shapes;`]);
+});
+
+serve("modules/dotted_module_name")("dotted import definition", async ({ s }) => {
     await s.compiled("app.cppm");
     await s.indexed();
     expect(await names(s, "my.io"), "Index not ready").toContain("my.io");
@@ -463,17 +483,28 @@ serve.data("modules/dotted_module_name")("dotted import definition", async ({ s 
     ]);
 });
 
-serve.data("modules/module_partitions")("partition import definition", async ({ s }) => {
-    await s.compiled("lib.cppm");
+serve("shapes/modules")("partition import definition", async ({ s }) => {
+    await s.compiled(s.file("library"));
     await s.indexed();
-    expect(await names(s, "Lib:A"), "Index not ready").toContain("Lib:A");
+    expect(await names(s, "shapes:shape"), "Index not ready").toContain("shapes:shape");
     // The partition name resolves through the enclosing module.
     expect(
-        into(s, await s.definition(at("lib.cppm", "export import :|A;")), "part_a.cppm"),
-    ).toEqual(["part_a.cppm: export module Lib:A;"]);
+        into(
+            s,
+            await s.definition(at(s.file("library"), "export import :|shape;")),
+            s.file("shape"),
+        ),
+    ).toEqual([`${s.file("shape")}: export module shapes:shape;`]);
 });
 
-serve.data("modules/macro_import")("macro import definition", async ({ s }) => {
+serve.files(
+    {
+        "math.cppm": "export module Math;\nexport int add(int a, int b) { return a + b; }\n",
+        "main.cpp":
+            "#define MATH_MODULE Math\nimport MATH_MODULE;\n\nint main() {\n    return add(1, 2);\n}\n",
+    },
+    cxx20({ "math.cppm": [], "main.cpp": [] }),
+)("macro import definition", async ({ s }) => {
     // `import MATH_MODULE;` where the name comes from a macro: the index
     // anchors the occurrence at the expansion site.
     await s.compiled("main.cpp");

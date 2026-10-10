@@ -76,7 +76,7 @@ pulling({ "main.cpp": "int a = first;\n" })("edit mid-pull answers the new text"
     expect(mentions(diagnostics, "first")).toBe(false);
 });
 
-pulling({ "main.cpp": "int main() { return 0; }\n" })(
+serve("tiny", { launch: { capabilities: PULL } })(
     "cancelled pull answers at once",
     async ({ s }) => {
         const hold = await s.hold("compile", "main.cpp");
@@ -99,31 +99,34 @@ pulling({ "main.cpp": "int main() { return 0; }\n" })(
     },
 );
 
-pulling({
-    "header.h": "inline int value() { return 1; }\n",
-    "main.cpp": '#include "header.h"\nint main() { return value(); }\n',
-})("recompile of same text refreshes", async ({ s }) => {
-    s.open("main.cpp", { pull: false });
-    expect(await s.diagnostics("main.cpp")).toEqual([]);
+serve("shapes/headers", { launch: { capabilities: PULL } })(
+    "recompile of same text refreshes",
+    async ({ s }) => {
+        s.open(s.file("main"), { pull: false });
+        expect(await s.diagnostics(s.file("main"))).toEqual([]);
 
-    s.disk.write("header.h", "inline int value() { return missing; }\n");
-    const refreshes = await s.serverRequests(REFRESH);
-    // Any request recompiles the document; its pulled answer went stale
-    // with no edit to make the client pull again.
-    await s.hover(at("main.cpp", "va|lue()"));
-    expect(
-        await s.serverRequests(REFRESH),
-        "diagnostic refresh after the header changed",
-    ).toBeGreaterThan(refreshes);
-    expect(mentions(await s.diagnostics("main.cpp"), "missing")).toBe(true);
-    expect(await s.pushed("main.cpp")).toBeUndefined();
-});
+        s.disk.edit(s.file("circle"), {
+            replace: "double pi = SHAPES_PI;",
+            with: "double pi = missing;",
+        });
+        const refreshes = await s.serverRequests(REFRESH);
+        // Any request recompiles the document; its pulled answer went stale
+        // with no edit to make the client pull again.
+        await s.hover(at(s.file("main"), "shapes::ar|ea(c)"));
+        expect(
+            await s.serverRequests(REFRESH),
+            "diagnostic refresh after the header changed",
+        ).toBeGreaterThan(refreshes);
+        expect(mentions(await s.diagnostics(s.file("main")), "missing")).toBe(true);
+        expect(await s.pushed(s.file("main"))).toBeUndefined();
+    },
+);
 
 // Fails before parsing on every attempt, and never settles.
-pulling(
-    { "main.cpp": "int main() { return 0; }\n" },
-    { manifest: { units: { "main.cpp": ["--target=bogus-unknown-none"] } } },
-)("repeated setup failure stays quiet", async ({ s }) => {
+serve("tiny", {
+    launch: { capabilities: PULL },
+    units: { "main.cpp": ["--target=bogus-unknown-none"] },
+})("repeated setup failure stays quiet", async ({ s }) => {
     s.open("main.cpp", { pull: false });
     expect(await s.diagnostics("main.cpp")).toEqual([]);
     const refreshes = await s.serverRequests(REFRESH);

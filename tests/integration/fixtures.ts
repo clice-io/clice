@@ -94,8 +94,3 @@ serve.each =
 /// content is what the case tests.
 serve.files = (files: Record<string, FileText>, options: ServeOptions = {}): ServeTest =>
     serveTest(null, { ...options, files });
-
-/// Cases on a copy of the data workspace tests/data/<name>: a bridge for
-/// cases not yet on a sample project.
-serve.data = (name: string, options: ServeOptions = {}): ServeTest =>
-    serveTest(null, { ...options, data: name });

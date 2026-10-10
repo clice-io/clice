@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { runProcess } from "@clice/tools/client";
-import { DATA_DIR } from "@clice/tools/compile-commands";
+import { materialize } from "@clice/tools/project";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 function gated(macro: string): string {
@@ -29,14 +29,14 @@ test("inspect borrows the same way", async ({ session }) => {
     expect(Object.values(output.files).flatMap((file) => file.diagnostics ?? [])).toEqual([]);
 });
 
-test("inspect loads the databases above its inputs", async () => {
+test("inspect loads the databases above its inputs", async ({ session }) => {
     // A directory inspection meets the nested projects' databases the way
     // opening their files would.
-    const run = await runProcess(
-        cliceExecutable(),
-        ["inspect", "hover", path.join(DATA_DIR, "cdb", "nested_projects")],
-        { timeout: 120_000 },
-    );
+    const workspace = session.tmpdir();
+    materialize("layouts/nested_projects", workspace);
+    const run = await runProcess(cliceExecutable(), ["inspect", "hover", workspace.root], {
+        timeout: 120_000,
+    });
     expect(run.status, `stderr: ${run.stderr}`).toBe(0);
     const output = JSON.parse(run.stdout) as {
         files: Record<string, { diagnostics?: string[] | null }>;
@@ -49,7 +49,7 @@ test("inspect loads the databases above its inputs", async () => {
 
 test("batch indexing finds nested projects", async ({ session }) => {
     const workspace = session.tmpdir();
-    fs.cpSync(path.join(DATA_DIR, "cdb", "nested_projects"), workspace.root, { recursive: true });
+    materialize("layouts/nested_projects", workspace);
     const run = await runProcess(
         cliceExecutable(),
         ["index", "--workspace", workspace.root, "--workers", "2"],

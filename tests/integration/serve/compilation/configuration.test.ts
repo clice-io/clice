@@ -1,6 +1,6 @@
 /// Build configurations: the menu the tagged rules declare, the persisted
 /// selection a restart activates, one index library per configuration,
-/// and the three documented example layouts under tests/data/cdb.
+/// and the documented example layouts of samples/layouts.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -9,7 +9,7 @@ import { wireKeys, type ListConfigurationsResult } from "@clice/tools/protocol";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, serve } from "../../fixtures.ts";
 
-const test = serve.data("cdb/two_configurations");
+const test = serve("layouts/two_configurations");
 
 /// Persist `name` and start a fresh server on the workspace — what an
 /// editor does to apply a switch.
@@ -174,7 +174,7 @@ test("command line overrides the selection", async ({ s }) => {
     });
 });
 
-serve.data("cdb/two_configurations", {
+serve("layouts/two_configurations", {
     files: { ".clice/state.json": '{"configuration": "gone"}\n' },
 })("unknown selection falls back untouched", async ({ s }) => {
     expect(await s.configurations()).toMatchObject({
@@ -184,7 +184,7 @@ serve.data("cdb/two_configurations", {
     expect(JSON.parse(s.disk.read(".clice/state.json"))).toEqual({ configuration: "gone" });
 });
 
-serve.data("cdb/single_root")("untagged rules have no menu", async ({ s }) => {
+serve("layouts/single_root")("untagged rules have no menu", async ({ s }) => {
     expect(await s.configurations()).toEqual({
         configurations: [],
         active: "",
@@ -200,7 +200,7 @@ serve.data("cdb/single_root")("untagged rules have no menu", async ({ s }) => {
     expect(await s.configurations()).toMatchObject({ active: "", selected: "debug" });
 });
 
-serve.data("cdb/board_defaults")("default command per board", async ({ s }) => {
+serve("layouts/board_defaults")("default command per board", async ({ s }) => {
     expect(await s.configurations()).toMatchObject({
         configurations: ["board-a", "board-b"],
         active: "board-a",
@@ -214,7 +214,7 @@ serve.data("cdb/board_defaults")("default command per board", async ({ s }) => {
     expect(await inactiveLines(s, "include/board.h"), "board a's branch is inactive").toEqual([2]);
 });
 
-serve.data("cdb/firmware_tools")("tagged rules switch while untagged stay", async ({ s }) => {
+serve("layouts/firmware_tools")("tagged rules switch while untagged stay", async ({ s }) => {
     expect(await s.errors("firmware/main.c")).toEqual([]);
     expect(await inactiveLines(s, "firmware/main.c"), "board a's database is active").toEqual([3]);
     expect(await s.errors("tools/gen.cpp"), "the untagged rule's database serves tools/").toEqual(

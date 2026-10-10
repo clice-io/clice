@@ -7,8 +7,9 @@
 /// (conditions inside the bound never replay in the AST compile); a #if
 /// cut by the bound resumes via the open-conditional stack.
 
+import type * as proto from "vscode-languageserver-protocol";
 import type { ServeOptions } from "@clice/tools/actions";
-import { expect, serve } from "../../fixtures.ts";
+import { at, expect, serve } from "../../fixtures.ts";
 
 /// C++17 units with their own arguments.
 function cxx17(units: Record<string, string[]>): ServeOptions {
@@ -26,6 +27,12 @@ const RENDER_H =
 const RENDER_CPP = '#include "render.h"\nint main() { return backend()[0]; }\n';
 
 const REFRESH = "workspace/semanticTokens/refresh";
+
+/// The lines strictly between two directive lines.
+function linesBetween(open: proto.Range, close: proto.Range): number[] {
+    const first = open.start.line + 1;
+    return Array.from({ length: close.start.line - first }, (_, index) => first + index);
+}
 
 // Conditions entirely past the preamble bound (no PCH involvement).
 serve.files(
@@ -61,27 +68,34 @@ serve.files(
 // no didChange to re-pull on: the landed compile must fire
 // workspace/semanticTokens/refresh, and the re-pulled tokens carry the
 // other branch's inactive lines.
-serve.files(
-    { "render.h": RENDER_H, "render_vk.cpp": RENDER_CPP, "render_mt.cpp": RENDER_CPP },
-    {
-        ...cxx17({ "render_vk.cpp": ["-DUSE_VULKAN"], "render_mt.cpp": ["-DUSE_METAL"] }),
-        launch: { capabilities: { workspace: { semanticTokens: { refreshSupport: true } } } },
-    },
-)("inactive flips on context switch", async ({ s }) => {
-    await s.compiled("render.h");
-    const before = await s.inactiveLines("render.h");
-    // Whichever host was ranked default, exactly one branch is dead.
-    expect([[2], [4]]).toContainEqual(before);
+serve("shapes/headers", {
+    launch: { capabilities: { workspace: { semanticTokens: { refreshSupport: true } } } },
+})("inactive flips on context switch", async ({ s }) => {
+    const exact = linesBetween(
+        s.range(at(s.file("detail"), "#ifdef SHAPES_EXACT")),
+        s.range(at(s.file("detail"), "#else")),
+    );
+    const rounded = linesBetween(
+        s.range(at(s.file("detail"), "#else")),
+        s.range(at(s.file("detail"), "#endif")),
+    );
 
-    const target = before[0] === 4 ? "render_mt.cpp" : "render_vk.cpp";
-    const { contexts } = await s.contexts("render.h");
-    const host = contexts.find((c) => c.uri.includes(target));
-    expect(host, `no ${target} context in ${JSON.stringify(contexts)}`).toBeDefined();
+    await s.compiled(s.file("detail"));
+    const before = await s.inactiveLines(s.file("detail"));
+    // Whichever host was ranked default, exactly one branch is dead.
+    expect([exact, rounded]).toContainEqual(before);
+
+    // Only circle.cpp compiles with SHAPES_EXACT: the other branch is live
+    // in any other host, else in circle.cpp.
+    const exactNow = before[0] === rounded[0];
+    const { contexts } = await s.contexts(s.file("detail"));
+    const host = contexts.find((c) => c.uri.endsWith(s.file("circle_impl")) !== exactNow);
+    expect(host, `no host to flip to in ${JSON.stringify(contexts)}`).toBeDefined();
 
     const refreshes = await s.serverRequests(REFRESH);
-    const switched = await s.switchContext("render.h", s.relative(host!.uri));
+    const switched = await s.switchContext(s.file("detail"), s.relative(host!.uri));
     expect(switched.success).toBe(true);
-    await s.diagnostics("render.h");
+    await s.diagnostics(s.file("detail"));
 
     // What the landed compile scheduled — the refresh request — goes out
     // before the sync's answer.
@@ -89,7 +103,7 @@ serve.files(
         await s.serverRequests(REFRESH),
         "no semanticTokens refresh after the switch",
     ).toBeGreaterThan(refreshes);
-    expect(await s.inactiveLines("render.h")).toEqual(before[0] === 4 ? [2] : [4]);
+    expect(await s.inactiveLines(s.file("detail"))).toEqual(exactNow ? exact : rounded);
 });
 
 // #else carries no condition value; inactivity is derived from whether an

@@ -11,12 +11,9 @@ import { at, expect, serve } from "../../fixtures.ts";
 
 // Without an index, the hover below waits for the respawned worker:
 // rows of the file would answer it at once.
-serve
-    .files(
-        { "main.cpp": "int main() { return 0; }\n" },
-        { config: { project: { enable_indexing: false } }, anomalies: true },
-    )
-    .skipIf(process.platform !== "linux")("worker crash reported", async ({ s }) => {
+serve("tiny", { config: { project: { enable_indexing: false } }, anomalies: true }).skipIf(
+    process.platform !== "linux",
+)("worker crash reported", async ({ s }) => {
     // The crash handler is installed when the worker opens its log
     // file, which a worker that compiled has done.
     await s.compiled("main.cpp");

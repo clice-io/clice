@@ -2,7 +2,7 @@
 
 import { at, expect, serve } from "../../fixtures.ts";
 
-const test = serve.data("hello_world");
+const test = serve("tiny");
 
 test("did open", async ({ s }) => {
     s.open("main.cpp");
@@ -27,9 +27,18 @@ test("did change", async ({ s }) => {
     await s.clean("main.cpp");
 });
 
-serve.data("clang_tidy")("clang tidy", async ({ s }) => {
+serve("tiny", {
+    files: {
+        "clice.toml": "[diagnostics]\nclang_tidy = true\n",
+        ".clang-tidy": 'Checks: "-*,bugprone-integer-division"\n',
+        "main.cpp": "double ratio(int a, int b) {\n    return a / b;\n}\n",
+    },
+})("clang tidy", async ({ s }) => {
     s.open("main.cpp");
-    await s.sync();
+    const tidy = (await s.pushed("main.cpp"))?.filter((d) => d.source === "clang-tidy");
+    expect(tidy?.map((d) => `${d.range.start.line}:${String(d.code)}`)).toEqual([
+        "1:bugprone-integer-division",
+    ]);
 });
 
 test("hover save close", async ({ s }) => {
@@ -37,7 +46,7 @@ test("hover save close", async ({ s }) => {
     const hover = await s.hover(at("main.cpp", "int |add("));
     expect(hover).not.toBeNull();
     expect(hover!.contents).not.toBeNull();
-    const start = at("main.cpp", "|#include");
+    const start = at("main.cpp", "|int add(");
     await s.request("textDocument/completion", start);
     await s.request("textDocument/signatureHelp", start);
     s.close("main.cpp");

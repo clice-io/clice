@@ -5,19 +5,9 @@
 import type { Serve } from "@clice/tools/actions";
 import { expect, serve } from "../../fixtures.ts";
 
-const HEADER =
-    "#pragma once\nint add(int a, int b);\nstruct Animal { virtual ~Animal() = default; };\n";
-const MAIN = [
-    '#include "a.h"',
-    "int add(int a, int b) { return a + b; }",
-    "struct Dog : Animal {};",
-    "int compute() { return add(1, 2); }",
-    "int main() { return compute(); }",
-    "",
-].join("\n");
 const PIN_CACHE = '[project]\ncache_dir = "${workspace}/.clice"\n';
 
-const project = serve.files({ "clice.toml": PIN_CACHE, "a.h": HEADER, "main.cpp": MAIN });
+const project = serve("tiny", { files: { "clice.toml": PIN_CACHE } });
 
 interface Symbols {
     result?: { symbols: { name: string }[] };
@@ -45,7 +35,7 @@ async function serverIndexed(s: Serve, name: string): Promise<void> {
 }
 
 project("asks the running server to index", async ({ s }) => {
-    await serverIndexed(s, "compute");
+    await serverIndexed(s, "add");
     expect(s.workspace.exists(".clice/server.json")).toBe(true);
 
     // The server holds the writer lock, so the batch command delegates.
@@ -53,7 +43,7 @@ project("asks the running server to index", async ({ s }) => {
     expect(delegated.status, `stderr: ${delegated.stderr}`).toBe(0);
     expect(delegated.stdout).toContain("through the running clice server");
 
-    s.disk.write("main.cpp", MAIN.replace("int main()", "int extra() { return 7; }\nint main()"));
+    s.disk.edit("main.cpp", { before: "int main()", insert: "int extra() { return 7; }\n" });
     const fresh = await symbolSearch(s, "extra", "--fresh");
     expect(fresh.status).toBe(0);
     expect(fresh.names).toEqual(["extra"]);
@@ -65,7 +55,7 @@ project("asks the running server to index", async ({ s }) => {
     expect(s.workspace.exists(".clice/server.json")).toBe(false);
 });
 
-serve.files({ "clice.toml": PIN_CACHE, "a.h": HEADER, "main.cpp": MAIN }, { databases: false })(
+serve("tiny", { files: { "clice.toml": PIN_CACHE }, databases: false })(
     "asked index finds later database",
     async ({ s }) => {
         // The server records its control endpoint as it starts: any reply
@@ -76,15 +66,15 @@ serve.files({ "clice.toml": PIN_CACHE, "a.h": HEADER, "main.cpp": MAIN }, { data
         const empty = await s.cli("index", "--workers", "2");
         expect(empty.stderr).toContain("has no translation units");
 
-        s.disk.database({ cxx: ["-std=c++17"], units: { "main.cpp": [] } });
+        s.disk.database(s.manifest);
         const delegated = await s.cli("index", "--workers", "2");
         expect(delegated.status, `stderr: ${delegated.stderr}`).toBe(0);
-        await serverIndexed(s, "compute");
+        await serverIndexed(s, "add");
     },
 );
 
 project("refuses a writer it cannot ask", async ({ s }) => {
-    await serverIndexed(s, "compute");
+    await serverIndexed(s, "add");
 
     // A lock holder without a record (a batch run, a server of another
     // build) cannot be asked: the commands that need the writer give up.
@@ -93,19 +83,17 @@ project("refuses a writer it cannot ask", async ({ s }) => {
     expect(refused.status).toBe(1);
     expect(refused.stderr).toContain("holds the index writer lock");
 
-    const fresh = await symbolSearch(s, "compute", "--fresh");
+    const fresh = await symbolSearch(s, "add", "--fresh");
     expect(fresh.status).toBe(1);
     expect(fresh.error).toContain("holds the index writer lock");
 
     // Reads never wait for the writer; they see the disk, which the
     // settled server's indexing round has reached.
-    expect((await symbolSearch(s, "compute")).names).toContain("compute");
+    expect((await symbolSearch(s, "add")).names).toContain("add");
 });
 
-serve.files(
-    {
-        "a.h": HEADER,
-        "main.cpp": MAIN,
+serve("tiny", {
+    files: {
         "clice.toml": [
             "[project]",
             'cache_dir = "${workspace}/.clice"',
@@ -122,9 +110,9 @@ serve.files(
             "",
         ].join("\n"),
     },
-    { launch: { args: ["serve", "--configuration", "debug"] } },
-)("delegation keeps the configuration", async ({ s }) => {
-    await serverIndexed(s, "compute");
+    launch: { args: ["serve", "--configuration", "debug"] },
+})("delegation keeps the configuration", async ({ s }) => {
+    await serverIndexed(s, "add");
 
     // The server indexes one configuration; asking it for another is
     // refused rather than answered with the wrong build.

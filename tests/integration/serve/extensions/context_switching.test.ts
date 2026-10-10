@@ -102,55 +102,40 @@ serve.files(OCCURRENCES)("occurrence switch", async ({ s }) => {
 });
 
 /// Hosts with identical canonical flags collapse into one context, and
-/// the representative is the best-ranked host (matching stem wins).
-serve.files({
-    "widget.h": "inline int widget_size() { return 4; }\n",
-    "zzz.cpp": '#include "widget.h"\nint z() { return widget_size(); }\n',
-    "widget.cpp": '#include "widget.h"\nint w() { return widget_size(); }\n',
-    "aaa.cpp": '#include "widget.h"\nint a() { return widget_size(); }\n',
-})("context dedup and ranking", async ({ s }) => {
-    await s.compiled("widget.cpp");
+/// the representative is the best-ranked host (matching stem wins): main,
+/// demo and polygon.cpp share their flags, the test's -DSHAPES_FAST=1 keeps
+/// it apart.
+serve("shapes/headers")("context dedup and ranking", async ({ s }) => {
+    await s.compiled(s.file("polygon_impl"));
     // Dedup requires a confirmed self-contained verdict, earned by the
     // header's own trial compile — wait for it.
-    await s.compiled("widget.h");
+    await s.compiled(s.file("polygon"));
 
-    const query = await s.contexts("widget.h");
+    const query = await s.contexts(s.file("polygon"));
     expect(
-        query.total,
-        `Identical flags must dedupe to one context, got: ${JSON.stringify(query)}`,
-    ).toBe(1);
-    expect(
-        query.contexts[0]!.uri.includes("widget.cpp"),
-        `Representative should be the stem-matching host, got: ${JSON.stringify(query.contexts)}`,
-    ).toBe(true);
+        query.contexts.map((context) => s.relative(context.uri)),
+        `Identical flags must dedupe to the stem-matching host, got: ${JSON.stringify(query)}`,
+    ).toEqual([s.file("polygon_impl"), s.file("test")]);
+    expect(query.total).toBe(2);
 });
 
 /// Switching a header to a source that does not include it must fail.
-serve.files({
-    "utils.h": "inline int util() { return 1; }\n",
-    "main.cpp": '#include "utils.h"\nint main() { return util(); }\n',
-    "other.cpp": "int other() { return 2; }\n",
-})("switch rejects non includer", async ({ s }) => {
-    await s.compiled("main.cpp");
-    s.open("utils.h");
+serve("shapes/headers")("switch rejects non includer", async ({ s }) => {
+    await s.compiled(s.file("polygon_impl"));
+    s.open(s.file("polygon"));
 
-    const switched = await s.switchContext("utils.h", "other.cpp");
+    const switched = await s.switchContext(s.file("polygon"), s.file("registry"));
     expect(switched.success, "Switching to a non-including host must be rejected").toBe(false);
 });
 
 /// Pinning an occurrence beyond the include count must be rejected.
-serve.files({
-    "list.def": "X(alpha)\n",
-    "main.cpp":
-        "#define X(name) int name;\n" +
-        '#include "list.def"\n' +
-        "#undef X\n" +
-        "int main() { return alpha; }\n",
-})("occurrence out of range", async ({ s }) => {
-    await s.compiled("main.cpp");
-    s.open("list.def");
+serve("shapes/headers")("occurrence out of range", async ({ s }) => {
+    await s.compiled(s.file("polygon_impl"));
+    s.open(s.file("polygon"));
 
-    const switched = await s.switchContext("list.def", "main.cpp", { occurrence: 5 });
+    const switched = await s.switchContext(s.file("polygon"), s.file("polygon_impl"), {
+        occurrence: 5,
+    });
     expect(switched.success, "Out-of-range occurrence must be rejected").toBe(false);
 });
 
@@ -193,14 +178,11 @@ serve.files(
 
 /// A switch made against an outdated queryContext listing is rejected
 /// with stale=true; re-querying yields a fresh epoch that works.
-serve.files({
-    "shared.h": "VALUE_TYPE get_value();\n",
-    "main.cpp": '#define VALUE_TYPE int\n#include "shared.h"\nint main() { return 0; }\n',
-})("stale epoch rejected", async ({ s }) => {
-    await s.compiled("main.cpp");
-    s.open("shared.h");
+serve("shapes/headers")("stale epoch rejected", async ({ s }) => {
+    await s.compiled(s.file("polygon_impl"));
+    s.open(s.file("polygon"));
 
-    const query = await s.contexts("shared.h");
+    const query = await s.contexts(s.file("polygon"));
     const oldEpoch = query.epoch;
     expect(
         oldEpoch,
@@ -208,16 +190,20 @@ serve.files({
     ).toBeTruthy();
 
     // A save of new bytes bumps the project epoch.
-    s.edit("main.cpp", { replace: "return 0;", with: "return 1;" });
-    s.save("main.cpp");
+    s.edit(s.file("polygon_impl"), { replace: '"triangle"', with: '"trigon"' });
+    s.save(s.file("polygon_impl"));
     await s.sync();
 
-    let switched = await s.switchContext("shared.h", "main.cpp", { epoch: oldEpoch });
+    let switched = await s.switchContext(s.file("polygon"), s.file("polygon_impl"), {
+        epoch: oldEpoch,
+    });
     expect(switched.success).toBe(false);
     expect(switched.stale, `Expected stale rejection, got: ${JSON.stringify(switched)}`).toBe(true);
 
-    const fresh = await s.contexts("shared.h");
-    switched = await s.switchContext("shared.h", "main.cpp", { epoch: fresh.epoch });
+    const fresh = await s.contexts(s.file("polygon"));
+    switched = await s.switchContext(s.file("polygon"), s.file("polygon_impl"), {
+        epoch: fresh.epoch,
+    });
     expect(switched.success, `Fresh epoch must work, got: ${JSON.stringify(switched)}`).toBe(true);
 });
 
@@ -283,23 +269,23 @@ serve
 
 /// Adding an #include and saving must immediately expose the new host
 /// in queryContext: the include graph is rescanned on didSave.
-serve.files({
-    "lonely.h": "inline int lonely() { return 1; }\n",
-    "main.cpp": "int main() { return 0; }\n",
-})("saved include updates hosts", async ({ s }) => {
-    await s.compiled("main.cpp");
-    s.open("lonely.h");
+serve("shapes/headers")("saved include updates hosts", async ({ s }) => {
+    await s.compiled(s.file("main"));
+    s.open(s.file("draft"));
 
-    let query = await s.contexts("lonely.h");
+    let query = await s.contexts(s.file("draft"));
     expect(query.total, "No includers yet").toBe(0);
 
     // Include the header and save.
-    s.edit("main.cpp", { text: '#include "lonely.h"\nint main() { return lonely(); }\n' });
-    s.save("main.cpp");
+    s.edit(s.file("main"), {
+        after: '#include "shapes/registry.h"\n',
+        insert: '#include "shapes/draft.h"\n',
+    });
+    s.save(s.file("main"));
 
-    query = await s.contexts("lonely.h");
+    query = await s.contexts(s.file("draft"));
     expect(query.total, `New host must appear after save: ${JSON.stringify(query)}`).toBe(1);
-    expect(query.contexts[0]!.uri).toContain("main.cpp");
+    expect(query.contexts[0]!.uri).toContain(s.file("main"));
 });
 
 const CHAIN = {

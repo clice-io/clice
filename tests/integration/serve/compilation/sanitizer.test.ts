@@ -7,15 +7,15 @@ import { expect, serve } from "../../fixtures.ts";
 
 const MAIN = "#include <vector>\nint main() { return std::vector<int>{1}.empty(); }\n";
 
-serve.files({ "main.cpp": MAIN }, { manifest: { units: { "main.cpp": ["-fsanitize=address"] } } })(
+serve("stdlib", { units: { "report.cpp": ["-fsanitize=address"] } })(
     "address sanitizer entry compiles",
     async ({ s }) => {
-        expect(await s.errors("main.cpp")).toEqual([]);
+        expect(await s.errors("report.cpp")).toEqual([]);
         const links = await s.request<proto.DocumentLink[] | null>(
             "textDocument/documentLink",
-            "main.cpp",
+            "report.cpp",
         );
-        expect(links?.length).toBe(1);
+        expect(links?.length, "each standard header is linked").toBe(3);
     },
 );
 

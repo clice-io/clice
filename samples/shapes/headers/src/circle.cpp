@@ -15,4 +15,8 @@ double area(const Circle& circle) {
     return detail::scale(pi * detail::square(circle.radius));
 }
 
+Circle make_circle(double radius) {
+    return Circle(radius);
+}
+
 }  // namespace shapes

@@ -1,0 +1,4 @@
+{
+  "cxx": ["-std=c++23"],
+  "units": { "main.cpp": [], "int_host.cpp": [], "real_host.cpp": [] }
+}

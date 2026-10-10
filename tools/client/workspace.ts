@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { URI } from "vscode-uri";
-import { buildCDBEntry, generateCDB } from "../compile_commands.ts";
+import { buildCDBEntry } from "../compile_commands.ts";
 import { logFiles } from "../process_gate.ts";
 
 /// The harness-wide canonical URI spelling: percent-decoded. vscode-uri
@@ -89,17 +89,6 @@ export class Workspace {
         fs.writeFileSync(target, content);
     }
 
-    /// Copy the files directly inside `dir` to the workspace root — a data
-    /// workspace's sources, without the build directories a configure left
-    /// beside them.
-    copyFiles(dir: string): void {
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-            if (entry.isFile()) {
-                fs.copyFileSync(path.join(dir, entry.name), this.path(entry.name));
-            }
-        }
-    }
-
     mkdir(rel: string): void {
         fs.mkdirSync(this.path(rel), { recursive: true });
     }
@@ -131,12 +120,6 @@ export class Workspace {
             }),
         );
         this.write(options.at ?? "compile_commands.json", JSON.stringify(data, null, 2));
-    }
-
-    /// Generate compile_commands.json via CMake (workspaces with a
-    /// CMakeLists.txt).
-    generateCDB(): void {
-        generateCDB(this.root);
     }
 
     /// The text of every log file named `name` ("master.log", "SF-0.log")

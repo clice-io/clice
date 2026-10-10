@@ -15,13 +15,13 @@ const CANCELLED = { code: proto.LSPErrorCodes.RequestCancelled };
 
 /// A completion or signature help is cancelled while its worker works on
 /// it: the cancel reaches the worker, which stops instead of answering, and
-/// the server goes on serving.
-async function cancelInItsWorker(s: Serve, request: string, method: string, loc: Loc) {
-    await s.compiled("main.cpp");
+/// the server goes on serving another unit.
+async function cancelInItsWorker(s: Serve, request: string, method: string, loc: Loc, next: Loc) {
+    await s.compiled(loc.file);
     let sent: ReturnType<Serve["send"]> | undefined;
     await s.inWorker(
         request,
-        "main.cpp",
+        loc.file,
         () => {
             sent = s.send(method, loc);
         },
@@ -31,46 +31,35 @@ async function cancelInItsWorker(s: Serve, request: string, method: string, loc:
     );
     await expect(sent?.reply).rejects.toMatchObject(CANCELLED);
 
-    s.open("tiny.cpp");
-    expect(await s.hover(at("tiny.cpp", "va|lue"))).not.toBeNull();
+    s.open(next.file);
+    expect(await s.hover(next)).not.toBeNull();
 }
 
-serve.files(
-    {
-        "pre.h": "#pragma once\n",
-        "main.cpp": '#include "pre.h"\nint value = 42;\nint probe = val',
-        "tiny.cpp": "int value = 42;\n",
-    },
-    NO_INDEX,
-)("cancelled completion replies", async ({ s }) => {
+const test = serve("shapes/headers", NO_INDEX);
+
+test("cancelled completion replies", async ({ s }) => {
     await cancelInItsWorker(
         s,
         "completion",
         "textDocument/completion",
-        at("main.cpp", "probe = val|"),
+        at(s.file("main"), "shapes::ar|ea(c)"),
+        at(s.file("registry"), "int registry_co|unt() {"),
     );
 });
 
-serve.files(
-    {
-        "pre.h": "#pragma once\n",
-        "main.cpp":
-            '#include "pre.h"\nvoid take(int a, int b);\nint use() { return take(1, 2); }\n',
-        "tiny.cpp": "int value = 42;\n",
-    },
-    NO_INDEX,
-)("cancelled signature help", async ({ s }) => {
+test("cancelled signature help", async ({ s }) => {
     await cancelInItsWorker(
         s,
         "signatureHelp",
         "textDocument/signatureHelp",
-        at("main.cpp", "take(1,| 2)"),
+        at(s.file("main"), "shapes::area(|c)"),
+        at(s.file("registry"), "int registry_co|unt() {"),
     );
 });
 
-const BASE = "int value = 1;\n";
+const tiny = serve("tiny", NO_INDEX);
 
-serve.files({ "main.cpp": BASE }, NO_INDEX)("cancelled requests while compiling", async ({ s }) => {
+tiny("cancelled requests while compiling", async ({ s }) => {
     await s.compiled("main.cpp");
     const value = at("main.cpp", "int |value");
     const head: proto.Range = {
@@ -99,7 +88,7 @@ serve.files({ "main.cpp": BASE }, NO_INDEX)("cancelled requests while compiling"
             "compile",
             "main.cpp",
             () => {
-                s.edit("main.cpp", { text: BASE + `int extra${index};\n` });
+                s.edit("main.cpp", { before: "int main() {", insert: `int extra${index};\n` });
                 request = s.send(method, where, extra);
                 cancelled = expect(request.reply, method).rejects.toMatchObject(CANCELLED);
             },
@@ -132,7 +121,7 @@ serve.files({ "main.cpp": BASE }, NO_INDEX)("cancelled requests while compiling"
     expect(await s.hover(at("main.cpp", "int va|lue"))).not.toBeNull();
 });
 
-serve.files({ "main.cpp": BASE }, NO_INDEX)("edit supersedes compile", async ({ s }) => {
+tiny("edit supersedes compile", async ({ s }) => {
     // An edit mid-compile abandons the stale parse end-to-end: the request
     // that launched it rejects with ContentModified (the editor keeps what
     // it has and re-queries), and the next request answers on the new
@@ -150,16 +139,16 @@ serve.files({ "main.cpp": BASE }, NO_INDEX)("edit supersedes compile", async ({ 
             );
             // Any later reply: the server took the hover up before.
             await s.counts();
-            s.edit("main.cpp", { text: "int fixed;\n" });
+            s.edit("main.cpp", { replace: "int value", with: "long value" });
             return { first };
         },
     );
     expect(await first).toMatchObject({ code: proto.LSPErrorCodes.ContentModified });
 
-    expect(await s.hover(at("main.cpp", "int fi|xed"))).not.toBeNull();
+    expect(await s.hover(at("main.cpp", "va|lue = add"))).not.toBeNull();
 });
 
-serve.files({ "main.cpp": BASE }, NO_INDEX)("edit interrupts the parse", async ({ s }) => {
+tiny("edit interrupts the parse", async ({ s }) => {
     // The edit lands while the worker parses the old text: the master
     // interrupts the parse, the request that launched it rejects with
     // ContentModified, and the next request answers on the new content.
@@ -176,10 +165,10 @@ serve.files({ "main.cpp": BASE }, NO_INDEX)("edit interrupts the parse", async (
             );
             // Any later reply: the server took the hover up before.
             await s.counts();
-            s.edit("main.cpp", { text: "int fixed;\n" });
+            s.edit("main.cpp", { replace: "int value", with: "long value" });
             return { first };
         },
     );
     expect(await first).toMatchObject({ code: proto.LSPErrorCodes.ContentModified });
-    expect(await s.hover(at("main.cpp", "int fi|xed"))).not.toBeNull();
+    expect(await s.hover(at("main.cpp", "va|lue = add"))).not.toBeNull();
 });

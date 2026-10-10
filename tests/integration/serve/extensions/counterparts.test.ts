@@ -6,16 +6,7 @@ import type { Serve } from "@clice/tools/actions";
 import type { CounterpartsResult } from "@clice/tools/protocol";
 import { expect, serve } from "../../fixtures.ts";
 
-const FILES = {
-    "include/codec.h": "#pragma once\nint encode(int value);\nint decode(int value);\n",
-    "src/codec.cpp": '#include "../include/codec.h"\nint encode(int value) { return value + 1; }\n',
-    "src/decode.cpp":
-        '#include "../include/codec.h"\nint decode(int value) { return value - 1; }\n',
-    "src/inline.h": "#pragma once\ninline int twice(int value) { return 2 * value; }\n",
-    "src/main.cpp": '#include "inline.h"\nint main() { return twice(1); }\n',
-};
-
-const test = serve.files(FILES);
+const test = serve("shapes/headers");
 
 function counterparts(s: Serve, file: string): Promise<CounterpartsResult> {
     return s.request<CounterpartsResult>("clice/counterparts", file, { uri: s.uri(file) });
@@ -33,61 +24,65 @@ async function shown(s: Serve, file: string) {
     };
 }
 
-serve.files(FILES, { config: { project: { enable_indexing: false } } })(
+serve("shapes/headers", { config: { project: { enable_indexing: false } } })(
     "same name before the index",
     async ({ s }) => {
-        expect(await shown(s, "include/codec.h")).toEqual({
-            preferred: "src/codec.cpp",
-            candidates: [["src/codec.cpp", "same name"]],
+        expect(await shown(s, s.file("circle"))).toEqual({
+            preferred: "src/circle.cpp",
+            candidates: [["src/circle.cpp", "same name"]],
         });
-        expect(await shown(s, "src/codec.cpp")).toEqual({
-            preferred: "include/codec.h",
-            candidates: [["include/codec.h", "same name"]],
+        expect(await shown(s, s.file("circle_impl"))).toEqual({
+            preferred: "include/shapes/circle.h",
+            candidates: [["include/shapes/circle.h", "same name"]],
         });
     },
 );
 
 test("definitions rank the sources", async ({ s }) => {
     await s.indexed();
-    expect(await shown(s, "include/codec.h")).toEqual({
-        preferred: "src/codec.cpp",
+    expect(await shown(s, s.file("circle"))).toEqual({
+        preferred: "src/circle.cpp",
         candidates: [
-            ["src/codec.cpp", "defines 1 of 2 declarations", "same name"],
-            ["src/decode.cpp", "defines 1 of 2 declarations"],
+            ["src/circle.cpp", "defines 4 of 6 declarations", "same name"],
+            ["src/measure.cpp", "defines 2 of 6 declarations"],
         ],
     });
-    expect(await shown(s, "src/decode.cpp")).toEqual({
-        preferred: "include/codec.h",
-        candidates: [["include/codec.h", "declares 1 of 1 definition"]],
+    expect(await shown(s, s.file("measure"))).toEqual({
+        preferred: "include/shapes/circle.h",
+        candidates: [["include/shapes/circle.h", "declares 2 of 2 definitions"]],
     });
 });
 
 test("an edited buffer defines the declarations", async ({ s }) => {
     await s.indexed();
-    await s.compiled("src/decode.cpp");
-    s.edit("src/decode.cpp", {
-        replace: "int decode(int value) { return value - 1; }",
-        with: "int encode(int value) { return value + 2; }\nint decode(int value) { return value - 2; }",
+    const measure = s.file("measure");
+    await s.compiled(measure);
+    s.edit(s.file("measure"), {
+        before: "}  // namespace shapes",
+        insert:
+            "double Circle::measure() const {\n    return 0;\n}\n\n" +
+            'const char* Circle::name() const {\n    return "round";\n}\n\n' +
+            "double area(const Circle& circle) {\n    return circle.radius;\n}\n\n",
     });
-    await s.recompiled("src/decode.cpp");
-    // The unsaved buffer comes before the disk: codec.cpp, still defining
-    // encode there, pairs by its name alone.
-    expect(await shown(s, "include/codec.h")).toEqual({
+    await s.recompiled(measure);
+    // The unsaved buffer comes before the disk: circle.cpp, still defining
+    // those there, keeps only make_circle.
+    expect(await shown(s, s.file("circle"))).toEqual({
         preferred: null,
         candidates: [
-            ["src/decode.cpp", "defines 2 of 2 declarations"],
-            ["src/codec.cpp", "same name"],
+            ["src/circle.cpp", "defines 1 of 6 declarations", "same name"],
+            ["src/measure.cpp", "defines 5 of 6 declarations"],
         ],
     });
 });
 
 test("nothing to pair with", async ({ s }) => {
     await s.indexed();
-    expect(await counterparts(s, "src/inline.h")).toEqual({
+    expect(await counterparts(s, s.file("detail"))).toEqual({
         candidates: [],
         preferred: null,
     });
-    expect(await counterparts(s, "src/missing.h")).toEqual({
+    expect(await counterparts(s, "include/shapes/missing.h")).toEqual({
         candidates: [],
         preferred: null,
     });

@@ -118,48 +118,46 @@ serve.files(
     await s.clean("main.cpp");
 });
 
-serve.files(
-    {
-        "lib.h": "#pragma once\nint count(int);\n",
-        "lib.cpp": '#include "lib.h"\nint count(int n) { return n; }\n',
-        "main.cpp": "struct Box {};\nint use(Box* box) { return box->count; }\n",
-    },
-    {
-        config: { project: { enable_indexing: true } },
-        manifest: { cxx: ["-std=c++17"], units: { "main.cpp": [], "lib.cpp": [] } },
-    },
-)("member access offers no include", async ({ s }) => {
-    await s.compiled("main.cpp");
-    await expectIndexed(s, "count", "/lib.cpp");
+const BOX = "app/box.cpp";
 
-    expect(await includeActions(s, at("main.cpp", "box->c|ount"))).toEqual([]);
+serve("shapes/headers", {
+    config: { project: { enable_indexing: true } },
+    files: { [BOX]: "struct Box {};\nint use(Box* box) { return box->shapes_circle_area; }\n" },
+    units: { [BOX]: [] },
+})("member access offers no include", async ({ s }) => {
+    await s.compiled(BOX);
+    await expectIndexed(s, "shapes_circle_area", "/src/c_api.c");
+
+    expect(await includeActions(s, at(BOX, "box->s|hapes_circle_area"))).toEqual([]);
 });
 
-serve.files(
-    {
-        "types.h": "#pragma once\nstruct Point { int x; int y; };\n",
-        "lib.h": "#pragma once\nint helper();\n",
-        "lib.cpp": '#include "lib.h"\nint helper() { return 1; }\n',
-        "utils.h": "#pragma once\n\ninline int get_x(Point p) { return helper() + p.x; }\n",
-        "main.cpp":
-            '#include "types.h"\n#include "utils.h"\nint main() { return get_x({1, 2}); }\n',
+const UTILS = "app/utils.h";
+const UTILS_TEXT =
+    "#pragma once\n\n" +
+    "inline double get_area(shapes::Circle c) { return shapes_circle_area(c.radius); }\n";
+const HOST = "app/host.cpp";
+
+serve("shapes/headers", {
+    config: { project: { enable_indexing: true } },
+    files: {
+        [UTILS]: UTILS_TEXT,
+        [HOST]:
+            '#include "shapes/circle.h"\n#include "utils.h"\n' +
+            "int host() { return get_area(shapes::Circle(1.0)); }\n",
     },
-    {
-        config: { project: { enable_indexing: true } },
-        manifest: { cxx: ["-std=c++17"], units: { "main.cpp": [], "lib.cpp": [] } },
-    },
-)("context header keeps its directive inside", async ({ s }) => {
-    await s.compiled("main.cpp");
-    await expectIndexed(s, "helper", "/lib.cpp");
-    await s.compiled("utils.h");
+    units: { [HOST]: [] },
+})("context header keeps its directive inside", async ({ s }) => {
+    await s.compiled(HOST);
+    await expectIndexed(s, "shapes_circle_area", "/src/c_api.c");
+    await s.compiled(UTILS);
     expect((await s.stats()).synthesizedContexts).toBe(1);
 
-    const loc = at("utils.h", "h|elper()");
+    const loc = at(UTILS, "s|hapes_circle_area(");
     const [action] = await includeActions(s, loc);
-    expect(action?.title).toBe('Add #include "lib.h"');
-    const { text, diagnostics } = await s.applyAction(loc, 'Add #include "lib.h"');
+    expect(action?.title).toBe("Add #include <shapes/c_api.h>");
+    const { text, diagnostics } = await s.applyAction(loc, "Add #include <shapes/c_api.h>");
     expect(text).toBe(
-        '#pragma once\n#include "lib.h"\n\ninline int get_x(Point p) { return helper() + p.x; }\n',
+        UTILS_TEXT.replace("#pragma once\n", "#pragma once\n#include <shapes/c_api.h>\n"),
     );
     expect(diagnostics).toEqual([]);
 });

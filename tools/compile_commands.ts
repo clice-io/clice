@@ -1,15 +1,11 @@
 /// Compilation database helpers for test fixtures: entry construction for
-/// harness-generated workspaces, and CMake generation for fixtures that
-/// carry a CMakeLists.txt. Plain fixtures under tests/data ship their
-/// compile_commands.json with relative paths, so nothing regenerates them.
+/// harness-generated workspaces, and the repository's test directories.
 
-import { execFileSync } from "node:child_process";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const TESTS_DIR = path.join(REPO_ROOT, "tests");
-export const DATA_DIR = path.join(TESTS_DIR, "data");
 export const SNAP_DIR = path.join(TESTS_DIR, "snap");
 
 export interface CDBEntry {
@@ -44,25 +40,4 @@ export function buildCDBEntry(
             file,
         ],
     };
-}
-
-/// Generate compile_commands.json using CMake with Ninja backend.
-export function generateCDB(workspace: string): void {
-    execFileSync(
-        "cmake",
-        [
-            "-G",
-            "Ninja",
-            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-            // xclang's, from the test environment: its config files pick
-            // libc++, the runtimes and lld on every platform.
-            "-DCMAKE_C_COMPILER=clang",
-            "-DCMAKE_CXX_COMPILER=clang++",
-            "-S",
-            workspace,
-            "-B",
-            path.join(workspace, "build"),
-        ],
-        { timeout: 120_000, stdio: "pipe" },
-    );
 }

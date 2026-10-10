@@ -13,3 +13,10 @@ int demo() {
 double demo_square() {
     return shapes::detail::square(2.0);
 }
+
+int demo_capacity() {
+    shapes::Circle circle = shapes::make_circle(1.0);
+    const shapes::Shape& shape = circle;
+    shapes::registry_add(shape);
+    return shapes::registry_capacity();
+}

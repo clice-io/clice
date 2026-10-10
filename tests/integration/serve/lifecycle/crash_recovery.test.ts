@@ -120,33 +120,29 @@ serve
 // A file whose own index run crashes its worker is not requeued: the
 // same bytes would crash the next run too. It is retried once it
 // changes.
-serve
-    .files(
-        {
-            "poison.cpp": "int poison_fn() { return 1; }\n",
-            "healthy.cpp": "int healthy_fn() { return 2; }\n",
-            "main.cpp": "int main() { return 0; }\n",
-        },
-        { crashOn: { request: "tuRun", file: "poison.cpp" } },
-    )
-    .skipIf(process.platform !== "linux")("index crash waits for change", async ({ s }) => {
-    await s.compiled("main.cpp");
-    const crashes = () =>
-        s.workspace.workerCrashes(`tuRun ${s.workspace.displayPath("poison.cpp")}`);
-    const symbols = async () =>
-        new Set(((await s.workspaceSymbols("_fn")) ?? []).map((symbol) => symbol.name));
+serve("shapes/headers", { crashOn: { request: "tuRun", file: "src/registry.cpp" } }).skipIf(
+    process.platform !== "linux",
+)("index crash waits for change", async ({ s }) => {
+    const registry = s.file("registry");
+    await s.compiled(s.file("main"));
+    const crashes = () => s.workspace.workerCrashes(`tuRun ${s.workspace.displayPath(registry)}`);
+    const indexed = async (name: string) =>
+        ((await s.workspaceSymbols(name)) ?? []).some((symbol) => symbol.name === name);
 
     const { failed } = await s.sync();
-    expect(failed).toEqual(["poison.cpp"]);
-    expect((await symbols()).has("healthy_fn")).toBe(true);
+    expect(failed).toEqual([registry]);
+    expect(await indexed("edge")).toBe(true);
     expect(crashes()).toBe(1);
     const log = s.workspace.log("master.log");
     expect(log).toContain("Index giving up on");
     expect(log).toContain("[anomaly:WorkerCrash]");
 
     // A change is the retry.
-    s.disk.write("poison.cpp", "int poison_fn() { return 300; }\n");
+    s.disk.edit(s.file("registry"), {
+        replace: "static int registered = 0;",
+        with: "static int registered = 300;",
+    });
     await s.sync({ poll: true });
     expect(crashes()).toBe(2);
-    expect((await symbols()).has("poison_fn")).toBe(false);
+    expect(await indexed("registry_reset")).toBe(false);
 });

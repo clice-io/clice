@@ -2,7 +2,7 @@
 
 import type { Serve } from "@clice/tools/actions";
 import * as proto from "vscode-languageserver-protocol";
-import { at, expect, serve } from "../../fixtures.ts";
+import { at, expect, serve, type Loc } from "../../fixtures.ts";
 
 type CompletionReply = proto.CompletionItem[] | proto.CompletionList | null;
 
@@ -19,102 +19,131 @@ function editOf(item: proto.CompletionItem | undefined): proto.TextEdit | undefi
     return edit !== undefined && "range" in edit ? edit : undefined;
 }
 
-/// `file` opened and compiled, then its buffer replaced by `text`.
-async function typed(s: Serve, file: string, text: string): Promise<void> {
+/// `file` opened and compiled, then its buffer replaced by `text`; returns
+/// the position the `|` in `text` marks.
+async function typed(s: Serve, file: string, text: string): Promise<Loc> {
     await s.compiled(file);
-    s.edit(file, { text });
+    s.edit(file, { text: text.replace("|", "") });
+    return at(file, text);
 }
 
-const includes = serve.data("include_completion");
-const chained = serve.data("modules/chained_modules");
+/// The range from one position to another.
+function span(s: Serve, from: Loc, to: Loc): proto.Range {
+    return { start: s.position(from).position, end: s.position(to).position };
+}
+
+const headers = serve("shapes/headers");
+const modules = serve("shapes/modules");
+const tiny = serve("tiny");
 
 /// Completion after #include " should list local headers.
-includes("include completion quoted", async ({ s }) => {
-    await typed(s, "main.cpp", '#include "my');
+headers("include completion quoted", async ({ s }) => {
+    await s.compiled(s.file("main"));
+    s.edit(s.file("main"), { remove: 'rcle.h"' });
 
-    const result = await s.completion(at("main.cpp", '#include "my|'));
+    const result = await s.completion(at(s.file("main"), '#include "shapes/ci|'));
 
     expect(result).not.toBeNull();
-    expect(labelsOf(result)).toContain("myheader.h");
+    expect(labelsOf(result)).toContain("circle.h");
 
-    s.close("main.cpp");
+    s.close(s.file("main"));
 });
 
 /// A header candidate closes the directive, replacing a delimiter already there.
-includes("include completion closes directive", async ({ s }) => {
-    await typed(s, "main.cpp", '#include "my');
-    let item = itemsOf(await s.completion(at("main.cpp", '#include "my|'))).find(
-        (i) => i.label === "myheader.h",
-    );
-    expect(editOf(item)).toEqual({
-        range: { start: { line: 0, character: 10 }, end: { line: 0, character: 12 } },
-        newText: 'myheader.h"',
+headers("include completion closes directive", async ({ s }) => {
+    const header = async (loc: Loc, label: string) =>
+        editOf(itemsOf(await s.completion(loc)).find((i) => i.label === label));
+
+    await s.compiled(s.file("main"));
+    s.edit(s.file("main"), { remove: 'rcle.h"' });
+    expect(await header(at(s.file("main"), '#include "shapes/ci|'), "circle.h")).toEqual({
+        range: span(
+            s,
+            at(s.file("main"), '#include "shapes/|ci'),
+            at(s.file("main"), '#include "shapes/ci|'),
+        ),
+        newText: 'circle.h"',
     });
 
-    s.edit("main.cpp", { text: '#include "myhe"' });
-    item = itemsOf(await s.completion(at("main.cpp", '#include "my|he"'))).find(
-        (i) => i.label === "myheader.h",
-    );
-    expect(editOf(item)).toEqual({
-        range: { start: { line: 0, character: 10 }, end: { line: 0, character: 15 } },
-        newText: 'myheader.h"',
+    s.edit(s.file("main"), { after: '#include "shapes/ci', insert: 'rcle.h"' });
+    expect(await header(at(s.file("main"), '#include "shapes/ci|rcle.h"'), "circle.h")).toEqual({
+        range: span(
+            s,
+            at(s.file("main"), '#include "shapes/|circle.h"'),
+            at(s.file("main"), '#include "shapes/circle.h"|'),
+        ),
+        newText: 'circle.h"',
     });
 
     // Picked in an earlier path component, a header ends the path there.
-    s.edit("main.cpp", { text: '#include "my/rest.h"' });
-    item = itemsOf(await s.completion(at("main.cpp", '#include "my|/rest.h"'))).find(
-        (i) => i.label === "myheader.h",
-    );
-    expect(editOf(item)).toEqual({
-        range: { start: { line: 0, character: 10 }, end: { line: 0, character: 20 } },
-        newText: 'myheader.h"',
+    await s.compiled(s.file("circle_impl"));
+    expect(
+        await header(at(s.file("circle_impl"), '#include "shapes/d|etail/math.h"'), "draft.h"),
+    ).toEqual({
+        range: span(
+            s,
+            at(s.file("circle_impl"), '#include "shapes/|detail'),
+            at(s.file("circle_impl"), 'math.h"|'),
+        ),
+        newText: 'draft.h"',
     });
 });
 
 /// Sources and other non-header files on the search path are not candidates.
-includes("include completion lists headers", async ({ s }) => {
-    await typed(s, "main.cpp", '#include "');
-    const labels = labelsOf(await s.completion(at("main.cpp", '#include "|')));
-    expect(labels).toContain("myheader.h");
-    expect(labels).toContain("subdir/");
-    expect(labels).not.toContain("main.cpp");
-    expect(labels).not.toContain("compile_commands.json");
+headers("include completion lists headers", async ({ s }) => {
+    await s.compiled(s.file("registry"));
+    s.edit(s.file("registry"), { remove: 'registry.h"' });
+    const nested = labelsOf(await s.completion(at(s.file("registry"), '#include "shapes/|')));
+    expect(nested).toContain("registry.h");
+    expect(nested).toContain("detail/");
+
+    const labels = labelsOf(
+        await s.completion(at(s.file("registry"), '#include "|registry_limits.h"')),
+    );
+    expect(labels).toContain("registry_limits.h");
+    expect(labels).toContain("shapes/");
+    expect(labels).not.toContain("registry.cpp");
+    expect(labels).not.toContain("c_api.c");
 });
 
 /// A quoted include finds headers next to the file without any -I.
-serve.files(
-    { "src/main.cpp": "int main() {}\n", "src/local.h": "#pragma once\n" },
-    { manifest: { cxx: ["-std=c++17"], units: { "src/main.cpp": [] } } },
-)("include completion sibling headers", async ({ s }) => {
-    await typed(s, "src/main.cpp", '#include "lo');
-    expect(labelsOf(await s.completion(at("src/main.cpp", '#include "lo|')))).toContain("local.h");
+headers("include completion sibling headers", async ({ s }) => {
+    await s.compiled(s.file("registry"));
+    s.edit(s.file("registry"), { remove: 'istry_limits.h"' });
+    const result = await s.completion(at(s.file("registry"), '#include "reg|'));
+    expect(labelsOf(result)).toContain("registry_limits.h");
 });
 
 /// An identifier named `import` opening a line is not an import statement.
-includes("import identifier member access", async ({ s }) => {
-    await typed(s, "main.cpp", "struct S { int member; };\nvoid f(S* import) {\nimport->\n}");
+tiny("import identifier member access", async ({ s }) => {
+    const loc = await typed(
+        s,
+        "main.cpp",
+        "struct S { int member; };\nvoid f(S* import) {\nimport->|\n}",
+    );
 
-    const result = await s.completion(at("main.cpp", "import->|"), ">");
+    const result = await s.completion(loc, ">");
     expect(labelsOf(result)).toContain("member");
 });
 
 /// Completion for #include "subdir/ should list files in subdir.
-includes("include completion subdirectory", async ({ s }) => {
-    await typed(s, "main.cpp", '#include "subdir/');
+headers("include completion subdirectory", async ({ s }) => {
+    await s.compiled(s.file("circle_impl"));
+    s.edit(s.file("circle_impl"), { remove: 'math.h"' });
 
-    const result = await s.completion(at("main.cpp", '#include "subdir/|'));
+    const result = await s.completion(at(s.file("circle_impl"), '#include "shapes/detail/|'));
 
     expect(result).not.toBeNull();
-    expect(labelsOf(result)).toContain("nested.h");
+    expect(labelsOf(result)).toContain("math.h");
 
-    s.close("main.cpp");
+    s.close(s.file("circle_impl"));
 });
 
 /// Completion after #include < should list system headers.
-includes("include completion angle bracket", async ({ s }) => {
-    await typed(s, "main.cpp", "#include <cstd");
+tiny("include completion angle bracket", async ({ s }) => {
+    const loc = await typed(s, "main.cpp", "#include <cstd|");
 
-    const result = await s.completion(at("main.cpp", "#include <cstd|"));
+    const result = await s.completion(loc);
 
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
@@ -128,89 +157,91 @@ includes("include completion angle bracket", async ({ s }) => {
 });
 
 /// Regular code should NOT trigger include completion (goes to worker).
-includes("no include completion on regular code", async ({ s }) => {
-    await typed(s, "main.cpp", "int x = ");
+headers("no include completion on regular code", async ({ s }) => {
+    await s.compiled(s.file("main"));
 
-    const result = await s.completion(at("main.cpp", "int x = |"));
+    const result = await s.completion(at(s.file("main"), "double total = |shapes::area"));
 
     // Should return results from clang (keywords, etc.), not include paths.
     // Verify none of the results look like header filenames.
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
-    expect(labels).not.toContain("myheader.h");
-    expect(labels).not.toContain("nested.h");
+    expect(labels).not.toContain("circle.h");
+    expect(labels).not.toContain("math.h");
 
-    s.close("main.cpp");
+    s.close(s.file("main"));
 });
 
-/// Completion after #include " with no prefix should list all local headers.
-includes("include completion empty prefix", async ({ s }) => {
-    await typed(s, "main.cpp", '#include "');
+/// Completion after #include " with no prefix lists the search path's entries.
+headers("include completion empty prefix", async ({ s }) => {
+    await s.compiled(s.file("registry"));
+    s.edit(s.file("registry"), { remove: 'registry_limits.h"' });
 
-    const result = await s.completion(at("main.cpp", '#include "|'));
-
-    expect(result).not.toBeNull();
-    // With empty prefix, should list available headers including myheader.h
-    // and the subdir/ directory entry.
-    expect(labelsOf(result)).toContain("myheader.h");
-
-    s.close("main.cpp");
-});
-
-/// Import completion should list known modules.
-chained("import completion basic", async ({ s }) => {
-    // First open mod_a to ensure it's scanned and module A is registered.
-    await s.compiled("mod_a.cppm");
-
-    // Open mod_b and change its content to an incomplete import line.
-    s.open("mod_b.cppm");
-    s.edit("mod_b.cppm", { text: "import " });
-
-    const result = await s.completion(at("mod_b.cppm", "import |"));
+    const result = await s.completion(at(s.file("registry"), 'registry.h"\n#include "|'));
 
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
-    expect(labels, `Expected 'A' in completion labels, got: ${labels.join(", ")}`).toContain("A");
-    expect(editOf(itemsOf(result).find((i) => i.label === "A"))).toEqual({
-        range: { start: { line: 0, character: 7 }, end: { line: 0, character: 7 } },
-        newText: "A;",
+    expect(labels).toContain("registry_limits.h");
+    expect(labels).toContain("shapes/");
+    expect(labels).toContain("legacy/");
+
+    s.close(s.file("registry"));
+});
+
+/// Import completion should list known modules.
+modules("import completion basic", async ({ s }) => {
+    await s.compiled(s.file("main"));
+    s.edit(s.file("main"), { remove: "shapes;" });
+
+    const result = await s.completion(at(s.file("main"), "import |"));
+
+    expect(result).not.toBeNull();
+    const labels = labelsOf(result);
+    expect(labels, `Expected 'shapes' in completion labels, got: ${labels.join(", ")}`).toContain(
+        "shapes",
+    );
+    const cursor = s.position(at(s.file("main"), "import |")).position;
+    expect(editOf(itemsOf(result).find((i) => i.label === "shapes"))).toEqual({
+        range: { start: cursor, end: cursor },
+        newText: "shapes;",
     });
 });
 
 /// Space-triggered completion on an import line lists modules.
-chained("space trigger serves import", async ({ s }) => {
-    await s.compiled("mod_a.cppm");
+modules("space trigger serves import", async ({ s }) => {
+    await s.compiled(s.file("main"));
+    s.edit(s.file("main"), { remove: "shapes;" });
 
-    s.open("mod_b.cppm");
-    s.edit("mod_b.cppm", { text: "import " });
-
-    const result = await s.completion(at("mod_b.cppm", "import |"), " ");
+    const result = await s.completion(at(s.file("main"), "import |"), " ");
 
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
-    expect(labels, `Expected 'A' in completion labels, got: ${labels.join(", ")}`).toContain("A");
+    expect(labels, `Expected 'shapes' in completion labels, got: ${labels.join(", ")}`).toContain(
+        "shapes",
+    );
 });
 
 /// A `:` typed after `import` lists the current module's partitions; an
 /// interface unit is offered its interface partitions only.
-serve.data("modules/internal_partitions")("colon trigger serves partitions", async ({ s }) => {
-    await typed(s, "impl.cpp", "module Lib;\nimport :");
-    const fromImpl = await s.completion(at("impl.cpp", "import :|"), ":");
-    expect(labelsOf(fromImpl)).toEqual([":api", ":detail", ":util"]);
+modules("colon trigger serves partitions", async ({ s }) => {
+    await s.compiled(s.file("circle_impl"));
+    s.edit(s.file("circle_impl"), { remove: "detail;" });
+    const fromImpl = await s.completion(at(s.file("circle_impl"), "import :|"), ":");
+    expect(labelsOf(fromImpl)).toEqual([":circle", ":detail", ":polygon", ":shape"]);
 
-    await typed(s, "lib.cppm", "export module Lib;\nexport import :");
-    const fromInterface = await s.completion(at("lib.cppm", "export import :|"), ":");
-    expect(labelsOf(fromInterface)).toEqual([":api"]);
+    await s.compiled(s.file("circle"));
+    s.edit(s.file("circle"), { remove: "shape;" });
+    const fromInterface = await s.completion(at(s.file("circle"), "import :|"), ":");
+    expect(labelsOf(fromInterface)).toEqual([":polygon", ":shape"]);
 });
 
 /// Space-triggered completion outside import lines returns no items.
-chained("space trigger gated elsewhere", async ({ s }) => {
-    s.open("mod_b.cppm");
-    s.edit("mod_b.cppm", { text: "int main() { return 0; }" });
+tiny("space trigger gated elsewhere", async ({ s }) => {
+    s.open("main.cpp");
 
     // Cursor right after "return " — a space trigger here must be answered
     // with an empty list instead of a full completion build.
-    const result = await s.completion(at("mod_b.cppm", "return |0"), " ");
+    const result = await s.completion(at("main.cpp", "return |lhs"), " ");
 
     const items = labelsOf(result);
     expect(
@@ -220,12 +251,12 @@ chained("space trigger gated elsewhere", async ({ s }) => {
 });
 
 /// Space-triggered completion in an include context returns no items.
-includes("space trigger gated include", async ({ s }) => {
-    await typed(s, "main.cpp", "#include <vector> ");
+tiny("space trigger gated include", async ({ s }) => {
+    const loc = await typed(s, "main.cpp", "#include <vector> |");
 
     // The space gate must run before include scanning: no directory
     // enumeration and no candidates for a trailing-space trigger.
-    const result = await s.completion(at("main.cpp", "#include <vector> |"), " ");
+    const result = await s.completion(loc, " ");
 
     const items = labelsOf(result);
     expect(
@@ -235,80 +266,82 @@ includes("space trigger gated include", async ({ s }) => {
 });
 
 /// `<` opening a template parameter list is not a completion point.
-includes("angle trigger gated template", async ({ s }) => {
-    await typed(s, "main.cpp", "#define UNRELATED_MACRO 123\ntemplate<");
+tiny("angle trigger gated template", async ({ s }) => {
+    const loc = await typed(s, "main.cpp", "#define UNRELATED_MACRO 123\ntemplate<|");
 
-    const result = await s.completion(at("main.cpp", "template<|"), "<");
+    const result = await s.completion(loc, "<");
 
     const items = labelsOf(result);
     expect(items.length, `Expected no items after template<, got: ${items.join(", ")}`).toBe(0);
 });
 
 /// The third dot of a parameter pack is not a member access.
-includes("ellipsis trigger gated", async ({ s }) => {
-    await typed(s, "main.cpp", "template<typename...");
+tiny("ellipsis trigger gated", async ({ s }) => {
+    const loc = await typed(s, "main.cpp", "template<typename...|");
 
-    const result = await s.completion(at("main.cpp", "template<typename...|"), ".");
+    const result = await s.completion(loc, ".");
 
     const items = labelsOf(result);
     expect(items.length, `Expected no items after an ellipsis, got: ${items.join(", ")}`).toBe(0);
 });
 
 /// A dot after an object still completes its members on the trigger path.
-includes("dot trigger serves member", async ({ s }) => {
-    await typed(s, "main.cpp", "struct Widget { int member; };\nvoid f() { Widget w; w. }");
+tiny("dot trigger serves member", async ({ s }) => {
+    const loc = await typed(
+        s,
+        "main.cpp",
+        "struct Widget { int member; };\nvoid f() { Widget w; w.| }",
+    );
 
-    const result = await s.completion(at("main.cpp", "w.| }"), ".");
+    const result = await s.completion(loc, ".");
 
     expect(labelsOf(result)).toContain("member");
 });
 
 /// Import completion with prefix should filter to matching modules.
-chained("import completion with prefix", async ({ s }) => {
-    // Open mod_a to register module A.
-    await s.compiled("mod_a.cppm");
+modules("import completion with prefix", async ({ s }) => {
+    await s.compiled(s.file("main"));
+    s.edit(s.file("main"), { remove: "pes;" });
 
-    // Open mod_b and type 'import A' (with prefix).
-    s.open("mod_b.cppm");
-    s.edit("mod_b.cppm", { text: "import A" });
-
-    const result = await s.completion(at("mod_b.cppm", "import A|"));
+    const result = await s.completion(at(s.file("main"), "import sha|"));
 
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
-    expect(labels, `Expected 'A' in completion labels, got: ${labels.join(", ")}`).toContain("A");
+    expect(labels, `Expected 'shapes' in completion labels, got: ${labels.join(", ")}`).toContain(
+        "shapes",
+    );
 });
 
-/// Import completion should return dotted module names like my.app and my.io.
-serve.data("modules/dotted_module_name")("import completion dotted names", async ({ s }) => {
+/// Import completion should return dotted module names like my.io.
+serve("modules/dotted_module_name")("import completion dotted names", async ({ s }) => {
     // Open both module files to register them.
     await s.compiled("io.cppm");
     await s.compiled("app.cppm");
 
-    // Change app.cppm to an incomplete import with dotted prefix.
-    s.edit("app.cppm", { text: "import my." });
+    s.edit("app.cppm", { remove: "io;" });
 
     const result = await s.completion(at("app.cppm", "import my.|"));
 
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
-    expect(
-        labels.includes("my.app") || labels.includes("my.io"),
-        `Expected dotted module names in completion labels, got: ${labels.join(", ")}`,
-    ).toBe(true);
+    expect(labels, `Expected dotted module names, got: ${labels.join(", ")}`).toContain("my.io");
 });
 
 /// Adding import in buffer (unsaved) should still build the needed PCM.
-serve.data("modules/consumer_imports_module")("buffer aware module deps", async ({ s }) => {
+modules("buffer aware module deps", async ({ s }) => {
     // Open the module file first so it gets scanned.
-    await s.compiled("math.cppm");
+    await s.compiled(s.file("detail"));
 
-    // Open main.cpp with new content that imports Math (simulating unsaved edit).
-    s.open("main.cpp");
-    s.edit("main.cpp", { text: "import Math;\nint x = add(1, 2);\n" });
+    // The disk text of measure.cpp needs no :detail; the buffer does.
+    s.open(s.file("measure"));
+    s.edit(
+        s.file("measure"),
+        { after: "module shapes;\n", insert: "\nimport :detail;\n" },
+        { replace: "return pi;", with: "return detail::square(pi);" },
+    );
 
-    // Should have no errors if Math PCM was built successfully from buffer scan.
-    const errors = await s.errors("main.cpp");
+    // Should have no errors if the partition's PCM was built from the buffer scan.
+    const errors = await s.errors(s.file("measure"));
     expect(errors.length, `Expected no errors, got: ${JSON.stringify(errors)}`).toBe(0);
 });
 
@@ -321,15 +354,13 @@ const SNIPPET_OPTIONS = {
 };
 
 /// Snippets reach only clients that declare snippet support.
-serve.files(
-    { "main.cpp": "int compute(int x);\nvoid f() { compu; }\n" },
-    { config: SNIPPET_OPTIONS, manifest: { cxx: ["-std=c++17"], units: { "main.cpp": [] } } },
-)("snippets follow client support", async ({ s }) => {
-    const loc = at("main.cpp", "compu|;");
+serve("tiny", { config: SNIPPET_OPTIONS })("snippets follow client support", async ({ s }) => {
+    s.disk.edit("main.cpp", { replace: "add(1, 2)", with: "ad" });
+    const loc = at("main.cpp", "int value = ad|");
     await s.compiled("main.cpp");
-    const plain = itemsOf(await s.completion(loc)).find((item) => item.label === "compute");
+    const plain = itemsOf(await s.completion(loc)).find((item) => item.label === "add");
     expect(plain?.insertTextFormat).not.toBe(proto.InsertTextFormat.Snippet);
-    expect(plain?.textEdit?.newText).toBe("compute()");
+    expect(plain?.textEdit?.newText).toBe("add()");
     await s.stop();
 
     // The case's server declares no snippet support; this one does.
@@ -339,7 +370,7 @@ serve.files(
         },
     });
     await s.compiled("main.cpp");
-    const placeholders = itemsOf(await s.completion(loc)).find((item) => item.label === "compute");
+    const placeholders = itemsOf(await s.completion(loc)).find((item) => item.label === "add");
     expect(placeholders?.insertTextFormat).toBe(proto.InsertTextFormat.Snippet);
-    expect(placeholders?.textEdit?.newText).toBe("compute(${1:int x})");
+    expect(placeholders?.textEdit?.newText).toBe("add(${1:int lhs}, ${2:int rhs})");
 });

@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { runProcess } from "@clice/tools/client";
-import { DATA_DIR } from "@clice/tools/compile-commands";
+import { materialize } from "@clice/tools/project";
 import type { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
@@ -21,9 +21,7 @@ function hasLibrary(workspace: Workspace, configuration: string): boolean {
 
 test("batch index per configuration", async ({ session }) => {
     const workspace = session.tmpdir();
-    fs.cpSync(path.join(DATA_DIR, "cdb", "two_configurations"), workspace.root, {
-        recursive: true,
-    });
+    materialize("layouts/two_configurations", workspace);
     const release = ["--workspace", workspace.root, "--configuration", "release"];
 
     const indexed = await runClice("index", ...release, "--workers", "2");
@@ -55,9 +53,7 @@ test("scripted commands reject unknown names", async ({ session }) => {
     // inspection run with a misspelt name must fail, not report success
     // for another configuration.
     const workspace = session.tmpdir();
-    fs.cpSync(path.join(DATA_DIR, "cdb", "two_configurations"), workspace.root, {
-        recursive: true,
-    });
+    materialize("layouts/two_configurations", workspace);
     const unknown = ["--workspace", workspace.root, "--configuration", "nope"];
     for (const [command, status] of [
         [["index", "--workers", "2"], 1],

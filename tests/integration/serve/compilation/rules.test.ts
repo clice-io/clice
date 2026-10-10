@@ -136,18 +136,18 @@ serve.files(
 });
 
 const EXCLUDED = {
-    "third_party/lib.cpp": "int tp_sym() { return 1; }\n",
-    "clice.toml": '[[rules]]\npatterns = ["third_party/**"]\nindex = false\n',
+    files: {
+        "third_party/lib.cpp": "int tp_sym() { return 1; }\n",
+        "clice.toml": '[[rules]]\npatterns = ["third_party/**"]\nindex = false\n',
+    },
+    units: { "third_party/lib.cpp": [] },
 };
 
-serve.files({
-    ...EXCLUDED,
-    "main.cpp": "int main_sym() { return 0; }\nint main() { return main_sym(); }\n",
-})("index skips excluded units", async ({ s }) => {
+serve("tiny", EXCLUDED)("index skips excluded units", async ({ s }) => {
     await s.compiled("main.cpp");
     await s.indexed();
-    expect(s.show(await s.workspaceSymbols("main_sym"))).toBe(
-        "main_sym main.cpp: int main_sym() { return 0; }",
+    expect(s.show(await s.workspaceSymbols("add"))).toBe(
+        "add main.cpp: int add(int lhs, int rhs) {",
     );
     expect(
         (await s.workspaceSymbols("tp_sym")) ?? [],
@@ -164,8 +164,8 @@ serve.files({
     await s.diagnostics("main.cpp");
     expect((await s.counts()).files["main.cpp"]?.compile, "main.cpp compiles again").toBe(2);
     await s.indexed();
-    expect(s.show(await s.workspaceSymbols("main_sym"))).toBe(
-        "main_sym main.cpp: int main_sym() { return 0; }",
+    expect(s.show(await s.workspaceSymbols("add"))).toBe(
+        "add main.cpp: int add(int lhs, int rhs) {",
     );
     expect(
         (await s.workspaceSymbols("tp_sym")) ?? [],
@@ -174,20 +174,20 @@ serve.files({
     expect((await s.counts()).files["third_party/lib.cpp"]?.index ?? 0).toBe(0);
 });
 
-serve.files(
-    { ...EXCLUDED, "main.cpp": "int main() { return 0; }\n" },
-    { config: { project: { readonly: "auto" } } },
-)("excluded unit escalates when read", async ({ s }) => {
-    // No shard will ever serve an excluded unit: the didOpen boost is
-    // refused and the session escalates to a pulled compile at once. The
-    // open sends no pull of its own, which would start the compile.
-    s.open("third_party/lib.cpp", { pull: false });
-    const symbols = await s.request<proto.DocumentSymbol[] | null>(
-        "textDocument/documentSymbol",
-        "third_party/lib.cpp",
-    );
-    expect(symbols?.map((symbol) => symbol.name)).toContain("tp_sym");
-    const pushed = await s.pushed("third_party/lib.cpp");
-    expect(pushed, "the escalated compile publishes").toBeDefined();
-    expect(errorsOf(pushed!)).toEqual([]);
-});
+serve("tiny", { ...EXCLUDED, config: { project: { readonly: "auto" } } })(
+    "excluded unit escalates when read",
+    async ({ s }) => {
+        // No shard will ever serve an excluded unit: the didOpen boost is
+        // refused and the session escalates to a pulled compile at once. The
+        // open sends no pull of its own, which would start the compile.
+        s.open("third_party/lib.cpp", { pull: false });
+        const symbols = await s.request<proto.DocumentSymbol[] | null>(
+            "textDocument/documentSymbol",
+            "third_party/lib.cpp",
+        );
+        expect(symbols?.map((symbol) => symbol.name)).toContain("tp_sym");
+        const pushed = await s.pushed("third_party/lib.cpp");
+        expect(pushed, "the escalated compile publishes").toBeDefined();
+        expect(errorsOf(pushed!)).toEqual([]);
+    },
+);

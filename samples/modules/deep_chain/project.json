@@ -1,7 +1,5 @@
 {
-  "cxx": [
-    "-std=c++20"
-  ],
+  "cxx": ["-std=c++20"],
   "units": {
     "m1.cppm": [],
     "m2.cppm": [],

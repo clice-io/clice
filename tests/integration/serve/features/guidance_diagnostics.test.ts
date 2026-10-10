@@ -79,9 +79,6 @@ serve.files(
 });
 
 // A guessed command that works produces no guidance noise.
-serve.files({ "main.cpp": "int main() { return 0; }\n" }, NO_DATABASE)(
-    "fallback clean no guidance",
-    async ({ s }) => {
-        expect(guidanceDiags(await s.compiled("main.cpp")).length).toBe(0);
-    },
-);
+serve("tiny", NO_DATABASE)("fallback clean no guidance", async ({ s }) => {
+    expect(guidanceDiags(await s.compiled("main.cpp")).length).toBe(0);
+});

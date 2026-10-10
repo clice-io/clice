@@ -9,16 +9,15 @@ import type { Serve } from "@clice/tools/actions";
 import { wireKeys, type StatsResult } from "@clice/tools/protocol";
 import { at, expect, serve } from "../../fixtures.ts";
 
-const FUNCS = Object.fromEntries(
-    [0, 1, 2, 3].map((i) => [`file${i}.cpp`, `int func_${i}() { return ${i}; }\n`]),
-);
+const test = serve("shapes/headers");
 
-serve.files(FUNCS)("shards flip back after save", async ({ s }) => {
-    await s.compiled("file0.cpp");
+test("shards flip back after save", async ({ s }) => {
+    await s.compiled(s.file("main"));
     await s.indexed();
-    expect(s.show(await s.workspaceSymbols("func_3")), "background index did not finish").toBe(
-        "func_3 file3.cpp: int func_3() { return 3; }",
-    );
+    expect(
+        s.show(await s.workspaceSymbols("registry_reset")),
+        "background index did not finish",
+    ).toBe("registry_reset src/registry.cpp: int registry_reset() {");
 
     const stats = await s.stats();
     expect(stats.indexInmemoryShards, "shards did not flip back after save").toBe(0);
@@ -36,33 +35,39 @@ async function indexedNames(s: Serve, query: string): Promise<string[]> {
 
 // Open before the project starts: its first round leaves the open file to
 // the file's own compile.
-serve.files(FUNCS, {
+serve("shapes/headers", {
     launch: {
         beforeInitialized: (s) => {
-            s.open("file0.cpp", { pull: false });
+            s.open(s.file("main"), { pull: false });
         },
     },
 })("save writes only dirty shards", async ({ s }) => {
-    await s.diagnostics("file0.cpp");
+    const main = s.file("main");
+    await s.diagnostics(main);
     await s.sync();
-    expect(await indexedNames(s, "func_3"), "background index did not finish").toContain("func_3");
+    expect(await indexedNames(s, "registry_reset"), "background index did not finish").toContain(
+        "registry_reset",
+    );
     expect((await s.stats()).indexInmemoryShards, "initial round did not settle").toBe(0);
 
-    // Change one file on disk and tick the tracker: only its shard should
+    // Change one source on disk and tick the tracker: only its shard should
     // be re-merged and re-saved. The rewrite has another size, which the
     // look at the disk sees at once.
-    s.disk.write("file2.cpp", "int func_2_renamed() { return 2; }\n");
+    s.disk.edit(s.file("registry"), {
+        replace: "int registry_reset() {",
+        with: "int registry_reset_renamed() {",
+    });
     await s.sync({ poll: true });
-    expect(await indexedNames(s, "func_2_renamed"), "reindex did not land").toContain(
-        "func_2_renamed",
+    expect(await indexedNames(s, "registry_reset_renamed"), "reindex did not land").toContain(
+        "registry_reset_renamed",
     );
 
     const stats = await s.stats();
     expect(stats.indexInmemoryShards, "incremental round did not settle").toBe(0);
-    // Load-bearing assumptions for the exact count: the files are
-    // standalone (no includes, so no header-shard fan-out) and only
-    // background indexing merges shards (the open file's interactive
-    // compile does not contribute one).
+    // Load-bearing assumptions for the exact count: the headers the source
+    // includes read as they did, so their rows hit the variants their
+    // shards already have, and only background indexing merges shards (the
+    // open file's interactive compile does not contribute one).
     expect(
         stats.lastSaveShards,
         `an incremental save must write only the touched shard: ${JSON.stringify(stats)}`,
@@ -71,13 +76,13 @@ serve.files(FUNCS, {
     // The open file compiles itself, so the rounds leave its disk snapshot
     // alone and saving the same bytes queues nothing; closing it hands the
     // file back to the background index.
-    s.save("file0.cpp", { write: false });
+    s.save(main, { write: false });
     await s.sync();
     const saved = await s.stats();
     expect(saved.indexInmemoryShards, "the save left shards in memory").toBe(0);
     expect(saved.indexShardContentBytes).toBe(stats.indexShardContentBytes);
 
-    s.close("file0.cpp");
+    s.close(main);
     await s.sync();
     const closed = await s.stats();
     expect(closed.indexShardContentBytes, "the closed file's shard did not land").toBeGreaterThan(
@@ -87,23 +92,22 @@ serve.files(FUNCS, {
     await s.noAnomaly();
 });
 
-serve.files({
-    "header.h": "#pragma once\nint base_val = 1;\n",
-    "main.cpp": '#include "header.h"\nint main() { return base_val; }\n',
-})("cancel storm leaves no tmp", async ({ s }) => {
-    await s.compiled("main.cpp");
+test("cancel storm leaves no tmp", async ({ s }) => {
+    const main = s.file("main");
+    await s.compiled(main);
 
     // Each edit changes the preamble text, and the pull after it starts a
     // build of it, so each supersedes the previous PCH build under a fresh
     // content key.
     for (let i = 0; i < 15; i++) {
-        s.edit("main.cpp", {
-            text: `#define STORM ${i}\n#include "header.h"\nint main() { return base_val; }\n`,
+        s.edit(s.file("main"), {
+            before: '#include "shapes/c_api.h"',
+            insert: `#define STORM_${i}\n`,
         });
-        void s.diagnostics("main.cpp").catch(() => undefined);
+        void s.diagnostics(main).catch(() => undefined);
     }
 
-    await s.compiled("main.cpp");
+    await s.compiled(main);
     await s.sync();
     let stats = await s.stats();
     expect(stats.pendingTmpFiles, "cancelled builds leaked tmp blobs").toBe(0);
@@ -142,14 +146,8 @@ serve.files({
     await s.noAnomaly();
 });
 
-const PREAMBLES: Record<string, string> = {};
-for (let i = 0; i < 3; i++) {
-    PREAMBLES[`h${i}.h`] = `#pragma once\nint distinct_${i} = ${i};\n`;
-    PREAMBLES[`m${i}.cpp`] = `#include "h${i}.h"\nint use_${i}() { return distinct_${i}; }\n`;
-}
-
-serve.files(PREAMBLES)("preamble state released", async ({ s }) => {
-    const units = ["m0.cpp", "m1.cpp", "m2.cpp"];
+test("preamble state released", async ({ s }) => {
+    const units = [s.file("main"), s.file("circle_impl"), s.file("polygon_impl")];
     for (const unit of units) {
         await s.compiled(unit);
     }
@@ -171,8 +169,8 @@ serve.files(PREAMBLES)("preamble state released", async ({ s }) => {
 
     // Reload after unload: reopening must reopen the blob from disk and
     // keep serving queries against the preamble's symbols.
-    await s.compiled("m0.cpp");
-    const hover = await s.hover(at("m0.cpp", "return dist|inct_0"));
+    await s.compiled(s.file("main"));
+    const hover = await s.hover(at(s.file("main"), "shapes::Cir|cle c("));
     expect(hover, "query must survive an unload/reload cycle").not.toBeNull();
     stats = await s.stats();
     expect(

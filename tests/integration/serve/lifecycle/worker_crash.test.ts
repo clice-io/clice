@@ -4,9 +4,8 @@
 /// crash merely takes along.
 
 import type * as proto from "vscode-languageserver-protocol";
-import type { Launch, Serve } from "@clice/tools/actions";
+import type { Serve, ServeOptions } from "@clice/tools/actions";
 import { sleep } from "@clice/tools/client";
-import type { Manifest } from "@clice/tools/project";
 import { at, expect, serve } from "../../fixtures.ts";
 
 const NOTE = "clice's worker crashed";
@@ -31,24 +30,21 @@ function poison(n: number): string {
 /// leaves unanswered. A crash request names its file by a part of its tag:
 /// the workspace's path is unknown before the case starts.
 function crashing(
-    files: Record<string, string>,
-    options: {
+    options: Pick<ServeOptions, "manifest" | "launch" | "crashOn"> & {
         env?: Record<string, string>;
         project?: Record<string, unknown>;
-        manifest?: Manifest;
-        launch?: Launch;
     } = {},
-) {
-    return serve.files(files, {
+): ServeOptions {
+    const { env, project, ...rest } = options;
+    return {
         config: {
             diagnostics: { clang_tidy: false },
-            project: { enable_indexing: false, ...options.project },
+            project: { enable_indexing: false, ...project },
         },
-        env: { CLICE_TEST_PRAGMA_CRASH: "1", ...options.env },
+        env: { CLICE_TEST_PRAGMA_CRASH: "1", ...env },
         anomalies: true,
-        ...(options.manifest === undefined ? {} : { manifest: options.manifest }),
-        ...(options.launch === undefined ? {} : { launch: options.launch }),
-    });
+        ...rest,
+    };
 }
 
 function message(diagnostic: proto.Diagnostic): string {
@@ -88,36 +84,39 @@ async function crashes(s: Serve, kind: string, file?: string): Promise<number> {
 
 const ADD = (file: string) => at(file, "int ad|d(");
 
-crashing({ "poison.cpp": poison(0) })("compile crash waits for save", async ({ s }) => {
-    s.open("poison.cpp");
-    expect(await s.hover(ADD("poison.cpp"))).toBeNull();
-    const shown = await note(s, "poison.cpp", "while compiling this file");
-    expect(shown).toContain("save it");
-    expect(shown).toMatch(
-        /killed by signal \d+ \(SIG[A-Z]+\)|terminated by exception 0x[0-9A-F]{8} \(/,
-    );
-    expect(await crashes(s, "compile", "poison.cpp")).toBe(1);
-    expect(s.workspace.log("master.log")).toContain("[anomaly:WorkerCrash]");
-
-    // A file that sits still is never retried, whatever is asked of it.
-    for (let i = 0; i < 3; i++) {
+serve.files({ "poison.cpp": poison(0) }, crashing())(
+    "compile crash waits for save",
+    async ({ s }) => {
+        s.open("poison.cpp");
         expect(await s.hover(ADD("poison.cpp"))).toBeNull();
-        await s.request("textDocument/documentSymbol", "poison.cpp");
-    }
-    expect(await crashes(s, "compile", "poison.cpp")).toBe(1);
+        const shown = await note(s, "poison.cpp", "while compiling this file");
+        expect(shown).toContain("save it");
+        expect(shown).toMatch(
+            /killed by signal \d+ \(SIG[A-Z]+\)|terminated by exception 0x[0-9A-F]{8} \(/,
+        );
+        expect(await crashes(s, "compile", "poison.cpp")).toBe(1);
+        expect(s.workspace.log("master.log")).toContain("[anomaly:WorkerCrash]");
 
-    // A save is the user's retry: exactly one more attempt.
-    s.save("poison.cpp");
-    expect(await s.hover(ADD("poison.cpp"))).toBeNull();
-    expect(await crashes(s, "compile", "poison.cpp")).toBe(2);
-    expect(await s.hover(ADD("poison.cpp"))).toBeNull();
-    expect(await crashes(s, "compile", "poison.cpp")).toBe(2);
-});
+        // A file that sits still is never retried, whatever is asked of it.
+        for (let i = 0; i < 3; i++) {
+            expect(await s.hover(ADD("poison.cpp"))).toBeNull();
+            await s.request("textDocument/documentSymbol", "poison.cpp");
+        }
+        expect(await crashes(s, "compile", "poison.cpp")).toBe(1);
 
-crashing(
+        // A save is the user's retry: exactly one more attempt.
+        s.save("poison.cpp");
+        expect(await s.hover(ADD("poison.cpp"))).toBeNull();
+        expect(await crashes(s, "compile", "poison.cpp")).toBe(2);
+        expect(await s.hover(ADD("poison.cpp"))).toBeNull();
+        expect(await crashes(s, "compile", "poison.cpp")).toBe(2);
+    },
+);
+
+serve.files(
     { "poison.cpp": poison(0) },
     // A client that pulls gets no pushes.
-    { launch: { capabilities: { textDocument: { diagnostic: {} } } } },
+    crashing({ launch: { capabilities: { textDocument: { diagnostic: {} } } } }),
 )("pull shows the crash note", async ({ s }) => {
     s.open("poison.cpp", { pull: false });
     const pulled = (await s.diagnostics("poison.cpp")).map(message);
@@ -127,59 +126,71 @@ crashing(
     expect(await s.pushed("poison.cpp")).toBeUndefined();
 });
 
-crashing({ "poison.cpp": poison(0) })("edit retries after a pause", async ({ s }) => {
-    s.open("poison.cpp");
-    expect(await s.hover(ADD("poison.cpp"))).toBeNull();
-    await note(s, "poison.cpp", "while compiling this file");
+serve.files({ "poison.cpp": poison(0) }, crashing())(
+    "edit retries after a pause",
+    async ({ s }) => {
+        s.open("poison.cpp");
+        expect(await s.hover(ADD("poison.cpp"))).toBeNull();
+        await note(s, "poison.cpp", "while compiling this file");
 
-    // The fix needs no save: past the retry spacing, the next request
-    // compiles it, and the note goes with the crash.
-    s.edit("poison.cpp", { text: FIXED });
-    await sleep(RETRY_SPACING);
-    expect(await s.hover(ADD("poison.cpp"))).not.toBeNull();
-    expect(notes(await s.diagnostics("poison.cpp"))).toEqual([]);
-    expect(await crashes(s, "compile", "poison.cpp")).toBe(1);
-});
+        // The fix needs no save: past the retry spacing, the next request
+        // compiles it, and the note goes with the crash.
+        s.edit("poison.cpp", { text: FIXED });
+        await sleep(RETRY_SPACING);
+        expect(await s.hover(ADD("poison.cpp"))).not.toBeNull();
+        expect(notes(await s.diagnostics("poison.cpp"))).toEqual([]);
+        expect(await crashes(s, "compile", "poison.cpp")).toBe(1);
+    },
+);
 
-crashing({ "poison.cpp": HEALTHY })("editing crash is bounded", async ({ s }) => {
-    await s.compiled("poison.cpp");
+serve("tiny", crashing())("editing crash is bounded", async ({ s }) => {
+    await s.compiled("main.cpp");
+    const add = at("main.cpp", "int ad|d(");
+    // Past the preamble: the stateful compile itself crashes.
+    const strike = (n: number) => {
+        s.edit("main.cpp", {
+            after: "return value - 3;\n}\n",
+            insert: `// edit ${n}\n#pragma clang __debug crash\n`,
+        });
+    };
 
     // Half-typed code crashing is the common case while editing: the first
     // crash stays silent.
-    s.edit("poison.cpp", { text: poison(1) });
-    expect(await s.hover(ADD("poison.cpp"))).toBeNull();
-    expect(await crashes(s, "compile", "poison.cpp")).toBe(1);
-    expect(everNoted(s, "poison.cpp")).toBe(false);
+    strike(1);
+    expect(await s.hover(add)).toBeNull();
+    expect(await crashes(s, "compile", "main.cpp")).toBe(1);
+    expect(everNoted(s, "main.cpp")).toBe(false);
 
     // Each later edit earns one spaced retry; a repeat shows.
     await sleep(RETRY_SPACING);
-    s.edit("poison.cpp", { text: poison(2) });
-    expect(await s.hover(ADD("poison.cpp"))).toBeNull();
-    expect(await crashes(s, "compile", "poison.cpp")).toBe(2);
-    expect(await note(s, "poison.cpp", "2 times in a row")).toContain("changes");
+    strike(2);
+    expect(await s.hover(add)).toBeNull();
+    expect(await crashes(s, "compile", "main.cpp")).toBe(2);
+    expect(await note(s, "main.cpp", "2 times in a row")).toContain("changes");
 
     await sleep(RETRY_SPACING);
-    s.edit("poison.cpp", { text: poison(3) });
-    expect(await s.hover(ADD("poison.cpp"))).toBeNull();
-    expect(await crashes(s, "compile", "poison.cpp")).toBe(3);
-    expect(await note(s, "poison.cpp", "3 times in a row")).toContain("until you save this file");
+    strike(3);
+    expect(await s.hover(add)).toBeNull();
+    expect(await crashes(s, "compile", "main.cpp")).toBe(3);
+    expect(await note(s, "main.cpp", "3 times in a row")).toContain("until you save this file");
 
     // Out of strikes: edits no longer retry, a save does.
     await sleep(RETRY_SPACING);
-    s.edit("poison.cpp", { text: poison(4) });
-    expect(await s.hover(ADD("poison.cpp"))).toBeNull();
-    expect(await crashes(s, "compile", "poison.cpp")).toBe(3);
-    s.save("poison.cpp");
-    expect(await s.hover(ADD("poison.cpp"))).toBeNull();
-    expect(await crashes(s, "compile", "poison.cpp")).toBe(4);
+    strike(4);
+    expect(await s.hover(add)).toBeNull();
+    expect(await crashes(s, "compile", "main.cpp")).toBe(3);
+    s.save("main.cpp");
+    expect(await s.hover(add)).toBeNull();
+    expect(await crashes(s, "compile", "main.cpp")).toBe(4);
 });
 
-crashing({ "main.cpp": HEALTHY }, { env: { CLICE_TEST_CRASH_REQUEST: "query:Hover " } })(
+serve("tiny", crashing({ env: { CLICE_TEST_CRASH_REQUEST: "query:Hover " } }))(
     "query crash pauses that feature",
     async ({ s }) => {
+        const add = at("main.cpp", "int ad|d(");
         s.open("main.cpp");
         expect(await s.request("textDocument/semanticTokens/full", "main.cpp")).not.toBeNull();
-        expect(await s.hover(ADD("main.cpp"))).toBeNull();
+        expect(await s.hover(add)).toBeNull();
         await note(s, "main.cpp", "while computing hover for this file");
         expect(await crashes(s, "query:Hover", "main.cpp")).toBe(1);
 
@@ -187,135 +198,140 @@ crashing({ "main.cpp": HEALTHY }, { env: { CLICE_TEST_CRASH_REQUEST: "query:Hove
         // longer reaches a worker.
         expect(await s.request("textDocument/semanticTokens/full", "main.cpp")).not.toBeNull();
         expect(notes(await s.diagnostics("main.cpp")).length).toBe(1);
-        expect(await s.hover(ADD("main.cpp"))).toBeNull();
+        expect(await s.hover(add)).toBeNull();
         expect(await crashes(s, "query:Hover", "main.cpp")).toBe(1);
 
         s.save("main.cpp");
-        expect(await s.hover(ADD("main.cpp"))).toBeNull();
+        expect(await s.hover(add)).toBeNull();
         expect(await crashes(s, "query:Hover", "main.cpp")).toBe(2);
     },
 );
 
-crashing(
-    { "main.cpp": `${HEALTHY}int x = ad;\n` },
-    { env: { CLICE_TEST_CRASH_REQUEST: "completion " } },
-)("completion crash pauses completion", async ({ s }) => {
-    const complete = () => s.completion(at("main.cpp", "int x = ad|;"));
-    s.open("main.cpp");
-    expect(await s.hover(ADD("main.cpp"))).not.toBeNull();
-    await complete();
-    await note(s, "main.cpp", "while completing code in this file");
-    expect(await crashes(s, "completion", "main.cpp")).toBe(1);
-
-    expect(await complete()).toBeNull();
-    expect(await s.hover(ADD("main.cpp"))).not.toBeNull();
-    expect(await crashes(s, "completion", "main.cpp")).toBe(1);
-});
-
-const PREAMBLE_POISON = `#pragma clang __debug crash\n${HEALTHY}`;
-
-crashing({ "poison.cpp": PREAMBLE_POISON, "twin.cpp": PREAMBLE_POISON, "healthy.cpp": HEALTHY })(
-    "preamble crash is shared",
+serve("tiny", crashing({ env: { CLICE_TEST_CRASH_REQUEST: "completion " } }))(
+    "completion crash pauses completion",
     async ({ s }) => {
-        await s.compiled("healthy.cpp");
-        s.open("poison.cpp");
-        expect(await s.hover(ADD("poison.cpp"))).toBeNull();
-        await note(s, "poison.cpp", "while building the precompiled preamble of this file");
-        expect(await crashes(s, "buildPch", "poison.cpp")).toBe(1);
+        const add = at("main.cpp", "int ad|d(");
+        const complete = () => s.completion(at("main.cpp", "value = ad|d(1, 2)"));
+        s.open("main.cpp");
+        expect(await s.hover(add)).not.toBeNull();
+        await complete();
+        await note(s, "main.cpp", "while completing code in this file");
+        expect(await crashes(s, "completion", "main.cpp")).toBe(1);
 
-        // A document with the same preamble learns the crash without one of
-        // its own.
-        s.open("twin.cpp");
-        expect(await s.hover(ADD("twin.cpp"))).toBeNull();
-        await note(s, "twin.cpp", "precompiled preamble");
-        expect(await crashes(s, "buildPch")).toBe(1);
-
-        expect(await s.hover(ADD("healthy.cpp"))).not.toBeNull();
-
-        // The fixed preamble, saved, comes back.
-        s.edit("poison.cpp", { text: FIXED });
-        s.save("poison.cpp");
-        expect(await s.hover(ADD("poison.cpp"))).not.toBeNull();
+        expect(await complete()).toBeNull();
+        expect(await s.hover(add)).not.toBeNull();
+        expect(await crashes(s, "completion", "main.cpp")).toBe(1);
     },
 );
 
-crashing(
-    {
-        "math.cppm":
-            "export module Math;\n\nexport int add(int a, int b) {\n    return a + b;\n}\n",
-        "main.cpp": "import Math;\n\nint main() {\n    return add(1, 2);\n}\n",
-        "other.cpp": "import Math;\nint other() { return add(3, 4); }\n",
+const PREAMBLE_POISON = `#pragma clang __debug crash\n${HEALTHY}`;
+
+serve.files(
+    { "poison.cpp": PREAMBLE_POISON, "twin.cpp": PREAMBLE_POISON, "healthy.cpp": HEALTHY },
+    crashing(),
+)("preamble crash is shared", async ({ s }) => {
+    await s.compiled("healthy.cpp");
+    s.open("poison.cpp");
+    expect(await s.hover(ADD("poison.cpp"))).toBeNull();
+    await note(s, "poison.cpp", "while building the precompiled preamble of this file");
+    expect(await crashes(s, "buildPch", "poison.cpp")).toBe(1);
+
+    // A document with the same preamble learns the crash without one of
+    // its own.
+    s.open("twin.cpp");
+    expect(await s.hover(ADD("twin.cpp"))).toBeNull();
+    await note(s, "twin.cpp", "precompiled preamble");
+    expect(await crashes(s, "buildPch")).toBe(1);
+
+    expect(await s.hover(ADD("healthy.cpp"))).not.toBeNull();
+
+    // The fixed preamble, saved, comes back.
+    s.edit("poison.cpp", { text: FIXED });
+    s.save("poison.cpp");
+    expect(await s.hover(ADD("poison.cpp"))).not.toBeNull();
+});
+
+serve("shapes/modules", crashing({ crashOn: { request: "buildPcm", file: "src/shapes.cppm" } }))(
+    "module crash notes importers",
+    async ({ s }) => {
+        const main = s.file("main");
+        const call = at(s.file("main"), "shapes::ar|ea(c)");
+        s.open(main);
+        await s.hover(call);
+        await note(s, main, "while building a module imported by this file");
+        expect(await crashes(s, "buildPcm", "src/shapes.cppm")).toBe(1);
+
+        // The importer still compiles — its parse reports the missing
+        // module — but the module is not rebuilt until the importer changes
+        // or saves.
+        expect((await s.errors(main)).length).toBeGreaterThan(0);
+        await s.hover(call);
+        expect(await crashes(s, "buildPcm", "src/shapes.cppm")).toBe(1);
+        s.save(main);
+        await s.hover(call);
+        expect(await crashes(s, "buildPcm", "src/shapes.cppm")).toBe(2);
+
+        // Another importer learns the crash without one of its own.
+        const demo = s.file("demo");
+        const otherCall = at(s.file("demo"), "unit.meas|ure()");
+        s.open(demo);
+        await s.hover(otherCall);
+        await note(s, demo, "while building a module imported by this file");
+        expect(await crashes(s, "buildPcm", "src/shapes.cppm")).toBe(2);
+
+        // Edited, the module is built again for it without a save.
+        s.disk.edit("src/shapes.cppm", { after: "export module shapes;\n", insert: "// edited\n" });
+        await s.sync({ poll: true });
+        await s.hover(otherCall);
+        expect(await crashes(s, "buildPcm", "src/shapes.cppm")).toBe(3);
     },
-    { env: { CLICE_TEST_CRASH_REQUEST: "buildPcm " } },
-)("module crash notes importers", async ({ s }) => {
-    const call = at("main.cpp", "return a|dd(1, 2)");
-    s.open("main.cpp");
-    await s.hover(call);
-    await note(s, "main.cpp", "while building a module imported by this file");
-    expect(await crashes(s, "buildPcm", "math.cppm")).toBe(1);
+);
 
-    // The importer still compiles — its parse reports the missing module —
-    // but the module is not rebuilt until the importer changes or saves.
-    expect((await s.errors("main.cpp")).length).toBeGreaterThan(0);
-    await s.hover(call);
-    expect(await crashes(s, "buildPcm", "math.cppm")).toBe(1);
-    s.save("main.cpp");
-    await s.hover(call);
-    expect(await crashes(s, "buildPcm", "math.cppm")).toBe(2);
+serve("shapes/headers", crashing({ env: { CLICE_TEST_CRASH_REQUEST: "buildPch " } }))(
+    "preamble crash heals with a header",
+    async ({ s }) => {
+        const main = s.file("main");
+        const circle = at(s.file("main"), "shapes::Cir|cle c(");
+        s.open(main);
+        expect(await s.hover(circle)).toBeNull();
+        await note(s, main, "precompiled preamble");
+        expect(await crashes(s, "buildPch", main)).toBe(1);
+        expect(await s.hover(circle)).toBeNull();
+        expect(await crashes(s, "buildPch", main)).toBe(1);
 
-    // Another importer learns the crash without one of its own.
-    const otherCall = at("other.cpp", "add(3|, 4)");
-    s.open("other.cpp");
-    await s.hover(otherCall);
-    await note(s, "other.cpp", "while building a module imported by this file");
-    expect(await crashes(s, "buildPcm", "math.cppm")).toBe(2);
+        // A change to a header the preamble includes is a retry, with no
+        // save of the file itself.
+        await sleep(RETRY_SPACING);
+        s.disk.edit(s.file("circle"), {
+            after: "double area(const Circle& circle);\n",
+            insert: "\ndouble more();\n",
+        });
+        await s.sync({ poll: true });
+        await s.hover(circle);
+        expect(await crashes(s, "buildPch", main)).toBe(2);
+    },
+);
 
-    // Edited, the module is built again for it without a save.
-    s.disk.write("math.cppm", `${s.disk.read("math.cppm")}// edited\n`);
-    await s.sync({ poll: true });
-    await s.hover(otherCall);
-    expect(await crashes(s, "buildPcm", "math.cppm")).toBe(3);
-});
+serve("shapes/headers", crashing({ env: { CLICE_TEST_CRASH_REQUEST: "compile " } }))(
+    "crash reading a preamble rebuilds it",
+    async ({ s }) => {
+        // The first crash may be a corrupt preamble's: the pair is rebuilt
+        // and the compile rerun once, and only that crash is the file's.
+        const main = s.file("main");
+        s.open(main);
+        expect(await s.hover(at(s.file("main"), "shapes::Cir|cle c("))).toBeNull();
+        expect(await note(s, main, "while compiling this file")).not.toContain("times in a row");
+        expect(await crashes(s, "compile", main)).toBe(2);
+        expect(
+            s.workspace.log("master.log").split("Compile crashed consuming PCH pair").length - 1,
+        ).toBe(1);
+    },
+);
 
-crashing(
-    { "poison.h": "#pragma once\nint known();\n", "main.cpp": `#include "poison.h"\n${HEALTHY}` },
-    { env: { CLICE_TEST_CRASH_REQUEST: "buildPch " } },
-)("preamble crash heals with a header", async ({ s }) => {
-    s.open("main.cpp");
-    expect(await s.hover(ADD("main.cpp"))).toBeNull();
-    await note(s, "main.cpp", "precompiled preamble");
-    expect(await crashes(s, "buildPch", "main.cpp")).toBe(1);
-    expect(await s.hover(ADD("main.cpp"))).toBeNull();
-    expect(await crashes(s, "buildPch", "main.cpp")).toBe(1);
-
-    // A change to a header the preamble includes is a retry, with no save
-    // of the file itself.
-    await sleep(RETRY_SPACING);
-    s.disk.write("poison.h", "#pragma once\nint known();\nint more();\n");
-    await s.sync({ poll: true });
-    await s.hover(ADD("main.cpp"));
-    expect(await crashes(s, "buildPch", "main.cpp")).toBe(2);
-});
-
-crashing(
-    { "header.h": "#pragma once\nint known();\n", "main.cpp": `#include "header.h"\n${HEALTHY}` },
-    { env: { CLICE_TEST_CRASH_REQUEST: "compile " } },
-)("crash reading a preamble rebuilds it", async ({ s }) => {
-    // The first crash may be a corrupt preamble's: the pair is rebuilt and
-    // the compile rerun once, and only that crash is the file's.
-    s.open("main.cpp");
-    expect(await s.hover(ADD("main.cpp"))).toBeNull();
-    expect(await note(s, "main.cpp", "while compiling this file")).not.toContain("times in a row");
-    expect(await crashes(s, "compile", "main.cpp")).toBe(2);
-    expect(
-        s.workspace.log("master.log").split("Compile crashed consuming PCH pair").length - 1,
-    ).toBe(1);
-});
-
-crashing(
+serve.files(
     { "healthy.cpp": HEALTHY, "poison.cpp": poison(0) },
     // One stateful worker hosts both documents.
-    { project: { stateful_worker_count: 1 } },
+    crashing({ project: { stateful_worker_count: 1 } }),
 )("victims are not blamed", async ({ s }) => {
     await s.compiled("healthy.cpp");
     s.open("poison.cpp", { pull: false });
@@ -345,18 +361,22 @@ crashing(
     expect(notes(await s.diagnostics("poison.cpp")).length).toBe(1);
 });
 
-crashing(
-    { "a.cpp": HEALTHY, "b.cpp": HEALTHY, "c.cpp": HEALTHY },
+serve(
+    "shapes/headers",
     // One stateful worker compiles all three side by side.
-    { project: { stateful_worker_count: 1 } },
+    crashing({ project: { stateful_worker_count: 1 } }),
 ).skipIf(process.platform !== "linux")("shared deaths blame nobody", async ({ s }) => {
-    const names = ["a.cpp", "b.cpp", "c.cpp"];
-    const gated = () => Promise.all(names.map((name) => s.gate("compile", name)));
+    const units = [
+        at(s.file("registry"), "int registry_co|unt() {"),
+        at(s.file("circle_impl"), "const char* Circle::na|me() const {"),
+        at(s.file("polygon_impl"), "double ed|ge(double length) {"),
+    ];
+    const gated = () => Promise.all(units.map(({ file }) => s.gate("compile", file)));
     let running = await gated();
-    for (const name of names) {
-        s.open(name, { pull: false });
+    for (const { file } of units) {
+        s.open(file, { pull: false });
     }
-    const answers = names.map((name) => s.hover(ADD(name)));
+    const answers = units.map((loc) => s.hover(loc));
     // Killed twice, the second time while all three resends compile: the
     // death names none of them and they shared the worker, so none is
     // blamed.
@@ -370,13 +390,13 @@ crashing(
         running = resends;
     }
     await Promise.all(answers);
-    for (const name of names) {
-        expect(everNoted(s, name), name).toBe(false);
+    for (const { file } of units) {
+        expect(everNoted(s, file), file).toBe(false);
     }
     expect(s.workspace.log("master.log")).toContain("[anomaly:WorkerCrash]");
 });
 
-crashing({ "poison.cpp": poison(0) })("reopen keeps the bar", async ({ s }) => {
+serve.files({ "poison.cpp": poison(0) }, crashing())("reopen keeps the bar", async ({ s }) => {
     s.open("poison.cpp");
     expect(await s.hover(ADD("poison.cpp"))).toBeNull();
     await note(s, "poison.cpp", "while compiling this file");
@@ -396,15 +416,15 @@ crashing({ "poison.cpp": poison(0) })("reopen keeps the bar", async ({ s }) => {
     expect(await crashes(s, "compile", "poison.cpp")).toBe(2);
 });
 
-crashing(
+serve.files(
     { "hang.cpp": HANG },
-    {
+    crashing({
         env: { CLICE_TEST_REQUEST_DEADLINE_MS: "2000" },
         manifest: {
             cxx: ["-std=c++23"],
             units: { "hang.cpp": ["-fconstexpr-steps=2147483647"] },
         },
-    },
+    }),
 )("hung compile is killed", async ({ s }) => {
     const call = at("hang.cpp", "long f|ib(");
     s.open("hang.cpp");

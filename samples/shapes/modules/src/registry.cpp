@@ -1,3 +1,7 @@
+module;
+
+#include "registry_limits.h"
+
 module shapes;
 
 namespace shapes {
@@ -11,6 +15,12 @@ int registry_count() {
 int registry_reset() {
     registered = 0;
     return registry_count();
+}
+
+void registry_add(const Shape&) {
+    if(registered < registry_limit) {
+        registered += 1;
+    }
 }
 
 }  // namespace shapes

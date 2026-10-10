@@ -3,33 +3,32 @@
 
 import { spawn } from "node:child_process";
 import * as proto from "vscode-languageserver-protocol";
-import type { Serve } from "@clice/tools/actions";
+import type { Loc, Serve } from "@clice/tools/actions";
 import { runProcess } from "@clice/tools/client";
 import { at, expect, serve } from "../../fixtures.ts";
 
-const hanging = serve
-    .files(
-        {
-            "hang.cpp":
-                "constexpr long fib(long n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }\n" +
-                "constexpr long x = fib(90);\n",
+const hanging = serve.files(
+    {
+        "hang.cpp":
+            "constexpr long fib(long n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }\n" +
+            "constexpr long x = fib(90);\n",
+    },
+    {
+        config: { project: { enable_indexing: false } },
+        manifest: {
+            cxx: ["-std=c++23"],
+            units: { "hang.cpp": ["-fconstexpr-steps=2147483647"] },
         },
-        {
-            config: { project: { enable_indexing: false } },
-            manifest: {
-                cxx: ["-std=c++23"],
-                units: { "hang.cpp": ["-fconstexpr-steps=2147483647"] },
-            },
-        },
-    )
-    .skipIf(process.platform !== "linux");
+    },
+);
 
-/// Open the hanging file and ask for a hover: the stateful worker runs its
-/// compile, which never ends. The compile is let go once its work started.
-async function hang(s: Serve): Promise<void> {
-    const gate = await s.gate("compile", "hang.cpp");
-    s.open("hang.cpp");
-    void s.hover(at("hang.cpp", "long f|ib(")).catch(() => undefined);
+/// Open the hanging file and ask for a hover at `loc`: the stateful worker
+/// runs its compile, which never ends. The compile is let go once its work
+/// started.
+async function hang(s: Serve, loc: Loc): Promise<void> {
+    const gate = await s.gate("compile", loc.file);
+    s.open(loc.file);
+    void s.hover(loc).catch(() => undefined);
     await gate.reached();
     await gate.release();
 }
@@ -50,16 +49,16 @@ async function exited(pid: number): Promise<void> {
     expect(run.status, `worker ${pid} outlived its master: ${run.stderr}`).toBe(0);
 }
 
-hanging("closed input ends a hung server", async ({ s }) => {
-    await hang(s);
+hanging.skipIf(process.platform !== "linux")("closed input ends a hung server", async ({ s }) => {
+    await hang(s, at("hang.cpp", "long f|ib("));
     // Neovim quits by closing the server's input, without `exit`.
     s.client.child.stdin.end();
     await s.client.assertExitedCleanly(15_000);
     s.client.dispose();
 });
 
-hanging("workers die with their master", async ({ s }) => {
-    await hang(s);
+hanging.skipIf(process.platform !== "linux")("workers die with their master", async ({ s }) => {
+    await hang(s, at("hang.cpp", "long f|ib("));
     const workers = s.client.workerPids();
     await s.kill();
     await Promise.all(workers.map(exited));
@@ -67,9 +66,7 @@ hanging("workers die with their master", async ({ s }) => {
 
 /// The editor a server reports to, standing in for one that dies while a
 /// descendant keeps the server's input open.
-serve
-    .files({ "main.cpp": "int main() { return 0; }\n" }, { launch: { handshake: false } })
-    .for([false, true])(
+serve("tiny", { launch: { handshake: false } }).for([false, true])(
     "client death ends the server (after shutdown: %s)",
     async (shutdown, { s }) => {
         // The server watches the process initialize names as its editor: the

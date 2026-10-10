@@ -31,7 +31,6 @@ import { withTimeout } from "../promise.ts";
 import type { CliceClient } from "./client.ts";
 import { actionsOf, applyTextEdits } from "./edits.ts";
 import { runProcess } from "./process.ts";
-import { DATA_DIR, generateCDB } from "../compile_commands.ts";
 import { looseManifest, materialize, writeDatabase, type Manifest } from "./project.ts";
 import { cliceExecutable, type SessionFactory, type SessionOptions } from "./session.ts";
 import type { Workspace } from "./workspace.ts";
@@ -213,10 +212,10 @@ export interface ServeOptions {
     /// The units and arguments of a case without a project, in place of
     /// every source a unit with the default arguments.
     manifest?: Manifest;
-    /// A data workspace (tests/data/<data>) copied as the case's workspace,
-    /// its database generated when it has a CMakeLists.txt. A bridge for
-    /// cases not yet on a sample project.
-    data?: string;
+    /// Units over the case's manifest: added or given other arguments (one
+    /// list per configuration for several), or (null) left out of its
+    /// database.
+    units?: Record<string, string[] | string[][] | null>;
     /// Environment of the server over the test defaults.
     env?: Record<string, string>;
     /// The case crashes or misleads the server on purpose: anomalies do not
@@ -340,17 +339,16 @@ export class Serve {
             if (manifest.units !== undefined) {
                 databases = { "compile_commands.json": manifest };
             }
-        } else if (options.data !== undefined) {
-            fs.cpSync(path.join(DATA_DIR, options.data), workspace.root, { recursive: true });
-            // What runs in the data directory itself left there.
-            workspace.rm(".clice");
-            workspace.rm("build");
-            if (workspace.exists("CMakeLists.txt")) {
-                generateCDB(workspace.root);
-            }
-            manifest = { units: {} };
         } else {
             manifest = options.manifest ?? looseManifest(Object.keys(files));
+            databases = { "compile_commands.json": manifest };
+        }
+        if (options.units !== undefined) {
+            const overlay = options.units;
+            const units = Object.entries({ ...manifest.units, ...overlay }).filter(
+                (entry): entry is [string, string[] | string[][]] => entry[1] !== null,
+            );
+            manifest = { ...manifest, units: Object.fromEntries(units) };
             databases = { "compile_commands.json": manifest };
         }
         for (const [file, text] of Object.entries(files)) {

@@ -38,11 +38,11 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
    - Workspaces: `serve(project)` / `serve.each([projects])` copy a sample
      project of `samples/` (its `project.json` names the units, their
      arguments and logical file names); `serve.files({path: text})` lays out
-     loose files, every source a unit unless `manifest` says otherwise;
-     `serve.data(name)` copies `tests/data/<name>` (a bridge until the data
-     workspaces become sample projects).
+     loose files, every source a unit unless `manifest` says otherwise.
    - Options: `config`, `manifest` (units of several configurations;
-     `${workspace}` in an argument), `databases` (none, elsewhere, several),
+     `${workspace}` in an argument), `units` (over a sample's units: added,
+     other arguments, or `null` to leave one out), `databases` (none,
+     elsewhere, several),
      `files` as text or `(workspace) => text`, `setup(workspace)` (symlinks
      and the like), `launch` (capabilities, folders, args, executable,
      config, `beforeInitialized(s)`, `handshake: false`), `env`,
@@ -167,7 +167,7 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
 
 `Workspace` (`@clice/tools/workspace`): `path(rel)` `uri(rel)` `write`
 `read` `exists` `mkdir` `rm` `writeCDB(files, {extraArgs, std})`
-`writeEntries` `generateCDB()` `pinCacheDir()` and cache inspection
+`writeEntries` `pinCacheDir()` and cache inspection
 (`pchFiles()` `pcmFiles()` `tmpFiles()` `readCacheJson()`). Raw string
 path: `ws.root`. Exotic fs ops: `node:fs` + `ws.path(...)`.
 
@@ -197,7 +197,7 @@ a constant and a one-line comment.
 - Comments: `///` for doc comments, `//` inline; explain constraints the
   code can't show, nothing else. Keep tests concise: descriptive test
   names, no large comment blocks explaining layout or expected behavior.
-- Cases never run on `tests/data/*` or `samples/*` in place: the
+- Cases never run on `samples/*` in place: the
   fixtures copy them. Probes and experiments copy a workspace to a temp
   dir first; a server under test whose `.clice` gets deleted underneath
   it fails every PCH build.
