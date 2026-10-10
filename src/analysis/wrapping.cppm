@@ -21,8 +21,17 @@ struct StdModules {
     llvm::StringSet<> compat;
 };
 
-/// Read libc++'s module sources in `directory`, its `share/libc++/v1`.
-std::expected<StdModules, std::string> read_std_modules(llvm::StringRef directory);
+/// Read libc++'s module sources in `directory`, its `share/libc++/v1`;
+/// none for an empty directory.
+std::expected<std::optional<StdModules>, std::string> read_std_modules(llvm::StringRef directory);
+
+/// The partition file at `path`, if any, added to `spec`: modules claimed
+/// by globs, first match wins. A module's `provides` names the module
+/// exporting its names, std.compat for the C library, which `libcxx`
+/// resolves.
+std::expected<PartitionSpec, std::string> read_partition(PartitionSpec spec,
+                                                         llvm::StringRef path,
+                                                         const std::optional<StdModules>& libcxx);
 
 /// The wrapped modules of a partition as interface units over their
 /// headers, and what the build needs to compile the program against them:

@@ -7,9 +7,8 @@ module clice;
 import :analysis.module_graph;
 import :analysis.rewriting;
 import :analysis.wrapping;
-import :driver.analysis_support;
 import :driver.driver;
-import :driver.query_support;
+import :support.text;
 import :vfs.file_system;
 
 namespace clice::driver {
@@ -232,19 +231,20 @@ int run_modularize(const ModularizeOptions& opts) {
     if(!opts.partition || !opts.out) {
         return fail("modularize needs --partition and --out");
     }
-    auto libcxx = read_std(opts.std.value_or(""));
+    auto libcxx = analysis::read_std_modules(opts.std.value_or(""));
     if(!libcxx) {
         return fail(libcxx.error());
     }
-    auto spec = read_partition({}, *opts.partition, *libcxx);
+    auto spec = analysis::read_partition({}, *opts.partition, *libcxx);
     if(!spec) {
         return fail(spec.error());
     }
-    auto loaded = load_facts(opts.workspace.value_or(""),
-                             opts.configuration.value_or(""),
-                             opts.scope.value_or(""));
+    auto loaded = analysis::load_facts(workspace_spelling(opts.workspace.value_or("")),
+                                       opts.configuration.value_or(""),
+                                       comma_list(opts.scope.value_or("")));
     if(!loaded) {
-        print_json(loaded.error());
+        print_json(Failure{.error = std::move(loaded.error().message),
+                           .stale = std::move(loaded.error().dropped)});
         return 1;
     }
     auto partition = analysis::partition(loaded->facts, *spec);
@@ -312,9 +312,7 @@ int run_modularize(const ModularizeOptions& opts) {
     return 0;
 }
 
-}  // namespace
-
-void add_modularize(kota::deco::cli::SubCommander& root) {
+CommandHandler build(const char*) {
     auto command = kota::deco::cli::command<ModularizeOptions>("clice modularize [OPTIONS]");
     command
         .match_all([](ModularizeOptions opts) {
@@ -323,11 +321,16 @@ void add_modularize(kota::deco::cli::SubCommander& root) {
             return run_modularize(opts);
         })
         .on_error([](auto err) { print_json(Failure{.error = err.message}); });
-    root.add({.name = "modularize",
-              .description = "Wrap a partition's libraries as modules over their headers, "
-                             "rewrite its program modules into module units, or merge the "
-                             "wrappings of several build configurations"},
-             std::move(command));
+    return command;
 }
+
+}  // namespace
+
+[[maybe_unused]] const static bool registered = register_command(
+    Command::modularize,
+    {.description = "Wrap a partition's libraries as modules over their headers, rewrite its "
+                    "program modules into module units, or merge the wrappings of several build "
+                    "configurations",
+     .build = build});
 
 }  // namespace clice::driver

@@ -87,6 +87,23 @@ struct SymbolQuery {
     /// Parse a query; the error names what could not be read.
     static std::expected<SymbolQuery, std::string> parse(llvm::StringRef text);
 
+    /// A symbol named by parts, as the command line's flags name it: its
+    /// id (`--symbol`), anchored at `path`; a query (`--name`), narrowed
+    /// to `path`; or `path` and `line`, the symbol defined there.
+    struct Parts {
+        std::optional<llvm::StringRef> symbol;
+        std::optional<llvm::StringRef> name;
+
+        /// Absolute; it must be a file.
+        std::optional<llvm::StringRef> path;
+
+        std::optional<int> line;
+    };
+
+    /// The locator `parts` spell; the error names the part that does not
+    /// read, or the flags that name a symbol when none does.
+    static std::expected<SymbolQuery, std::string> locator(const Parts& parts);
+
     /// The symbol kind a `kind:` term names, case-insensitively.
     static std::optional<SymbolKind> parse_kind(llvm::StringRef name);
 

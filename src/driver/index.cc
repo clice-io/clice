@@ -802,9 +802,7 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
     return 0;
 }
 
-}  // namespace
-
-void add_index(kota::deco::cli::SubCommander& root, const char* self_path) {
+CommandHandler build(const char* self_path) {
     auto cmd = kota::deco::cli::command<IndexOptions>("clice index [OPTIONS]");
     cmd.match_all([self_path](IndexOptions opts) {
         opts.log.apply();
@@ -850,8 +848,13 @@ void add_index(kota::deco::cli::SubCommander& root, const char* self_path) {
                             opts.workers.value_or(0),
                             self_path);
     });
-
-    root.add({.name = "index", .description = "Index a workspace ahead of time"}, std::move(cmd));
+    return cmd;
 }
+
+}  // namespace
+
+[[maybe_unused]] const static bool registered =
+    register_command(Command::index,
+                     {.description = "Index a workspace ahead of time", .build = build});
 
 }  // namespace clice::driver

@@ -11,25 +11,74 @@ module;
 
 module clice:driver.driver;
 
+import :config.config;
+import :index.writer_lock;
+import :project.configuration;
+import :sched.batch;
+import :server.control_client;
 import :support.logging;
 import :vfs.path;
+import :worker.serialize;
 
 namespace clice::driver {
 
-/// Each subcommand lives in its own translation unit under src/driver/ and
-/// registers itself with the root commander through one of these builders;
-/// its handler returns the process exit code.
+/// The subcommands, in the order `clice --help` lists them, each named by
+/// its enumerator.
+enum class Command : std::uint8_t {
+    serve,
+    query,
+    refactor,
+    worker,
+    index,
+    lint,
+    format,
+    inspect,
+    analyze,
+    modularize,
+};
 
-void add_serve(kota::deco::cli::SubCommander& root, const char* self_path);
-void add_query(kota::deco::cli::SubCommander& root, const char* self_path);
-void add_refactor(kota::deco::cli::SubCommander& root, const char* self_path);
-void add_worker(kota::deco::cli::SubCommander& root);
-void add_index(kota::deco::cli::SubCommander& root, const char* self_path);
-void add_lint(kota::deco::cli::SubCommander& root, const char* self_path);
-void add_format(kota::deco::cli::SubCommander& root);
-void add_inspect(kota::deco::cli::SubCommander& root);
-void add_analyze(kota::deco::cli::SubCommander& root);
-void add_modularize(kota::deco::cli::SubCommander& root);
+/// Runs a subcommand on the arguments after its name; returns the process
+/// exit code.
+using CommandHandler = kota::function<int(std::span<std::string>)>;
+
+/// A subcommand as its file registers it: its line of `clice --help`, and
+/// what makes its handler, given the path of this executable.
+struct CommandEntry {
+    std::string_view description;
+    CommandHandler (*build)(const char* self_path) = nullptr;
+};
+
+inline auto& command_entries() {
+    static std::array<CommandEntry, kota::meta::reflection<Command>::member_count> entries;
+    return entries;
+}
+
+/// Register a subcommand. Its file calls this from the initializer of an
+/// ordinary variable at namespace scope: the linker's garbage collection
+/// (--gc-sections, /OPT:REF, LTO) may drop a variable no one reads, with
+/// its initializer, when it is a COMDAT of its own, as an inline variable
+/// or a template's static member is, but never an ordinary one. Nothing
+/// names a subcommand's file either, so the driver library is linked whole
+/// (alwayslink).
+inline bool register_command(Command command, CommandEntry entry) {
+    auto& registered = command_entries()[std::to_underlying(command)];
+    assert(!registered.build && "a subcommand registers once");
+    registered = entry;
+    return true;
+}
+
+/// Add every subcommand to `root`, in the order of Command. One whose file
+/// did not register it stops the program.
+inline void add_commands(kota::deco::cli::SubCommander& root, const char* self_path) {
+    for(auto command: kota::meta::reflection<Command>::member_values) {
+        auto name = kota::meta::enum_name(command);
+        auto& entry = command_entries()[std::to_underlying(command)];
+        if(!entry.build) {
+            logging::critical("The {} subcommand is not registered", name);
+        }
+        root.add({.name = name, .description = entry.description}, entry.build(self_path));
+    }
+}
 
 /// Write command output. stdout carries the command's answer: a reader
 /// that went away (`clice … | head`) ends the process by SIGPIPE, as it
@@ -123,8 +172,8 @@ inline CanonicalPath workspace_root(llvm::StringRef argument) {
     return CanonicalPath(workspace_spelling(argument));
 }
 
-template <typename Command>
-void print_usage(Command& cmd) {
+template <typename Parser>
+void print_usage(Parser& cmd) {
     std::ostringstream ss;
     cmd.usage(ss);
     write_output(stdout, ss.str());
@@ -147,6 +196,88 @@ inline auto subcommand_error_handler(kota::deco::cli::SubCommander& commander) {
 /// "s" when `count` warrants a plural noun, for user-facing summaries.
 const inline char* plural_s(std::size_t count) {
     return count == 1 ? "" : "s";
+}
+
+/// One answer on stdout: `{"result": ..., "stale": [...]}`, the files
+/// whose rows were withheld because their content moved on from the
+/// index (or that the index never held) listed so the reader knows what
+/// the answer lacks.
+template <typename T>
+struct Answer {
+    T result;
+    std::vector<std::string> stale;
+};
+
+/// `{"error": "...", "stale": [...]}` on stdout, exit code 1 (2 for
+/// arguments that do not parse): what kept the question from being
+/// answered, and the files withheld on the way — a symbol not found may
+/// sit in one of them.
+struct Failure {
+    std::string error;
+    std::vector<std::string> stale;
+};
+
+template <typename T>
+std::string render_json(const T& value) {
+    return to_client_json(value, "null");
+}
+
+template <typename T>
+void print_json(const T& value) {
+    driver::println("{}", render_json(value));
+}
+
+/// Bring the index up to date with the disk before a --fresh answer:
+/// through the serving writer when a server holds the lock, else by a
+/// batch run of this process. Either sweeps the build under the hash
+/// gate, so only units whose inputs changed are recompiled — and an
+/// absent index gets built from nothing. Returns the units that failed
+/// to index, or why the refresh could not run.
+inline std::expected<std::vector<std::string>, std::string> refresh(const Spelling& workspace,
+                                                                    llvm::StringRef configuration,
+                                                                    const char* self_path) {
+    auto config = Config::load_from_workspace(CanonicalPath(workspace));
+    if(!check_requested_configuration(config, configuration)) {
+        return std::unexpected(
+            std::format("unknown configuration '{}'", std::string_view(configuration)));
+    }
+    auto& cache_dir = config.project.cache_dir;
+    auto writer = index::probe_writer(cache_dir);
+    switch(writer.state) {
+        case index::WriterProbe::State::Server: {
+            auto result = control::request_index(writer.endpoint,
+                                                 resolve_configuration(config, configuration));
+            if(!result) {
+                return std::unexpected(result.error());
+            }
+            return std::move(result->failed);
+        }
+        case index::WriterProbe::State::Held: {
+            return std::unexpected(index::held_writer_message(writer, cache_dir));
+        }
+        case index::WriterProbe::State::Free: break;
+    }
+    auto report_progress = [](const BatchProgress& progress) {
+        driver::println(stderr,
+                        "indexing {}/{} units, {} failed",
+                        progress.completed,
+                        progress.total,
+                        progress.failed);
+    };
+    auto result = run_batch_index({
+        .root = workspace,
+        .configuration = configuration.str(),
+        .self_path = self_path,
+        .on_progress = report_progress,
+    });
+    if(!result.completed) {
+        return std::unexpected(result.interrupted ? "indexing interrupted"
+                                                  : "indexing failed; see the log");
+    }
+    if(result.unsaved) {
+        return std::unexpected("part of the index could not be persisted; see the log");
+    }
+    return std::move(result.failed);
 }
 
 }  // namespace clice::driver

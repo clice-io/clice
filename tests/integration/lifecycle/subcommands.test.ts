@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { runProcess, waitUntil, type CliceClient } from "@clice/tools/client";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
+/// In the order of driver::Command, which the root usage follows.
 const SUBCOMMANDS = [
     "serve",
     "query",
@@ -12,6 +13,7 @@ const SUBCOMMANDS = [
     "format",
     "inspect",
     "analyze",
+    "modularize",
 ];
 
 function runClice(...args: string[]) {
@@ -52,9 +54,12 @@ test("root usage lists subcommands", async () => {
     for (const args of [[], ["--help"]]) {
         const result = await runClice(...args);
         expect(result.status).toBe(0);
-        for (const name of SUBCOMMANDS) {
-            expect(result.stdout).toContain(name);
-        }
+        const listed = result.stdout
+            .split("Subcommands:")[1]
+            ?.split("\n")
+            .map((line) => line.trim().split(/\s+/)[0])
+            .filter((name) => name);
+        expect(listed).toEqual(SUBCOMMANDS);
     }
 });
 

@@ -88,9 +88,7 @@ int run_format(BatchFormatOptions options) {
     return result.exit_code;
 }
 
-}  // namespace
-
-void add_format(kota::deco::cli::SubCommander& root) {
+CommandHandler build(const char*) {
     auto cmd = kota::deco::cli::command<FormatOptions>("clice format [OPTIONS] [<PATH>...]");
     cmd.match_all([](FormatOptions opts) {
         opts.log.apply();
@@ -108,8 +106,12 @@ void add_format(kota::deco::cli::SubCommander& root) {
         }
         return run_format(std::move(options));
     });
-
-    root.add({.name = "format", .description = "Format C++ source files"}, std::move(cmd));
+    return cmd;
 }
+
+}  // namespace
+
+[[maybe_unused]] const static bool registered =
+    register_command(Command::format, {.description = "Format C++ source files", .build = build});
 
 }  // namespace clice::driver

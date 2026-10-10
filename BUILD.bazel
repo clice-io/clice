@@ -59,6 +59,9 @@ cc_library(
         ],
         allow_empty = True,
     ),
+    # The subcommands register themselves (src/driver/driver.cppm), and
+    # nothing names their files.
+    alwayslink = layer == "driver",
     copts = CLICE_COPTS,
     features = ["cpp_modules"],
     module_interfaces = glob(["src/%s/**/*.cppm" % layer]),
@@ -98,8 +101,8 @@ cc_binary(
     data = [":resource_dir"],
     # lld's --gc-sections, which xclang leaves off for Windows, where it
     # drops the initializers of variables no one reads that are COMDATs of
-    # their own: neither program registers anything that way (zest keeps
-    # its tests registered).
+    # their own: the subcommands register from ordinary variables, and zest
+    # keeps its tests registered.
     features = [
         "cpp_modules",
         "gc_sections",
