@@ -47,9 +47,7 @@ struct WorkerOptions {
     <std::uint32_t> master_pid;
 };
 
-}  // namespace
-
-void add_worker(kota::deco::cli::SubCommander& root) {
+CommandHandler build(const char*) {
     auto cmd = kota::deco::cli::command<WorkerOptions>("clice worker [OPTIONS]");
     cmd.match_all([](WorkerOptions opts) {
         // A worker lives and dies with its master: an orphan answers no one
@@ -69,8 +67,11 @@ void add_worker(kota::deco::cli::SubCommander& root) {
         }
         return run_stateless_worker_mode(name, log_dir);
     });
-
-    root.add({.name = "worker"}, std::move(cmd));
+    return cmd;
 }
+
+[[maybe_unused]] const bool registered = register_command(Command::worker, {.build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

@@ -17,6 +17,29 @@ std::string join_path(llvm::StringRef directory, llvm::StringRef name) {
     return path.str().str();
 }
 
+struct PartitionFile {
+    struct Module {
+        std::string name;
+        std::vector<std::string> files;
+
+        /// Its headers stay headers beside the wrapped modules.
+        std::optional<bool> textual;
+
+        /// An existing module interface stands for it.
+        std::optional<bool> external;
+
+        /// The module exporting the names of its headers.
+        std::optional<std::string> provides;
+
+        /// A program module rewritten into a named module, and where its
+        /// primary interface unit goes.
+        std::optional<bool> rewrite;
+        std::optional<std::string> primary;
+    };
+
+    std::vector<Module> modules;
+};
+
 std::expected<llvm::SmallVector<std::string>, std::string> read_lines(llvm::StringRef path) {
     auto buffer = vfs::read(path);
     if(!buffer) {
@@ -165,7 +188,10 @@ void drop_mirrors(Wrapping& wrapping) {
 
 }  // namespace
 
-std::expected<StdModules, std::string> read_std_modules(llvm::StringRef directory) {
+std::expected<std::optional<StdModules>, std::string> read_std_modules(llvm::StringRef directory) {
+    if(directory.empty()) {
+        return std::nullopt;
+    }
     StdModules result{
         .sources = {join_path(directory, "std.cppm"), join_path(directory, "std.compat.cppm")},
     };
@@ -213,6 +239,78 @@ std::expected<StdModules, std::string> read_std_modules(llvm::StringRef director
             std::format("{} holds no libc++ std and std.compat modules", directory.str()));
     }
     return result;
+}
+
+std::expected<PartitionSpec, std::string> read_partition(PartitionSpec spec,
+                                                         llvm::StringRef path,
+                                                         const std::optional<StdModules>& libcxx) {
+    if(path.empty()) {
+        return spec;
+    }
+    auto buffer = vfs::read(path);
+    if(!buffer) {
+        return std::unexpected(
+            std::format("cannot read {}: {}", path.str(), buffer.error().message()));
+    }
+    PartitionFile file;
+    if(auto result = kota::codec::json::from_string((*buffer)->getBuffer(), file); !result) {
+        return std::unexpected(
+            std::format("{} is not a partition file: {}", path.str(), result.error().message));
+    }
+    for(auto& module: file.modules) {
+        PartitionSpec::Module claimed{
+            .name = std::move(module.name),
+            .files = std::move(module.files),
+        };
+        auto textual = module.textual.value_or(false);
+        auto external = module.external.value_or(false);
+        if(textual && external) {
+            return std::unexpected(
+                std::format("module {} is both textual and external", claimed.name));
+        }
+        if(module.rewrite.value_or(false)) {
+            // A kind beside it is left for the partition to reject.
+            if(!textual && !external) {
+                claimed.kind = ModuleKind::Program;
+            }
+            claimed.rewrite = true;
+            claimed.primary = module.primary.value_or("");
+            llvm::StringRef primary = claimed.primary;
+            if(llvm::sys::path::is_absolute(primary) ||
+               llvm::sys::path::is_absolute(primary, llvm::sys::path::Style::posix) ||
+               llvm::is_contained(
+                   llvm::make_range(llvm::sys::path::begin(primary), llvm::sys::path::end(primary)),
+                   "..")) {
+                return std::unexpected(
+                    std::format("module {}: primary {} lies outside the workspace",
+                                claimed.name,
+                                primary.str()));
+            }
+        } else if(module.primary) {
+            return std::unexpected(
+                std::format("module {} has a primary interface but is not rewritten",
+                            claimed.name));
+        }
+        if(textual) {
+            claimed.kind = ModuleKind::Textual;
+        }
+        if(external) {
+            claimed.kind = ModuleKind::External;
+        }
+        if(module.provides) {
+            if(*module.provides != "std.compat" || !libcxx) {
+                return std::unexpected(
+                    std::format("module {} provided by {}: only std.compat, given --std",
+                                claimed.name,
+                                *module.provides));
+            }
+            for(auto& name: libcxx->compat) {
+                claimed.provides.insert(name.getKey());
+            }
+        }
+        spec.modules.push_back(std::move(claimed));
+    }
+    return spec;
 }
 
 std::expected<Wrapping, std::string> wrap(const Partition& partition,

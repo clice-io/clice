@@ -20,4 +20,15 @@ inline std::uint32_t line_end(llvm::StringRef content, std::uint32_t offset) {
                                             : static_cast<std::uint32_t>(newline + 1);
 }
 
+/// The items of a comma-separated list, each trimmed.
+inline std::vector<std::string> comma_list(llvm::StringRef text) {
+    llvm::SmallVector<llvm::StringRef> parts;
+    text.split(parts, ',', -1, false);
+    std::vector<std::string> items;
+    for(auto part: parts) {
+        items.push_back(part.trim().str());
+    }
+    return items;
+}
+
 }  // namespace clice

@@ -17,16 +17,18 @@ struct ServeOptions {
     LogLevelOption log;
 };
 
-}  // namespace
-
-void add_serve(kota::deco::cli::SubCommander& root, const char* self_path) {
+CommandHandler build(const char* self_path) {
     auto cmd = kota::deco::cli::command<ServeOptions>("clice serve [OPTIONS]");
     cmd.match_all([self_path](ServeOptions opts) {
         opts.log.apply();
         return run_serve_mode(opts.server, self_path);
     });
-
-    root.add({.name = "serve", .description = "Start LSP server"}, std::move(cmd));
+    return cmd;
 }
+
+[[maybe_unused]] const bool registered =
+    register_command(Command::serve, {.description = "Start LSP server", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

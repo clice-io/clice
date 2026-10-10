@@ -5,7 +5,6 @@ module;
 module clice;
 
 import :driver.driver;
-import :driver.query_support;
 import :project.open_index;
 import :server.query_commands;
 import :vfs.file_system;
@@ -220,9 +219,7 @@ int run_rename(const RefactorOptions& opts, const char* self_path) {
     return blocked ? 1 : 0;
 }
 
-}  // namespace
-
-void add_refactor(kota::deco::cli::SubCommander& root, const char* self_path) {
+CommandHandler build(const char* self_path) {
     auto cmd = kota::deco::cli::command<RefactorOptions>("clice refactor <ACTION> [OPTIONS]");
     cmd.match_all([self_path](RefactorOptions opts) {
            opts.log.apply();
@@ -237,10 +234,13 @@ void add_refactor(kota::deco::cli::SubCommander& root, const char* self_path) {
            return run_rename(opts, self_path);
        })
         .on_error([](auto err) { print_json(Failure{.error = err.message}); });
-
-    root.add({.name = "refactor",
-              .description = "Rewrite the workspace's sources through the persisted index"},
-             std::move(cmd));
+    return cmd;
 }
+
+[[maybe_unused]] const bool registered = register_command(
+    Command::refactor,
+    {.description = "Rewrite the workspace's sources through the persisted index", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

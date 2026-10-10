@@ -94,9 +94,7 @@ int run_lint(Spelling root,
     return result.exit_code;
 }
 
-}  // namespace
-
-void add_lint(kota::deco::cli::SubCommander& root, const char* self_path) {
+CommandHandler build(const char* self_path) {
     auto cmd = kota::deco::cli::command<LintOptions>("clice lint [OPTIONS]");
     cmd.match_all([self_path](LintOptions opts) {
         opts.log.apply();
@@ -108,8 +106,12 @@ void add_lint(kota::deco::cli::SubCommander& root, const char* self_path) {
                         static_cast<bool>(opts.index),
                         self_path);
     });
-
-    root.add({.name = "lint", .description = "Lint C++ source files"}, std::move(cmd));
+    return cmd;
 }
+
+[[maybe_unused]] const bool registered =
+    register_command(Command::lint, {.description = "Lint C++ source files", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

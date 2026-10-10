@@ -7,6 +7,7 @@ module clice:analysis.module_graph;
 import :analysis.annotation;
 import :index.types;
 import :semantic.symbol;
+import :vfs.path;
 
 namespace clice {
 
@@ -271,6 +272,27 @@ struct Facts {
 /// absolute outside the workspace, `in_scope` accepts out of the loaded
 /// index.
 Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_scope);
+
+struct LoadedFacts {
+    std::string root;
+    Facts facts;
+};
+
+/// Why the index of a workspace gives no facts.
+struct LoadError {
+    std::string message;
+
+    /// The units the load dropped as stale or partially written, sorted.
+    std::vector<std::string> dropped;
+};
+
+/// The facts of the files the `scope` globs select out of the index of
+/// `workspace` (default: the workspace's own files outside dot
+/// directories), and the workspace root; none from an index that lacks a
+/// unit.
+std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
+                                                 llvm::StringRef configuration,
+                                                 llvm::ArrayRef<std::string> scope);
 
 /// What a module is to the program a partition wraps.
 enum class ModuleKind : std::uint8_t {

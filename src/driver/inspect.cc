@@ -1137,9 +1137,7 @@ auto make_command() {
     return kota::deco::cli::command<InspectOptions>("clice inspect <feature> <path> [OPTIONS]");
 }
 
-}  // namespace
-
-void add_inspect(kota::deco::cli::SubCommander& root) {
+CommandHandler build(const char*) {
     auto cmd = make_command();
     cmd.match_all([](InspectOptions opts) {
         // A mode flag like --help: ignores feature/path inputs.
@@ -1161,10 +1159,13 @@ void add_inspect(kota::deco::cli::SubCommander& root) {
         }
         return run_inspect(opts);
     });
-
-    root.add({.name = "inspect",
-              .description = "Run a feature on source files and print raw results as JSON"},
-             std::move(cmd));
+    return cmd;
 }
+
+[[maybe_unused]] const bool registered = register_command(
+    Command::inspect,
+    {.description = "Run a feature on source files and print raw results as JSON", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

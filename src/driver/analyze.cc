@@ -8,9 +8,9 @@ module clice;
 
 import :analysis.annotation;
 import :analysis.module_graph;
-import :driver.analysis_support;
+import :analysis.wrapping;
 import :driver.driver;
-import :driver.query_support;
+import :support.text;
 
 namespace clice::driver {
 
@@ -132,11 +132,11 @@ int run_modules(const ModulesOptions& opts) {
         return 1;
     };
 
-    auto libcxx = read_std(opts.std.value_or(""));
+    auto libcxx = analysis::read_std_modules(opts.std.value_or(""));
     if(!libcxx) {
         return fail(libcxx.error());
     }
-    auto spec = read_partition(
+    auto spec = analysis::read_partition(
         {
             .depth = static_cast<std::uint32_t>(std::max(opts.depth.value_or(0), 0)),
             .moves = comma_list(opts.move.value_or("")),
@@ -147,11 +147,12 @@ int run_modules(const ModulesOptions& opts) {
     if(!spec) {
         return fail(spec.error());
     }
-    auto loaded = load_facts(opts.workspace.value_or(""),
-                             opts.configuration.value_or(""),
-                             opts.scope.value_or(""));
+    auto loaded = analysis::load_facts(workspace_spelling(opts.workspace.value_or("")),
+                                       opts.configuration.value_or(""),
+                                       comma_list(opts.scope.value_or("")));
     if(!loaded) {
-        print_json(loaded.error());
+        print_json(Failure{.error = std::move(loaded.error().message),
+                           .stale = std::move(loaded.error().dropped)});
         return 1;
     }
     auto& facts = loaded->facts;
@@ -229,9 +230,7 @@ int run_modules(const ModulesOptions& opts) {
     return 0;
 }
 
-}  // namespace
-
-void add_analyze(kota::deco::cli::SubCommander& root) {
+CommandHandler build(const char*) {
     auto modules = kota::deco::cli::command<ModulesOptions>("clice analyze modules [OPTIONS]");
     modules
         .match_all([](ModulesOptions opts) {
@@ -248,9 +247,15 @@ void add_analyze(kota::deco::cli::SubCommander& root) {
                   .description = "Dependencies between directories, toward a module partition"},
                  std::move(modules));
     analyze->enable_help().when_err(subcommand_error_handler(*analyze));
-
-    root.add({.name = "analyze", .description = "Analyze the indexed workspace for refactoring"},
-             [analyze](std::span<std::string> args) { return (*analyze)(args); });
+    return [analyze](std::span<std::string> args) {
+        return (*analyze)(args);
+    };
 }
+
+[[maybe_unused]] const bool registered = register_command(
+    Command::analyze,
+    {.description = "Analyze the indexed workspace for refactoring", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

@@ -36,21 +36,11 @@ extern "C++" int main(int argc, const char** argv) {
     namespace driver = clice::driver;
 
     auto args = deco::util::argvify(argc, argv);
-    const char* self_path = argv[0];
 
     deco::cli::SubCommander clice("clice <command> [<args>]",
                                   "A C++ development toolkit built on LLVM/Clang");
 
-    driver::add_serve(clice, self_path);
-    driver::add_query(clice, self_path);
-    driver::add_refactor(clice, self_path);
-    driver::add_worker(clice);
-    driver::add_index(clice, self_path);
-    driver::add_lint(clice, self_path);
-    driver::add_format(clice);
-    driver::add_inspect(clice);
-    driver::add_analyze(clice);
-    driver::add_modularize(clice);
+    driver::add_commands(clice, argv[0]);
 
     clice.enable_help().when_err(driver::subcommand_error_handler(clice));
 

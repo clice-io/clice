@@ -5,11 +5,11 @@ module;
 module clice;
 
 import :driver.driver;
-import :driver.query_support;
 import :project.configuration;
 import :project.open_index;
 import :server.counterparts;
 import :server.query_commands;
+import :support.text;
 
 namespace clice::driver {
 
@@ -140,11 +140,6 @@ Reply answer(Project& project,
     auto path = opts.path.value_or("");
     auto absolute = path.empty() ? Spelling() : inspected_path(project, path);
     auto direction = opts.direction.value_or("both");
-    auto kind_list = opts.kind.value_or("");
-    llvm::SmallVector<llvm::StringRef> kind_refs;
-    llvm::StringRef(kind_list).split(kind_refs, ',', -1, /*KeepEmpty=*/false);
-    auto kinds = llvm::to_vector(
-        llvm::map_range(kind_refs, [](llvm::StringRef kind) { return kind.trim().str(); }));
 
     Reply reply;
     auto emit = [&](auto outcome) {
@@ -198,7 +193,7 @@ Reply answer(Project& project,
         emit(query::symbol_search(ctx,
                                   opts.query.value_or(""),
                                   static_cast<std::size_t>(std::max(limit, 0)),
-                                  kinds));
+                                  comma_list(opts.kind.value_or(""))));
     } else if(method == "documentSymbols") {
         emit(query::document_symbols(ctx, absolute));
     } else if(auto query = locator(); !query) {
@@ -271,9 +266,7 @@ int run_query(const QueryOptions& opts, const char* self_path) {
     return reply.exit_code;
 }
 
-}  // namespace
-
-void add_query(kota::deco::cli::SubCommander& root, const char* self_path) {
+CommandHandler build(const char* self_path) {
     auto cmd = kota::deco::cli::command<QueryOptions>("clice query [OPTIONS]");
     cmd.match_all([self_path](QueryOptions opts) {
            opts.log.apply();
@@ -281,9 +274,13 @@ void add_query(kota::deco::cli::SubCommander& root, const char* self_path) {
            return run_query(opts, self_path);
        })
         .on_error([](auto err) { print_json(Failure{.error = err.message}); });
-
-    root.add({.name = "query", .description = "Ask the persisted index about the workspace"},
-             std::move(cmd));
+    return cmd;
 }
+
+[[maybe_unused]] const bool registered = register_command(
+    Command::query,
+    {.description = "Ask the persisted index about the workspace", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

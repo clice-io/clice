@@ -7,6 +7,8 @@ module clice;
 import :analysis.module_graph;
 import :command.command;
 import :index.serialization;
+import :project.command_resolver;
+import :project.open_index;
 import :project.project;
 import :syntax.lexer;
 import :vfs.file_system;
@@ -1360,6 +1362,50 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         }
     }
     return facts;
+}
+
+std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
+                                                 llvm::StringRef configuration,
+                                                 llvm::ArrayRef<std::string> scope) {
+    std::vector<kota::GlobPattern> globs;
+    for(auto& pattern: scope) {
+        auto glob = kota::GlobPattern::create(pattern);
+        if(!glob) {
+            return std::unexpected(LoadError{
+                .message =
+                    std::format("invalid --scope glob '{}': {}", pattern, glob.error().message),
+            });
+        }
+        globs.push_back(std::move(*glob));
+    }
+
+    CanonicalPath root(workspace);
+    FileTable files;
+    files.spell_root(workspace);
+    Project project{files};
+    CommandResolver commands{project};
+    auto loaded = load_index(project, commands, root, configuration, /*with_build=*/false);
+    if(!loaded) {
+        return std::unexpected(LoadError{.message = "no usable index; run `clice index` first"});
+    }
+    // A unit withheld as stale or corrupt takes its uses and edges with it.
+    if(!loaded->dropped.empty()) {
+        LoadError error{.message = "the index lacks some units; run `clice index` first"};
+        for(auto unit: loaded->dropped) {
+            error.dropped.emplace_back(files.display(unit));
+        }
+        std::ranges::sort(error.dropped);
+        return std::unexpected(std::move(error));
+    }
+
+    auto facts = collect(project, [&](llvm::StringRef path) {
+        if(!globs.empty()) {
+            return llvm::any_of(globs, [&](auto& glob) { return glob.match(path); });
+        }
+        return !llvm::sys::path::is_absolute(path) && !path.starts_with(".") &&
+               !path.contains("/.");
+    });
+    return LoadedFacts{.root = llvm::StringRef(root).str(), .facts = std::move(facts)};
 }
 
 std::expected<void, std::string> move_entities(Facts& facts, llvm::StringRef spec) {
