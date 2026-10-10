@@ -178,7 +178,6 @@ export function fileSections(sections: [string, string[]][]): string[] {
 /// as "nothing else matched".
 export const SNAP_ITEM_LIMIT = 10;
 
-/// The `<directive>:` comment lines of a fixture, in source order.
 /// Wait until the server has no work left (clice/internal/sync): the rows
 /// of the background index are in. The server still busy at the sync's
 /// deadline fails the fixture with the work it had.
@@ -189,6 +188,7 @@ export async function settled(client: CliceClient): Promise<void> {
     }
 }
 
+/// The `<directive>:` comment lines of a fixture, in source order.
 export function directiveLines(stripped: Buffer, directive: string): string[] {
     const out: string[] = [];
     for (const line of stripped.toString("utf8").split("\n")) {
