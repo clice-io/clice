@@ -17,10 +17,10 @@ function cxx17(sources: string[]): ServeOptions {
 }
 
 async function names(s: Serve, file: string): Promise<string[]> {
-    const symbols = (await s.request("textDocument/documentSymbol", file)) as
-        | proto.DocumentSymbol[]
-        | proto.SymbolInformation[]
-        | null;
+    const symbols = await s.request<proto.DocumentSymbol[] | proto.SymbolInformation[] | null>(
+        "textDocument/documentSymbol",
+        file,
+    );
     return (symbols ?? []).map((symbol) => symbol.name);
 }
 
@@ -108,9 +108,7 @@ serve.files(
     await s.clean("ops.def");
     expect(await names(s, "ops.def")).toEqual(["Add", "Sub"]);
 
-    const switched = await s.client.switchContext(s.uri("ops.def"), s.uri("ops.cpp"), {
-        occurrence: 1,
-    });
+    const switched = await s.switchContext("ops.def", "ops.cpp", { occurrence: 1 });
     expect(switched.success).toBe(true);
     await s.clean("ops.def");
 });

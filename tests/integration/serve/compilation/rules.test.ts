@@ -3,25 +3,16 @@
 /// host. Every workspace has its own clice.toml.
 
 import * as proto from "vscode-languageserver-protocol";
-import type { Serve } from "@clice/tools/actions";
-import { writeDatabase } from "@clice/tools/project";
 import { expect, serve } from "../../fixtures.ts";
 
 function gated(macro: string): string {
     return `#ifndef ${macro}\n#error missing ${macro}\n#endif\nint main() { return 0; }\n`;
 }
 
+const CXX = ["-std=c++17"];
+
 function errorsOf(diagnostics: proto.Diagnostic[]): proto.Diagnostic[] {
     return diagnostics.filter((d) => d.severity === proto.DiagnosticSeverity.Error);
-}
-
-/// A workspace whose databases are the ones `write` puts in place, none at
-/// the root unless it writes one: the server restarts on them.
-async function databases(s: Serve, write?: () => void): Promise<void> {
-    await s.offline(() => {
-        s.disk.rm("compile_commands.json");
-        write?.();
-    });
 }
 
 serve.files(
@@ -29,9 +20,8 @@ serve.files(
         "clice.toml": '[[rules]]\ndefault_command = "clang++ -std=c++20 -DFEATURE"\n',
         "main.cpp": gated("FEATURE"),
     },
-    { manifest: { units: {} } },
+    { databases: false },
 )("default command compiles files", async ({ s }) => {
-    await databases(s);
     const diagnostics = await s.compiled("main.cpp");
     expect(errorsOf(diagnostics), "the declared default command defines FEATURE").toEqual([]);
     expect(
@@ -63,27 +53,22 @@ serve.files(
         "other.cpp": gated("FROM_B"),
         "clice.toml": '[[rules]]\ncompile_commands = ["a", "b"]\n',
     },
-    { manifest: { units: {} } },
+    {
+        databases: {
+            "a/compile_commands.json": { cxx: CXX, units: { "main.cpp": ["-DFROM_A"] } },
+            "b/compile_commands.json": {
+                cxx: CXX,
+                units: { "main.cpp": ["-DFROM_B"], "other.cpp": ["-DFROM_B"] },
+            },
+        },
+    },
 )("databases load in declared order", async ({ s }) => {
-    await databases(s, () => {
-        s.workspace.writeCDB(["main.cpp"], {
-            extraArgs: ["-DFROM_A"],
-            at: "a/compile_commands.json",
-        });
-        s.workspace.writeEntries(
-            [
-                ["main.cpp", ["-DFROM_B"]],
-                ["other.cpp", ["-DFROM_B"]],
-            ],
-            { at: "b/compile_commands.json" },
-        );
-    });
     expect(await s.errors("main.cpp"), "the first database wins for a file both list").toEqual([]);
     expect(
         await s.errors("other.cpp"),
         "the second database fills in what the first lacks",
     ).toEqual([]);
-    const contexts = await s.client.queryContext(s.uri("main.cpp"));
+    const contexts = await s.contexts("main.cpp");
     expect(contexts.total, "both entries stay switchable").toBe(2);
 });
 
@@ -94,21 +79,16 @@ serve.files(
         "clice.toml":
             '[[rules]]\npatterns = ["lib/**"]\ncompile_commands = ["lib/cmake"]\n\n[[rules]]\ncompile_commands = ["cmake"]\n',
     },
-    { manifest: { units: {} } },
+    {
+        databases: {
+            "cmake/compile_commands.json": {
+                cxx: CXX,
+                units: { "src/a.cpp": ["-DROOT"], "lib/x.cpp": ["-DROOT"] },
+            },
+            "lib/cmake/compile_commands.json": { cxx: CXX, units: { "lib/x.cpp": ["-DLIB"] } },
+        },
+    },
 )("rule binds a subtree to its database", async ({ s }) => {
-    await databases(s, () => {
-        s.workspace.writeEntries(
-            [
-                ["src/a.cpp", ["-DROOT"]],
-                ["lib/x.cpp", ["-DROOT"]],
-            ],
-            { at: "cmake/compile_commands.json" },
-        );
-        s.workspace.writeCDB(["lib/x.cpp"], {
-            extraArgs: ["-DLIB"],
-            at: "lib/cmake/compile_commands.json",
-        });
-    });
     expect(await s.errors("src/a.cpp"), "src/ keeps the workspace database").toEqual([]);
     expect(await s.errors("lib/x.cpp"), "lib/ takes the rule's database first").toEqual([]);
 });
@@ -145,14 +125,13 @@ serve.files(
         "clice.toml":
             '[[rules]]\npatterns = ["src/**"]\ndefault_command = "clang++ -std=c++20 -DFROM_HOST"\n',
     },
-    { manifest: { units: {} } },
+    { databases: false },
 )("header borrows default command host", async ({ s }) => {
-    await databases(s);
     expect(
         await s.errors("include/x.h"),
         "the header compiles under its host's default command",
     ).toEqual([]);
-    const contexts = await s.client.queryContext(s.uri("include/x.h"));
+    const contexts = await s.contexts("include/x.h");
     expect(contexts.total, "the default-command host is offered as a context").toBe(1);
 });
 
@@ -177,11 +156,11 @@ serve.files({
 
     // A command change re-enqueues the unit through the reload path; the
     // exclusion holds there as well.
-    writeDatabase(s.workspace, {
+    s.disk.database({
         ...s.manifest,
         units: { "main.cpp": ["-DCHANGED"], "third_party/lib.cpp": ["-DCHANGED"] },
     });
-    expect((await s.client.poll("cdb")).events).toBe(1);
+    expect(await s.poll("cdb", { force: true })).toBe(1);
     await s.diagnostics("main.cpp");
     expect((await s.counts()).files["main.cpp"]?.compile, "main.cpp compiles again").toBe(2);
     await s.indexed();
@@ -201,14 +180,14 @@ serve.files(
 )("excluded unit escalates when read", async ({ s }) => {
     // No shard will ever serve an excluded unit: the didOpen boost is
     // refused and the session escalates to a pulled compile at once. The
-    // raw open sends no pull of its own, which would start the compile.
-    const uri = s.uri("third_party/lib.cpp");
-    const arrived = s.client.armDiagnostics(uri);
-    s.client.open("third_party/lib.cpp");
-    const symbols = (await s.request("textDocument/documentSymbol", "third_party/lib.cpp")) as
-        | proto.DocumentSymbol[]
-        | null;
+    // open sends no pull of its own, which would start the compile.
+    s.open("third_party/lib.cpp", { pull: false });
+    const symbols = await s.request<proto.DocumentSymbol[] | null>(
+        "textDocument/documentSymbol",
+        "third_party/lib.cpp",
+    );
     expect(symbols?.map((symbol) => symbol.name)).toContain("tp_sym");
-    await arrived;
-    s.client.assertNoErrors(uri);
+    const pushed = await s.pushed("third_party/lib.cpp");
+    expect(pushed, "the escalated compile publishes").toBeDefined();
+    expect(errorsOf(pushed!)).toEqual([]);
 });

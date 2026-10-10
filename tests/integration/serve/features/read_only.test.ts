@@ -5,7 +5,7 @@
 ///
 /// `s.open` pulls diagnostics, which is itself a read that pulls a compile
 /// under "off"; a case pinning what the first read or the open itself
-/// starts opens through `s.client` instead.
+/// starts opens without that pull.
 
 import * as proto from "vscode-languageserver-protocol";
 import type { Serve } from "@clice/tools/actions";
@@ -32,8 +32,7 @@ const OFF = { config: { project: { readonly: "off" } } };
 const ADD = at("main.cpp", "add(x, x)");
 const LINES_0_TO_8 = { start: { line: 0, character: 0 }, end: { line: 8, character: 0 } };
 
-function labelsOf(result: unknown): string[] {
-    const list = result as proto.CompletionItem[] | proto.CompletionList | null;
+function labelsOf(list: proto.CompletionItem[] | proto.CompletionList | null): string[] {
     if (list === null) {
         return [];
     }
@@ -41,58 +40,59 @@ function labelsOf(result: unknown): string[] {
     return items.map((item) => item.label);
 }
 
-function symbolNames(result: unknown): string[] | undefined {
-    return (result as proto.DocumentSymbol[] | null)?.map((symbol) => symbol.name);
+async function symbolNames(s: Serve, file: string): Promise<string[] | undefined> {
+    const symbols = await s.request<proto.DocumentSymbol[] | null>(
+        "textDocument/documentSymbol",
+        file,
+    );
+    return symbols?.map((symbol) => symbol.name);
 }
 
-function linksTo(result: unknown, file: string): boolean | undefined {
-    return (result as proto.DocumentLink[] | null)?.some((link) => link.target?.endsWith(file));
+function links(s: Serve, file: string): Promise<proto.DocumentLink[] | null> {
+    return s.request<proto.DocumentLink[] | null>("textDocument/documentLink", file);
 }
 
-/// The pushes `file` received; none while it was never published.
-async function publishes(s: Serve, file: string): Promise<number> {
-    return (await s.counts()).files[file]?.publish ?? 0;
+async function linksTo(s: Serve, file: string, target: string): Promise<boolean | undefined> {
+    return (await links(s, file))?.some((link) => link.target?.endsWith(target));
+}
+
+function semanticTokens(s: Serve, file: string): Promise<proto.SemanticTokens | null> {
+    return s.request<proto.SemanticTokens | null>("textDocument/semanticTokens/full", file);
 }
 
 /// The diagnostics push of a compile some read pulled has landed, and it
 /// carries no error.
 async function pushedNoErrors(s: Serve, file: string): Promise<void> {
-    await s.sync();
-    expect(await publishes(s, file)).toBeGreaterThan(0);
-    const pushed = s.client.lastPublish(s.uri(file))?.diagnostics ?? [];
-    expect(pushed.filter((d) => d.severity === proto.DiagnosticSeverity.Error)).toEqual([]);
+    const pushed = await s.pushed(file);
+    expect(pushed, "a compile was pushed").toBeDefined();
+    expect(pushed!.filter((d) => d.severity === proto.DiagnosticSeverity.Error)).toEqual([]);
 }
 
 serve.files(PROJECT, AUTO)("index serves unedited reads", async ({ s }) => {
     s.open("main.cpp");
     await s.indexed();
 
-    const tokens = (await s.request(
-        "textDocument/semanticTokens/full",
-        "main.cpp",
-    )) as proto.SemanticTokens | null;
+    const tokens = await semanticTokens(s, "main.cpp");
     expect(tokens?.data.length ?? 0).toBeGreaterThan(0);
 
-    expect(symbolNames(await s.request("textDocument/documentSymbol", "main.cpp"))).toContain(
-        "twice",
-    );
+    expect(await symbolNames(s, "main.cpp")).toContain("twice");
 
-    const folds = (await s.request("textDocument/foldingRange", "main.cpp")) as
-        | proto.FoldingRange[]
-        | null;
+    const folds = await s.request<proto.FoldingRange[] | null>(
+        "textDocument/foldingRange",
+        "main.cpp",
+    );
     expect(folds?.length ?? 0).toBeGreaterThan(0);
 
-    expect(linksTo(await s.request("textDocument/documentLink", "main.cpp"), "header.h")).toBe(
-        true,
-    );
+    expect(await linksTo(s, "main.cpp", "header.h")).toBe(true);
 
     expect(s.show(await s.hover(ADD))).toContain("add");
     expect(s.show(await s.definition(ADD))).toBe("header.h: int add(int a, int b);");
 
-    const highlights = (await s.request(
+    const x = at("main.cpp", "add(|x, x)");
+    const highlights = await s.request<proto.DocumentHighlight[] | null>(
         "textDocument/documentHighlight",
-        at("main.cpp", "add(|x, x)"),
-    )) as proto.DocumentHighlight[] | null;
+        x,
+    );
     expect(highlights?.map((h) => [h.range.start.line, h.range.start.character, h.kind])).toEqual([
         [3, 14, proto.DocumentHighlightKind.Text],
         [4, 15, proto.DocumentHighlightKind.Read],
@@ -101,9 +101,9 @@ serve.files(PROJECT, AUTO)("index serves unedited reads", async ({ s }) => {
 
     // Without an AST, selection ranges come from the text alone.
     const [selection] =
-        ((await s.request("textDocument/selectionRange", "main.cpp", {
-            positions: [{ line: 4, character: 15 }],
-        })) as proto.SelectionRange[] | null) ?? [];
+        (await s.request<proto.SelectionRange[] | null>("textDocument/selectionRange", "main.cpp", {
+            positions: [s.position(x).position],
+        })) ?? [];
     const steps: string[] = [];
     for (let step = selection; step; step = step.parent) {
         steps.push(
@@ -115,7 +115,7 @@ serve.files(PROJECT, AUTO)("index serves unedited reads", async ({ s }) => {
     // Pinned degradations of the read-only surface.
     const hints = await s.request("textDocument/inlayHint", "main.cpp", { range: LINES_0_TO_8 });
     expect(hints ?? []).toEqual([]);
-    expect(await publishes(s, "main.cpp")).toBe(0);
+    expect(await s.pushed("main.cpp")).toBeUndefined();
 
     // Reading never builds a PCH.
     expect(s.workspace.pchFiles()).toEqual([]);
@@ -135,7 +135,7 @@ serve.files(
     const auto = at("main.cpp", "a|uto widget");
     for (const located of [
         await s.definition(auto),
-        await s.request("textDocument/typeDefinition", auto),
+        await s.request<proto.Location[] | null>("textDocument/typeDefinition", auto),
     ]) {
         const [site] = (located ?? []) as proto.Location[];
         expect(site?.uri.endsWith("widget.h")).toBe(true);
@@ -154,15 +154,11 @@ serve.files({ "header.h": HEADER, "main.cpp": MAIN + "// padding\n".repeat(800_0
         s.open("main.cpp");
         await s.indexed();
 
-        expect(symbolNames(await s.request("textDocument/documentSymbol", "main.cpp"))).toContain(
-            "twice",
-        );
-        expect(linksTo(await s.request("textDocument/documentLink", "main.cpp"), "header.h")).toBe(
-            true,
-        );
+        expect(await symbolNames(s, "main.cpp")).toContain("twice");
+        expect(await linksTo(s, "main.cpp", "header.h")).toBe(true);
         expect(s.show(await s.hover(ADD))).toContain("add");
 
-        expect(await s.request("textDocument/semanticTokens/full", "main.cpp")).toBeNull();
+        expect(await semanticTokens(s, "main.cpp")).toBeNull();
         expect(await s.request("textDocument/foldingRange", "main.cpp")).toEqual([]);
         expect(s.workspace.pchFiles()).toEqual([]);
     },
@@ -172,25 +168,24 @@ serve.files(PROJECT, AUTO)("cold outline awaits the boost", async ({ s }) => {
     // No wait for the index: outline and links have no refresh request, so
     // the replies themselves await the didOpen boost instead of freezing an
     // empty result in the client's cache.
-    s.client.open("main.cpp");
-    const [symbols, links] = await Promise.all([
-        s.request("textDocument/documentSymbol", "main.cpp"),
-        s.request("textDocument/documentLink", "main.cpp"),
+    s.open("main.cpp", { pull: false });
+    const [symbols, linked] = await Promise.all([
+        symbolNames(s, "main.cpp"),
+        linksTo(s, "main.cpp", "header.h"),
     ]);
-    expect(symbolNames(symbols)).toContain("twice");
-    expect(linksTo(links, "header.h")).toBe(true);
+    expect(symbols).toContain("twice");
+    expect(linked).toBe(true);
 });
 
 serve.files(PROJECT, AUTO)("edit escalates to compile", async ({ s }) => {
     s.open("main.cpp");
     await s.indexed();
-    expect(await publishes(s, "main.cpp")).toBe(0);
+    expect(await s.pushed("main.cpp")).toBeUndefined();
 
     // The edit flips the mode; the build itself stays pull-driven, so
     // nothing lands until the next read pulls it.
     s.edit("main.cpp", { text: MAIN + "// edited\n" });
-    await s.sync();
-    expect(await publishes(s, "main.cpp")).toBe(0);
+    expect(await s.pushed("main.cpp")).toBeUndefined();
 
     expect(s.show(await s.hover(ADD))).toContain("add");
     await pushedNoErrors(s, "main.cpp");
@@ -207,10 +202,8 @@ serve.files(PROJECT, AUTO)("diverged open buffer escalates", async ({ s }) => {
     // A restored unsaved buffer diverges from the indexed content: the
     // open itself escalates, so the first read pulls a compile instead
     // of answering empty from a withdrawn shard.
-    s.client.open("main.cpp", 0, { text: MAIN + "// restored, unsaved\n" });
-    expect(symbolNames(await s.request("textDocument/documentSymbol", "main.cpp"))).toContain(
-        "twice",
-    );
+    s.open("main.cpp", { text: MAIN + "// restored, unsaved\n", pull: false });
+    expect(await symbolNames(s, "main.cpp")).toContain("twice");
     await pushedNoErrors(s, "main.cpp");
 });
 
@@ -223,16 +216,12 @@ serve.files(
     { ...PROJECT, "orphan.cpp": "int orphan() { return 1; }\n" },
     { ...AUTO, manifest: { cxx: ["-std=c++17"], units: { "main.cpp": [], "scratch.cpp": [] } } },
 )("unservable boost escalates", async ({ s }) => {
-    s.client.open("orphan.cpp");
-    expect(symbolNames(await s.request("textDocument/documentSymbol", "orphan.cpp"))).toContain(
-        "orphan",
-    );
+    s.open("orphan.cpp", { pull: false });
+    expect(await symbolNames(s, "orphan.cpp")).toContain("orphan");
     await pushedNoErrors(s, "orphan.cpp");
 
-    s.client.open("scratch.cpp", 0, { text: "int scratch() { return 2; }\n" });
-    expect(symbolNames(await s.request("textDocument/documentSymbol", "scratch.cpp"))).toContain(
-        "scratch",
-    );
+    s.open("scratch.cpp", { text: "int scratch() { return 2; }\n", pull: false });
+    expect(await symbolNames(s, "scratch.cpp")).toContain("scratch");
     await pushedNoErrors(s, "scratch.cpp");
 });
 
@@ -245,101 +234,87 @@ serve.files(
 )("explicit -x beats the suffix", async ({ s }) => {
     s.open("legacy.c");
     await s.indexed();
-    const tokens = (await s.request(
-        "textDocument/semanticTokens/full",
-        "legacy.c",
-    )) as proto.SemanticTokens | null;
-    expect(tokens?.data.slice(0, 2)).toEqual([0, 0]);
+    expect((await semanticTokens(s, "legacy.c"))?.data.slice(0, 2)).toEqual([0, 0]);
     expect(s.workspace.pchFiles()).toEqual([]);
 });
 
 // Under the pinned C entry the index projection lexes with the C keyword
 // table: `class` goes unpainted.
-serve.files({ "dual.c": "class Widget { public: int value; };\n" }, ON)(
-    "pinned entry picks the dialect",
-    async ({ s }) => {
-        // The database names the file twice, which a manifest cannot.
-        await s.offline(() => {
-            s.workspace.writeEntries([
-                ["dual.c", ["-x", "c++"]],
-                ["dual.c", ["-x", "c", "-DDIALECT_C"]],
-            ]);
-        });
-        s.open("dual.c");
-        await s.indexed();
-        const tokens = async () =>
-            (
-                (await s.request(
-                    "textDocument/semanticTokens/full",
-                    "dual.c",
-                )) as proto.SemanticTokens | null
-            )?.data.slice(0, 2);
-        expect(await tokens()).toEqual([0, 0]);
-
-        const uri = s.uri("dual.c");
-        const { contexts } = await s.client.queryContext(uri);
-        const c = contexts.find((context) => context.label.includes("DIALECT_C"))!.commandHash!;
-        expect((await s.client.switchContext(uri, uri, { commandHash: c })).success).toBe(true);
-        expect(await tokens()).toEqual([0, 6]);
+serve.files(
+    { "dual.c": "class Widget { public: int value; };\n" },
+    {
+        ...ON,
+        manifest: {
+            units: {
+                "dual.c": [
+                    ["-x", "c++"],
+                    ["-x", "c", "-DDIALECT_C"],
+                ],
+            },
+        },
     },
-);
+)("pinned entry picks the dialect", async ({ s }) => {
+    s.open("dual.c");
+    await s.indexed();
+    const tokens = async () => (await semanticTokens(s, "dual.c"))?.data.slice(0, 2);
+    expect(await tokens()).toEqual([0, 0]);
+
+    const { contexts } = await s.contexts("dual.c");
+    const c = contexts.find((context) => context.label.includes("DIALECT_C"))!.commandHash!;
+    expect((await s.switchContext("dual.c", "dual.c", { commandHash: c })).success).toBe(true);
+    expect(await tokens()).toEqual([0, 6]);
+});
 
 serve.files(PROJECT, ON)("readonly on builds no pch", async ({ s }) => {
     s.open("main.cpp");
     await s.indexed();
 
     // Completion still answers — a full parse without a preamble.
-    expect(
-        labelsOf(await s.request("textDocument/completion", at("main.cpp", "tw|ice(2)"))),
-    ).toContain("twice");
+    expect(labelsOf(await s.completion(at("main.cpp", "tw|ice(2)")))).toContain("twice");
 
     // The whole point of the profile.
     expect(s.workspace.pchFiles()).toEqual([]);
-    expect(await publishes(s, "main.cpp")).toBe(0);
+    expect(await s.pushed("main.cpp")).toBeUndefined();
 });
 
-serve.files(PROJECT, ON)("readonly on pull builds nothing", async ({ s }) => {
-    // The serve fixture's server pushes; a pulling client is a server of
-    // its own.
-    await s.stop();
-    const client = await s.session.spawn(s.workspace).initialize(s.workspace, {
-        initializationOptions: ON.config,
-        capabilities: { textDocument: { diagnostic: {} } },
-    });
-    const [uri] = client.open("main.cpp");
-    expect(await client.sync()).toMatchObject({ failed: [], pending: [] });
-    expect(await client.pullDiagnostics(uri)).toEqual([]);
-    expect(s.workspace.pchFiles()).toEqual([]);
-});
+serve.files(PROJECT, { ...ON, launch: { capabilities: { textDocument: { diagnostic: {} } } } })(
+    "readonly on pull builds nothing",
+    async ({ s }) => {
+        s.open("main.cpp", { pull: false });
+        await s.indexed();
+        expect(await s.diagnostics("main.cpp")).toEqual([]);
+        expect(s.workspace.pchFiles()).toEqual([]);
+    },
+);
 
 serve.files(PROJECT, AUTO)("escalation upgrades inlay hints", async ({ s }) => {
     s.open("main.cpp");
     await s.indexed();
 
-    const hints = () => s.request("textDocument/inlayHint", "main.cpp", { range: LINES_0_TO_8 });
+    const hints = () =>
+        s.request<proto.InlayHint[] | null>("textDocument/inlayHint", "main.cpp", {
+            range: LINES_0_TO_8,
+        });
     expect((await hints()) ?? []).toEqual([]);
 
     // The edit flips the mode: the inlay re-pull rides the pulled compile
     // and answers from the AST (parameter names at call sites).
     s.edit("main.cpp", { text: MAIN + "// edited\n" });
-    const upgraded = (await hints()) as proto.InlayHint[] | null;
-    expect(upgraded?.length ?? 0).toBeGreaterThan(0);
+    expect((await hints())?.length ?? 0).toBeGreaterThan(0);
 });
 
 // Under readonly "on" a diverged buffer cannot escalate: every index answer
 // must withdraw rather than map stale manifest lines onto new text.
-serve.files(PROJECT, ON)("diverged buffer serves no links", async ({ s }) => {
+serve.files(PROJECT, AUTO)("diverged buffer serves no links", async ({ s }) => {
     s.open("main.cpp");
     await s.indexed();
     await s.stop();
-    await s.start();
+    await s.start(ON);
 
     const diverged = '#include "renamed.h"\n' + MAIN.split("\n").slice(1).join("\n");
-    s.client.open("main.cpp", 0, { text: diverged });
-    expect((await s.request("textDocument/documentLink", "main.cpp")) ?? []).toEqual([]);
-    const defs = await s.request("textDocument/definition", "main.cpp", {
-        position: { line: 0, character: 12 },
-    });
+    s.open("main.cpp", { text: diverged, pull: false });
+    expect((await links(s, "main.cpp")) ?? []).toEqual([]);
+    const defs = await s.definition(at("main.cpp", '"re|named.h"'));
     expect(defs === null || (Array.isArray(defs) && defs.length === 0)).toBe(true);
 });
 
@@ -357,28 +332,25 @@ serve.files({ "header.h": HEADER, "main.cpp": "#define LIMIT 10\n" + MAIN }, OFF
 serve.files(PROJECT, OFF)("off compiles on demand", async ({ s }) => {
     // didOpen alone starts nothing (the pre-readonly contract): the
     // diagnostics push rides the first read's pulled compile.
-    s.client.open("main.cpp");
-    await s.sync();
-    expect(await publishes(s, "main.cpp")).toBe(0);
+    s.open("main.cpp", { pull: false });
+    expect(await s.pushed("main.cpp")).toBeUndefined();
 
     expect(s.show(await s.hover(ADD))).toContain("add");
     await pushedNoErrors(s, "main.cpp");
 });
 
-serve.files(PROJECT, OFF)("index answers while pull compile runs", async ({ s }) => {
+serve.files(PROJECT, AUTO)("index answers while pull compile runs", async ({ s }) => {
     // Warm the index, then restart: the second server starts with the
     // shard on disk and nothing compiled.
     await s.indexed();
     await s.stop();
-    await s.start();
+    await s.start(OFF);
 
     // off: the first read pulls the compile, but must not block on it —
     // the warm shard answers instantly, and the detached pull still lands
     // the AST (diagnostics prove it).
-    s.client.open("main.cpp");
-    expect(symbolNames(await s.request("textDocument/documentSymbol", "main.cpp"))).toContain(
-        "twice",
-    );
+    s.open("main.cpp", { pull: false });
+    expect(await symbolNames(s, "main.cpp")).toContain("twice");
     await pushedNoErrors(s, "main.cpp");
 });
 
@@ -393,9 +365,8 @@ serve.files(
     s.open("main.cpp");
     await s.indexed();
 
-    const links = (await s.request("textDocument/documentLink", "main.cpp")) as
-        | proto.DocumentLink[]
-        | null;
-    const targets = (links ?? []).map((link) => link.target?.split("/").pop()).sort();
+    const targets = ((await links(s, "main.cpp")) ?? [])
+        .map((link) => link.target?.split("/").pop())
+        .sort();
     expect(targets).toEqual(["a.h", "b.h"]);
 });

@@ -1,10 +1,11 @@
 /// Requests ride out windows without a worker — a restart backoff, an LRU
 /// eviction — instead of answering empty or clearing what the file shows.
 
+import type * as proto from "vscode-languageserver-protocol";
 import { at, expect, serve } from "../../fixtures.ts";
 
-if (process.platform === "linux") {
-    serve.files(
+serve
+    .files(
         { "main.cpp": 'int add(int a, int b) { return a + b; }\nint x = "s";\n' },
         // Without an index, a hover waits for the worker: rows of the
         // file would answer it during the outage.
@@ -12,49 +13,45 @@ if (process.platform === "linux") {
             config: { project: { stateful_worker_count: 1, enable_indexing: false } },
             anomalies: true,
         },
-    )("outage keeps diagnostics", async ({ s }) => {
-        expect((await s.errors("main.cpp")).length).toBeGreaterThan(0);
-        const published = s.client.publishedDiagnostics.length;
+    )
+    .skipIf(process.platform !== "linux")("outage keeps diagnostics", async ({ s }) => {
+    expect((await s.errors("main.cpp")).length).toBeGreaterThan(0);
+    const published = s.client.publishedDiagnostics.length;
 
-        // Fast deaths push the lone stateful worker into its respawn
-        // backoff. SIGUSR2 names no request and, unlike a kill from outside
-        // (SIGKILL), counts as the worker failing by itself. A compile after
-        // each waits for the worker to come back instead of answering empty;
-        // the last one waits out the longest backoff.
-        let previous = 0;
-        for (let kill = 1; kill <= 3; kill++) {
-            const [pid] = s.client.workerPids("SF-");
-            expect(pid, `a stateful worker before kill ${kill}`).toBeDefined();
-            expect(pid).not.toBe(previous);
-            previous = pid ?? 0;
-            // The signal lands when it lands: a request sent before the
-            // master saw the death could still be answered by the worker.
-            const died = s.client.nextLogMessage((message) =>
-                message.includes("[anomaly:WorkerCrash]"),
+    // Fast deaths push the lone stateful worker into its respawn
+    // backoff. SIGUSR2 names no request and, unlike a kill from outside
+    // (SIGKILL), counts as the worker failing by itself. A compile after
+    // each waits for the worker to come back instead of answering empty;
+    // the last one waits out the longest backoff.
+    let previous = 0;
+    for (let kill = 1; kill <= 3; kill++) {
+        const [pid] = s.client.workerPids("SF-");
+        expect(pid, `a stateful worker before kill ${kill}`).toBeDefined();
+        expect(pid).not.toBe(previous);
+        previous = pid ?? 0;
+        // The signal lands when it lands: a request sent before the
+        // master saw the death could still be answered by the worker.
+        const died = s.client.nextLogMessage((message) =>
+            message.includes("[anomaly:WorkerCrash]"),
+        );
+        process.kill(previous, "SIGUSR2");
+        await died;
+        // A hover may be answered without a worker; a compile is not.
+        s.edit("main.cpp", { after: 'int x = "s";', insert: "\n" });
+        expect((await s.errors("main.cpp")).length, `errors after kill ${kill}`).toBeGreaterThan(0);
+        expect(await s.hover(at("main.cpp", "int a|dd("))).not.toBeNull();
+    }
+
+    // The file never loses its diagnostics.
+    for (const params of s.client.publishedDiagnostics.slice(published)) {
+        if (s.client.normalizeUri(params.uri) === s.uri("main.cpp")) {
+            expect(params.diagnostics.length, "an outage cleared the diagnostics").toBeGreaterThan(
+                0,
             );
-            process.kill(previous, "SIGUSR2");
-            await died;
-            // A hover may be answered without a worker; a compile is not.
-            s.edit("main.cpp", { after: 'int x = "s";', insert: "\n" });
-            expect(
-                (await s.errors("main.cpp")).length,
-                `errors after kill ${kill}`,
-            ).toBeGreaterThan(0);
-            expect(await s.hover(at("main.cpp", "int a|dd("))).not.toBeNull();
         }
-
-        // The file never loses its diagnostics.
-        for (const params of s.client.publishedDiagnostics.slice(published)) {
-            if (s.client.normalizeUri(params.uri) === s.uri("main.cpp")) {
-                expect(
-                    params.diagnostics.length,
-                    "an outage cleared the diagnostics",
-                ).toBeGreaterThan(0);
-            }
-        }
-        expect(s.workspace.log("master.log")).toContain("[anomaly:WorkerCrash]");
-    });
-}
+    }
+    expect(s.workspace.log("master.log")).toContain("[anomaly:WorkerCrash]");
+});
 
 const NAMES = Array.from({ length: 6 }, (_, i) => `file_${i}.cpp`);
 
@@ -69,10 +66,12 @@ serve.files(Object.fromEntries(NAMES.map((name, i) => [name, `int value_${i} = $
         s.open(name);
     }
     const burst = await Promise.all(
-        NAMES.map((name) => s.request("textDocument/semanticTokens/full", name)),
+        NAMES.map((name) =>
+            s.request<proto.SemanticTokens | null>("textDocument/semanticTokens/full", name),
+        ),
     );
     for (const tokens of burst) {
-        expect((tokens as { data?: number[] } | null)?.data?.length).toBeGreaterThan(0);
+        expect(tokens?.data.length).toBeGreaterThan(0);
     }
 
     // Asked again one by one, the evicted documents come back on demand.

@@ -102,10 +102,7 @@ serve.files({
     s.disk.write("a.h", s.disk.read("a.h"));
 
     s.edit("main.cpp", { before: "    return 0;", insert: "    w.\n" });
-    const reply = (await s.request("textDocument/completion", at("main.cpp", "w.|"))) as
-        | proto.CompletionList
-        | proto.CompletionItem[]
-        | null;
+    const reply = await s.completion(at("main.cpp", "w.|"));
     const items = Array.isArray(reply) ? reply : (reply?.items ?? []);
     expect(items.map((item) => item.label.trim())).toContain("alpha_member");
 });
@@ -231,7 +228,7 @@ serve.files(VALUE)("didsave triggers recompile for dependents", async ({ s }) =>
 
     // Modify header on disk and send didSave; the header is not open.
     s.disk.write("header.h", "inline int value() { return }\n"); // broken
-    s.client.save(s.uri("header.h"));
+    s.save("header.h");
 
     expect(
         (await s.errors("main.cpp")).length,
@@ -246,7 +243,7 @@ serve.data("modules/save_recompile")("didsave with module deps", async ({ s }) =
 
     // Modify Leaf on disk and send didSave — should invalidate Mid's deps.
     s.disk.write("leaf.cppm", "export module Leaf;\nexport int leaf() { return 999; }\n");
-    s.client.save(s.uri("leaf.cppm"));
+    s.save("leaf.cppm");
 
     // Mid recompiles: the Leaf PCM was invalidated.
     expect(await recompiled(s, "mid.cppm")).toEqual([]);
@@ -264,7 +261,7 @@ serve.files(
     // the cache key).
     await s.clean("main.cpp");
     expect(s.workspace.pchFiles().length).toBe(1);
-    s.client.assertNoAnomaly();
+    await s.noAnomaly();
 
     // Same preamble text, different flag — must not reuse.
     await s.offline(() => {
@@ -275,7 +272,7 @@ serve.files(
         s.workspace.pchFiles().length,
         "A flag change must produce a second, separately keyed PCH",
     ).toBe(2);
-    s.client.assertNoAnomaly();
+    await s.noAnomaly();
 });
 
 const POINT_HOST = {
@@ -339,7 +336,7 @@ serve.files(POINT_HOST)("saved host reinvalidates header", async ({ s }) => {
     const st = fs.statSync(s.workspace.path("main.cpp"));
     s.disk.write("main.cpp", '#include "utils.h"\nint main() { return 0; }\n');
     fs.utimesSync(s.workspace.path("main.cpp"), st.atime, st.mtime);
-    s.client.save(s.uri("main.cpp"));
+    s.save("main.cpp", { write: false });
 
     expect(
         (await s.errors("utils.h")).length,
@@ -354,7 +351,7 @@ serve.files(GUARDED_VALUE)("same second save detected", async ({ s }) => {
     await s.clean("main.cpp");
 
     s.disk.write("header.h", "#pragma once\ninline int renamed() { return 1; }\n");
-    s.client.save(s.uri("header.h"));
+    s.save("header.h");
 
     // main.cpp still calls value(): a reused stale PCH would compile clean.
     expect(

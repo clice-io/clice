@@ -66,9 +66,10 @@ serve.files({
         "int main() { return alpha; }\n",
 })("links merge empty pch", async ({ s }) => {
     await s.compiled("main.cpp");
-    const links = (await s.request("textDocument/documentLink", "main.cpp")) as
-        | proto.DocumentLink[]
-        | null;
+    const links = await s.request<proto.DocumentLink[] | null>(
+        "textDocument/documentLink",
+        "main.cpp",
+    );
     expect(links, "Expected a document link for the body include").toBeTruthy();
     expect(links!.length).toBeGreaterThan(0);
 });

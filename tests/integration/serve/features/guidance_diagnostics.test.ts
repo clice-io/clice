@@ -5,8 +5,7 @@
 /// file-top warning explains the situation; an exact CDB match never gets it.
 
 import * as proto from "vscode-languageserver-protocol";
-import type { Serve } from "@clice/tools/actions";
-import { writeDatabase } from "@clice/tools/project";
+import type { ServeOptions } from "@clice/tools/actions";
 import { expect, serve } from "../../fixtures.ts";
 
 const GUIDANCE_CODE = "inferred-compile-command";
@@ -21,23 +20,12 @@ function fileNotFoundDiags(diagnostics: proto.Diagnostic[]): proto.Diagnostic[] 
     return diagnostics.filter((d) => d.code === "err_pp_file_not_found");
 }
 
-/// A server started on the workspace without a compile_commands.json,
-/// which a case's workspace always has: it is removed while no server
-/// runs, with `body`'s changes.
-function withoutDatabase(s: Serve, body: () => void = () => undefined): Promise<void> {
-    return s.offline(() => {
-        s.workspace.rm("compile_commands.json");
-        body();
-    });
-}
+const NO_DATABASE: ServeOptions = { databases: false };
 
-const NO_UNITS = { manifest: { units: {} } };
-
-serve.files({ "main.cpp": BROKEN_INCLUDE }, NO_UNITS)(
+serve.files({ "main.cpp": BROKEN_INCLUDE }, NO_DATABASE)(
     "fallback guidance lifecycle",
     async ({ s }) => {
         // Phase 1: no CDB — fallback command, broken include → guidance at the top.
-        await withoutDatabase(s);
         const first = await s.compiled("main.cpp");
         const missingIncludes = fileNotFoundDiags(first);
         expect(missingIncludes.length, "broken include should surface").toBeGreaterThan(0);
@@ -61,7 +49,7 @@ serve.files({ "main.cpp": BROKEN_INCLUDE }, NO_UNITS)(
         // Phase 2: provide a CDB and restart — the include error remains, the
         // guidance diagnostic must disappear (exact CDB match never gets it).
         await s.offline(() => {
-            writeDatabase(s.workspace, { cxx: ["-std=c++17"], units: { "main.cpp": [] } });
+            s.disk.database({ cxx: ["-std=c++17"], units: { "main.cpp": [] } });
         });
         const second = await s.compiled("main.cpp");
         expect(fileNotFoundDiags(second).length, "include is still broken").toBeGreaterThan(0);
@@ -78,16 +66,11 @@ serve.files(
     {
         "inc/dep.h": "#pragma once\nconstexpr int dep = 1;\n",
         "main.cpp": '#include "dep.h"\nint main() { return dep; }\n',
+        "clice.toml": (workspace) =>
+            `[[rules]]\npatterns = ["**/*.cpp"]\nappend = ["-I${workspace.path("inc").replaceAll("\\", "/")}"]\n`,
     },
-    NO_UNITS,
+    NO_DATABASE,
 )("fallback applies rule appends", async ({ s }) => {
-    const includeDir = s.workspace.path("inc").replaceAll("\\", "/");
-    await withoutDatabase(s, () => {
-        s.disk.write(
-            "clice.toml",
-            `[[rules]]\npatterns = ["**/*.cpp"]\nappend = ["-I${includeDir}"]\n`,
-        );
-    });
     const diagnostics = await s.compiled("main.cpp");
     expect(fileNotFoundDiags(diagnostics).length, "rule -I must reach the fallback command").toBe(
         0,
@@ -96,10 +79,9 @@ serve.files(
 });
 
 // A guessed command that works produces no guidance noise.
-serve.files({ "main.cpp": "int main() { return 0; }\n" }, NO_UNITS)(
+serve.files({ "main.cpp": "int main() { return 0; }\n" }, NO_DATABASE)(
     "fallback clean no guidance",
     async ({ s }) => {
-        await withoutDatabase(s);
         expect(guidanceDiags(await s.compiled("main.cpp")).length).toBe(0);
     },
 );

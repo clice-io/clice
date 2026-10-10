@@ -65,10 +65,9 @@ test("divergent save follows disk", async ({ s }) => {
     ).toContain("closed.cpp");
 
     // A save hook rewrote the file as the save landed: the disk holds V2
-    // while the buffer still holds V1 and no didChange is ever sent. The
-    // save action writes the buffer; the bare didSave does not.
+    // while the buffer still holds V1 and no didChange is ever sent.
     s.disk.write("header.h", HEADER_V2);
-    s.client.save(s.uri("header.h"));
+    s.save("header.h", { write: false });
 
     // Dependents must follow the disk truth, not the pre-save state.
     await s.indexed();

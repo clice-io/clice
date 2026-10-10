@@ -23,12 +23,6 @@ function into(s: Serve, reply: unknown, file: string): string[] {
         .filter((line) => line.startsWith(`${file}: `));
 }
 
-/// Write `file` and say so (didSave) while no buffer of it is open.
-function saveClosed(s: Serve, file: string, text: string): void {
-    s.disk.write(file, text);
-    s.client.save(s.uri(file));
-}
-
 serve.data("modules/single_module_no_deps")("single module no deps", async ({ s }) => {
     await s.clean("mod_a.cppm");
 });
@@ -104,10 +98,7 @@ const PICK_V2 =
 
 serve.files(
     { "m.cppm": PICK_V1, "closed.cpp": "import m;\nint use() { return pick(1L); }\n" },
-    {
-        ...cxx20({ "m.cppm": [], "closed.cpp": [] }),
-        config: { project: { idle_timeout_ms: 10 } },
-    },
+    cxx20({ "m.cppm": [], "closed.cpp": [] }),
 )("module save reindexes importers", async ({ s }) => {
     const call = "closed.cpp: int use() { return pick(1L); }";
     await s.compiled("m.cppm");
@@ -120,7 +111,8 @@ serve.files(
     // The next server's startup sweep finds the importer fresh and never
     // runs it: only the index's record of what it imported leads the save
     // to it.
-    await s.restart();
+    await s.stop();
+    await s.start({ config: { project: { idle_timeout_ms: 10 } } });
     await s.compiled("m.cppm");
     // The rewrite must stat newer than the text the importer was indexed against.
     await sleep(MTIME_GRANULARITY);
@@ -234,7 +226,8 @@ serve.files(
     }
     expect((await s.counts()).files["a.cppm"]?.pcm, "the failed build ran once").toBe(1);
 
-    saveClosed(s, "a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    s.disk.write("a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    s.save("a.cppm");
     await s.clean("main.cpp");
     expect((await s.counts()).files["a.cppm"]?.pcm, "the fix built once").toBe(2);
 });
@@ -251,7 +244,8 @@ serve.files(
 )("failed module follows its import", async ({ s }) => {
     expect((await s.errors("main.cpp")).length).toBeGreaterThan(0);
 
-    saveClosed(s, "b.cppm", "export module B;\nexport int c() { return 1; }\n");
+    s.disk.write("b.cppm", "export module B;\nexport int c() { return 1; }\n");
+    s.save("b.cppm");
     await s.clean("main.cpp");
 });
 
@@ -267,7 +261,8 @@ serve.files(
 )("failed module follows a new provider", async ({ s }) => {
     expect((await s.errors("main.cpp")).length).toBeGreaterThan(0);
 
-    saveClosed(s, "m.cppm", "export module M;\nexport int m() { return 1; }\n");
+    s.disk.write("m.cppm", "export module M;\nexport int m() { return 1; }\n");
+    s.save("m.cppm");
     await s.clean("main.cpp");
 });
 
@@ -328,14 +323,14 @@ serve.files(
 )("preamble import keeps its pch", async ({ s }) => {
     const stderr = () => s.client.drainedStderr().toString("utf8");
     await s.clean("main.cpp");
-    await s.request("textDocument/completion", at("main.cpp", "int main"));
+    await s.completion(at("main.cpp", "int main"));
     expect((await s.counts()).pch).toBe(1);
 
-    saveClosed(
-        s,
+    s.disk.write(
         "a.cppm",
         "export module A;\nexport int b() { return 2; }\nexport int a() { return 1; }\n",
     );
+    s.save("a.cppm");
     await s.compiled("main.cpp");
     s.edit("main.cpp", { replace: "a()", with: "a() + b()" });
     await s.clean("main.cpp");
@@ -356,7 +351,8 @@ serve.files(
 )("preamble import finds a provider", async ({ s }) => {
     expect((await s.errors("main.cpp")).length).toBeGreaterThan(0);
 
-    saveClosed(s, "a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    s.disk.write("a.cppm", "export module A;\nexport int a() { return 1; }\n");
+    s.save("a.cppm");
     await s.clean("main.cpp");
 });
 

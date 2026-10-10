@@ -46,9 +46,7 @@ function changeOf(edit: proto.WorkspaceEdit | null, s: Serve, file: string) {
 const COMPUTE = at("main.cpp", "int co|mpute(int x) {");
 
 function rename(s: Serve, newName: string) {
-    return s.request("textDocument/rename", COMPUTE, {
-        newName,
-    }) as Promise<proto.WorkspaceEdit | null>;
+    return s.request<proto.WorkspaceEdit | null>("textDocument/rename", COMPUTE, { newName });
 }
 
 project("renames from the editor", async ({ s }) => {
@@ -96,18 +94,15 @@ project("the editor hears why not", async ({ s }) => {
     expect(await s.request("textDocument/prepareRename", at("main.cpp", "#include"))).toBeNull();
 });
 
-serve.files({ "main.cpp": "int compute();\nint use() { return compute(); }\n" })(
-    "a rootless server refuses up front",
-    async ({ s }) => {
-        // The serve fixture announces the workspace as a folder: a server
-        // of its own is started without one, on no database.
-        await s.stop();
-        s.disk.rm("compile_commands.json");
-        const client = await s.session.spawn(s.workspace).initialize(s.workspace, { folders: [] });
-        const [uri] = client.open("main.cpp");
-        await client.pullDiagnostics(uri);
+serve.files(
+    { "main.cpp": "int compute();\nint use() { return compute(); }\n" },
+    { databases: false, launch: { folders: [] } },
+)("a rootless server refuses up front", async ({ s }) => {
+    await s.compiled("main.cpp");
 
-        await expect(client.prepareRenameAt(uri, 0, 5)).rejects.toThrow("workspace folder");
-        await expect(client.renameAt(uri, 0, 5, "evaluate")).rejects.toThrow("workspace folder");
-    },
-);
+    const loc = at("main.cpp", "int c|ompute");
+    await expect(s.request("textDocument/prepareRename", loc)).rejects.toThrow("workspace folder");
+    await expect(s.request("textDocument/rename", loc, { newName: "evaluate" })).rejects.toThrow(
+        "workspace folder",
+    );
+});

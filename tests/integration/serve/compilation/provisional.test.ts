@@ -4,7 +4,7 @@
 
 import type * as proto from "vscode-languageserver-protocol";
 import type { Serve } from "@clice/tools/actions";
-import { writeDatabase, type Manifest } from "@clice/tools/project";
+import type { Manifest } from "@clice/tools/project";
 import { at, expect, serve } from "../../fixtures.ts";
 
 const A = "export module a;\nexport int fa() { return 1; }\n";
@@ -29,11 +29,8 @@ function cxx20(...units: string[]): Manifest {
 
 /// The database rewritten to `manifest`, and reloaded.
 async function reload(s: Serve, manifest: Manifest): Promise<void> {
-    writeDatabase(s.workspace, manifest);
-    expect(
-        (await s.client.poll("cdb", { force: true })).events,
-        "the reload changes the build",
-    ).toBe(1);
+    s.disk.database(manifest);
+    expect(await s.poll("cdb", { force: true }), "the reload changes the build").toBe(1);
 }
 
 /// The index's definitions named `name` exactly.
@@ -255,7 +252,12 @@ serve.files(
             "#pragma once\n#ifndef FROM_A\n#error needs FROM_A\n#endif\ninline int util() { return 1; }\n",
         "src/a.cpp": "int a() { return 0; }\n",
     },
-    { manifest: { cxx: ["-std=c++20"], units: { "src/a.cpp": ["-DFROM_A", "-Iinclude"] } } },
+    {
+        manifest: {
+            cxx: ["-std=c++20"],
+            units: { "src/a.cpp": ["-DFROM_A", "-I${workspace}/include"] },
+        },
+    },
 )("first module borrows project flags", async ({ s }) => {
     expect(
         await saveNew(

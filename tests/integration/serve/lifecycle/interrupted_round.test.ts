@@ -29,19 +29,15 @@ async function persistedUnits(s: Serve): Promise<number> {
 /// first to come lands, and the next stays parked — the round cannot end
 /// while it is.
 async function midRound(s: Serve): Promise<void> {
-    const holds = new Map<Promise<Hold>, Hold>();
+    const holds: Hold[] = [];
     for (const unit of Object.keys(s.manifest.units)) {
-        const hold = await s.hold("index", unit);
-        const parked = hold.reached().then(() => hold);
-        // A hold left unreached rejects when the server exits.
-        parked.catch(() => undefined);
-        holds.set(parked, hold);
+        holds.push(await s.hold("index", unit));
     }
-    const first = await Promise.race(holds.keys());
+    const first = await s.firstParked(holds);
     await first.release();
-    const rest = [...holds].filter(([, hold]) => hold !== first);
-    const kept = await Promise.race(rest.map(([parked]) => parked));
-    for (const [, hold] of rest) {
+    const rest = holds.filter((hold) => hold !== first);
+    const kept = await s.firstParked(rest);
+    for (const hold of rest) {
         if (hold !== kept) {
             await hold.release();
         }
@@ -64,8 +60,7 @@ serve.files(FILES, { env: { CLICE_TEST_CHECKPOINT_MS: String(CHECKPOINT_MS) } })
         expect(serverLog(s)).toMatch(/phase=save shards=[1-9]/);
         // The kill must land mid-round, before the round-end save.
         expect(serverLog(s)).not.toContain("[perf:index] phase=run ");
-        s.client.killServer();
-        s.client.dispose();
+        await s.kill();
         expect(await persistedUnits(s)).toBeGreaterThan(0);
     },
 );
@@ -75,18 +70,18 @@ serve.files(FILES)("shutdown reply follows the save", async ({ s }) => {
     expect(serverLog(s)).toContain("Merged TUIndex");
     // Zed kills the server as soon as it has sent `exit`.
     await s.client.sendRequest(proto.ShutdownRequest.type);
-    s.client.killServer();
-    s.client.dispose();
+    await s.kill();
     expect(await persistedUnits(s)).toBeGreaterThan(0);
 });
 
-if (process.platform !== "win32") {
-    serve.files(FILES)("sigterm saves the round", async ({ s }) => {
+serve.files(FILES).skipIf(process.platform === "win32")(
+    "sigterm saves the round",
+    async ({ s }) => {
         await midRound(s);
         expect(serverLog(s)).toContain("Merged TUIndex");
         s.client.child.kill("SIGTERM");
         await s.client.assertExitedCleanly(30_000);
         s.client.dispose();
         expect(await persistedUnits(s)).toBeGreaterThan(0);
-    });
-}
+    },
+);

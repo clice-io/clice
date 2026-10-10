@@ -152,7 +152,7 @@ serve.files(
     await s.compiled("main.cpp");
     await expectIndexed(s, "helper", "/lib.cpp");
     await s.compiled("utils.h");
-    expect((await s.client.stats()).synthesizedContexts).toBe(1);
+    expect((await s.stats()).synthesizedContexts).toBe(1);
 
     const loc = at("utils.h", "h|elper()");
     const [action] = await includeActions(s, loc);

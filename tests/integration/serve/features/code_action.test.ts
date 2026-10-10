@@ -4,25 +4,14 @@
 /// project index — and that the code an action writes compiles.
 
 import * as fs from "node:fs";
-import { anchorSnippet, uniqueSpan, type Serve } from "@clice/tools/actions";
-import { actionsOf, editsFor, positionAt } from "@clice/tools/client/edits";
-import type * as proto from "vscode-languageserver-protocol";
-import { at, expect, serve, type Loc } from "../../fixtures.ts";
+import type { Serve } from "@clice/tools/actions";
+import { actionsOf, editsFor } from "@clice/tools/client/edits";
+import { at, expect, serve } from "../../fixtures.ts";
 
 const LLVM_STYLE = "BasedOnStyle: LLVM\n";
 
 function cxx17(...units: string[]) {
     return { cxx: ["-std=c++17"], units: Object.fromEntries(units.map((unit) => [unit, []])) };
-}
-
-/// The empty range at `loc` in the file's disk text, for requests the
-/// actions do not send.
-function rangeAt(s: Serve, loc: Loc): proto.Range {
-    const text = s.disk.read(loc.file);
-    const { snippet, cursor } = anchorSnippet(loc.anchor);
-    const offset = uniqueSpan(text, snippet, loc.file).begin + cursor;
-    const position = positionAt(text, Buffer.byteLength(text.slice(0, offset)));
-    return { start: position, end: position };
 }
 
 /// The index answers `name` with a symbol of `file`.
@@ -60,15 +49,9 @@ serve.files({ "main.cpp": "struct S {\n  int f();\n};\n" }, { manifest: cxx17("m
     async ({ s }) => {
         await s.compiled("main.cpp");
         const loc = at("main.cpp", "int |f()");
-        const range = rangeAt(s, loc);
 
         const only = async (kind: string) =>
-            actionsOf(
-                (await s.request("textDocument/codeAction", "main.cpp", {
-                    range,
-                    context: { diagnostics: [], only: [kind] },
-                })) as proto.CodeAction[],
-            ).map((action) => action.title);
+            actionsOf(await s.codeActions(loc, { only: [kind] })).map((action) => action.title);
 
         const all = actionsOf(await s.codeActions(loc)).map((action) => action.title);
         expect(all).toEqual(["Define 'f' inline", "Define 'S::f' out of line"]);
@@ -116,56 +99,49 @@ serve.files(
 });
 
 // A symlink needs privileges on Windows.
-if (process.platform !== "win32") {
-    serve.files(
+const linked = serve
+    .files(
         {
             ".clang-format": LLVM_STYLE,
             "vendor/.clang-format": "BasedOnStyle: LLVM\nAllowShortFunctionsOnASingleLine: None\n",
             "widget.h": "#pragma once\nstruct Widget {\n  void a();\n};\n",
             "vendor/real/main.cpp": '#include "widget.h"\nint main() { return 0; }\n',
         },
-        { manifest: { cxx: ["-std=c++17"], units: { "src/main.cpp": ["-I."] } } },
-    )("closed host formats by the database's name", async ({ s }) => {
-        // The files cannot hold a link: the server restarts on the linked
-        // workspace, the cache of the unlinked one dropped.
-        await s.offline(() => {
-            fs.symlinkSync(s.workspace.path("vendor/real"), s.workspace.path("src"));
-            s.workspace.rm(".clice/cache");
-        });
-        await s.compiled("widget.h");
+        {
+            manifest: { cxx: ["-std=c++17"], units: { "src/main.cpp": ["-I${workspace}"] } },
+            setup: (workspace) => {
+                fs.symlinkSync(workspace.path("vendor/real"), workspace.path("src"));
+            },
+        },
+    )
+    .skipIf(process.platform === "win32");
 
-        const actions = actionsOf(await s.codeActions(at("widget.h", "struct |Widget")));
-        const host = actions.find(
-            (action) => action.title === "Define missing members of 'Widget' in main.cpp",
-        );
-        expect(host).toBeDefined();
-        const [edit] = editsFor(host!, s.uri("vendor/real/main.cpp"));
-        expect(edit!.newText).toBe("\nvoid Widget::a() {}\n");
-        s.close("widget.h");
-    });
-}
+linked("closed host formats by the database's name", async ({ s }) => {
+    await s.compiled("widget.h");
 
-serve.files({ "main.cpp": "struct S {\n  int f();\n};\n" }, { manifest: cxx17("main.cpp") })(
-    "plain changes for a client without versioned edits",
-    async ({ s }) => {
-        const range = rangeAt(s, at("main.cpp", "int |f()"));
-        // A client of its own capabilities: the case's server declares
-        // versioned edits.
-        await s.stop();
-        const client = await s.session
-            .spawn(s.workspace)
-            .initialize(s.workspace, { capabilities: {} });
-        const [uri] = await client.openAndWait("main.cpp");
+    const actions = actionsOf(await s.codeActions(at("widget.h", "struct |Widget")));
+    const host = actions.find(
+        (action) => action.title === "Define missing members of 'Widget' in main.cpp",
+    );
+    expect(host).toBeDefined();
+    const [edit] = editsFor(host!, s.uri("vendor/real/main.cpp"));
+    expect(edit!.newText).toBe("\nvoid Widget::a() {}\n");
+    s.close("widget.h");
+});
 
-        const actions = actionsOf(await client.codeActions(uri, range));
-        expect(actions.length).toBeGreaterThan(0);
-        for (const action of actions) {
-            expect(action.edit!.documentChanges).toBeUndefined();
-            expect(Object.keys(action.edit!.changes!)).toEqual([uri]);
-        }
-        client.close(uri);
-    },
-);
+serve.files(
+    { "main.cpp": "struct S {\n  int f();\n};\n" },
+    { manifest: cxx17("main.cpp"), launch: { capabilities: {} } },
+)("plain changes for a client without versioned edits", async ({ s }) => {
+    await s.compiled("main.cpp");
+    const actions = actionsOf(await s.codeActions(at("main.cpp", "int |f()")));
+    expect(actions.length).toBeGreaterThan(0);
+    for (const action of actions) {
+        expect(action.edit!.documentChanges).toBeUndefined();
+        expect(Object.keys(action.edit!.changes!)).toEqual([s.uri("main.cpp")]);
+    }
+    s.close("main.cpp");
+});
 
 serve.files(
     {

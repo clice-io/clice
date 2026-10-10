@@ -18,7 +18,7 @@ async function ownIndexWarnings(s: Serve, file: string): Promise<string[]> {
 
 async function transfersRemoved(s: Serve): Promise<void> {
     await s.sync();
-    expect((await s.client.stats()).pendingTmpFiles, "transfer files left behind").toBe(0);
+    expect((await s.stats()).pendingTmpFiles, "transfer files left behind").toBe(0);
 }
 
 serve.files({ "big.cpp": BIG }, { env: HOOK, config: { project: { enable_indexing: false } } })(

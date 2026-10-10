@@ -8,7 +8,7 @@ const test = serve.data("hello_world");
 
 const ADD = at("main.cpp", "add(int a");
 const FIRST_LINE = at("main.cpp", "#include <iostream>");
-const FIRST_TEN = { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } };
+const FIRST_TEN = at("main.cpp", "#include <");
 const LINES_0_TO_10 = { start: { line: 0, character: 0 }, end: { line: 10, character: 0 } };
 
 function capabilityEnabled(capability: unknown): boolean {
@@ -16,7 +16,7 @@ function capabilityEnabled(capability: unknown): boolean {
 }
 
 test("server info", async ({ s }) => {
-    const info = s.client.initResult!.serverInfo!;
+    const info = s.initResult.serverInfo!;
     expect(info.name).toBe("clice");
     // The version is injected at build time (git describe or the base
     // version); instead of pinning a value, pin that the LSP handshake and
@@ -32,7 +32,7 @@ test("server info", async ({ s }) => {
 });
 
 test("capabilities", ({ s }) => {
-    const caps = s.client.initResult!.capabilities;
+    const caps = s.initResult.capabilities;
     expect(caps.hoverProvider).toBe(true);
     expect(caps.completionProvider).toBeDefined();
     expect(caps.completionProvider!.triggerCharacters).toContain(" ");
@@ -47,13 +47,11 @@ test("capabilities", ({ s }) => {
     expect(caps.documentFormattingProvider).toBe(true);
     expect(caps.documentRangeFormattingProvider).toBe(true);
     expect(caps.semanticTokensProvider).toBeDefined();
-    return Promise.resolve();
 });
 
 test("semantic token modifier legend", ({ s }) => {
-    const legend = (
-        s.client.initResult!.capabilities.semanticTokensProvider as proto.SemanticTokensOptions
-    ).legend;
+    const legend = (s.initResult.capabilities.semanticTokensProvider as proto.SemanticTokensOptions)
+        .legend;
     expect(legend).toBeDefined();
     expect(legend.tokenTypes).toContain("identifier");
     expect([...legend.tokenModifiers]).toEqual([
@@ -81,7 +79,6 @@ test("semantic token modifier legend", ({ s }) => {
         "globalScope",
         "inactive",
     ]);
-    return Promise.resolve();
 });
 
 test("did open close cycle", async ({ s }) => {
@@ -122,9 +119,8 @@ test("close clears diagnostics", async ({ s }) => {
     await s.compiled("main.cpp");
     const before = (await s.counts()).files["main.cpp"]?.publish ?? 0;
     s.close("main.cpp");
-    await s.sync();
-    expect(s.client.publishCount(s.uri("main.cpp"))).toBe(before + 1);
-    expect(s.client.lastPublish(s.uri("main.cpp"))?.diagnostics).toEqual([]);
+    expect(await s.pushed("main.cpp")).toEqual([]);
+    expect((await s.counts()).files["main.cpp"]?.publish).toBe(before + 1);
 });
 
 test("hover before compile", async ({ s }) => {
@@ -135,12 +131,12 @@ test("hover before compile", async ({ s }) => {
 
 test("completion request", async ({ s }) => {
     await s.compiled("main.cpp");
-    await s.request("textDocument/completion", FIRST_LINE);
+    await s.completion(FIRST_LINE);
 });
 
 test("signature help request", async ({ s }) => {
     await s.compiled("main.cpp");
-    await s.request("textDocument/signatureHelp", FIRST_LINE);
+    await s.signatureHelp(FIRST_LINE);
 });
 
 test("definition request", async ({ s }) => {
@@ -170,10 +166,7 @@ test("inlay hint request", async ({ s }) => {
 
 test("code action request", async ({ s }) => {
     await s.compiled("main.cpp");
-    await s.request("textDocument/codeAction", "main.cpp", {
-        range: FIRST_TEN,
-        context: { diagnostics: [] },
-    });
+    await s.codeActions(FIRST_TEN, { span: true });
 });
 
 test("document link request", async ({ s }) => {
@@ -203,9 +196,11 @@ test("save notification", async ({ s }) => {
 });
 
 test("hover on unknown file", async ({ s }) => {
-    await expect(s.client.hoverAt("file:///nonexistent/fake.cpp", 0, 0)).rejects.toThrow(
-        "Document not open",
-    );
+    await expect(
+        s.request("textDocument/hover", "/nonexistent/fake.cpp", {
+            position: { line: 0, character: 0 },
+        }),
+    ).rejects.toThrow("Document not open");
 });
 
 test("hover out of range position", async ({ s }) => {
@@ -228,16 +223,13 @@ test("all features after compile wait", async ({ s }) => {
     await s.compiled("main.cpp");
 
     expect(await s.hover(ADD)).not.toBeNull();
-    await s.request("textDocument/completion", at("main.cpp", '"|hello world"'));
-    await s.request("textDocument/signatureHelp", FIRST_LINE);
+    await s.completion(at("main.cpp", '"|hello world"'));
+    await s.signatureHelp(FIRST_LINE);
     await s.definition(ADD);
     expect(await s.request("textDocument/documentSymbol", "main.cpp")).not.toBeNull();
     expect(await s.request("textDocument/foldingRange", "main.cpp")).not.toBeNull();
     expect(await s.request("textDocument/semanticTokens/full", "main.cpp")).not.toBeNull();
     expect(await s.request("textDocument/documentLink", "main.cpp")).not.toBeNull();
-    await s.request("textDocument/codeAction", "main.cpp", {
-        range: FIRST_TEN,
-        context: { diagnostics: [] },
-    });
+    await s.codeActions(FIRST_TEN, { span: true });
     await s.request("textDocument/inlayHint", "main.cpp", { range: LINES_0_TO_10 });
 });

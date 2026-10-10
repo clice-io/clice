@@ -5,7 +5,7 @@
 /// back to disk after a save, saves write only the true dirty set, and
 /// cancelled builds leave no tmp blobs behind.
 
-import type { CliceClient } from "@clice/tools/client";
+import type { Serve } from "@clice/tools/actions";
 import { wireKeys, type StatsResult } from "@clice/tools/protocol";
 import { at, expect, serve } from "../../fixtures.ts";
 
@@ -20,48 +20,47 @@ serve.files(FUNCS)("shards flip back after save", async ({ s }) => {
         "func_3 file3.cpp: int func_3() { return 3; }",
     );
 
-    const stats = await s.client.stats();
+    const stats = await s.stats();
     expect(stats.indexInmemoryShards, "shards did not flip back after save").toBe(0);
     expect(
         stats.lastSaveShards,
         `the settled round should have written shards: ${JSON.stringify(stats)}`,
     ).toBeGreaterThanOrEqual(1);
-    s.client.assertNoAnomaly();
+    await s.noAnomaly();
 });
 
-/// The server settled, and the names its index has for `query`.
-async function settled(client: CliceClient, query: string, poll = false): Promise<string[]> {
-    expect((await client.sync({ poll })).pending).toEqual([]);
-    return ((await client.workspaceSymbols(query)) ?? []).map((symbol) => symbol.name);
+/// The names the server's index has for `query`.
+async function indexedNames(s: Serve, query: string): Promise<string[]> {
+    return ((await s.workspaceSymbols(query)) ?? []).map((symbol) => symbol.name);
 }
 
 serve.files(FUNCS)("save writes only dirty shards", async ({ s }) => {
     // Open before the project starts: its first round leaves the open file
     // to the file's own compile. The case's server has run a round of its
-    // own, so a server spawned here starts from no cache.
+    // own, so the server started here starts from no cache.
     await s.stop();
     s.workspace.rm(".clice/cache");
-    const client = s.session.spawn(s.workspace);
-    let uri = "";
-    await client.initialize(s.workspace, {
+    await s.start({
         beforeInitialized: () => {
-            [uri] = client.open("file0.cpp");
+            s.open("file0.cpp", { pull: false });
             return Promise.resolve();
         },
     });
-    await client.pullDiagnostics(uri);
-    expect(await settled(client, "func_3"), "background index did not finish").toContain("func_3");
-    expect((await client.stats()).indexInmemoryShards, "initial round did not settle").toBe(0);
+    await s.diagnostics("file0.cpp");
+    await s.sync();
+    expect(await indexedNames(s, "func_3"), "background index did not finish").toContain("func_3");
+    expect((await s.stats()).indexInmemoryShards, "initial round did not settle").toBe(0);
 
     // Change one file on disk and tick the tracker: only its shard should
     // be re-merged and re-saved. The rewrite has another size, which the
     // look at the disk sees at once.
     s.disk.write("file2.cpp", "int func_2_renamed() { return 2; }\n");
-    expect(await settled(client, "func_2_renamed", true), "reindex did not land").toContain(
+    await s.sync({ poll: true });
+    expect(await indexedNames(s, "func_2_renamed"), "reindex did not land").toContain(
         "func_2_renamed",
     );
 
-    const stats = await client.stats();
+    const stats = await s.stats();
     expect(stats.indexInmemoryShards, "incremental round did not settle").toBe(0);
     // Load-bearing assumptions for the exact count: the files are
     // standalone (no includes, so no header-shard fan-out) and only
@@ -75,20 +74,20 @@ serve.files(FUNCS)("save writes only dirty shards", async ({ s }) => {
     // The open file compiles itself, so the rounds leave its disk snapshot
     // alone and saving the same bytes queues nothing; closing it hands the
     // file back to the background index.
-    client.save(uri);
-    expect((await client.sync()).pending).toEqual([]);
-    const saved = await client.stats();
+    s.save("file0.cpp", { write: false });
+    await s.sync();
+    const saved = await s.stats();
     expect(saved.indexInmemoryShards, "the save left shards in memory").toBe(0);
     expect(saved.indexShardContentBytes).toBe(stats.indexShardContentBytes);
 
-    client.close(uri);
-    expect((await client.sync()).pending).toEqual([]);
-    const closed = await client.stats();
+    s.close("file0.cpp");
+    await s.sync();
+    const closed = await s.stats();
     expect(closed.indexShardContentBytes, "the closed file's shard did not land").toBeGreaterThan(
         saved.indexShardContentBytes,
     );
     expect(closed.indexInmemoryShards, "the closed file's shard did not land").toBe(0);
-    client.assertNoAnomaly();
+    await s.noAnomaly();
 });
 
 serve.files({
@@ -109,12 +108,12 @@ serve.files({
 
     await s.compiled("main.cpp");
     await s.sync();
-    let stats = await s.client.stats();
+    let stats = await s.stats();
     expect(stats.pendingTmpFiles, "cancelled builds leaked tmp blobs").toBe(0);
     expect(s.workspace.tmpFiles(), "tmp directory should be empty after settling").toEqual([]);
     // Extra gauges no other test asserts on: a real PCH build and one open
     // session must both register.
-    stats = await s.client.stats();
+    stats = await s.stats();
     expect(
         stats.pchCacheEntries,
         `a PCH was built: ${JSON.stringify(stats)}`,
@@ -143,7 +142,7 @@ serve.files({
             ]),
         ].sort(),
     );
-    s.client.assertNoAnomaly();
+    await s.noAnomaly();
 });
 
 const PREAMBLES: Record<string, string> = {};
@@ -157,7 +156,7 @@ serve.files(PREAMBLES)("preamble state released", async ({ s }) => {
     for (const unit of units) {
         await s.compiled(unit);
     }
-    let stats = await s.client.stats();
+    let stats = await s.stats();
     expect(stats.pchLoadedStates, `three distinct preambles: ${JSON.stringify(stats)}`).toBe(3);
 
     for (const unit of units) {
@@ -167,7 +166,7 @@ serve.files(PREAMBLES)("preamble state released", async ({ s }) => {
     // just-closed state warm): with everything closed at least one of the
     // three states must unload instead of staying mapped forever.
     await s.sync();
-    stats = await s.client.stats();
+    stats = await s.stats();
     expect(
         stats.pchLoadedStates,
         "closing documents must release loaded preamble states",
@@ -178,12 +177,12 @@ serve.files(PREAMBLES)("preamble state released", async ({ s }) => {
     await s.compiled("m0.cpp");
     const hover = await s.hover(at("m0.cpp", "return dist|inct_0"));
     expect(hover, "query must survive an unload/reload cycle").not.toBeNull();
-    stats = await s.client.stats();
+    stats = await s.stats();
     expect(
         stats.pchLoadedStates,
         `state reloaded: ${JSON.stringify(stats)}`,
     ).toBeGreaterThanOrEqual(1);
-    s.client.assertNoAnomaly();
+    await s.noAnomaly();
 });
 
 serve.files({
@@ -200,8 +199,8 @@ serve.files({
     }
     // Identical preambles share one content key, and sharing means one
     // blob: opening more consumers must not multiply loaded states.
-    const stats = await s.client.stats();
+    const stats = await s.stats();
     expect(stats.pchLoadedStates, `one shared key: ${JSON.stringify(stats)}`).toBe(1);
     expect(stats.pchCacheEntries, `one shared entry: ${JSON.stringify(stats)}`).toBe(1);
-    s.client.assertNoAnomaly();
+    await s.noAnomaly();
 });

@@ -5,7 +5,7 @@
 /// its last line too, and a block whose brace sits below its declaration's
 /// name starts on the name's line.
 
-import * as proto from "vscode-languageserver-protocol";
+import type * as proto from "vscode-languageserver-protocol";
 import { expect, serve } from "../../fixtures.ts";
 
 const MAIN = `int f(int a) {
@@ -220,39 +220,30 @@ function render(folds: proto.FoldingRange[] | null): string[] {
 }
 
 for (const { name, source, headers = [], lines, characters } of CASES) {
-    const test = serve.files(
-        {
-            "main.cpp": source,
-            ...Object.fromEntries(headers.map((header) => [header, "#pragma once\n"])),
-        },
-        { manifest: { cxx: ["-std=c++17"], units: { "main.cpp": [] } } },
-    );
+    const files = {
+        "main.cpp": source,
+        ...Object.fromEntries(headers.map((header) => [header, "#pragma once\n"])),
+    };
+    const manifest = { cxx: ["-std=c++17"], units: { "main.cpp": [] } };
 
-    test(`${name} with lineFoldingOnly true`, async ({ s }) => {
-        // The actions' client advertises no folding capability: a client of
-        // its own on the workspace does, the actions' server stopped first.
-        await s.stop();
-        const client = s.session.spawn(s.workspace);
-        await client.initialize(s.workspace, {
-            capabilities: { textDocument: { foldingRange: { lineFoldingOnly: true } } },
-        });
-        const [uri] = client.open("main.cpp");
-        const diagnostics = await client.pullDiagnostics(uri);
-        expect(
-            diagnostics.filter(
-                (diagnostic) => diagnostic.severity === proto.DiagnosticSeverity.Error,
-            ),
-        ).toEqual([]);
-
-        expect(render(await client.foldingRanges(uri))).toEqual(lines);
+    serve.files(files, {
+        manifest,
+        launch: { capabilities: { textDocument: { foldingRange: { lineFoldingOnly: true } } } },
+    })(`${name} with lineFoldingOnly true`, async ({ s }) => {
+        expect(await s.errors("main.cpp")).toEqual([]);
+        const folds = await s.request<proto.FoldingRange[] | null>(
+            "textDocument/foldingRange",
+            "main.cpp",
+        );
+        expect(render(folds)).toEqual(lines);
     });
 
-    test(`${name} with lineFoldingOnly false`, async ({ s }) => {
+    serve.files(files, { manifest })(`${name} with lineFoldingOnly false`, async ({ s }) => {
         expect(await s.errors("main.cpp")).toEqual([]);
-
-        const folds = (await s.request("textDocument/foldingRange", "main.cpp")) as
-            | proto.FoldingRange[]
-            | null;
+        const folds = await s.request<proto.FoldingRange[] | null>(
+            "textDocument/foldingRange",
+            "main.cpp",
+        );
         expect(render(folds)).toEqual(characters);
     });
 }

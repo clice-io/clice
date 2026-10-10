@@ -11,24 +11,22 @@ serve.files({ "main.cpp": MAIN }, { manifest: { units: { "main.cpp": ["-fsanitiz
     "address sanitizer entry compiles",
     async ({ s }) => {
         expect(await s.errors("main.cpp")).toEqual([]);
-        const links = (await s.request("textDocument/documentLink", "main.cpp")) as
-            | proto.DocumentLink[]
-            | null;
+        const links = await s.request<proto.DocumentLink[] | null>(
+            "textDocument/documentLink",
+            "main.cpp",
+        );
         expect(links?.length).toBe(1);
     },
 );
 
 serve.files(
-    { "sub/ignore.txt": "fun:skipped\n", "sub/main.cpp": MAIN },
-    { manifest: { units: {} } },
-)("ignorelist beside the entry compiles", async ({ s }) => {
-    // The entry's directory is not the root the fixture writes databases for.
-    await s.offline(() => {
-        s.disk.write(
-            "compile_commands.json",
+    {
+        "sub/ignore.txt": "fun:skipped\n",
+        "sub/main.cpp": MAIN,
+        "compile_commands.json": (workspace) =>
             JSON.stringify([
                 {
-                    directory: s.workspace.path("sub"),
+                    directory: workspace.path("sub"),
                     file: "main.cpp",
                     arguments: [
                         "clang++",
@@ -39,8 +37,9 @@ serve.files(
                     ],
                 },
             ]),
-        );
-    });
+    },
+    { databases: false },
+)("ignorelist beside the entry compiles", async ({ s }) => {
     expect(
         await s.errors("sub/main.cpp"),
         "the list resolves in the entry's directory, as for clang",

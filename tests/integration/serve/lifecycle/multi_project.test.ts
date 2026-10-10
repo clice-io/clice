@@ -2,97 +2,87 @@
 /// with its own compilation database and cache, files are routed to the
 /// project that compiles them, and folders come and go at runtime.
 
-import type * as proto from "vscode-languageserver-protocol";
-import type { Serve } from "@clice/tools/actions";
-import { runProcess, type CliceClient } from "@clice/tools/client";
+import * as proto from "vscode-languageserver-protocol";
+import type { FileText, Serve, ServeOptions } from "@clice/tools/actions";
+import { runProcess } from "@clice/tools/client";
+import type { Manifest } from "@clice/tools/project";
 import type { Workspace } from "@clice/tools/workspace";
-import { at, cliceExecutable, expect, serve } from "../../fixtures.ts";
+import { at, cliceExecutable, expect, serve, type ServeTest } from "../../fixtures.ts";
 
 /// A source that compiles only with `-D<flag>`, defining `name`.
 function gated(flag: string, name: string): string {
     return `#ifndef ${flag}\n#error missing ${flag}\n#endif\nint ${name}() { return 0; }\n`;
 }
 
-/// Two folders, each with a database that passes its own flag.
-function twoProjects(ws: Workspace): void {
-    ws.write("alpha/main.cpp", gated("IN_ALPHA", "alpha_fn"));
-    ws.write("beta/main.cpp", gated("IN_BETA", "beta_fn"));
-    ws.writeCDB(["alpha/main.cpp"], {
-        extraArgs: ["-DIN_ALPHA"],
-        at: "alpha/compile_commands.json",
-    });
-    ws.writeCDB(["beta/main.cpp"], { extraArgs: ["-DIN_BETA"], at: "beta/compile_commands.json" });
+/// A database of `units`, each with its own arguments.
+function database(units: Record<string, string[]>): Manifest {
+    return { cxx: ["-std=c++17"], units };
 }
+
+/// Files and the databases listing them, by workspace-relative path.
+interface Layout {
+    files: Record<string, FileText>;
+    databases: Record<string, Manifest>;
+}
+
+/// Cases on `layout`, every server announcing `announced` as its folders.
+function folders(
+    announced: string[] | null,
+    layout: Layout,
+    options: ServeOptions = {},
+): ServeTest {
+    return serve.files(layout.files, {
+        ...options,
+        databases: layout.databases,
+        launch: { ...options.launch, folders: announced },
+    });
+}
+
+const ALPHA_DATABASE = database({ "alpha/main.cpp": ["-DIN_ALPHA"] });
+const BETA_DATABASE = database({ "beta/main.cpp": ["-DIN_BETA"] });
+
+/// Two folders, each with a database that passes its own flag.
+const TWO_PROJECTS: Layout = {
+    files: {
+        "alpha/main.cpp": gated("IN_ALPHA", "alpha_fn"),
+        "beta/main.cpp": gated("IN_BETA", "beta_fn"),
+    },
+    databases: {
+        "alpha/compile_commands.json": ALPHA_DATABASE,
+        "beta/compile_commands.json": BETA_DATABASE,
+    },
+};
 
 /// One file both folders' databases list, each under its own flag.
-function sharedFile(ws: Workspace): void {
-    ws.write("alpha/shared.cpp", "int shared() { return 0; }\n");
-    ws.writeCDB(["alpha/shared.cpp"], {
-        extraArgs: ["-DFIRST"],
-        at: "alpha/compile_commands.json",
-    });
-    ws.writeCDB(["alpha/shared.cpp"], {
-        extraArgs: ["-DSECOND"],
-        at: "beta/compile_commands.json",
-    });
-}
+const SHARED_FILE: Layout = {
+    files: { "alpha/shared.cpp": "int shared() { return 0; }\n" },
+    databases: {
+        "alpha/compile_commands.json": database({ "alpha/shared.cpp": ["-DFIRST"] }),
+        "beta/compile_commands.json": database({ "alpha/shared.cpp": ["-DSECOND"] }),
+    },
+};
+
+const INCLUDE_LIB = "-I${workspace}/lib/include";
 
 /// A library and an application including its header, each its own folder.
-function libraryAndApp(ws: Workspace): void {
-    ws.write(
-        "lib/include/lib.h",
-        "#pragma once\nint lib_fn();\ninline int shared_fn() { return 2; }\n",
+const LIBRARY_AND_APP: Layout = {
+    files: {
+        "lib/include/lib.h": "#pragma once\nint lib_fn();\ninline int shared_fn() { return 2; }\n",
+        "lib/src/lib.cpp": '#include "lib.h"\nint lib_fn() { return shared_fn(); }\n',
+        "app/main.cpp": '#include "lib.h"\nint main() { return lib_fn(); }\n',
+    },
+    databases: {
+        "lib/compile_commands.json": database({ "lib/src/lib.cpp": [INCLUDE_LIB] }),
+        "app/compile_commands.json": database({ "app/main.cpp": [INCLUDE_LIB] }),
+    },
+};
+
+/// The errors the server last pushed for `file`, unasked; undefined when
+/// it pushed none.
+async function pushedErrors(s: Serve, file: string): Promise<proto.Diagnostic[] | undefined> {
+    return (await s.pushed(file))?.filter(
+        (diagnostic) => diagnostic.severity === proto.DiagnosticSeverity.Error,
     );
-    ws.write("lib/src/lib.cpp", '#include "lib.h"\nint lib_fn() { return shared_fn(); }\n');
-    ws.write("app/main.cpp", '#include "lib.h"\nint main() { return lib_fn(); }\n');
-    const include = `-I${ws.path("lib/include")}`;
-    ws.writeCDB(["lib/src/lib.cpp"], { extraArgs: [include], at: "lib/compile_commands.json" });
-    ws.writeCDB(["app/main.cpp"], { extraArgs: [include], at: "app/compile_commands.json" });
-}
-
-/// Start a server announcing `folders` (InitializeOptions.folders) and
-/// point the case's actions at it: a Serve server announces the workspace
-/// root alone.
-async function startOn(
-    s: Serve,
-    folders: string[] | null,
-    beforeInitialized?: (client: CliceClient) => Promise<void>,
-): Promise<void> {
-    await s.start({
-        folders,
-        beforeInitialized:
-            beforeInitialized === undefined ? undefined : () => beforeInitialized(s.client),
-    });
-}
-
-/// Serve `folders` over the workspace `layout` writes, in place of the
-/// empty workspace the case started on: its server, cache and database go.
-async function onFolders(
-    s: Serve,
-    folders: string[] | null,
-    layout: (ws: Workspace) => void,
-    beforeInitialized?: (client: CliceClient) => Promise<void>,
-): Promise<void> {
-    await s.stop();
-    s.workspace.rm(".clice");
-    s.workspace.rm("compile_commands.json");
-    layout(s.workspace);
-    await startOn(s, folders, beforeInitialized);
-}
-
-/// Folders come and go (didChangeWorkspaceFolders); the server settles.
-async function changeFolders(
-    s: Serve,
-    change: { added?: string[]; removed?: string[] },
-): Promise<void> {
-    s.steps.note(`folders ${JSON.stringify(change)}`);
-    await s.client.changeWorkspaceFolders(change);
-    await s.sync();
-}
-
-/// The errors the server last pushed for `file`, unasked.
-function pushedErrors(s: Serve, file: string): proto.Diagnostic[] {
-    return s.client.errors(s.uri(file));
 }
 
 /// The index lists a definition of `name` at `where` ("file: its line").
@@ -116,36 +106,29 @@ const MAIN = "app/main.cpp: int main() { return lib_fn(); }";
 const LIB_FN = "lib/src/lib.cpp: int lib_fn() { return shared_fn(); }";
 const LIB_FN_CALL = at("app/main.cpp", "l|ib_fn()");
 
-const test = serve.files({});
-
-test("folders compile separately", async ({ s }) => {
-    await onFolders(s, ["alpha", "beta"], twoProjects);
+folders(["alpha", "beta"], TWO_PROJECTS)("folders compile separately", async ({ s }) => {
     expect(await s.errors("alpha/main.cpp"), "alpha compiles with its own database").toEqual([]);
     expect(await s.errors("beta/main.cpp"), "beta compiles with its own database").toEqual([]);
 
-    const stats = await s.client.stats();
-    expect(stats.sessions, "the gauges add every folder up").toBe(2);
-    expect((await s.client.poll("cdb")).events, "a tick finds nothing changed").toBe(0);
+    expect((await s.stats()).sessions, "the gauges add every folder up").toBe(2);
+    expect(await s.poll("cdb"), "a tick finds nothing changed").toBe(0);
 });
 
-test("root uri alone serves its folder", async ({ s }) => {
-    await onFolders(s, null, twoProjects);
+folders(null, TWO_PROJECTS)("root uri alone serves its folder", async ({ s }) => {
     expect(
         await s.errors("alpha/main.cpp"),
         "the root's project finds the database below it",
     ).toEqual([]);
 });
 
-test("workspace symbol spans folders", async ({ s }) => {
-    await onFolders(s, ["alpha", "beta"], twoProjects);
+folders(["alpha", "beta"], TWO_PROJECTS)("workspace symbol spans folders", async ({ s }) => {
     await s.compiled("alpha/main.cpp");
     await s.indexed();
     await listed(s, "alpha_fn", ALPHA_FN);
     await listed(s, "beta_fn", BETA_FN);
 });
 
-test("shared header symbol listed once", async ({ s }) => {
-    await onFolders(s, ["app", "lib"], libraryAndApp);
+folders(["app", "lib"], LIBRARY_AND_APP)("shared header symbol listed once", async ({ s }) => {
     await s.indexed();
     await listed(s, "main", MAIN);
     await listed(s, "lib_fn", LIB_FN);
@@ -153,8 +136,7 @@ test("shared header symbol listed once", async ({ s }) => {
     expect(symbols.map((symbol) => symbol.name)).toEqual(["shared_fn"]);
 });
 
-test("each folder keeps its own cache", async ({ s }) => {
-    await onFolders(s, ["alpha", "beta"], twoProjects);
+folders(["alpha", "beta"], TWO_PROJECTS)("each folder keeps its own cache", async ({ s }) => {
     await s.compiled("alpha/main.cpp");
     await s.indexed();
     await listed(s, "beta_fn", BETA_FN);
@@ -165,16 +147,22 @@ test("each folder keeps its own cache", async ({ s }) => {
     expect(s.workspace.exists("beta/.clice")).toBe(true);
 });
 
-test("configured cache directory serves once", async ({ s }) => {
-    await onFolders(s, ["alpha", "beta", "gamma"], (ws) => {
-        twoProjects(ws);
-        ws.write("gamma/main.cpp", "int gamma_fn() { return 0; }\n");
-        ws.writeCDB(["gamma/main.cpp"], { at: "gamma/compile_commands.json" });
-        const shared = `[project]\ncache_dir = "${ws.path("shared").replaceAll("\\", "/")}"\n`;
-        for (const folder of ["alpha", "beta", "gamma"]) {
-            ws.write(`${folder}/clice.toml`, shared);
-        }
-    });
+const SHARED_CACHE = (ws: Workspace) =>
+    `[project]\ncache_dir = "${ws.path("shared").replaceAll("\\", "/")}"\n`;
+
+folders(["alpha", "beta", "gamma"], {
+    files: {
+        ...TWO_PROJECTS.files,
+        "gamma/main.cpp": "int gamma_fn() { return 0; }\n",
+        "alpha/clice.toml": SHARED_CACHE,
+        "beta/clice.toml": SHARED_CACHE,
+        "gamma/clice.toml": SHARED_CACHE,
+    },
+    databases: {
+        ...TWO_PROJECTS.databases,
+        "gamma/compile_commands.json": database({ "gamma/main.cpp": [] }),
+    },
+})("configured cache directory serves once", async ({ s }) => {
     await s.compiled("alpha/main.cpp");
     await s.indexed();
     await listed(s, "gamma_fn", "gamma/main.cpp: int gamma_fn() { return 0; }");
@@ -186,82 +174,81 @@ test("configured cache directory serves once", async ({ s }) => {
     expect(s.workspace.exists("gamma/.clice")).toBe(true);
 });
 
-test("nested folder joins its project", async ({ s }) => {
-    const inner = "outer/inner/main.cpp";
-    // Listed first, the nested folder still is no project of its own.
-    await onFolders(s, ["outer/inner", "outer"], (ws) => {
-        ws.write(inner, gated("IN_OUTER", "inner_fn"));
-        ws.writeCDB([inner], { extraArgs: ["-DIN_OUTER"], at: "outer/compile_commands.json" });
-    });
-    expect(await s.errors(inner), "the enclosing project compiles it").toEqual([]);
+const INNER = "outer/inner/main.cpp";
+
+// Listed first, the nested folder still is no project of its own.
+folders(["outer/inner", "outer"], {
+    files: { [INNER]: gated("IN_OUTER", "inner_fn") },
+    databases: { "outer/compile_commands.json": database({ [INNER]: ["-DIN_OUTER"] }) },
+})("nested folder joins its project", async ({ s }) => {
+    expect(await s.errors(INNER), "the enclosing project compiles it").toEqual([]);
     // One project, holding the client's cache directory: neither folder
     // fell back to a default one.
     expect(s.workspace.exists("outer/.clice")).toBe(false);
     expect(s.workspace.exists("outer/inner/.clice")).toBe(false);
 
     // Alone, the nested folder is a project that knows no command for it.
-    await changeFolders(s, { removed: ["outer"] });
+    await s.changeFolders({ removed: ["outer"] });
     expect(
-        pushedErrors(s, inner).length,
+        (await pushedErrors(s, INNER))?.length,
         "errors once the nested folder serves alone",
     ).toBeGreaterThan(0);
-    await changeFolders(s, { added: ["outer"] });
-    expect(pushedErrors(s, inner), "the enclosing project to take the folder back").toEqual([]);
-});
-
-test("subproject serves what the folder does not build", async ({ s }) => {
-    const tool = "mono/sub/tool.cpp";
-    const vendored = "mono/sub/vendored.cpp";
-    await onFolders(s, ["mono"], (ws) => {
-        ws.write("mono/sub/clice.toml", "");
-        ws.write(tool, gated("IN_SUB", "tool_fn"));
-        ws.write(vendored, gated("IN_MONO", "vendored_fn"));
-        ws.writeCDB([vendored], { extraArgs: ["-DIN_MONO"], at: "mono/compile_commands.json" });
-        ws.writeCDB([tool], {
-            extraArgs: ["-DIN_SUB"],
-            at: "mono/sub/build/compile_commands.json",
-        });
-    });
-    expect(await s.errors(vendored), "the folder's build compiles the file it lists").toEqual([]);
-    expect(await s.errors(tool), "the subproject compiles the rest with its own database").toEqual(
+    await s.changeFolders({ added: ["outer"] });
+    expect(await pushedErrors(s, INNER), "the enclosing project to take the folder back").toEqual(
         [],
     );
-    expect(await s.errors(vendored), "the listed file stays with the folder").toEqual([]);
 });
 
-test("configuration menu per project", async ({ s }) => {
-    await onFolders(s, ["alpha", "beta"], (ws) => {
-        twoProjects(ws);
-        ws.write(
-            "beta/clice.toml",
-            [
-                'default_configuration = "fast"',
-                "[[rules]]",
-                'configuration = "fast"',
-                'compile_commands = ["compile_commands.json"]',
-                "[[rules]]",
-                'configuration = "slow"',
-                'compile_commands = ["compile_commands.json"]',
-                "",
-            ].join("\n"),
-        );
-    });
+const TOOL = "mono/sub/tool.cpp";
+const VENDORED = "mono/sub/vendored.cpp";
+
+folders(["mono"], {
+    files: {
+        "mono/sub/clice.toml": "",
+        [TOOL]: gated("IN_SUB", "tool_fn"),
+        [VENDORED]: gated("IN_MONO", "vendored_fn"),
+    },
+    databases: {
+        "mono/compile_commands.json": database({ [VENDORED]: ["-DIN_MONO"] }),
+        "mono/sub/build/compile_commands.json": database({ [TOOL]: ["-DIN_SUB"] }),
+    },
+})("subproject serves what the folder does not build", async ({ s }) => {
+    expect(await s.errors(VENDORED), "the folder's build compiles the file it lists").toEqual([]);
+    expect(await s.errors(TOOL), "the subproject compiles the rest with its own database").toEqual(
+        [],
+    );
+    expect(await s.errors(VENDORED), "the listed file stays with the folder").toEqual([]);
+});
+
+folders(["alpha", "beta"], {
+    files: {
+        ...TWO_PROJECTS.files,
+        "beta/clice.toml": [
+            'default_configuration = "fast"',
+            "[[rules]]",
+            'configuration = "fast"',
+            'compile_commands = ["compile_commands.json"]',
+            "[[rules]]",
+            'configuration = "slow"',
+            'compile_commands = ["compile_commands.json"]',
+            "",
+        ].join("\n"),
+    },
+    databases: TWO_PROJECTS.databases,
+})("configuration menu per project", async ({ s }) => {
     await s.compiled("alpha/main.cpp");
     await s.compiled("beta/main.cpp");
-    const alpha = s.uri("alpha/main.cpp");
-    const beta = s.uri("beta/main.cpp");
-    expect((await s.client.listConfigurations(alpha)).configurations).toEqual([]);
-    expect(await s.client.listConfigurations(beta)).toMatchObject({
+    expect((await s.configurations("alpha/main.cpp")).configurations).toEqual([]);
+    expect(await s.configurations("beta/main.cpp")).toMatchObject({
         configurations: ["fast", "slow"],
         active: "fast",
     });
-    expect(await s.client.switchConfiguration("slow", beta)).toEqual({ success: true });
-    expect((await s.client.listConfigurations(beta)).selected).toBe("slow");
-    expect((await s.client.listConfigurations()).configurations, "the first folder's").toEqual([]);
+    expect(await s.switchConfiguration("slow", "beta/main.cpp")).toEqual({ success: true });
+    expect((await s.configurations("beta/main.cpp")).selected).toBe("slow");
+    expect((await s.configurations()).configurations, "the first folder's").toEqual([]);
 });
 
-test("unclaimed file opens its project", async ({ s }) => {
-    await onFolders(s, ["alpha"], twoProjects);
+folders(["alpha"], TWO_PROJECTS)("unclaimed file opens its project", async ({ s }) => {
     // Outside every folder, with a database above it: that folder is
     // served as if it were open.
     expect(await s.errors("beta/main.cpp"), "the project found above the file compiles it").toEqual(
@@ -269,26 +256,30 @@ test("unclaimed file opens its project", async ({ s }) => {
     );
 });
 
-test("rootless server finds projects", async ({ s }) => {
-    await onFolders(s, [], twoProjects);
+folders([], TWO_PROJECTS)("rootless server finds projects", async ({ s }) => {
     expect(await s.errors("alpha/main.cpp")).toEqual([]);
     expect(await s.errors("beta/main.cpp")).toEqual([]);
 });
 
-test("folder change before initialized", async ({ s }) => {
-    await onFolders(s, ["alpha"], twoProjects, (client) =>
-        client.changeWorkspaceFolders({ added: ["beta"], removed: ["alpha"] }),
-    );
+// The case initializes its server itself: a launch's step before the
+// initialized notification has no hold of the server it runs on.
+serve.files(TWO_PROJECTS.files, {
+    databases: TWO_PROJECTS.databases,
+    launch: { handshake: false },
+})("folder change before initialized", async ({ s }) => {
+    await s.client.initialize(s.workspace, {
+        folders: ["alpha"],
+        beforeInitialized: () => s.changeFolders({ added: ["beta"], removed: ["alpha"] }),
+    });
     await s.indexed();
     await listed(s, "beta_fn", BETA_FN);
     expect((await s.workspaceSymbols("alpha_fn")) ?? []).toEqual([]);
 });
 
-test("added folder adopts its files", async ({ s }) => {
-    await onFolders(s, ["alpha"], (ws) => {
-        twoProjects(ws);
-        ws.rm("beta/compile_commands.json");
-    });
+folders(["alpha"], {
+    files: TWO_PROJECTS.files,
+    databases: { "alpha/compile_commands.json": ALPHA_DATABASE },
+})("added folder adopts its files", async ({ s }) => {
     // Nothing above it knows the file: the first project serves it, without
     // beta's flags.
     expect(
@@ -296,78 +287,81 @@ test("added folder adopts its files", async ({ s }) => {
         "no project knows beta's flags yet",
     ).toBeGreaterThan(0);
 
-    s.workspace.writeCDB(["beta/main.cpp"], {
-        extraArgs: ["-DIN_BETA"],
-        at: "beta/compile_commands.json",
-    });
-    await changeFolders(s, { added: ["beta"] });
+    s.disk.database(BETA_DATABASE, "beta/compile_commands.json");
+    await s.changeFolders({ added: ["beta"] });
+    await s.sync();
     expect(
         await s.errors("beta/main.cpp"),
         "the new folder's project compiles the open file",
     ).toEqual([]);
 });
 
-test("removed folder releases its files", async ({ s }) => {
-    await onFolders(s, ["alpha", "beta"], twoProjects);
+folders(["alpha", "beta"], TWO_PROJECTS)("removed folder releases its files", async ({ s }) => {
     expect(await s.errors("beta/main.cpp")).toEqual([]);
 
     // A moved document recompiles on its own: the client sends nothing
     // that would replace the diagnostics the old project published.
-    await changeFolders(s, { removed: ["beta"] });
+    await s.changeFolders({ removed: ["beta"] });
     expect(
-        pushedErrors(s, "beta/main.cpp").length,
+        (await pushedErrors(s, "beta/main.cpp"))?.length,
         "errors from the remaining project, which has no command for it",
     ).toBeGreaterThan(0);
 
-    await changeFolders(s, { added: ["beta"] });
-    expect(pushedErrors(s, "beta/main.cpp"), "the re-added folder to serve it again").toEqual([]);
-});
-
-test("folder re-added at once keeps its cache", async ({ s }) => {
-    await onFolders(s, ["alpha", "beta"], twoProjects);
-    await s.indexed();
-    await listed(s, "beta_fn", BETA_FN);
-
-    // The control endpoint record appears only while a project holds the
-    // cache directory's writer lock.
-    const record = "beta/.clice/server.json";
-    expect(s.workspace.exists(record)).toBe(true);
-    const before = s.disk.read(record);
-
-    s.steps.note("folders: beta removed and added back");
-    await s.client.changeWorkspaceFolders({ removed: ["beta"] });
-    await s.client.changeWorkspaceFolders({ added: ["beta"] });
-    await s.sync();
-    expect(s.workspace.exists(record), "the re-added folder to take its cache directory back").toBe(
-        true,
+    await s.changeFolders({ added: ["beta"] });
+    expect(await pushedErrors(s, "beta/main.cpp"), "the re-added folder to serve it again").toEqual(
+        [],
     );
-    expect(s.disk.read(record)).not.toBe(before);
 });
 
-test("database change moves a document", async ({ s }) => {
-    const shared = "alpha/shared.cpp";
-    await onFolders(s, ["alpha", "beta"], (ws) => {
-        twoProjects(ws);
-        ws.write(shared, gated("IN_BETA", "shared_fn"));
-    });
-    expect((await s.errors(shared)).length, "no database lists it yet").toBeGreaterThan(0);
+folders(["alpha", "beta"], TWO_PROJECTS)(
+    "folder re-added at once keeps its cache",
+    async ({ s }) => {
+        await s.indexed();
+        await listed(s, "beta_fn", BETA_FN);
+
+        // The control endpoint record appears only while a project holds the
+        // cache directory's writer lock.
+        const record = "beta/.clice/server.json";
+        expect(s.workspace.exists(record)).toBe(true);
+        const before = s.disk.read(record);
+
+        await s.changeFolders({ removed: ["beta"] });
+        await s.changeFolders({ added: ["beta"] });
+        await s.sync();
+        expect(
+            s.workspace.exists(record),
+            "the re-added folder to take its cache directory back",
+        ).toBe(true);
+        expect(s.disk.read(record)).not.toBe(before);
+    },
+);
+
+const SHARED = "alpha/shared.cpp";
+
+folders(["alpha", "beta"], {
+    files: { ...TWO_PROJECTS.files, [SHARED]: gated("IN_BETA", "shared_fn") },
+    databases: TWO_PROJECTS.databases,
+})("database change moves a document", async ({ s }) => {
+    expect((await s.errors(SHARED)).length, "no database lists it yet").toBeGreaterThan(0);
 
     // Beta's database starts listing the file: it moves there.
-    s.workspace.writeCDB(["beta/main.cpp", shared], {
-        extraArgs: ["-DIN_BETA"],
-        at: "beta/compile_commands.json",
-    });
-    await s.client.poll("cdb");
-    await s.sync();
-    expect(pushedErrors(s, shared), "beta to compile the file its database lists now").toEqual([]);
+    s.disk.database(
+        database({ "beta/main.cpp": ["-DIN_BETA"], [SHARED]: ["-DIN_BETA"] }),
+        "beta/compile_commands.json",
+    );
+    await s.poll("cdb");
+    expect(
+        await pushedErrors(s, SHARED),
+        "beta to compile the file its database lists now",
+    ).toEqual([]);
 });
 
-test("removed first folder hands over", async ({ s }) => {
-    await onFolders(s, ["alpha", "beta"], twoProjects);
+folders(["alpha", "beta"], TWO_PROJECTS)("removed first folder hands over", async ({ s }) => {
     await s.compiled("alpha/main.cpp");
     await s.compiled("beta/main.cpp");
 
-    await changeFolders(s, { removed: ["alpha"] });
+    await s.changeFolders({ removed: ["alpha"] });
+    await s.sync();
     expect(
         (await s.errors("alpha/main.cpp")).length,
         "beta serves the file, without alpha's flags",
@@ -378,19 +372,18 @@ test("removed first folder hands over", async ({ s }) => {
     ).not.toBeNull();
 });
 
-test("removed only folder goes rootless", async ({ s }) => {
-    await onFolders(s, ["alpha"], twoProjects);
+folders(["alpha"], TWO_PROJECTS)("removed only folder goes rootless", async ({ s }) => {
     expect(await s.errors("alpha/main.cpp")).toEqual([]);
 
-    await changeFolders(s, { removed: ["alpha"] });
+    await s.changeFolders({ removed: ["alpha"] });
+    await s.sync();
     expect(
         (await s.errors("alpha/main.cpp")).length,
         "the rootless project guesses a command",
     ).toBeGreaterThan(0);
 });
 
-test("definition crosses folders", async ({ s }) => {
-    await onFolders(s, ["app", "lib"], libraryAndApp);
+folders(["app", "lib"], LIBRARY_AND_APP)("definition crosses folders", async ({ s }) => {
     // The application's index only declares lib_fn; the library's defines
     // it, once its background index lands.
     await s.compiled("app/main.cpp");
@@ -398,8 +391,7 @@ test("definition crosses folders", async ({ s }) => {
     expect(s.show(await s.definition(LIB_FN_CALL)).split("\n")).toContain(LIB_FN);
 });
 
-test("references cross folders", async ({ s }) => {
-    await onFolders(s, ["app", "lib"], libraryAndApp);
+folders(["app", "lib"], LIBRARY_AND_APP)("references cross folders", async ({ s }) => {
     await s.compiled("lib/src/lib.cpp");
     await s.indexed();
     await listed(s, "main", MAIN);
@@ -408,16 +400,17 @@ test("references cross folders", async ({ s }) => {
     );
 });
 
-test("shared macro references cross folders", async ({ s }) => {
-    // The macro's id takes its header relative to the library's root in
-    // the library and absolute in the application; the two meet at its
-    // definition.
-    await onFolders(s, ["app", "lib"], (ws) => {
-        libraryAndApp(ws);
-        ws.write("lib/include/lib.h", "#pragma once\n#define LIB_LIMIT 4\nint lib_fn();\n");
-        ws.write("lib/src/lib.cpp", '#include "lib.h"\nint lib_fn() { return LIB_LIMIT; }\n');
-        ws.write("app/main.cpp", '#include "lib.h"\nint main() { return LIB_LIMIT + lib_fn(); }\n');
-    });
+// The macro's id takes its header relative to the library's root in the
+// library and absolute in the application; the two meet at its definition.
+folders(["app", "lib"], {
+    files: {
+        ...LIBRARY_AND_APP.files,
+        "lib/include/lib.h": "#pragma once\n#define LIB_LIMIT 4\nint lib_fn();\n",
+        "lib/src/lib.cpp": '#include "lib.h"\nint lib_fn() { return LIB_LIMIT; }\n',
+        "app/main.cpp": '#include "lib.h"\nint main() { return LIB_LIMIT + lib_fn(); }\n',
+    },
+    databases: LIBRARY_AND_APP.databases,
+})("shared macro references cross folders", async ({ s }) => {
     await s.compiled("lib/src/lib.cpp");
     await s.indexed();
     await listed(s, "main", "app/main.cpp: int main() { return LIB_LIMIT + lib_fn(); }");
@@ -426,46 +419,45 @@ test("shared macro references cross folders", async ({ s }) => {
     );
 });
 
-test("hierarchies cross folders", async ({ s }) => {
-    await onFolders(s, ["app", "lib"], (ws) => {
-        libraryAndApp(ws);
-        ws.write(
-            "lib/include/shape.h",
+folders(["app", "lib"], {
+    files: {
+        ...LIBRARY_AND_APP.files,
+        "lib/include/shape.h":
             "#pragma once\nstruct Shape {\n    virtual int area() const = 0;\n};\n",
-        );
-        ws.write(
-            "lib/src/lib.cpp",
+        "lib/src/lib.cpp":
             '#include "lib.h"\n#include "shape.h"\nint lib_fn() { return shared_fn(); }\n',
-        );
-        ws.write(
-            "app/main.cpp",
+        "app/main.cpp":
             '#include "lib.h"\n#include "shape.h"\n' +
-                "struct Square : Shape {\n    int area() const override { return 4; }\n};\n" +
-                "int main() { return lib_fn(); }\n",
-        );
-    });
+            "struct Square : Shape {\n    int area() const override { return 4; }\n};\n" +
+            "int main() { return lib_fn(); }\n",
+    },
+    databases: LIBRARY_AND_APP.databases,
+})("hierarchies cross folders", async ({ s }) => {
     await s.indexed();
     await listed(s, "main", MAIN);
     await listed(s, "lib_fn", LIB_FN);
 
     // The library's function is called from the application only.
+    const fn = at("lib/src/lib.cpp", "int l|ib_fn");
     await s.compiled("lib/src/lib.cpp");
-    const [fn] = ((await s.request(
-        "textDocument/prepareCallHierarchy",
-        at("lib/src/lib.cpp", "int l|ib_fn"),
-    )) ?? []) as proto.CallHierarchyItem[];
-    expect(fn?.name).toBe("lib_fn");
-    const callers = (await s.client.callHierarchyIncoming(fn!)) ?? [];
-    expect(callers.map((call) => call.from.name)).toEqual(["main"]);
+    const [called] =
+        (await s.request<proto.CallHierarchyItem[] | null>(
+            "textDocument/prepareCallHierarchy",
+            fn,
+        )) ?? [];
+    expect(called?.name).toBe("lib_fn");
+    expect((await s.incomingCalls(fn))?.map((call) => call.from.name)).toEqual(["main"]);
 
     // The library's interface is implemented in the application only.
     const shape = at("lib/include/shape.h", "struct S|hape");
     await s.compiled("lib/include/shape.h");
-    const [base] = ((await s.request("textDocument/prepareTypeHierarchy", shape)) ??
-        []) as proto.TypeHierarchyItem[];
+    const [base] =
+        (await s.request<proto.TypeHierarchyItem[] | null>(
+            "textDocument/prepareTypeHierarchy",
+            shape,
+        )) ?? [];
     expect(base?.name).toBe("Shape");
-    const subtypes = (await s.client.typeHierarchySubtypes(base!)) ?? [];
-    expect(subtypes.map((type) => type.name)).toEqual(["Square"]);
+    expect((await s.subtypes(shape))?.map((type) => type.name)).toEqual(["Square"]);
     expect(s.show(await s.request("textDocument/implementation", shape))).toBe(
         "app/main.cpp: struct Square : Shape {",
     );
@@ -473,26 +465,29 @@ test("hierarchies cross folders", async ({ s }) => {
     // The other way round the library knows nothing of the application's
     // type, yet its base stays reachable though the library serves the
     // base's open file.
+    const square = at("app/main.cpp", "struct S|quare");
     await s.compiled("app/main.cpp");
-    const [square] = ((await s.request(
-        "textDocument/prepareTypeHierarchy",
-        at("app/main.cpp", "struct S|quare"),
-    )) ?? []) as proto.TypeHierarchyItem[];
-    expect(square?.name).toBe("Square");
-    const supertypes = (await s.client.typeHierarchySupertypes(square!)) ?? [];
-    expect(supertypes.map((type) => type.name)).toEqual(["Shape"]);
+    const [derived] =
+        (await s.request<proto.TypeHierarchyItem[] | null>(
+            "textDocument/prepareTypeHierarchy",
+            square,
+        )) ?? [];
+    expect(derived?.name).toBe("Square");
+    expect((await s.supertypes(square))?.map((type) => type.name)).toEqual(["Shape"]);
 });
 
-test("definition follows an open buffer", async ({ s }) => {
-    // The application builds the library's source too; the library, listed
-    // first, serves it once open.
-    await onFolders(s, ["lib", "app"], (ws) => {
-        libraryAndApp(ws);
-        ws.writeCDB(["app/main.cpp", "lib/src/lib.cpp"], {
-            extraArgs: [`-I${ws.path("lib/include")}`],
-            at: "app/compile_commands.json",
-        });
-    });
+// The application builds the library's source too; the library, listed
+// first, serves it once open.
+folders(["lib", "app"], {
+    files: LIBRARY_AND_APP.files,
+    databases: {
+        ...LIBRARY_AND_APP.databases,
+        "app/compile_commands.json": database({
+            "app/main.cpp": [INCLUDE_LIB],
+            "lib/src/lib.cpp": [INCLUDE_LIB],
+        }),
+    },
+})("definition follows an open buffer", async ({ s }) => {
     await s.indexed();
     await listed(s, "main", MAIN);
     await listed(s, "lib_fn", LIB_FN);
@@ -506,123 +501,122 @@ test("definition follows an open buffer", async ({ s }) => {
     expect(s.show(await s.definition(LIB_FN_CALL))).toBe(LIB_FN);
 });
 
-test("an open file answers through its project", async ({ s }) => {
-    await onFolders(s, ["app", "lib"], libraryAndApp);
-    await s.indexed();
-    await listed(s, "main", MAIN);
-    await listed(s, "lib_fn", LIB_FN);
+folders(["app", "lib"], LIBRARY_AND_APP)(
+    "an open file answers through its project",
+    async ({ s }) => {
+        await s.indexed();
+        await listed(s, "main", MAIN);
+        await listed(s, "lib_fn", LIB_FN);
 
-    // Both projects index the header; the library serves it once open, and
-    // its unsaved buffer moved the declaration a line down.
-    const header = "lib/include/lib.h";
-    await s.compiled(header);
-    s.edit(header, { before: "#pragma once", insert: "// moved\n" });
-    await s.compiled(header);
+        // Both projects index the header; the library serves it once open, and
+        // its unsaved buffer moved the declaration a line down.
+        const header = "lib/include/lib.h";
+        await s.compiled(header);
+        s.edit(header, { before: "#pragma once", insert: "// moved\n" });
+        await s.compiled(header);
 
-    await s.compiled("app/main.cpp");
-    expect(into(s, await s.references(LIB_FN_CALL), header)).toEqual([`${header}: int lib_fn();`]);
-});
+        await s.compiled("app/main.cpp");
+        expect(into(s, await s.references(LIB_FN_CALL), header)).toEqual([
+            `${header}: int lib_fn();`,
+        ]);
+    },
+);
 
-test("dependency folder borrows the application", async ({ s }) => {
-    // The dependency folder has no database: its header compiles in the
-    // context of the application including it.
-    await onFolders(s, ["app", "dep"], (ws) => {
-        ws.write("dep/include/dep.h", "#pragma once\n" + gated("IN_APP", "dep_fn"));
-        ws.write("app/main.cpp", '#include "dep.h"\nint main() { return dep_fn(); }\n');
-        ws.writeCDB(["app/main.cpp"], {
-            extraArgs: [`-I${ws.path("dep/include")}`, "-DIN_APP"],
-            at: "app/compile_commands.json",
-        });
-    });
+// The dependency folder has no database: its header compiles in the
+// context of the application including it.
+folders(["app", "dep"], {
+    files: {
+        "dep/include/dep.h": "#pragma once\n" + gated("IN_APP", "dep_fn"),
+        "app/main.cpp": '#include "dep.h"\nint main() { return dep_fn(); }\n',
+    },
+    databases: {
+        "app/compile_commands.json": database({
+            "app/main.cpp": ["-I${workspace}/dep/include", "-DIN_APP"],
+        }),
+    },
+})("dependency folder borrows the application", async ({ s }) => {
     expect(
         await s.errors("dep/include/dep.h"),
         "the application's command reaches the header",
     ).toEqual([]);
 });
 
-test("context from another folder", async ({ s }) => {
-    await onFolders(s, ["app", "lib"], (ws) => {
-        libraryAndApp(ws);
-        ws.write("lib/include/lib.h", "#pragma once\n" + gated("IN_APP", "lib_fn"));
-        ws.writeCDB(["app/main.cpp"], {
-            extraArgs: [`-I${ws.path("lib/include")}`, "-DIN_APP"],
-            at: "app/compile_commands.json",
-        });
-    });
+folders(["app", "lib"], {
+    files: {
+        ...LIBRARY_AND_APP.files,
+        "lib/include/lib.h": "#pragma once\n" + gated("IN_APP", "lib_fn"),
+    },
+    databases: {
+        ...LIBRARY_AND_APP.databases,
+        "app/compile_commands.json": database({ "app/main.cpp": [INCLUDE_LIB, "-DIN_APP"] }),
+    },
+})("context from another folder", async ({ s }) => {
     const header = "lib/include/lib.h";
-    const uri = s.uri(header);
 
     // The library's own source is the header's host at first; the
     // application's is on offer too.
     expect((await s.errors(header)).length, "the library does not define IN_APP").toBeGreaterThan(
         0,
     );
-    const listed = await s.client.queryContext(uri);
+    const listed = await s.contexts(header);
     const hosts = listed.contexts.map((context) => context.uri);
     expect(hosts).toContain(s.uri("lib/src/lib.cpp"));
     expect(hosts).toContain(s.uri("app/main.cpp"));
 
-    const switched = await s.client.switchContext(uri, s.uri("app/main.cpp"), {
-        epoch: listed.epoch,
-    });
+    const switched = await s.switchContext(header, "app/main.cpp", { epoch: listed.epoch });
     expect(switched.success).toBe(true);
     expect(await s.errors(header), "the application's host defines IN_APP").toEqual([]);
-    expect((await s.client.currentContext(uri)).context?.uri).toBe(s.uri("app/main.cpp"));
+    expect((await s.currentContext(header)).context?.uri).toBe(s.uri("app/main.cpp"));
 
     // The reset hands the header back to its own folder's host; the
     // application's project retracts its diagnostics first.
-    expect((await s.client.resetContext(uri)).success).toBe(true);
-    await s.sync();
-    expect(pushedErrors(s, header).length, "the library does not define IN_APP").toBeGreaterThan(0);
-    const current = await s.client.currentContext(uri);
+    expect((await s.resetContext(header)).success).toBe(true);
+    expect(
+        (await pushedErrors(s, header))?.length,
+        "the library does not define IN_APP",
+    ).toBeGreaterThan(0);
+    const current = await s.currentContext(header);
     expect(current.automatic).toBe(true);
     expect(current.context?.uri).toBe(s.uri("lib/src/lib.cpp"));
 });
 
-test("own configuration of another folder", async ({ s }) => {
-    await onFolders(s, ["alpha", "beta"], sharedFile);
-
+folders(["alpha", "beta"], SHARED_FILE)("own configuration of another folder", async ({ s }) => {
     // Both databases list the file: its owner's entry comes first, the
     // other project's can be switched to, moving the file there.
-    await s.compiled("alpha/shared.cpp");
-    const shared = s.uri("alpha/shared.cpp");
-    const listed = await s.client.queryContext(shared);
-    const own = listed.contexts.filter((context) => context.uri === shared);
+    await s.compiled(SHARED);
+    const listed = await s.contexts(SHARED);
+    const own = listed.contexts.filter((context) => context.uri === s.uri(SHARED));
     expect(own).toHaveLength(2);
     const other = own[1]!.commandHash!;
-    const switched = await s.client.switchContext(shared, shared, {
+    const switched = await s.switchContext(SHARED, SHARED, {
         commandHash: other,
         epoch: listed.epoch,
     });
     expect(switched.success).toBe(true);
-    expect((await s.client.currentContext(shared)).context?.commandHash).toBe(other);
+    expect((await s.currentContext(SHARED)).context?.commandHash).toBe(other);
 });
 
-test("a closed file keeps its choice", async ({ s }) => {
-    await onFolders(s, ["alpha", "beta"], sharedFile);
-
-    await s.compiled("alpha/shared.cpp");
-    const shared = s.uri("alpha/shared.cpp");
-    const listed = await s.client.queryContext(shared);
-    const own = listed.contexts.filter((context) => context.uri === shared);
+folders(["alpha", "beta"], SHARED_FILE)("a closed file keeps its choice", async ({ s }) => {
+    await s.compiled(SHARED);
+    const listed = await s.contexts(SHARED);
+    const own = listed.contexts.filter((context) => context.uri === s.uri(SHARED));
     expect(own).toHaveLength(2);
     const first = own[0]!.commandHash!;
     const other = own[1]!.commandHash!;
-    const switched = await s.client.switchContext(shared, shared, {
+    const switched = await s.switchContext(SHARED, SHARED, {
         commandHash: other,
         epoch: listed.epoch,
     });
     expect(switched.success).toBe(true);
 
-    s.close("alpha/shared.cpp");
-    const refused = await s.client.switchContext(shared, shared, { commandHash: first });
+    s.close(SHARED);
+    const refused = await s.switchContext(SHARED, SHARED, { commandHash: first });
     expect(refused.success).toBe(false);
-    await s.compiled("alpha/shared.cpp");
-    expect((await s.client.currentContext(shared)).context?.commandHash).toBe(other);
+    await s.compiled(SHARED);
+    expect((await s.currentContext(SHARED)).context?.commandHash).toBe(other);
 });
 
-test("save reaches every folder", async ({ s }) => {
-    await onFolders(s, ["app", "lib"], libraryAndApp);
+folders(["app", "lib"], LIBRARY_AND_APP)("save reaches every folder", async ({ s }) => {
     await s.indexed();
     await listed(s, "main", MAIN);
     await listed(s, "lib_fn", LIB_FN);
@@ -642,15 +636,15 @@ test("save reaches every folder", async ({ s }) => {
     ]);
 });
 
-test("unrelated folders keep references apart", async ({ s }) => {
-    const helper = (user: string) =>
-        `int helper() { return 0; }\nint ${user}() { return helper(); }\n`;
-    await onFolders(s, ["alpha", "beta"], (ws) => {
-        ws.write("alpha/main.cpp", helper("use_alpha"));
-        ws.write("beta/main.cpp", helper("use_beta"));
-        ws.writeCDB(["alpha/main.cpp"], { at: "alpha/compile_commands.json" });
-        ws.writeCDB(["beta/main.cpp"], { at: "beta/compile_commands.json" });
-    });
+const HELPER = (user: string) => `int helper() { return 0; }\nint ${user}() { return helper(); }\n`;
+
+folders(["alpha", "beta"], {
+    files: { "alpha/main.cpp": HELPER("use_alpha"), "beta/main.cpp": HELPER("use_beta") },
+    databases: {
+        "alpha/compile_commands.json": database({ "alpha/main.cpp": [] }),
+        "beta/compile_commands.json": database({ "beta/main.cpp": [] }),
+    },
+})("unrelated folders keep references apart", async ({ s }) => {
     await s.compiled("alpha/main.cpp");
     await s.indexed();
     await listed(s, "use_alpha", "alpha/main.cpp: int use_alpha() { return helper(); }");
@@ -665,8 +659,7 @@ test("unrelated folders keep references apart", async ({ s }) => {
     expect(s.show(references)).toBe("alpha/main.cpp: int use_alpha() { return helper(); }");
 });
 
-test("batch index asks the folder's server", async ({ s }) => {
-    await onFolders(s, ["alpha", "beta"], twoProjects);
+folders(["alpha", "beta"], TWO_PROJECTS)("batch index asks the folder's server", async ({ s }) => {
     await s.compiled("alpha/main.cpp");
     await s.indexed();
     await listed(s, "beta_fn", BETA_FN);
@@ -681,11 +674,11 @@ test("batch index asks the folder's server", async ({ s }) => {
     expect(batch.stdout).toContain("through the running clice server");
 });
 
-test("indexing progress ends across folders", async ({ s }) => {
-    await onFolders(s, ["alpha", "empty", "beta"], (ws) => {
-        twoProjects(ws);
+folders(["alpha", "empty", "beta"], TWO_PROJECTS, {
+    setup: (ws) => {
         ws.mkdir("empty");
-    });
+    },
+})("indexing progress ends across folders", async ({ s }) => {
     await s.compiled("alpha/main.cpp");
     await s.indexed();
     await listed(s, "alpha_fn", ALPHA_FN);
@@ -710,17 +703,15 @@ test("indexing progress ends across folders", async ({ s }) => {
     }
 });
 
-test("restart serves every folder", async ({ s }) => {
-    await onFolders(s, ["alpha", "beta"], twoProjects);
+folders(["alpha", "beta"], TWO_PROJECTS)("restart serves every folder", async ({ s }) => {
     await s.indexed();
     await listed(s, "alpha_fn", ALPHA_FN);
     await listed(s, "beta_fn", BETA_FN);
-    await s.stop();
 
     // Both folders load their persisted index at startup: the first query
     // answers before any worker could have reindexed either.
-    await startOn(s, ["alpha", "beta"]);
+    await s.restart();
     const symbols = (await s.workspaceSymbols("_fn")) ?? [];
     expect(symbols.map((symbol) => symbol.name).sort()).toEqual(["alpha_fn", "beta_fn"]);
-    s.client.assertNoAnomaly();
+    await s.noAnomaly();
 });

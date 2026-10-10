@@ -6,11 +6,9 @@ import { expect, serve } from "../../fixtures.ts";
 const test = serve.data("hello_world");
 
 test("initialize", ({ s }) => {
-    const { initResult } = s.client;
-    expect(initResult).not.toBeNull();
-    expect(initResult!.serverInfo).not.toBeUndefined();
-    expect(initResult!.serverInfo!.name).toBe("clice");
-    return Promise.resolve();
+    const { initResult } = s;
+    expect(initResult.serverInfo).not.toBeUndefined();
+    expect(initResult.serverInfo!.name).toBe("clice");
 });
 
 test("double initialize rejected", async ({ s }) => {

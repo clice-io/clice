@@ -25,7 +25,7 @@ serve.files(
         "the closed unit is indexed",
     ).toBe(true);
 
-    expect((await s.client.stats()).importScans).toBe(0);
+    expect((await s.stats()).importScans).toBe(0);
 });
 
 serve.files(
@@ -46,7 +46,7 @@ serve.files(
     await s.compiled("main.cpp");
     s.edit("main.cpp", { replace: "FORCED;", with: "FORCED + 1;" });
     await s.clean("main.cpp");
-    expect((await s.client.stats()).importScans).toBe(0);
+    expect((await s.stats()).importScans).toBe(0);
 });
 
 serve.files(
@@ -56,7 +56,7 @@ serve.files(
     await s.clean("main.cpp");
 
     s.disk.write("force.h", "#define FORCED_RENAMED 1\n");
-    s.client.save(s.uri("force.h"));
+    s.save("force.h");
     expect(
         (await s.errors("main.cpp")).length,
         "the forced header no longer defines FORCED",

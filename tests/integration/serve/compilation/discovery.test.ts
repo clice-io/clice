@@ -5,7 +5,7 @@
 
 import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
 import type { Serve } from "@clice/tools/actions";
-import { writeDatabase, type Manifest } from "@clice/tools/project";
+import type { Manifest } from "@clice/tools/project";
 import { expect, serve } from "../../fixtures.ts";
 
 function gated(macro: string): string {
@@ -18,26 +18,8 @@ async function guidance(s: Serve, file: string): Promise<string[]> {
         .map((d) => (typeof d.message === "string" ? d.message : d.message.value));
 }
 
-async function cdbEvents(s: Serve, force = false): Promise<number> {
-    return (await s.client.poll("cdb", { force })).events;
-}
-
-async function inactiveLines(s: Serve, file: string): Promise<number[]> {
-    await s.compiled(file);
-    return s.client.inactiveLines(s.uri(file));
-}
-
 async function indexes(s: Serve, name: string): Promise<boolean> {
     return ((await s.workspaceSymbols(name)) ?? []).some((symbol) => symbol.name === name);
-}
-
-/// Start over without the database the fixture writes at the root; `write`
-/// lays the case's own down while no server runs.
-function dropRootDatabase(s: Serve, write: () => void = () => undefined): Promise<void> {
-    return s.offline(() => {
-        s.disk.rm("compile_commands.json");
-        write();
-    });
 }
 
 serve.data("cdb/nested_projects")("nested projects load on open", async ({ s }) => {
@@ -49,15 +31,16 @@ serve.data("cdb/nested_projects")("nested projects load on open", async ({ s }) 
 
     const shared = "group-a/shared/generated.cpp";
     expect(await s.errors(shared)).toEqual([]);
-    expect(await inactiveLines(s, shared), "p1's command is the default").toEqual([3]);
-    expect((await s.client.queryContext(s.uri(shared))).total).toBe(2);
+    expect(await s.inactiveLines(shared), "p1's command is the default").toEqual([3]);
+    expect((await s.contexts(shared)).total).toBe(2);
     await s.indexed();
     expect(await indexes(s, "p2_main"), "both databases are indexed").toBe(true);
     expect(await indexes(s, "p1_main")).toBe(true);
 });
 
 serve.data("cdb/root_over_sub")("root wins over subdirectory", async ({ s }) => {
-    expect(await inactiveLines(s, "main.cpp"), "the root's command applies").toEqual([3]);
+    await s.compiled("main.cpp");
+    expect(await s.inactiveLines("main.cpp"), "the root's command applies").toEqual([3]);
     expect(await s.errors("extra.cpp"), "the subdirectory's database fills the gap").toEqual([]);
     // The hint is a log line only; the log is complete once the server is down.
     await s.stop();
@@ -67,63 +50,62 @@ serve.data("cdb/root_over_sub")("root wins over subdirectory", async ({ s }) => 
 });
 
 serve.data("cdb/two_out_dirs")("overlapping databases offer both", async ({ s }) => {
-    const main = s.uri("main.cpp");
-    expect(await inactiveLines(s, "main.cpp"), "out_debug comes first by name").toEqual([1]);
-    const contexts = await s.client.queryContext(main);
+    await s.compiled("main.cpp");
+    expect(await s.inactiveLines("main.cpp"), "out_debug comes first by name").toEqual([1]);
+    const contexts = await s.contexts("main.cpp");
     expect(contexts.total).toBe(2);
     const release = contexts.contexts.find((c) => c.label.includes("RELEASE"));
     expect(release).toBeDefined();
-    const switched = await s.client.switchContext(main, main, {
+    const switched = await s.switchContext("main.cpp", "main.cpp", {
         commandHash: release!.commandHash!,
     });
     expect(switched.success).toBe(true);
-    expect(await inactiveLines(s, "main.cpp")).toEqual([3]);
+    await s.compiled("main.cpp");
+    expect(await s.inactiveLines("main.cpp")).toEqual([3]);
 });
+
+const ORIGINAL: Manifest = {
+    cxx: ["-std=c++17"],
+    units: { "main.cpp": ["-DFEATURE"], "only.cpp": ["-DFEATURE"] },
+};
 
 serve.files(
     {
         "main.cpp": "#ifdef MOVED\nint moved = 1;\n#else\nint original = 1;\n#endif\n",
         "only.cpp": gated("FEATURE"),
     },
-    { manifest: { units: {} } },
+    { databases: { "build/compile_commands.json": ORIGINAL } },
 )("vanished database yields to present", async ({ s }) => {
-    const original: [string, string[]][] = [
-        ["main.cpp", ["-DFEATURE"]],
-        ["only.cpp", ["-DFEATURE"]],
-    ];
-    await dropRootDatabase(s, () => {
-        s.workspace.writeEntries(original, { at: "build/compile_commands.json" });
-    });
-    expect(await inactiveLines(s, "main.cpp")).toEqual([1]);
+    await s.compiled("main.cpp");
+    expect(await s.inactiveLines("main.cpp")).toEqual([1]);
     expect(await s.errors("only.cpp")).toEqual([]);
 
     // The build directory is wiped: alone, a vanished database stays silent.
     s.disk.rm("build/compile_commands.json");
-    expect(await cdbEvents(s)).toBe(0);
-    expect(await cdbEvents(s)).toBe(0);
+    expect(await s.poll("cdb", { force: false })).toBe(0);
+    expect(await s.poll("cdb", { force: false })).toBe(0);
 
     // Regenerated elsewhere: the files both databases list follow the
     // present one, the rest keep serving.
-    s.workspace.writeCDB(["main.cpp"], {
-        extraArgs: ["-DFEATURE", "-DMOVED"],
-        at: "out/compile_commands.json",
-    });
-    expect(await cdbEvents(s), "the new database settles for a tick").toBe(0);
-    expect(await cdbEvents(s)).toBe(1);
-    expect(await inactiveLines(s, "main.cpp"), "out/ took the shared unit over").toEqual([3]);
-    expect(
-        (await s.client.queryContext(s.uri("main.cpp"))).total,
-        "the old entry is still offered",
-    ).toBe(2);
-    expect(
-        (await s.client.queryContext(s.uri("only.cpp"))).total,
-        "the vanished database's own entry",
-    ).toBe(1);
+    s.disk.database(
+        { cxx: ["-std=c++17"], units: { "main.cpp": ["-DFEATURE", "-DMOVED"] } },
+        "out/compile_commands.json",
+    );
+    expect(await s.poll("cdb", { force: false }), "the new database settles for a tick").toBe(0);
+    expect(await s.poll("cdb", { force: false })).toBe(1);
+    await s.compiled("main.cpp");
+    expect(await s.inactiveLines("main.cpp"), "out/ took the shared unit over").toEqual([3]);
+    expect((await s.contexts("main.cpp")).total, "the old entry is still offered").toBe(2);
+    expect((await s.contexts("only.cpp")).total, "the vanished database's own entry").toBe(1);
 
-    s.workspace.writeEntries(original, { at: "build/compile_commands.json" });
-    expect(await cdbEvents(s)).toBe(0);
-    expect(await cdbEvents(s), "the returning database takes its place back").toBe(1);
-    expect(await inactiveLines(s, "main.cpp")).toEqual([1]);
+    s.disk.database(ORIGINAL, "build/compile_commands.json");
+    expect(await s.poll("cdb", { force: false })).toBe(0);
+    expect(
+        await s.poll("cdb", { force: false }),
+        "the returning database takes its place back",
+    ).toBe(1);
+    await s.compiled("main.cpp");
+    expect(await s.inactiveLines("main.cpp")).toEqual([1]);
 });
 
 serve.files(
@@ -136,8 +118,11 @@ serve.files(
     // The rewrite keeps the size: only its times tell the stamp it changed.
     await sleep(MTIME_GRANULARITY);
     s.disk.write("flags.rsp", "-DCHANGED\n");
-    expect(await cdbEvents(s), "the response file settles like the database").toBe(0);
-    expect(await cdbEvents(s)).toBe(1);
+    expect(
+        await s.poll("cdb", { force: false }),
+        "the response file settles like the database",
+    ).toBe(0);
+    expect(await s.poll("cdb", { force: false })).toBe(1);
     expect(
         (await s.errors("main.cpp")).length,
         "the reloaded command lost FEATURE",
@@ -187,14 +172,14 @@ serve.files(
     ).toBeGreaterThan(0);
 
     // The lender's command changes: the borrower follows.
-    writeDatabase(s.workspace, lenders(false));
-    expect(await cdbEvents(s, true)).toBe(1);
+    s.disk.database(lenders(false));
+    expect(await s.poll("cdb", { force: true })).toBe(1);
     expect(
         (await s.errors("zsrc/new.cpp")).length,
         "the borrowed command lost FEATURE",
     ).toBeGreaterThan(0);
-    writeDatabase(s.workspace, lenders(true));
-    expect(await cdbEvents(s, true)).toBe(1);
+    s.disk.database(lenders(true));
+    expect(await s.poll("cdb", { force: true })).toBe(1);
     expect(await s.errors("zsrc/new.cpp")).toEqual([]);
 });
 
@@ -222,12 +207,9 @@ serve.files(
         (await s.errors("shared/types.hpp")).length,
         "a C++ header is not hosted by a C unit",
     ).toBeGreaterThan(0);
-    expect((await s.client.queryContext(s.uri("shared/types.hpp"))).total).toBe(0);
+    expect((await s.contexts("shared/types.hpp")).total).toBe(0);
     await s.compiled("shared/plain.h");
-    expect(
-        (await s.client.queryContext(s.uri("shared/plain.h"))).total,
-        "a .h takes any host",
-    ).toBe(1);
+    expect((await s.contexts("shared/plain.h")).total, "a .h takes any host").toBe(1);
 });
 
 serve.files(
@@ -236,14 +218,13 @@ serve.files(
             '[[rules]]\npatterns = ["src/**"]\ndefault_command = "clang++ -std=c++20 -DFEATURE"\n',
         "src/main.cpp": gated("FEATURE"),
     },
-    { manifest: { units: {} } },
+    { databases: false },
 )("default command claims new files", async ({ s }) => {
-    await dropRootDatabase(s);
     expect(await s.errors("src/main.cpp")).toEqual([]);
-    await s.client.poll("workspace");
+    await s.poll("workspace");
 
     s.disk.write("src/later.cpp", "int later_entry() { return 1; }\n");
-    expect((await s.client.poll("workspace")).events, "the new member is reported").toBe(1);
+    expect(await s.poll("workspace"), "the new member is reported").toBe(1);
     await s.indexed();
     expect(await indexes(s, "later_entry"), "a new member is indexed").toBe(true);
 });

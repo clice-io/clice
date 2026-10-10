@@ -23,37 +23,33 @@ const hostile = JSON.parse(
 
 const MODES = ["unknown_string_enums", "out_of_range_int_enums", "unknown_fields"] as const;
 
-serve.files({ "main.cpp": "int main() { return 0; }\n" }).for(MODES)(
-    "initialize hostile params %s",
-    async (mode, { s }) => {
-        const { params, injected } = hostile[mode]!;
-        expect(injected, `builder injected too little: ${injected}`).toBeGreaterThanOrEqual(
-            INJECTION_FLOOR,
-        );
+serve
+    .files({ "main.cpp": "int main() { return 0; }\n" }, { launch: { handshake: false } })
+    .for(MODES)("initialize hostile params %s", async (mode, { s }) => {
+    const { params, injected } = hostile[mode]!;
+    expect(injected, `builder injected too little: ${injected}`).toBeGreaterThanOrEqual(
+        INJECTION_FLOOR,
+    );
 
-        // The case's server had its handshake; a server of its own gets the
-        // hostile one.
-        await s.stop();
-        const client = s.session.spawn(s.workspace);
-        const wsUri = s.workspace.uri();
-        const hostileParams = {
-            ...params,
-            processId: process.pid,
-            rootPath: s.workspace.root,
-            rootUri: wsUri,
-            workspaceFolders: [{ uri: wsUri, name: "test" }],
-            initializationOptions: { project: { cache_dir: s.workspace.path(".clice") } },
-        };
+    // The case's server is only spawned: it gets the hostile handshake.
+    const wsUri = s.workspace.uri();
+    const hostileParams = {
+        ...params,
+        processId: process.pid,
+        rootPath: s.workspace.root,
+        rootUri: wsUri,
+        workspaceFolders: [{ uri: wsUri, name: "test" }],
+        initializationOptions: { project: { cache_dir: s.workspace.path(".clice") } },
+    };
 
-        const result = (await client.sendRequest(
-            "initialize",
-            hostileParams,
-        )) as proto.InitializeResult;
-        expect(result.serverInfo?.name).toBe("clice");
-        expect(result.capabilities).toBeDefined();
+    const result = (await s.client.sendRequest(
+        "initialize",
+        hostileParams,
+    )) as proto.InitializeResult;
+    expect(result.serverInfo?.name).toBe("clice");
+    expect(result.capabilities).toBeDefined();
 
-        await client.sendNotification(proto.InitializedNotification.type, {});
-        // Teardown gates a clean shutdown/exit — the whole handshake must survive
-        // the hostile params.
-    },
-);
+    await s.client.sendNotification(proto.InitializedNotification.type, {});
+    // Teardown gates a clean shutdown/exit — the whole handshake must survive
+    // the hostile params.
+});

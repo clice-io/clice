@@ -10,10 +10,6 @@ import type * as proto from "vscode-languageserver-protocol";
 import type { Serve } from "@clice/tools/actions";
 import { expect, serve } from "../../fixtures.ts";
 
-async function synthesized(s: Serve): Promise<number> {
-    return (await s.client.stats()).synthesizedContexts;
-}
-
 /// The diagnostics of `file` from a compile the request had to run: the
 /// file compiled and published again.
 async function recompiled(s: Serve, file: string): Promise<proto.Diagnostic[]> {
@@ -36,7 +32,10 @@ serve.files({
     // A self-contained header borrows a command but gets no prefix.
     await s.compiled("main.cpp");
     await s.clean("helper.h");
-    expect(await synthesized(s), "Self-contained headers must not synthesize a prefix").toBe(0);
+    expect(
+        (await s.stats()).synthesizedContexts,
+        "Self-contained headers must not synthesize a prefix",
+    ).toBe(0);
 });
 
 const NEEDS_POINT = {
@@ -51,7 +50,10 @@ serve.files(NEEDS_POINT)("fallback on missing context", async ({ s }) => {
     await s.compiled("main.cpp");
     await s.clean("utils.h");
     expect((await s.counts()).files["utils.h"]?.publish, "One publish, the clean one").toBe(1);
-    expect(await synthesized(s), "Fallback must synthesize exactly one prefix").toBe(1);
+    expect(
+        (await s.stats()).synthesizedContexts,
+        "Fallback must synthesize exactly one prefix",
+    ).toBe(1);
 });
 
 serve.files({
@@ -63,13 +65,13 @@ serve.files({
     await s.compiled("a.cpp");
     await s.compiled("b.cpp");
     s.open("shared.h");
-    const sw = await s.client.switchContext(s.uri("shared.h"), s.uri("b.cpp"));
+    const sw = await s.switchContext("shared.h", "b.cpp");
     expect(sw.success).toBe(true);
     await s.stop();
 
     await s.start();
     s.open("shared.h");
-    const current = await s.client.currentContext(s.uri("shared.h"));
+    const current = await s.currentContext("shared.h");
     const ctx = current.context;
     expect(
         ctx?.uri.includes("b.cpp") ?? false,
@@ -78,12 +80,12 @@ serve.files({
     expect(current.automatic).toBe(false);
 
     // A reset is persisted too.
-    expect((await s.client.resetContext(s.uri("shared.h"))).success).toBe(true);
+    expect((await s.resetContext("shared.h")).success).toBe(true);
     await s.stop();
 
     await s.start();
     s.open("shared.h");
-    expect((await s.client.currentContext(s.uri("shared.h"))).automatic).toBe(true);
+    expect((await s.currentContext("shared.h")).automatic).toBe(true);
 });
 
 serve.files({
@@ -94,7 +96,10 @@ serve.files({
     // prefix synthesis nor persist any verdict.
     const diags = await s.compiled("typo.h");
     expect(diags.length, "The syntax error must be published").toBeGreaterThan(0);
-    expect(await synthesized(s), "Ordinary errors must not trigger prefix synthesis").toBe(0);
+    expect(
+        (await s.stats()).synthesizedContexts,
+        "Ordinary errors must not trigger prefix synthesis",
+    ).toBe(0);
 });
 
 serve.files(NEEDS_POINT)("header save keeps verdict", async ({ s }) => {
@@ -103,7 +108,7 @@ serve.files(NEEDS_POINT)("header save keeps verdict", async ({ s }) => {
     // rather than compiling twice for the save.
     await s.compiled("main.cpp");
     await s.compiled("utils.h");
-    expect(await synthesized(s), "Initial verdict: needs context").toBe(1);
+    expect((await s.stats()).synthesizedContexts, "Initial verdict: needs context").toBe(1);
 
     s.edit("utils.h", { before: "inline int get_x", insert: '#include "types.h"\n' });
     await s.compiled("utils.h");
@@ -111,7 +116,7 @@ serve.files(NEEDS_POINT)("header save keeps verdict", async ({ s }) => {
 
     s.edit("utils.h", { after: "p.x; }\n", insert: "\n" });
     expect(await recompiled(s, "utils.h")).toEqual([]);
-    expect(await synthesized(s), "the save leaves the verdict alone").toBe(1);
+    expect((await s.stats()).synthesizedContexts, "the save leaves the verdict alone").toBe(1);
 });
 
 const HOST_AFTER = {
@@ -125,14 +130,17 @@ serve.files(HOST_AFTER)("save retries missing context", async ({ s }) => {
     // includer's context.
     await s.compiled("main.cpp");
     await s.compiled("h.h");
-    expect(await synthesized(s), "Initially self-contained").toBe(0);
+    expect((await s.stats()).synthesizedContexts, "Initially self-contained").toBe(0);
 
     s.edit("h.h", { replace: "return 1;", with: "return Host{2}.v;" });
     expect((await s.errors("h.h")).length).toBeGreaterThan(0);
 
     s.save("h.h");
     expect(await recompiled(s, "h.h")).toEqual([]);
-    expect(await synthesized(s), "the save switches to the includer's context").toBe(1);
+    expect(
+        (await s.stats()).synthesizedContexts,
+        "the save switches to the includer's context",
+    ).toBe(1);
 });
 
 serve.files(HOST_AFTER)("save before compile lands", async ({ s }) => {
@@ -140,12 +148,12 @@ serve.files(HOST_AFTER)("save before compile lands", async ({ s }) => {
     // judged again all the same.
     await s.compiled("main.cpp");
     await s.compiled("h.h");
-    expect(await synthesized(s), "Initially self-contained").toBe(0);
+    expect((await s.stats()).synthesizedContexts, "Initially self-contained").toBe(0);
 
     s.edit("h.h", { replace: "return 1;", with: "return Host{2}.v;" });
     s.save("h.h");
     expect(await recompiled(s, "h.h")).toEqual([]);
-    expect(await synthesized(s)).toBe(1);
+    expect((await s.stats()).synthesizedContexts).toBe(1);
 });
 
 serve.files({
@@ -158,13 +166,13 @@ serve.files({
     // includer context (the host's define) can still supply it.
     await s.compiled("main.cpp");
     await s.clean("h.h");
-    expect(await synthesized(s), "Initially self-contained").toBe(0);
+    expect((await s.stats()).synthesizedContexts, "Initially self-contained").toBe(0);
 
     // foo.h stops defining FOO; only the host's #define can provide it now.
     s.disk.write("foo.h", "#pragma once\n");
     expect(await recompiled(s, "h.h")).toEqual([]);
     expect(
-        await synthesized(s),
+        (await s.stats()).synthesizedContexts,
         "Dependency change must re-run the trial and fall back to synthesis",
     ).toBe(1);
 });
@@ -215,7 +223,7 @@ serve.files({
     // its header.
     await s.compiled("src/main.cpp");
     await s.clean("src/x.h");
-    expect(await synthesized(s)).toBe(1);
+    expect((await s.stats()).synthesizedContexts).toBe(1);
 });
 
 serve.files({
@@ -248,7 +256,7 @@ serve.files({
     expect(diags.length, "The imbalance must surface as diagnostics").toBeGreaterThan(0);
 
     // The server stays healthy: a follow-up request still answers.
-    const q = await s.client.queryContext(s.uri("list.def"));
+    const q = await s.contexts("list.def");
     expect(q.total).toBeGreaterThanOrEqual(1);
 });
 
@@ -265,7 +273,7 @@ serve.files({
     // already sees are missing context, not errors of the header.
     await s.compiled("main.cpp");
     await s.clean("user.h");
-    expect(await synthesized(s)).toBe(1);
+    expect((await s.stats()).synthesizedContexts).toBe(1);
 });
 
 serve.files({
@@ -288,11 +296,11 @@ serve.files({
     // a header that compiles on its own.
     await s.compiled("a.cpp");
     await s.compiled("mode.h");
-    expect(await synthesized(s), "Self-contained on its own").toBe(0);
+    expect((await s.stats()).synthesizedContexts, "Self-contained on its own").toBe(0);
 
-    expect((await s.client.switchContext(s.uri("mode.h"), s.uri("a.cpp"))).success).toBe(true);
+    expect((await s.switchContext("mode.h", "a.cpp")).success).toBe(true);
     expect(await recompiled(s, "mode.h")).toEqual([]);
-    expect(await synthesized(s)).toBe(1);
+    expect((await s.stats()).synthesizedContexts).toBe(1);
 });
 
 serve.files({
@@ -331,7 +339,7 @@ serve.files({
     // C99 dropped implicit declarations: a call to a function only the
     // includer declares is a missing name.
     await s.clean("util.h");
-    expect(await synthesized(s)).toBe(1);
+    expect((await s.stats()).synthesizedContexts).toBe(1);
 });
 
 serve.files({
@@ -354,7 +362,7 @@ serve.files({
     // its warnings do not move onto the header through their notes.
     await s.compiled("main.cpp");
     expect(await s.compiled("api.h")).toEqual([]);
-    expect(await synthesized(s)).toBe(1);
+    expect((await s.stats()).synthesizedContexts).toBe(1);
 });
 
 serve.files(
@@ -377,11 +385,9 @@ serve.files(
     // The scan resolved shared.h's include under b.cpp's directories;
     // a.cpp ranks first, but its compile enters another config.h.
     await s.clean("config_b/config.h");
-    expect(
-        (await s.client.queryContext(s.uri("config_b/config.h"))).contexts.map(
-            (context) => context.uri,
-        ),
-    ).toEqual([s.uri("b.cpp")]);
+    expect((await s.contexts("config_b/config.h")).contexts.map((context) => context.uri)).toEqual([
+        s.uri("b.cpp"),
+    ]);
 });
 
 serve.files({

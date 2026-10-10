@@ -1,13 +1,11 @@
 /// Document-sync protocol edges: notifications that arrive outside the
 /// expected lifecycle window, and replay of state that materialized before the
-/// client handshake completed. A case that drives a server before its
-/// handshake stops the case's server, which holds the cache, and spawns its
-/// own on the workspace.
+/// client handshake completed. Messages sent before the handshake, or out of
+/// the order a document's lifecycle allows, go through the raw client.
 
 import * as fs from "node:fs";
 import * as proto from "vscode-languageserver-protocol";
 import type { Serve } from "@clice/tools/actions";
-import type { CliceClient } from "@clice/tools/client";
 import { at, expect, serve } from "../../fixtures.ts";
 
 const TEST_TOML =
@@ -15,41 +13,42 @@ const TEST_TOML =
     "\n[tracker]\nworkspace_poll_seconds = 0\n";
 
 const test = serve.data("hello_world");
+const unshaken = serve.data("hello_world", { launch: { handshake: false } });
 
 function messageText(d: proto.Diagnostic): string {
     return typeof d.message === "string" ? d.message : d.message.value;
 }
 
-test("open before initialize", async ({ s }) => {
-    await s.stop();
-    const client = s.session.spawn(s.workspace);
-    // didOpen racing ahead of the handshake is accepted; the session must be
-    // fully usable once the server becomes ready. Register the waiter before
-    // the handshake so a push emitted during it cannot be missed.
-    const [uri] = client.open(s.workspace.path("main.cpp"));
-    const arrived = client.armDiagnostics(uri);
-    await client.initialize(s.workspace);
+function errorsOf(diagnostics: proto.Diagnostic[] | undefined): proto.Diagnostic[] | undefined {
+    return diagnostics?.filter((d) => d.severity === proto.DiagnosticSeverity.Error);
+}
 
-    const hover = await client.hoverAt(uri, 2, 4);
+unshaken("open before initialize", async ({ s }) => {
+    // didOpen racing ahead of the handshake is accepted; the session must be
+    // fully usable once the server becomes ready.
+    s.client.open(s.workspace.path("main.cpp"));
+    await s.client.initialize(s.workspace);
+
+    const hover = await s.hover(at("main.cpp", "int |add"));
     expect(hover).not.toBeNull();
     expect(hover!.contents).not.toBeNull();
-    await arrived;
-    expect(client.errors(uri)).toEqual([]);
+    expect(errorsOf(await s.pushed("main.cpp")), "the open's compile pushed").toEqual([]);
 });
 
 /// One file under two names: real/main.cpp and link/main.cpp through a
 /// symlink, which Windows grants only with privileges.
-function linked(name: string, body: (s: Serve) => Promise<void>): void {
-    if (process.platform === "win32") {
-        return;
-    }
-    serve.files({ "real/main.cpp": "int main() { return 0; }\n" })(name, async ({ s }) => {
-        fs.symlinkSync(s.workspace.path("real"), s.workspace.path("link"));
-        await body(s);
-    });
-}
+const linked = serve
+    .files(
+        { "real/main.cpp": "int main() { return 0; }\n" },
+        {
+            setup: (workspace) => {
+                fs.symlinkSync(workspace.path("real"), workspace.path("link"));
+            },
+        },
+    )
+    .skipIf(process.platform === "win32");
 
-linked("second name for an open file", async (s) => {
+linked("second name for an open file", async ({ s }) => {
     // One file, one buffer: a document naming an open file through a
     // symlink shares the first document's answers while their texts agree,
     // gets none once they diverge, never edits the first document's
@@ -57,7 +56,7 @@ linked("second name for an open file", async (s) => {
     await s.compiled("real/main.cpp");
     s.open("link/main.cpp");
     await s.diagnostics("link/main.cpp");
-    expect(s.client.diagnostics.get(s.uri("link/main.cpp")), "the shared push").toEqual([]);
+    expect(await s.pushed("link/main.cpp"), "the shared push").toEqual([]);
     const second = at("link/main.cpp", "int m|ain");
     expect(await s.hover(second), "equal texts share answers").not.toBeNull();
 
@@ -76,19 +75,17 @@ linked("second name for an open file", async (s) => {
         await s.hover(at("real/main.cpp", "int m|ain")),
         "the first document stays open",
     ).not.toBeNull();
-    expect(s.client.diagnostics.get(s.uri("link/main.cpp")), "its warning leaves with it").toEqual(
-        [],
-    );
+    expect(await s.pushed("link/main.cpp"), "its warning leaves with it").toEqual([]);
     expect(
         await s.errors("real/main.cpp"),
         "the first document's buffer must be untouched",
     ).toEqual([]);
     s.close("real/main.cpp");
     await s.sync();
-    expect((await s.client.stats()).sessions, "the closed second name stays closed").toBe(0);
+    expect((await s.stats()).sessions, "the closed second name stays closed").toBe(0);
 });
 
-linked("second name takes over on close", async (s) => {
+linked("second name takes over on close", async ({ s }) => {
     await s.compiled("real/main.cpp");
     s.open("link/main.cpp");
     s.edit("link/main.cpp", { replace: "return 0", with: "return undefined_name" });
@@ -99,21 +96,18 @@ linked("second name takes over on close", async (s) => {
     ).toBeGreaterThan(0);
 });
 
-test("close before initialize", async ({ s }) => {
-    await s.stop();
-    const client = s.session.spawn(s.workspace);
-    const [uri] = client.open(s.workspace.path("main.cpp"));
-    client.close(uri);
-    await client.initialize(s.workspace);
+unshaken("close before initialize", async ({ s }) => {
+    const [uri] = s.client.open(s.workspace.path("main.cpp"));
+    s.client.close(uri);
+    await s.client.initialize(s.workspace);
     // The pre-handshake close must not push a diagnostics clear (an ungated one
     // would be on the wire before the initialize response), and the closed
     // session must not be replayed.
-    expect(client.diagnostics.has(uri)).toBe(false);
-    await expect(client.hoverAt(uri, 0, 0)).rejects.toThrow("Document not open");
+    expect(await s.pushed("main.cpp")).toBeUndefined();
+    await expect(s.hover(at("main.cpp", "|#include"))).rejects.toThrow("Document not open");
     // The file closed before ready went through the reindex queue; a normal
     // open/compile cycle must still work afterwards.
-    const [uri2] = await client.openAndWait("main.cpp");
-    expect(client.errors(uri2)).toEqual([]);
+    expect(await s.errors("main.cpp")).toEqual([]);
 });
 
 test("change without open", async ({ s }) => {
@@ -149,22 +143,21 @@ serve.files({ "main.cpp": "int foo() { return 1; }\n" })("desync range clamped",
 });
 
 test("version regression tolerated", async ({ s }) => {
-    const [uri, content] = s.client.open("main.cpp", 5);
+    s.open("main.cpp", { version: 5, pull: false });
     // A version that goes backwards is a client bug; the edit is applied anyway
     // (and warned about server-side).
-    s.client.change(uri, 3, content + "\nint bad(\n");
+    s.client.change(s.uri("main.cpp"), 3, s.disk.read("main.cpp") + "\nint bad(\n");
     await s.hover(at("main.cpp", "|#include"));
-    const errors = (await s.client.pullDiagnostics(uri)).filter(
-        (d) => d.severity === proto.DiagnosticSeverity.Error,
-    );
-    expect(errors.length).toBeGreaterThan(0);
+    expect((await s.errors("main.cpp")).length).toBeGreaterThan(0);
 });
 
 /// A server pre-initialized on the case's workspace (serve --workspace),
-/// whose client has not done its handshake.
-async function preInitialized(s: Serve): Promise<CliceClient> {
+/// whose client has not done its handshake. Its config comes from
+/// clice.toml alone, without the test hooks: what it pushed is read off the
+/// raw client.
+async function preInitialized(s: Serve): Promise<void> {
     await s.stop();
-    return s.session.spawn(s.workspace, { args: ["serve", `--workspace=${s.workspace.root}`] });
+    await s.start({ args: ["serve", `--workspace=${s.workspace.root}`], handshake: false });
 }
 
 const late = serve.files({
@@ -173,72 +166,70 @@ const late = serve.files({
 });
 
 late("replay after late handshake", async ({ s }) => {
-    const client = await preInitialized(s);
+    await preInitialized(s);
     // The server is pre-initialized (ready); the client has not done its
     // handshake yet. Compile output materializes but must not be pushed.
-    const [uri] = client.open(s.workspace.path("main.cpp"));
-    const hover = await client.hoverAt(uri, 0, 4);
-    expect(hover).not.toBeNull();
+    const [uri] = s.client.open(s.workspace.path("main.cpp"));
+    expect(await s.hover(at("main.cpp", "int |add"))).not.toBeNull();
     // Non-vacuous: an ungated push is emitted during the compile the
     // hover awaits, so it would be on the wire before the hover response
     // and recorded by the time the hover future resolves.
-    expect(client.diagnostics.has(uri)).toBe(false);
+    expect(s.client.diagnostics.has(uri)).toBe(false);
 
     // A pre-initialized server rejects the initialize request; the
     // handshake still completes with the initialized notification, which
     // replays the materialized output.
     await expect(
-        client.sendRequest(proto.InitializeRequest.type, {
+        s.client.sendRequest(proto.InitializeRequest.type, {
             processId: null,
             rootUri: s.workspace.uri(),
             capabilities: {},
         }),
     ).rejects.toThrow();
-    const arrived = client.armDiagnostics(uri);
-    await client.sendNotification(proto.InitializedNotification.type, {});
+    const arrived = s.client.armDiagnostics(uri);
+    await s.client.sendNotification(proto.InitializedNotification.type, {});
     await arrived;
-    expect(client.errors(uri)).toEqual([]);
+    expect(s.client.errors(uri)).toEqual([]);
 });
 
 late("no stale replay", async ({ s }) => {
-    const client = await preInitialized(s);
-    const [uri, content] = client.open(s.workspace.path("main.cpp"));
-    const hover = await client.hoverAt(uri, 0, 4);
-    expect(hover).not.toBeNull();
+    await preInitialized(s);
+    const [uri, content] = s.client.open(s.workspace.path("main.cpp"));
+    expect(await s.hover(at("main.cpp", "int |add"))).not.toBeNull();
     // An edit during the handshake window invalidates the materialized
     // output; the replay must skip it instead of pairing pre-edit
     // results with the new text.
-    client.change(uri, 1, content + "int bad(\n");
+    s.client.change(uri, 1, content + "int bad(\n");
     await expect(
-        client.sendRequest(proto.InitializeRequest.type, {
+        s.client.sendRequest(proto.InitializeRequest.type, {
             processId: null,
             rootUri: s.workspace.uri(),
             capabilities: {},
         }),
     ).rejects.toThrow();
-    await client.sendNotification(proto.InitializedNotification.type, {});
+    await s.client.sendNotification(proto.InitializedNotification.type, {});
     // A request round-trip orders us after the initialized processing: a
     // (wrong) replay push would already have been recorded.
-    await client.queryContext(uri);
-    expect(client.diagnostics.has(uri)).toBe(false);
+    await s.contexts("main.cpp");
+    expect(s.client.diagnostics.has(uri)).toBe(false);
     // The next compile pushes fresh results for the edited buffer.
-    const arrived = client.armDiagnostics(uri);
-    await client.hoverAt(uri, 0, 4);
+    const arrived = s.client.armDiagnostics(uri);
+    await s.hover(at("main.cpp", "int |add"));
     await arrived;
-    expect(client.errors(uri).length).toBeGreaterThan(0);
+    expect(s.client.errors(uri).length).toBeGreaterThan(0);
 });
 
-serve.files({ "main.cpp": "int x = 1;\n", "clice.toml": TEST_TOML })(
+serve.files({ "main.cpp": "int x = 1;\n", "clice.toml": TEST_TOML }, { databases: false })(
     "startup guidance delivered",
     async ({ s }) => {
         // No compile_commands.json: the headless workspace load emits
         // guidance without waiting for any handshake; the client must still
         // receive it (drained from the server's notify log).
-        s.disk.rm("compile_commands.json");
-        const client = await preInitialized(s);
+        await preInitialized(s);
+        const client = s.client;
         // The load runs before the server reads its first message, so the
         // guidance is on the wire ahead of the shutdown reply.
-        await client.shutdown();
+        await s.stop();
         expect(
             client.guidanceMessages().some((message) => message.includes("compile_commands.json")),
             "startup guidance never reached the client",

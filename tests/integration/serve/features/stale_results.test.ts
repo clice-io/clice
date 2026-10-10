@@ -68,14 +68,13 @@ serve("tiny", { config: { project: { enable_indexing: false } } }).for(FEATURES)
 
         // Asked again, the request waits for the compile of the text as it
         // stands and is answered.
-        const again = await s.request(method, where, extra);
+        const again = await s.request<{ data?: unknown[] } | null>(method, where, extra);
         expect(again).not.toBeNull();
-        expect((again as { data?: unknown[] }).data?.length ?? 1).toBeGreaterThan(0);
+        expect(again?.data?.length ?? 1).toBeGreaterThan(0);
     },
 );
 
-function labels(reply: unknown): string[] {
-    const list = reply as proto.CompletionList | proto.CompletionItem[] | null;
+function labels(list: proto.CompletionList | proto.CompletionItem[] | null | undefined): string[] {
     return (Array.isArray(list) ? list : (list?.items ?? [])).map((item) => item.label);
 }
 
@@ -96,7 +95,7 @@ serve.files({
             s.open("main.cpp");
         },
         async () => {
-            const served = s.request("textDocument/completion", probe);
+            const served = s.completion(probe);
             // Any later reply: the server took the completion up before.
             await s.counts();
             s.edit("main.cpp", { after: "int probe = extra_", insert: "v" });
@@ -112,7 +111,7 @@ serve.files({
         () => {
             // A new preamble, whose PCH the completion waits for.
             s.edit("main.cpp", { after: '#include "pre.h"\n', insert: '#include "more.h"\n' });
-            moved = s.request("textDocument/completion", probe).then(
+            moved = s.completion(probe).then(
                 () => null,
                 (error: unknown) => error,
             );
@@ -176,7 +175,8 @@ completing("completion read with an edit is served", async ({ s }) => {
         }),
         edit(uri, PROBE + "v"),
     ]);
-    expect(labels(replies.get("completion")?.result)).toContain("extra_value");
+    const served = replies.get("completion")?.result as proto.CompletionList | null;
+    expect(labels(served)).toContain("extra_value");
 });
 
 completing("completion read with a reopen answers ContentModified", async ({ s }) => {

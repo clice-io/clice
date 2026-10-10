@@ -1,24 +1,10 @@
 /// Integration tests for #include completion and import completion in clice.
 
 import type { Serve } from "@clice/tools/actions";
-import { positionAt } from "@clice/tools/client/edits";
 import * as proto from "vscode-languageserver-protocol";
-import { at, expect, serve, type Loc } from "../../fixtures.ts";
+import { at, expect, serve } from "../../fixtures.ts";
 
 type CompletionReply = proto.CompletionItem[] | proto.CompletionList | null;
-
-function complete(s: Serve, loc: Loc, triggerCharacter?: string): Promise<CompletionReply> {
-    const context =
-        triggerCharacter === undefined
-            ? {}
-            : {
-                  context: {
-                      triggerKind: proto.CompletionTriggerKind.TriggerCharacter,
-                      triggerCharacter,
-                  },
-              };
-    return s.request("textDocument/completion", loc, context) as Promise<CompletionReply>;
-}
 
 function itemsOf(result: CompletionReply): proto.CompletionItem[] {
     return Array.isArray(result) ? result : (result?.items ?? []);
@@ -46,7 +32,7 @@ const chained = serve.data("modules/chained_modules");
 includes("include completion quoted", async ({ s }) => {
     await typed(s, "main.cpp", '#include "my');
 
-    const result = await complete(s, at("main.cpp", '#include "my|'));
+    const result = await s.completion(at("main.cpp", '#include "my|'));
 
     expect(result).not.toBeNull();
     expect(labelsOf(result)).toContain("myheader.h");
@@ -57,7 +43,7 @@ includes("include completion quoted", async ({ s }) => {
 /// A header candidate closes the directive, replacing a delimiter already there.
 includes("include completion closes directive", async ({ s }) => {
     await typed(s, "main.cpp", '#include "my');
-    let item = itemsOf(await complete(s, at("main.cpp", '#include "my|'))).find(
+    let item = itemsOf(await s.completion(at("main.cpp", '#include "my|'))).find(
         (i) => i.label === "myheader.h",
     );
     expect(editOf(item)).toEqual({
@@ -66,7 +52,7 @@ includes("include completion closes directive", async ({ s }) => {
     });
 
     s.edit("main.cpp", { text: '#include "myhe"' });
-    item = itemsOf(await complete(s, at("main.cpp", '#include "my|he"'))).find(
+    item = itemsOf(await s.completion(at("main.cpp", '#include "my|he"'))).find(
         (i) => i.label === "myheader.h",
     );
     expect(editOf(item)).toEqual({
@@ -76,7 +62,7 @@ includes("include completion closes directive", async ({ s }) => {
 
     // Picked in an earlier path component, a header ends the path there.
     s.edit("main.cpp", { text: '#include "my/rest.h"' });
-    item = itemsOf(await complete(s, at("main.cpp", '#include "my|/rest.h"'))).find(
+    item = itemsOf(await s.completion(at("main.cpp", '#include "my|/rest.h"'))).find(
         (i) => i.label === "myheader.h",
     );
     expect(editOf(item)).toEqual({
@@ -88,7 +74,7 @@ includes("include completion closes directive", async ({ s }) => {
 /// Sources and other non-header files on the search path are not candidates.
 includes("include completion lists headers", async ({ s }) => {
     await typed(s, "main.cpp", '#include "');
-    const labels = labelsOf(await complete(s, at("main.cpp", '#include "|')));
+    const labels = labelsOf(await s.completion(at("main.cpp", '#include "|')));
     expect(labels).toContain("myheader.h");
     expect(labels).toContain("subdir/");
     expect(labels).not.toContain("main.cpp");
@@ -101,14 +87,14 @@ serve.files(
     { manifest: { cxx: ["-std=c++17"], units: { "src/main.cpp": [] } } },
 )("include completion sibling headers", async ({ s }) => {
     await typed(s, "src/main.cpp", '#include "lo');
-    expect(labelsOf(await complete(s, at("src/main.cpp", '#include "lo|')))).toContain("local.h");
+    expect(labelsOf(await s.completion(at("src/main.cpp", '#include "lo|')))).toContain("local.h");
 });
 
 /// An identifier named `import` opening a line is not an import statement.
 includes("import identifier member access", async ({ s }) => {
     await typed(s, "main.cpp", "struct S { int member; };\nvoid f(S* import) {\nimport->\n}");
 
-    const result = await complete(s, at("main.cpp", "import->|"), ">");
+    const result = await s.completion(at("main.cpp", "import->|"), ">");
     expect(labelsOf(result)).toContain("member");
 });
 
@@ -116,7 +102,7 @@ includes("import identifier member access", async ({ s }) => {
 includes("include completion subdirectory", async ({ s }) => {
     await typed(s, "main.cpp", '#include "subdir/');
 
-    const result = await complete(s, at("main.cpp", '#include "subdir/|'));
+    const result = await s.completion(at("main.cpp", '#include "subdir/|'));
 
     expect(result).not.toBeNull();
     expect(labelsOf(result)).toContain("nested.h");
@@ -128,7 +114,7 @@ includes("include completion subdirectory", async ({ s }) => {
 includes("include completion angle bracket", async ({ s }) => {
     await typed(s, "main.cpp", "#include <cstd");
 
-    const result = await complete(s, at("main.cpp", "#include <cstd|"));
+    const result = await s.completion(at("main.cpp", "#include <cstd|"));
 
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
@@ -145,7 +131,7 @@ includes("include completion angle bracket", async ({ s }) => {
 includes("no include completion on regular code", async ({ s }) => {
     await typed(s, "main.cpp", "int x = ");
 
-    const result = await complete(s, at("main.cpp", "int x = |"));
+    const result = await s.completion(at("main.cpp", "int x = |"));
 
     // Should return results from clang (keywords, etc.), not include paths.
     // Verify none of the results look like header filenames.
@@ -161,7 +147,7 @@ includes("no include completion on regular code", async ({ s }) => {
 includes("include completion empty prefix", async ({ s }) => {
     await typed(s, "main.cpp", '#include "');
 
-    const result = await complete(s, at("main.cpp", '#include "|'));
+    const result = await s.completion(at("main.cpp", '#include "|'));
 
     expect(result).not.toBeNull();
     // With empty prefix, should list available headers including myheader.h
@@ -180,7 +166,7 @@ chained("import completion basic", async ({ s }) => {
     s.open("mod_b.cppm");
     s.edit("mod_b.cppm", { text: "import " });
 
-    const result = await complete(s, at("mod_b.cppm", "import |"));
+    const result = await s.completion(at("mod_b.cppm", "import |"));
 
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
@@ -198,7 +184,7 @@ chained("space trigger serves import", async ({ s }) => {
     s.open("mod_b.cppm");
     s.edit("mod_b.cppm", { text: "import " });
 
-    const result = await complete(s, at("mod_b.cppm", "import |"), " ");
+    const result = await s.completion(at("mod_b.cppm", "import |"), " ");
 
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
@@ -209,11 +195,11 @@ chained("space trigger serves import", async ({ s }) => {
 /// interface unit is offered its interface partitions only.
 serve.data("modules/internal_partitions")("colon trigger serves partitions", async ({ s }) => {
     await typed(s, "impl.cpp", "module Lib;\nimport :");
-    const fromImpl = await complete(s, at("impl.cpp", "import :|"), ":");
+    const fromImpl = await s.completion(at("impl.cpp", "import :|"), ":");
     expect(labelsOf(fromImpl)).toEqual([":api", ":detail", ":util"]);
 
     await typed(s, "lib.cppm", "export module Lib;\nexport import :");
-    const fromInterface = await complete(s, at("lib.cppm", "export import :|"), ":");
+    const fromInterface = await s.completion(at("lib.cppm", "export import :|"), ":");
     expect(labelsOf(fromInterface)).toEqual([":api"]);
 });
 
@@ -224,7 +210,7 @@ chained("space trigger gated elsewhere", async ({ s }) => {
 
     // Cursor right after "return " — a space trigger here must be answered
     // with an empty list instead of a full completion build.
-    const result = await complete(s, at("mod_b.cppm", "return |0"), " ");
+    const result = await s.completion(at("mod_b.cppm", "return |0"), " ");
 
     const items = labelsOf(result);
     expect(
@@ -239,7 +225,7 @@ includes("space trigger gated include", async ({ s }) => {
 
     // The space gate must run before include scanning: no directory
     // enumeration and no candidates for a trailing-space trigger.
-    const result = await complete(s, at("main.cpp", "#include <vector> |"), " ");
+    const result = await s.completion(at("main.cpp", "#include <vector> |"), " ");
 
     const items = labelsOf(result);
     expect(
@@ -252,7 +238,7 @@ includes("space trigger gated include", async ({ s }) => {
 includes("angle trigger gated template", async ({ s }) => {
     await typed(s, "main.cpp", "#define UNRELATED_MACRO 123\ntemplate<");
 
-    const result = await complete(s, at("main.cpp", "template<|"), "<");
+    const result = await s.completion(at("main.cpp", "template<|"), "<");
 
     const items = labelsOf(result);
     expect(items.length, `Expected no items after template<, got: ${items.join(", ")}`).toBe(0);
@@ -262,7 +248,7 @@ includes("angle trigger gated template", async ({ s }) => {
 includes("ellipsis trigger gated", async ({ s }) => {
     await typed(s, "main.cpp", "template<typename...");
 
-    const result = await complete(s, at("main.cpp", "template<typename...|"), ".");
+    const result = await s.completion(at("main.cpp", "template<typename...|"), ".");
 
     const items = labelsOf(result);
     expect(items.length, `Expected no items after an ellipsis, got: ${items.join(", ")}`).toBe(0);
@@ -272,7 +258,7 @@ includes("ellipsis trigger gated", async ({ s }) => {
 includes("dot trigger serves member", async ({ s }) => {
     await typed(s, "main.cpp", "struct Widget { int member; };\nvoid f() { Widget w; w. }");
 
-    const result = await complete(s, at("main.cpp", "w.| }"), ".");
+    const result = await s.completion(at("main.cpp", "w.| }"), ".");
 
     expect(labelsOf(result)).toContain("member");
 });
@@ -286,7 +272,7 @@ chained("import completion with prefix", async ({ s }) => {
     s.open("mod_b.cppm");
     s.edit("mod_b.cppm", { text: "import A" });
 
-    const result = await complete(s, at("mod_b.cppm", "import A|"));
+    const result = await s.completion(at("mod_b.cppm", "import A|"));
 
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
@@ -302,7 +288,7 @@ serve.data("modules/dotted_module_name")("import completion dotted names", async
     // Change app.cppm to an incomplete import with dotted prefix.
     s.edit("app.cppm", { text: "import my." });
 
-    const result = await complete(s, at("app.cppm", "import my.|"));
+    const result = await s.completion(at("app.cppm", "import my.|"));
 
     expect(result).not.toBeNull();
     const labels = labelsOf(result);
@@ -341,24 +327,19 @@ serve.files(
 )("snippets follow client support", async ({ s }) => {
     const loc = at("main.cpp", "compu|;");
     await s.compiled("main.cpp");
-    const plain = itemsOf(await complete(s, loc)).find((item) => item.label === "compute");
+    const plain = itemsOf(await s.completion(loc)).find((item) => item.label === "compute");
     expect(plain?.insertTextFormat).not.toBe(proto.InsertTextFormat.Snippet);
     expect(plain?.textEdit?.newText).toBe("compute()");
     await s.stop();
 
-    // The case's server declares no snippet support; this client does.
-    const snippets = s.session.spawn(s.workspace);
-    await snippets.initialize(s.workspace, {
-        initializationOptions: SNIPPET_OPTIONS,
+    // The case's server declares no snippet support; this one does.
+    await s.start({
         capabilities: {
             textDocument: { completion: { completionItem: { snippetSupport: true } } },
         },
     });
-    const [uri] = await snippets.openAndWait("main.cpp");
-    const text = s.disk.read("main.cpp");
-    const { line, character } = positionAt(text, text.indexOf("compu;") + "compu".length);
-    const result = await snippets.completionAt(uri, line, character);
-    const placeholders = itemsOf(result).find((item) => item.label === "compute");
+    await s.compiled("main.cpp");
+    const placeholders = itemsOf(await s.completion(loc)).find((item) => item.label === "compute");
     expect(placeholders?.insertTextFormat).toBe(proto.InsertTextFormat.Snippet);
     expect(placeholders?.textEdit?.newText).toBe("compute(${1:int x})");
 });

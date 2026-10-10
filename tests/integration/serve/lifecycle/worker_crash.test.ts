@@ -4,7 +4,7 @@
 /// crash merely takes along.
 
 import type * as proto from "vscode-languageserver-protocol";
-import type { Serve } from "@clice/tools/actions";
+import type { Launch, Serve } from "@clice/tools/actions";
 import { sleep } from "@clice/tools/client";
 import type { Manifest } from "@clice/tools/project";
 import { at, expect, serve } from "../../fixtures.ts";
@@ -36,6 +36,7 @@ function crashing(
         env?: Record<string, string>;
         project?: Record<string, unknown>;
         manifest?: Manifest;
+        launch?: Launch;
     } = {},
 ) {
     return serve.files(files, {
@@ -46,6 +47,7 @@ function crashing(
         env: { CLICE_TEST_PRAGMA_CRASH: "1", ...options.env },
         anomalies: true,
         ...(options.manifest === undefined ? {} : { manifest: options.manifest }),
+        ...(options.launch === undefined ? {} : { launch: options.launch }),
     });
 }
 
@@ -112,29 +114,17 @@ crashing({ "poison.cpp": poison(0) })("compile crash waits for save", async ({ s
     expect(await crashes(s, "compile", "poison.cpp")).toBe(2);
 });
 
-crashing({ "poison.cpp": poison(0) })("pull shows the crash note", async ({ s }) => {
-    // A client that pulls gets no pushes: the case's server announces no
-    // pull support, so this one is started by hand.
-    await s.stop();
-    const client = s.session.spawn(s.workspace, {
-        allowAnomaly: true,
-        env: { CLICE_ANOMALY_NO_TRAP: "1", CLICE_TEST_PRAGMA_CRASH: "1" },
-    });
-    await client.initialize(s.workspace, {
-        initializationOptions: {
-            diagnostics: { clang_tidy: false },
-            project: { enable_indexing: false },
-        },
-        capabilities: { textDocument: { diagnostic: {} } },
-    });
-
-    const [uri] = client.open("poison.cpp");
-    const pulled = (await client.pullDiagnostics(uri)).map(message);
+crashing(
+    { "poison.cpp": poison(0) },
+    // A client that pulls gets no pushes.
+    { launch: { capabilities: { textDocument: { diagnostic: {} } } } },
+)("pull shows the crash note", async ({ s }) => {
+    s.open("poison.cpp", { pull: false });
+    const pulled = (await s.diagnostics("poison.cpp")).map(message);
     expect(pulled).toEqual([expect.stringContaining("while compiling this file")]);
-    expect((await client.sync()).pending).toEqual([]);
-    expect(s.workspace.workerCrashes(`compile ${s.workspace.displayPath("poison.cpp")}`)).toBe(1);
+    expect(await crashes(s, "compile", "poison.cpp")).toBe(1);
     expect(s.workspace.log("master.log")).toContain("[anomaly:WorkerCrash]");
-    expect(client.publishCount(uri)).toBe(0);
+    expect(await s.pushed("poison.cpp")).toBeUndefined();
 });
 
 crashing({ "poison.cpp": poison(0) })("edit retries after a pause", async ({ s }) => {
@@ -210,7 +200,7 @@ crashing(
     { "main.cpp": `${HEALTHY}int x = ad;\n` },
     { env: { CLICE_TEST_CRASH_REQUEST: "completion " } },
 )("completion crash pauses completion", async ({ s }) => {
-    const complete = () => s.request("textDocument/completion", at("main.cpp", "int x = ad|;"));
+    const complete = () => s.completion(at("main.cpp", "int x = ad|;"));
     s.open("main.cpp");
     expect(await s.hover(ADD("main.cpp"))).not.toBeNull();
     await complete();
@@ -362,40 +352,36 @@ const HUNG: Manifest = {
     ),
 };
 
-if (process.platform === "linux") {
-    crashing(
-        { "a.cpp": HANG, "b.cpp": HANG, "c.cpp": HANG },
-        // One stateful worker compiles all three side by side.
-        { manifest: HUNG, project: { stateful_worker_count: 1 } },
-    )("shared deaths blame nobody", async ({ s }) => {
-        const names = Object.keys(HUNG.units);
-        for (const name of names) {
-            s.open(name);
+crashing(
+    { "a.cpp": HANG, "b.cpp": HANG, "c.cpp": HANG },
+    // One stateful worker compiles all three side by side.
+    { manifest: HUNG, project: { stateful_worker_count: 1 } },
+).skipIf(process.platform !== "linux")("shared deaths blame nobody", async ({ s }) => {
+    const names = Object.keys(HUNG.units);
+    for (const name of names) {
+        s.open(name);
+    }
+    const answers = names.map((name) => s.hover(at(name, "long f|ib(")));
+    // Killed twice, the second time while all three resends compile: the
+    // death names none of them and they shared the worker, so none is
+    // blamed.
+    for (const round of [1, 2]) {
+        // What the server still runs at the deadline of its own sync is
+        // in flight: the compiles, which never end by themselves.
+        const { pending } = await s.client.sync({ deadlineMs: 1_000 });
+        expect(pending, `round ${round}`).toEqual(
+            expect.arrayContaining(names.map((name) => `compile ${s.workspace.displayPath(name)}`)),
+        );
+        for (const pid of s.client.workerPids("SF-")) {
+            process.kill(pid, "SIGKILL");
         }
-        const answers = names.map((name) => s.hover(at(name, "long f|ib(")));
-        // Killed twice, the second time while all three resends compile: the
-        // death names none of them and they shared the worker, so none is
-        // blamed.
-        for (const round of [1, 2]) {
-            // What the server still runs at the deadline of its own sync is
-            // in flight: the compiles, which never end by themselves.
-            const { pending } = await s.client.sync({ deadlineMs: 1_000 });
-            expect(pending, `round ${round}`).toEqual(
-                expect.arrayContaining(
-                    names.map((name) => `compile ${s.workspace.displayPath(name)}`),
-                ),
-            );
-            for (const pid of s.client.workerPids("SF-")) {
-                process.kill(pid, "SIGKILL");
-            }
-        }
-        await Promise.all(answers);
-        for (const name of names) {
-            expect(everNoted(s, name), name).toBe(false);
-        }
-        expect(s.workspace.log("master.log")).toContain("[anomaly:WorkerCrash]");
-    });
-}
+    }
+    await Promise.all(answers);
+    for (const name of names) {
+        expect(everNoted(s, name), name).toBe(false);
+    }
+    expect(s.workspace.log("master.log")).toContain("[anomaly:WorkerCrash]");
+});
 
 crashing({ "poison.cpp": poison(0) })("reopen keeps the bar", async ({ s }) => {
     s.open("poison.cpp");
@@ -406,8 +392,7 @@ crashing({ "poison.cpp": poison(0) })("reopen keeps the bar", async ({ s }) => {
     // Closing and reopening the same bytes is no retry; the note is back
     // at once.
     s.close("poison.cpp");
-    await s.sync();
-    expect(notes(s.client.diagnostics.get(s.uri("poison.cpp")) ?? [])).toEqual([]);
+    expect(notes((await s.pushed("poison.cpp")) ?? [])).toEqual([]);
     s.open("poison.cpp");
     await note(s, "poison.cpp", "while compiling this file");
     expect(await s.hover(ADD("poison.cpp"))).toBeNull();

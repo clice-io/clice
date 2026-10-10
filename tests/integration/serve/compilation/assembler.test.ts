@@ -12,23 +12,17 @@ serve.files(
             "# Hooray, we are in long mode\n" +
             "entry:\n" +
             "    .quad SIZE\n",
-    },
-    { manifest: { units: {} } },
-)("open assembler with comments", async ({ s }) => {
-    // The fixture's database spells every unit with clang++ -fsyntax-only.
-    await s.offline(() => {
-        const entry = s.workspace.path("entry.S");
-        s.disk.write(
-            "compile_commands.json",
+        "compile_commands.json": (workspace) =>
             JSON.stringify([
                 {
-                    directory: s.workspace.root,
-                    file: entry,
-                    arguments: ["clang", "-c", entry, "-o", "entry.o"],
+                    directory: workspace.root,
+                    file: workspace.path("entry.S"),
+                    arguments: ["clang", "-c", workspace.path("entry.S"), "-o", "entry.o"],
                 },
             ]),
-        );
-    });
+    },
+    { databases: false },
+)("open assembler with comments", async ({ s }) => {
     await s.compiled("entry.S");
 
     const hover = await s.hover(at("entry.S", ".quad S|IZE"));

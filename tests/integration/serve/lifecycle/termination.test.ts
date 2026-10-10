@@ -7,17 +7,22 @@ import type { Serve } from "@clice/tools/actions";
 import { runProcess } from "@clice/tools/client";
 import { at, expect, serve } from "../../fixtures.ts";
 
-const hanging = serve.files(
-    {
-        "hang.cpp":
-            "constexpr long fib(long n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }\n" +
-            "constexpr long x = fib(90);\n",
-    },
-    {
-        config: { project: { enable_indexing: false } },
-        manifest: { cxx: ["-std=c++23"], units: { "hang.cpp": ["-fconstexpr-steps=2147483647"] } },
-    },
-);
+const hanging = serve
+    .files(
+        {
+            "hang.cpp":
+                "constexpr long fib(long n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }\n" +
+                "constexpr long x = fib(90);\n",
+        },
+        {
+            config: { project: { enable_indexing: false } },
+            manifest: {
+                cxx: ["-std=c++23"],
+                units: { "hang.cpp": ["-fconstexpr-steps=2147483647"] },
+            },
+        },
+    )
+    .skipIf(process.platform !== "linux");
 
 /// Open the hanging file and ask for a hover: the stateful worker runs its
 /// compile, which never ends. What the server still runs at the deadline
@@ -45,49 +50,46 @@ async function exited(pid: number): Promise<void> {
     expect(run.status, `worker ${pid} outlived its master: ${run.stderr}`).toBe(0);
 }
 
-if (process.platform === "linux") {
-    hanging("closed input ends a hung server", async ({ s }) => {
-        await hang(s);
-        // Neovim quits by closing the server's input, without `exit`.
-        s.client.child.stdin.end();
-        await s.client.assertExitedCleanly(15_000);
-        s.client.dispose();
-    });
+hanging("closed input ends a hung server", async ({ s }) => {
+    await hang(s);
+    // Neovim quits by closing the server's input, without `exit`.
+    s.client.child.stdin.end();
+    await s.client.assertExitedCleanly(15_000);
+    s.client.dispose();
+});
 
-    hanging("workers die with their master", async ({ s }) => {
-        await hang(s);
-        const workers = s.client.workerPids();
-        s.client.killServer();
-        s.client.dispose();
-        await Promise.all(workers.map(exited));
-    });
-}
+hanging("workers die with their master", async ({ s }) => {
+    await hang(s);
+    const workers = s.client.workerPids();
+    await s.kill();
+    await Promise.all(workers.map(exited));
+});
 
 /// The editor a server reports to, standing in for one that dies while a
 /// descendant keeps the server's input open.
-serve.files({ "main.cpp": "int main() { return 0; }\n" }).for([false, true])(
+serve
+    .files({ "main.cpp": "int main() { return 0; }\n" }, { launch: { handshake: false } })
+    .for([false, true])(
     "client death ends the server (after shutdown: %s)",
     async (shutdown, { s }) => {
-        // The server watches the editor initialize named; the case's server
-        // makes way for one initialized by hand.
-        await s.stop();
-        const client = s.session.spawn(s.workspace);
+        // The server watches the process initialize names as its editor: the
+        // case initializes by hand to name its own.
         const editor = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"]);
         try {
-            await client.sendRequest("initialize", {
+            await s.client.sendRequest("initialize", {
                 processId: editor.pid,
                 rootUri: s.workspace.uri(),
                 capabilities: {},
                 initializationOptions: { project: { cache_dir: s.workspace.path(".clice") } },
             });
-            await client.sendNotification(proto.InitializedNotification.type, {});
+            await s.client.sendNotification(proto.InitializedNotification.type, {});
             if (shutdown) {
-                await client.sendRequest(proto.ShutdownRequest.type);
+                await s.client.sendRequest(proto.ShutdownRequest.type);
             }
         } finally {
             editor.kill("SIGKILL");
         }
-        await client.assertExitedCleanly(15_000);
-        client.dispose();
+        await s.client.assertExitedCleanly(15_000);
+        s.client.dispose();
     },
 );

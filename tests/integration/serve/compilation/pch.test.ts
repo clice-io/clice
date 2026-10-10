@@ -11,7 +11,7 @@ serve.files({ "main.cpp": "#include <iostream>\nint main() { return 0; }\n" })(
         await s.clean("main.cpp");
         const built = s.workspace.pchFiles();
         expect(built).toHaveLength(1);
-        await s.request("textDocument/completion", at("main.cpp", "|int main"));
+        await s.completion(at("main.cpp", "|int main"));
         await s.sync();
         expect((await s.counts()).pch, "the pch was rebuilt").toBe(1);
         expect(s.workspace.pchFiles()).toEqual(built);
@@ -41,7 +41,7 @@ serve.files({ "main.cpp": generated(0) })("pch with errors waits for its inputs"
 /// input the PCH recorded: a save retries a preamble that had errors.
 serve.files(
     { "main.cpp": '#include "generated.h"\nint main() { return generated(); }\n' },
-    { manifest: { cxx: ["-std=c++17"], units: { "main.cpp": ["-Igen"] } } },
+    { manifest: { cxx: ["-std=c++17"], units: { "main.cpp": ["-I${workspace}/gen"] } } },
 )("pch with errors retries on save", async ({ s }) => {
     expect(await s.errors("main.cpp")).not.toEqual([]);
 
@@ -84,7 +84,7 @@ test("hover on local symbol", async ({ s }) => {
 test("completion with pch", async ({ s }) => {
     await s.compiled("main.cpp");
     s.edit("main.cpp", { text: s.disk.read("main.cpp") + "\nPoi" });
-    expect(await s.request("textDocument/completion", at("main.cpp", "\nPoi|"))).not.toBeNull();
+    expect(await s.completion(at("main.cpp", "\nPoi|"))).not.toBeNull();
     s.close("main.cpp");
 });
 

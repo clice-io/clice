@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
 import type { Serve, ServeOptions } from "@clice/tools/actions";
-import { writeDatabase } from "@clice/tools/project";
+import type { Manifest } from "@clice/tools/project";
 import { at, expect, serve, type Loc } from "../../fixtures.ts";
 
 const GATED_MAIN = `#ifndef FEATURE
@@ -38,35 +38,14 @@ const CLOSED = '#include "header.h"\nint use_target() { return TARGET(); }\n';
 
 const CXX = ["-std=c++17"];
 
-function units(sources: string[], args: string[] = []): Record<string, string[]> {
-    return Object.fromEntries(sources.map((source) => [source, args]));
+/// Every source a C++17 unit with `args`.
+function manifest(sources: string[], args: string[] = []): Manifest {
+    return { cxx: CXX, units: Object.fromEntries(sources.map((source) => [source, args])) };
 }
 
 /// Every source a C++17 unit with `args`, `options` besides.
 function cxx17(sources: string[], args: string[] = [], options: ServeOptions = {}): ServeOptions {
-    return { ...options, manifest: { cxx: CXX, units: units(sources, args) } };
-}
-
-/// Rewrite the database to name `entries`.
-function database(s: Serve, entries: Record<string, string[]>): void {
-    s.steps.note(`disk: database of ${Object.keys(entries).join(", ") || "no unit"}`);
-    writeDatabase(s.workspace, { cxx: CXX, units: entries });
-}
-
-/// The database as `entries` name them while no server runs: its
-/// arguments spell workspace paths, which a manifest cannot.
-function offlineDatabase(s: Serve, entries: Record<string, string[]>): Promise<void> {
-    return s.offline(() => {
-        database(s, entries);
-    });
-}
-
-async function events(
-    s: Serve,
-    loop: "cdb" | "workspace",
-    options: { force?: boolean } = {},
-): Promise<number> {
-    return (await s.client.poll(loop, options)).events;
+    return { ...options, manifest: manifest(sources, args) };
 }
 
 /// The files whose rows reference the symbol at `loc`.
@@ -87,8 +66,8 @@ serve.files({ "main.cpp": GATED_MAIN }, cxx17(["main.cpp"]))(
     async ({ s }) => {
         expect(await s.errors("main.cpp"), "gate must fire without -DFEATURE").not.toEqual([]);
 
-        database(s, units(["main.cpp"], ["-DFEATURE"]));
-        expect(await events(s, "cdb")).toBe(1);
+        s.disk.database(manifest(["main.cpp"], ["-DFEATURE"]));
+        expect(await s.poll("cdb")).toBe(1);
         expect(await s.errors("main.cpp"), "open file must pick up the new flags").toEqual([]);
     },
 );
@@ -97,14 +76,13 @@ serve.files({ "main.cpp": GATED_MAIN }, cxx17(["main.cpp"]))(
     "cdb stamped tick settles",
     async ({ s }) => {
         const stamped = { force: false };
-        expect(await events(s, "cdb", stamped), "unchanged stamp must be quiet").toBe(0);
+        expect(await s.poll("cdb", stamped), "unchanged stamp must be quiet").toBe(0);
 
-        database(s, units(["main.cpp"], ["-DFEATURE"]));
-        expect(
-            await events(s, "cdb", stamped),
-            "a fresh stamp only arms the settling debounce",
-        ).toBe(0);
-        expect(await events(s, "cdb", stamped), "the settled stamp reloads").toBe(1);
+        s.disk.database(manifest(["main.cpp"], ["-DFEATURE"]));
+        expect(await s.poll("cdb", stamped), "a fresh stamp only arms the settling debounce").toBe(
+            0,
+        );
+        expect(await s.poll("cdb", stamped), "the settled stamp reloads").toBe(1);
     },
 );
 
@@ -114,8 +92,8 @@ serve.files({ "main.cpp": "int main() { return 0; }\n" }, cxx17(["main.cpp"]))(
         await s.compiled("main.cpp");
 
         s.disk.write("lib.cpp", "int lib_entry() { return 1; }\n");
-        database(s, units(["main.cpp", "lib.cpp"]));
-        expect(await events(s, "cdb")).toBe(1);
+        s.disk.database(manifest(["main.cpp", "lib.cpp"]));
+        expect(await s.poll("cdb")).toBe(1);
 
         await s.indexed();
         expect(await indexes(s, "lib_entry"), "file added to the CDB was never indexed").toBe(true);
@@ -126,29 +104,25 @@ serve.files(
     { "header.h": "inline int shared() { return 0; }\n", "gone.cpp": '#include "header.h"\n' },
     cxx17(["gone.cpp"]),
 )("cdb removed entry recheck", async ({ s }) => {
-    const header = s.uri("header.h");
-    let result = await s.client.queryContext(header);
+    let result = await s.contexts("header.h");
     expect(result.total, "gone.cpp must host the header initially").toBeGreaterThanOrEqual(1);
 
-    database(s, {});
-    expect(await events(s, "cdb")).toBe(1);
+    s.disk.database(manifest([]));
+    expect(await s.poll("cdb")).toBe(1);
 
-    result = await s.client.queryContext(header);
+    result = await s.contexts("header.h");
     expect(result.total, "removed entry must stop hosting the header").toBe(0);
 });
 
 serve.files(
     { "main.cpp": GATED_MAIN, "lib.cpp": "int lib_entry() { return 1; }\n" },
-    { manifest: { units: {} } },
+    { databases: false },
 )("cdb appears after startup", async ({ s }) => {
-    await s.offline(() => {
-        s.workspace.rm("compile_commands.json");
-    });
     expect(await s.errors("main.cpp"), "guessed command cannot define FEATURE").not.toEqual([]);
 
     // The editor was opened first; cmake runs later.
-    database(s, units(["main.cpp", "lib.cpp"], ["-DFEATURE"]));
-    expect(await events(s, "cdb")).toBe(1);
+    s.disk.database(manifest(["main.cpp", "lib.cpp"], ["-DFEATURE"]));
+    expect(await s.poll("cdb")).toBe(1);
 
     expect(await s.errors("main.cpp"), "open file must switch to the discovered CDB").toEqual([]);
     await s.indexed();
@@ -174,12 +148,12 @@ serve.files(
         "initial index never resolved the closed TU's alpha call",
     ).toContain("closed.cpp");
 
-    expect(await events(s, "workspace")).toBe(0);
+    expect(await s.poll("workspace")).toBe(0);
 
     // Simulate git checkout: rewrite files on disk, no didSave.
     s.disk.write("header.h", HEADER_V2);
     s.disk.write("closed.cpp", CLOSED + "int checkout_added() { return 3; }\n");
-    expect(await events(s, "workspace")).toBe(2);
+    expect(await s.poll("workspace")).toBe(2);
 
     expect(await s.errors("main.cpp"), "open file must compile against the new header").toEqual([]);
     await s.indexed();
@@ -198,14 +172,14 @@ serve.files({ "header.h": HEADER_V1, "closed.cpp": CLOSED }, cxx17(["closed.cpp"
         await s.indexed();
         expect(await referrers(s, ALPHA)).toContain("closed.cpp");
         s.open("header.h");
-        expect(await events(s, "workspace")).toBe(0);
+        expect(await s.poll("workspace")).toBe(0);
 
         // The editor reloads a clean buffer after a checkout: didChange, no
         // didSave. The buffer shadows the disk for the header's own compile
         // only, so the closed includer sees the checkout while it stays open.
         s.disk.write("header.h", HEADER_V2);
         s.edit("header.h", { text: HEADER_V2 });
-        expect(await events(s, "workspace")).toBe(1);
+        expect(await s.poll("workspace")).toBe(1);
         await s.indexed();
         expect(
             await referrers(s, BETA),
@@ -224,12 +198,12 @@ serve.files(
 )("macro include change reindexes", async ({ s }) => {
     await s.indexed();
     expect(await referrers(s, ALPHA)).toContain("closed.cpp");
-    expect(await events(s, "workspace")).toBe(0);
+    expect(await s.poll("workspace")).toBe(0);
 
     // Only the compile resolves the include: the header is watched and its
     // includer found through what the indexed compile read.
     s.disk.write("header.h", HEADER_V2);
-    expect(await events(s, "workspace")).toBe(1);
+    expect(await s.poll("workspace")).toBe(1);
     await s.indexed();
     expect(await referrers(s, BETA), "the macro includer was not reindexed").toContain(
         "closed.cpp",
@@ -250,7 +224,7 @@ serve.files(
     expect(await indexes(s, "use_b")).toBe(true);
 
     s.disk.write("gen.h", "int make();\n");
-    expect(await events(s, "workspace")).toBe(1);
+    expect(await s.poll("workspace")).toBe(1);
     expect(await s.errors("open.cpp"), "the open includer must find the new header").toEqual([]);
     await s.indexed();
     expect(
@@ -267,7 +241,7 @@ serve.files(
 )("created header indexes in its includer", async ({ s }) => {
     await s.indexed();
     s.disk.write("gen.h", "int make();\n");
-    expect(await events(s, "workspace")).toBe(1);
+    expect(await s.poll("workspace")).toBe(1);
     await s.indexed();
     expect(await referrers(s, at("gen.h", "make"))).toContain("closed.cpp");
 });
@@ -297,22 +271,22 @@ serve.files(
     // not, so the rows it compiled from these very bytes keep serving.
     // Settled first, as in "delete while open reported".
     await s.sync();
-    expect(await events(s, "workspace")).toBe(0);
+    expect(await s.poll("workspace")).toBe(0);
     s.disk.write("h.h", "#pragma once\n// moved\nextern int shared_sym;\n");
-    expect(await events(s, "workspace")).toBe(1);
+    expect(await s.poll("workspace")).toBe(1);
     expect(await bSites(), "an edited buffer's rows vanished on a dependency change").toBe(1);
 });
 
 serve.files({ "header.h": HEADER_V1, "main.cpp": '#include "header.h"\n' }, cxx17(["main.cpp"]))(
     "touch emits no events",
     async ({ s }) => {
-        expect(await events(s, "workspace")).toBe(0);
+        expect(await s.poll("workspace")).toBe(0);
 
         // mtime bump, identical bytes: the content-hash check must stay
         // silent; the wait makes the rewrite's mtime a later one.
         await sleep(MTIME_GRANULARITY);
         s.disk.write("header.h", HEADER_V1);
-        expect(await events(s, "workspace")).toBe(0);
+        expect(await s.poll("workspace")).toBe(0);
     },
 );
 
@@ -326,7 +300,7 @@ serve.files(
     // No hook: the polling loop reloads the database on its own, and the
     // reindex the new flags queue is the event waited for.
     const reindex = await s.hold("index", "main.cpp");
-    database(s, units(["main.cpp"], ["-DFEATURE"]));
+    s.disk.database(manifest(["main.cpp"], ["-DFEATURE"]));
     await reindex.reached();
     await reindex.release();
     expect(await s.errors("main.cpp"), "the polling loop must reload the CDB on its own").toEqual(
@@ -344,8 +318,8 @@ serve.files(
 
     // Only lib.cpp's flags change; its bytes do not. Content-based staleness
     // cannot see this — the CDB delta must force the reindex.
-    database(s, units(["main.cpp", "lib.cpp"], ["-DFEATURE"]));
-    expect(await events(s, "cdb")).toBe(1);
+    s.disk.database(manifest(["main.cpp", "lib.cpp"], ["-DFEATURE"]));
+    expect(await s.poll("cdb")).toBe(1);
 
     await s.indexed();
     expect(
@@ -366,7 +340,7 @@ serve.files({ "header.h": HEADER_V1, "closed.cpp": CLOSED }, cxx17(["closed.cpp"
         // No seeding tick: the first one judges the header against the bytes
         // the startup scan read.
         s.disk.write("header.h", HEADER_V2);
-        expect(await events(s, "workspace")).toBe(1);
+        expect(await s.poll("workspace")).toBe(1);
         await s.indexed();
         expect(
             await referrers(s, BETA),
@@ -385,11 +359,11 @@ serve.files(
     // Settled: work still running would look at the header and report its
     // removal before the poll does.
     await s.sync();
-    expect(await events(s, "workspace")).toBe(0);
+    expect(await s.poll("workspace")).toBe(0);
     s.disk.rm("header.h");
-    expect(await events(s, "workspace"), "an open file's removal is reported").toBe(1);
+    expect(await s.poll("workspace"), "an open file's removal is reported").toBe(1);
     s.close("header.h");
-    expect(await events(s, "workspace"), "reported once").toBe(0);
+    expect(await s.poll("workspace"), "reported once").toBe(0);
 });
 
 serve.files(
@@ -418,42 +392,43 @@ serve.files(
     expect(await host(), "saving unchanged bytes must not dirty the host").toEqual(settled);
 });
 
+// A stamp the filesystem cannot vouch for: the mtime is not safely in the
+// past, so an unchanged stat proves nothing about the bytes. The server
+// must first read the database with it.
+const FUTURE = new Date(Date.now() + 3_600_000);
+
 serve.files(
     { "main.cpp": "#ifndef NEW\n#error missing NEW\n#endif\nint main() { return 0; }\n" },
-    cxx17(["main.cpp"], ["-DOLD"], { config: { project: { enable_indexing: false } } }),
+    cxx17(["main.cpp"], ["-DOLD"], {
+        config: { project: { enable_indexing: false } },
+        setup: (workspace) => {
+            fs.utimesSync(workspace.path("compile_commands.json"), FUTURE, FUTURE);
+        },
+    }),
 )("same stamp cdb rewrite applied", async ({ s }) => {
-    // A stamp the filesystem cannot vouch for: the mtime is not safely in
-    // the past, so an unchanged stat proves nothing about the bytes. The
-    // server must first read the database with it.
     const cdb = s.workspace.path("compile_commands.json");
-    const stamp = new Date(Date.now() + 3_600_000);
-    await s.offline(() => {
-        fs.utimesSync(cdb, stamp, stamp);
-    });
     expect(await s.errors("main.cpp")).toHaveLength(1);
 
     const stamped = { force: false };
-    expect(await events(s, "cdb", stamped)).toBe(0);
+    expect(await s.poll("cdb", stamped)).toBe(0);
     // In place, same length, same mtime: only the content tells.
     const before = fs.statSync(cdb, { bigint: true });
     s.disk.edit("compile_commands.json", { replace: "-DOLD", with: "-DNEW" });
-    fs.utimesSync(cdb, stamp, stamp);
+    fs.utimesSync(cdb, FUTURE, FUTURE);
     const after = fs.statSync(cdb, { bigint: true });
     expect(after.size).toBe(before.size);
     expect(after.mtimeNs).toBe(before.mtimeNs);
 
     // The new content settles like any rewrite: seen on two polls.
-    expect(await events(s, "cdb", stamped)).toBe(0);
-    expect(await events(s, "cdb", stamped)).toBe(1);
+    expect(await s.poll("cdb", stamped)).toBe(0);
+    expect(await s.poll("cdb", stamped)).toBe(1);
     expect(await s.errors("main.cpp"), "the rewritten flag must reach the open file").toEqual([]);
 });
 
 /// Flags giving the TU a sysroot inside the workspace: the driver adds its
 /// include directories itself, so the headers there count as installed
 /// ones, like a toolchain's.
-function sysrootArgs(s: Serve): string[] {
-    return ["--target=x86_64-unknown-linux-gnu", `--sysroot=${s.workspace.path("sysroot")}`];
-}
+const SYSROOT = ["--target=x86_64-unknown-linux-gnu", "--sysroot=${workspace}/sysroot"];
 
 serve.files(
     {
@@ -463,18 +438,17 @@ serve.files(
             '#include <installed.h>\n#include "local.h"\nint main() { return INSTALLED + LOCAL; }\n',
     },
     // clang-tidy's configuration lookups would add their own looks.
-    cxx17([], [], {
+    cxx17(["main.cpp"], SYSROOT, {
         config: { project: { enable_indexing: false }, diagnostics: { clang_tidy: false } },
     }),
 )("requests look at workspace files only", async ({ s }) => {
-    await offlineDatabase(s, { "main.cpp": sysrootArgs(s) });
     expect(await s.errors("main.cpp")).toEqual([]);
     const hover = () => s.hover(at("main.cpp", "main()"));
     await hover();
 
-    const before = await s.client.stats();
+    const before = await s.stats();
     await hover();
-    const after = await s.client.stats();
+    const after = await s.stats();
     expect(after.checksLooked - before.checksLooked, "the workspace header is looked at").toBe(1);
     expect(after.checksTrusted - before.checksTrusted, "the installed header is not").toBe(1);
 });
@@ -492,12 +466,12 @@ serve.files(
     await s.compiled("main.cpp");
 
     const looked = async (request: () => Promise<unknown>) => {
-        const before = await s.client.stats();
+        const before = await s.stats();
         await request();
-        return (await s.client.stats()).checksLooked - before.checksLooked;
+        return (await s.stats()).checksLooked - before.checksLooked;
     };
     const hover = () => s.hover(at("main.cpp", "main()"));
-    const completion = () => s.request("textDocument/completion", at("main.cpp", "return |a()"));
+    const completion = () => s.completion(at("main.cpp", "return |a()"));
     const freshHover = await looked(hover);
     const freshCompletion = await looked(completion);
 
@@ -512,9 +486,8 @@ serve.files(
         "sysroot/usr/include/installed.h": "#define INSTALLED 1\n",
         "main.cpp": '#include <installed.h>\nstatic_assert(INSTALLED == 2, "");\n',
     },
-    cxx17([], [], { config: { project: { enable_indexing: false } } }),
+    cxx17(["main.cpp"], SYSROOT, { config: { project: { enable_indexing: false } } }),
 )("save looks at installed headers", async ({ s }) => {
-    await offlineDatabase(s, { "main.cpp": sysrootArgs(s) });
     expect(await s.errors("main.cpp"), "the installed header defines 1").not.toEqual([]);
 
     // An upgrade rewrites the installed header; nothing asks until a save.

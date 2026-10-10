@@ -65,23 +65,23 @@ project("asks the running server to index", async ({ s }) => {
     expect(s.workspace.exists(".clice/server.json")).toBe(false);
 });
 
-serve.files(
-    { "clice.toml": PIN_CACHE, "a.h": HEADER, "main.cpp": MAIN },
-    { manifest: { units: {} } },
-)("asked index finds later database", async ({ s }) => {
-    // The server records its control endpoint as it starts: any reply
-    // comes after.
-    await s.sync();
-    expect(s.workspace.exists(".clice/server.json")).toBe(true);
+serve.files({ "clice.toml": PIN_CACHE, "a.h": HEADER, "main.cpp": MAIN }, { databases: false })(
+    "asked index finds later database",
+    async ({ s }) => {
+        // The server records its control endpoint as it starts: any reply
+        // comes after.
+        await s.sync();
+        expect(s.workspace.exists(".clice/server.json")).toBe(true);
 
-    const empty = await s.cli("index", "--workers", "2");
-    expect(empty.stderr).toContain("has no translation units");
+        const empty = await s.cli("index", "--workers", "2");
+        expect(empty.stderr).toContain("has no translation units");
 
-    s.workspace.writeCDB(["main.cpp"]);
-    const delegated = await s.cli("index", "--workers", "2");
-    expect(delegated.status, `stderr: ${delegated.stderr}`).toBe(0);
-    await serverIndexed(s, "compute");
-});
+        s.disk.database({ cxx: ["-std=c++17"], units: { "main.cpp": [] } });
+        const delegated = await s.cli("index", "--workers", "2");
+        expect(delegated.status, `stderr: ${delegated.stderr}`).toBe(0);
+        await serverIndexed(s, "compute");
+    },
+);
 
 project("refuses a writer it cannot ask", async ({ s }) => {
     await serverIndexed(s, "compute");
@@ -102,37 +102,29 @@ project("refuses a writer it cannot ask", async ({ s }) => {
     expect((await symbolSearch(s, "compute")).names).toContain("compute");
 });
 
-serve.files({
-    "a.h": HEADER,
-    "main.cpp": MAIN,
-    "clice.toml": [
-        "[project]",
-        'cache_dir = "${workspace}/.clice"',
-        "",
-        "[[rules]]",
-        'configuration = "debug"',
-        'patterns = ["**/*.cpp"]',
-        'append = ["-DDEBUG"]',
-        "",
-        "[[rules]]",
-        'configuration = "release"',
-        'patterns = ["**/*.cpp"]',
-        'append = ["-DRELEASE"]',
-        "",
-    ].join("\n"),
-})("delegation keeps the configuration", async ({ s }) => {
-    // The serve fixture names no configuration on the server's command
-    // line: a server of its own takes the workspace.
-    await s.stop();
-    const client = await s.session
-        .spawn(s.workspace, { args: ["serve", "--configuration", "debug"] })
-        .initialize(s.workspace);
-    expect(await client.sync()).toMatchObject({ failed: [], pending: [] });
-    const symbols = (await client.workspaceSymbols("compute")) ?? [];
-    expect(
-        symbols.some((symbol) => symbol.name === "compute"),
-        "server never indexed",
-    ).toBe(true);
+serve.files(
+    {
+        "a.h": HEADER,
+        "main.cpp": MAIN,
+        "clice.toml": [
+            "[project]",
+            'cache_dir = "${workspace}/.clice"',
+            "",
+            "[[rules]]",
+            'configuration = "debug"',
+            'patterns = ["**/*.cpp"]',
+            'append = ["-DDEBUG"]',
+            "",
+            "[[rules]]",
+            'configuration = "release"',
+            'patterns = ["**/*.cpp"]',
+            'append = ["-DRELEASE"]',
+            "",
+        ].join("\n"),
+    },
+    { launch: { args: ["serve", "--configuration", "debug"] } },
+)("delegation keeps the configuration", async ({ s }) => {
+    await serverIndexed(s, "compute");
 
     // The server indexes one configuration; asking it for another is
     // refused rather than answered with the wrong build.

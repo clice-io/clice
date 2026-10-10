@@ -14,13 +14,13 @@ const test = serve.data("cdb/two_configurations");
 /// Persist `name` and start a fresh server on the workspace — what an
 /// editor does to apply a switch.
 async function switchAndRestart(s: Serve, name: string): Promise<void> {
-    expect(await s.client.switchConfiguration(name)).toEqual({ success: true });
+    expect(await s.switchConfiguration(name)).toEqual({ success: true });
     await s.restart();
 }
 
 async function inactiveLines(s: Serve, file: string): Promise<number[]> {
     await s.compiled(file);
-    return s.client.inactiveLines(s.uri(file));
+    return s.inactiveLines(file);
 }
 
 /// Whether the configuration's index library holds a database.
@@ -30,7 +30,7 @@ function hasLibrary(workspace: Workspace, configuration: string): boolean {
 }
 
 test("menu and selection layers", async ({ s }) => {
-    const listed = await s.client.listConfigurations();
+    const listed = await s.configurations();
     expect(listed).toEqual({
         configurations: ["debug", "release"],
         active: "debug",
@@ -48,13 +48,13 @@ test("menu and selection layers", async ({ s }) => {
         ].sort(),
     );
 
-    expect(await s.client.switchConfiguration("nope"), "a name no rule declares").toEqual({
+    expect(await s.switchConfiguration("nope"), "a name no rule declares").toEqual({
         success: false,
     });
-    expect(await s.client.switchConfiguration("release")).toEqual({ success: true });
+    expect(await s.switchConfiguration("release")).toEqual({ success: true });
     expect(JSON.parse(s.disk.read(".clice/state.json"))).toEqual({ configuration: "release" });
     // The running server keeps its configuration; only the selection moved.
-    expect(await s.client.listConfigurations()).toMatchObject({
+    expect(await s.configurations()).toMatchObject({
         active: "debug",
         selected: "release",
     });
@@ -68,7 +68,7 @@ test("restart activates the selection", async ({ s }) => {
     ).toBeGreaterThan(0);
 
     await switchAndRestart(s, "release");
-    expect(await s.client.listConfigurations()).toMatchObject({
+    expect(await s.configurations()).toMatchObject({
         active: "release",
         selected: "release",
     });
@@ -76,7 +76,7 @@ test("restart activates the selection", async ({ s }) => {
     expect(await s.errors("gated.cpp"), "RELEASE is defined under release").toEqual([]);
 
     await switchAndRestart(s, "debug");
-    expect(await s.client.listConfigurations()).toMatchObject({
+    expect(await s.configurations()).toMatchObject({
         active: "debug",
         selected: "debug",
     });
@@ -128,60 +128,56 @@ test("artifacts are keyed per configuration", async ({ s }) => {
 });
 
 test("pins stay with their configuration", async ({ s }) => {
-    const header = s.uri("lib.h");
     await s.compiled("lib.h");
-    const contexts = await s.client.queryContext(header);
+    const contexts = await s.contexts("lib.h");
     expect(contexts.total, "both units host the header").toBe(2);
     const other = contexts.contexts.find((c) => c.uri.endsWith("other.cpp"));
     expect(other).toBeDefined();
-    expect((await s.client.switchContext(header, other!.uri)).success).toBe(true);
-    expect((await s.client.currentContext(header)).context?.uri).toBe(other!.uri);
+    expect((await s.switchContext("lib.h", s.relative(other!.uri))).success).toBe(true);
+    expect((await s.currentContext("lib.h")).context?.uri).toBe(other!.uri);
 
     await switchAndRestart(s, "release");
     await s.compiled("lib.h");
-    expect((await s.client.currentContext(header)).automatic, "no pin under release").toBe(true);
+    expect((await s.currentContext("lib.h")).automatic, "no pin under release").toBe(true);
 
     await switchAndRestart(s, "debug");
     await s.compiled("lib.h");
-    const restored = await s.client.currentContext(header);
+    const restored = await s.currentContext("lib.h");
     expect(restored.context?.uri).toBe(other!.uri);
     expect(restored.automatic).toBe(false);
 });
 
 test("command line overrides the selection", async ({ s }) => {
-    expect(await s.client.switchConfiguration("release")).toEqual({ success: true });
+    expect(await s.switchConfiguration("release")).toEqual({ success: true });
     await s.stop();
 
-    const pinned = await s.session
-        .spawn(s.workspace, { args: ["serve", "--configuration", "debug"] })
-        .initialize(s.workspace);
-    expect(await pinned.listConfigurations()).toMatchObject({
+    await s.start({ args: ["serve", "--configuration", "debug"] });
+    expect(await s.configurations()).toMatchObject({
         active: "debug",
         selected: "release",
     });
-    const [gated] = await pinned.openAndWait("gated.cpp");
-    pinned.assertHasErrors(gated, "the command line's debug is active");
     expect(
-        await pinned.switchConfiguration("release"),
+        (await s.errors("gated.cpp")).length,
+        "the command line's debug is active",
+    ).toBeGreaterThan(0);
+    expect(
+        await s.switchConfiguration("release"),
         "the command line owns a pinned session's choice",
     ).toEqual({ success: false });
-    await pinned.shutdown();
+    await s.stop();
 
     // An unknown command-line name is skipped: the selection still wins.
-    const unknown = await s.session
-        .spawn(s.workspace, { args: ["serve", "--configuration", "nope"] })
-        .initialize(s.workspace);
-    expect(await unknown.listConfigurations()).toMatchObject({ active: "release" });
-    expect(await unknown.switchConfiguration("debug"), "nothing pins this session").toEqual({
+    await s.start({ args: ["serve", "--configuration", "nope"] });
+    expect(await s.configurations()).toMatchObject({ active: "release" });
+    expect(await s.switchConfiguration("debug"), "nothing pins this session").toEqual({
         success: true,
     });
 });
 
-test("unknown selection falls back untouched", async ({ s }) => {
-    await s.offline(() => {
-        s.disk.write(".clice/state.json", '{"configuration": "gone"}\n');
-    });
-    expect(await s.client.listConfigurations()).toMatchObject({
+serve.data("cdb/two_configurations", {
+    files: { ".clice/state.json": '{"configuration": "gone"}\n' },
+})("unknown selection falls back untouched", async ({ s }) => {
+    expect(await s.configurations()).toMatchObject({
         active: "debug",
         selected: "gone",
     });
@@ -189,23 +185,23 @@ test("unknown selection falls back untouched", async ({ s }) => {
 });
 
 serve.data("cdb/single_root")("untagged rules have no menu", async ({ s }) => {
-    expect(await s.client.listConfigurations()).toEqual({
+    expect(await s.configurations()).toEqual({
         configurations: [],
         active: "",
         selected: "",
         defaultConfiguration: "",
     });
-    expect(await s.client.switchConfiguration("debug")).toEqual({ success: false });
+    expect(await s.switchConfiguration("debug")).toEqual({ success: false });
 
     // A selection left behind by another rule set is ignored, not applied.
     await s.offline(() => {
         s.disk.write(".clice/state.json", '{"configuration": "debug"}\n');
     });
-    expect(await s.client.listConfigurations()).toMatchObject({ active: "", selected: "debug" });
+    expect(await s.configurations()).toMatchObject({ active: "", selected: "debug" });
 });
 
 serve.data("cdb/board_defaults")("default command per board", async ({ s }) => {
-    expect(await s.client.listConfigurations()).toMatchObject({
+    expect(await s.configurations()).toMatchObject({
         configurations: ["board-a", "board-b"],
         active: "board-a",
     });

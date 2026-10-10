@@ -7,10 +7,9 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { describe } from "vitest";
 import { runProcess } from "@clice/tools/client";
 import { REPO_ROOT } from "@clice/tools/compile-commands";
-import { cliceExecutable, expect, serve } from "../../fixtures.ts";
+import { at, cliceExecutable, expect, serve } from "../../fixtures.ts";
 
 /// `//:package`'s clice and `//:symbols`' GSYM, next to the programs.
 function releaseFiles(): { stripped: string; gsym: string } | undefined {
@@ -42,54 +41,48 @@ const ENV = { CLICE_TEST_PRAGMA_CRASH: "1", LLVM_DISABLE_SYMBOLIZATION: "1" };
 /// worker.
 const CONFIG = { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } };
 
-describe.skipIf(release === undefined)("release", () => {
-    serve.files(
+serve
+    .files(
         { "poison.cpp": "int add(int a, int b) { return a + b; }\n#pragma clang __debug crash\n" },
         { config: CONFIG, env: ENV, anomalies: true },
-    )("stripped crash symbolization", async ({ s }) => {
-        const { stripped, gsym } = release!;
+    )
+    .skipIf(release === undefined)("stripped crash symbolization", async ({ s }) => {
+    const { stripped, gsym } = release!;
 
-        // The release's program serves here, under its own name, which the
-        // crash log's frames carry: the case's server makes way for it.
-        await s.stop();
-        const executable = s.workspace.path(process.platform === "win32" ? "clice.exe" : "clice");
-        fs.copyFileSync(stripped, executable);
-        fs.chmodSync(executable, 0o755);
-        const client = s.session.spawn(s.workspace, {
-            executable,
-            allowAnomaly: true,
-            env: { CLICE_ANOMALY_NO_TRAP: "1", ...ENV },
-        });
-        await client.initialize(s.workspace, { initializationOptions: CONFIG });
+    // The release's program serves here, under its own name, which the
+    // crash log's frames carry: the case's server makes way for it.
+    await s.stop();
+    const executable = s.workspace.path(process.platform === "win32" ? "clice.exe" : "clice");
+    fs.copyFileSync(stripped, executable);
+    fs.chmodSync(executable, 0o755);
+    await s.start({ executable });
 
-        const compile = `compile ${s.workspace.displayPath("poison.cpp")}`;
-        const [uri] = client.open("poison.cpp");
-        expect(await client.hoverAt(uri, 0, 5)).toBeNull();
-        expect((await client.sync()).pending).toEqual([]);
-        expect(s.workspace.workerCrashes(compile)).toBe(1);
+    s.open("poison.cpp", { pull: false });
+    expect(await s.hover(at("poison.cpp", "int a|dd("))).toBeNull();
+    await s.sync();
+    expect(s.workspace.workerCrashes(`compile ${s.workspace.displayPath("poison.cpp")}`)).toBe(1);
 
-        const logsDir = s.workspace.path(".clice/logs");
-        const crashLogs = fs
-            .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
-            .filter((name) => name.endsWith(".log") && path.basename(name) !== "master.log")
-            .map((name) => path.join(logsDir, name))
-            .filter((p) => fs.readFileSync(p, "utf8").includes("CRASH STACK TRACE"));
-        expect(crashLogs.length, "the worker's log should hold its backtrace").toBe(1);
-        const crashLog = crashLogs[0] ?? "";
-        const raw = fs.readFileSync(crashLog, "utf8");
-        expect(raw).toContain("main executable base: 0x");
-        expect(raw, "the stripped binary must not symbolize itself").not.toContain("logging.cpp");
+    const logsDir = s.workspace.path(".clice/logs");
+    const crashLogs = fs
+        .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
+        .filter((name) => name.endsWith(".log") && path.basename(name) !== "master.log")
+        .map((name) => path.join(logsDir, name))
+        .filter((p) => fs.readFileSync(p, "utf8").includes("CRASH STACK TRACE"));
+    expect(crashLogs.length, "the worker's log should hold its backtrace").toBe(1);
+    const crashLog = crashLogs[0] ?? "";
+    const raw = fs.readFileSync(crashLog, "utf8");
+    expect(raw).toContain("main executable base: 0x");
+    expect(raw, "the stripped binary must not symbolize itself").not.toContain("logging.cpp");
 
-        const result = await runProcess(process.platform === "win32" ? "python" : "python3", [
-            path.join(REPO_ROOT, "scripts", "symbolize.py"),
-            crashLog,
-            "--symbols",
-            gsym,
-        ]);
-        expect(result.status, `symbolize.py failed: ${result.stderr.slice(0, 2000)}`).toBe(0);
-        const trace = result.stdout.slice(result.stdout.indexOf("CRASH STACK TRACE"));
-        // The crash handler is clice's code, the pragma's handler libclang's.
-        expect(trace, `clice's frames:\n${trace.slice(0, 6000)}`).toContain("logging.cpp");
-        expect(trace, `libclang's frames:\n${trace.slice(0, 6000)}`).toContain("Pragma.cpp");
-    });
+    const result = await runProcess(process.platform === "win32" ? "python" : "python3", [
+        path.join(REPO_ROOT, "scripts", "symbolize.py"),
+        crashLog,
+        "--symbols",
+        gsym,
+    ]);
+    expect(result.status, `symbolize.py failed: ${result.stderr.slice(0, 2000)}`).toBe(0);
+    const trace = result.stdout.slice(result.stdout.indexOf("CRASH STACK TRACE"));
+    // The crash handler is clice's code, the pragma's handler libclang's.
+    expect(trace, `clice's frames:\n${trace.slice(0, 6000)}`).toContain("logging.cpp");
+    expect(trace, `libclang's frames:\n${trace.slice(0, 6000)}`).toContain("Pragma.cpp");
 });

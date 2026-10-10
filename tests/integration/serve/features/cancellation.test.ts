@@ -2,7 +2,7 @@
 /// the server goes on serving.
 
 import * as proto from "vscode-languageserver-protocol";
-import type { Serve } from "@clice/tools/actions";
+import type { Loc, Serve } from "@clice/tools/actions";
 import { at, expect, serve } from "../../fixtures.ts";
 
 // Without an index, a request waits for the compile alone: rows of the
@@ -11,47 +11,28 @@ const NO_INDEX = { config: { project: { enable_indexing: false } } };
 
 const FMT: proto.FormattingOptions = { tabSize: 4, insertSpaces: true };
 
-/// Send `method` with a token of its own: its reply — the error it is
-/// answered with — and the cancel, which vscode-jsonrpc sends as
-/// $/cancelRequest.
-function cancellable(s: Serve, method: string, params: object) {
-    const source = new proto.CancellationTokenSource();
-    const reply = s.client.sendRequest(method, params, source.token).then(
-        () => new Error(`${method} was not cancelled`),
-        (error: unknown) => error,
-    );
-    return {
-        reply,
-        cancel: () => {
-            source.cancel();
-        },
-    };
-}
-
 const CANCELLED = { code: proto.LSPErrorCodes.RequestCancelled };
 
 /// A completion or signature help waits for the PCH of its preamble: the
 /// parked PCH keeps it in flight while it is cancelled; the server then
 /// still answers.
-async function cancelWhileThePchBuilds(s: Serve, method: string, position: proto.Position) {
-    const { reply } = await s.inFlight(
+async function cancelWhileThePchBuilds(s: Serve, method: string, loc: Loc) {
+    const { cancelled } = await s.inFlight(
         "pch",
         "main.cpp",
         () => {
             s.open("main.cpp");
         },
         async () => {
-            const request = cancellable(s, method, {
-                textDocument: { uri: s.uri("main.cpp") },
-                position,
-            });
+            const request = s.send(method, loc);
+            const cancelled = expect(request.reply).rejects.toMatchObject(CANCELLED);
             // Any later reply: the server took the request up before.
             await s.counts();
             request.cancel();
-            return { reply: request.reply };
+            return { cancelled };
         },
     );
-    expect(await reply).toMatchObject(CANCELLED);
+    await cancelled;
 
     s.open("tiny.cpp");
     expect(await s.hover(at("tiny.cpp", "va|lue"))).not.toBeNull();
@@ -65,7 +46,7 @@ serve.files(
     },
     NO_INDEX,
 )("cancelled completion replies", async ({ s }) => {
-    await cancelWhileThePchBuilds(s, "textDocument/completion", { line: 2, character: 15 });
+    await cancelWhileThePchBuilds(s, "textDocument/completion", at("main.cpp", "probe = val|"));
 });
 
 serve.files(
@@ -77,56 +58,55 @@ serve.files(
     },
     NO_INDEX,
 )("cancelled signature help", async ({ s }) => {
-    await cancelWhileThePchBuilds(s, "textDocument/signatureHelp", { line: 2, character: 26 });
+    await cancelWhileThePchBuilds(s, "textDocument/signatureHelp", at("main.cpp", "take(1,| 2)"));
 });
 
 const BASE = "int value = 1;\n";
 
 serve.files({ "main.cpp": BASE }, NO_INDEX)("cancelled requests while compiling", async ({ s }) => {
     await s.compiled("main.cpp");
-    const td = { uri: s.uri("main.cpp") };
+    const value = at("main.cpp", "int |value");
     const head: proto.Range = {
         start: { line: 0, character: 0 },
         end: { line: 10, character: 0 },
     };
-    const pulling: [string, object][] = [
-        ["textDocument/hover", { textDocument: td, position: { line: 0, character: 4 } }],
-        ["textDocument/definition", { textDocument: td, position: { line: 0, character: 4 } }],
-        ["textDocument/documentSymbol", { textDocument: td }],
-        ["textDocument/semanticTokens/full", { textDocument: td }],
-        ["textDocument/foldingRange", { textDocument: td }],
-        ["textDocument/inlayHint", { textDocument: td, range: head }],
-        [
-            "textDocument/codeAction",
-            { textDocument: td, range: head, context: { diagnostics: [] } },
-        ],
-        ["textDocument/documentLink", { textDocument: td }],
+    const pulling: [string, string | Loc, object?][] = [
+        ["textDocument/hover", value],
+        ["textDocument/definition", value],
+        ["textDocument/documentSymbol", "main.cpp"],
+        ["textDocument/semanticTokens/full", "main.cpp"],
+        ["textDocument/foldingRange", "main.cpp"],
+        ["textDocument/inlayHint", "main.cpp", { range: head }],
+        ["textDocument/codeAction", "main.cpp", { range: head, context: { diagnostics: [] } }],
+        ["textDocument/documentLink", "main.cpp"],
     ];
 
     // Each request is cancelled while the compile of an edit it waits
     // for is parked; the format pair, which pulls no AST, is cancelled
     // while the last such compile is, which must outlive every cancel
     // and serve the closing hover.
-    for (const [index, [method, params]] of pulling.entries()) {
-        let request: ReturnType<typeof cancellable> | undefined;
+    for (const [index, [method, where, extra]] of pulling.entries()) {
+        let request: ReturnType<Serve["send"]> | undefined;
+        let cancelled: Promise<void> | undefined;
         await s.inFlight(
             "compile",
             "main.cpp",
             () => {
                 s.edit("main.cpp", { text: BASE + `int extra${index};\n` });
-                request = cancellable(s, method, params);
+                request = s.send(method, where, extra);
+                cancelled = expect(request.reply, method).rejects.toMatchObject(CANCELLED);
             },
             async () => {
                 request?.cancel();
-                expect(await request?.reply, method).toMatchObject(CANCELLED);
+                await cancelled;
                 if (index === pulling.length - 1) {
-                    for (const [format, extra] of [
+                    for (const [format, params] of [
                         ["textDocument/formatting", { options: FMT }],
                         ["textDocument/rangeFormatting", { range: head, options: FMT }],
                     ] as const) {
-                        const pair = cancellable(s, format, { textDocument: td, ...extra });
+                        const pair = s.send(format, "main.cpp", params);
                         pair.cancel();
-                        expect(await pair.reply, format).toMatchObject(CANCELLED);
+                        await expect(pair.reply, format).rejects.toMatchObject(CANCELLED);
                     }
                 }
             },

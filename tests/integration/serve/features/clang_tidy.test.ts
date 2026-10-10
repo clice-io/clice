@@ -18,10 +18,12 @@ function findings(diagnostics: proto.Diagnostic[], source = "clang-tidy"): strin
 }
 
 async function quickFixes(s: Serve, file: string, range: proto.Range): Promise<proto.CodeAction[]> {
-    const reply = ((await s.request("textDocument/codeAction", file, {
-        range,
-        context: { diagnostics: [] },
-    })) ?? []) as (proto.Command | proto.CodeAction)[];
+    const reply =
+        (await s.request<(proto.Command | proto.CodeAction)[] | null>(
+            "textDocument/codeAction",
+            file,
+            { range, context: { diagnostics: [] } },
+        )) ?? [];
     return reply.filter(
         (item): item is proto.CodeAction => "kind" in item && item.kind === "quickfix",
     );

@@ -229,15 +229,11 @@ serve.files({
     // kill -9 while the PCH build's reply is parked: the worker wrote the
     // pair to tmp, the store has not committed it. The restarted server
     // sweeps the residue and serves the file normally.
-    const killed = s.client;
     const hold = await s.hold("pch", "main.cpp");
-    const [uri] = killed.open("main.cpp");
-    void killed.pullDiagnostics(uri).catch(() => undefined);
+    s.open("main.cpp");
     await hold.reached();
     expect(s.workspace.tmpFiles(), "the uncommitted pair").not.toEqual([]);
-    killed.killServer();
-    await killed.exited;
-    killed.dispose();
+    await s.kill();
 
     await s.start();
     await s.clean("main.cpp");
@@ -249,7 +245,7 @@ serve.files({
         .readdirSync(path.join(s.workspace.cacheRoot(), "pch"))
         .filter((name) => !name.endsWith(".pch") && !name.endsWith(".pch.idx"));
     expect(stray, `Crash residue in pch/: ${stray.join(", ")}`).toEqual([]);
-    s.client.assertNoAnomaly();
+    await s.noAnomaly();
     await s.stop();
 
     // A clean shutdown removes the server's own tmp; the killed one's was
@@ -276,7 +272,7 @@ for (const where of ["garbage", "middle"]) {
             "Baseline session should report the body error",
         ).not.toEqual([]);
         expect(s.workspace.pchFiles().length).toBe(1);
-        s.client.assertNoAnomaly();
+        await s.noAnomaly();
 
         let corrupted = Buffer.alloc(0);
         await s.offline(() => {
@@ -307,7 +303,7 @@ for (const where of ["garbage", "middle"]) {
             "The corrupt .pch must be rebuilt, not trusted forever",
         ).toBe(false);
         if (where === "garbage") {
-            s.client.assertNoAnomaly();
+            await s.noAnomaly();
         }
     });
 }
@@ -321,7 +317,7 @@ serve.files({
     // re-adopted and silently degrade every later session.
     await s.clean("main.cpp");
     expect(s.workspace.pchIdxFiles().length).toBe(1);
-    s.client.assertNoAnomaly();
+    await s.noAnomaly();
 
     let corrupted = Buffer.alloc(0);
     await s.offline(() => {
@@ -337,7 +333,7 @@ serve.files({
         fs.readFileSync(idxFiles[0]!).equals(corrupted),
         "The corrupt .pch.idx must be retracted and rebuilt, not left posing as a complete pair",
     ).toBe(false);
-    s.client.assertNoAnomaly();
+    await s.noAnomaly();
 });
 
 /// Best-effort recursive wipe: a live server keeps its LMDB index

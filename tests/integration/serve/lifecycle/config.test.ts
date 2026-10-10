@@ -23,9 +23,10 @@ serve.data("config_rules_no_config")("baseline without rules", async ({ s }) => 
 
 serve.data("config_rules_toml")("rules from toml", async ({ s }) => {
     await s.clean("main.cpp");
-    const symbols = (await s.request("textDocument/documentSymbol", "main.cpp")) as
-        | proto.DocumentSymbol[]
-        | null;
+    const symbols = await s.request<proto.DocumentSymbol[] | null>(
+        "textDocument/documentSymbol",
+        "main.cpp",
+    );
     expect(symbols && symbols.length > 0, "Expected document symbols for value()/main()").toBe(
         true,
     );
@@ -61,13 +62,6 @@ serve.data("config_rules_no_config", {
     ).toBeGreaterThan(0);
 });
 
-/// What the server published for clice.toml: it publishes as the handshake
-/// ends, before it answers any later request.
-async function configDiagnostics(s: Serve): Promise<proto.Diagnostic[] | undefined> {
-    await s.sync();
-    return s.client.diagnostics.get(s.uri("clice.toml"));
-}
-
 const MAIN = "int main() { return 0; }\n";
 
 serve.files({ "clice.toml": '[project]\ntest_hooks = "yes"\n', "main.cpp": MAIN })(
@@ -76,7 +70,7 @@ serve.files({ "clice.toml": '[project]\ntest_hooks = "yes"\n', "main.cpp": MAIN 
         // Wrong value type → Error diagnostic on the clice.toml URI; the config
         // falls back to defaults. (Line/column pinpointing awaits the kotatsu
         // TOML error-location feature — see config_tests.cpp.)
-        const diags = (await configDiagnostics(s)) ?? [];
+        const diags = (await s.pushed("clice.toml")) ?? [];
         expect(diags.length, `expected one config diagnostic: ${JSON.stringify(diags)}`).toBe(1);
         expect(diags[0]!.severity).toBe(proto.DiagnosticSeverity.Error);
         expect(diags[0]!.message).toContain("test_hooks");
@@ -87,7 +81,7 @@ serve.files({ "clice.toml": "[project]\nclang_tdy = true\n", "main.cpp": MAIN })
     "config unknown key diagnostic",
     async ({ s }) => {
         // Typo'd key → Warning diagnostic; the rest of the config still applies.
-        const diags = (await configDiagnostics(s)) ?? [];
+        const diags = (await s.pushed("clice.toml")) ?? [];
         expect(diags.length, `expected one config diagnostic: ${JSON.stringify(diags)}`).toBe(1);
         expect(diags[0]!.severity).toBe(proto.DiagnosticSeverity.Warning);
         expect(diags[0]!.message).toContain("clang_tdy");
@@ -98,7 +92,7 @@ serve.files({ "clice.toml": '[project]\ntest_hooks = "yes"\n', "main.cpp": MAIN 
     "config diagnostic clears after fix",
     async ({ s }) => {
         expect(
-            (await configDiagnostics(s))?.length ?? 0,
+            (await s.pushed("clice.toml"))?.length ?? 0,
             "broken config should be diagnosed",
         ).toBeGreaterThan(0);
         // Fix the config and restart — the new session publishes an empty list
@@ -106,7 +100,7 @@ serve.files({ "clice.toml": '[project]\ntest_hooks = "yes"\n', "main.cpp": MAIN 
         await s.offline(() => {
             s.disk.write("clice.toml", "[project]\ntest_hooks = true\n");
         });
-        expect(await configDiagnostics(s), "fixed config must clear diagnostics").toEqual([]);
+        expect(await s.pushed("clice.toml"), "fixed config must clear diagnostics").toEqual([]);
     },
 );
 
@@ -140,8 +134,10 @@ const INLAY_SOURCE = [
 async function inlayLabels(s: Serve): Promise<string[]> {
     await s.compiled("main.cpp");
     const range = { start: { line: 0, character: 0 }, end: { line: 7, character: 0 } };
-    const hints = ((await s.request("textDocument/inlayHint", "main.cpp", { range })) ??
-        []) as proto.InlayHint[];
+    const hints =
+        (await s.request<proto.InlayHint[] | null>("textDocument/inlayHint", "main.cpp", {
+            range,
+        })) ?? [];
     return hints.map((h) => (typeof h.label === "string" ? h.label : ""));
 }
 

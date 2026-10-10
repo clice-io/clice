@@ -23,7 +23,7 @@ test("query context returns host sources", async ({ s }) => {
     await s.compiled("main.cpp");
     s.open("utils.h");
 
-    const result = await s.client.queryContext(s.uri("utils.h"));
+    const result = await s.contexts("utils.h");
     expect(result).not.toBeNull();
     const { total, contexts } = result;
     expect(
@@ -42,7 +42,7 @@ test("query context returns host sources", async ({ s }) => {
 test("query context source file returns cdb entries", async ({ s }) => {
     await s.compiled("main.cpp");
 
-    const result = await s.client.queryContext(s.uri("main.cpp"));
+    const result = await s.contexts("main.cpp");
     expect(result).not.toBeNull();
     // header_context workspace has exactly 1 CDB entry for main.cpp.
     expect(result.total).toBe(1);
@@ -54,14 +54,13 @@ test("query context source file returns cdb entries", async ({ s }) => {
 test("current context automatic", async ({ s }) => {
     await s.compiled("main.cpp");
     s.open("utils.h");
-    const utils = s.uri("utils.h");
 
-    const result = await s.client.currentContext(utils);
+    const result = await s.currentContext("utils.h");
     expect(Object.keys(result).sort()).toEqual(
         [...wireKeys<CurrentContextResult>()(["automatic", "context", "epoch"])].sort(),
     );
     expect(result.automatic).toBe(true);
-    const listed = await s.client.queryContext(utils);
+    const listed = await s.contexts("utils.h");
     expect(result.context).toEqual(listed.contexts.find((c) => c.uri.includes("main.cpp")));
     expect(result.epoch).toBe(listed.epoch);
 });
@@ -70,10 +69,9 @@ test("current context automatic", async ({ s }) => {
 test("switch context and current context", async ({ s }) => {
     await s.compiled("main.cpp");
     s.open("utils.h");
-    const utils = s.uri("utils.h");
 
     // Switch context to main.cpp.
-    const switchResult = await s.client.switchContext(utils, s.uri("main.cpp"));
+    const switchResult = await s.switchContext("utils.h", "main.cpp");
     expect(switchResult).not.toBeNull();
     expect(switchResult.success).toBe(true);
     // The C++ and TS shapes of the reply are hand-written on both sides; a
@@ -83,7 +81,7 @@ test("switch context and current context", async ({ s }) => {
     );
 
     // Verify currentContext now returns main.cpp.
-    const current = await s.client.currentContext(utils);
+    const current = await s.currentContext("utils.h");
     expect(current).not.toBeNull();
     const ctx = current.context;
     expect(
@@ -101,24 +99,23 @@ test("full context flow", async ({ s }) => {
 
     // 2. Open utils.h (non self-contained header using Point from types.h).
     s.open("utils.h");
-    const utils = s.uri("utils.h");
 
     // 3. queryContext on utils.h -> should return main.cpp as a context option.
-    const query = await s.client.queryContext(utils);
+    const query = await s.contexts("utils.h");
     expect(query.total).toBeGreaterThanOrEqual(1);
     const contextUris = query.contexts.map((c) => c.uri);
     expect(contextUris.some((u) => u.includes("main.cpp"))).toBe(true);
 
     // 4. currentContext on utils.h -> picked automatically.
-    const current = await s.client.currentContext(utils);
+    const current = await s.currentContext("utils.h");
     expect(current.automatic).toBe(true);
 
     // 5. switchContext on utils.h to main.cpp.
-    const switched = await s.client.switchContext(utils, s.uri("main.cpp"));
+    const switched = await s.switchContext("utils.h", "main.cpp");
     expect(switched.success).toBe(true);
 
     // 6. currentContext on utils.h -> should now be main.cpp.
-    const current2 = await s.client.currentContext(utils);
+    const current2 = await s.currentContext("utils.h");
     expect(current2.automatic).toBe(false);
     const ctx = current2.context;
     expect(ctx).not.toBeNull();
@@ -149,10 +146,10 @@ test("document highlight in context", async ({ s }) => {
         },
     ]);
 
-    const param = (await s.request(
+    const param = await s.request<proto.DocumentHighlight[] | null>(
         "textDocument/documentHighlight",
         at("utils.h", "distance(|p,"),
-    )) as proto.DocumentHighlight[] | null;
+    );
     expect(param?.map((h) => [h.range.start.line, h.range.start.character, h.kind])).toEqual([
         [6, 22, proto.DocumentHighlightKind.Text],
         [7, 20, proto.DocumentHighlightKind.Read],
@@ -166,7 +163,7 @@ test("deep nested header context", async ({ s }) => {
     s.open("inner.h");
 
     // queryContext on inner.h should find main.cpp through the chain.
-    const result = await s.client.queryContext(s.uri("inner.h"));
+    const result = await s.contexts("inner.h");
     expect(result).not.toBeNull();
     const total = result.total;
     expect(
@@ -186,7 +183,7 @@ test("deep nested switch context and hover", async ({ s }) => {
     s.open("inner.h");
 
     // Switch inner.h context to main.cpp.
-    const switched = await s.client.switchContext(s.uri("inner.h"), s.uri("main.cpp"));
+    const switched = await s.switchContext("inner.h", "main.cpp");
     expect(switched.success).toBe(true);
 
     // Hover on 'inner_origin' in inner.h should work (Point available via preamble).
@@ -198,7 +195,7 @@ test("deep nested switch context and hover", async ({ s }) => {
 serve.data("multi_context")("query context multiple cdb entries", async ({ s }) => {
     await s.compiled("main.cpp");
 
-    const result = await s.client.queryContext(s.uri("main.cpp"));
+    const result = await s.contexts("main.cpp");
     expect(result).not.toBeNull();
     const total = result.total;
     expect(total, `Should find at least 2 CDB entries, got total=${total}`).toBeGreaterThanOrEqual(
@@ -223,13 +220,10 @@ serve.files({
     "a.cpp": '#define VALUE_TYPE int\n#include "shared.h"\nint main() { return 0; }\n',
     "b.cpp": '#define VALUE_TYPE float\n#include "shared.h"\nfloat f() { return 0; }\n',
 })("switch between two hosts", async ({ s }) => {
-    const a = s.uri("a.cpp");
-    const b = s.uri("b.cpp");
-    const shared = s.uri("shared.h");
     await s.compiled("a.cpp");
     await s.compiled("b.cpp");
     s.open("shared.h");
-    expect((await s.client.currentContext(shared)).context?.uri).toBe(a);
+    expect((await s.currentContext("shared.h")).context?.uri).toBe(s.uri("a.cpp"));
 
     /// switchContext only flips server state; a diagnostics pull waits for
     /// the recompile under the new host.
@@ -239,23 +233,23 @@ serve.files({
     };
 
     // Host a.cpp: VALUE_TYPE is int.
-    let switched = await s.client.switchContext(shared, a);
+    let switched = await s.switchContext("shared.h", "a.cpp");
     expect(switched.success).toBe(true);
     await hoverGetValueShows("int");
 
     // Host b.cpp: VALUE_TYPE is float. This exercises the cached-context
     // invalidation branch (active context differs from cached host).
-    switched = await s.client.switchContext(shared, b);
+    switched = await s.switchContext("shared.h", "b.cpp");
     expect(switched.success).toBe(true);
     await hoverGetValueShows("float");
 
     // The reset leaves the cached b.cpp context for the one picked
     // automatically.
-    expect((await s.client.resetContext(shared)).success).toBe(true);
+    expect((await s.resetContext("shared.h")).success).toBe(true);
     await hoverGetValueShows("int");
-    const current = await s.client.currentContext(shared);
+    const current = await s.currentContext("shared.h");
     expect(current.automatic).toBe(true);
-    expect(current.context?.uri).toBe(a);
+    expect(current.context?.uri).toBe(s.uri("a.cpp"));
 });
 
 /// A switch and its reset keep the document open: the server recompiles
@@ -263,20 +257,19 @@ serve.files({
 test("switch republishes diagnostics", async ({ s }) => {
     await s.compiled("main.cpp");
     await s.compiled("utils.h");
-    const utils = s.uri("utils.h");
     const published = async () => (await s.counts()).files["utils.h"]?.publish ?? 0;
 
     let before = await published();
-    expect((await s.client.switchContext(utils, s.uri("main.cpp"))).success).toBe(true);
+    expect((await s.switchContext("utils.h", "main.cpp")).success).toBe(true);
     await s.sync();
     expect(await published(), "diagnostics after the switch").toBeGreaterThan(before);
-    expect((await s.client.currentContext(utils)).automatic).toBe(false);
+    expect((await s.currentContext("utils.h")).automatic).toBe(false);
 
     before = await published();
-    expect((await s.client.resetContext(utils)).success).toBe(true);
+    expect((await s.resetContext("utils.h")).success).toBe(true);
     await s.sync();
     expect(await published(), "diagnostics after the reset").toBeGreaterThan(before);
-    const current = await s.client.currentContext(utils);
+    const current = await s.currentContext("utils.h");
     expect(current.automatic).toBe(true);
     expect(current.context?.uri).toContain("main.cpp");
 });
@@ -289,11 +282,11 @@ serve.files(
         "src/part.cpp": "int part() { return 1; }\n",
         "src/main.cpp": '#include "part.cpp"\nint main() { return part(); }\n',
     },
-    { manifest: { units: {} } },
+    { databases: false },
 )("default command unit names no host", async ({ s }) => {
     await s.compiled("src/main.cpp");
     await s.compiled("src/part.cpp");
-    const current = await s.client.currentContext(s.uri("src/part.cpp"));
+    const current = await s.currentContext("src/part.cpp");
     expect(current.automatic).toBe(true);
     expect(current.context).toBeNull();
 });

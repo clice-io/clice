@@ -5,8 +5,9 @@
 /// by canonical flags, host ranking, and switch validation.
 
 import * as fs from "node:fs";
-import type { Serve } from "@clice/tools/actions";
 import { expect, serve } from "../../fixtures.ts";
+
+const CXX17 = ["-std=c++17"];
 
 /// Snapshot files as path -> mtime (nanoseconds).
 function snapshotMtimes(files: string[]): Record<string, bigint> {
@@ -17,14 +18,6 @@ function snapshotMtimes(files: string[]): Record<string, bigint> {
     return out;
 }
 
-/// A manifest names a unit once: a database listing one several times
-/// is written with the server down, and the next server starts on it.
-async function entries(s: Serve, list: [string, string[]][]): Promise<void> {
-    await s.offline(() => {
-        s.workspace.writeEntries(list);
-    });
-}
-
 function messages(diagnostics: { message: string | { value: string } }[]): string[] {
     return diagnostics.map((d) => (typeof d.message === "string" ? d.message : d.message.value));
 }
@@ -32,17 +25,13 @@ function messages(diagnostics: { message: string | { value: string } }[]): strin
 /// Switching between two CDB entries of one source must recompile it
 /// under the selected flags. The unswitched default is content-decided
 /// (not CDB order), so the test drives both states explicitly.
-serve.files({
-    "main.cpp": "#ifndef EXPECTED\n#error missing EXPECTED\n#endif\nint main() { return 0; }\n",
-})("source command switch", async ({ s }) => {
-    await entries(s, [
-        ["main.cpp", ["-DEXPECTED"]],
-        ["main.cpp", []],
-    ]);
-    const main = s.uri("main.cpp");
+serve.files(
+    { "main.cpp": "#ifndef EXPECTED\n#error missing EXPECTED\n#endif\nint main() { return 0; }\n" },
+    { manifest: { cxx: CXX17, units: { "main.cpp": [["-DEXPECTED"], []] } } },
+)("source command switch", async ({ s }) => {
     await s.compiled("main.cpp");
 
-    const query = await s.client.queryContext(main);
+    const query = await s.contexts("main.cpp");
     expect(query.total).toBe(2);
     const contexts = query.contexts;
     expect(
@@ -53,23 +42,23 @@ serve.files({
     const definedHash = contexts.find((c) => c.label.includes("-DEXPECTED"))!.commandHash!;
 
     // Pin the entry with the define: clean compile.
-    let switched = await s.client.switchContext(main, main, { commandHash: definedHash });
+    let switched = await s.switchContext("main.cpp", "main.cpp", { commandHash: definedHash });
     expect(switched.success).toBe(true);
     await s.clean("main.cpp");
 
     // Switch to the entry without the define: the #error must fire.
-    switched = await s.client.switchContext(main, main, { commandHash: plainHash });
+    switched = await s.switchContext("main.cpp", "main.cpp", { commandHash: plainHash });
     expect(switched.success).toBe(true);
     expect(
         (await s.errors("main.cpp")).length,
         "Expected #error without -DEXPECTED",
     ).toBeGreaterThan(0);
 
-    const current = await s.client.currentContext(main);
+    const current = await s.currentContext("main.cpp");
     expect(current.context!.commandHash).toBe(plainHash);
 
     // And back.
-    switched = await s.client.switchContext(main, main, { commandHash: definedHash });
+    switched = await s.switchContext("main.cpp", "main.cpp", { commandHash: definedHash });
     expect(switched.success).toBe(true);
     await s.clean("main.cpp");
 });
@@ -91,9 +80,8 @@ const OCCURRENCES = {
 serve.files(OCCURRENCES)("occurrence switch", async ({ s }) => {
     await s.compiled("main.cpp");
     await s.compiled("list.def");
-    const def = s.uri("list.def");
 
-    const query = await s.client.queryContext(def);
+    const query = await s.contexts("list.def");
     expect(query.total, `Expected 2 occurrence contexts, got ${JSON.stringify(query)}`).toBe(2);
     const occurrences = query.contexts.map((c) => c.occurrence).sort((a, b) => (a ?? 0) - (b ?? 0));
     expect(
@@ -103,11 +91,11 @@ serve.files(OCCURRENCES)("occurrence switch", async ({ s }) => {
 
     // Pin each occurrence; both must compile cleanly and be reported back.
     for (const occ of [0, 1]) {
-        const switched = await s.client.switchContext(def, s.uri("main.cpp"), { occurrence: occ });
+        const switched = await s.switchContext("list.def", "main.cpp", { occurrence: occ });
         expect(switched.success, `switch to occurrence ${occ}`).toBe(true);
         await s.clean("list.def");
 
-        const current = await s.client.currentContext(def);
+        const current = await s.currentContext("list.def");
         expect(current.context!.occurrence).toBe(occ);
         expect(current.automatic).toBe(false);
     }
@@ -126,7 +114,7 @@ serve.files({
     // header's own trial compile — wait for it.
     await s.compiled("widget.h");
 
-    const query = await s.client.queryContext(s.uri("widget.h"));
+    const query = await s.contexts("widget.h");
     expect(
         query.total,
         `Identical flags must dedupe to one context, got: ${JSON.stringify(query)}`,
@@ -146,7 +134,7 @@ serve.files({
     await s.compiled("main.cpp");
     s.open("utils.h");
 
-    const switched = await s.client.switchContext(s.uri("utils.h"), s.uri("other.cpp"));
+    const switched = await s.switchContext("utils.h", "other.cpp");
     expect(switched.success, "Switching to a non-including host must be rejected").toBe(false);
 });
 
@@ -162,9 +150,7 @@ serve.files({
     await s.compiled("main.cpp");
     s.open("list.def");
 
-    const switched = await s.client.switchContext(s.uri("list.def"), s.uri("main.cpp"), {
-        occurrence: 5,
-    });
+    const switched = await s.switchContext("list.def", "main.cpp", { occurrence: 5 });
     expect(switched.success, "Out-of-range occurrence must be rejected").toBe(false);
 });
 
@@ -190,13 +176,12 @@ serve.files(
 )("query context pagination", async ({ s }) => {
     await s.compiled("s00.cpp");
     s.open("common.h");
-    const common = s.uri("common.h");
 
-    const first = await s.client.queryContext(common);
+    const first = await s.contexts("common.h");
     expect(first.total).toBe(12);
     expect(first.contexts.length).toBe(10);
 
-    const second = await s.client.queryContext(common, { offset: 10 });
+    const second = await s.contexts("common.h", { offset: 10 });
     expect(second.total).toBe(12);
     expect(second.contexts.length).toBe(2);
 
@@ -214,10 +199,8 @@ serve.files({
 })("stale epoch rejected", async ({ s }) => {
     await s.compiled("main.cpp");
     s.open("shared.h");
-    const shared = s.uri("shared.h");
-    const main = s.uri("main.cpp");
 
-    const query = await s.client.queryContext(shared);
+    const query = await s.contexts("shared.h");
     const oldEpoch = query.epoch;
     expect(
         oldEpoch,
@@ -229,36 +212,34 @@ serve.files({
     s.save("main.cpp");
     await s.sync();
 
-    let switched = await s.client.switchContext(shared, main, { epoch: oldEpoch });
+    let switched = await s.switchContext("shared.h", "main.cpp", { epoch: oldEpoch });
     expect(switched.success).toBe(false);
     expect(switched.stale, `Expected stale rejection, got: ${JSON.stringify(switched)}`).toBe(true);
 
-    const fresh = await s.client.queryContext(shared);
-    switched = await s.client.switchContext(shared, main, { epoch: fresh.epoch });
+    const fresh = await s.contexts("shared.h");
+    switched = await s.switchContext("shared.h", "main.cpp", { epoch: fresh.epoch });
     expect(switched.success, `Fresh epoch must work, got: ${JSON.stringify(switched)}`).toBe(true);
 });
 
 /// A host built under several configurations provides one context per
 /// CDB entry, switchable by command hash.
-serve.files({
-    "render.h":
-        "#pragma once\n" +
-        "#if defined(USE_VULKAN)\n" +
-        'inline const char* backend() { return "vk"; }\n' +
-        "#elif defined(USE_METAL)\n" +
-        'inline const char* backend() { return "mt"; }\n' +
-        "#endif\n",
-    "host.cpp": '#include "render.h"\nint main() { return backend()[0]; }\n',
-})("multi config host", async ({ s }) => {
-    await entries(s, [
-        ["host.cpp", ["-DUSE_VULKAN"]],
-        ["host.cpp", ["-DUSE_METAL"]],
-    ]);
+serve.files(
+    {
+        "render.h":
+            "#pragma once\n" +
+            "#if defined(USE_VULKAN)\n" +
+            'inline const char* backend() { return "vk"; }\n' +
+            "#elif defined(USE_METAL)\n" +
+            'inline const char* backend() { return "mt"; }\n' +
+            "#endif\n",
+        "host.cpp": '#include "render.h"\nint main() { return backend()[0]; }\n',
+    },
+    { manifest: { cxx: CXX17, units: { "host.cpp": [["-DUSE_VULKAN"], ["-DUSE_METAL"]] } } },
+)("multi config host", async ({ s }) => {
     await s.compiled("host.cpp");
     await s.compiled("render.h");
-    const render = s.uri("render.h");
 
-    const query = await s.client.queryContext(render);
+    const query = await s.contexts("render.h");
     expect(query.total, JSON.stringify(query)).toBe(2);
     const contexts = query.contexts;
     const hashes = contexts.map((c) => c.commandHash);
@@ -268,41 +249,37 @@ serve.files({
     ).toBe(true);
 
     const metalHash = contexts.find((c) => c.label.includes("USE_METAL"))!.commandHash!;
-    const switched = await s.client.switchContext(render, s.uri("host.cpp"), {
-        commandHash: metalHash,
-    });
+    const switched = await s.switchContext("render.h", "host.cpp", { commandHash: metalHash });
     expect(switched.success, JSON.stringify(switched)).toBe(true);
 
     await s.clean("render.h");
-    const current = await s.client.currentContext(render);
+    const current = await s.currentContext("render.h");
     expect(current.context!.commandHash, JSON.stringify(current)).toBe(metalHash);
 });
 
 /// A file opened through a symlink is offered the commands of its identity:
 /// the rules matching the file it names edit them.
-if (process.platform !== "win32") {
-    serve.files({
-        "real/main.cpp": "int main() { return 0; }\n",
-        "clice.toml": '[[rules]]\npatterns = ["real/**"]\nappend = ["-DFROM_RULE"]\n',
-    })("contexts through a symlink", async ({ s }) => {
-        await s.offline(() => {
-            s.workspace.writeEntries([
-                ["real/main.cpp", ["-DFIRST"]],
-                ["real/main.cpp", ["-DSECOND"]],
-            ]);
-            fs.symlinkSync(s.workspace.path("real"), s.workspace.path("link"));
-        });
-
-        await s.compiled("link/main.cpp");
-        const labels = (await s.client.queryContext(s.uri("link/main.cpp"))).contexts.map(
-            (c) => c.label,
-        );
-        expect(labels).toHaveLength(2);
-        for (const label of labels) {
-            expect(label).toContain("FROM_RULE");
-        }
-    });
-}
+serve
+    .files(
+        {
+            "real/main.cpp": "int main() { return 0; }\n",
+            "clice.toml": '[[rules]]\npatterns = ["real/**"]\nappend = ["-DFROM_RULE"]\n',
+        },
+        {
+            manifest: { cxx: CXX17, units: { "real/main.cpp": [["-DFIRST"], ["-DSECOND"]] } },
+            setup: (workspace) => {
+                fs.symlinkSync(workspace.path("real"), workspace.path("link"));
+            },
+        },
+    )
+    .skipIf(process.platform === "win32")("contexts through a symlink", async ({ s }) => {
+    await s.compiled("link/main.cpp");
+    const labels = (await s.contexts("link/main.cpp")).contexts.map((c) => c.label);
+    expect(labels).toHaveLength(2);
+    for (const label of labels) {
+        expect(label).toContain("FROM_RULE");
+    }
+});
 
 /// Adding an #include and saving must immediately expose the new host
 /// in queryContext: the include graph is rescanned on didSave.
@@ -312,16 +289,15 @@ serve.files({
 })("saved include updates hosts", async ({ s }) => {
     await s.compiled("main.cpp");
     s.open("lonely.h");
-    const lonely = s.uri("lonely.h");
 
-    let query = await s.client.queryContext(lonely);
+    let query = await s.contexts("lonely.h");
     expect(query.total, "No includers yet").toBe(0);
 
     // Include the header and save.
     s.edit("main.cpp", { text: '#include "lonely.h"\nint main() { return lonely(); }\n' });
     s.save("main.cpp");
 
-    query = await s.client.queryContext(lonely);
+    query = await s.contexts("lonely.h");
     expect(query.total, `New host must appear after save: ${JSON.stringify(query)}`).toBe(1);
     expect(query.contexts[0]!.uri).toContain("main.cpp");
 });
@@ -344,9 +320,7 @@ serve.files(CHAIN)("reopen reuses preamble", async ({ s }) => {
     await s.compiled("main.cpp");
     await s.compiled("list.def");
 
-    const switched = await s.client.switchContext(s.uri("list.def"), s.uri("main.cpp"), {
-        occurrence: 1,
-    });
+    const switched = await s.switchContext("list.def", "main.cpp", { occurrence: 1 });
     expect(switched.success).toBe(true);
     await s.diagnostics("list.def");
 
@@ -356,7 +330,7 @@ serve.files(CHAIN)("reopen reuses preamble", async ({ s }) => {
 
     s.close("list.def");
     await s.compiled("list.def");
-    const current = await s.client.currentContext(s.uri("list.def"));
+    const current = await s.currentContext("list.def");
     expect(current.context!.occurrence).toBe(1);
 
     expect((await s.counts()).pch, "reopen must reuse the PCH, not rebuild it").toBe(built);
@@ -369,9 +343,7 @@ serve.files(CHAIN)("chain change resynthesizes", async ({ s }) => {
     await s.compiled("main.cpp");
     await s.compiled("list.def");
 
-    const switched = await s.client.switchContext(s.uri("list.def"), s.uri("main.cpp"), {
-        occurrence: 1,
-    });
+    const switched = await s.switchContext("list.def", "main.cpp", { occurrence: 1 });
     expect(switched.success).toBe(true);
     await s.clean("list.def");
 
@@ -384,7 +356,7 @@ serve.files(CHAIN)("chain change resynthesizes", async ({ s }) => {
     });
 
     const errors = messages(await s.errors("list.def"));
-    const current = await s.client.currentContext(s.uri("list.def"));
+    const current = await s.currentContext("list.def");
     expect(current.context!.occurrence).toBe(1);
     expect(
         errors.some((m) => m.includes("missing_value")),
@@ -395,19 +367,17 @@ serve.files(CHAIN)("chain change resynthesizes", async ({ s }) => {
 /// The client resync contract: after a successful switch the client
 /// closes and reopens the document (the pull-based server only re-targets
 /// the session); the reopened compile runs under the persisted choice.
-serve.files({
-    "main.cpp":
-        "#ifdef USE_B\nint broken() { return undefined_b_symbol; }\n#endif\n" +
-        "int main() { return 0; }\n",
-})("switched context survives reopen", async ({ s }) => {
-    await entries(s, [
-        ["main.cpp", ["-DUSE_A"]],
-        ["main.cpp", ["-DUSE_B"]],
-    ]);
-    const main = s.uri("main.cpp");
+serve.files(
+    {
+        "main.cpp":
+            "#ifdef USE_B\nint broken() { return undefined_b_symbol; }\n#endif\n" +
+            "int main() { return 0; }\n",
+    },
+    { manifest: { cxx: CXX17, units: { "main.cpp": [["-DUSE_A"], ["-DUSE_B"]] } } },
+)("switched context survives reopen", async ({ s }) => {
     await s.compiled("main.cpp");
 
-    const query = await s.client.queryContext(main);
+    const query = await s.contexts("main.cpp");
     const contexts = query.contexts;
     expect(query.total, `expected both entries: ${JSON.stringify(contexts)}`).toBe(2);
     const cleanHash = contexts.find((c) => (c.label || "").includes("USE_A"))!.commandHash!;
@@ -415,14 +385,14 @@ serve.files({
 
     // The unswitched default is content-decided; pin USE_A for a known
     // starting state.
-    let switched = await s.client.switchContext(main, main, {
+    let switched = await s.switchContext("main.cpp", "main.cpp", {
         commandHash: cleanHash,
         epoch: query.epoch,
     });
     expect(switched.success, `switch failed: ${JSON.stringify(switched)}`).toBe(true);
     await s.clean("main.cpp");
 
-    switched = await s.client.switchContext(main, main, { commandHash: targetHash });
+    switched = await s.switchContext("main.cpp", "main.cpp", { commandHash: targetHash });
     expect(switched.success, `switch failed: ${JSON.stringify(switched)}`).toBe(true);
 
     s.close("main.cpp");
@@ -432,7 +402,7 @@ serve.files({
         `expected the USE_B error after reopen: ${JSON.stringify(diagnostics)}`,
     ).toBe(true);
 
-    const current = await s.client.currentContext(main);
+    const current = await s.currentContext("main.cpp");
     expect(
         current.context!.commandHash,
         `persisted choice must survive the reopen: ${JSON.stringify(current)}`,

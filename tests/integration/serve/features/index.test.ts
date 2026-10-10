@@ -13,28 +13,14 @@ async function indexed(s: Serve): Promise<void> {
     await s.indexed();
 }
 
-function locations(reply: unknown): proto.Location[] {
-    return (reply as proto.Location[] | null) ?? [];
-}
-
 async function prepareCalls(s: Serve, anchor: string): Promise<proto.CallHierarchyItem[]> {
-    const items = (await s.request("textDocument/prepareCallHierarchy", at("main.cpp", anchor))) as
-        | proto.CallHierarchyItem[]
-        | null;
+    const items = await s.request<proto.CallHierarchyItem[] | null>(
+        "textDocument/prepareCallHierarchy",
+        at("main.cpp", anchor),
+    );
     expect(
         items && items.length > 0,
         `prepareCallHierarchy returned ${JSON.stringify(items)}`,
-    ).toBe(true);
-    return items!;
-}
-
-async function prepareTypes(s: Serve, anchor: string): Promise<proto.TypeHierarchyItem[]> {
-    const items = (await s.request("textDocument/prepareTypeHierarchy", at("main.cpp", anchor))) as
-        | proto.TypeHierarchyItem[]
-        | null;
-    expect(
-        items && items.length > 0,
-        `prepareTypeHierarchy returned ${JSON.stringify(items)}`,
     ).toBe(true);
     return items!;
 }
@@ -86,8 +72,7 @@ test("call hierarchy bogus item", async ({ s }) => {
 
 test("call hierarchy incoming", async ({ s }) => {
     await indexed(s);
-    const [item] = await prepareCalls(s, "add(int a, int b)");
-    const incoming = await s.client.callHierarchyIncoming(item!);
+    const incoming = await s.incomingCalls(ADD_DEFINITION);
     expect(incoming, "incomingCalls returned None").not.toBeNull();
     expect(incoming!.map((call) => call.from.name)).toContain("compute");
 });
@@ -105,30 +90,30 @@ test("call hierarchy item without data", async ({ s }) => {
 
 test("call hierarchy outgoing", async ({ s }) => {
     await indexed(s);
-    const [item] = await prepareCalls(s, "compute() {");
-    const outgoing = await s.client.callHierarchyOutgoing(item!);
+    const outgoing = await s.outgoingCalls(at("main.cpp", "compute() {"));
     expect(outgoing, "outgoingCalls returned None").not.toBeNull();
     expect(outgoing!.map((call) => call.to.name)).toContain("add");
 });
 
 test("type hierarchy prepare", async ({ s }) => {
     await indexed(s);
-    const [item] = await prepareTypes(s, "Dog : public");
-    expect(item!.name).toBe("Dog");
+    const items = await s.request<proto.TypeHierarchyItem[] | null>(
+        "textDocument/prepareTypeHierarchy",
+        at("main.cpp", "Dog : public"),
+    );
+    expect(items?.[0]?.name, `prepareTypeHierarchy returned ${JSON.stringify(items)}`).toBe("Dog");
 });
 
 test("type hierarchy supertypes", async ({ s }) => {
     await indexed(s);
-    const [item] = await prepareTypes(s, "Dog : public");
-    const supertypes = await s.client.typeHierarchySupertypes(item!);
+    const supertypes = await s.supertypes(at("main.cpp", "Dog : public"));
     expect(supertypes, "supertypes returned None").not.toBeNull();
     expect(supertypes!.map((t) => t.name)).toContain("Animal");
 });
 
 test("type hierarchy subtypes", async ({ s }) => {
     await indexed(s);
-    const [item] = await prepareTypes(s, "struct |Animal {");
-    const subtypes = await s.client.typeHierarchySubtypes(item!);
+    const subtypes = await s.subtypes(at("main.cpp", "struct |Animal {"));
     expect(subtypes, "subtypes returned None").not.toBeNull();
     const names = subtypes!.map((t) => t.name);
     expect(names).toContain("Dog");
@@ -176,7 +161,7 @@ test("goto definition alternate", async ({ s }) => {
 /// is an empty answer, not an error.
 test("goto definition closed blank", async ({ s }) => {
     await indexed(s);
-    expect(locations(await s.definition(at("nav.cpp", '"nav.h"\n|\nint area')))).toEqual([]);
+    expect((await s.definition(at("nav.cpp", '"nav.h"\n|\nint area'))) ?? []).toEqual([]);
 });
 
 /// A symbol with no definition anywhere navigates to its declaration
@@ -208,9 +193,11 @@ test("goto implementation", async ({ s }) => {
     await indexed(s);
     // Animal::speak is overridden by Dog::speak and Cat::speak, the only
     // two lines spelling an override.
-    const sites = locations(
-        await s.request("textDocument/implementation", at("main.cpp", "speak() {}")),
-    );
+    const sites =
+        (await s.request<proto.Location[] | null>(
+            "textDocument/implementation",
+            at("main.cpp", "speak() {}"),
+        )) ?? [];
     expect(s.show(sites)).toBe(
         "main.cpp: void speak() override {}\nmain.cpp: void speak() override {}",
     );
@@ -273,12 +260,12 @@ test("goto type definition return value", async ({ s }) => {
     await indexed(s);
     // Known index gap: functions carry no TypeDefinition relation for their
     // return type, so this currently yields no results.
-    const result = await s.request(
+    const result = await s.request<proto.Location[] | null>(
         "textDocument/typeDefinition",
         at("nav.h", "Shape |make_unit_shape();"),
     );
     expect(result).not.toBeNull();
-    expect(locations(result).length).toBe(0);
+    expect(result!.length).toBe(0);
 });
 
 test("goto declaration forward declared", async ({ s }) => {
@@ -295,18 +282,24 @@ test("goto declaration forward declared", async ({ s }) => {
 test("navigation empty open document", async ({ s }) => {
     await indexed(s);
     // 'add' has no implementations: open documents get [] back, not an error.
-    const result = await s.request("textDocument/implementation", ADD_DEFINITION);
+    const result = await s.request<proto.Location[] | null>(
+        "textDocument/implementation",
+        ADD_DEFINITION,
+    );
     expect(result).not.toBeNull();
-    expect(locations(result).length).toBe(0);
+    expect(result!.length).toBe(0);
 });
 
 test("navigation closed document empty", async ({ s }) => {
     await indexed(s);
     // Index-only navigation serves closed documents; an empty result is a
     // real answer, not an error.
-    const result = await s.request("textDocument/implementation", AREA_DEFINITION);
+    const result = await s.request<proto.Location[] | null>(
+        "textDocument/implementation",
+        AREA_DEFINITION,
+    );
     expect(result).not.toBeNull();
-    expect(locations(result).length).toBe(0);
+    expect(result!.length).toBe(0);
 });
 
 test("definition on include", async ({ s }) => {
@@ -323,9 +316,10 @@ test("definition on include", async ({ s }) => {
 
 test("document links include preamble", async ({ s }) => {
     await s.compiled("nav.cpp");
-    const links = (await s.request("textDocument/documentLink", "nav.cpp")) as
-        | proto.DocumentLink[]
-        | null;
+    const links = await s.request<proto.DocumentLink[] | null>(
+        "textDocument/documentLink",
+        "nav.cpp",
+    );
     const targets = (links ?? []).map((link) => link.target ?? "");
     expect(targets.some((target) => target.includes("nav.h"))).toBe(true);
     expect(targets.some((target) => target.includes("nav_late.h"))).toBe(true);
