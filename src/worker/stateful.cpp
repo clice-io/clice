@@ -15,6 +15,7 @@ import :support.logging;
 import :support.process;
 import :worker.common;
 import :worker.crash_report;
+import :worker.gate;
 import :worker.protocol;
 import :worker.stateful;
 
@@ -504,6 +505,7 @@ int run_stateful_worker_mode(const std::string& worker_name,
     (*transport_result)->set_remote_max_payload(kota::ipc::default_max_payload);
 
     kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
+    install_test_gates(peer, loop);
 
     StatefulWorker worker(peer, max_documents);
     worker.register_handlers();

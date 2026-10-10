@@ -20,23 +20,32 @@ constexpr inline bool Linux = true;
 constexpr inline bool Linux = false;
 #endif
 
-/// The checked-in fixture tree, tests/data of the working directory (the
-/// repository root, where the tasks run the tests: a build that may be
-/// cached across checkouts names none of them). CLICE_TEST_DATA_DIR in the
-/// environment overrides it, the way
+/// A checked-in tree: `fallback` of the working directory (the repository
+/// root, where the tasks run the tests: a build that may be cached across
+/// checkouts names none of them), unless `env` names another, the way
 /// CLICE_EXECUTABLE points the TypeScript suites at another build. Absolute
 /// and dot-free with native separators, the spelling the database loader
 /// produces for paths anchored under it.
-inline std::string data_dir() {
+inline std::string checkout_dir(const char* env, const char* fallback) {
     llvm::SmallString<256> dir;
-    if(const char* env = std::getenv("CLICE_TEST_DATA_DIR")) {
-        dir = env;
+    if(const char* value = std::getenv(env)) {
+        dir = value;
     } else {
-        dir = CLICE_TESTS_DATA_DIR;
+        dir = fallback;
     }
     llvm::sys::fs::make_absolute(dir);
     llvm::sys::path::remove_dots(dir, /*remove_dot_dot=*/true);
     return std::string(dir);
+}
+
+/// The unit tests' own fixtures, tests/unit/data.
+inline std::string data_dir() {
+    return checkout_dir("CLICE_TEST_DATA_DIR", CLICE_TESTS_DATA_DIR);
+}
+
+/// The sample projects every suite shares, samples/.
+inline std::string samples_dir() {
+    return checkout_dir("CLICE_TEST_SAMPLES_DIR", CLICE_TESTS_SAMPLES_DIR);
 }
 
 class TestVFS : public llvm::vfs::InMemoryFileSystem {

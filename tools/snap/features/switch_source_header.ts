@@ -1,5 +1,5 @@
 import { URI, Utils } from "vscode-uri";
-import { directiveLines, type Feature } from "../render.ts";
+import { directiveLines, settled, type Feature } from "../render.ts";
 import { normalizeFileUri, yamlStr } from "../snapshot.ts";
 
 /// clice/counterparts snapshots. The request names a file, not a position,
@@ -12,7 +12,7 @@ import { normalizeFileUri, yamlStr } from "../snapshot.ts";
 /// ranking is what the feature answers. Replies read the build and the
 /// project index, so only the server path exists. Shared declarations of
 /// closed files come from the background index: an `indexing: true` fixture
-/// waits for it to go idle before asking.
+/// waits for the server to settle before asking.
 
 export const switchSourceHeader: Feature = {
     shape: "document",
@@ -25,7 +25,7 @@ export const switchSourceHeader: Feature = {
             throw new Error("switch_source_header fixture declares no '// switch:' lines");
         }
         if (ctx.indexing === true) {
-            await client.waitForIndexIdle();
+            await settled(client);
         }
 
         const directory = Utils.dirname(URI.parse(uri));

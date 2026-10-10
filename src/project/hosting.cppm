@@ -51,9 +51,10 @@ struct HostTree {
 /// a preprocess run left. Empty when the compile never enters the header.
 /// Nullopt when no tree can tell: none is known, or the unit or a file on
 /// the way changed since — for a header the tree never enters, a file of
-/// the lexical chain to it, which may have gained the include. A compile
-/// entering the header only through an include its command forces in,
-/// which no cut of the unit's text reproduces, yields the lexical chain.
+/// the lexical chain to it, which may have gained the include, or the
+/// header itself, appearing where the indexed compile found nothing. A
+/// compile entering the header only through an include its command forces
+/// in, which no cut of the unit's text reproduces, yields the lexical chain.
 std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header);
 
 /// How many times the compile of `host` enters `header`: by its include

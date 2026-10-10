@@ -3,10 +3,8 @@
 /// and the editor's prepareRename/rename answer from the same engine.
 
 import { basename } from "node:path";
-import * as proto from "vscode-languageserver-protocol";
 import { runProcess } from "@clice/tools/client";
-import { applyTextEdits } from "@clice/tools/client/edits";
-import { canonicalUri, Workspace } from "@clice/tools/workspace";
+import { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 const HEADER = [
@@ -169,72 +167,4 @@ test("refuses what it cannot rename", async ({ session }) => {
     const unknown = await runClice("refactor", "extract", "--workspace", ws.root);
     expect(unknown.status).toBe(1);
     expect(unknown.stdout).toContain("unknown refactoring");
-});
-
-/// The edits a rename reply makes to `file`, and the buffer version they
-/// were computed for.
-function changeOf(edit: proto.WorkspaceEdit | null, ws: Workspace, file: string) {
-    for (const change of edit?.documentChanges ?? []) {
-        if ("textDocument" in change && canonicalUri(change.textDocument.uri) === ws.uri(file)) {
-            const edits = change.edits.filter((item): item is proto.TextEdit => "newText" in item);
-            return { version: change.textDocument.version, edits };
-        }
-    }
-    return null;
-}
-
-test("renames from the editor", async ({ session }) => {
-    const ws = writeProject(session);
-    const client = await session.spawn(ws).initialize(ws);
-    const [uri] = await client.openAndWait("main.cpp");
-    expect(await client.waitForIndex(uri, "again"), "other.cpp not indexed").toBe(true);
-
-    const prepared = await client.prepareRenameAt(uri, 1, 6);
-    expect(prepared).toEqual({
-        range: { start: { line: 1, character: 4 }, end: { line: 1, character: 11 } },
-        placeholder: "compute",
-    });
-
-    const notices: string[] = [];
-    client.onNotification(proto.ShowMessageNotification.type, (params) => {
-        notices.push(params.message);
-    });
-    const edit = await client.renameAt(uri, 1, 6, "evaluate");
-    const main = changeOf(edit, ws, "main.cpp");
-    expect(main?.version).toBe(0);
-    expect(applyTextEdits(MAIN, main!.edits)).toBe(
-        MAIN.replace("int compute", "int evaluate").replace("compute(2)", "evaluate(2)"),
-    );
-    const header = changeOf(edit, ws, "a.h");
-    expect(header?.version).toBeNull();
-    expect(applyTextEdits(HEADER, header!.edits)).toBe(
-        HEADER.replace("int compute", "int evaluate"),
-    );
-    const other = changeOf(edit, ws, "other.cpp");
-    expect(applyTextEdits(OTHER, other!.edits)).toBe(OTHER.replace("compute", "evaluate"));
-    await expect.poll(() => notices.join("\n")).toContain("#define CALL compute(1)");
-});
-
-test("the editor hears why not", async ({ session }) => {
-    const ws = writeProject(session);
-    const client = await session.spawn(ws).initialize(ws);
-    const [uri] = await client.openAndWait("main.cpp");
-    expect(await client.waitForIndex(uri, "again"), "other.cpp not indexed").toBe(true);
-
-    await expect(client.prepareRenameAt(uri, 3, 33)).rejects.toThrow("macro");
-    await expect(client.renameAt(uri, 1, 6, "use")).resolves.not.toBeNull();
-    await expect(client.renameAt(uri, 1, 6, "Widget")).rejects.toThrow(
-        "already declared in the same scope",
-    );
-    expect(await client.prepareRenameAt(uri, 0, 0)).toBeNull();
-});
-
-test("a rootless server refuses up front", async ({ session }) => {
-    const { client, workspace } = session.tmp();
-    workspace.write("main.cpp", "int compute();\nint use() { return compute(); }\n");
-    await client.initialize(workspace, { folders: [] });
-    const [uri] = await client.openAndWait("main.cpp");
-
-    await expect(client.prepareRenameAt(uri, 0, 5)).rejects.toThrow("workspace folder");
-    await expect(client.renameAt(uri, 0, 5, "evaluate")).rejects.toThrow("workspace folder");
 });

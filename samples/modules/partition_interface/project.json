@@ -1,0 +1,7 @@
+{
+  "cxx": ["-std=c++20"],
+  "units": {
+    "part.cppm": [],
+    "primary.cppm": []
+  }
+}

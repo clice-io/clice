@@ -51,10 +51,6 @@ nodejs = ">=24"
 # `clice format` runs the clang-format found in PATH; the integration
 # tests drive it on real files.
 clang-format = "==23.1.1"
-# The fixtures with a CMakeLists.txt get their compile_commands.json from a
-# CMake configuration (tools/compile_commands.ts).
-cmake = ">=3.30"
-ninja = "*"
 
 [feature.test.target.linux-64.dependencies]
 # The symbolization test reads the release's GSYM with llvm-gsymutil, here
@@ -153,7 +149,7 @@ cmd = "node tools/docs/translations.ts review --glossary=.claude/skills/translat
 
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = 'CLICE_TEST_DATA_DIR=$PIXI_PROJECT_ROOT/tests/data ./build/{{ type }}/bin/bin/unit_tests --verbose'
+cmd = 'CLICE_TEST_DATA_DIR=$PIXI_PROJECT_ROOT/tests/unit/data CLICE_TEST_SAMPLES_DIR=$PIXI_PROJECT_ROOT/samples ./build/{{ type }}/bin/bin/unit_tests --verbose'
 depends-on = [{ task = "check-feature-docs" }]
 
 # npm workspaces: install runs at the repo root and covers tools/, tests/
@@ -179,12 +175,16 @@ CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test --wo
 """
 depends-on = ["install-tests"]
 
+# The recordings ran on a workspace of one main.cpp; their didOpen carries
+# its text, so a copy of samples/tiny stands in for it.
 [feature.test.tasks.smoke-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-node tools/replay.ts tests/smoke/*.jsonl \
+node tools/sample.ts tiny build/smoke && \
+node tools/replay.ts tests/smoke/*.jsonl --workspace=build/smoke \
     --clice=./build/{{ type }}/bin/bin/clice
 """
+depends-on = ["install-tests"]
 
 # Feature snapshots exercise `clice inspect` and real server paths over
 # tests/snap corpora. Driver logic lives under tools/snap/; the vitest glue
@@ -234,25 +234,31 @@ depends-on = [
 [feature.editor]
 platforms = ["linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
-# Same mitigation as feature.test: editor-prepare configures fixtures with
-# CMake and xclang's clang (tools/compile_commands.ts).
+# Same mitigation as feature.test: the workspaces' databases name clang++,
+# which must be xclang's and not Apple's.
 [feature.editor.target.osx-arm64.dependencies]
 xclang = "==23.1.2.9"
 
 [feature.editor.target.osx-64.dependencies]
 xclang = "==23.1.2.9"
 
-# Fixture list kept in sync with editors/vscode/.vscode-test.mjs.
+# The editors' workspaces, copies of samples under build/e2e; the list is
+# kept in sync with editors/vscode/.vscode-test.mjs.
 [feature.editor.tasks.editor-prepare]
-cmd = "node tools/prepare.ts hello_world modules/hover_on_imported_symbol header_context"
+cmd = """
+node tools/sample.ts tiny build/e2e/tiny && \
+node tools/sample.ts shapes/modules build/e2e/modules && \
+node tools/sample.ts contexts build/e2e/contexts
+"""
+depends-on = ["install-vscode"]
 
 # Requires nvim (stable) on PATH.
 [feature.editor.tasks.nvim-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice tests/data/hello_world && \
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice tests/data/modules/hover_on_imported_symbol && \
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice tests/data/header_context
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice build/e2e/tiny && \
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice build/e2e/modules && \
+nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice build/e2e/contexts
 """
 depends-on = ["editor-prepare"]
 

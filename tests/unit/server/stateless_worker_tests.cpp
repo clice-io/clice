@@ -77,6 +77,44 @@ ZEST_CASE(SpawnAndExit) {
     w.run([]() -> kota::task<> { co_return; });
 }
 
+ZEST_CASE(GateParksWork) {
+    /// A gated request's work waits where it starts until the gate is
+    /// released; the worker reports the park first.
+    WorkerHandle w;
+    ZASSERT(w.spawn());
+
+    kota::event parked;
+    std::uint64_t parked_id = 0;
+    w.peer->on_notification([&](const worker::GateParkedParams& params) {
+        parked_id = params.id;
+        parked.set();
+    });
+
+    bool test_done = false;
+    w.run([&]() -> kota::task<> {
+        worker::FormatParams params{.file = "/w/main.cpp", .text = "int  x;\n"};
+        w.peer->send_notification(worker::GateParams{.id = 7, .tag = worker::crash_tag(params)});
+        bool answered = false;
+        auto format = [&]() -> kota::task<> {
+            auto result = co_await w.peer->send_request(params);
+            ZEXPECT(result);
+            answered = true;
+        };
+        kota::task_group<> group;
+        group.spawn(format());
+        co_await parked.wait();
+        ZEXPECT(parked_id == 7u);
+        ZEXPECT(!answered);
+        w.peer->send_notification(worker::GateReleaseParams{.id = 7});
+        co_await group.join();
+        ZEXPECT(answered);
+        test_done = true;
+        w.peer->close_output();
+    });
+
+    ZASSERT(test_done);
+}
+
 ZEST_CASE(BuildPCHRequest) {
     TempDir tmp;
     tmp.touch("test_pch.h", "#pragma once\nint pch_global = 42;\n");

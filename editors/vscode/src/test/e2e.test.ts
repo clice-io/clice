@@ -34,25 +34,28 @@ interface Scenario {
     // Absent when cross-file definition is not expected to work for the
     // scenario (definition into headers is a known index gap).
     definitionFile?: string;
+    // The header's automatic host, the one the context requests switch to.
+    context?: string;
 }
 
 const scenarios: Record<string, Scenario> = {
-    hello_world: {
+    tiny: {
         file: "main.cpp",
         symbol: "add(1, 2)",
         indexSymbol: "add",
         definitionFile: "main.cpp",
     },
-    hover_on_imported_symbol: {
-        file: "use.cpp",
-        symbol: "magic_number()",
-        indexSymbol: "magic_number",
-        definitionFile: "defs.cppm",
+    modules: {
+        file: "app/main.cpp",
+        symbol: "Circle c(2.0)",
+        indexSymbol: "shapes::Circle",
+        definitionFile: "circle.cppm",
     },
-    header_context: {
+    contexts: {
         file: "utils.h",
         symbol: "distance(p",
         indexSymbol: "calc",
+        context: "main.cpp",
     },
 };
 
@@ -343,8 +346,8 @@ suite("clice E2E", function () {
 
     test("compilation context requests", async function () {
         this.timeout(60 * 1000);
-        const folder = workspaceFolder();
-        if (path.basename(folder.uri.fsPath) !== "header_context") {
+        const context = scenario.context;
+        if (!context) {
             this.skip();
         }
         assert.ok(document, "main file was not opened (earlier test failed)");
@@ -356,8 +359,8 @@ suite("clice E2E", function () {
 
         const query = await client.sendRequest<QueryContextResult>("clice/queryContext", { uri });
         assert.ok(query.total >= 1, `expected at least one context, got ${query.total}`);
-        const host = query.contexts.find((c) => c.uri.includes("main.cpp"));
-        assert.ok(host, "main.cpp should be offered as a context");
+        const host = query.contexts.find((c) => c.uri.endsWith(`/${context}`));
+        assert.ok(host, `${context} should be offered as a context`);
 
         // The client contract: a switch through the extension's commands
         // keeps the document open; the server recompiles the unchanged text
@@ -384,7 +387,7 @@ suite("clice E2E", function () {
             uri,
         });
         assert.ok(
-            current.context?.uri.includes("main.cpp"),
+            current.context?.uri.endsWith(`/${context}`),
             "currentContext should report the switched host",
         );
         assert.ok(!current.automatic, "the switched host is the user's choice");
@@ -402,14 +405,13 @@ suite("clice E2E", function () {
 
     test("switch source/header without a counterpart", async function () {
         this.timeout(60 * 1000);
-        const folder = workspaceFolder();
-        if (path.basename(folder.uri.fsPath) !== "header_context") {
+        if (!scenario.context) {
             this.skip();
         }
         assert.ok(document, "main file was not opened (earlier test failed)");
 
-        // utils.h defines everything it declares: the command reports that
-        // and leaves the editor where it was.
+        // The header defines everything it declares: the command reports
+        // that and leaves the editor where it was.
         const extension = vscode.extensions.getExtension("clice-io.clice");
         assert.ok(extension?.isActive, "extension not active");
         const manifest = extension.packageJSON as {
@@ -471,7 +473,7 @@ suite("clice E2E", function () {
 
     test("refactor command applies its action", async function () {
         this.timeout(60 * 1000);
-        if (path.basename(workspaceFolder().uri.fsPath) !== "hello_world") {
+        if (path.basename(workspaceFolder().uri.fsPath) !== "tiny") {
             this.skip();
         }
 

@@ -7,53 +7,71 @@ description: How to write clice integration tests (TypeScript/vitest) — fixtur
 
 The suite is TypeScript on vitest. Harness = the `@clice/tools` workspace
 package (`tools/`, session machinery in `tools/client/session.ts`); each suite binds it in its own fixture file (`tests/integration/fixtures.ts`, `tests/snap/fixtures.ts`). Tests live in
-`tests/integration/<area>/*.test.ts`; tests of the tooling itself in
+`tests/integration/serve/<area>/*.test.ts` (cases that drive a server) and
+`tests/integration/<area>/*.test.ts` (CLI cases); tests of the tooling itself in
 `tests/tools/`. Run: `cd tests && CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npx vitest run --config integration/vitest.config.ts <file>`;
 gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
 
 ## Choosing a fixture form
 
-1. **All tests target one data workspace** (`tests/data/<name>`): the bound
-   form — zero boilerplate, teardown fully automatic.
+1. **A case that drives a server** goes under `tests/integration/serve/<area>/`
+   and is written with the serve action layer (`@clice/tools/actions`,
+   `tools/client/actions.ts`; its own tests are
+   `serve/server/actions.test.ts`). Each case gets a fresh copy of its
+   workspace and its own server; teardown is automatic.
 
    ```ts
-   import { cliceTest, expect } from "../fixtures.ts";
-   const test = cliceTest("document_links");
+   import { at, expect, serve } from "../../fixtures.ts";
 
-   test("links with pch", async ({ client, workspace }) => {
-       const [uri] = await client.openAndWait("main.cpp"); // workspace-relative
-       ...
-   });
+   serve.files({ "main.cpp": "int main() { return missing; }\n" })(
+     "edit clears the error",
+     async ({ s }) => {
+       expect(await s.errors("main.cpp")).toHaveLength(1);
+       s.edit("main.cpp", { replace: "missing", with: "0" });
+       await s.clean("main.cpp");
+       await s.indexed();
+       expect(s.show(await s.hover(at("main.cpp", "ma|in")))).toContain("main");
+     },
+   );
    ```
 
-2. **Anything else** (several servers, temp workspaces, custom argv,
-   per-test options): the `session` factory — the test's resource manager.
-   Everything it vends is reclaimed in teardown (shutdown gate, anomaly
-   gate, directory removal); never write try/finally cleanup.
+   - Workspaces: `serve(project)` / `serve.each([projects])` copy a sample
+     project of `samples/` (its `project.json` names the units, their
+     arguments and logical file names); `serve.files({path: text})` lays out
+     loose files, every source a unit unless `manifest` says otherwise.
+   - Options: `config`, `manifest` (units of several configurations;
+     `${workspace}` in an argument), `units` (over a sample's units: added,
+     other arguments, or `null` to leave one out), `databases` (none,
+     elsewhere, several),
+     `files` as text or `(workspace) => text`, `setup(workspace)` (symlinks
+     and the like), `launch` (capabilities, folders, args, executable,
+     config, `beforeInitialized(s)`, `handshake: false`), `env`,
+     `anomalies`, `killOn`, `crashOn`. `.skipIf(cond)` and `.for(table)` on
+     the test function.
+   - Positions and edits name unique snippets: `at(file, "snip|pet")`,
+     `{ replace, with }`, `{ after | before, insert }`, `{ remove }`,
+     `{ text }` — never a line or column.
+   - Every wait ends on a server event: `s.sync()` / `s.indexed()`
+     (clice/internal/sync), a pull (`s.diagnostics`, `s.compiled`,
+     `s.clean`, `s.errors`, `s.recompiled`), a reply, a hold (`s.hold`,
+     `s.inFlight`: a build's reply parked in the master) or a gate
+     (`s.gate`, `s.inWorker`: a request parked in its worker, for a cancel,
+     edit or death that must land mid-work). `s.pushed` / `s.pushes` read
+     what the server published unasked; `s.counts` / `s.stats` read the
+     build counts and gauges.
+   - A failing case prints its steps and the work the server still had.
+   - `s.client` (the raw `CliceClient`) is for what is raw by design:
+     messages before the handshake, malformed or out-of-order protocol,
+     worker pids, stderr, log and progress notifications.
 
-   ```ts
-   import { expect, test } from "../fixtures.ts";
-
-   test("rebuild after restart", async ({ session }) => {
-       const ws = session.tmpdir();              // auto-removed Workspace
-       ws.write("main.cpp", "int main() {}\n");  // relative path, auto-mkdir
-       ws.writeCDB(["main.cpp"]);
-
-       const first = await session.spawn(ws).initialize(ws);
-       await first.openAndWait("main.cpp");
-       await first.shutdown();                   // explicit mid-test shutdown is fine
-
-       const second = await session.spawn(ws).initialize(ws);
-       ...                                       // teardown owns `second`
-   });
-   ```
-
-   Variants: `session("name", opts)` (data workspace, locked + initialized),
-   `session.tmp()` (tmpdir + un-initialized server). Options:
-   `initializationOptions`, `allowAnomaly` (ONLY for
-   tests that deliberately crash workers — assert on the anomaly
-   explicitly), `drainStderr: false` (backpressure tests), `args`,
-   `socketPort`.
+2. **CLI-only cases and the hooks' own tests**: the `session` factory — the
+   test's resource manager. Everything it vends is reclaimed in teardown
+   (shutdown gate, anomaly gate, directory removal); never write
+   try/finally cleanup. `session.tmpdir()` (an auto-removed `Workspace`),
+   `session.tmp()` (with an un-initialized server), `session.spawn(ws)`.
+   Options: `initializationOptions`, `allowAnomaly` (ONLY for tests that
+   deliberately crash workers — assert on the anomaly explicitly),
+   `drainStderr: false`, `args`, `executable`.
 
 3. **Snap tests** (feature output): don't write assertions at all — add
    a fixture to the corpus `tests/snap/<feature>/` and the snap suite
@@ -149,27 +167,24 @@ gates: `npm run check` at the repo root (tsc strict + ESLint, zero tolerance).
 
 `Workspace` (`@clice/tools/workspace`): `path(rel)` `uri(rel)` `write`
 `read` `exists` `mkdir` `rm` `writeCDB(files, {extraArgs, std})`
-`writeEntries` `generateCDB()` `pinCacheDir()` and cache inspection
+`writeEntries` `pinCacheDir()` and cache inspection
 (`pchFiles()` `pcmFiles()` `tmpFiles()` `readCacheJson()`). Raw string
 path: `ws.root`. Exotic fs ops: `node:fs` + `ws.path(...)`.
 
-`CliceClient` (`@clice/tools/client`): after `initialize(ws)` all paths may
-be workspace-relative. Requests: `hoverAt` `definitionAt` `referencesAt`
-`completionAt` `documentLinks` `foldingRanges` `semanticTokensFull`
-`inlayHints` `formatDocument` ... Documents: `open` `openAndWait` `change`
-`save` `close`. Waiting: `armDiagnostics` (arm BEFORE the trigger) /
-`waitDiagnostics` / `waitForRecompile` / `waitForIndex` /
-`waitForReference`. Asserts: `assertNoErrors` `assertHasErrors`
-`assertCleanCompile` `assertNoAnomaly` `errors`.
-Lifecycle: `shutdown()` `killServer()` `assertExitedCleanly()`. Custom
-protocol (typed): `queryContext` `currentContext` `switchContext` `poll`
-`stats` `logFlood`; raw wire: `sendRequest(TypeOrMethod, params, token?)`,
-`onNotification`. Custom protocol types live in `@clice/tools/protocol` —
-NEVER redeclare them locally (the VSCode extension shares them).
+`CliceClient` (`@clice/tools/client`, `s.client` in a serve case): typed
+requests (`hoverAt` `definitionAt` ... `sync` `stats` `poll` `hold` `gate`),
+documents (`open` `change` `changeRange` `save` `close`), raw wire
+(`sendRequest(TypeOrMethod, params, token?)`, `sendTogether`,
+`onNotification`), records (`publishedDiagnostics` `serverRequests`
+`logMessages` `progressEvents`), lifecycle (`shutdown` `killServer`
+`assertExitedCleanly` `workerPids`). Custom protocol types live in
+`@clice/tools/protocol` — NEVER redeclare them locally (the VSCode
+extension shares them).
 
-Timing: use `sleep`, `MTIME_GRANULARITY`, `SETTLE_TIME`, `IDLE_TIMEOUT`
-from `@clice/tools/client` — never bare magic-number sleeps, and prefer
-deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
+Timing: no `sleep` or polling loop waits for the server — wait on an event
+(above). A file whose mtime must differ gets `s.disk.touch(file, date)`.
+What stays is a clock rule the case proves (the crash-retry spacing), with
+a constant and a one-line comment.
 
 ## Hard rules
 
@@ -182,11 +197,10 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
 - Comments: `///` for doc comments, `//` inline; explain constraints the
   code can't show, nothing else. Keep tests concise: descriptive test
   names, no large comment blocks explaining layout or expected behavior.
-- Same-workspace exclusivity across files comes from the session lock —
-  never touch `tests/data/*` outside a session, and never run two suites
-  concurrently. Probes and experiments copy a workspace to a temp dir
-  first; a server under test whose `.clice` gets deleted underneath it
-  fails every PCH build.
+- Cases never run on `samples/*` in place: the
+  fixtures copy them. Probes and experiments copy a workspace to a temp
+  dir first; a server under test whose `.clice` gets deleted underneath
+  it fails every PCH build.
 - Tear down servers by the PIDs you recorded (and their subtree) — never
   `pkill` by name. A pattern sweep kills a sibling run's servers, and those
   deaths look exactly like the bug being hunted.
@@ -223,8 +237,8 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
   forward `advance`/`retire`/`grow` or the snapshot never moves. Probe blob
   keys go through the path pool's canonical spelling (Windows 8.3 short
   names hash differently).
-- `waitForIndex` cannot wait on a declaration-only name: `search_symbols`
-  skips symbols without a definition.
+- `workspaceSymbols` never lists a declaration-only name: `search_symbols`
+  skips symbols without a definition, so an index check needs a defined one.
 - Tester's module compile once wrote no BMI at all (the syntax-only
   overload cleared the output file) and module tests stayed green on
   lexical tokens alone — when touching the Tester compile path, check that

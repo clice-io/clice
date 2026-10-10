@@ -20,7 +20,7 @@ namespace clice::testing {
 
 namespace {
 
-/// A view over one checked-in layout under tests/data/cdb: its clice.toml
+/// A view over one checked-in layout under tests/unit/data/cdb: its clice.toml
 /// loaded the way the server loads it, every declared source loaded.
 struct Layout {
     std::string root;

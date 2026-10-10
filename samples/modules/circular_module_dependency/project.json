@@ -1,0 +1,8 @@
+{
+  "cxx": ["-std=c++20"],
+  "units": {
+    "cycle_a.cppm": [],
+    "cycle_b.cppm": [],
+    "ok.cppm": []
+  }
+}

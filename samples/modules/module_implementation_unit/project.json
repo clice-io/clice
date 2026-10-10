@@ -1,0 +1,7 @@
+{
+  "cxx": ["-std=c++20"],
+  "units": {
+    "greeter.cppm": [],
+    "greeter_impl.cpp": []
+  }
+}

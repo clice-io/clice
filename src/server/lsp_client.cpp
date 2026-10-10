@@ -23,6 +23,7 @@ import :support.anomaly;
 import :support.logging;
 import :syntax.preamble_synthesis;
 import :vfs.path;
+import :worker.probe;
 import :worker.serialize;
 
 namespace clice {
@@ -63,6 +64,38 @@ static kota::task<T, kota::ipc::Error> holding(std::shared_ptr<ProjectServer> pr
     co_return co_await std::move(task);
 }
 
+/// Tick the file trackers of every project, as clice/internal/poll asks:
+/// the database loop (`force` skips its gates, see ext::PollParams) or the
+/// workspace loop. Returns the events of all.
+static kota::task<std::uint32_t> tick_trackers(MasterServer& srv, bool cdb, bool force) {
+    std::uint32_t count = 0;
+    if(cdb) {
+        srv.files.disk.look_flags();
+    } else {
+        srv.files.disk.look_all();
+        // Before the sources walk suspends: the drain the looks scheduled
+        // would take the changes uncounted.
+        count += static_cast<std::uint32_t>(srv.drain_disk_changes());
+    }
+    for(std::size_t i = 0; i < srv.projects.size(); i += 1) {
+        auto project = srv.projects[i];
+        if(!project->tracker) {
+            continue;
+        }
+        llvm::SmallVector<FileEvent> events;
+        if(cdb) {
+            events = project->tracker->tick_cdb(force);
+        } else {
+            events = co_await project->tracker->tick_sources();
+        }
+        count += static_cast<std::uint32_t>(events.size());
+        if(!events.empty()) {
+            project->dispatch(events);
+        }
+    }
+    co_return count;
+}
+
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JSONPeer& peer) : server(server), peer(peer) {
     output_conn = server.on_output.connect(
         [this](ProjectServer& project, const std::shared_ptr<Session>& session) {
@@ -75,6 +108,9 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JSONPeer& peer) : server(s
     });
     progress_conn = server.on_index_progress.connect([this]() { report_index_progress(); });
     serving_conn = server.on_serving_rows_changed.connect([this]() { refresh_index_served(); });
+    held_conn = server.probe.on_held.connect([this](std::uint64_t id) {
+        this->peer.send_notification("clice/internal/held", ext::HeldParams{id});
+    });
 
     // Guidance/anomaly messages travel as window/logMessage, which the LSP
     // spec allows before the initialize handshake — drain what a headless
@@ -1128,7 +1164,7 @@ void LSPClient::register_extensions() {
             co_return to_raw(result);
         });
 
-    // ── Test hook ───────────────────────────────────────────────────
+    // ── Test hooks ──────────────────────────────────────────────────
 
     // Runs one file-tracker tick (see ext::PollParams).
     // Test-only and not a stable API.
@@ -1145,44 +1181,113 @@ void LSPClient::register_extensions() {
                 co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
                                                      "No workspace is loaded"});
             }
-            // Every project ticks; the reply counts the events of all.
-            std::uint32_t count = 0;
-            if(params.loop == "workspace") {
-                srv.files.disk.look_all();
-                // Before the sources walk suspends: the drain the
-                // looks scheduled would take the changes uncounted.
-                count += static_cast<std::uint32_t>(srv.drain_disk_changes());
-            } else {
-                srv.files.disk.look_flags();
+            co_return to_raw(ext::PollResult{
+                co_await tick_trackers(srv, params.loop == "cdb", params.force.value_or(true))});
+        });
+
+    auto hooks_off = [] {
+        return kota::ipc::Error{protocol::ErrorCode::InvalidRequest, "test hooks are not enabled"};
+    };
+
+    peer.on_request(
+        "clice/internal/sync",
+        [this, hooks_off](RequestContext& ctx, const ext::SyncParams& params) -> RawResult {
+            auto& srv = this->server;
+            if(!srv.test_hooks()) {
+                co_await kota::fail(hooks_off());
             }
-            for(std::size_t i = 0; i < srv.projects.size(); i += 1) {
-                auto project = srv.projects[i];
-                if(!project->tracker) {
-                    continue;
-                }
-                llvm::SmallVector<FileEvent> events;
-                if(params.loop == "cdb") {
-                    events = project->tracker->tick_cdb(params.force.value_or(true));
-                } else {
-                    events = co_await project->tracker->tick_sources();
-                }
-                count += static_cast<std::uint32_t>(events.size());
-                if(!events.empty()) {
-                    project->dispatch(events);
-                }
+            // The deadline counts from the request; a poll runs to its end,
+            // a tick cut short would leave the trackers out of step.
+            auto deadline = std::chrono::steady_clock::now() +
+                            std::chrono::milliseconds(params.deadline_ms.value_or(240'000));
+            if(params.poll.value_or(false)) {
+                co_await tick_trackers(srv, /*cdb=*/false, /*force=*/true);
             }
-            co_return to_raw(ext::PollResult{count});
+            auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::max(deadline - std::chrono::steady_clock::now(),
+                         std::chrono::steady_clock::duration::zero()));
+            co_await kota::when_any(srv.settle(this->peer), kota::sleep(left, srv.loop));
+            ext::SyncResult result;
+            for(auto& project: srv.projects) {
+                for(auto id: project->sched.pump.failed()) {
+                    result.failed.push_back(feature::to_uri(srv.files.display(id)));
+                }
+                result.unsaved = result.unsaved || project->sched.store.has_unsaved_state();
+            }
+            llvm::sort(result.failed);
+            result.pending = srv.pending_work(this->peer);
+            co_return to_raw(result);
+        });
+
+    peer.on_request(
+        "clice/internal/hold",
+        [this, hooks_off](RequestContext& ctx, const ext::HoldParams& params) -> RawResult {
+            auto& srv = this->server;
+            if(!srv.test_hooks()) {
+                co_await kota::fail(hooks_off());
+            }
+            auto kind = parse_build_kind(params.kind);
+            auto path = uri_to_path(params.uri);
+            if(!kind || !path) {
+                co_await kota::fail(kota::ipc::Error{
+                    protocol::ErrorCode::InvalidParams,
+                    R"(a hold names a kind of "compile", "pch", "pcm" or "index", and a file URI)"});
+            }
+            // The stopping pool released every hold; a later one would park
+            // a reply the shutdown waits on.
+            if(past_shutdown(srv.lifecycle)) {
+                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
+                                                     "the server is shutting down"});
+            }
+            // The spelling the builds send the file under.
+            auto file = srv.files.resolve(srv.files.intern(*path));
+            co_return to_raw(ext::HoldResult{srv.probe.hold(*kind, std::string(file))});
+        });
+
+    peer.on_request(
+        "clice/internal/gate",
+        [this, hooks_off](RequestContext& ctx, const ext::GateParams& params) -> RawResult {
+            auto& srv = this->server;
+            if(!srv.test_hooks()) {
+                co_await kota::fail(hooks_off());
+            }
+            auto path = uri_to_path(params.uri);
+            if(params.request.empty() || !path) {
+                co_await kota::fail(
+                    kota::ipc::Error{protocol::ErrorCode::InvalidParams,
+                                     "a gate names a worker request and a file URI"});
+            }
+            if(past_shutdown(srv.lifecycle)) {
+                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
+                                                     "the server is shutting down"});
+            }
+            // The spelling the requests send the file under.
+            auto file = std::string(srv.files.resolve(srv.files.intern(*path)));
+            auto tag = std::format("clice/worker/{} {}", params.request, file);
+            co_return to_raw(ext::HoldResult{srv.probe.gate(std::move(tag))});
+        });
+
+    peer.on_request(
+        "clice/internal/release",
+        [this, hooks_off](RequestContext& ctx, const ext::ReleaseParams& params) -> RawResult {
+            auto& srv = this->server;
+            if(!srv.test_hooks()) {
+                co_await kota::fail(hooks_off());
+            }
+            if(!srv.probe.release(params.id)) {
+                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidParams,
+                                                     std::format("no hold {}", params.id)});
+            }
+            co_return to_raw(ext::ReleaseResult{});
         });
 
     peer.on_request(
         "clice/internal/logFlood",
-        [this](RequestContext& ctx, const ext::LogFloodParams& params) -> RawResult {
+        [this, hooks_off](RequestContext& ctx, const ext::LogFloodParams& params) -> RawResult {
             // Load-generating hook: a stray client must not be able to
-            // bloat the file log, so it only exists when the harness asked
-            // for it at initialize time.
-            if(!this->server.projects.front()->project.config.project.test_hooks.value) {
-                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
-                                                     "test hooks are not enabled"});
+            // bloat the file log.
+            if(!this->server.test_hooks()) {
+                co_await kota::fail(hooks_off());
             }
             auto count = std::min<std::uint32_t>(params.count, 100'000);
             auto size = std::clamp<std::uint32_t>(params.size, 16, 4096);
@@ -1236,6 +1341,17 @@ void LSPClient::register_extensions() {
             }
             stats.checks_looked = this->server.files.disk.checks.looked;
             stats.checks_trusted = this->server.files.disk.checks.trusted;
+            for(auto& entry: this->server.probe.builds) {
+                auto& counts = entry.getValue();
+                stats.builds.push_back({
+                    .uri = feature::to_uri(this->server.files.display(
+                        this->server.files.intern(Spelling::absolute(entry.getKey())))),
+                    .compile = counts[std::to_underlying(BuildKind::Compile)],
+                    .pch = counts[std::to_underlying(BuildKind::PCH)],
+                    .pcm = counts[std::to_underlying(BuildKind::PCM)],
+                    .index = counts[std::to_underlying(BuildKind::Index)],
+                });
+            }
             co_return to_raw(stats);
         });
 }

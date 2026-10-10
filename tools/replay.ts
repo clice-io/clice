@@ -1,6 +1,10 @@
 /// Replay recorded LSP traces against clice to detect hangs and crashes.
 ///
-/// Usage: node tools/replay.ts tests/smoke/session.jsonl --clice build/clice
+/// Usage: node tools/replay.ts tests/smoke/session.jsonl --clice build/clice \
+///            --workspace build/smoke
+///
+/// --workspace is the directory the recording's workspace stands for: the
+/// trace's paths under the recorded root are rewritten to it.
 ///
 /// Node builtins only — no npm dependencies — so it runs standalone with
 /// `node tools/replay.ts ...`. LSP framing and response defaults mirror the
@@ -10,7 +14,6 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { Readable, Writable } from "node:stream";
 import {
     anomalyGateFailure,
@@ -20,9 +23,6 @@ import {
     serverEnv,
 } from "./process_gate.ts";
 import { TimeoutError, withTimeout } from "./promise.ts";
-
-// tools/ -> repo root.
-const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 // Server->client requests are answered with these results; anything not
 // listed is answered with null.
@@ -137,17 +137,6 @@ function extractOriginalWorkspace(records: TraceRecord[]): string | null {
             workspace = workspace.slice(1);
         }
         return workspace;
-    }
-    return null;
-}
-
-/// Map recorded workspace path to the current repo location.
-function rewriteWorkspace(originalWs: string): string | null {
-    for (const marker of ["tests/data/", "tests/smoke/"]) {
-        const idx = originalWs.indexOf(marker);
-        if (idx !== -1) {
-            return path.join(REPO_ROOT, originalWs.slice(idx));
-        }
     }
     return null;
 }
@@ -338,6 +327,7 @@ function makePending(): Pending {
 async function replayOne(
     tracePath: string,
     cliceBin: string,
+    workspace: string | undefined,
     timeout: number,
     wallTimeout: number,
 ): Promise<boolean | null> {
@@ -350,12 +340,9 @@ async function replayOne(
 
     const originalWs = extractOriginalWorkspace(records);
     let displayWs = originalWs;
-    if (originalWs !== null) {
-        const newWs = rewriteWorkspace(originalWs);
-        if (newWs !== null && originalWs !== newWs) {
-            records = rewriteRecords(records, originalWs, newWs);
-            displayWs = newWs;
-        }
+    if (originalWs !== null && workspace !== undefined && originalWs !== workspace) {
+        records = rewriteRecords(records, originalWs, workspace);
+        displayWs = workspace;
     }
     records = claimClientProcess(records);
 
@@ -670,6 +657,7 @@ async function waitExitOrKill(
 interface Args {
     traces: string[];
     clice: string;
+    workspace: string | undefined;
     timeout: number;
     wallTimeout: number;
 }
@@ -677,7 +665,7 @@ interface Args {
 function usageError(message: string): never {
     console.error(`replay.ts: error: ${message}`);
     console.error(
-        "usage: replay.ts [-h] --clice CLICE [--timeout TIMEOUT] [--wall-timeout WALL_TIMEOUT] traces [traces ...]",
+        "usage: replay.ts [-h] --clice CLICE [--workspace WORKSPACE] [--timeout TIMEOUT] [--wall-timeout WALL_TIMEOUT] traces [traces ...]",
     );
     process.exit(2);
 }
@@ -696,6 +684,7 @@ function parseIntArg(value: string | undefined, flag: string): number {
 function parseArgs(argv: string[]): Args {
     const traces: string[] = [];
     let clice: string | undefined;
+    let workspace: string | undefined;
     let timeout = 120;
     let wallTimeout = 300;
 
@@ -706,7 +695,7 @@ function parseArgs(argv: string[]): Args {
         }
         if (a === "-h" || a === "--help") {
             console.log(
-                "usage: replay.ts [-h] --clice CLICE [--timeout TIMEOUT] [--wall-timeout WALL_TIMEOUT] traces [traces ...]",
+                "usage: replay.ts [-h] --clice CLICE [--workspace WORKSPACE] [--timeout TIMEOUT] [--wall-timeout WALL_TIMEOUT] traces [traces ...]",
             );
             process.exit(0);
         } else if (a === "--clice") {
@@ -716,6 +705,13 @@ function parseArgs(argv: string[]): Args {
             }
         } else if (a.startsWith("--clice=")) {
             clice = a.slice("--clice=".length);
+        } else if (a === "--workspace") {
+            workspace = argv[++i];
+            if (workspace === undefined) {
+                usageError("argument --workspace: expected one argument");
+            }
+        } else if (a.startsWith("--workspace=")) {
+            workspace = a.slice("--workspace=".length);
         } else if (a === "--timeout") {
             timeout = parseIntArg(argv[++i], "--timeout");
         } else if (a.startsWith("--timeout=")) {
@@ -737,7 +733,13 @@ function parseArgs(argv: string[]): Args {
     if (clice === undefined) {
         usageError("the following arguments are required: --clice");
     }
-    return { traces, clice, timeout, wallTimeout };
+    return {
+        traces,
+        clice,
+        workspace: workspace === undefined ? undefined : path.resolve(workspace),
+        timeout,
+        wallTimeout,
+    };
 }
 
 async function main(): Promise<number> {
@@ -752,7 +754,13 @@ async function main(): Promise<number> {
             skipped += 1;
             continue;
         }
-        const result = await replayOne(trace, args.clice, args.timeout, args.wallTimeout);
+        const result = await replayOne(
+            trace,
+            args.clice,
+            args.workspace,
+            args.timeout,
+            args.wallTimeout,
+        );
         if (result === null) {
             skipped += 1;
         } else if (result) {

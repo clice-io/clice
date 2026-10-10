@@ -6,15 +6,15 @@ import { fileURLToPath } from "url";
 const extensionRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(extensionRoot, "../..");
 
-// Each fixture under tests/data becomes one test run with that workspace.
-// Run tests/tools/prepare.py first to generate compile databases.
-// Keep in sync with the editor tasks in pixi.toml.
-const fixtures = ["hello_world", "modules/hover_on_imported_symbol", "header_context"];
+// Each workspace under build/e2e becomes one test run; pixi's editor-prepare
+// copies them there from samples/. Keep in sync with the editor tasks in
+// pixi.toml.
+const workspaces = ["tiny", "modules", "contexts"];
 
-const configs = fixtures.map((fixture) => ({
-    label: fixture,
+const configs = workspaces.map((workspace) => ({
+    label: workspace,
     files: "out/test/**/*.test.js",
-    workspaceFolder: path.join(repoRoot, "tests/data", fixture),
+    workspaceFolder: path.join(repoRoot, "build/e2e", workspace),
     mocha: { timeout: 300 * 1000 },
 }));
 
@@ -50,9 +50,9 @@ function stageBundledServer(from) {
 if (process.env.CLICE_EXECUTABLE) {
     stageBundledServer(process.env.CLICE_EXECUTABLE);
     configs.push({
-        label: "bundled-hello_world",
+        label: "bundled-tiny",
         files: "out/test/**/*.test.js",
-        workspaceFolder: path.join(repoRoot, "tests/data", "hello_world"),
+        workspaceFolder: path.join(repoRoot, "build/e2e", "tiny"),
         mocha: { timeout: 300 * 1000 },
         env: {
             CLICE_EXECUTABLE: "",

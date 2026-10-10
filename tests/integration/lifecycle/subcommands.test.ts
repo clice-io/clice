@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { runProcess, waitUntil, type CliceClient } from "@clice/tools/client";
+import { runProcess } from "@clice/tools/client";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
 const SUBCOMMANDS = [
@@ -31,20 +31,6 @@ function bigSource(): string {
         { length: 1500 },
         (_, i) => `int function_number_${i}(int a, int b) { return a + b; }\n`,
     ).join("");
-}
-
-async function waitSymbol(client: CliceClient, name: string): Promise<boolean> {
-    return waitUntil(
-        async () => {
-            const symbols = await client.workspaceSymbols(name);
-            return symbols?.some((symbol) => symbol.name === name) ?? false;
-        },
-        {
-            timeout: 30_000,
-            interval: 1_000,
-            description: `workspace symbol ${name}`,
-        },
-    );
 }
 
 test("root usage lists subcommands", async () => {
@@ -179,52 +165,6 @@ test.skipIf(process.platform === "win32")("sighup saves progress", async ({ sess
     const stats = await runClice("index", "--stats", "--workspace", ws.root);
     expect(stats.status, `stderr: ${stats.stderr}`).toBe(0);
     expect(stats.stdout).toMatch(/Translation units: [1-9]/);
-});
-
-test("index reports header losing host", async ({ session }) => {
-    const ws = session.tmpdir();
-    ws.pinCacheDir();
-    ws.write("a.h", "#pragma once\ninline int alpha() { return 1; }\n");
-    ws.write("main.cpp", '#include "a.h"\nint app_entry() { return alpha(); }\n');
-    ws.writeCDB(["main.cpp"]);
-
-    // Standalone-index a.h: edit it on disk while its buffer is open, so the
-    // close sees the shard/disk mismatch and reindexes the header with
-    // main.cpp as its borrowed host. `beta` can only come from that reindex —
-    // the tracker loops are off and main.cpp is never touched again.
-    const client = await session.spawn(ws).initialize(ws);
-    expect(await waitSymbol(client, "alpha"), "TU never indexed").toBe(true);
-    const [headerUri] = await client.openAndWait("a.h");
-    ws.write(
-        "a.h",
-        "#pragma once\ninline int alpha() { return 1; }\ninline int beta() { return 2; }\n",
-    );
-    client.close(headerUri);
-    expect(await waitSymbol(client, "beta"), "header never standalone-indexed").toBe(true);
-    await client.shutdown();
-
-    // Offline, the host's command changes and its include of a.h vanishes:
-    // reconciliation drops the header's index and no TU can host it any more,
-    // so the batch run must report the header as lost coverage.
-    ws.write("main.cpp", "int app_entry() { return 0; }\n");
-    ws.writeCDB(["main.cpp"], { extraArgs: ["-DHOST_V2"] });
-
-    const second = await runClice("index", "--workspace", ws.root, "--workers", "2");
-    expect(second.status, `stderr: ${second.stderr}`).toBe(1);
-    expect(second.stderr).toContain("stays uncovered");
-    expect(second.stdout).toContain("failed to index");
-
-    // The debt persists across runs: the snapshot keeps recording the
-    // dropped header, so every rerun retries it and reports the partial
-    // index rather than going silently clean.
-    const third = await runClice("index", "--workspace", ws.root, "--workers", "2");
-    expect(third.status, `stderr: ${third.stderr}`).toBe(1);
-    expect(third.stderr).toContain("stays uncovered");
-
-    // Only deleting the file settles the debt.
-    ws.rm("a.h");
-    const fourth = await runClice("index", "--workspace", ws.root, "--workers", "2");
-    expect(fourth.status, `stderr: ${fourth.stderr}`).toBe(0);
 });
 
 test("lint subcommand reports findings", async ({ session }) => {

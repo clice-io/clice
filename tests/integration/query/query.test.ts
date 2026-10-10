@@ -5,7 +5,7 @@
 
 import * as fs from "node:fs";
 import { basename } from "node:path";
-import { runProcess, waitUntil, type CliceClient } from "@clice/tools/client";
+import { runProcess } from "@clice/tools/client";
 import { canonicalUri, Workspace } from "@clice/tools/workspace";
 import { URI } from "vscode-uri";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
@@ -79,16 +79,6 @@ async function referenceSites(ws: Workspace, place: string): Promise<string[]> {
     );
     expect(refs.status, refs.error).toBe(0);
     return refs.result!.references.map((r) => `${basename(r.file)}:${r.line}`).sort();
-}
-
-async function waitSymbol(client: CliceClient, name: string): Promise<boolean> {
-    return waitUntil(
-        async () => {
-            const symbols = await client.workspaceSymbols(name);
-            return symbols?.some((symbol) => symbol.name === name) ?? false;
-        },
-        { timeout: 30_000, interval: 500, description: `workspace symbol ${name}` },
-    );
 }
 
 test("truncated index rebuilds", async ({ session }) => {
@@ -661,94 +651,6 @@ test("fresh runs the batch indexer", async ({ session }) => {
     expect(second.stale).toEqual([]);
 });
 
-test("asks the running server to index", async ({ session }) => {
-    const ws = writeProject(session);
-    const client = await session.spawn(ws).initialize(ws);
-    expect(await waitSymbol(client, "compute"), "server never indexed").toBe(true);
-    expect(fs.existsSync(ws.path(".clice/server.json"))).toBe(true);
-
-    // The server holds the writer lock, so the batch command delegates.
-    const delegated = await runIndex(ws);
-    expect(delegated.status, `stderr: ${delegated.stderr}`).toBe(0);
-    expect(delegated.stdout).toContain("through the running clice server");
-
-    ws.write("main.cpp", MAIN.replace("int main()", "int extra() { return 7; }\nint main()"));
-    const fresh = await query<{ symbols: { name: string }[] }>(
-        ws,
-        "symbolSearch",
-        "--query",
-        "extra",
-        "--fresh",
-    );
-    expect(fresh.status).toBe(0);
-    expect(fresh.result?.symbols.map((s) => s.name)).toEqual(["extra"]);
-
-    const persisted = await query<{ symbols: { name: string }[] }>(
-        ws,
-        "symbolSearch",
-        "--query",
-        "extra",
-    );
-    expect(persisted.result?.symbols.map((s) => s.name)).toEqual(["extra"]);
-
-    await client.shutdown();
-    expect(fs.existsSync(ws.path(".clice/server.json"))).toBe(false);
-});
-
-test("asked index finds later database", async ({ session }) => {
-    const ws = session.tmpdir();
-    ws.write("a.h", HEADER);
-    ws.write("main.cpp", MAIN);
-    ws.pinCacheDir();
-    const client = await session.spawn(ws).initialize(ws);
-    await waitUntil(() => fs.existsSync(ws.path(".clice/server.json")), {
-        timeout: 30_000,
-        interval: 100,
-        description: "the server's control endpoint",
-    });
-
-    const empty = await runIndex(ws);
-    expect(empty.stderr).toContain("has no translation units");
-
-    ws.writeCDB(["main.cpp"]);
-    const delegated = await runIndex(ws);
-    expect(delegated.status, `stderr: ${delegated.stderr}`).toBe(0);
-    expect(await waitSymbol(client, "compute"), "server never indexed").toBe(true);
-});
-
-test("refuses a writer it cannot ask", async ({ session }) => {
-    const ws = writeProject(session);
-    const client = await session.spawn(ws).initialize(ws);
-    expect(await waitSymbol(client, "compute"), "server never indexed").toBe(true);
-
-    // A lock holder without a record (a batch run, a server of another
-    // build) cannot be asked: the commands that need the writer give up.
-    fs.rmSync(ws.path(".clice/server.json"));
-    const refused = await runIndex(ws);
-    expect(refused.status).toBe(1);
-    expect(refused.stderr).toContain("holds the index writer lock");
-
-    const fresh = await query(ws, "symbolSearch", "--query", "compute", "--fresh");
-    expect(fresh.status).toBe(1);
-    expect(fresh.error).toContain("holds the index writer lock");
-
-    // Reads never wait for the writer; they see the disk, which trails the
-    // server's memory by at most one indexing round.
-    const persisted = await waitUntil(
-        async () => {
-            const plain = await query<{ symbols: { name: string }[] }>(
-                ws,
-                "symbolSearch",
-                "--query",
-                "compute",
-            );
-            return plain.result?.symbols.some((s) => s.name === "compute") ?? false;
-        },
-        { timeout: 30_000, interval: 500, description: "persisted rows for compute" },
-    );
-    expect(persisted).toBe(true);
-});
-
 test("fresh names the units it could not index", async ({ session }) => {
     const ws = writeProject(session);
     // A database entry whose file does not exist never indexes.
@@ -766,40 +668,4 @@ test("fresh names the units it could not index", async ({ session }) => {
     expect(fresh.status).toBe(0);
     expect(fresh.result?.symbols).toEqual([]);
     expect(fresh.stale.map(asUri)).toEqual([ws.uri("ghost.cpp")]);
-});
-
-test("delegation keeps the configuration", async ({ session }) => {
-    const ws = writeProject(session);
-    ws.write(
-        "clice.toml",
-        [
-            "[project]",
-            'cache_dir = "${workspace}/.clice"',
-            "",
-            "[[rules]]",
-            'configuration = "debug"',
-            'patterns = ["**/*.cpp"]',
-            'append = ["-DDEBUG"]',
-            "",
-            "[[rules]]",
-            'configuration = "release"',
-            'patterns = ["**/*.cpp"]',
-            'append = ["-DRELEASE"]',
-            "",
-        ].join("\n"),
-    );
-    const client = await session
-        .spawn(ws, { args: ["serve", "--configuration", "debug"] })
-        .initialize(ws);
-    expect(await waitSymbol(client, "compute"), "server never indexed").toBe(true);
-
-    // The server indexes one configuration; asking it for another is
-    // refused rather than answered with the wrong build.
-    const other = await runClice("index", "--workspace", ws.root, "--configuration", "release");
-    expect(other.status).toBe(1);
-    expect(other.stderr).toContain("configuration 'debug'");
-
-    const same = await runClice("index", "--workspace", ws.root, "--configuration", "debug");
-    expect(same.status, `stderr: ${same.stderr}`).toBe(0);
-    expect(same.stdout).toContain("through the running clice server");
 });

@@ -1,5 +1,5 @@
 import * as proto from "vscode-languageserver-protocol";
-import { directiveLines, enumName, fmtRange, type Feature } from "../render.ts";
+import { directiveLines, enumName, fmtRange, settled, type Feature } from "../render.ts";
 import { normalizeFileUri, yamlStr } from "../snapshot.ts";
 
 /// workspace/symbol snapshots. The request is query-driven, not
@@ -39,7 +39,7 @@ export const workspaceSymbol: Feature = {
     fromInspect() {
         throw new Error("workspace symbol has no inspect path; use verify: server");
     },
-    async fromServer(client, uri, ctx) {
+    async fromServer(client, _uri, ctx) {
         const queries = directiveLines(ctx.stripped, "query");
         if (queries.length === 0) {
             throw new Error("workspace_symbol fixture declares no '// query:' lines");
@@ -50,12 +50,14 @@ export const workspaceSymbol: Feature = {
         }
         if (indexed.length === 0 && ctx.indexing === true) {
             throw new Error(
-                "an 'indexing: true' fixture must name its '// indexed:' symbols; " +
-                    "without the wait gate every query races the background index",
+                "an 'indexing: true' fixture must name its '// indexed:' symbols, " +
+                    "the rows its queries rely on",
             );
         }
+        await settled(client);
         for (const name of indexed) {
-            if (!(await client.waitForIndex(uri, name))) {
+            const symbols = (await client.workspaceSymbols(name)) ?? [];
+            if (!symbols.some((symbol) => symbol.name === name)) {
                 throw new Error(
                     `symbol '${name}' never arrived from the background index; ` +
                         "is its file both closed and listed in the compilation database?",
