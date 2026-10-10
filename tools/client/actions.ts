@@ -531,14 +531,17 @@ export class Serve {
         );
     }
 
-    /// The code actions at `loc`, or over the anchor's whole snippet with
-    /// `span`; `only` filters them by kind as an editor asks.
+    /// The code actions at `loc`, over the anchor's whole snippet with
+    /// `span`, or over `range` of its file (a diagnostic's); `only` filters
+    /// them by kind as an editor asks.
     codeActions(
         loc: Loc,
-        options: { only?: string[]; span?: true } = {},
+        options: { only?: string[]; span?: true; range?: proto.Range } = {},
     ): Promise<(proto.Command | proto.CodeAction)[] | null> {
         const { uri, position } = this.position(loc);
-        const range = options.span === true ? this.range(loc) : { start: position, end: position };
+        const range =
+            options.range ??
+            (options.span === true ? this.range(loc) : { start: position, end: position });
         const only = options.only === undefined ? "" : ` only ${options.only.join(", ")}`;
         return this.ask(`codeActions ${describeLoc(loc)}${only}`, (client) =>
             client.sendRequest(proto.CodeActionRequest.type, {
