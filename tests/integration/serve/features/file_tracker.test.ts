@@ -4,7 +4,7 @@
 /// other bytes than the one before — the scan's included — is a change.
 
 import * as fs from "node:fs";
-import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY } from "@clice/tools/client";
 import type { Serve, ServeOptions } from "@clice/tools/actions";
 import type { Manifest } from "@clice/tools/project";
 import { at, expect, serve, type Loc } from "../../fixtures.ts";
@@ -283,9 +283,9 @@ serve.files({ "header.h": HEADER_V1, "main.cpp": '#include "header.h"\n' }, cxx1
         expect(await s.poll("workspace")).toBe(0);
 
         // mtime bump, identical bytes: the content-hash check must stay
-        // silent; the wait makes the rewrite's mtime a later one.
-        await sleep(MTIME_GRANULARITY);
+        // silent.
         s.disk.write("header.h", HEADER_V1);
+        s.disk.touch("header.h", new Date(s.disk.mtime("header.h").getTime() + MTIME_GRANULARITY));
         expect(await s.poll("workspace")).toBe(0);
     },
 );
@@ -492,8 +492,9 @@ serve.files(
 
     // An upgrade rewrites the installed header; nothing asks until a save.
     // Of the same size, the rewrite is told apart by a later mtime.
-    await sleep(MTIME_GRANULARITY);
-    s.disk.write("sysroot/usr/include/installed.h", "#define INSTALLED 2\n");
+    const installed = "sysroot/usr/include/installed.h";
+    s.disk.write(installed, "#define INSTALLED 2\n");
+    s.disk.touch(installed, new Date(s.disk.mtime(installed).getTime() + MTIME_GRANULARITY));
     s.save("main.cpp");
     expect(await s.errors("main.cpp"), "the save must look at the installed header").toEqual([]);
 });

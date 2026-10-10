@@ -5,7 +5,7 @@
 
 import * as fs from "node:fs";
 import * as proto from "vscode-languageserver-protocol";
-import type { Serve } from "@clice/tools/actions";
+import type { Launch } from "@clice/tools/actions";
 import { at, expect, serve } from "../../fixtures.ts";
 
 const TEST_TOML =
@@ -155,18 +155,14 @@ test("version regression tolerated", async ({ s }) => {
 /// whose client has not done its handshake. Its config comes from
 /// clice.toml alone, without the test hooks: what it pushed is read off the
 /// raw client.
-async function preInitialized(s: Serve): Promise<void> {
-    await s.stop();
-    await s.start({ args: ["serve", `--workspace=${s.workspace.root}`], handshake: false });
-}
+const PRE_INITIALIZED: Launch = { args: ["serve", "--workspace=${workspace}"], handshake: false };
 
-const late = serve.files({
-    "main.cpp": "int add(int a, int b) { return a + b; }\n",
-    "clice.toml": TEST_TOML,
-});
+const late = serve.files(
+    { "main.cpp": "int add(int a, int b) { return a + b; }\n", "clice.toml": TEST_TOML },
+    { launch: PRE_INITIALIZED },
+);
 
 late("replay after late handshake", async ({ s }) => {
-    await preInitialized(s);
     // The server is pre-initialized (ready); the client has not done its
     // handshake yet. Compile output materializes but must not be pushed.
     const [uri] = s.client.open(s.workspace.path("main.cpp"));
@@ -193,7 +189,6 @@ late("replay after late handshake", async ({ s }) => {
 });
 
 late("no stale replay", async ({ s }) => {
-    await preInitialized(s);
     const [uri, content] = s.client.open(s.workspace.path("main.cpp"));
     expect(await s.hover(at("main.cpp", "int |add"))).not.toBeNull();
     // An edit during the handshake window invalidates the materialized
@@ -219,20 +214,19 @@ late("no stale replay", async ({ s }) => {
     expect(s.client.errors(uri).length).toBeGreaterThan(0);
 });
 
-serve.files({ "main.cpp": "int x = 1;\n", "clice.toml": TEST_TOML }, { databases: false })(
-    "startup guidance delivered",
-    async ({ s }) => {
-        // No compile_commands.json: the headless workspace load emits
-        // guidance without waiting for any handshake; the client must still
-        // receive it (drained from the server's notify log).
-        await preInitialized(s);
-        const client = s.client;
-        // The load runs before the server reads its first message, so the
-        // guidance is on the wire ahead of the shutdown reply.
-        await s.stop();
-        expect(
-            client.guidanceMessages().some((message) => message.includes("compile_commands.json")),
-            "startup guidance never reached the client",
-        ).toBe(true);
-    },
-);
+serve.files(
+    { "main.cpp": "int x = 1;\n", "clice.toml": TEST_TOML },
+    { databases: false, launch: PRE_INITIALIZED },
+)("startup guidance delivered", async ({ s }) => {
+    // No compile_commands.json: the headless workspace load emits guidance
+    // without waiting for any handshake; the client must still receive it
+    // (drained from the server's notify log).
+    const client = s.client;
+    // The load runs before the server reads its first message, so the
+    // guidance is on the wire ahead of the shutdown reply.
+    await s.stop();
+    expect(
+        client.guidanceMessages().some((message) => message.includes("compile_commands.json")),
+        "startup guidance never reached the client",
+    ).toBe(true);
+});

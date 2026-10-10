@@ -119,8 +119,7 @@ serve
 
 // A file whose own index run crashes its worker is not requeued: the
 // same bytes would crash the next run too. It is retried once it
-// changes. The crash request names the file by its name alone: the
-// workspace's path is unknown before the case starts.
+// changes.
 serve
     .files(
         {
@@ -128,7 +127,7 @@ serve
             "healthy.cpp": "int healthy_fn() { return 2; }\n",
             "main.cpp": "int main() { return 0; }\n",
         },
-        { env: { CLICE_TEST_CRASH_REQUEST: "poison.cpp" }, anomalies: true },
+        { crashOn: { request: "tuRun", file: "poison.cpp" } },
     )
     .skipIf(process.platform !== "linux")("index crash waits for change", async ({ s }) => {
     await s.compiled("main.cpp");

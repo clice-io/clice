@@ -3,7 +3,7 @@
 /// one yields to the present, and a file with neither an entry nor a host
 /// borrows a nearby unit's command.
 
-import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY } from "@clice/tools/client";
 import type { Serve } from "@clice/tools/actions";
 import type { Manifest } from "@clice/tools/project";
 import { expect, serve } from "../../fixtures.ts";
@@ -115,9 +115,9 @@ serve.files(
     expect(await s.errors("main.cpp"), "the response file supplies FEATURE").toEqual([]);
     expect(await s.errors("other.cpp")).toEqual([]);
 
-    // The rewrite keeps the size: only its times tell the stamp it changed.
-    await sleep(MTIME_GRANULARITY);
+    // The rewrite keeps the size: only a later mtime tells the stamp it changed.
     s.disk.write("flags.rsp", "-DCHANGED\n");
+    s.disk.touch("flags.rsp", new Date(s.disk.mtime("flags.rsp").getTime() + MTIME_GRANULARITY));
     expect(
         await s.poll("cdb", { force: false }),
         "the response file settles like the database",

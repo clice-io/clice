@@ -17,14 +17,8 @@ function findings(diagnostics: proto.Diagnostic[], source = "clang-tidy"): strin
         .map((diagnostic) => `${diagnostic.range.start.line}:${String(diagnostic.code)}`);
 }
 
-async function quickFixes(s: Serve, file: string, range: proto.Range): Promise<proto.CodeAction[]> {
-    const reply =
-        (await s.request<(proto.Command | proto.CodeAction)[] | null>(
-            "textDocument/codeAction",
-            file,
-            { range, context: { diagnostics: [] } },
-        )) ?? [];
-    return reply.filter(
+function quickFixes(reply: (proto.Command | proto.CodeAction)[] | null): proto.CodeAction[] {
+    return (reply ?? []).filter(
         (item): item is proto.CodeAction => "kind" in item && item.kind === "quickfix",
     );
 }
@@ -89,7 +83,9 @@ serve.files({
 })("a fix applies through a code action", async ({ s }) => {
     const [finding] = await s.compiled("main.cpp");
     expect(finding?.code).toBe("modernize-use-nullptr");
-    const [fix] = await quickFixes(s, "main.cpp", finding!.range);
+    const [fix] = quickFixes(
+        await s.codeActions(at("main.cpp", "= |0"), { range: finding!.range }),
+    );
     expect(fix?.title).toBe("change '0' to 'nullptr'");
     const fixed = await s.apply(fix!.edit!);
     expect(fixed["main.cpp"]).toBe("int* p = nullptr;\n");
@@ -108,7 +104,9 @@ serve.files({
     expect(findings(diagnostics)).toEqual(["4:readability-duplicate-include"]);
     const [finding] = diagnostics;
     expect(finding?.range.end).toEqual({ line: 5, character: 14 });
-    const [fix] = await quickFixes(s, "main.cpp", finding!.range);
+    const [fix] = quickFixes(
+        await s.codeActions(at("main.cpp", 'int x;\n|#include "a.h"'), { range: finding!.range }),
+    );
     expect((await s.apply(fix!.edit!))["main.cpp"]).toBe(
         '#if 0\n#include "a.h"\n#endif\n#include "a.h"\nint x;\n',
     );
@@ -134,7 +132,9 @@ serve.files({
 })("an inserted include the preamble has is left out", async ({ s }) => {
     const [finding] = await s.compiled("main.cpp");
     expect(finding?.code).toBe("modernize-make-unique");
-    const [fix] = await quickFixes(s, "main.cpp", finding!.range);
+    const [fix] = quickFixes(
+        await s.codeActions(at("main.cpp", "return |std::unique_ptr"), { range: finding!.range }),
+    );
     expect((await s.apply(fix!.edit!))["main.cpp"]).toBe(
         '#include "mem.h"\nstd::unique_ptr<int> make() { return mem::make_unique<int>(1); }\n',
     );

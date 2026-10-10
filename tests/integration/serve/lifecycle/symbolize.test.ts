@@ -41,21 +41,26 @@ const ENV = { CLICE_TEST_PRAGMA_CRASH: "1", LLVM_DISABLE_SYMBOLIZATION: "1" };
 /// worker.
 const CONFIG = { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } };
 
+/// The release's program serves, under its own name, which the crash log's
+/// frames carry.
+const EXECUTABLE = process.platform === "win32" ? "clice.exe" : "clice";
+
 serve
     .files(
         { "poison.cpp": "int add(int a, int b) { return a + b; }\n#pragma clang __debug crash\n" },
-        { config: CONFIG, env: ENV, anomalies: true },
+        {
+            config: CONFIG,
+            env: ENV,
+            anomalies: true,
+            setup: (workspace) => {
+                fs.copyFileSync(release!.stripped, workspace.path(EXECUTABLE));
+                fs.chmodSync(workspace.path(EXECUTABLE), 0o755);
+            },
+            launch: { executable: "${workspace}/" + EXECUTABLE },
+        },
     )
     .skipIf(release === undefined)("stripped crash symbolization", async ({ s }) => {
-    const { stripped, gsym } = release!;
-
-    // The release's program serves here, under its own name, which the
-    // crash log's frames carry: the case's server makes way for it.
-    await s.stop();
-    const executable = s.workspace.path(process.platform === "win32" ? "clice.exe" : "clice");
-    fs.copyFileSync(stripped, executable);
-    fs.chmodSync(executable, 0o755);
-    await s.start({ executable });
+    const { gsym } = release!;
 
     s.open("poison.cpp", { pull: false });
     expect(await s.hover(at("poison.cpp", "int a|dd("))).toBeNull();

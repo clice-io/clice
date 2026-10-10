@@ -261,16 +261,11 @@ folders([], TWO_PROJECTS)("rootless server finds projects", async ({ s }) => {
     expect(await s.errors("beta/main.cpp")).toEqual([]);
 });
 
-// The case initializes its server itself: a launch's step before the
-// initialized notification has no hold of the server it runs on.
-serve.files(TWO_PROJECTS.files, {
-    databases: TWO_PROJECTS.databases,
-    launch: { handshake: false },
+folders(["alpha"], TWO_PROJECTS, {
+    launch: {
+        beforeInitialized: (s) => s.changeFolders({ added: ["beta"], removed: ["alpha"] }),
+    },
 })("folder change before initialized", async ({ s }) => {
-    await s.client.initialize(s.workspace, {
-        folders: ["alpha"],
-        beforeInitialized: () => s.changeFolders({ added: ["beta"], removed: ["alpha"] }),
-    });
     await s.indexed();
     await listed(s, "beta_fn", BETA_FN);
     expect((await s.workspaceSymbols("alpha_fn")) ?? []).toEqual([]);

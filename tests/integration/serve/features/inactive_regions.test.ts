@@ -25,6 +25,8 @@ const RENDER_H =
 
 const RENDER_CPP = '#include "render.h"\nint main() { return backend()[0]; }\n';
 
+const REFRESH = "workspace/semanticTokens/refresh";
+
 // Conditions entirely past the preamble bound (no PCH involvement).
 serve.files(
     { "main.cpp": "int a();\n#if 0\nint dead();\n#endif\nint main() { return 0; }\n" },
@@ -76,18 +78,17 @@ serve.files(
     const host = contexts.find((c) => c.uri.includes(target));
     expect(host, `no ${target} context in ${JSON.stringify(contexts)}`).toBeDefined();
 
-    const marker = s.client.serverRequests.length;
+    const refreshes = await s.serverRequests(REFRESH);
     const switched = await s.switchContext("render.h", s.relative(host!.uri));
     expect(switched.success).toBe(true);
     await s.diagnostics("render.h");
 
     // What the landed compile scheduled — the refresh request — goes out
     // before the sync's answer.
-    await s.sync();
     expect(
-        s.client.serverRequests.slice(marker),
+        await s.serverRequests(REFRESH),
         "no semanticTokens refresh after the switch",
-    ).toContain("workspace/semanticTokens/refresh");
+    ).toBeGreaterThan(refreshes);
     expect(await s.inactiveLines("render.h")).toEqual(before[0] === 4 ? [2] : [4]);
 });
 

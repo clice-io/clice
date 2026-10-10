@@ -4,7 +4,7 @@
 
 import * as fs from "node:fs";
 import * as proto from "vscode-languageserver-protocol";
-import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY } from "@clice/tools/client";
 import { at, expect, serve } from "../../fixtures.ts";
 
 const NO_INDEXING = { config: { project: { enable_indexing: false } } };
@@ -142,18 +142,20 @@ serve.files({ ...FOO, ...MAIN })("preamble links survive restart", async ({ s })
 serve.files({ ...FOO, ...MAIN })("missing idx rebuilds pair", async ({ s }) => {
     await s.compiled("main.cpp");
     expect(s.show(await s.definition(CALL))).toBe("foo.h: inline void foo() {}");
-    const pchMtime = fs.statSync(s.workspace.pchFiles()[0]!).mtimeMs;
+    const pch = s.workspace.pchFiles()[0]!;
+    // The old PCH is set back past a filesystem's clock tick, so a rebuilt
+    // one carries another mtime.
+    const pchMtime = new Date(s.disk.mtime(pch).getTime() - MTIME_GRANULARITY);
 
     // Half the pair vanishes (crash residue, external cleanup): the next
     // server must treat the PCH as a miss and rebuild both blobs.
-    await s.offline(async () => {
+    await s.offline(() => {
         const idxFiles = s.workspace.pchIdxFiles();
         expect(idxFiles.length, "expected a committed .pch.idx next to the PCH").toBeGreaterThan(0);
         for (const idx of idxFiles) {
             fs.rmSync(idx);
         }
-        // The rebuilt PCH must carry a newer mtime than the one it replaces.
-        await sleep(MTIME_GRANULARITY);
+        s.disk.touch(pch, pchMtime);
     });
     await s.compiled("main.cpp");
     expect(
@@ -163,7 +165,7 @@ serve.files({ ...FOO, ...MAIN })("missing idx rebuilds pair", async ({ s }) => {
     expect(
         fs.statSync(s.workspace.pchFiles()[0]!).mtimeMs,
         "PCH pair should have been rebuilt",
-    ).not.toBe(pchMtime);
+    ).not.toBe(pchMtime.getTime());
     expect(
         s.workspace.pchIdxFiles().length,
         "rebuilt pair is missing its idx blob",

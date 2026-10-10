@@ -34,18 +34,15 @@ async function indexedNames(s: Serve, query: string): Promise<string[]> {
     return ((await s.workspaceSymbols(query)) ?? []).map((symbol) => symbol.name);
 }
 
-serve.files(FUNCS)("save writes only dirty shards", async ({ s }) => {
-    // Open before the project starts: its first round leaves the open file
-    // to the file's own compile. The case's server has run a round of its
-    // own, so the server started here starts from no cache.
-    await s.stop();
-    s.workspace.rm(".clice/cache");
-    await s.start({
-        beforeInitialized: () => {
+// Open before the project starts: its first round leaves the open file to
+// the file's own compile.
+serve.files(FUNCS, {
+    launch: {
+        beforeInitialized: (s) => {
             s.open("file0.cpp", { pull: false });
-            return Promise.resolve();
         },
-    });
+    },
+})("save writes only dirty shards", async ({ s }) => {
     await s.diagnostics("file0.cpp");
     await s.sync();
     expect(await indexedNames(s, "func_3"), "background index did not finish").toContain("func_3");

@@ -4,22 +4,8 @@
 /// changes via mtime snapshots, triggering recompilation without relying
 /// on didSave to mark everything dirty.
 
-import * as fs from "node:fs";
-import type * as proto from "vscode-languageserver-protocol";
-import type { Serve } from "@clice/tools/actions";
-import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY } from "@clice/tools/client";
 import { at, expect, serve } from "../../fixtures.ts";
-
-/// The diagnostics of `file` from a compile the request had to run: the
-/// file compiled and published again.
-async function recompiled(s: Serve, file: string): Promise<proto.Diagnostic[]> {
-    const before = (await s.counts()).files[file];
-    const diagnostics = await s.diagnostics(file);
-    const after = (await s.counts()).files[file];
-    expect(after?.compile, `${file} compiles again`).toBeGreaterThan(before?.compile ?? 0);
-    expect(after?.publish, `${file} publishes again`).toBeGreaterThan(before?.publish ?? 0);
-    return diagnostics;
-}
 
 const MAIN_CALLS_VALUE = '#include "header.h"\nint main() { return value(); }\n';
 
@@ -54,9 +40,9 @@ serve.files({
     // Modifying a preamble header on disk should trigger PCH rebuild.
     await s.clean("main.cpp");
 
-    // The rewrite keeps the size: only its timestamps can tell it apart.
-    await sleep(MTIME_GRANULARITY);
+    // The rewrite keeps the size: only a later mtime can tell it apart.
     s.disk.write("header.h", "#pragma once\nstruct Foo { int y; };\n"); // x -> y
+    s.disk.touch("header.h", new Date(s.disk.mtime("header.h").getTime() + MTIME_GRANULARITY));
 
     // main.cpp uses f.x which no longer exists → diagnostics expected.
     expect(
@@ -80,8 +66,8 @@ serve.files(VALUE)("touch without content change skips recompile", async ({ s })
     await s.clean("main.cpp");
 
     // The touch must move the timestamps, or there is nothing to check.
-    await sleep(MTIME_GRANULARITY);
     s.disk.write("header.h", s.disk.read("header.h"));
+    s.disk.touch("header.h", new Date(s.disk.mtime("header.h").getTime() + MTIME_GRANULARITY));
 
     expect(await s.hover(at("main.cpp", "main"))).not.toBeNull();
     // No new diagnostics should appear — the file is still clean.
@@ -98,8 +84,8 @@ serve.files({
     await s.compiled("main.cpp");
 
     // The touch must move the timestamps, or there is nothing to check.
-    await sleep(MTIME_GRANULARITY);
     s.disk.write("a.h", s.disk.read("a.h"));
+    s.disk.touch("a.h", new Date(s.disk.mtime("a.h").getTime() + MTIME_GRANULARITY));
 
     s.edit("main.cpp", { before: "    return 0;", insert: "    w.\n" });
     const reply = await s.completion(at("main.cpp", "w.|"));
@@ -135,7 +121,7 @@ serve.files({
     ).toBeGreaterThan(0);
 
     s.disk.write("header.h", "inline int value() { return 1; }\n");
-    expect(await recompiled(s, "main.cpp")).toEqual([]);
+    expect(await s.recompiled("main.cpp")).toEqual([]);
 });
 
 serve.files({
@@ -195,7 +181,7 @@ serve.files({
     s.edit("main.cpp", { replace: '"a.h"', with: '"b.h"' }, { replace: "from_a", with: "from_b" });
 
     // Should compile cleanly — from_b() is available via b.h.
-    expect(await recompiled(s, "main.cpp")).toEqual([]);
+    expect(await s.recompiled("main.cpp")).toEqual([]);
 });
 
 serve.files(MAIN_ONLY)("didclose then reopen", async ({ s }) => {
@@ -246,7 +232,7 @@ serve.data("modules/save_recompile")("didsave with module deps", async ({ s }) =
     s.save("leaf.cppm");
 
     // Mid recompiles: the Leaf PCM was invalidated.
-    expect(await recompiled(s, "mid.cppm")).toEqual([]);
+    expect(await s.recompiled("mid.cppm")).toEqual([]);
 });
 
 serve.files(
@@ -313,9 +299,9 @@ serve.files({
     await s.clean("target.h");
 
     // Rename the macro in the intermediate wrapper.h. The rewrite keeps the
-    // size: only its timestamps can tell it apart.
-    await sleep(MTIME_GRANULARITY);
+    // size: only a later mtime can tell it apart.
     s.disk.write("wrapper.h", '#pragma once\n#define OTHER 42\n#include "target.h"\n');
+    s.disk.touch("wrapper.h", new Date(s.disk.mtime("wrapper.h").getTime() + MTIME_GRANULARITY));
 
     expect(
         (await s.errors("target.h")).length,
@@ -333,9 +319,9 @@ serve.files(POINT_HOST)("saved host reinvalidates header", async ({ s }) => {
     // Layer 1 check now cannot see the change, only the didSave push path
     // (which zeroes build_at, forcing a content re-hash) can catch it. The
     // buffer of main.cpp stays as it was.
-    const st = fs.statSync(s.workspace.path("main.cpp"));
+    const mtime = s.disk.mtime("main.cpp");
     s.disk.write("main.cpp", '#include "utils.h"\nint main() { return 0; }\n');
-    fs.utimesSync(s.workspace.path("main.cpp"), st.atime, st.mtime);
+    s.disk.touch("main.cpp", mtime);
     s.save("main.cpp", { write: false });
 
     expect(
@@ -366,9 +352,9 @@ serve.files(GUARDED_VALUE)("backdated header change detected", async ({ s }) => 
     // alone — no didSave is sent.
     await s.clean("main.cpp");
 
-    const st = fs.statSync(s.workspace.path("header.h"));
+    const mtime = s.disk.mtime("header.h");
     s.disk.write("header.h", "#pragma once\ninline int renamed() { return 1; }\n");
-    fs.utimesSync(s.workspace.path("header.h"), st.atime, new Date(st.mtimeMs - 100_000));
+    s.disk.touch("header.h", new Date(mtime.getTime() - 100_000));
 
     expect(
         (await s.errors("main.cpp")).length,
@@ -420,7 +406,7 @@ serve.files(MAIN_ONLY, {
     // A settled phantom would serve the stale AST and never publish again;
     // a retained dirty flag recompiles and republishes on the next request.
     expect(
-        await recompiled(s, "main.cpp"),
+        await s.recompiled("main.cpp"),
         "The retried non-result must stay an honest empty gap",
     ).toEqual([]);
 });

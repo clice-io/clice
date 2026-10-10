@@ -6,20 +6,7 @@
 /// only the final diagnostics are published. Verdicts and user context
 /// choices persist across server sessions via the index database.
 
-import type * as proto from "vscode-languageserver-protocol";
-import type { Serve } from "@clice/tools/actions";
 import { expect, serve } from "../../fixtures.ts";
-
-/// The diagnostics of `file` from a compile the request had to run: the
-/// file compiled and published again.
-async function recompiled(s: Serve, file: string): Promise<proto.Diagnostic[]> {
-    const before = (await s.counts()).files[file];
-    const diagnostics = await s.diagnostics(file);
-    const after = (await s.counts()).files[file];
-    expect(after?.compile, `${file} compiles again`).toBeGreaterThan(before?.compile ?? 0);
-    expect(after?.publish, `${file} publishes again`).toBeGreaterThan(before?.publish ?? 0);
-    return diagnostics;
-}
 
 const POINT = "#pragma once\nstruct Point { int x; int y; };\n";
 const GET_X = "inline int get_x(Point p) { return p.x; }\n";
@@ -115,7 +102,7 @@ serve.files(NEEDS_POINT)("header save keeps verdict", async ({ s }) => {
     s.save("utils.h");
 
     s.edit("utils.h", { after: "p.x; }\n", insert: "\n" });
-    expect(await recompiled(s, "utils.h")).toEqual([]);
+    expect(await s.recompiled("utils.h")).toEqual([]);
     expect((await s.stats()).synthesizedContexts, "the save leaves the verdict alone").toBe(1);
 });
 
@@ -136,7 +123,7 @@ serve.files(HOST_AFTER)("save retries missing context", async ({ s }) => {
     expect((await s.errors("h.h")).length).toBeGreaterThan(0);
 
     s.save("h.h");
-    expect(await recompiled(s, "h.h")).toEqual([]);
+    expect(await s.recompiled("h.h")).toEqual([]);
     expect(
         (await s.stats()).synthesizedContexts,
         "the save switches to the includer's context",
@@ -152,7 +139,7 @@ serve.files(HOST_AFTER)("save before compile lands", async ({ s }) => {
 
     s.edit("h.h", { replace: "return 1;", with: "return Host{2}.v;" });
     s.save("h.h");
-    expect(await recompiled(s, "h.h")).toEqual([]);
+    expect(await s.recompiled("h.h")).toEqual([]);
     expect((await s.stats()).synthesizedContexts).toBe(1);
 });
 
@@ -170,7 +157,7 @@ serve.files({
 
     // foo.h stops defining FOO; only the host's #define can provide it now.
     s.disk.write("foo.h", "#pragma once\n");
-    expect(await recompiled(s, "h.h")).toEqual([]);
+    expect(await s.recompiled("h.h")).toEqual([]);
     expect(
         (await s.stats()).synthesizedContexts,
         "Dependency change must re-run the trial and fall back to synthesis",
@@ -299,7 +286,7 @@ serve.files({
     expect((await s.stats()).synthesizedContexts, "Self-contained on its own").toBe(0);
 
     expect((await s.switchContext("mode.h", "a.cpp")).success).toBe(true);
-    expect(await recompiled(s, "mode.h")).toEqual([]);
+    expect(await s.recompiled("mode.h")).toEqual([]);
     expect((await s.stats()).synthesizedContexts).toBe(1);
 });
 
@@ -402,7 +389,7 @@ serve.files({
     // foo.h moves its include: the recorded tree no longer vouches for
     // the chain, so the host is preprocessed again.
     s.disk.edit("foo.h", { before: '#include "bar.h"', insert: "\n" });
-    expect(await recompiled(s, "bar.h")).toEqual([]);
+    expect(await s.recompiled("bar.h")).toEqual([]);
 });
 
 serve.files({

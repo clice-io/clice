@@ -4,7 +4,7 @@
 
 import * as fs from "node:fs";
 import * as proto from "vscode-languageserver-protocol";
-import type { FileText, Serve, ServeOptions } from "@clice/tools/actions";
+import type { FileText, ServeOptions } from "@clice/tools/actions";
 import { at, expect, serve, type ServeTest } from "../../fixtures.ts";
 
 const PULL: proto.ClientCapabilities = {
@@ -27,15 +27,6 @@ function messages(diagnostics: proto.Diagnostic[]): string[] {
 
 function mentions(diagnostics: proto.Diagnostic[], name: string): boolean {
     return messages(diagnostics).some((message) => message.includes(name));
-}
-
-/// The server's requests to the client so far: the refreshes are among them.
-function requested(s: Serve): number {
-    return s.client.serverRequests.length;
-}
-
-function refreshes(s: Serve, since: number): number {
-    return s.client.serverRequests.slice(since).filter((method) => method === REFRESH).length;
 }
 
 serve.files({ "main.cpp": "int main() { return missing; }\n" })(
@@ -61,13 +52,13 @@ pulling({ "main.cpp": "int main() { return first; }\n" })("pull follows edits", 
     s.open("main.cpp", { pull: false });
     expect(mentions(await s.diagnostics("main.cpp"), "first")).toBe(true);
 
-    const marker = requested(s);
+    const refreshes = await s.serverRequests(REFRESH);
     s.edit("main.cpp", { text: "int main() { return 0; }\n" });
     expect(await s.diagnostics("main.cpp")).toEqual([]);
     s.edit("main.cpp", { text: "int main() { return second; }\n" });
     expect(mentions(await s.diagnostics("main.cpp"), "second")).toBe(true);
     // The client pulls after its own edits: no refresh is owed for them.
-    expect(refreshes(s, marker)).toBe(0);
+    expect(await s.serverRequests(REFRESH)).toBe(refreshes);
     expect(await s.pushed("main.cpp")).toBeUndefined();
 });
 
@@ -116,12 +107,14 @@ pulling({
     expect(await s.diagnostics("main.cpp")).toEqual([]);
 
     s.disk.write("header.h", "inline int value() { return missing; }\n");
-    const marker = requested(s);
+    const refreshes = await s.serverRequests(REFRESH);
     // Any request recompiles the document; its pulled answer went stale
     // with no edit to make the client pull again.
     await s.hover(at("main.cpp", "va|lue()"));
-    await s.sync();
-    expect(refreshes(s, marker), "diagnostic refresh after the header changed").toBeGreaterThan(0);
+    expect(
+        await s.serverRequests(REFRESH),
+        "diagnostic refresh after the header changed",
+    ).toBeGreaterThan(refreshes);
     expect(mentions(await s.diagnostics("main.cpp"), "missing")).toBe(true);
     expect(await s.pushed("main.cpp")).toBeUndefined();
 });
@@ -133,11 +126,10 @@ pulling(
 )("repeated setup failure stays quiet", async ({ s }) => {
     s.open("main.cpp", { pull: false });
     expect(await s.diagnostics("main.cpp")).toEqual([]);
-    const marker = requested(s);
+    const refreshes = await s.serverRequests(REFRESH);
     await s.hover(at("main.cpp", "int |main"));
     expect(await s.diagnostics("main.cpp")).toEqual([]);
-    await s.sync();
-    expect(refreshes(s, marker)).toBe(0);
+    expect(await s.serverRequests(REFRESH)).toBe(refreshes);
 });
 
 pulling({ "main.cpp": "int main() { return missing; }\n" })(
@@ -167,18 +159,21 @@ pulling(
         true,
     );
 
-    let marker = requested(s);
+    let refreshes = await s.serverRequests(REFRESH);
     s.edit("real/main.cpp", { text: "int main() { return 0; }\n" });
-    await s.sync();
-    expect(refreshes(s, marker), "refresh once the texts part").toBeGreaterThan(0);
+    expect(await s.serverRequests(REFRESH), "refresh once the texts part").toBeGreaterThan(
+        refreshes,
+    );
     expect(messages(await s.diagnostics("link/main.cpp"))).toEqual([
         expect.stringContaining("also open as"),
     ]);
 
-    marker = requested(s);
+    refreshes = await s.serverRequests(REFRESH);
     s.close("real/main.cpp");
-    await s.sync();
-    expect(refreshes(s, marker), "refresh once the second name takes over").toBeGreaterThan(0);
+    expect(
+        await s.serverRequests(REFRESH),
+        "refresh once the second name takes over",
+    ).toBeGreaterThan(refreshes);
     expect(mentions(await s.diagnostics("link/main.cpp"), "missing")).toBe(true);
     expect(await s.pushed("real/main.cpp")).toBeUndefined();
     expect(await s.pushed("link/main.cpp")).toBeUndefined();

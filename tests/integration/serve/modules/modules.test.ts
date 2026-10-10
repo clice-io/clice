@@ -2,7 +2,7 @@
 
 import * as proto from "vscode-languageserver-protocol";
 import type { Serve } from "@clice/tools/actions";
-import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY } from "@clice/tools/client";
 import { at, expect, serve } from "../../fixtures.ts";
 
 /// Loose files built as C++20 units, each with its own arguments.
@@ -114,10 +114,11 @@ serve.files(
     await s.stop();
     await s.start({ config: { project: { idle_timeout_ms: 10 } } });
     await s.compiled("m.cppm");
-    // The rewrite must stat newer than the text the importer was indexed against.
-    await sleep(MTIME_GRANULARITY);
     s.edit("m.cppm", { text: PICK_V2 });
-    s.save("m.cppm");
+    // The rewrite must stat newer than the text the importer was indexed against.
+    s.disk.write("m.cppm", PICK_V2);
+    s.disk.touch("m.cppm", new Date(s.disk.mtime("m.cppm").getTime() + MTIME_GRANULARITY));
+    s.save("m.cppm", { write: false });
     await s.sync();
 
     expect(

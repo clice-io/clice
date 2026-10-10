@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Serve } from "@clice/tools/actions";
-import { MTIME_GRANULARITY, sleep } from "@clice/tools/client";
+import { MTIME_GRANULARITY } from "@clice/tools/client";
 import { expect, serve } from "../../fixtures.ts";
 
 serve("shapes/headers")("pch survives server restart", async ({ s }) => {
@@ -148,10 +148,11 @@ serve.files({
     await s.clean("main.cpp");
     expect(s.workspace.pchFiles().length).toBeGreaterThanOrEqual(1);
 
-    // The rewrites keep the sizes: only their timestamps tell them apart.
-    await sleep(MTIME_GRANULARITY);
+    // The rewrites keep the sizes: only later mtimes tell them apart.
     s.disk.write("header.h", "#pragma once\nstruct V2 { int b; };\n");
+    s.disk.touch("header.h", new Date(s.disk.mtime("header.h").getTime() + MTIME_GRANULARITY));
     s.disk.write("main.cpp", '#include "header.h"\nint main() { V2 v; return v.b; }\n');
+    s.disk.touch("main.cpp", new Date(s.disk.mtime("main.cpp").getTime() + MTIME_GRANULARITY));
     s.close("main.cpp");
     await s.sync({ poll: true });
     await s.clean("main.cpp");

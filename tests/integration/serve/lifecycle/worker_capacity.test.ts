@@ -16,7 +16,7 @@ serve
     )
     .skipIf(process.platform !== "linux")("outage keeps diagnostics", async ({ s }) => {
     expect((await s.errors("main.cpp")).length).toBeGreaterThan(0);
-    const published = s.client.publishedDiagnostics.length;
+    const published = (await s.pushes("main.cpp")).length;
 
     // Fast deaths push the lone stateful worker into its respawn
     // backoff. SIGUSR2 names no request and, unlike a kill from outside
@@ -43,12 +43,8 @@ serve
     }
 
     // The file never loses its diagnostics.
-    for (const params of s.client.publishedDiagnostics.slice(published)) {
-        if (s.client.normalizeUri(params.uri) === s.uri("main.cpp")) {
-            expect(params.diagnostics.length, "an outage cleared the diagnostics").toBeGreaterThan(
-                0,
-            );
-        }
+    for (const diagnostics of (await s.pushes("main.cpp")).slice(published)) {
+        expect(diagnostics.length, "an outage cleared the diagnostics").toBeGreaterThan(0);
     }
     expect(s.workspace.log("master.log")).toContain("[anomaly:WorkerCrash]");
 });
