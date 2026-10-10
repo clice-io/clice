@@ -163,7 +163,8 @@
       },
       {
         "command": "clice.switchSourceHeader",
-        "title": "Clice: Switch Source/Header"
+        "title": "Switch Source/Header",
+        "category": "Clice"
       }
     ],
     "keybindings": [
@@ -341,6 +342,11 @@
         }
       ],
       "editor/context": [
+        {
+          "command": "clice.switchSourceHeader",
+          "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp",
+          "group": "navigation@1.9"
+        },
         {
           "command": "clice.switchContext",
           "when": "editorLangId == c || editorLangId == cpp || editorLangId == cuda-cpp",
