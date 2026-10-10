@@ -412,6 +412,13 @@ suite("clice E2E", function () {
         // and leaves the editor where it was.
         const extension = vscode.extensions.getExtension("clice-io.clice");
         assert.ok(extension?.isActive, "extension not active");
+        const manifest = extension.packageJSON as {
+            contributes: { menus: { "editor/context": { command: string; group?: string }[] } };
+        };
+        const menu = manifest.contributes.menus["editor/context"].find(
+            ({ command }) => command === "clice.switchSourceHeader",
+        );
+        assert.ok(menu?.group?.startsWith("navigation@"), "the editor menu offers the command");
         const client = (extension.exports as { client: ClientHandle }).client;
         const result = await client.sendRequest<CounterpartsResult>("clice/counterparts", {
             uri: document.uri.toString(),
