@@ -121,7 +121,10 @@ cc_library(
     srcs = ["tests/unit/test/tester.cpp"],
     copts = CLICE_COPTS,
     features = ["cpp_modules"],
-    local_defines = ['CLICE_TESTS_DATA_DIR=\\"tests/data\\"'],
+    local_defines = [
+        'CLICE_TESTS_DATA_DIR=\\"tests/unit/data\\"',
+        'CLICE_TESTS_SAMPLES_DIR=\\"samples\\"',
+    ],
     module_interfaces = glob(["tests/unit/**/*.cppm"]),
     deps = [":driver"],
 )

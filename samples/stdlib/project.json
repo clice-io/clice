@@ -1,0 +1,4 @@
+{
+  "cxx": ["-std=c++23"],
+  "units": { "report.cpp": [] }
+}

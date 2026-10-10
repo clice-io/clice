@@ -1,0 +1,9 @@
+{
+  "cxx": [
+    "-std=c++20"
+  ],
+  "units": {
+    "app.cppm": [],
+    "io.cppm": []
+  }
+}

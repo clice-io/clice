@@ -153,7 +153,7 @@ cmd = "node tools/docs/translations.ts review --glossary=.claude/skills/translat
 
 [feature.test.tasks.unit-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
-cmd = 'CLICE_TEST_DATA_DIR=$PIXI_PROJECT_ROOT/tests/data ./build/{{ type }}/bin/bin/unit_tests --verbose'
+cmd = 'CLICE_TEST_DATA_DIR=$PIXI_PROJECT_ROOT/tests/unit/data CLICE_TEST_SAMPLES_DIR=$PIXI_PROJECT_ROOT/samples ./build/{{ type }}/bin/bin/unit_tests --verbose'
 depends-on = [{ task = "check-feature-docs" }]
 
 # npm workspaces: install runs at the repo root and covers tools/, tests/

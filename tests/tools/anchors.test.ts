@@ -5,7 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { expect, test } from "vitest";
 import { checkAnchors } from "@clice/tools/anchors";
-import { PROJECTS_DIR, readManifest } from "@clice/tools/project";
+import { SAMPLES_DIR, readManifest } from "@clice/tools/project";
 
 const INTEGRATION = path.join(import.meta.dirname, "..", "integration");
 
@@ -53,13 +53,13 @@ test("a missing anchor is reported", () => {
 });
 
 test("variants name the same files", () => {
-    const shapes = path.join(PROJECTS_DIR, "shapes");
+    const shapes = path.join(SAMPLES_DIR, "shapes");
     const variants = fs.readdirSync(shapes).map((variant) => `shapes/${variant}`);
     const names = variants.map((variant) => {
         const files = readManifest(variant).files ?? {};
         for (const [name, file] of Object.entries(files)) {
             expect(
-                fs.existsSync(path.join(PROJECTS_DIR, variant, file)),
+                fs.existsSync(path.join(SAMPLES_DIR, variant, file)),
                 `${variant} ${name}`,
             ).toBe(true);
         }

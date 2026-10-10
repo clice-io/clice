@@ -1,0 +1,11 @@
+{
+  "cxx": [
+    "-std=c++20"
+  ],
+  "units": {
+    "base.cppm": [],
+    "left.cppm": [],
+    "right.cppm": [],
+    "top.cppm": []
+  }
+}

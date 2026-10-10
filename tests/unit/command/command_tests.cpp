@@ -1207,7 +1207,8 @@ ZEST_CASE(ResourceDir) {
 };
 
 ZEST_CASE(FixtureLayouts) {
-    /// The checked-in layouts under tests/data/cdb go through load() like a
+    /// The checked-in layouts under tests/unit/data/cdb (and the shared
+    /// samples/layouts/single_root) go through load() like a
     /// real project's database; each pins the one property it exists for.
     /// Macros are asserted by name: the driver render spells -D with a
     /// separate value.
@@ -1224,8 +1225,10 @@ ZEST_CASE(FixtureLayouts) {
     {
         FileTable files;
         CompilationDatabase database{files};
-        ZASSERT(load_layout(database, "single_root") == 1U);
-        EXPECT_CONTAINS(print_argv(render_entry(database, source("single_root"))), "SINGLE");
+        auto single_root = path::join(samples_dir(), "layouts", "single_root");
+        ZASSERT(database.load(path::join(single_root, "compile_commands.json")).value_or(0) == 1U);
+        EXPECT_CONTAINS(print_argv(render_entry(database, path::join(single_root, "main.cpp"))),
+                        "SINGLE");
     }
 
     {

@@ -10,7 +10,7 @@ serve("shapes/headers", { killOn: { request: "tuRun", file: "src/registry.cpp" }
     async ({ s }) => {
         await s.indexed();
         const counts = await s.counts();
-        for (const unit of Object.keys(s.manifest.units)) {
+        for (const unit of Object.keys(s.manifest.units ?? {})) {
             expect(counts.files[unit]?.index, unit).toBe(unit === "src/registry.cpp" ? 2 : 1);
         }
         expect(s.show(await s.workspaceSymbols("registry_count"))).toBe(
@@ -61,7 +61,7 @@ serve
     const watch = async (file: string) => {
         holds.set(await s.hold("index", file), file);
     };
-    for (const unit of Object.keys(s.manifest.units)) {
+    for (const unit of Object.keys(s.manifest.units ?? {})) {
         await watch(unit);
     }
     await s.compiled("main.cpp");

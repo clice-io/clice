@@ -337,7 +337,9 @@ export class Serve {
         let databases: Record<string, Manifest> = {};
         if (project !== null) {
             manifest = materialize(project, workspace);
-            databases = { "compile_commands.json": manifest };
+            if (manifest.units !== undefined) {
+                databases = { "compile_commands.json": manifest };
+            }
         } else if (options.data !== undefined) {
             fs.cpSync(path.join(DATA_DIR, options.data), workspace.root, { recursive: true });
             // What runs in the data directory itself left there.
@@ -461,7 +463,7 @@ export class Serve {
         },
         /// Write the compilation database `manifest` describes at `at`.
         database: (manifest: Manifest, at = "compile_commands.json"): void => {
-            const units = Object.keys(manifest.units).join(", ");
+            const units = Object.keys(manifest.units ?? {}).join(", ");
             this.steps.note(`disk: ${at} of ${units === "" ? "no unit" : units}`);
             writeDatabase(this.workspace, manifest, at);
         },

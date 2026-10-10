@@ -123,6 +123,38 @@ ZEST_CASE(release_all_frees_parked) {
     ZEXPECT(probe.holds().empty());
 }
 
+ZEST_CASE(gates_share_hold_ids) {
+    // Gates and holds draw from one id space and release by id alike; a
+    // gate no request went out under drops.
+    auto hold = probe.hold(BuildKind::Compile, "/w/a.cpp");
+    auto gate = probe.gate("clice/worker/completion /w/a.cpp");
+    ZEXPECT(gate == hold + 1);
+    ZEXPECT(probe.gates().size() == 1u);
+
+    // Another request's tag leaves the gate standing, unsent.
+    probe.sending("clice/worker/format /w/a.cpp", {});
+    ZEXPECT(!probe.gates().front().sent);
+
+    ZEXPECT(probe.release(gate));
+    ZEXPECT(!probe.release(gate));
+    ZEXPECT(probe.gates().empty());
+    ZEXPECT(probe.release(hold));
+}
+
+ZEST_CASE(gate_park_announced) {
+    // The worker's park of a standing gate is announced like a hold's; one
+    // of a gate already released is not.
+    auto gate = probe.gate("clice/worker/compile /w/a.cpp");
+    probe.gate_parked(gate);
+    ZEXPECT(held == std::vector{gate});
+    ZEXPECT(probe.gates().front().parked);
+
+    probe.release_all();
+    ZEXPECT(probe.gates().empty());
+    probe.gate_parked(gate);
+    ZEXPECT(held.size() == 1u);
+}
+
 };  // ZEST_SUITE(BuildProbe)
 
 }  // namespace

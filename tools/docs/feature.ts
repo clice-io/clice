@@ -274,13 +274,8 @@ function renderItem(fx: Fixture): string {
 }
 
 function collectFixtures(feature: string, problems: string[]): Fixture[] {
-    // Snapshot corpora migrated to tests/snap/ keep feeding the docs from
-    // their new home; the rest still live under tests/data/.
-    const snapDir = path.join(REPO_ROOT, "tests", "snap", feature);
-    const dataDir = fs.existsSync(snapDir)
-        ? snapDir
-        : path.join(REPO_ROOT, "tests", "data", feature);
-    return globCpp(dataDir).flatMap((filePath) => parseFixture(filePath, dataDir, problems) ?? []);
+    const corpus = path.join(REPO_ROOT, "tests", "snap", feature);
+    return globCpp(corpus).flatMap((filePath) => parseFixture(filePath, corpus, problems) ?? []);
 }
 
 /// All *.cpp under dir at any depth, sorted by full path (matches

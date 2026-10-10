@@ -1,0 +1,12 @@
+{
+  "cxx": [
+    "-std=c++20"
+  ],
+  "units": {
+    "m1.cppm": [],
+    "m2.cppm": [],
+    "m3.cppm": [],
+    "m4.cppm": [],
+    "m5.cppm": []
+  }
+}

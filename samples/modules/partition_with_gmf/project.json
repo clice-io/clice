@@ -1,0 +1,12 @@
+{
+  "cxx": [
+    "-std=c++20"
+  ],
+  "args": [
+    "-I."
+  ],
+  "units": {
+    "cfg.cppm": [],
+    "part_cfg.cppm": []
+  }
+}

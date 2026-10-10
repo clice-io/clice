@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import ts from "typescript";
 import { anchorSnippet, uniqueSpan } from "./actions.ts";
-import { PROJECTS_DIR, readManifest } from "./project.ts";
+import { SAMPLES_DIR, readManifest } from "./project.ts";
 
 /// An anchor a scenario names: in a file by path, or by the logical name
 /// the projects' manifests map; an `at()` snippet carries a cursor mark,
@@ -191,7 +191,7 @@ function checkUse(use: Use, project: string): string | undefined {
     } else {
         file = use.file.path;
     }
-    const full = path.join(PROJECTS_DIR, project, file);
+    const full = path.join(SAMPLES_DIR, project, file);
     if (!fs.existsSync(full)) {
         return `no file ${file}`;
     }

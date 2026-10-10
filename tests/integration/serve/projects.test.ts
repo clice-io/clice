@@ -6,7 +6,7 @@ import { serve } from "../fixtures.ts";
 serve.each(["tiny", "shapes/headers", "shapes/modules"])(
     "every unit compiles clean",
     async ({ s }) => {
-        for (const unit of Object.keys(s.manifest.units)) {
+        for (const unit of Object.keys(s.manifest.units ?? {})) {
             await s.clean(unit);
         }
         await s.indexed();

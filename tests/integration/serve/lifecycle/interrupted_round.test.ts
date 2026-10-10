@@ -30,7 +30,7 @@ async function persistedUnits(s: Serve): Promise<number> {
 /// while it is.
 async function midRound(s: Serve): Promise<void> {
     const holds: Hold[] = [];
-    for (const unit of Object.keys(s.manifest.units)) {
+    for (const unit of Object.keys(s.manifest.units ?? {})) {
         holds.push(await s.hold("index", unit));
     }
     const first = await s.firstParked(holds);

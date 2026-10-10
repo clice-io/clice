@@ -1,0 +1,49 @@
+{
+  "args": [
+    "-Iinclude"
+  ],
+  "cxx": [
+    "-std=c++23"
+  ],
+  "c": [
+    "-std=c17"
+  ],
+  "units": {
+    "src/shapes.cppm": [],
+    "src/shape.cppm": [],
+    "src/detail.cppm": [],
+    "src/circle.cppm": [],
+    "src/circle_impl.cpp": [],
+    "src/measure.cpp": [],
+    "src/polygon.cppm": [],
+    "src/polygon_impl.cpp": [],
+    "src/registry.cpp": [],
+    "src/fast.cpp": [
+      "-DSHAPES_FAST=1"
+    ],
+    "src/c_api.c": [],
+    "app/main.cpp": [],
+    "app/demo.cpp": [],
+    "test/shapes_test.cpp": [
+      "-DSHAPES_FAST=1"
+    ]
+  },
+  "files": {
+    "shape": "src/shape.cppm",
+    "circle": "src/circle.cppm",
+    "circle_impl": "src/circle_impl.cpp",
+    "measure": "src/measure.cpp",
+    "polygon": "src/polygon.cppm",
+    "polygon_impl": "src/polygon_impl.cpp",
+    "detail": "src/detail.cppm",
+    "config": "include/shapes/config.h",
+    "draft": "include/shapes/draft.h",
+    "units": "include/legacy/units.h",
+    "registry": "src/registry.cpp",
+    "fast": "src/fast.cpp",
+    "c_api": "src/c_api.c",
+    "main": "app/main.cpp",
+    "demo": "app/demo.cpp",
+    "test": "test/shapes_test.cpp"
+  }
+}

@@ -1,5 +1,4 @@
 import type * as proto from "vscode-languageserver-protocol";
-import { SETTLE_TIME, sleep } from "../../client/client.ts";
 import { markerPoints, markerRanges } from "../annotation.ts";
 import {
     directiveLines,
@@ -7,6 +6,7 @@ import {
     fmtRange,
     markerSections,
     OffsetConverter,
+    settled,
     sortedMarkers,
     type Feature,
 } from "../render.ts";
@@ -126,18 +126,12 @@ export const codeAction: Feature = {
         if (indexed.length > 0 && ctx.indexing !== true) {
             throw new Error("'// indexed:' lines require 'indexing: true' in the fixture meta");
         }
+        if (indexed.length > 0) {
+            await settled(client);
+        }
         for (const name of indexed) {
-            let elsewhere = false;
-            for (let i = 0; i < 60 && !elsewhere; i++) {
-                const symbols = (await client.workspaceSymbols(name)) ?? [];
-                elsewhere = symbols.some(
-                    (symbol) => symbol.name === name && symbol.location.uri !== uri,
-                );
-                if (!elsewhere) {
-                    await sleep(SETTLE_TIME);
-                }
-            }
-            if (!elsewhere) {
+            const symbols = (await client.workspaceSymbols(name)) ?? [];
+            if (!symbols.some((symbol) => symbol.name === name && symbol.location.uri !== uri)) {
                 throw new Error(`symbol '${name}' never arrived from another file's index rows`);
             }
         }
