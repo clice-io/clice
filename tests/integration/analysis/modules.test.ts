@@ -708,3 +708,16 @@ test("unknown module fails", async ({ session }) => {
     );
     expect(await failure("--scope", "[")).toMatch(/^invalid --scope glob '\['/);
 });
+
+test("unindexed workspace fails", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write("main.cpp", "int main() { return 0; }\n");
+    ws.writeCDB(["main.cpp"]);
+    const run = await runClice("analyze", "modules", "--workspace", ws.root);
+    expect(run.status).toBe(1);
+    expect(JSON.parse(run.stdout)).toEqual({
+        error: "no usable index; run `clice index` first",
+        stale: [],
+    });
+});

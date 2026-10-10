@@ -12,11 +12,13 @@ module;
 module clice:driver.driver;
 
 import :config.config;
+import :index.symbol_query;
 import :index.writer_lock;
 import :project.configuration;
 import :sched.batch;
 import :server.control_client;
 import :support.logging;
+import :vfs.file_system;
 import :vfs.path;
 import :worker.serialize;
 
@@ -225,6 +227,49 @@ std::string render_json(const T& value) {
 template <typename T>
 void print_json(const T& value) {
     driver::println("{}", render_json(value));
+}
+
+/// The symbol locator the flags of `opts` spell, as a name query:
+/// `--symbol` an id (anchored at `--path`), `--name` a name query narrowed
+/// to `--path`, or `--path` and `--line` a place. The path must be a file;
+/// one the index has no rows for is noted as unindexed by the command.
+template <typename Options>
+std::expected<index::SymbolQuery, std::string> locator_of(const Options& opts,
+                                                          llvm::StringRef absolute) {
+    if(opts.line && *opts.line <= 0) {
+        return std::unexpected("line must be positive");
+    }
+    if(opts.path && !vfs::is_file(absolute)) {
+        return std::unexpected(std::format("no such file: {}", std::string_view(absolute)));
+    }
+    if(opts.symbol) {
+        auto parsed = index::SymbolQuery::parse(*opts.symbol);
+        if(!parsed || !parsed->handle) {
+            return std::unexpected(std::format("invalid symbol id: {}", *opts.symbol));
+        }
+        if(opts.path) {
+            parsed->paths.emplace_back(absolute);
+        }
+        return std::move(*parsed);
+    }
+    // The path is a literal, never query text: it joins the parsed query
+    // as the filter or the place it stands for.
+    if(opts.name) {
+        auto parsed = index::SymbolQuery::parse(*opts.name);
+        if(!parsed) {
+            return std::unexpected(parsed.error());
+        }
+        if(opts.path) {
+            parsed->paths.emplace_back(absolute);
+        }
+        return std::move(*parsed);
+    }
+    if(opts.path && opts.line) {
+        index::SymbolQuery query;
+        query.position = {.path = std::string(absolute), .line = *opts.line};
+        return query;
+    }
+    return std::unexpected("name a symbol with --name, --symbol, or --path and --line");
 }
 
 /// Bring the index up to date with the disk before a --fresh answer:

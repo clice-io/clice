@@ -6,7 +6,6 @@ module clice;
 
 import :index.serialization;
 import :index.symbol_query;
-import :vfs.file_system;
 
 namespace clice::index {
 
@@ -292,41 +291,6 @@ std::expected<SymbolQuery, std::string> SymbolQuery::parse(llvm::StringRef text)
         }
     }
     return query;
-}
-
-std::expected<SymbolQuery, std::string> SymbolQuery::locator(const Parts& parts) {
-    if(parts.line && *parts.line <= 0) {
-        return std::unexpected("line must be positive");
-    }
-    if(parts.path && !vfs::is_file(*parts.path)) {
-        return std::unexpected(std::format("no such file: {}", std::string_view(*parts.path)));
-    }
-    if(parts.symbol) {
-        auto parsed = parse(*parts.symbol);
-        if(!parsed || !parsed->handle) {
-            return std::unexpected(
-                std::format("invalid symbol id: {}", std::string_view(*parts.symbol)));
-        }
-        if(parts.path) {
-            parsed->paths.emplace_back(*parts.path);
-        }
-        return parsed;
-    }
-    // The path is a literal, never query text: it joins the parsed query
-    // as the filter or the place it stands for.
-    if(parts.name) {
-        auto parsed = parse(*parts.name);
-        if(parsed && parts.path) {
-            parsed->paths.emplace_back(*parts.path);
-        }
-        return parsed;
-    }
-    if(parts.path && parts.line) {
-        SymbolQuery query;
-        query.position = {.path = parts.path->str(), .line = *parts.line};
-        return query;
-    }
-    return std::unexpected("name a symbol with --name, --symbol, or --path and --line");
 }
 
 std::optional<SymbolKind> SymbolQuery::parse_kind(llvm::StringRef name) {

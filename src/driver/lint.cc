@@ -109,9 +109,9 @@ CommandHandler build(const char* self_path) {
     return cmd;
 }
 
-}  // namespace
-
-[[maybe_unused]] const static bool registered =
+[[maybe_unused]] const bool registered =
     register_command(Command::lint, {.description = "Lint C++ source files", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

@@ -324,13 +324,13 @@ CommandHandler build(const char*) {
     return command;
 }
 
-}  // namespace
-
-[[maybe_unused]] const static bool registered = register_command(
+[[maybe_unused]] const bool registered = register_command(
     Command::modularize,
     {.description = "Wrap a partition's libraries as modules over their headers, rewrite its "
                     "program modules into module units, or merge the wrappings of several build "
                     "configurations",
      .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

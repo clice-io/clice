@@ -252,10 +252,10 @@ CommandHandler build(const char*) {
     };
 }
 
-}  // namespace
-
-[[maybe_unused]] const static bool registered = register_command(
+[[maybe_unused]] const bool registered = register_command(
     Command::analyze,
     {.description = "Analyze the indexed workspace for refactoring", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

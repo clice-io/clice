@@ -1162,10 +1162,10 @@ CommandHandler build(const char*) {
     return cmd;
 }
 
-}  // namespace
-
-[[maybe_unused]] const static bool registered = register_command(
+[[maybe_unused]] const bool registered = register_command(
     Command::inspect,
     {.description = "Run a feature on source files and print raw results as JSON", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

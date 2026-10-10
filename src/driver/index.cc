@@ -851,10 +851,10 @@ CommandHandler build(const char* self_path) {
     return cmd;
 }
 
-}  // namespace
-
-[[maybe_unused]] const static bool registered =
+[[maybe_unused]] const bool registered =
     register_command(Command::index,
                      {.description = "Index a workspace ahead of time", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

@@ -109,9 +109,9 @@ CommandHandler build(const char*) {
     return cmd;
 }
 
-}  // namespace
-
-[[maybe_unused]] const static bool registered =
+[[maybe_unused]] const bool registered =
     register_command(Command::format, {.description = "Format C++ source files", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

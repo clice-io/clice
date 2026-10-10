@@ -70,8 +70,8 @@ CommandHandler build(const char*) {
     return cmd;
 }
 
-}  // namespace
+[[maybe_unused]] const bool registered = register_command(Command::worker, {.build = build});
 
-[[maybe_unused]] const static bool registered = register_command(Command::worker, {.build = build});
+}  // namespace
 
 }  // namespace clice::driver

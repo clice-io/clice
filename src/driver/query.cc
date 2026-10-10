@@ -5,7 +5,6 @@ module;
 module clice;
 
 import :driver.driver;
-import :index.symbol_query;
 import :project.configuration;
 import :project.open_index;
 import :server.counterparts;
@@ -168,12 +167,7 @@ Reply answer(Project& project,
     // A file named by --path that the index holds no rows for is reported
     // next to the rows the query withheld.
     auto locator = [&]() -> std::expected<index::SymbolQuery, std::string> {
-        auto query = index::SymbolQuery::locator({
-            .symbol = opts.symbol.as_optional(),
-            .name = opts.name.as_optional(),
-            .path = opts.path ? std::optional<llvm::StringRef>(absolute) : std::nullopt,
-            .line = opts.line.as_optional(),
-        });
+        auto query = locator_of(opts, absolute);
         if(query && opts.path) {
             auto file = project.file_table.intern(absolute);
             if(!project.project_index.shard(file)) {
@@ -283,10 +277,10 @@ CommandHandler build(const char* self_path) {
     return cmd;
 }
 
-}  // namespace
-
-[[maybe_unused]] const static bool registered = register_command(
+[[maybe_unused]] const bool registered = register_command(
     Command::query,
     {.description = "Ask the persisted index about the workspace", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver

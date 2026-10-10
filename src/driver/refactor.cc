@@ -5,7 +5,6 @@ module;
 module clice;
 
 import :driver.driver;
-import :index.symbol_query;
 import :project.open_index;
 import :server.query_commands;
 import :vfs.file_system;
@@ -193,12 +192,7 @@ int run_rename(const RefactorOptions& opts, const char* self_path) {
         return all;
     };
 
-    auto locator = index::SymbolQuery::locator({
-        .symbol = opts.symbol.as_optional(),
-        .name = opts.name.as_optional(),
-        .path = opts.path ? std::optional<llvm::StringRef>(absolute) : std::nullopt,
-        .line = opts.line.as_optional(),
-    });
+    auto locator = locator_of(opts, absolute);
     if(!locator) {
         print_json(Failure{.error = locator.error(), .stale = stale({})});
         return 1;
@@ -243,10 +237,10 @@ CommandHandler build(const char* self_path) {
     return cmd;
 }
 
-}  // namespace
-
-[[maybe_unused]] const static bool registered = register_command(
+[[maybe_unused]] const bool registered = register_command(
     Command::refactor,
     {.description = "Rewrite the workspace's sources through the persisted index", .build = build});
+
+}  // namespace
 
 }  // namespace clice::driver
