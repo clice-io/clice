@@ -113,3 +113,15 @@ serve.files({
     expect(s.show(hovered)).toContain("Square");
     expect(symbols?.length).toBeGreaterThan(0);
 });
+
+serve.files({ "main.cpp": "int main() { return missing; }\n" })(
+    "pushes keep every publish",
+    async ({ s }) => {
+        expect(await s.errors("main.cpp")).toHaveLength(1);
+        s.edit("main.cpp", { replace: "missing", with: "0" });
+        await s.clean("main.cpp");
+        const pushes = await s.pushes("main.cpp");
+        expect(pushes.map((diagnostics) => diagnostics.length)).toEqual([1, 0]);
+        expect(await s.serverRequests("workspace/semanticTokens/refresh")).toBe(0);
+    },
+);

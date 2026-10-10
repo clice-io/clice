@@ -206,6 +206,10 @@ export interface ServeOptions {
     /// ends checking that the kill happened and that the one worker crash it
     /// reports is the only anomaly.
     killOn?: { request: string; file: string };
+    /// Every request of a file named so crashes its worker the way a fault
+    /// does, attributed to the request (CLICE_TEST_CRASH_REQUEST). The case
+    /// asserts the crashes it expects itself.
+    crashOn?: { request: string; file: string };
     /// The units and arguments of a case without a project, in place of
     /// every source a unit with the default arguments.
     manifest?: Manifest;
@@ -238,10 +242,16 @@ export interface ServeOptions {
 /// the new server then), the program and its arguments. With
 /// `handshake: false` the server is only spawned: the case sends initialize
 /// itself through `s.client`.
+/// `${workspace}` in the program, an argument or an environment value
+/// stands for the workspace root.
 export type Launch = Pick<
     SessionOptions,
-    "capabilities" | "folders" | "beforeInitialized" | "args" | "executable" | "drainStderr"
-> & { config?: Record<string, unknown>; handshake?: false };
+    "capabilities" | "folders" | "args" | "executable" | "drainStderr"
+> & {
+    config?: Record<string, unknown>;
+    handshake?: false;
+    beforeInitialized?: (s: Serve) => void | Promise<void>;
+};
 
 /// A hold on the next reply of a build (clice/internal/hold).
 export interface Hold {
@@ -468,6 +478,28 @@ export class Serve {
         return this.steps.run(`pushed ${file}`, async () => {
             await this.sync();
             return this.live().lastPublish(this.uri(file))?.diagnostics;
+        });
+    }
+
+    /// Every diagnostics push `file` received, oldest first, once the
+    /// server settled.
+    pushes(file: string): Promise<proto.Diagnostic[][]> {
+        return this.steps.run(`pushes of ${file}`, async () => {
+            await this.sync();
+            const client = this.live();
+            const uri = client.normalizeUri(this.uri(file));
+            return client.publishedDiagnostics
+                .filter((params) => client.normalizeUri(params.uri) === uri)
+                .map((params) => params.diagnostics);
+        });
+    }
+
+    /// How many `method` requests the server sent the client (a refresh, a
+    /// workspace/configuration), once it settled.
+    serverRequests(method: string): Promise<number> {
+        return this.steps.run(`${method} requests from the server`, async () => {
+            await this.sync();
+            return this.live().serverRequests.filter((sent) => sent === method).length;
         });
     }
 
@@ -879,19 +911,31 @@ export class Serve {
     /// case's.
     start(launch: Launch = this.options.launch ?? {}): Promise<void> {
         return this.steps.run("start the server", async () => {
-            const env: Record<string, string> = { ...this.options.env };
-            const anomalies = this.options.anomalies === true || this.options.killOn !== undefined;
+            const root = this.workspace.root;
+            const expand = (text: string): string => text.replaceAll("${workspace}", root);
+            const env: Record<string, string> = Object.fromEntries(
+                Object.entries(this.options.env ?? {}).map(([key, value]) => [key, expand(value)]),
+            );
+            const { killOn, crashOn } = this.options;
+            const anomalies =
+                this.options.anomalies === true || killOn !== undefined || crashOn !== undefined;
             if (anomalies) {
                 // A Debug build traps on an anomaly.
                 env["CLICE_ANOMALY_NO_TRAP"] = "1";
             }
-            if (this.options.killOn !== undefined) {
+            if (killOn !== undefined) {
                 env["CLICE_TEST_KILL_REQUEST"] = this.workspace.path(this.killFile());
+            }
+            if (crashOn !== undefined) {
+                env["CLICE_TEST_CRASH_REQUEST"] =
+                    `${crashOn.request} ${this.workspace.displayPath(crashOn.file)}`;
             }
             const { config, handshake, capabilities, folders, beforeInitialized, ...spawn } =
                 launch;
             const client = this.session.spawn(this.workspace, {
                 ...spawn,
+                ...(spawn.executable === undefined ? {} : { executable: expand(spawn.executable) }),
+                ...(spawn.args === undefined ? {} : { args: spawn.args.map(expand) }),
                 env,
                 allowAnomaly: anomalies,
             });
@@ -903,7 +947,9 @@ export class Serve {
                 initializationOptions: config ?? this.options.config,
                 capabilities,
                 folders,
-                beforeInitialized,
+                ...(beforeInitialized === undefined
+                    ? {}
+                    : { beforeInitialized: async () => beforeInitialized(this) }),
             });
         });
     }
