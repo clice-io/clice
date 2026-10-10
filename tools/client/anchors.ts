@@ -161,7 +161,7 @@ function servedProjects(node: ts.Node, source: ts.SourceFile): string[] | Error 
 }
 
 /// The projects behind a test call's callee: `serve(...)`, a constant
-/// bound to one, either followed by `.for(...)`.
+/// bound to one, either followed by `.for(...)` or `.skipIf(...)`.
 function calleeProjects(
     callee: ts.Expression,
     source: ts.SourceFile,
@@ -170,7 +170,7 @@ function calleeProjects(
     if (
         ts.isCallExpression(callee) &&
         ts.isPropertyAccessExpression(callee.expression) &&
-        callee.expression.name.text === "for"
+        ["for", "skipIf"].includes(callee.expression.name.text)
     ) {
         return calleeProjects(callee.expression.expression, source, bound);
     }

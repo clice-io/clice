@@ -12,11 +12,20 @@
 /// nor an edit spells a line or column, and the sample projects carry no
 /// markers.
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
 import { URI } from "vscode-uri";
-import type { BuildKind } from "../protocol/protocol.ts";
+import type {
+    BuildKind,
+    CurrentContextResult,
+    ListConfigurationsResult,
+    QueryContextResult,
+    StatsResult,
+    SwitchConfigurationResult,
+    SwitchContextResult,
+} from "../protocol/protocol.ts";
 import { anomaliesInLogFiles, serverEnv } from "../process_gate.ts";
 import { withTimeout } from "../promise.ts";
 import type { CliceClient } from "./client.ts";
@@ -120,6 +129,14 @@ function describeLoc(loc: Loc): string {
     return `${loc.file} at ${JSON.stringify(loc.anchor)}`;
 }
 
+/// The one hierarchy item a prepare request found at `loc`.
+function only<T>(items: T[] | null, loc: Loc): T {
+    if (items?.length !== 1) {
+        throw new Error(`${describeLoc(loc)} names ${items?.length ?? 0} items, not one`);
+    }
+    return items[0] as T;
+}
+
 interface Step {
     depth: number;
     text: string;
@@ -129,30 +146,33 @@ interface Step {
 }
 
 /// The actions a case ran, a composite's own nested a level below it.
+/// Each step's depth follows the async context it runs in, so actions
+/// awaited side by side nest under their own callers.
 class StepRecord {
     private steps: Step[] = [];
-    private depth = 0;
+    private readonly depth = new AsyncLocalStorage<number>();
 
     /// Run `body` as the step `text`.
-    async run<T>(text: string, body: () => Promise<T>): Promise<T> {
-        const step: Step = { depth: this.depth, text, started: Date.now() };
+    run<T>(text: string, body: () => Promise<T>): Promise<T> {
+        const depth = this.depth.getStore() ?? 0;
+        const step: Step = { depth, text, started: Date.now() };
         this.steps.push(step);
-        this.depth += 1;
-        try {
-            return await body();
-        } catch (error) {
-            step.failed = true;
-            throw error;
-        } finally {
-            this.depth -= 1;
-            step.ended = Date.now();
-        }
+        return this.depth.run(depth + 1, async () => {
+            try {
+                return await body();
+            } catch (error) {
+                step.failed = true;
+                throw error;
+            } finally {
+                step.ended = Date.now();
+            }
+        });
     }
 
     /// A step that sends and waits for nothing.
     note(text: string): void {
         const now = Date.now();
-        this.steps.push({ depth: this.depth, text, started: now, ended: now });
+        this.steps.push({ depth: this.depth.getStore() ?? 0, text, started: now, ended: now });
     }
 
     render(): string {
@@ -170,12 +190,16 @@ class StepRecord {
     }
 }
 
+/// A file's text, or what makes it from the workspace (a database naming
+/// its absolute paths).
+export type FileText = string | ((workspace: Workspace) => string);
+
 export interface ServeOptions {
     /// initializationOptions over the test defaults, shaped as clice.toml.
     config?: Record<string, unknown>;
     /// Files written over the project before the server starts; the whole
     /// workspace of a case without a project.
-    files?: Record<string, string>;
+    files?: Record<string, FileText>;
     /// A request of a file, as `{ request: "tuRun", file: "src/registry.cpp" }`:
     /// the worker running the first such request dies the way a kill from
     /// outside ends it, naming no request (CLICE_TEST_KILL_REQUEST). The case
@@ -195,16 +219,29 @@ export interface ServeOptions {
     /// fail it, and Debug builds do not trap on them. The case asserts the
     /// anomalies it expects itself.
     anomalies?: boolean;
+    /// The compilation databases written before the server starts, by
+    /// workspace-relative path, in place of the one at the root the
+    /// manifest describes; false for none.
+    databases?: false | Record<string, Manifest>;
+    /// A step on the workspace before the first server starts, after the
+    /// files and databases are written: what they cannot hold, such as a
+    /// symlink.
+    setup?: (workspace: Workspace) => void;
+    /// How every server of the case starts, unless `s.start` says otherwise.
+    launch?: Launch;
 }
 
-/// How a server starts, beyond the case's config and environment: client
-/// capabilities, the workspace folders it announces, a step between the
-/// initialize response and the initialized notification (`s.client` is the
-/// new server then), the program and its arguments.
+/// How a server starts, beyond the case's environment: its config in place
+/// of the case's, client capabilities, the workspace folders it announces
+/// (workspace-relative; null announces none, only the root), a step between
+/// the initialize response and the initialized notification (`s.client` is
+/// the new server then), the program and its arguments. With
+/// `handshake: false` the server is only spawned: the case sends initialize
+/// itself through `s.client`.
 export type Launch = Pick<
     SessionOptions,
     "capabilities" | "folders" | "beforeInitialized" | "args" | "executable" | "drainStderr"
->;
+> & { config?: Record<string, unknown>; handshake?: false };
 
 /// A hold on the next reply of a build (clice/internal/hold).
 export interface Hold {
@@ -287,8 +324,10 @@ export class Serve {
         const workspace = session.tmpdir();
         const files = options.files ?? {};
         let manifest: Manifest;
+        let databases: Record<string, Manifest> = {};
         if (project !== null) {
             manifest = materialize(project, workspace);
+            databases = { "compile_commands.json": manifest };
         } else if (options.data !== undefined) {
             fs.cpSync(path.join(DATA_DIR, options.data), workspace.root, { recursive: true });
             // What runs in the data directory itself left there.
@@ -300,13 +339,18 @@ export class Serve {
             manifest = { units: {} };
         } else {
             manifest = options.manifest ?? looseManifest(Object.keys(files));
+            databases = { "compile_commands.json": manifest };
         }
         for (const [file, text] of Object.entries(files)) {
-            workspace.write(file, text);
+            workspace.write(file, typeof text === "string" ? text : text(workspace));
         }
-        if (project === null && options.data === undefined) {
-            writeDatabase(workspace, manifest);
+        if (options.databases !== undefined) {
+            databases = options.databases === false ? {} : options.databases;
         }
+        for (const [at, described] of Object.entries(databases)) {
+            writeDatabase(workspace, described, at);
+        }
+        options.setup?.(workspace);
         const s = new Serve(session, project, workspace, manifest, options);
         if (options.killOn !== undefined) {
             const { request, file } = options.killOn;
@@ -339,10 +383,11 @@ export class Serve {
         return relative.startsWith("..") ? file : relative.split(path.sep).join("/");
     }
 
-    /// didOpen with the file's disk text, and a request a compile starts
-    /// on; neither waits.
-    open(file: string): void {
-        this.openWith(file, this.workspace.read(file));
+    /// didOpen with the file's disk text, or `text` for a buffer the disk
+    /// does not hold, at `version`; then a request a compile starts on,
+    /// unless `pull` is false. Nothing waits.
+    open(file: string, options: { text?: string; version?: number; pull?: false } = {}): void {
+        this.openWith(file, options.text ?? this.workspace.read(file), options);
     }
 
     edit(file: string, ...changes: Change[]): void {
@@ -357,11 +402,17 @@ export class Serve {
         this.live().change(this.uri(file), document.version, text);
     }
 
-    /// Write the buffer to disk and say so (didSave).
-    save(file: string): void {
-        const document = this.document(file);
-        this.steps.note(`save ${file} v${document.version}`);
-        this.workspace.write(file, document.text);
+    /// Write the buffer to disk and say so (didSave). A file not open, or
+    /// one saved with `write: false` (a save hook rewrote the disk), is
+    /// announced with the disk as it stands.
+    save(file: string, options: { write?: false } = {}): void {
+        const document = this.documents.get(file);
+        if (document !== undefined && options.write !== false) {
+            this.steps.note(`save ${file} v${document.version}`);
+            this.workspace.write(file, document.text);
+        } else {
+            this.steps.note(`save ${file} as the disk holds it`);
+        }
         this.live().save(this.uri(file));
     }
 
@@ -391,6 +442,12 @@ export class Serve {
             this.steps.note(`disk: remove ${file}`);
             fs.rmSync(this.workspace.path(file));
         },
+        /// Write the compilation database `manifest` describes at `at`.
+        database: (manifest: Manifest, at = "compile_commands.json"): void => {
+            const units = Object.keys(manifest.units).join(", ");
+            this.steps.note(`disk: ${at} of ${units === "" ? "no unit" : units}`);
+            writeDatabase(this.workspace, manifest, at);
+        },
     };
 
     /// The diagnostics of `file` as it stands, as the push to the editor
@@ -404,31 +461,180 @@ export class Serve {
         );
     }
 
+    /// The diagnostics last pushed for `file`, open or not, once the
+    /// server settled; undefined when none was. Unlike `diagnostics`, it
+    /// starts no compile: what it reads is what the server did on its own.
+    pushed(file: string): Promise<proto.Diagnostic[] | undefined> {
+        return this.steps.run(`pushed ${file}`, async () => {
+            await this.sync();
+            return this.live().lastPublish(this.uri(file))?.diagnostics;
+        });
+    }
+
     hover(loc: Loc): Promise<proto.Hover | null> {
-        const { uri, position } = this.place(loc);
+        const { uri, position } = this.position(loc);
         return this.ask(`hover ${describeLoc(loc)}`, (client) =>
             client.hoverAt(uri, position.line, position.character),
         );
     }
 
     definition(loc: Loc): Promise<proto.Definition | proto.LocationLink[] | null> {
-        const { uri, position } = this.place(loc);
+        const { uri, position } = this.position(loc);
         return this.ask(`definition ${describeLoc(loc)}`, (client) =>
             client.definitionAt(uri, position.line, position.character),
         );
     }
 
     references(loc: Loc): Promise<proto.Location[] | null> {
-        const { uri, position } = this.place(loc);
+        const { uri, position } = this.position(loc);
         return this.ask(`references ${describeLoc(loc)}`, (client) =>
             client.referencesAt(uri, position.line, position.character),
         );
     }
 
-    codeActions(loc: Loc): Promise<(proto.Command | proto.CodeAction)[] | null> {
-        const { uri, position } = this.place(loc);
-        return this.ask(`codeActions ${describeLoc(loc)}`, (client) =>
-            client.codeActions(uri, { start: position, end: position }),
+    /// The code actions at `loc`, or over the anchor's whole snippet with
+    /// `span`; `only` filters them by kind as an editor asks.
+    codeActions(
+        loc: Loc,
+        options: { only?: string[]; span?: true } = {},
+    ): Promise<(proto.Command | proto.CodeAction)[] | null> {
+        const { uri, position } = this.position(loc);
+        const range = options.span === true ? this.range(loc) : { start: position, end: position };
+        const only = options.only === undefined ? "" : ` only ${options.only.join(", ")}`;
+        return this.ask(`codeActions ${describeLoc(loc)}${only}`, (client) =>
+            client.sendRequest(proto.CodeActionRequest.type, {
+                textDocument: { uri },
+                range,
+                context: {
+                    diagnostics: [],
+                    ...(options.only === undefined ? {} : { only: options.only }),
+                },
+            }),
+        );
+    }
+
+    /// Completion at `loc`, as typing `trigger` asks for it when given.
+    completion(
+        loc: Loc,
+        trigger?: string,
+    ): Promise<proto.CompletionItem[] | proto.CompletionList | null> {
+        const { uri, position } = this.position(loc);
+        const by = trigger === undefined ? "" : ` triggered by ${JSON.stringify(trigger)}`;
+        return this.ask(`completion ${describeLoc(loc)}${by}`, (client) =>
+            client.completionAt(uri, position.line, position.character, {
+                ...(trigger === undefined ? {} : { triggerCharacter: trigger }),
+            }),
+        );
+    }
+
+    signatureHelp(loc: Loc): Promise<proto.SignatureHelp | null> {
+        const { uri, position } = this.position(loc);
+        return this.ask(`signatureHelp ${describeLoc(loc)}`, (client) =>
+            client.signatureHelpAt(uri, position.line, position.character),
+        );
+    }
+
+    /// The calls into the one function at `loc`.
+    incomingCalls(loc: Loc): Promise<proto.CallHierarchyIncomingCall[] | null> {
+        return this.ask(`incomingCalls ${describeLoc(loc)}`, async (client) => {
+            const { uri, position } = this.position(loc);
+            const item = only(
+                await client.prepareCallHierarchy(uri, position.line, position.character),
+                loc,
+            );
+            return client.callHierarchyIncoming(item);
+        });
+    }
+
+    /// The calls out of the one function at `loc`.
+    outgoingCalls(loc: Loc): Promise<proto.CallHierarchyOutgoingCall[] | null> {
+        return this.ask(`outgoingCalls ${describeLoc(loc)}`, async (client) => {
+            const { uri, position } = this.position(loc);
+            const item = only(
+                await client.prepareCallHierarchy(uri, position.line, position.character),
+                loc,
+            );
+            return client.callHierarchyOutgoing(item);
+        });
+    }
+
+    /// The direct bases of the one type at `loc`.
+    supertypes(loc: Loc): Promise<proto.TypeHierarchyItem[] | null> {
+        return this.ask(`supertypes ${describeLoc(loc)}`, async (client) => {
+            const { uri, position } = this.position(loc);
+            const item = only(
+                await client.prepareTypeHierarchy(uri, position.line, position.character),
+                loc,
+            );
+            return client.typeHierarchySupertypes(item);
+        });
+    }
+
+    /// The direct derived types of the one type at `loc`.
+    subtypes(loc: Loc): Promise<proto.TypeHierarchyItem[] | null> {
+        return this.ask(`subtypes ${describeLoc(loc)}`, async (client) => {
+            const { uri, position } = this.position(loc);
+            const item = only(
+                await client.prepareTypeHierarchy(uri, position.line, position.character),
+                loc,
+            );
+            return client.typeHierarchySubtypes(item);
+        });
+    }
+
+    /// The lines of `file` the server marks inactive (the semantic tokens'
+    /// `inactive` modifier), counted from 0.
+    inactiveLines(file: string): Promise<number[]> {
+        return this.ask(`inactive lines of ${file}`, (client) =>
+            client.inactiveLines(this.uri(file)),
+        );
+    }
+
+    /// The header contexts `file` can take (clice/queryContext), from its
+    /// `offset`-th one on.
+    contexts(file: string, options: { offset?: number } = {}): Promise<QueryContextResult> {
+        return this.ask(`contexts of ${file}`, (client) =>
+            client.queryContext(this.uri(file), options),
+        );
+    }
+
+    currentContext(file: string): Promise<CurrentContextResult> {
+        return this.ask(`current context of ${file}`, (client) =>
+            client.currentContext(this.uri(file)),
+        );
+    }
+
+    /// Compile `file` in the context of its includer `host` (itself for a
+    /// command of its own), at its `occurrence`-th include there, under the
+    /// command of `commandHash`; `epoch` stamps the listing it came from.
+    switchContext(
+        file: string,
+        host: string,
+        options: { occurrence?: number; commandHash?: string; epoch?: number } = {},
+    ): Promise<SwitchContextResult> {
+        return this.ask(`switch ${file} to the context of ${host}`, (client) =>
+            client.switchContext(this.uri(file), this.uri(host), options),
+        );
+    }
+
+    resetContext(file: string): Promise<SwitchContextResult> {
+        return this.ask(`reset the context of ${file}`, (client) =>
+            client.resetContext(this.uri(file)),
+        );
+    }
+
+    /// The build configurations of the project serving `file`, else of the
+    /// first project.
+    configurations(file?: string): Promise<ListConfigurationsResult> {
+        return this.ask(`configurations${file === undefined ? "" : ` of ${file}`}`, (client) =>
+            client.listConfigurations(file === undefined ? undefined : this.uri(file)),
+        );
+    }
+
+    switchConfiguration(name: string, file?: string): Promise<SwitchConfigurationResult> {
+        const of = file === undefined ? "" : ` for ${file}`;
+        return this.ask(`switch to the configuration ${JSON.stringify(name)}${of}`, (client) =>
+            client.switchConfiguration(name, file === undefined ? undefined : this.uri(file)),
         );
     }
 
@@ -441,19 +647,54 @@ export class Serve {
     }
 
     /// Any request about a document, at a position when `where` is a Loc;
-    /// `extra` joins the parameters.
-    request(method: string, where: string | Loc, extra: object = {}): Promise<unknown> {
+    /// `extra` joins the parameters. The caller names the reply's type.
+    request<T = unknown>(method: string, where: string | Loc, extra: object = {}): Promise<T> {
+        return this.send<T>(method, where, extra).reply;
+    }
+
+    /// A request as `request` sends it, with the means to cancel it
+    /// ($/cancelRequest) while it is under way.
+    send<T = unknown>(
+        method: string,
+        where: string | Loc,
+        extra: object = {},
+    ): { reply: Promise<T>; cancel(): void } {
         let target: object;
         if (typeof where === "string") {
             target = { textDocument: { uri: this.uri(where) } };
         } else {
-            const { uri, position } = this.place(where);
+            const { uri, position } = this.position(where);
             target = { textDocument: { uri }, position };
         }
         const name = typeof where === "string" ? where : describeLoc(where);
-        return this.ask(`${method} ${name}`, (client) =>
-            client.sendRequest(method, { ...target, ...extra }),
+        const source = new proto.CancellationTokenSource();
+        const reply = this.ask(
+            `${method} ${name}`,
+            (client) =>
+                client.sendRequest(method, { ...target, ...extra }, source.token) as Promise<T>,
         );
+        return {
+            reply,
+            cancel: () => {
+                this.steps.note(`cancel ${method} ${name}`);
+                source.cancel();
+            },
+        };
+    }
+
+    /// The LSP position of `loc` in the text requests about its file see.
+    position(loc: Loc): { uri: string; position: proto.Position } {
+        const text = this.text(loc.file);
+        const { snippet, cursor } = anchorSnippet(loc.anchor);
+        const { begin } = uniqueSpan(text, snippet, loc.file);
+        return { uri: this.uri(loc.file), position: utf16Position(text, begin + cursor) };
+    }
+
+    /// The range the snippet of `loc` covers.
+    range(loc: Loc): proto.Range {
+        const text = this.text(loc.file);
+        const { begin, end } = uniqueSpan(text, anchorSnippet(loc.anchor).snippet, loc.file);
+        return { start: utf16Position(text, begin), end: utf16Position(text, end) };
     }
 
     /// Wait until the server has no work left (clice/internal/sync) — after
@@ -501,6 +742,81 @@ export class Serve {
         });
     }
 
+    /// The server's whole clice/internal/stats: its gauges (sessions,
+    /// shards, contexts, tmp files) beside the build counts.
+    stats(): Promise<StatsResult> {
+        return this.ask("stats", (client) => client.stats());
+    }
+
+    /// Look at the disk once (clice/internal/poll): the database (`force`
+    /// looks past its stamp) or every known file of the workspace. Returns
+    /// the number of file events the look produced.
+    poll(loop: "cdb" | "workspace", options: { force?: boolean } = {}): Promise<number> {
+        const forced = options.force === true ? " forced" : "";
+        return this.ask(
+            `poll ${loop}${forced}`,
+            async (client) => (await client.poll(loop, options)).events,
+        );
+    }
+
+    /// The server logged no anomaly so far.
+    noAnomaly(): Promise<void> {
+        return this.ask("no anomaly so far", (client) => {
+            client.assertNoAnomaly();
+            return Promise.resolve();
+        });
+    }
+
+    /// The running server's initialize result.
+    get initResult(): proto.InitializeResult {
+        const result = this.live().initResult;
+        if (result === null) {
+            throw new Error("the server has not been initialized");
+        }
+        return result;
+    }
+
+    /// Announce workspace folders, workspace-relative, coming and going
+    /// (didChangeWorkspaceFolders).
+    changeFolders(change: { added?: string[]; removed?: string[] }): Promise<void> {
+        const parts = [
+            ...(change.added ?? []).map((folder) => `+${folder}`),
+            ...(change.removed ?? []).map((folder) => `-${folder}`),
+        ];
+        return this.ask(`folders ${parts.join(" ")}`, (client) =>
+            client.changeWorkspaceFolders(change),
+        );
+    }
+
+    /// Kill the server from outside (SIGKILL) and wait for it to be gone:
+    /// whatever it had not committed stays as it was. The documents it had
+    /// open are gone with it.
+    kill(): Promise<void> {
+        return this.steps.run("kill the server", async () => {
+            const client = this.live();
+            client.killServer();
+            await client.exited;
+            client.dispose();
+            this.server = null;
+            this.documents.clear();
+        });
+    }
+
+    /// The first of `holds` to park a reply; the others may still park one
+    /// or go with the server.
+    firstParked(holds: Hold[]): Promise<Hold> {
+        return this.steps.run(
+            `first of holds ${holds.map((hold) => hold.id).join(", ")} to park`,
+            () =>
+                Promise.any(
+                    holds.map(async (hold) => {
+                        await hold.reached();
+                        return hold;
+                    }),
+                ),
+        );
+    }
+
     /// Hold the next reply of a `kind` build of `file`; resolves once the
     /// hold is in place.
     async hold(kind: BuildKind, file: string): Promise<Hold> {
@@ -518,8 +834,9 @@ export class Serve {
     }
 
     /// Start a server on the workspace; its cache is the one a server
-    /// before it left. `launch` holds for this server only.
-    start(launch: Launch = {}): Promise<void> {
+    /// before it left. `launch` holds for this server only, in place of the
+    /// case's.
+    start(launch: Launch = this.options.launch ?? {}): Promise<void> {
         return this.steps.run("start the server", async () => {
             const env: Record<string, string> = { ...this.options.env };
             const anomalies = this.options.anomalies === true || this.options.killOn !== undefined;
@@ -530,15 +847,19 @@ export class Serve {
             if (this.options.killOn !== undefined) {
                 env["CLICE_TEST_KILL_REQUEST"] = this.workspace.path(this.killFile());
             }
-            const { capabilities, folders, beforeInitialized, ...spawn } = launch;
+            const { config, handshake, capabilities, folders, beforeInitialized, ...spawn } =
+                launch;
             const client = this.session.spawn(this.workspace, {
                 ...spawn,
                 env,
                 allowAnomaly: anomalies,
             });
             this.server = client;
+            if (handshake === false) {
+                return;
+            }
             await client.initialize(this.workspace, {
-                initializationOptions: this.options.config,
+                initializationOptions: config ?? this.options.config,
                 capabilities,
                 folders,
                 beforeInitialized,
@@ -835,21 +1156,21 @@ export class Serve {
         return this.documents.get(file)?.text ?? this.workspace.read(file);
     }
 
-    private openWith(file: string, text: string): void {
-        this.steps.note(`open ${file}`);
+    private openWith(
+        file: string,
+        text: string,
+        options: { version?: number; pull?: false } = {},
+    ): void {
+        const version = options.version ?? 0;
+        this.steps.note(`open ${file}${version === 0 ? "" : ` v${version}`}`);
         const client = this.live();
-        const [uri] = client.open(file, 0, { text });
-        this.documents.set(file, { version: 0, text });
-        // The compile starts on a request that needs it; its answer is not
-        // the point.
-        void client.pullDiagnostics(uri).catch(() => undefined);
-    }
-
-    private place(loc: Loc): { uri: string; position: proto.Position } {
-        const text = this.text(loc.file);
-        const { snippet, cursor } = anchorSnippet(loc.anchor);
-        const { begin } = uniqueSpan(text, snippet, loc.file);
-        return { uri: this.uri(loc.file), position: utf16Position(text, begin + cursor) };
+        const [uri] = client.open(file, version, { text });
+        this.documents.set(file, { version, text });
+        if (options.pull !== false) {
+            // The compile starts on a request that needs it; its answer is
+            // not the point.
+            void client.pullDiagnostics(uri).catch(() => undefined);
+        }
     }
 
     /// Run `body` as the step `text` against the live server; the server

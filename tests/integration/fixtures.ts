@@ -3,7 +3,7 @@
 /// test and runs the teardown gates when it ends.
 
 import { test as base } from "vitest";
-import { Serve, type ServeOptions } from "@clice/tools/actions";
+import { Serve, type FileText, type ServeOptions } from "@clice/tools/actions";
 import type { CliceClient } from "@clice/tools/client";
 import {
     cliceExecutable,
@@ -61,17 +61,19 @@ export function cliceTest(name: string, options: SessionOptions = {}) {
 /// only a case that hangs runs into it.
 const CASE_TIMEOUT = 300_000;
 
-type ServeBody = (context: { s: Serve }) => Promise<void>;
+type ServeBody = (context: { s: Serve }) => void | Promise<void>;
 
 export interface ServeTest {
     (name: string, body: ServeBody): void;
     for<T>(
         cases: readonly T[],
-    ): (name: string, body: (item: T, context: { s: Serve }) => Promise<void>) => void;
+    ): (name: string, body: (item: T, context: { s: Serve }) => void | Promise<void>) => void;
+    /// The cases registered through it are skipped when `condition` holds.
+    skipIf(condition: boolean): ServeTest;
 }
 
-function serveTest(project: string | null, options: ServeOptions): ServeTest {
-    const bound = base.extend<{ s: Serve }>({
+function serveTest(project: string | null, options: ServeOptions, skip = false): ServeTest {
+    const extended = base.extend<{ s: Serve }>({
         s: async ({ task }, use) => {
             const handle = createSessionFactory();
             let started = false;
@@ -93,14 +95,16 @@ function serveTest(project: string | null, options: ServeOptions): ServeTest {
             }
         },
     });
+    const bound = extended.skipIf(skip);
     const run = (name: string, body: ServeBody): void => {
         bound(name, { timeout: CASE_TIMEOUT }, body);
     };
     run.for =
         <T>(cases: readonly T[]) =>
-        (name: string, body: (item: T, context: { s: Serve }) => Promise<void>): void => {
+        (name: string, body: (item: T, context: { s: Serve }) => void | Promise<void>): void => {
             bound.for(cases)(name, { timeout: CASE_TIMEOUT }, body);
         };
+    run.skipIf = (condition: boolean): ServeTest => serveTest(project, options, skip || condition);
     return run;
 }
 
@@ -124,7 +128,7 @@ serve.each =
 
 /// Cases on a workspace of loose files, each source a unit: for files whose
 /// content is what the case tests.
-serve.files = (files: Record<string, string>, options: ServeOptions = {}): ServeTest =>
+serve.files = (files: Record<string, FileText>, options: ServeOptions = {}): ServeTest =>
     serveTest(null, { ...options, files });
 
 /// Cases on a copy of the data workspace tests/data/<name>: a bridge for

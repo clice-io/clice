@@ -17,8 +17,10 @@ export interface Manifest {
     args?: string[];
     cxx?: string[];
     c?: string[];
-    /// The translation units, workspace-relative, with their own arguments.
-    units: Record<string, string[]>;
+    /// The translation units, workspace-relative, with their own arguments;
+    /// a unit of several configurations has one entry per argument list.
+    /// `${workspace}` in an argument stands for the workspace root.
+    units: Record<string, string[] | string[][]>;
     /// Logical names of files: what a scenario calls a file whatever the
     /// variant spells it ("circle" is a header in one, a module in another).
     files?: Record<string, string>;
@@ -44,33 +46,36 @@ export function looseManifest(files: Iterable<string>): Manifest {
     return { cxx: ["-std=c++23"], c: ["-std=c17"], units };
 }
 
-/// Write the compilation database `manifest` describes at the root of
-/// `workspace`.
-export function writeDatabase(workspace: Workspace, manifest: Manifest): void {
-    const entries = Object.entries(manifest.units).map(([unit, own]) => {
+/// Write the compilation database `manifest` describes at `at` under
+/// `workspace`, its entries' directory the root.
+export function writeDatabase(
+    workspace: Workspace,
+    manifest: Manifest,
+    at = "compile_commands.json",
+): void {
+    const root = posix(workspace.root);
+    const entries = Object.entries(manifest.units).flatMap(([unit, own]) => {
         const c = unit.endsWith(".c");
         const file = posix(workspace.path(unit));
-        return {
-            directory: posix(workspace.root),
+        const configurations = Array.isArray(own[0]) ? (own as string[][]) : [own as string[]];
+        return configurations.map((args) => ({
+            directory: root,
             file,
             arguments: [
                 c ? "clang" : "clang++",
                 ...(manifest.args ?? []),
                 ...((c ? manifest.c : manifest.cxx) ?? []),
-                ...own,
+                ...args,
                 "-fsyntax-only",
                 file,
-            ],
-        };
+            ].map((arg) => arg.replaceAll("${workspace}", root)),
+        }));
     });
-    workspace.write("compile_commands.json", JSON.stringify(entries, null, 2));
+    workspace.write(at, JSON.stringify(entries, null, 2));
 }
 
-/// Copy `project` into `workspace` and write its database; returns its
-/// manifest.
+/// Copy `project` into `workspace`; returns its manifest.
 export function materialize(project: string, workspace: Workspace): Manifest {
     fs.cpSync(path.join(PROJECTS_DIR, project), workspace.root, { recursive: true });
-    const manifest = readManifest(project);
-    writeDatabase(workspace, manifest);
-    return manifest;
+    return readManifest(project);
 }
