@@ -43,36 +43,40 @@ const FEATURES: { method: string; where: string | Loc; extra?: object }[] = [
 
 // Without an index, a request is answered from the compile alone: rows of
 // the file's disk text would answer it while the compile is in flight.
-serve("tiny", { config: { project: { enable_indexing: false } } }).for(FEATURES)(
-    "$method mid-compile answers ContentModified",
-    async ({ method, where, extra }, { s }) => {
-        const { reply } = await s.inFlight(
-            "compile",
-            "main.cpp",
-            () => {
+// The edit lands while the compile's reply is parked in the master, or
+// while its worker still parses the old text.
+for (const phase of ["reply", "parse"] as const) {
+    serve("tiny", { config: { project: { enable_indexing: false } } }).for(FEATURES)(
+        `$method mid-${phase} answers ContentModified`,
+        async ({ method, where, extra }, { s }) => {
+            const begin = () => {
                 s.open("main.cpp");
-            },
-            async () => {
+            };
+            const body = async () => {
                 const reply = s.request(method, where, extra).then(
                     () => null,
                     (error: unknown) => error,
                 );
                 // Any later reply: the server took the request up before,
-                // and it waits on the parked compile when the edit arrives.
+                // and it waits on the compile when the edit arrives.
                 await s.counts();
                 s.edit("main.cpp", { after: "int main() {", insert: " " });
                 return { reply };
-            },
-        );
-        expect(await reply).toMatchObject({ code: proto.LSPErrorCodes.ContentModified });
+            };
+            const { reply } =
+                phase === "reply"
+                    ? await s.inFlight("compile", "main.cpp", begin, body)
+                    : await s.inWorker("compile", "main.cpp", begin, body);
+            expect(await reply).toMatchObject({ code: proto.LSPErrorCodes.ContentModified });
 
-        // Asked again, the request waits for the compile of the text as it
-        // stands and is answered.
-        const again = await s.request<{ data?: unknown[] } | null>(method, where, extra);
-        expect(again).not.toBeNull();
-        expect(again?.data?.length ?? 1).toBeGreaterThan(0);
-    },
-);
+            // Asked again, the request waits for the compile of the text as
+            // it stands and is answered.
+            const again = await s.request<{ data?: unknown[] } | null>(method, where, extra);
+            expect(again).not.toBeNull();
+            expect(again?.data?.length ?? 1).toBeGreaterThan(0);
+        },
+    );
+}
 
 function labels(list: proto.CompletionList | proto.CompletionItem[] | null | undefined): string[] {
     return (Array.isArray(list) ? list : (list?.items ?? [])).map((item) => item.label);
@@ -80,26 +84,25 @@ function labels(list: proto.CompletionList | proto.CompletionItem[] | null | und
 
 const PROBE = "int extra_value;\nint probe = extra_";
 
-// A completion waits for the PCH of its preamble: the parked PCH keeps it in
-// flight while the buffer moves on.
+// The buffer moves on while the completion's worker works on the old text,
+// then while it waits for the PCH of a new preamble.
 serve.files({
     "pre.h": "#pragma once\n",
     "more.h": "#pragma once\n",
     "main.cpp": `#include "pre.h"\n${PROBE}`,
 })("edit mid-flight still completes", async ({ s }) => {
     const probe = at("main.cpp", "int probe = extra_|");
-    const { served } = await s.inFlight(
-        "pch",
+    await s.compiled("main.cpp");
+    let served: Promise<proto.CompletionItem[] | proto.CompletionList | null> =
+        Promise.resolve(null);
+    await s.inWorker(
+        "completion",
         "main.cpp",
         () => {
-            s.open("main.cpp");
+            served = s.completion(probe);
         },
-        async () => {
-            const served = s.completion(probe);
-            // Any later reply: the server took the completion up before.
-            await s.counts();
+        () => {
             s.edit("main.cpp", { after: "int probe = extra_", insert: "v" });
-            return { served };
         },
     );
     expect(labels(await served)).toContain("extra_value");

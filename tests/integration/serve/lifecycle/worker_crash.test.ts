@@ -314,67 +314,60 @@ crashing(
 
 crashing(
     { "healthy.cpp": HEALTHY, "poison.cpp": poison(0) },
-    // One thread to compile on: the healthy compile queues behind the
-    // poison's and is still in flight when the worker dies. One stateful
-    // worker hosts both documents.
-    { env: { UV_THREADPOOL_SIZE: "1" }, project: { stateful_worker_count: 1 } },
+    // One stateful worker hosts both documents.
+    { project: { stateful_worker_count: 1 } },
 )("victims are not blamed", async ({ s }) => {
-    const compiles = (name: string) =>
-        s.workspace.log("SF-0.log").split(`Compile request: path=${s.workspace.displayPath(name)}`)
-            .length - 1;
-
     await s.compiled("healthy.cpp");
-    s.open("poison.cpp");
+    s.open("poison.cpp", { pull: false });
     for (let round = 1; round <= 3; round++) {
-        // The healthy document's compile is taken along by the poison's
-        // crash: it is resent, not blamed.
-        const started = compiles("healthy.cpp");
+        // The healthy document's compile runs beside the poison's when the
+        // poison crashes the worker: it is resent, not blamed.
+        const started = (await s.counts()).files["healthy.cpp"]?.compile ?? 0;
+        const poison = await s.gate("compile", "poison.cpp");
+        const healthy = await s.gate("compile", "healthy.cpp");
         const poisoned = s.hover(ADD("poison.cpp"));
-        // Any later reply: the server took up the poison's compile before
-        // the healthy edit arrives.
-        await s.counts();
+        await poison.reached();
         s.edit("healthy.cpp", { text: `${HEALTHY}// round ${round}\n` });
-        expect(await s.hover(ADD("healthy.cpp")), `round ${round}`).not.toBeNull();
+        const answered = s.hover(ADD("healthy.cpp"));
+        await healthy.reached();
+        await poison.release();
+        expect(await answered, `round ${round}`).not.toBeNull();
         expect(await poisoned).toBeNull();
+        await healthy.release();
         expect(await crashes(s, "compile", "poison.cpp")).toBe(round);
-        expect(compiles("healthy.cpp")).toBeGreaterThanOrEqual(started + 2);
+        // Run in the worker that died, and again.
+        expect((await s.counts()).files["healthy.cpp"]?.compile).toBeGreaterThanOrEqual(
+            started + 2,
+        );
         s.save("poison.cpp");
     }
     expect(everNoted(s, "healthy.cpp")).toBe(false);
     expect(notes(await s.diagnostics("poison.cpp")).length).toBe(1);
 });
 
-/// Hung compiles: they end only when their worker dies.
-const HUNG: Manifest = {
-    cxx: ["-std=c++23"],
-    units: Object.fromEntries(
-        ["a.cpp", "b.cpp", "c.cpp"].map((name) => [name, ["-fconstexpr-steps=2147483647"]]),
-    ),
-};
-
 crashing(
-    { "a.cpp": HANG, "b.cpp": HANG, "c.cpp": HANG },
+    { "a.cpp": HEALTHY, "b.cpp": HEALTHY, "c.cpp": HEALTHY },
     // One stateful worker compiles all three side by side.
-    { manifest: HUNG, project: { stateful_worker_count: 1 } },
+    { project: { stateful_worker_count: 1 } },
 ).skipIf(process.platform !== "linux")("shared deaths blame nobody", async ({ s }) => {
-    const names = Object.keys(HUNG.units);
+    const names = ["a.cpp", "b.cpp", "c.cpp"];
+    const gated = () => Promise.all(names.map((name) => s.gate("compile", name)));
+    let running = await gated();
     for (const name of names) {
-        s.open(name);
+        s.open(name, { pull: false });
     }
-    const answers = names.map((name) => s.hover(at(name, "long f|ib(")));
+    const answers = names.map((name) => s.hover(ADD(name)));
     // Killed twice, the second time while all three resends compile: the
     // death names none of them and they shared the worker, so none is
     // blamed.
     for (const round of [1, 2]) {
-        // What the server still runs at the deadline of its own sync is
-        // in flight: the compiles, which never end by themselves.
-        const { pending } = await s.client.sync({ deadlineMs: 1_000 });
-        expect(pending, `round ${round}`).toEqual(
-            expect.arrayContaining(names.map((name) => `compile ${s.workspace.displayPath(name)}`)),
-        );
+        await Promise.all(running.map((gate) => gate.reached()));
+        const resends = round === 1 ? await gated() : [];
         for (const pid of s.client.workerPids("SF-")) {
             process.kill(pid, "SIGKILL");
         }
+        await Promise.all(running.map((gate) => gate.release()));
+        running = resends;
     }
     await Promise.all(answers);
     for (const name of names) {

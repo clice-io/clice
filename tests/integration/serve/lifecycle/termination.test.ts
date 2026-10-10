@@ -25,13 +25,13 @@ const hanging = serve
     .skipIf(process.platform !== "linux");
 
 /// Open the hanging file and ask for a hover: the stateful worker runs its
-/// compile, which never ends. What the server still runs at the deadline
-/// of its own sync is in flight.
+/// compile, which never ends. The compile is let go once its work started.
 async function hang(s: Serve): Promise<void> {
+    const gate = await s.gate("compile", "hang.cpp");
     s.open("hang.cpp");
     void s.hover(at("hang.cpp", "long f|ib(")).catch(() => undefined);
-    const { pending } = await s.client.sync({ deadlineMs: 1_000 });
-    expect(pending).toContain(`compile ${s.workspace.displayPath("hang.cpp")}`);
+    await gate.reached();
+    await gate.release();
 }
 
 /// Waits for process `pid`, which is no child of this one, to exit: a

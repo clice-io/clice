@@ -915,7 +915,7 @@ std::vector<std::string> MasterServer::pending_work(const kota::ipc::JSONPeer& e
         }
     }
     for(auto& gate: probe.gates()) {
-        if(gate.parked) {
+        if(gate.parked && !gate.worker.expired()) {
             lines.push_back(
                 std::format("{}: work parked in its worker by gate {}", gate.tag, gate.id));
         }

@@ -13,26 +13,23 @@ const FMT: proto.FormattingOptions = { tabSize: 4, insertSpaces: true };
 
 const CANCELLED = { code: proto.LSPErrorCodes.RequestCancelled };
 
-/// A completion or signature help waits for the PCH of its preamble: the
-/// parked PCH keeps it in flight while it is cancelled; the server then
-/// still answers.
-async function cancelWhileThePchBuilds(s: Serve, method: string, loc: Loc) {
-    const { cancelled } = await s.inFlight(
-        "pch",
+/// A completion or signature help is cancelled while its worker works on
+/// it: the cancel reaches the worker, which stops instead of answering, and
+/// the server goes on serving.
+async function cancelInItsWorker(s: Serve, request: string, method: string, loc: Loc) {
+    await s.compiled("main.cpp");
+    let sent: ReturnType<Serve["send"]> | undefined;
+    await s.inWorker(
+        request,
         "main.cpp",
         () => {
-            s.open("main.cpp");
+            sent = s.send(method, loc);
         },
-        async () => {
-            const request = s.send(method, loc);
-            const cancelled = expect(request.reply).rejects.toMatchObject(CANCELLED);
-            // Any later reply: the server took the request up before.
-            await s.counts();
-            request.cancel();
-            return { cancelled };
+        () => {
+            sent?.cancel();
         },
     );
-    await cancelled;
+    await expect(sent?.reply).rejects.toMatchObject(CANCELLED);
 
     s.open("tiny.cpp");
     expect(await s.hover(at("tiny.cpp", "va|lue"))).not.toBeNull();
@@ -46,7 +43,12 @@ serve.files(
     },
     NO_INDEX,
 )("cancelled completion replies", async ({ s }) => {
-    await cancelWhileThePchBuilds(s, "textDocument/completion", at("main.cpp", "probe = val|"));
+    await cancelInItsWorker(
+        s,
+        "completion",
+        "textDocument/completion",
+        at("main.cpp", "probe = val|"),
+    );
 });
 
 serve.files(
@@ -58,7 +60,12 @@ serve.files(
     },
     NO_INDEX,
 )("cancelled signature help", async ({ s }) => {
-    await cancelWhileThePchBuilds(s, "textDocument/signatureHelp", at("main.cpp", "take(1,| 2)"));
+    await cancelInItsWorker(
+        s,
+        "signatureHelp",
+        "textDocument/signatureHelp",
+        at("main.cpp", "take(1,| 2)"),
+    );
 });
 
 const BASE = "int value = 1;\n";
@@ -82,9 +89,9 @@ serve.files({ "main.cpp": BASE }, NO_INDEX)("cancelled requests while compiling"
     ];
 
     // Each request is cancelled while the compile of an edit it waits
-    // for is parked; the format pair, which pulls no AST, is cancelled
-    // while the last such compile is, which must outlive every cancel
-    // and serve the closing hover.
+    // for is parked; the format pair, which pulls no AST, is cancelled in
+    // its worker while the last such compile is parked, which must outlive
+    // every cancel and serve the closing hover.
     for (const [index, [method, where, extra]] of pulling.entries()) {
         let request: ReturnType<Serve["send"]> | undefined;
         let cancelled: Promise<void> | undefined;
@@ -104,9 +111,18 @@ serve.files({ "main.cpp": BASE }, NO_INDEX)("cancelled requests while compiling"
                         ["textDocument/formatting", { options: FMT }],
                         ["textDocument/rangeFormatting", { range: head, options: FMT }],
                     ] as const) {
-                        const pair = s.send(format, "main.cpp", params);
-                        pair.cancel();
-                        await expect(pair.reply, format).rejects.toMatchObject(CANCELLED);
+                        let pair: ReturnType<Serve["send"]> | undefined;
+                        await s.inWorker(
+                            "format",
+                            "main.cpp",
+                            () => {
+                                pair = s.send(format, "main.cpp", params);
+                            },
+                            () => {
+                                pair?.cancel();
+                            },
+                        );
+                        await expect(pair?.reply, format).rejects.toMatchObject(CANCELLED);
                     }
                 }
             },
@@ -140,5 +156,30 @@ serve.files({ "main.cpp": BASE }, NO_INDEX)("edit supersedes compile", async ({ 
     );
     expect(await first).toMatchObject({ code: proto.LSPErrorCodes.ContentModified });
 
+    expect(await s.hover(at("main.cpp", "int fi|xed"))).not.toBeNull();
+});
+
+serve.files({ "main.cpp": BASE }, NO_INDEX)("edit interrupts the parse", async ({ s }) => {
+    // The edit lands while the worker parses the old text: the master
+    // interrupts the parse, the request that launched it rejects with
+    // ContentModified, and the next request answers on the new content.
+    const { first } = await s.inWorker(
+        "compile",
+        "main.cpp",
+        () => {
+            s.open("main.cpp");
+        },
+        async () => {
+            const first = s.hover(at("main.cpp", "int va|lue")).then(
+                () => null,
+                (error: unknown) => error,
+            );
+            // Any later reply: the server took the hover up before.
+            await s.counts();
+            s.edit("main.cpp", { text: "int fixed;\n" });
+            return { first };
+        },
+    );
+    expect(await first).toMatchObject({ code: proto.LSPErrorCodes.ContentModified });
     expect(await s.hover(at("main.cpp", "int fi|xed"))).not.toBeNull();
 });
