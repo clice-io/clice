@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import * as fs from "node:fs";
 import { runProcess, waitUntil, type CliceClient } from "@clice/tools/client";
 import { cliceExecutable, expect, test } from "../fixtures.ts";
 
@@ -28,12 +29,39 @@ function exitOf(child: ChildProcess): Promise<{ code: number | null; signal: str
     });
 }
 
+/// About 1 MiB of document symbols: more than a pipe's buffer and a
+/// reader's first read hold together on every platform.
+const BIG_FUNCTIONS = 6000;
+
 function bigSource(): string {
     return Array.from(
-        { length: 1500 },
+        { length: BIG_FUNCTIONS },
         (_, i) => `int function_number_${i}(int a, int b) { return a + b; }\n`,
     ).join("");
 }
+
+function spawnInspect(file: string, stdout: "pipe" | number): ChildProcess {
+    return spawn(
+        cliceExecutable(),
+        ["inspect", "document_symbol", file, "--flags", '["-std=c++23"]'],
+        {
+            stdio: ["ignore", stdout, "pipe"],
+        },
+    );
+}
+
+async function endOf(
+    child: ChildProcess,
+): Promise<{ exit: { code: number | null; signal: string | null }; stderr: string }> {
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+    return { exit: await exitOf(child), stderr };
+}
+
+/// How a command ends once its output's reader is gone: by SIGPIPE, as a
+/// command-line tool does, or on Windows, which has none, with 141.
+const READER_GONE =
+    process.platform === "win32" ? { code: 141, signal: null } : { code: null, signal: "SIGPIPE" };
 
 async function waitSymbol(client: CliceClient, name: string): Promise<boolean> {
     return waitUntil(
@@ -300,19 +328,44 @@ test.skipIf(process.platform === "win32")("output survives merged stderr", async
         },
     );
     expect(run.status, run.stdout.slice(-2000)).toBe(0);
-    expect(run.stdout).toContain("function_number_1499");
+    expect(run.stdout).toContain(`function_number_${BIG_FUNCTIONS - 1}`);
 });
 
-test.skipIf(process.platform === "win32")("closed reader ends quietly", async ({ session }) => {
+test("closed reader ends quietly", async ({ session }) => {
     const ws = session.tmpdir();
     ws.write("big.cpp", bigSource());
-    const child = spawn(
-        cliceExecutable(),
-        ["inspect", "document_symbol", ws.path("big.cpp"), "--flags", '["-std=c++23"]'],
-        { stdio: ["ignore", "pipe", "pipe"] },
-    );
-    let stderr = "";
-    child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
-    child.stdout.once("data", () => child.stdout.destroy());
-    expect(await exitOf(child), `stderr: ${stderr}`).toEqual({ code: null, signal: "SIGPIPE" });
+    const child = spawnInspect(ws.path("big.cpp"), "pipe");
+    child.stdout?.once("data", () => child.stdout?.destroy());
+    const { exit, stderr } = await endOf(child);
+    expect(exit, stderr).toEqual(READER_GONE);
+});
+
+test.skipIf(process.platform === "win32")(
+    "closed fifo reader ends quietly",
+    async ({ session }) => {
+        const ws = session.tmpdir();
+        ws.write("main.cpp", "int main() { return 0; }\n");
+        // A shell's `| head` is a pipe, where Node's "pipe" is a socket. Its
+        // write end opens only while a reader is there, which then leaves.
+        const fifo = ws.path("out.fifo");
+        execFileSync("mkfifo", [fifo]);
+        const reader = fs.openSync(fifo, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
+        const writer = fs.openSync(fifo, fs.constants.O_WRONLY);
+        fs.closeSync(reader);
+        const child = spawnInspect(ws.path("main.cpp"), writer);
+        fs.closeSync(writer);
+        const { exit, stderr } = await endOf(child);
+        expect(exit, stderr).toEqual(READER_GONE);
+    },
+);
+
+test.runIf(process.platform === "linux")("full output device fails", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("main.cpp", "int main() { return 0; }\n");
+    const full = fs.openSync("/dev/full", "w");
+    const child = spawnInspect(ws.path("main.cpp"), full);
+    fs.closeSync(full);
+    const { exit, stderr } = await endOf(child);
+    expect(exit, stderr).toEqual({ code: 1, signal: null });
+    expect(stderr).toContain("Cannot write the output: No space left on device");
 });

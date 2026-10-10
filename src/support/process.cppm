@@ -36,4 +36,8 @@ bool process_alive(std::uint32_t pid);
 /// End this process the moment `parent` exits, or now when it already has.
 void exit_with_parent(std::uint32_t parent);
 
+/// Whether `fd` is a pipe or a socket, which Windows reports as a pipe
+/// too: another process reads what is written to it, at its own pace.
+bool is_pipe_or_socket(int fd);
+
 }  // namespace clice

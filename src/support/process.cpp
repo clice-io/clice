@@ -7,6 +7,8 @@ module;
 #endif
 
 #ifdef _WIN32
+#include <io.h>
+
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -14,10 +16,12 @@ module;
 #include <pthread.h>
 #include <signal.h>
 #include <sys/event.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #else
 #include <signal.h>
 #include <sys/prctl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -134,6 +138,16 @@ void exit_with_parent(std::uint32_t parent) {
     if(::getppid() != static_cast<pid_t>(parent)) {
         std::_Exit(1);
     }
+#endif
+}
+
+bool is_pipe_or_socket(int fd) {
+#ifdef _WIN32
+    HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
+    return handle != INVALID_HANDLE_VALUE && ::GetFileType(handle) == FILE_TYPE_PIPE;
+#else
+    struct stat st = {};
+    return ::fstat(fd, &st) == 0 && (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode));
 #endif
 }
 

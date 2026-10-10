@@ -11,13 +11,13 @@ module;
 #include <windows.h>
 #else
 #include <fcntl.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
 module clice;
 
 import :support.log_sinks;
+import :support.process;
 
 namespace clice::logging {
 
@@ -56,20 +56,6 @@ Written write_fd(int fd, llvm::StringRef text) {
     return result;
 }
 
-/// Whether the fd's drain is controlled by an external party. Pipes and
-/// sockets qualify (editors, supervisors); terminals and files do not — a
-/// tty/pty file description is shared with the parent shell, and neither
-/// can exert client-controlled backpressure.
-bool externally_drained(int fd) {
-#ifdef _WIN32
-    HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
-    return handle != INVALID_HANDLE_VALUE && ::GetFileType(handle) == FILE_TYPE_PIPE;
-#else
-    struct stat st = {};
-    return ::fstat(fd, &st) == 0 && (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode));
-#endif
-}
-
 PipeSwitch set_pipe_nonblocking(int fd) {
 #ifdef _WIN32
     HANDLE handle = reinterpret_cast<HANDLE>(::_get_osfhandle(fd));
@@ -92,7 +78,7 @@ PipeSwitch set_pipe_nonblocking(int fd) {
 StderrSink::StderrSink(int fd, std::size_t capacity) : fd(fd), capacity(capacity) {
     // A pipe that cannot be switched must never be written: a blocking
     // write to it is exactly the wedge this sink exists to prevent.
-    if(externally_drained(fd)) {
+    if(is_pipe_or_socket(fd)) {
         pipe = set_pipe_nonblocking(fd);
     }
 }
