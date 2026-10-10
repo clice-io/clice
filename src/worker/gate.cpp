@@ -87,15 +87,4 @@ void park_at_test_gate(llvm::StringRef tag) {
     erase_gate(find());
 }
 
-void release_test_gates() {
-    std::lock_guard lock(gates.mutex);
-    std::erase_if(gates.standing, [](const Gate& gate) { return !gate.parked; });
-    for(auto& gate: gates.standing) {
-        gate.released = true;
-        gate.relay = {};
-    }
-    gates.count.store(gates.standing.size(), std::memory_order_relaxed);
-    gates.changed.notify_all();
-}
-
 }  // namespace clice

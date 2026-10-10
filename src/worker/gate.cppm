@@ -17,8 +17,4 @@ void install_test_gates(kota::ipc::BincodePeer& peer, kota::event_loop& loop);
 /// Park the calling thread while a gate stands for `tag` (see CrashScope).
 void park_at_test_gate(llvm::StringRef tag);
 
-/// Release every gate: the master is gone, and a parked thread or a gate
-/// still standing would keep the worker alive.
-void release_test_gates();
-
 }  // namespace clice

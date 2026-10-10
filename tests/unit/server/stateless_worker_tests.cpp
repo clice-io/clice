@@ -115,32 +115,6 @@ ZEST_CASE(GateParksWork) {
     ZASSERT(test_done);
 }
 
-ZEST_CASE(MasterGoneReleasesGate) {
-    /// The master gone, the parked work goes on and the worker exits.
-    WorkerHandle w;
-    ZASSERT(w.spawn());
-
-    kota::event parked;
-    w.peer->on_notification([&](const worker::GateParkedParams&) { parked.set(); });
-
-    bool test_done = false;
-    w.run([&]() -> kota::task<> {
-        worker::FormatParams params{.file = "/w/main.cpp", .text = "int  x;\n"};
-        w.peer->send_notification(worker::GateParams{.id = 1, .tag = worker::crash_tag(params)});
-        auto format = [&]() -> kota::task<> {
-            [[maybe_unused]] auto result = co_await w.peer->send_request(params);
-        };
-        kota::task_group<> group;
-        group.spawn(format());
-        co_await parked.wait();
-        w.peer->close_output();
-        co_await group.join();
-        test_done = true;
-    });
-
-    ZASSERT(test_done);
-}
-
 ZEST_CASE(BuildPCHRequest) {
     TempDir tmp;
     tmp.touch("test_pch.h", "#pragma once\nint pch_global = 42;\n");

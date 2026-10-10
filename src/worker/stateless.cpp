@@ -598,10 +598,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         });
 
     LOG_INFO("Stateless worker ready, waiting for requests");
-    loop.schedule([](kota::ipc::BincodePeer& peer) -> kota::task<> {
-        co_await peer.run();
-        release_test_gates();
-    }(peer));
+    loop.schedule(peer.run());
     auto ret = loop.run();
     LOG_INFO("Stateless worker exiting with code {}", ret);
     return ret;
