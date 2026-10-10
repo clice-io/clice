@@ -118,17 +118,17 @@ cc_binary(
 # The test helpers: partitions of clice too, which the tests import.
 cc_library(
     name = "unit_test_support",
-    srcs = ["tests/unit/test/tester.cpp"],
+    srcs = ["unittests/utils/tester.cpp"],
     copts = CLICE_COPTS,
     features = ["cpp_modules"],
     local_defines = ['CLICE_TESTS_DATA_DIR=\\"tests/data\\"'],
-    module_interfaces = glob(["tests/unit/**/*.cppm"]),
+    module_interfaces = glob(["unittests/**/*.cppm"]),
     deps = [":driver"],
 )
 
 cc_binary(
-    name = "bin/unit_tests",
-    srcs = ["tests/unit/unit_tests.cc"] + glob(["tests/unit/*/*_tests.cpp"]),
+    name = "bin/unittests",
+    srcs = ["unittests/main.cc"] + glob(["unittests/*/*_tests.cpp"]),
     copts = CLICE_COPTS,
     data = [":resource_dir"],
     features = [
@@ -146,7 +146,7 @@ filegroup(
     name = "dist",
     srcs = [
         ":bin/clice",
-        ":bin/unit_tests",
+        ":bin/unittests",
     ],
 )
 

@@ -53,7 +53,7 @@
       "type": "lldb",
       "request": "launch",
       "name": "Unit Test",
-      "program": "${workspaceFolder}/build/Debug/bin/bin/unit_tests",
+      "program": "${workspaceFolder}/build/Debug/bin/bin/unittests",
       "args": ["--test-filter=${input:filter}"],
       "env": {
         "CLICE_TEST_DATA_DIR": "${workspaceFolder}/tests/data"
@@ -64,7 +64,7 @@
       "type": "lldb",
       "request": "launch",
       "name": "Release Unit Test",
-      "program": "${workspaceFolder}/build/RelWithDebInfo/bin/bin/unit_tests",
+      "program": "${workspaceFolder}/build/RelWithDebInfo/bin/bin/unittests",
       "args": ["--test-filter=${input:filter}"],
       "env": {
         "CLICE_TEST_DATA_DIR": "${workspaceFolder}/tests/data"

@@ -38,7 +38,7 @@ pixi run snap-test Debug
 Bazel 通过 [bazelisk](https://github.com/bazelbuild/bazelisk) 运行。bazelisk 是仓库中的一个 npm 包（由 `npm install` 安装），它会下载 `.bazelversion` 指定的 Bazel 版本：
 
 ```shell
-npx bazel build //:bin/clice //:bin/unit_tests
+npx bazel build //:bin/clice //:bin/unittests
 ```
 
 构建类型即 `bazel/clice.bazelrc` 中定义的配置：

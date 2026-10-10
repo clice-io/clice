@@ -66,6 +66,7 @@ jobs:
               - 'benchmarks/**'
               - 'include/**'
               - 'tests/**'
+              - 'unittests/**'
               - 'tools/**'
               - 'config/**'
               - 'scripts/**'

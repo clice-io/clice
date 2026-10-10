@@ -101,7 +101,7 @@ jobs:
             mv /tmp/server/clice "$DEST"
           else
             mkdir -p "$DEST/bin" "$DEST/lib"
-            # Only the executable: test builds keep unit_tests next to it.
+            # Only the executable: test builds keep unittests next to it.
             for f in clice clice.exe; do
               if [ -f "/tmp/server/bin/$f" ]; then cp "/tmp/server/bin/$f" "$DEST/bin/"; fi
             done

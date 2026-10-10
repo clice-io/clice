@@ -16,7 +16,7 @@ pixi run unit-test Debug    # debug build
 Equivalent to:
 
 ```bash
-./build/RelWithDebInfo/bin/bin/unit_tests --verbose
+./build/RelWithDebInfo/bin/bin/unittests --verbose
 ```
 
 ### Integration Tests

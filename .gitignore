@@ -57,7 +57,7 @@ node_modules/
 # Python & Testing
 __pycache__/
 .pytest_cache/
-tests/unit/Local/
+unittests/Local/
 
 # IDEs & Editors
 /.vscode/*

@@ -23,7 +23,7 @@ common --@spdlog//:std_format=true --@spdlog//:exceptions=false
 common --@mimalloc//:skip_collect_on_exit=true
 
 # The build types, each in a directory of its own: build/<type>/bin is
-# Bazel's output tree of it, clice and unit_tests in its bin/, clang's
+# Bazel's output tree of it, clice and unittests in its bin/, clang's
 # resource directory in its lib/. RelWithDebInfo is the default;
 # `--config=Debug` is an ASan build, on Linux x64 and macOS arm64: xclang has
 # the ASan libclang there, and modules/ a debug configuration.

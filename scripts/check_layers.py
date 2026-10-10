@@ -6,7 +6,7 @@ command <- syntax <- semantic <- compile <- index <- feature.
 Each layer may include, or import the partitions of, downward only: clice is one
 module, clice, whose partitions are named by their path under src/
 (`import :sched.graph;`), and the test helpers by theirs under the repository
-(`tests.unit.test.tester`), which the check verifies too. Bazel enforces the layering
+(`unittests.utils.tester`), which the check verifies too. Bazel enforces the layering
 between its targets, as it checks that every header a source includes belongs to the
 target or its dependencies; the core directories share one target, so only this check
 keeps them acyclic, as partition imports must be. It needs no build.
@@ -83,7 +83,7 @@ def main() -> int:
         (path, path.relative_to(src)) for path in sorted(src.rglob("*.cppm"))
     ] + [
         (path, path.relative_to(root))
-        for path in sorted((root / "tests" / "unit").rglob("*.cppm"))
+        for path in sorted((root / "unittests").rglob("*.cppm"))
     ]
     for path, named_by in partitions:
         name = ".".join(named_by.with_suffix("").parts)

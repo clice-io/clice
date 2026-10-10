@@ -100,7 +100,7 @@ export function normalizeFilePath(target: string, workspace: string): string {
     return `${WORKSPACE_PLACEHOLDER}/${rel.split(path.sep).join("/")}`;
 }
 
-/// Quote a string exactly like tests/unit/test/tester.h yaml_str, so
+/// Quote a string exactly like unittests/utils/tester.cppm yaml_str, so
 /// snapshot bodies read identically across the layers.
 export function yamlStr(s: string): string {
     let out = '"';

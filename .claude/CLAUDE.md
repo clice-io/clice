@@ -5,7 +5,7 @@ clice is a next-generation C++ language server (LSP) built on LLVM/Clang, target
 Detailed knowledge lives in skills — load them at the moments their descriptions state, don't work from memory:
 
 - **cpp-style** — before writing or modifying any C++ code.
-- **write-tests** — before writing or modifying anything under `tests/` (fixture forms, snapshot workflow and rules, pitfalls).
+- **write-tests** — before writing or modifying anything under `tests/` or `unittests/` (fixture forms, snapshot workflow and rules, pitfalls).
 - **pr** — before committing, opening a PR, or checking on an open one (pre-push checks, self-review, CI/review watching).
 - **resolve-comments** — each watch round of an open PR: pulls unresolved review threads, fixes and resolves them, returns a summary.
 - **codex** — before delegating work to the codex CLI: adversarial plan review, code review, debugging, test writing, scoped implementation.
@@ -47,13 +47,13 @@ Distilled from real correction history — these mistakes keep recurring:
 - `src/vfs/` — Disk access: reads, statuses, writes, directory walks; the file table and its freshness checks; the on-disk cache store
 - `src/support/` — Utilities: logging, JSON, string helpers
 
-Beyond `src/`: `tools/` is the TypeScript harness (`@clice/tools`: LSP client, snap machinery, replay, shared protocol types), `tests/` holds all four test suites, `editors/` the vscode/zed/nvim clients. `tools/`, `tests/`, and `editors/vscode` form one npm workspace rooted at the repo top level — run `npm install` and `npm run check` from the root, never inside a package.
+Beyond `src/`: `tools/` is the TypeScript harness (`@clice/tools`: LSP client, snap machinery, replay, shared protocol types), `unittests/` holds the unit tests, `tests/` the other three suites, `editors/` the vscode/zed/nvim clients. `tools/`, `tests/`, and `editors/vscode` form one npm workspace rooted at the repo top level — run `npm install` and `npm run check` from the root, never inside a package.
 
 ## Build & Test
 
 - **pixi** for environments, **Bazel** for building (npm's bazelisk: `npx bazel`; `BUILD.bazel`, `MODULE.bazel`, `.bazelrc`). Build types `Debug` and `RelWithDebInfo` (default), each in its own output directory: `pixi run build [type]` puts clice at `build/[type]/bin/bin/clice`.
 - Four test suites, all must pass before any push:
-  - **Unit** (`tests/unit/`): C++, project's own framework. Test names at most 4 words.
+  - **Unit** (`unittests/`): C++, project's own framework. Test names at most 4 words.
   - **Integration** (`tests/integration/`): TypeScript vitest against a real clice server over LSP.
   - **Smoke** (`tests/smoke/`): recorded LSP sessions replayed via `tools/replay.ts`.
   - **Snap** (`tests/snap/`): feature snapshot corpora, pinned from the inspect (`clice inspect`) and server (real server) paths per each fixture's `verify:` mode. A shared-snapshot mismatch between the two paths is a real bug — never `UPDATE_SNAPSHOTS` over it. Ownership rules and fixture meta live in the write-tests skill.

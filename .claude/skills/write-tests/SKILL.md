@@ -1,6 +1,6 @@
 ---
 name: write-tests
-description: How to write clice integration tests (TypeScript/vitest) — fixture forms, Workspace/CliceClient API, snapshot workflow, hard rules and known pitfalls. Read BEFORE writing or modifying anything under tests/.
+description: How to write clice integration tests (TypeScript/vitest) — fixture forms, Workspace/CliceClient API, snapshot workflow, hard rules and known pitfalls. Read BEFORE writing or modifying anything under tests/ or unittests/.
 ---
 
 # Writing clice integration tests
@@ -234,7 +234,7 @@ deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
   differently in unit tests than under a hosted `clice inspect`.
 - A unit test runs in zest's worker process: one that crashes is reported
   CRASHED under its own name, with what it printed, and the run goes on.
-  A debugger attached to `unit_tests` sees only the runner — take a
+  A debugger attached to `unittests` sees only the runner — take a
   backtrace with `--no-isolation --test-filter=Suite.Case`, which runs the
   test in-process (`lldb --batch -o run -k "bt 40" -- ...`).
 - The Tester's driver is the `clang++` on PATH: the cross-built legs

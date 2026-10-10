@@ -43,7 +43,7 @@ defending against ghosts.
 
 - clice is one C++20 module, `clice`. An interface is a partition,
   `<stem>.cppm` beside its source, named by its path under `src/`
-  (`module clice:vfs.path;`, `tests.unit.*` under `tests/unit/`);
+  (`module clice:vfs.path;`, `unittests.*` under `unittests/`);
   sources are implementation units `.cpp`, entry points `.cc` (`clice.cc`,
   `src/driver/*.cc`).
 - Every module unit but the primary interface (`src/module.cppm`, which
