@@ -1,0 +1,185 @@
+["menu and selection".start.configurations]
+menu = ["debug", "release"]
+active = "debug"
+selected = ""
+default = "debug"
+
+["menu and selection".state]
+value = '{"configuration":"release"}'
+
+["menu and selection".switched.configurations]
+menu = ["debug", "release"]
+active = "debug"
+selected = "release"
+default = "debug"
+
+["restart activates the selection".debug]
+main = ["⟦int release_only = lib();⟧"]
+gated = [
+    { at = "#⟦error⟧ missing RELEASE", severity = "error", message = "missing RELEASE", source = "clang", code = "err_pp_hash_error" },
+]
+
+["restart activates the selection".release]
+main = ["⟦int debug_only = lib();⟧"]
+
+["restart activates the selection".release.menu]
+menu = ["debug", "release"]
+active = "release"
+selected = "release"
+default = "debug"
+
+["restart activates the selection"."debug again"]
+main = ["⟦int release_only = lib();⟧"]
+
+["restart activates the selection"."debug again".menu]
+menu = ["debug", "release"]
+active = "debug"
+selected = "debug"
+default = "debug"
+
+["each configuration keeps its own index".debug]
+workspace_symbols = [
+    { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = lib();" },
+]
+
+["each configuration keeps its own index".release]
+workspace_symbols = [
+    { name = "release_only", kind = "Variable", at = "main.cpp │ int ⟦release_only⟧ = lib();" },
+]
+
+["each configuration keeps its own index"."debug again"]
+workspace_symbols = [
+    { name = "debug_only", kind = "Variable", at = "main.cpp │ int ⟦debug_only⟧ = lib();" },
+]
+
+["pins stay with their configuration".hosts]
+contexts = [
+    { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },
+    { label = "other.cpp", description = "${WS}/other.cpp", host = "other.cpp" },
+]
+
+["pins stay with their configuration".pinned.current_context]
+automatic = false
+
+["pins stay with their configuration".pinned.current_context.context]
+label = "other.cpp"
+description = "${WS}/other.cpp"
+host = "other.cpp"
+
+["pins stay with their configuration".release.current_context]
+automatic = true
+
+["pins stay with their configuration".release.current_context.context]
+label = "main.cpp"
+description = "${WS}/main.cpp"
+host = "main.cpp"
+
+["pins stay with their configuration"."debug again".current_context]
+automatic = false
+
+["pins stay with their configuration"."debug again".current_context.context]
+label = "other.cpp"
+description = "${WS}/other.cpp"
+host = "other.cpp"
+
+["command line overrides the selection".pinned]
+gated = [
+    { at = "#⟦error⟧ missing RELEASE", severity = "error", message = "missing RELEASE", source = "clang", code = "err_pp_hash_error" },
+]
+
+["command line overrides the selection".pinned.menu]
+menu = ["debug", "release"]
+active = "debug"
+selected = "release"
+default = "debug"
+
+["command line overrides the selection".unknown.configurations]
+menu = ["debug", "release"]
+active = "release"
+selected = "release"
+default = "debug"
+
+["unknown selection falls back untouched".menu.configurations]
+menu = ["debug", "release"]
+active = "debug"
+selected = "gone"
+default = "debug"
+
+["unknown selection falls back untouched".state]
+value = '{"configuration": "gone"}'
+
+["batch index per configuration"."$ clice index --configuration release --workers 2"]
+stdout = '''
+Indexed 4 translation units in #s: 6 file shards (# KB), 8 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["batch index per configuration"."$ clice index --stats"]
+stderr = [
+    "error: No index cache at ${WS}/.clice/cache/v14/index/debug~50f0a9a717df05f7; run `clice index` first",
+]
+exit = 1
+
+["batch index per configuration"."$ clice index --workers 2"]
+stdout = '''
+Indexed 4 translation units in #s: 6 file shards (# KB), 7 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["scripted commands reject unknown names"."$ clice index --configuration nope --workers 2"]
+stderr = ["error: --configuration nope names no rule's configuration (debug, release)"]
+exit = 1
+
+["scripted commands reject unknown names"."$ clice index --stats --configuration nope"]
+stderr = ["error: --configuration nope names no rule's configuration (debug, release)"]
+exit = 1
+
+["scripted commands reject unknown names"."$ clice lint --configuration nope --workers 2"]
+stderr = ["error: --configuration nope names no rule's configuration (debug, release)"]
+exit = 2
+
+["scripted commands reject unknown names"."$ clice inspect --configuration nope hover gated.cpp"]
+stderr = ["error: --configuration nope names no rule's configuration (debug, release)"]
+exit = 1
+
+["scripted commands reject unknown names"."$ clice inspect --configuration release --flags \"[\\\"clang++\\\"]\" hover gated.cpp"]
+stderr = ["error: --configuration selects among the workspace's rules; --flags replaces them"]
+exit = 1
+
+["scripted commands reject unknown names"."$ clice inspect hover gated.cpp"]
+stdout = '''
+{
+  "feature": "hover",
+  "files": {
+    "gated.cpp": {
+      "stripped_hash": "d2a756436123c2f67cc1d644b0a8d2a2a69d736a4022d9c188a25ff8911dbff2",
+      "result": null,
+      "markers": null,
+      "error": "no_markers",
+      "diagnostics": [
+        "missing RELEASE"
+      ]
+    }
+  }
+}
+'''
+exit = 0
+
+["scripted commands reject unknown names"."$ clice inspect --configuration release hover gated.cpp"]
+stdout = '''
+{
+  "feature": "hover",
+  "files": {
+    "gated.cpp": {
+      "stripped_hash": "d2a756436123c2f67cc1d644b0a8d2a2a69d736a4022d9c188a25ff8911dbff2",
+      "result": null,
+      "markers": null,
+      "error": "no_markers",
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0

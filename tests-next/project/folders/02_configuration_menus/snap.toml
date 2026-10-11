@@ -1,0 +1,23 @@
+["configuration menu per project".alpha.configurations]
+menu = []
+active = ""
+selected = ""
+default = ""
+
+["configuration menu per project".beta.configurations]
+menu = ["fast", "slow"]
+active = "fast"
+selected = ""
+default = "fast"
+
+["configuration menu per project"."beta switched".configurations]
+menu = ["fast", "slow"]
+active = "fast"
+selected = "slow"
+default = "fast"
+
+["configuration menu per project"."no file".configurations]
+menu = []
+active = ""
+selected = ""
+default = ""

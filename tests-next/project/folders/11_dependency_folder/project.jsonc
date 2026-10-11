@@ -1,0 +1,5 @@
+{
+  // The dependency folder has no database.
+  "units": { "app/main.cpp": ["-Idep/include", "-DIN_APP"] },
+  "databases": { "app": ["app/main.cpp"] }
+}

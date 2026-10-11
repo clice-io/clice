@@ -1,0 +1,3 @@
+{
+  "units": { "main.cpp": ["-DBROKEN", "-DKEPT", "-include", "prefix.h"], "other.cpp": [] }
+}

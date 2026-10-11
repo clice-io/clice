@@ -11,5 +11,6 @@ test(
         t.disk.database({ "src/main.cpp": [] });
         const s = await t.start();
         expect(await s.errors("src/main.cpp")).toEqual([]);
+        await t.show("hosts", s.contexts("src/config.h"));
     },
 );

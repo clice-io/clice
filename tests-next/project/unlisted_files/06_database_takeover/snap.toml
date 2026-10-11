@@ -1,0 +1,23 @@
+["database takes over, then drops".saved]
+workspace_symbols = [
+    { name = "regen_fn", kind = "Function", at = "src/new.cpp │ int ⟦regen_fn⟧() { return 1; }" },
+]
+
+["database takes over, then drops".listed]
+workspace_symbols = [
+    { name = "listed_fn", kind = "Function", at = "src/new.cpp │ int ⟦listed_fn⟧() { return 2; }" },
+]
+
+["database takes over, then drops".dropped]
+workspace_symbols = []
+
+["database takes over, then drops"."no record"]
+workspace_symbols = [
+    { name = "sentinel_fn", kind = "Function", at = "src/s.cpp │ int ⟦sentinel_fn⟧() { return 3; }" },
+]
+
+["database takes over, then drops"."saved again"]
+workspace_symbols = [
+    { name = "regen_fn", kind = "Function", at = "src/new.cpp │ int ⟦regen_fn⟧() { return 1; }" },
+    { name = "sentinel_fn", kind = "Function", at = "src/s.cpp │ int ⟦sentinel_fn⟧() { return 3; }" },
+]

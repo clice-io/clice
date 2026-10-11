@@ -1,0 +1,5 @@
+{
+  // The build directory clice.toml names does not exist until the test
+  // runs the build.
+  "databases": {}
+}

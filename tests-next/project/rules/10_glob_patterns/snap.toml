@@ -1,0 +1,14 @@
+[test."tests/unit/math_test.cpp"]
+errors = []
+
+[test."src/core/alpha_test.cpp"]
+errors = []
+
+[test."src/core/alpha.cpp"]
+errors = []
+
+[test."src/core/zeta.cpp"]
+errors = []
+
+[test."lib/util.cpp"]
+errors = []

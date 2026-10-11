@@ -1,0 +1,15 @@
+["vanished database yields to present".build]
+inactive_lines = ["⟦int moved = 1;⟧"]
+
+["vanished database yields to present".out]
+main = ["⟦int original = 1;⟧"]
+"main contexts" = [
+    { label = "-DFEATURE -DMOVED", description = "${WS}", host = "main.cpp" },
+    { label = "-DFEATURE", description = "${WS}", host = "main.cpp" },
+]
+"only contexts" = [
+    { label = "-DFEATURE", description = "${WS}", host = "only.cpp" },
+]
+
+["vanished database yields to present".back]
+inactive_lines = ["⟦int moved = 1;⟧"]

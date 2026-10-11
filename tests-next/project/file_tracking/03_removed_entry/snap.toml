@@ -1,0 +1,7 @@
+["cdb removed entry recheck".listed]
+contexts = [
+    { label = "gone.cpp", description = "${WS}/gone.cpp", host = "gone.cpp" },
+]
+
+["cdb removed entry recheck".removed]
+contexts = []

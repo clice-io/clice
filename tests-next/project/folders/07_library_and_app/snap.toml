@@ -1,0 +1,31 @@
+["shared header symbol listed once".shared_fn]
+workspace_symbols = [
+    { name = "shared_fn", kind = "Function", at = "lib/include/lib.h │ inline int ⟦shared_fn⟧() { return 2; }" },
+]
+
+["definition crosses folders".lib_fn]
+definition = ["lib/src/lib.cpp │ int ⟦lib_fn⟧() { return shared_fn(); }"]
+
+["references cross folders".lib_fn]
+references = [
+    "app/main.cpp │ int main() { return ⟦lib_fn⟧(); }",
+    "lib/include/lib.h │ int ⟦lib_fn⟧();",
+    "int ⟦lib_fn⟧() { return shared_fn(); }",
+]
+
+["definition follows an open buffer".lib_fn]
+definition = ["lib/src/lib.cpp │ int ⟦lib_fn⟧() { return shared_fn(); }"]
+
+["an open file answers through its project".lib_fn]
+references = [
+    "int main() { return ⟦lib_fn⟧(); }",
+    "lib/include/lib.h │ int ⟦lib_fn⟧();",
+    "lib/src/lib.cpp │ int ⟦lib_fn⟧() { return shared_fn(); }",
+]
+
+["save reaches every folder".lib_fn]
+references = [
+    "int main() { return ⟦lib_fn⟧(); }",
+    "lib/include/lib.h │ int ⟦lib_fn⟧();",
+    "lib/src/lib.cpp │ int ⟦lib_fn⟧() { return shared_fn(); }",
+]

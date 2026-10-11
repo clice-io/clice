@@ -1,0 +1,11 @@
+["untagged rules have no menu".menu.configurations]
+menu = []
+active = ""
+selected = ""
+default = ""
+
+["untagged rules have no menu"."left behind".configurations]
+menu = []
+active = ""
+selected = "debug"
+default = ""

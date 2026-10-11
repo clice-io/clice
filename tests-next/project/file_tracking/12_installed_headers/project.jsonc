@@ -1,0 +1,6 @@
+{
+  // A sysroot inside the workspace: the driver adds its include directory
+  // itself, so the headers there count as installed ones, like a
+  // toolchain's.
+  "databases": {}
+}

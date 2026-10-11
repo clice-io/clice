@@ -1,0 +1,4 @@
+["member hosts its headers".alone]
+errors = [
+    { at = "⟦Ctx⟧ use();", severity = "error", message = "unknown type name 'Ctx'", source = "clang", code = "err_unknown_typename" },
+]

@@ -1,0 +1,6 @@
+[test."main.cpp"]
+inactive = ["⟦int second_command = 2;⟧"]
+contexts = [
+    { label = "-DFIRST", description = "${WS}", host = "main.cpp" },
+    { label = "-DSECOND", description = "${WS}", host = "main.cpp" },
+]

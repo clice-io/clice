@@ -1,0 +1,2 @@
+[[rules]]
+default_command = 'clang++ -std=c++20 "-Iinclude dir" -DNAME="\"a b c\""'

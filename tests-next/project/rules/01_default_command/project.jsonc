@@ -1,0 +1,4 @@
+{
+  // No database: the rule's default command is the only source.
+  "databases": {}
+}

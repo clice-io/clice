@@ -1,0 +1,11 @@
+["overlapping databases offer both".first]
+inactive_lines = ["⟦int release_build = 1;⟧"]
+
+["overlapping databases offer both".contexts]
+contexts = [
+    { label = "-DDEBUG", description = "${WS}", host = "main.cpp" },
+    { label = "-DRELEASE", description = "${WS}", host = "main.cpp" },
+]
+
+["overlapping databases offer both".switched]
+inactive_lines = ["⟦int debug_build = 1;⟧"]

@@ -1,0 +1,4 @@
+["saved partition joins module".before]
+errors = [
+    { at = "import ⟦a;⟧", severity = "error", message = "module 'a' not found", source = "clang", code = "err_module_not_found" },
+]

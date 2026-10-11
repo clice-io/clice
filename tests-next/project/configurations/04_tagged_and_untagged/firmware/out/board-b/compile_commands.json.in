@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "${WS}/firmware/main.c",
+    "arguments": ["clang", "-std=c23", "-DBOARD_B", "-fsyntax-only", "${WS}/firmware/main.c"]
+  }
+]

@@ -1,0 +1,9 @@
+["saved module survives restart"."restored member"]
+workspace_symbols = [
+    { name = "b_local", kind = "Function", at = "b.cppm │ int ⟦b_local⟧() { return 3; }" },
+]
+
+["deleted member comes back".deleted]
+errors = [
+    { at = "import ⟦b;⟧", severity = "error", message = "module 'b' not found", source = "clang", code = "err_module_not_found" },
+]

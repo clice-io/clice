@@ -1,0 +1,19 @@
+["index skips excluded units".indexed]
+main_sym = [
+    { name = "main_sym", kind = "Function", at = "main.cpp │ int ⟦main_sym⟧() { return 0; }" },
+]
+tp_sym = []
+
+["index skips excluded units".reloaded]
+main_sym = [
+    { name = "main_sym", kind = "Function", at = "main.cpp │ int ⟦main_sym⟧() { return 0; }" },
+]
+tp_sym = []
+
+["excluded unit escalates when read".symbols]
+document_symbols = [
+    { name = "tp_sym", kind = "Function", at = "int ⟦tp_sym⟧() { return 1; }" },
+]
+
+["excluded unit escalates when read".pushed]
+pushes = [[]]

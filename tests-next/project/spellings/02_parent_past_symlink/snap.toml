@@ -1,0 +1,4 @@
+["parent segment past a symlinked directory".hosts]
+contexts = [
+    { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },
+]

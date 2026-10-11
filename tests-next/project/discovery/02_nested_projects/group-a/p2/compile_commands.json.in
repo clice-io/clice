@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "${WS}/group-a/p2",
+    "file": "${WS}/group-a/p2/main.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DP2", "-fsyntax-only", "${WS}/group-a/p2/main.cpp"]
+  },
+  {
+    "directory": "${WS}/group-a/p2",
+    "file": "${WS}/group-a/shared/generated.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DP2", "-fsyntax-only", "${WS}/group-a/shared/generated.cpp"]
+  }
+]

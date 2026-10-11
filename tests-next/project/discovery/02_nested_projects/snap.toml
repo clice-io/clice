@@ -1,0 +1,56 @@
+["nested projects load on open".generated]
+inactive = ["⟦int generated_for = 2;⟧"]
+contexts = [
+    { label = "-std=c++20 -DP1", description = "${WS}/group-a/p1", host = "group-a/shared/generated.cpp" },
+    { label = "-std=c++20 -DP2", description = "${WS}/group-a/p2", host = "group-a/shared/generated.cpp" },
+]
+
+["nested projects load on open".indexed]
+workspace_symbols = [
+    { name = "p1_main", kind = "Function", at = "group-a/p1/main.cpp │ int ⟦p1_main⟧() {" },
+    { name = "p2_main", kind = "Function", at = "group-a/p2/main.cpp │ int ⟦p2_main⟧() {" },
+]
+
+["inspect loads the databases above its inputs"."$ clice inspect hover group-a/p1/main.cpp"]
+stdout = '''
+{
+  "feature": "hover",
+  "files": {
+    "main.cpp": {
+      "stripped_hash": "265a3f5751275e7169957137d69d887dda3829b7ed0aca551d8cf6d095b62b86",
+      "result": null,
+      "markers": null,
+      "error": "no_markers",
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0
+
+["inspect loads the databases above its inputs"."$ clice inspect hover group-a/p2/main.cpp"]
+stdout = '''
+{
+  "feature": "hover",
+  "files": {
+    "main.cpp": {
+      "stripped_hash": "ac58542755e1a2636bcaf92efa0e3fecc5b2bbaec8c98ab273dec81d13345ffc",
+      "result": null,
+      "markers": null,
+      "error": "no_markers",
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0
+
+["batch indexing finds nested projects"."$ clice index --workers 2"]
+stdout = '''
+Indexed 3 translation units in #s: 3 file shards (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = [
+    'warning: No rule names a compilation database; the 2 found apply in this order, an earlier one winning for a file both list: ${WS}/group-a/p1/compile_commands.json, ${WS}/group-a/p2/compile_commands.json. To switch between them instead, declare each on a tagged rule: [[rules]] configuration = "..." compile_commands = ["..."]',
+]
+exit = 0

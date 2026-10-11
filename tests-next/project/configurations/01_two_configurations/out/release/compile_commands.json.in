@@ -1,0 +1,22 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "${WS}/main.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DRELEASE", "-fsyntax-only", "${WS}/main.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "${WS}/other.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DRELEASE", "-DOTHER", "-fsyntax-only", "${WS}/other.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "${WS}/gated.cpp",
+    "arguments": ["clang++", "-std=c++20", "-DRELEASE", "-fsyntax-only", "${WS}/gated.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "${WS}/shared.cpp",
+    "arguments": ["clang++", "-std=c++20", "-fsyntax-only", "${WS}/shared.cpp"]
+  }
+]

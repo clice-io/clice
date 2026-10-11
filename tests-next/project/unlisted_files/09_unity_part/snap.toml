@@ -1,0 +1,4 @@
+["included source keeps host".missing]
+errors = [
+    { at = '#include ⟦"part.cpp"⟧', severity = "error", message = "'part.cpp' file not found", source = "clang", code = "err_pp_file_not_found" },
+]

@@ -1,0 +1,4 @@
+["header borrows default command host".hosts]
+contexts = [
+    { label = "main.cpp", description = "${WS}/src/main.cpp", host = "src/main.cpp" },
+]

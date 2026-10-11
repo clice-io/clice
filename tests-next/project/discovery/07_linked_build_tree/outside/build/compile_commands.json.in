@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}/project/sub",
+    "file": "${WS}/project/sub/main.cpp",
+    "arguments": ["clang++", "-c", "${WS}/project/sub/main.cpp"]
+  }
+]

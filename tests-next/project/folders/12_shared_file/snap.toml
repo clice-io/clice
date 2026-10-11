@@ -1,0 +1,26 @@
+["own configuration of another folder".entries]
+contexts = [
+    { label = "-DFIRST", description = "${WS}", host = "alpha/shared.cpp" },
+    { label = "-DSECOND", description = "${WS}", host = "alpha/shared.cpp" },
+]
+
+["own configuration of another folder".switched.current_context]
+automatic = false
+
+["own configuration of another folder".switched.current_context.context]
+label = "-DSECOND"
+description = "${WS}"
+host = "alpha/shared.cpp"
+
+["a closed file keeps its choice".reopened.current_context]
+automatic = false
+
+["a closed file keeps its choice".reopened.current_context.context]
+label = "-DSECOND"
+description = "${WS}"
+host = "alpha/shared.cpp"
+
+["shared source listed once".symbols]
+workspace_symbols = [
+    { name = "shared", kind = "Function", at = "alpha/shared.cpp │ int ⟦shared⟧() { return 0; }" },
+]

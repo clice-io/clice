@@ -1,0 +1,13 @@
+["build that climbs out of its directory".links]
+document_links = [
+    { at = '#include ⟦"lib.h"⟧', target = "include/lib.h" },
+    { at = '#include ⟦"../common/c.h"⟧', target = "common/c.h" },
+]
+
+["build that climbs out of its directory".lib_fn]
+definition = ["include/lib.h │ int ⟦lib_fn⟧(int);"]
+
+["build that climbs out of its directory".common_fn]
+workspace_symbols = [
+    { name = "common_fn", kind = "Function", at = "common/c.h │ inline int ⟦common_fn⟧() { return 1; }" },
+]

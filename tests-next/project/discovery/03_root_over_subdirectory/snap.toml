@@ -1,0 +1,12 @@
+["root wins over subdirectory"."main.cpp"]
+inactive_lines = ["⟦int from_sub = 1;⟧"]
+
+["the order is named"."$ clice index --workers 2"]
+stdout = '''
+Indexed 2 translation units in #s: 2 file shards (# KB), 4 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = [
+    'warning: No rule names a compilation database; the 2 found apply in this order, an earlier one winning for a file both list: ${WS}/compile_commands.json, ${WS}/sub/compile_commands.json. To switch between them instead, declare each on a tagged rule: [[rules]] configuration = "..." compile_commands = ["..."]',
+]
+exit = 0

@@ -1,0 +1,4 @@
+["linked root database".before]
+errors = [
+    { at = "#⟦error⟧ missing FEATURE", severity = "error", message = "missing FEATURE", source = "clang", code = "err_pp_hash_error" },
+]

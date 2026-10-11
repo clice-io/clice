@@ -1,0 +1,5 @@
+["borrowed command notes missing includes"."new.cpp"]
+diagnostics = [
+    { at = '⟦⟧#include "nope.h"', severity = "warning", message = "No compilation database entry for this file (compile command was borrowed from a nearby translation unit), so some includes may not be found. Configure compile_commands.json for accurate diagnostics.", source = "clice", code = "inferred-compile-command" },
+    { at = '#include ⟦"nope.h"⟧', severity = "error", message = "'nope.h' file not found", source = "clang", code = "err_pp_file_not_found" },
+]

@@ -1,0 +1,16 @@
+["created header reaches includers".missing]
+errors = [
+    { at = '#include ⟦"gen.h"⟧', severity = "error", message = "'gen.h' file not found", source = "clang", code = "err_pp_file_not_found" },
+    { at = "int use_a() { return ⟦make⟧(); }", severity = "error", message = "use of undeclared identifier 'make'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+["created header reaches includers".failed]
+wrong = "the new header is indexed on its own before its includers, finds no command and stays marked failed, though its includers index it"
+value = ["gen.h"]
+
+["created header reaches includers".created]
+references = [
+    "closed.cpp │ int use_b() { return ⟦make⟧(); }",
+    "int ⟦make⟧();",
+    "open.cpp │ int use_a() { return ⟦make⟧(); }",
+]

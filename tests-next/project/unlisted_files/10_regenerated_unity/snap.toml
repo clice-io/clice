@@ -1,0 +1,4 @@
+["regenerated unity takes member".member]
+errors = [
+    { at = "#⟦error⟧ needs the unity file", severity = "error", message = "needs the unity file", source = "clang", code = "err_pp_hash_error" },
+]

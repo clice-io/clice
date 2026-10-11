@@ -1,0 +1,11 @@
+[[rules]]
+patterns = ["**/*_test.cpp"]
+append = ["-DTESTING"]
+
+[[rules]]
+patterns = ["{src,lib}/**"]
+append = ["-DPRODUCT"]
+
+[[rules]]
+patterns = ["src/core/[a-m]*.cpp"]
+append = ["-DFIRST_HALF"]

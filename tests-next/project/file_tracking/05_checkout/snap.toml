@@ -1,0 +1,16 @@
+["checkout updates workspace".v1]
+errors = [
+    { at = 'static_assert(⟦VALUE == 2⟧, "");', severity = "error", message = "static assertion failed due to requirement '1 == 2': ", source = "clang", code = "err_static_assert_requirement_failed" },
+]
+
+["checkout updates workspace"."v1 alpha"]
+references = [
+    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
+    "inline int ⟦alpha⟧() { return 1; }",
+]
+
+["checkout updates workspace".v2]
+beta = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦beta⟧() { return 2; }"]
+added = [
+    { name = "checkout_added", kind = "Function", at = "closed.cpp │ int ⟦checkout_added⟧() { return 3; }" },
+]

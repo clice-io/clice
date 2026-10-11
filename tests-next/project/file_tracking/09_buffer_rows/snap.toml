@@ -1,0 +1,22 @@
+["dependency change keeps buffer rows".edited]
+references = [
+    "int use_a() { return ⟦shared_sym⟧; }",
+    "b.cpp │ int use_b() { return ⟦shared_sym⟧; }",
+    "c.cpp │ int ⟦shared_sym⟧ = 1;",
+    "h.h │ extern int ⟦shared_sym⟧;",
+]
+
+["dependency change keeps buffer rows".moved]
+references = [
+    "int use_a() { return ⟦shared_sym⟧; }",
+    "b.cpp │ int use_b() { return ⟦shared_sym⟧; }",
+    "c.cpp │ int ⟦shared_sym⟧ = 1;",
+]
+
+["dependency change keeps buffer rows".reindexed]
+references = [
+    "int use_a() { return ⟦shared_sym⟧; }",
+    "b.cpp │ int use_b() { return ⟦shared_sym⟧; }",
+    "c.cpp │ int ⟦shared_sym⟧ = 1;",
+    "h.h │ extern int ⟦shared_sym⟧;",
+]

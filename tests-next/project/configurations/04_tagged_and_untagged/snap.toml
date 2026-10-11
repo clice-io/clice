@@ -1,0 +1,5 @@
+["tagged rules switch while untagged stay".board-a]
+inactive_lines = ["⟦int board = 2;⟧"]
+
+["tagged rules switch while untagged stay".board-b]
+inactive_lines = ["⟦int board = 1;⟧"]

@@ -1,0 +1,22 @@
+["query lists the members"."$ clice query --method projectFiles"]
+stdout = '''
+{
+  "result": {
+    "files": [
+      {
+        "path": "${WS}/src/a.cpp",
+        "kind": "source",
+        "moduleName": null
+      },
+      {
+        "path": "${WS}/src/new.cpp",
+        "kind": "source",
+        "moduleName": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0

@@ -1,0 +1,6 @@
+[[rules]]
+patterns = ["lib/**"]
+compile_commands = ["lib/cmake"]
+
+[[rules]]
+compile_commands = ["cmake"]

@@ -1,0 +1,10 @@
+[test."main.cpp"]
+diagnostics = [
+    { at = "#⟦error⟧ missing FROM_BUILD", severity = "error", message = "missing FROM_BUILD", source = "clang", code = "err_pp_hash_error" },
+]
+
+[test.guidance]
+wrong = "the workspace holds build/debug/compile_commands.json, two levels down where discovery does not look; the note says there is none instead of naming it"
+value = [
+    "No compile_commands.json found in workspace ${WS}. Compile commands will be guessed; see https://docs.clice.io/clice/guide/quick-start#project-setup for setup.",
+]

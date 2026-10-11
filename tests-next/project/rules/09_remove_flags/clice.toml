@@ -1,0 +1,11 @@
+[[rules]]
+patterns = ["main.cpp"]
+remove = ["-DBROKEN", "-include", "prefix.h"]
+
+[[rules]]
+patterns = ["other.cpp"]
+append = ["-DFEATURE"]
+
+[[rules]]
+patterns = ["other.cpp"]
+remove = ["-DFEATURE"]

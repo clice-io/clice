@@ -1,0 +1,5 @@
+[test."main.cpp"]
+contexts = [
+    { label = "-DFROM_A", description = "${WS}", host = "main.cpp" },
+    { label = "-DFROM_B", description = "${WS}", host = "main.cpp" },
+]

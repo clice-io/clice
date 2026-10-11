@@ -1,0 +1,9 @@
+default_configuration = "fast"
+
+[[rules]]
+configuration = "fast"
+compile_commands = ["compile_commands.json"]
+
+[[rules]]
+configuration = "slow"
+compile_commands = ["compile_commands.json"]

@@ -1,0 +1,4 @@
+["dependency folder borrows the application".hosts]
+contexts = [
+    { label = "main.cpp", description = "${WS}/app/main.cpp", host = "app/main.cpp" },
+]

@@ -1,0 +1,7 @@
+[[rules]]
+configuration = "debug"
+append = ["-DDEBUG"]
+
+[[rules]]
+configuration = "release"
+append = ["-DRELEASE"]

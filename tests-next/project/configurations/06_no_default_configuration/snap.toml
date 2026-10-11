@@ -1,0 +1,8 @@
+[test.menu.configurations]
+menu = ["debug", "release"]
+active = "debug"
+selected = ""
+default = "debug"
+
+[test."main.cpp"]
+inactive_lines = ["⟦int release_build = 1;⟧"]

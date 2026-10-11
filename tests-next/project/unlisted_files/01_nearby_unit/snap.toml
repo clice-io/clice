@@ -1,0 +1,26 @@
+["nearby unit lends its command"."lone.c"]
+errors = [
+    { at = "#⟦error⟧ missing FEATURE", severity = "error", message = "missing FEATURE", source = "clang", code = "err_pp_hash_error" },
+]
+
+["nearby unit lends its command"."lender changed"]
+errors = [
+    { at = "#⟦error⟧ missing FEATURE", severity = "error", message = "missing FEATURE", source = "clang", code = "err_pp_hash_error" },
+]
+
+["inspect borrows the same way"."$ clice inspect hover zsrc/new.cpp"]
+stdout = '''
+{
+  "feature": "hover",
+  "files": {
+    "new.cpp": {
+      "stripped_hash": "63c44ae1005e4f0eeaba429e38876a9b9bc5a1bf226f7d311830841033a2f9d9",
+      "result": null,
+      "markers": null,
+      "error": "no_markers",
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0

@@ -1,0 +1,6 @@
+["shared macro references cross folders".LIB_LIMIT]
+references = [
+    "app/main.cpp │ int main() { return ⟦LIB_LIMIT⟧ + lib_fn(); }",
+    "lib/include/lib.h │ #define ⟦LIB_LIMIT⟧ 4",
+    "int lib_fn() { return ⟦LIB_LIMIT⟧; }",
+]

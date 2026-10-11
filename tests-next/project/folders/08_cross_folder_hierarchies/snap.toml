@@ -1,0 +1,22 @@
+["hierarchies cross folders".callers]
+incoming_calls = [
+    {
+        name = "main",
+        kind = "Function",
+        at = "app/main.cpp │ int ⟦main⟧() { return lib_fn(); }",
+        sites = ["app/main.cpp │ int main() { return ⟦lib_fn⟧(); }"],
+    },
+]
+
+["hierarchies cross folders".subtypes]
+subtypes = [
+    { name = "Square", kind = "Struct", at = "app/main.cpp │ struct ⟦Square⟧ : Shape {" },
+]
+
+["hierarchies cross folders".implementations]
+implementation = ["app/main.cpp │ struct ⟦Square⟧ : Shape {"]
+
+["hierarchies cross folders".supertypes]
+supertypes = [
+    { name = "Shape", kind = "Struct", at = "lib/include/shape.h │ struct ⟦Shape⟧ {" },
+]

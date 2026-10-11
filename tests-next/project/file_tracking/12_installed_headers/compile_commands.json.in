@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "${WS}/main.cpp",
+    "arguments": ["clang++", "--target=x86_64-unknown-linux-gnu", "--sysroot=${WS}/sysroot", "-fsyntax-only", "${WS}/main.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "${WS}/check.cpp",
+    "arguments": ["clang++", "--target=x86_64-unknown-linux-gnu", "--sysroot=${WS}/sysroot", "-fsyntax-only", "${WS}/check.cpp"]
+  }
+]

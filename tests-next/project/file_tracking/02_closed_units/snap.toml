@@ -1,0 +1,14 @@
+["cdb new entry indexed".added]
+workspace_symbols = [
+    { name = "feature_off", kind = "Function", at = "lib.cpp │ int ⟦feature_off⟧() { return 0; }" },
+]
+
+["cdb flag change reindexes closed".before]
+workspace_symbols = [
+    { name = "feature_off", kind = "Function", at = "lib.cpp │ int ⟦feature_off⟧() { return 0; }" },
+]
+
+["cdb flag change reindexes closed".after]
+workspace_symbols = [
+    { name = "feature_on", kind = "Function", at = "lib.cpp │ int ⟦feature_on⟧() { return 1; }" },
+]

@@ -1,0 +1,4 @@
+["same stamp cdb rewrite applied".old]
+errors = [
+    { at = "#⟦error⟧ missing NEW", severity = "error", message = "missing NEW", source = "clang", code = "err_pp_hash_error" },
+]

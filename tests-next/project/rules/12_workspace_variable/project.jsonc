@@ -1,0 +1,4 @@
+{
+  "units": { "main.cpp": ["-DFROM_BUILD"] },
+  "databases": { "build": ["main.cpp"] }
+}

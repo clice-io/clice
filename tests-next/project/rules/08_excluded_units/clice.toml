@@ -1,0 +1,3 @@
+[[rules]]
+patterns = ["third_party/**"]
+index = false

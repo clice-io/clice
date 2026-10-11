@@ -1,0 +1,11 @@
+[test.menu.configurations]
+menu = ["board-a", "board-b"]
+active = "board-a"
+selected = ""
+default = "board-a"
+
+[test.board-a]
+inactive_lines = ["⟦#define BOARD_ID 2⟧"]
+
+[test.board-b]
+inactive_lines = ["⟦#define BOARD_ID 1⟧"]

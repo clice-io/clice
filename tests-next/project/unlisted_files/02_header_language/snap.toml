@@ -1,0 +1,10 @@
+["header hosts match the language"."types.hpp"]
+errors = [
+    { at = "#⟦error⟧ missing CXX", severity = "error", message = "missing CXX", source = "clang", code = "err_pp_hash_error" },
+]
+contexts = []
+
+["header hosts match the language"."plain.h"]
+contexts = [
+    { label = "impl.c", description = "${WS}/c/impl.c", host = "c/impl.c" },
+]

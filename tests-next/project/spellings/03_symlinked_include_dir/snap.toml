@@ -1,0 +1,15 @@
+["header found through a symlinked directory".hover.hover]
+markdown = '''
+### function `get_x`
+
+---
+→ `int`
+Parameters:
+- `int p`
+
+---
+```cpp
+inline int get_x(int p)
+```
+'''
+range = "inline int ⟦get_x⟧(int p) { return p; }"

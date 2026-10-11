@@ -1,0 +1,1 @@
+#define INSTALLED 1
