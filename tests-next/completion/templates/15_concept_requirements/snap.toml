@@ -1,0 +1,8 @@
+[answers.member]
+wrong = "should complete as methods with their parameter lists, draw() and resize(int, int)"
+
+[answers.member.completion]
+items = [
+    { label = "draw", kind = "Keyword" },
+    { label = "resize", kind = "Keyword" },
+]

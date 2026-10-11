@@ -1,0 +1,53 @@
+[default."main.cpp"]
+inlay_hints = [
+    {
+        line = "auto twice(int value)⟨-> int⟩ {",
+        hints = [
+            { label = "-> int", kind = "Type", padding = [] },
+        ],
+    },
+    {
+        line = "Point origin{⟨.x=⟩0, ⟨.y=⟩0};",
+        hints = [
+            { label = ".x=", kind = "Type", padding = [] },
+            { label = ".y=", kind = "Type", padding = [] },
+        ],
+    },
+    {
+        line = "auto doubled⟨: int⟩ = twice(⟨value:⟩4);",
+        hints = [
+            { label = ": int", kind = "Type", padding = [] },
+            { label = "value:", kind = "Parameter", padding = ["right"] },
+        ],
+    },
+    {
+        line = "int scaled = scale(⟨factor:⟩3);",
+        hints = [
+            { label = "factor:", kind = "Parameter", padding = ["right"] },
+        ],
+    },
+]
+
+["no parameters"."main.cpp"]
+inlay_hints = [
+    { line = "auto twice(int value)⟨-> int⟩ {" },
+    { line = "Point origin{⟨.x=⟩0, ⟨.y=⟩0};" },
+    { line = "auto doubled⟨: int⟩ = twice(4);" },
+]
+
+["no deduced types"."main.cpp"]
+inlay_hints = [
+    { line = "Point origin{⟨.x=⟩0, ⟨.y=⟩0};" },
+    { line = "auto doubled = twice(⟨value:⟩4);" },
+    { line = "int scaled = scale(⟨factor:⟩3);" },
+]
+
+["no designators"."main.cpp"]
+inlay_hints = [
+    { line = "auto twice(int value)⟨-> int⟩ {" },
+    { line = "auto doubled⟨: int⟩ = twice(⟨value:⟩4);" },
+    { line = "int scaled = scale(⟨factor:⟩3);" },
+]
+
+[disabled."main.cpp"]
+inlay_hints = []

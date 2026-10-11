@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto callback⟨: (lambda)⟩ = [captured⟨: int⟩ = compute()](int x)⟨-> int⟩ {" },
+    { line = "auto bare⟨: (lambda)⟩ = []⟨-> double⟩ {" },
+]

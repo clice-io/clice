@@ -1,0 +1,4 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "overloaded(⟨width:⟩1, ⟨height:⟩2);" },
+]

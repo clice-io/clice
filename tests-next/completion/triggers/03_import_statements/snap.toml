@@ -1,0 +1,17 @@
+[answers.interface_colon.completion]
+items = [
+    { label = ":api", kind = "Module" },
+]
+
+[answers.colon.completion]
+items = [
+    { label = ":api", kind = "Module" },
+    { label = ":util", kind = "Module" },
+]
+
+[answers.space.completion]
+items = [
+    { label = ":api", kind = "Module" },
+    { label = ":util", kind = "Module" },
+    { label = "math", kind = "Module" },
+]

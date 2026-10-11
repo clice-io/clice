@@ -1,0 +1,45 @@
+[answers."main.cpp"]
+inlay_hints = [
+    {
+        line = "Outer o{⟨.a=⟩{⟨.x=⟩1, ⟨.y=⟩2}, ⟨.b.x=⟩3};",
+        hints = [
+            {
+                label = ".a=",
+                links = [
+                    { value = "a", target = "Inner ⟦a⟧;" },
+                ],
+            },
+            {
+                label = ".x=",
+                links = [
+                    { value = "x", target = "int ⟦x⟧;" },
+                ],
+            },
+            {
+                label = ".y=",
+                links = [
+                    { value = "y", target = "int ⟦y⟧;" },
+                ],
+            },
+            {
+                label = ".b.x=",
+                links = [
+                    { value = "b", target = "Inner ⟦b⟧;" },
+                    { value = "x", target = "int ⟦x⟧;" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "State s{⟨.level.depth=⟩42};",
+        hints = [
+            {
+                label = ".level.depth=",
+                links = [
+                    { value = "level", target = "} ⟦level⟧;" },
+                    { value = "depth", target = "int ⟦depth⟧;" },
+                ],
+            },
+        ],
+    },
+]

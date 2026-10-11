@@ -1,0 +1,6 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "config.setTimeout(⟨timeout_millis:⟩5);" },
+    { line = "consume(⟨sink:⟩std::move(value));" },
+    { line = "std::move(⟨first:⟩buffer, ⟨last:⟩buffer + 2, ⟨result:⟩buffer + 2);" },
+]

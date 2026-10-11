@@ -1,0 +1,17 @@
+[answers.names.completion]
+items = [
+    { label = ":core", kind = "Module", insert = ":core", replace = "import ⟦⟧;" },
+    { label = ":detail", kind = "Module", insert = ":detail", replace = "import ⟦⟧;" },
+    { label = "lib", kind = "Module", insert = "lib", replace = "import ⟦⟧;" },
+]
+
+[answers.partitions.completion]
+items = [
+    { label = ":core", kind = "Module", insert = ":core", replace = "import ⟦:⟧;" },
+    { label = ":detail", kind = "Module", insert = ":detail", replace = "import ⟦:⟧;" },
+]
+
+[answers.open.completion]
+items = [
+    { label = ":core", kind = "Module", insert = ":core;", replace = "import ⟦:co⟧" },
+]

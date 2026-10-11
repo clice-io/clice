@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "Array<int, 2> pair{⟨[0]=⟩1, ⟨[1]=⟩2};" },
+    { line = "Array<Array<int, 2>, 2> grid{⟨[0][0]=⟩1, ⟨[0][1]=⟩2, ⟨[1][0]=⟩3, ⟨[1][1]=⟩4};" },
+]

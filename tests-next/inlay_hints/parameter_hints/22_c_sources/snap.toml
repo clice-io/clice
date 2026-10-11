@@ -1,0 +1,5 @@
+[answers."main.c"]
+inlay_hints = [
+    { line = "struct point p = {⟨.x=⟩1, ⟨.y=⟩2};" },
+    { line = "draw(⟨width:⟩10, ⟨height:⟩20);" },
+]

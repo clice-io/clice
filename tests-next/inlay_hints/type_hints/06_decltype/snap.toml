@@ -1,0 +1,10 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "decltype(source())⟨: int⟩ value = 1;" },
+    { line = "decltype(auto) forwarded⟨: int &⟩ = ref;" },
+    { line = "const decltype(0)⟨: int⟩& bound = value;" },
+    { line = "decltype(0)⟨: int⟩ declared();" },
+    { line = "auto trailing() -> decltype(0)⟨: int⟩;" },
+    { line = "using Alias = Wrap<decltype(0)⟨: int⟩, float>;" },
+    { line = "auto constructed⟨: int⟩ = decltype(0)⟨: int⟩{};" },
+]

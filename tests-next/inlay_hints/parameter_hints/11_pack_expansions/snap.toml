@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "plot(⟨x:⟩0, ts...);" },
+    { line = "relay(⟨y:⟩1, ⟨z:⟩2);" },
+]

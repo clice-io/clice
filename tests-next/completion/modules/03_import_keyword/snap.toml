@@ -1,0 +1,9 @@
+[keyword.keyword.completion]
+items = [
+    { label = "import", kind = "Keyword" },
+]
+
+["module names".declared.completion]
+items = [
+    { label = "app_value()", kind = "Function", detail = "int" },
+]

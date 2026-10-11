@@ -1,0 +1,6 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "apply(⟨scale:⟩value);" },
+    { line = "holder.member(⟨item:⟩value);" },
+    { line = "Holder<T>::static_member(⟨slot:⟩value);" },
+]

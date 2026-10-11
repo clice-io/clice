@@ -1,0 +1,4 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "Mixed m{Empty(), ⟨.b=⟩1};" },
+]

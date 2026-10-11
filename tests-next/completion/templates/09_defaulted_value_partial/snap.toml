@@ -1,0 +1,14 @@
+[answers.member.completion]
+items = [
+    { label = "Gemm", kind = "Class" },
+    { label = "partial_only", kind = "Field", detail = "int" },
+    { label = "partial_stages", kind = "Variable", detail = "const int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.scope.completion]
+items = [
+    { label = "Gemm", kind = "Class" },
+    { label = "partial_only", kind = "Field", detail = "int" },
+    { label = "partial_stages", kind = "Variable", detail = "const int" },
+]

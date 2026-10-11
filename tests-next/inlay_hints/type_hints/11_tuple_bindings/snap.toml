@@ -1,0 +1,4 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto [x⟨: int⟩, y⟨: int⟩] = make();" },
+]

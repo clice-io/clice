@@ -1,0 +1,5 @@
+[answers.pos.completion]
+items = [
+    { label = "folded(int x)", kind = "Variable", detail = "void" },
+    { label = "for", kind = "Keyword" },
+]

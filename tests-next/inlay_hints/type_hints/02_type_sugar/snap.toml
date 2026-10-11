@@ -1,0 +1,14 @@
+[default."main.cpp"]
+inlay_hints = [
+    { line = "auto aliased⟨: Integer⟩ = make_alias();" },
+    { line = "auto shortened⟨: Compact⟩ = make_compact();" },
+    { line = "auto defaulted⟨: Defaulted<float>⟩ = make_defaulted();" },
+]
+
+[configured."main.cpp"]
+inlay_hints = [
+    { line = "auto aliased⟨: Integer⟩ = make_alias();" },
+    { line = "auto shortened⟨: Compact⟩ = make_compact();" },
+    { line = "auto dropped⟨: extremely_long_template_name<Integer, Integer, Integer>⟩ = make_long();" },
+    { line = "auto defaulted⟨: Defaulted<float>⟩ = make_defaulted();" },
+]

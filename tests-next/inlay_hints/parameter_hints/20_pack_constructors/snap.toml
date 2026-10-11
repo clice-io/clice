@@ -1,0 +1,7 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "consume(⟨a:⟩Foo{args...}, ⟨b:⟩1);" },
+    { line = "relay(⟨a:⟩Foo{}, ⟨b:⟩42);" },
+    { line = "relay(⟨a:⟩42, ⟨b:⟩42);" },
+    { line = "construct(⟨x:⟩42);" },
+]

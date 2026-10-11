@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = 'printf(⟨Format:⟩"%d", 42);' },
+    { line = "return s.x[⟨row:⟩1][⟨column:⟩2];" },
+]

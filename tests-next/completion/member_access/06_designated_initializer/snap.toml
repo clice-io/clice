@@ -1,0 +1,21 @@
+[answers.plain.completion]
+items = [
+    { label = "x", kind = "Field", detail = "int" },
+    { label = "y", kind = "Field", detail = "int" },
+]
+
+[answers.partial.completion]
+items = [
+    { label = "stride", kind = "Field", detail = "int" },
+]
+
+[answers.no_fields.completion]
+items = []
+
+[answers.unnamed_primary.completion]
+items = [
+    { label = "stride", kind = "Field", detail = "int" },
+]
+
+[answers.unnamed_partial.completion]
+items = []

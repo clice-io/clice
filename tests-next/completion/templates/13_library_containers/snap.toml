@@ -1,0 +1,23 @@
+[answers.concrete.completion]
+items = [
+    { label = "get_allocator()", kind = "Method", detail = "allocator_type" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "operator[](int index)", kind = "Method", detail = "reference" },
+    { label = "size()", kind = "Method", detail = "int" },
+    { label = "vector", kind = "Class" },
+    { label = "~vector()", kind = "Method", detail = "void" },
+]
+
+[answers.dependent]
+wrong = "get_allocator, brought in by a using-declaration, should be a Method with its signature as on the concrete vector, and the protected base vector_base and its destructor should not be offered (10-12#4)"
+
+[answers.dependent.completion]
+items = [
+    { label = "get_allocator", kind = "Text" },
+    { label = "operator[](int index)", kind = "Method", detail = "reference" },
+    { label = "size()", kind = "Method", detail = "int" },
+    { label = "template", kind = "Keyword" },
+    { label = "vector", kind = "Class" },
+    { label = "vector_base", kind = "Class" },
+    { label = "~vector_base()", kind = "Method", detail = "void" },
+]

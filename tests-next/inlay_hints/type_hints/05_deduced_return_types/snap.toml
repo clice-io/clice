@@ -1,0 +1,8 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto answer()⟨-> int⟩ {" },
+    { line = "auto& ref_answer()⟨-> int &⟩ {" },
+    { line = "auto deducible(int x)⟨-> int⟩;" },
+    { line = "auto deducible(int x)⟨-> int⟩ {" },
+    { line = "operator auto()⟨-> int⟩ {" },
+]

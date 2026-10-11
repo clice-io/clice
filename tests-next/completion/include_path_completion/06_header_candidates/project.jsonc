@@ -1,0 +1,5 @@
+{
+  "flags": ["-Iinc", "-Iinclude", "-isystem", "sys"],
+  "units": { "main.cpp": [] },
+  "compiles": false
+}

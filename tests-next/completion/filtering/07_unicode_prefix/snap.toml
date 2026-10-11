@@ -1,0 +1,4 @@
+[answers.pos.completion]
+items = [
+    { label = "变量一", kind = "Variable", detail = "int", replace = "int v = ⟦变⟧;" },
+]

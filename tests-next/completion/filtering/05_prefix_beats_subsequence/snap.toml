@@ -1,0 +1,5 @@
+[answers.pos.completion]
+items = [
+    { label = "format_output", kind = "Variable", detail = "int" },
+    { label = "fast_math_operation", kind = "Variable", detail = "int" },
+]

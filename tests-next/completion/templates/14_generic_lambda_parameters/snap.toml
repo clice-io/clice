@@ -1,0 +1,17 @@
+[answers.called]
+wrong = "should list the members of Point, the type the lambda is called with (clangd#493)"
+
+[answers.called.completion]
+items = []
+
+[answers.algorithm]
+wrong = "should list the members of Point, the type the lambda is called with (clangd#493)"
+
+[answers.algorithm.completion]
+items = []
+
+[answers.two_parameters]
+wrong = "should list the members of Point, the type the lambda is called with (clangd#493)"
+
+[answers.two_parameters.completion]
+items = []

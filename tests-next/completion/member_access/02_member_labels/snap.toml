@@ -1,0 +1,25 @@
+[answers.conversion.completion]
+items = [
+    { label = "Account", kind = "Class" },
+    { label = "balance", kind = "Field", detail = "int" },
+    { label = "bazzzz(int a, int b)", kind = "Method", detail = "int" },
+    { label = "operator Wallet()", kind = "Method" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "~Account()", kind = "Method", detail = "void" },
+]
+
+[answers.instantiated.completion]
+items = [
+    { label = "Box", kind = "Class" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "value", kind = "Field", detail = "int" },
+    { label = "~Box()", kind = "Method", detail = "void" },
+]
+
+[answers.namespaced.completion]
+items = [
+    { label = "Account", kind = "Class" },
+    { label = "balance", kind = "Field", detail = "int" },
+    { label = "operator=(const Account &)", kind = "Method", detail = "Account &" },
+    { label = "~Account()", kind = "Method", detail = "void" },
+]

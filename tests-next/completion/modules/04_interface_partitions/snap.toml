@@ -1,0 +1,4 @@
+[answers.partitions.completion]
+items = [
+    { label = ":core", kind = "Module", insert = ":core", replace = "import ⟦:⟧;" },
+]

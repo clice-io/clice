@@ -1,0 +1,4 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "Point p{/*a=*/1, .c = 2, /* .d = */ 3, ⟨.e=⟩4};" },
+]

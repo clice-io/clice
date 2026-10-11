@@ -1,0 +1,44 @@
+[answers."main.cpp"]
+inlay_hints = [
+    {
+        line = "auto pair⟨: Pair<Widget, Gadget>⟩ = make_pair();",
+        hints = [
+            {
+                label = ": Pair<Widget, Gadget>",
+                links = [
+                    { value = "Pair", target = "struct ⟦Pair⟧ {};" },
+                    { value = "Widget", target = "widget.h │ struct ⟦Widget⟧;" },
+                    { value = "Gadget", target = "widget.h │ struct ⟦Gadget⟧ {};" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "auto found⟨: const Widget *⟩ = find(⟨id:⟩1);",
+        hints = [
+            {
+                label = ": const Widget *",
+                links = [
+                    { value = "Widget", target = "widget.h │ struct ⟦Widget⟧;" },
+                ],
+            },
+            {
+                label = "id:",
+                links = [
+                    { value = "id", target = "const Widget* find(int ⟦id⟧);" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "resize(⟨width:⟩2);",
+        hints = [
+            {
+                label = "width:",
+                links = [
+                    { value = "width", target = "widget.h │ void resize(int ⟦width⟧);" },
+                ],
+            },
+        ],
+    },
+]

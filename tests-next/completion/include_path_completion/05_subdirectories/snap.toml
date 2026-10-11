@@ -1,0 +1,10 @@
+[answers.quoted.completion]
+items = [
+    { label = "nested.h", kind = "File", insert = 'nested.h"', replace = '#include "snap_dir/⟦"⟧' },
+    { label = "other.hpp", kind = "File", insert = 'other.hpp"', replace = '#include "snap_dir/⟦"⟧' },
+]
+
+[answers.angled.completion]
+items = [
+    { label = "nested.h", kind = "File", insert = "nested.h>", replace = "#include <snap_dir/⟦ne>⟧" },
+]

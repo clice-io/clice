@@ -1,0 +1,38 @@
+[default."main.cpp"]
+inlay_hints = []
+
+[configured.struct_end]
+inlay_hints = [
+    { line = "};⟨// struct Widget⟩" },
+]
+
+[configured.while_end]
+inlay_hints = [
+    { line = "}⟨// while total < width⟩" },
+]
+
+[configured.else_if_end]
+inlay_hints = [
+    { line = "}⟨// if⟩" },
+]
+
+[configured.long_condition_end]
+inlay_hints = [
+    { line = "}⟨// if⟩" },
+]
+
+[configured.function_end]
+inlay_hints = [
+    { line = "}⟨// area⟩" },
+]
+
+[configured.one_line_end]
+inlay_hints = []
+
+[configured.long_name_end]
+inlay_hints = []
+
+[configured.namespace_end]
+inlay_hints = [
+    { line = "}⟨// namespace detail⟩" },
+]

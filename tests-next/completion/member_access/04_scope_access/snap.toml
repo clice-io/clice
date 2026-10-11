@@ -1,0 +1,10 @@
+[answers.pos.completion]
+items = [
+    { label = "Config", kind = "Class" },
+    { label = "Nested", kind = "Class" },
+    { label = "instance_field", kind = "Field", detail = "int" },
+    { label = "make(int seed)", kind = "Method", detail = "int" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "shared_count", kind = "Variable", detail = "int" },
+    { label = "~Config()", kind = "Method", detail = "void" },
+]

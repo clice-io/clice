@@ -1,0 +1,67 @@
+[answers."main.cpp"]
+wrong = "last:, the parameter after the pack, should link to auto last as first: links to auto first"
+inlay_hints = [
+    {
+        line = "int spread(auto first⟨: int⟩, auto... rest, auto last) {",
+        hints = [
+            { label = ": int", links = [] },
+        ],
+    },
+    {
+        line = "resize(⟨width:⟩800, ⟨height:⟩600);",
+        hints = [
+            {
+                label = "width:",
+                links = [
+                    { value = "width", target = "void resize(int ⟦width⟧, int height) {}" },
+                ],
+            },
+            {
+                label = "height:",
+                links = [
+                    { value = "height", target = "void resize(int width, int ⟦height⟧) {}" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "fill(⟨value:⟩1);",
+        hints = [
+            {
+                label = "value:",
+                links = [
+                    { value = "value", target = "void fill(int ⟦_value⟧);" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "wrap(⟨width:⟩3, ⟨height:⟩4);",
+        hints = [
+            {
+                label = "width:",
+                links = [
+                    { value = "width", target = "void resize(int ⟦width⟧, int height) {}" },
+                ],
+            },
+            {
+                label = "height:",
+                links = [
+                    { value = "height", target = "void resize(int width, int ⟦height⟧) {}" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "int c = spread<int, char>(⟨first:⟩1, 'x', ⟨last:⟩2);",
+        hints = [
+            {
+                label = "first:",
+                links = [
+                    { value = "first", target = "int spread(auto ⟦first⟧, auto... rest, auto last) {" },
+                ],
+            },
+            { label = "last:", links = [] },
+        ],
+    },
+]

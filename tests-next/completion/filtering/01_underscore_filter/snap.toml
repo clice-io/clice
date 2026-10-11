@@ -1,0 +1,10 @@
+[answers.hidden.completion]
+items = [
+    { label = "public_thing", kind = "Variable", detail = "int" },
+]
+
+[answers.typed_underscore.completion]
+items = [
+    { label = "_Pragma", kind = "Constant" },
+    { label = "_private_thing", kind = "Variable", detail = "int" },
+]

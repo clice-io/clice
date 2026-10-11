@@ -1,0 +1,9 @@
+[answers.bare.completion]
+items = [
+    { label = "math", kind = "Module", insert = "math;", replace = "import ⟦⟧" },
+]
+
+[answers.prefix.completion]
+items = [
+    { label = "math", kind = "Module", insert = "math;", replace = "import ⟦ma⟧" },
+]

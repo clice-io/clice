@@ -1,0 +1,21 @@
+["unsaved buffers".local.completion]
+items = [
+    { label = "fresh_total", kind = "Variable", detail = "int" },
+]
+
+["unsaved buffers"."header unsaved".completion]
+items = [
+    { label = "Widget", kind = "Class" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "width", kind = "Field", detail = "int" },
+    { label = "~Widget()", kind = "Method", detail = "void" },
+]
+
+["unsaved buffers"."header saved".completion]
+items = [
+    { label = "Widget", kind = "Class" },
+    { label = "height", kind = "Field", detail = "int" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "width", kind = "Field", detail = "int" },
+    { label = "~Widget()", kind = "Method", detail = "void" },
+]

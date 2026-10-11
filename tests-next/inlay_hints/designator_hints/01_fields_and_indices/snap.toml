@@ -1,0 +1,6 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "Point p{⟨.x=⟩1, ⟨.y=⟩2 + 2};" },
+    { line = "int coordinates[2] = {⟨[0]=⟩7, ⟨[1]=⟩8};" },
+    { line = "Array<int, 2> pair = {⟨[0]=⟩0, ⟨[1]=⟩1};" },
+]

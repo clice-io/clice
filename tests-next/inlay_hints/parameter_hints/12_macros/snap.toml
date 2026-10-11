@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "report(⟨value:⟩PI);" },
+    { line = "ASSERT(check(⟨status:⟩42) == 0);" },
+]

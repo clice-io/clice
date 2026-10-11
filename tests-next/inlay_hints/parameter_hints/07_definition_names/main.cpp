@@ -1,0 +1,17 @@
+void resize(int, int);
+
+void fill(int _value, int __count);
+
+int scale(int good);
+
+void use() {
+    resize(800, 600);
+    fill(1, 2);
+    scale(7);
+}
+
+void resize(int width, int height) {}
+
+int scale(int bad) {
+    return bad;
+}

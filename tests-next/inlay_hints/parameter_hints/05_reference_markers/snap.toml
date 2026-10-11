@@ -1,0 +1,6 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "mutate(⟨&value:⟩v);" },
+    { line = "observe(⟨value:⟩v);" },
+    { line = "take(⟨value:⟩static_cast<int&&>(v));" },
+]

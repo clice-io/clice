@@ -1,0 +1,4 @@
+[answers.pos.completion]
+items = [
+    { label = "true", kind = "Keyword", insert = "true" },
+]

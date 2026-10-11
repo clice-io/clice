@@ -1,0 +1,4 @@
+{
+  // The member accesses dangle at the completion point.
+  "compiles": false
+}

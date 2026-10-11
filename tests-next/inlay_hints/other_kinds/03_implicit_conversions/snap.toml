@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+wrong = "should show the conversion of 42 to double (clangd#2254)"
+inlay_hints = [
+    { line = "process(⟨val:⟩42);" },
+]

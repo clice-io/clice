@@ -1,0 +1,7 @@
+[answers.pos.completion]
+items = [
+    { label = "Account", kind = "Class" },
+    { label = "balance", kind = "Field", detail = "int" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "~Account()", kind = "Method", detail = "void" },
+]

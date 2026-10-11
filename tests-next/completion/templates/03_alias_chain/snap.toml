@@ -1,0 +1,7 @@
+[answers.pos.completion]
+items = [
+    { label = "Vec", kind = "Class" },
+    { label = "data", kind = "Field", detail = "T *" },
+    { label = "size()", kind = "Method", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]

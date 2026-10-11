@@ -1,0 +1,11 @@
+[answers.pos.completion]
+items = [
+    { label = "ByPointer", kind = "Class" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "pointer_field", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+    { label = "~ByPointer()", kind = "Method", detail = "void" },
+]
+
+[answers.filtered.completion]
+items = []

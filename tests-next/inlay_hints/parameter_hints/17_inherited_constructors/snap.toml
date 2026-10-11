@@ -1,0 +1,3 @@
+[answers."main.cpp"]
+wrong = "a call of an inherited constructor should name its parameter, width: before 7 (clangd#1364)"
+inlay_hints = []

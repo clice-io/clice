@@ -1,0 +1,9 @@
+[answers.variable.completion]
+items = [
+    { label = "counter", kind = "Variable", detail = "int" },
+]
+
+[answers.function.completion]
+items = [
+    { label = "maximum", kind = "Variable", detail = "int" },
+]

@@ -1,0 +1,5 @@
+[answers.pos.completion]
+items = [
+    { label = "new_thing(int x)", kind = "Function", detail = "int" },
+    { label = "old_thing(int x)", kind = "Function", detail = "int", deprecated = true },
+]

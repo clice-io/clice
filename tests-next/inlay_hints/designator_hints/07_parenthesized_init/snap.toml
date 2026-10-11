@@ -1,0 +1,3 @@
+[answers."main.cpp"]
+wrong = "parenthesized aggregate initialization should show .x= and .y= as braces do (clangd#2540)"
+inlay_hints = []

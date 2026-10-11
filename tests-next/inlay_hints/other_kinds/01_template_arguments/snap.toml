@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+wrong = "should also name the template parameter the explicit argument binds, T: before float (clangd#2583)"
+inlay_hints = [
+    { line = "float converted = convert<float>(⟨val:⟩42);" },
+]

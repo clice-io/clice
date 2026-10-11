@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "Constructible built{⟨amount:⟩5};" },
+    { line = "Copyable original{⟨.x=⟩1};" },
+]

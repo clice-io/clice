@@ -1,0 +1,21 @@
+[answers.initializer.completion]
+items = [
+    { label = "Color::Red", kind = "EnumMember", detail = "Color", filter = "Red" },
+    { label = "reinterpret_cast", kind = "Keyword" },
+    { label = "requires", kind = "Keyword" },
+]
+
+[answers.argument.completion]
+items = [
+    { label = "Color::Green", kind = "EnumMember", detail = "Color", filter = "Green" },
+]
+
+[answers.namespace_enum.completion]
+items = [
+    { label = "ns::Apple", kind = "EnumMember", detail = "ns::Fruit", filter = "Apple" },
+]
+
+[answers.case_label.completion]
+items = [
+    { label = "Color::Red", kind = "EnumMember", detail = "Color", filter = "Red" },
+]

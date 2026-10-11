@@ -1,0 +1,4 @@
+[answers.body]
+inlay_hints = [
+    { line = "auto doubled⟨: int⟩ = scale(⟨factor:⟩value, ⟨offset:⟩value);" },
+]

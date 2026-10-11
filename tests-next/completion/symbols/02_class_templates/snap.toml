@@ -1,0 +1,5 @@
+[answers.pos.completion]
+items = [
+    { label = "Foo<typename T>", kind = "Class" },
+    { label = "for", kind = "Keyword" },
+]

@@ -1,0 +1,4 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "Outer o{⟨.a=⟩{⟨.x=⟩1, ⟨.y=⟩2}, ⟨.b.x=⟩3};" },
+]

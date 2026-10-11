@@ -1,0 +1,21 @@
+[default.object.completion]
+items = [
+    { label = "RETRY_LIMIT", kind = "Constant", insert = "RETRY_LIMIT" },
+]
+
+[default.function.completion]
+items = [
+    { label = "CLAMP(value, limit)", kind = "Function", insert = "CLAMP" },
+    { label = "class", kind = "Keyword", insert = "class" },
+]
+
+[configured.object.completion]
+items = [
+    { label = "RETRY_LIMIT", kind = "Constant", insert = "RETRY_LIMIT" },
+]
+
+[configured.function.completion]
+items = [
+    { label = "CLAMP(value, limit)", kind = "Function", insert = "CLAMP(${1:value}, ${2:limit})", snippet = true },
+    { label = "class", kind = "Keyword", insert = "class" },
+]

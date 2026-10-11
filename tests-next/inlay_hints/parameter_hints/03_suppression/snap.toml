@@ -1,0 +1,8 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "draw(width, ⟨height:⟩h);" },
+    { line = "draw(/*margin=*/⟨width:⟩6, ⟨height:⟩7);" },
+    { line = "draw(⟨width:⟩5, height);" },
+    { line = "draw(⟨width:⟩Sizes::width, ⟨height:⟩3);" },
+    { line = "draw(⟨width:⟩4, ⟨height:⟩s.height);" },
+]

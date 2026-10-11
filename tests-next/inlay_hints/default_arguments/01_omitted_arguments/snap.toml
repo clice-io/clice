@@ -1,0 +1,36 @@
+[default."main.cpp"]
+inlay_hints = [
+    {
+        line = "log(⟨level:⟩2);",
+        hints = [
+            {
+                label = "level:",
+                links = [
+                    { value = "level", target = "void log(int ⟦level⟧, bool flush = true, int repeat = 1);" },
+                ],
+            },
+        ],
+    },
+]
+
+[configured."main.cpp"]
+inlay_hints = [
+    {
+        line = "log(⟨level:⟩2⟨, flush: true, repeat: 1⟩);",
+        hints = [
+            {
+                label = "level:",
+                links = [
+                    { value = "level", target = "void log(int ⟦level⟧, bool flush = true, int repeat = 1);" },
+                ],
+            },
+            {
+                label = ", flush: true, repeat: 1",
+                links = [
+                    { value = "flush", target = "void log(int level, bool ⟦flush⟧ = true, int repeat = 1);" },
+                    { value = "repeat", target = "void log(int level, bool flush = true, int ⟦repeat⟧ = 1);" },
+                ],
+            },
+        ],
+    },
+]

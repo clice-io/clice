@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto x⟨: S1⟩ = make_s1();" },
+    { line = "auto y⟨: S2::Nested<int>⟩ = make_nested();" },
+]

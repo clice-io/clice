@@ -1,0 +1,5 @@
+[answers.dotted.completion]
+items = [
+    { label = "my.app", kind = "Module", insert = "my.app;", replace = "import ⟦my.⟧" },
+    { label = "my.io", kind = "Module", insert = "my.io;", replace = "import ⟦my.⟧" },
+]

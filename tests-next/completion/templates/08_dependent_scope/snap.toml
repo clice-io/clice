@@ -1,0 +1,19 @@
+[answers.nested.completion]
+items = [
+    { label = "Vec", kind = "Class" },
+    { label = "capacity", kind = "Variable", detail = "int" },
+    { label = "size()", kind = "Method", detail = "int" },
+    { label = "value_type", kind = "TypeParameter" },
+]
+
+[answers.partial.completion]
+items = [
+    { label = "Traits", kind = "Class" },
+    { label = "pointer_only", kind = "Variable", detail = "int" },
+]
+
+[answers.enumeration.completion]
+items = [
+    { label = "Fast", kind = "EnumMember", detail = "Modes::Mode" },
+    { label = "Slow", kind = "EnumMember", detail = "Modes::Mode" },
+]

@@ -1,0 +1,6 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto value⟨: int⟩ = make();" },
+    { line = "const auto& ref⟨: const int &⟩ = value;" },
+    { line = "auto* ptr⟨: int *⟩ = &value;" },
+]

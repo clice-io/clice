@@ -1,0 +1,61 @@
+[answers.subscript.completion]
+items = [
+    { label = "Vec", kind = "Class" },
+    { label = "begin()", kind = "Method", detail = "iterator" },
+    { label = "front()", kind = "Method", detail = "reference" },
+    { label = "operator[](int index)", kind = "Method", detail = "reference" },
+    { label = "push_back(const T &value)", kind = "Method", detail = "void" },
+    { label = "size()", kind = "Method", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.call.completion]
+items = [
+    { label = "Vec", kind = "Class" },
+    { label = "begin()", kind = "Method", detail = "iterator" },
+    { label = "front()", kind = "Method", detail = "reference" },
+    { label = "operator[](int index)", kind = "Method", detail = "reference" },
+    { label = "push_back(const T &value)", kind = "Method", detail = "void" },
+    { label = "size()", kind = "Method", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.const_object.completion]
+items = [
+    { label = "Vec", kind = "Class" },
+    { label = "front()", kind = "Method", detail = "const_reference" },
+    { label = "operator[](int index)", kind = "Method", detail = "const_reference" },
+    { label = "size()", kind = "Method", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.const_member.completion]
+items = [
+    { label = "Vec", kind = "Class" },
+    { label = "front()", kind = "Method", detail = "const_reference" },
+    { label = "operator[](int index)", kind = "Method", detail = "const_reference" },
+    { label = "size()", kind = "Method", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.mutable_member.completion]
+items = [
+    { label = "Vec", kind = "Class" },
+    { label = "begin()", kind = "Method", detail = "iterator" },
+    { label = "front()", kind = "Method", detail = "reference" },
+    { label = "operator[](int index)", kind = "Method", detail = "reference" },
+    { label = "push_back(const T &value)", kind = "Method", detail = "void" },
+    { label = "size()", kind = "Method", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.iterator.completion]
+items = [
+    { label = "Vec", kind = "Class" },
+    { label = "begin()", kind = "Method", detail = "iterator" },
+    { label = "front()", kind = "Method", detail = "reference" },
+    { label = "operator[](int index)", kind = "Method", detail = "reference" },
+    { label = "push_back(const T &value)", kind = "Method", detail = "void" },
+    { label = "size()", kind = "Method", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]

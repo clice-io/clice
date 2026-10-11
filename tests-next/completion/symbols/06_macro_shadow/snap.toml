@@ -1,0 +1,9 @@
+[answers.object.completion]
+items = [
+    { label = "GUARD", kind = "Constant" },
+]
+
+[answers.function.completion]
+items = [
+    { label = "BOUND(lo, hi)", kind = "Function" },
+]

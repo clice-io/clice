@@ -1,0 +1,7 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "S defaulted{⟨param:⟩3};" },
+    { line = "Holder() : member(⟨param:⟩42) {}" },
+    { line = "S a(⟨param:⟩1);" },
+    { line = "S b(⟨param:⟩2);" },
+]

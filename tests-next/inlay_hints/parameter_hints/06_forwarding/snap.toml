@@ -1,0 +1,7 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "wrap(⟨first:⟩1, ⟨second:⟩2);" },
+    { line = "call_with(⟨a:⟩1, ⟨b:⟩2, ⟨c:⟩3);" },
+    { line = "chain(⟨a:⟩32, ⟨b:⟩42);" },
+    { line = "invoke_with(⟨f:⟩[](int width, int height)⟨-> void⟩ {}, ⟨width:⟩3, ⟨height:⟩4);" },
+]

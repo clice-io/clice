@@ -1,0 +1,24 @@
+["plain client"."main.cpp"]
+inlay_hints = [
+    {
+        line = "auto widget⟨: Widget⟩ = make();",
+        hints = [
+            { label = ": Widget", links = [] },
+        ],
+    },
+]
+
+["inlay hint client"."main.cpp"]
+inlay_hints = [
+    {
+        line = "auto widget⟨: Widget⟩ = make();",
+        hints = [
+            {
+                label = ": Widget",
+                links = [
+                    { value = "Widget", target = "widget.h │ struct ⟦Widget⟧;" },
+                ],
+            },
+        ],
+    },
+]

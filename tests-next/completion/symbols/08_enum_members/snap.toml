@@ -1,0 +1,11 @@
+[answers.scoped.completion]
+items = [
+    { label = "Blue", kind = "EnumMember", detail = "Color" },
+    { label = "Green", kind = "EnumMember", detail = "Color" },
+    { label = "Red", kind = "EnumMember", detail = "Color" },
+]
+
+[answers.unscoped.completion]
+items = [
+    { label = "Apple", kind = "EnumMember", detail = "Fruit" },
+]

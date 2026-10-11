@@ -1,0 +1,7 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "draw(⟨width:⟩10, ⟨height:⟩20);" },
+    { line = "Point p(⟨x:⟩1, ⟨y:⟩2);" },
+    { line = "Point q{⟨x:⟩3, ⟨y:⟩4};" },
+    { line = "Point m(Point{⟨x:⟩5, ⟨y:⟩6});" },
+]

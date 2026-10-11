@@ -1,0 +1,10 @@
+["typing above a call".before]
+inlay_hints = [
+    { line = "return resize(⟨width:⟩320, ⟨height:⟩240);" },
+]
+
+["typing above a call".after]
+inlay_hints = [
+    { line = "auto scale⟨: int⟩ = resize(⟨width:⟩2, ⟨height:⟩3);" },
+    { line = "return resize(⟨width:⟩320, ⟨height:⟩240);" },
+]

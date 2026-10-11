@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "apply(⟨value:⟩42);" },
+    { line = "template struct Box<decltype(measure(⟨amount:⟩7))⟨: int⟩>;" },
+]

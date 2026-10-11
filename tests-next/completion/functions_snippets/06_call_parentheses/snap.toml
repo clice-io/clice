@@ -1,0 +1,39 @@
+[default.bare.completion]
+items = [
+    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute" },
+]
+
+[default.followed.completion]
+items = [
+    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute" },
+]
+
+[default.template_arguments.completion]
+items = [
+    { label = "convert(T value)", kind = "Function", detail = "int", insert = "convert" },
+]
+
+[default.using_declaration.completion]
+items = [
+    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute" },
+]
+
+[configured.bare.completion]
+items = [
+    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute($0)", snippet = true },
+]
+
+[configured.followed.completion]
+items = [
+    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute" },
+]
+
+[configured.template_arguments.completion]
+items = [
+    { label = "convert(T value)", kind = "Function", detail = "int", insert = "convert" },
+]
+
+[configured.using_declaration.completion]
+items = [
+    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute" },
+]

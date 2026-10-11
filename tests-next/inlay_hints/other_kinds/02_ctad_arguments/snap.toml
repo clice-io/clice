@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+wrong = "should show the deduced template arguments, <int, double> after pair (clangd#2331)"
+inlay_hints = [
+    { line = "Pair pair(⟨a:⟩1, ⟨b:⟩2.5);" },
+]

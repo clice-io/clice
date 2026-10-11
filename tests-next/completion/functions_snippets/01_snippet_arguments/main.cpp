@@ -1,4 +1,3 @@
-// The completion prefixes dangle as unfinished statements.
 int foooo(int x, float y);
 void nothing_to_fill();
 

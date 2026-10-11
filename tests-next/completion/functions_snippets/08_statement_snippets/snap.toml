@@ -1,0 +1,49 @@
+[default.pos.completion]
+items = [
+    { label = "while", kind = "Keyword", insert = "while" },
+]
+
+[default.variants.completion]
+items = [
+    { label = "for", kind = "Keyword", insert = "for" },
+]
+
+[default.no_placeholders.completion]
+items = [
+    { label = "return", kind = "Keyword", insert = "return" },
+]
+
+[[configured.pos.completion.items]]
+label = "while (condition) { statements }"
+kind = "Snippet"
+insert = '''
+while (${1:condition}) {
+${2:statements}
+}
+'''
+snippet = true
+
+[[configured.variants.completion.items]]
+label = "for (init-statement; condition; inc-expression) { statements }"
+kind = "Snippet"
+insert = '''
+for (${1:init-statement}; ${2:condition}; ${3:inc-expression}) {
+${4:statements}
+}
+'''
+snippet = true
+
+[[configured.variants.completion.items]]
+label = "for (range-declaration : range-expression) { statements }"
+kind = "Snippet"
+insert = '''
+for (${1:range-declaration} : ${2:range-expression}) {
+${3:statements}
+}
+'''
+snippet = true
+
+[configured.no_placeholders.completion]
+items = [
+    { label = "return;", kind = "Snippet", insert = "return;" },
+]

@@ -1,0 +1,17 @@
+[answers.plain.completion]
+items = [
+    { label = "Box", kind = "Class" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "template", kind = "Keyword" },
+    { label = "value", kind = "Field", detail = "int" },
+    { label = "~Box()", kind = "Method", detail = "void" },
+]
+
+[answers.pointer.completion]
+items = [
+    { label = "Box", kind = "Class" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "pointee", kind = "Field", detail = "char *" },
+    { label = "template", kind = "Keyword" },
+    { label = "~Box()", kind = "Method", detail = "void" },
+]

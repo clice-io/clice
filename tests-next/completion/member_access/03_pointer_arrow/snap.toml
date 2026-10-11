@@ -1,0 +1,9 @@
+[answers.pos.completion]
+items = [
+    { label = "Node", kind = "Class" },
+    { label = "compute(int a)", kind = "Method", detail = "int" },
+    { label = "next", kind = "Field", detail = "Node *" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "value", kind = "Field", detail = "int" },
+    { label = "~Node()", kind = "Method", detail = "void" },
+]

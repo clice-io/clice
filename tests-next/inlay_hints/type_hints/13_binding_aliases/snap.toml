@@ -1,0 +1,10 @@
+[answers.binding]
+wrong = "name should show : const std::string, the alias the map was declared with, as copy shows (10-12#8)"
+inlay_hints = [
+    { line = "for (auto& [name⟨: const basic_string<char>⟩, point⟨: Point⟩] : points) {" },
+]
+
+[answers.variable]
+inlay_hints = [
+    { line = "auto copy⟨: std::string⟩ = label;" },
+]

@@ -1,0 +1,19 @@
+[default.pos.completion]
+items = [
+    { label = "Buffer<typename T>", kind = "Class", insert = "Buffer" },
+]
+
+[default.all_defaulted.completion]
+items = [
+    { label = "Defaulted<>", kind = "Class", insert = "Defaulted" },
+]
+
+[configured.pos.completion]
+items = [
+    { label = "Buffer<typename T>", kind = "Class", insert = "Buffer<${1:typename T}>", snippet = true },
+]
+
+[configured.all_defaulted.completion]
+items = [
+    { label = "Defaulted<>", kind = "Class", insert = "Defaulted<>" },
+]
