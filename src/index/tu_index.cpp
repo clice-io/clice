@@ -64,7 +64,7 @@ struct FileSection {
 
 /// The envelope's wire layout. Only the builder below ever materializes
 /// it; every consumer reads the bytes through the TUIndex reader.
-struct EnvelopeBlob {
+struct TUIndexBlob {
     /// Wire schema version (index_format_version), gated by
     /// TUIndex::from_bytes.
     /// A worker respawned after the binary on disk changed can be one
@@ -1151,8 +1151,8 @@ public:
             }
         }
 
-        for(auto& rows: llvm::make_second_range(by_path)) {
-            drop_nested(rows.occurrences);
+        for(auto& file_index: llvm::make_second_range(by_path)) {
+            drop_nested(file_index.occurrences);
         }
 
         // The canonical file is decided across every file's rows: a
@@ -1169,8 +1169,8 @@ public:
                 symbol.file = path_id;
             }
         };
-        for(auto& [path_id, rows]: by_path) {
-            for(auto& [symbol_id, relations]: rows.relations) {
+        for(auto& [path_id, file_index]: by_path) {
+            for(auto& [symbol_id, relations]: file_index.relations) {
                 auto& symbol = symbols[symbol_id];
                 symbol.reference_files.add(path_id);
                 for(auto& relation: relations) {
@@ -1210,13 +1210,13 @@ public:
         std::vector<FileSection> sections;
         llvm::BitVector known_paths(tree.paths.size());
         for(auto path_id: path_ids) {
-            auto& rows = by_path[path_id];
-            if(rows.empty()) {
+            auto& file_index = by_path[path_id];
+            if(file_index.empty()) {
                 continue;
             }
             std::string bytes;
             llvm::raw_string_ostream os(bytes);
-            write_shard(rows, resolve, unit.file_content(path_fids[path_id]), os);
+            write_shard(file_index, resolve, unit.file_content(path_fids[path_id]), os);
             auto hash = llvm::xxh3_64bits(bytes);
             if(std::ranges::binary_search(known_variants, hash)) {
                 known_paths.set(path_id);
@@ -1228,7 +1228,7 @@ public:
         }
         auto encode_ms = encode_timer.ms_f();
 
-        EnvelopeBlob blob;
+        TUIndexBlob blob;
         blob.format_version = index_format_version;
         blob.built_at = unit.build_at().count();
         blob.paths = std::move(tree.paths);
@@ -1277,8 +1277,8 @@ public:
         }
 
         ScopedTimer pack_timer;
-        std::string envelope;
-        llvm::raw_string_ostream os(envelope);
+        std::string bytes;
+        llvm::raw_string_ostream os(bytes);
         serialize_blob(blob, os);
 
         LOG_PERF("index_detail",
@@ -1290,7 +1290,7 @@ public:
                  finish_ms,
                  encode_ms,
                  pack_timer.ms_f());
-        return envelope;
+        return bytes;
     }
 
 private:
@@ -1337,12 +1337,12 @@ std::string build_preamble_index(CompilationUnitRef unit,
 
 namespace {
 
-using WireView = kota::codec::fbs::table_view<EnvelopeBlob>;
+using BlobView = kota::codec::fbs::table_view<TUIndexBlob>;
 
 /// The buffer was fully verified at TUIndex::from_bytes; per-accessor
 /// views skip that cost.
-WireView wire_root(llvm::StringRef data) {
-    return WireView::from_verified_bytes(blob_bytes(data));
+BlobView blob_root(llvm::StringRef data) {
+    return BlobView::from_verified_bytes(blob_bytes(data));
 }
 
 /// The symbol table columns of an envelope, borrowing the wire.
@@ -1360,20 +1360,20 @@ struct SymbolColumns {
     llvm::ArrayRef<std::uint32_t> reference_ends;
     llvm::ArrayRef<std::uint32_t> references;
 
-    static SymbolColumns of(WireView root) {
+    static SymbolColumns of(BlobView root) {
         return {
-            .hashes = to_array_ref(root[&EnvelopeBlob::sym_hashes]),
-            .names = to_ref(root[&EnvelopeBlob::sym_names]),
-            .name_ends = to_array_ref(root[&EnvelopeBlob::sym_name_ends]),
-            .args = to_ref(root[&EnvelopeBlob::sym_args]),
-            .args_ends = to_array_ref(root[&EnvelopeBlob::sym_args_ends]),
-            .parents = to_array_ref(root[&EnvelopeBlob::sym_parents]),
-            .kinds = to_array_ref(root[&EnvelopeBlob::sym_kinds]),
-            .scopes = to_array_ref(root[&EnvelopeBlob::sym_scopes]),
-            .flags = to_array_ref(root[&EnvelopeBlob::sym_flags]),
-            .files = to_array_ref(root[&EnvelopeBlob::sym_files]),
-            .reference_ends = to_array_ref(root[&EnvelopeBlob::sym_reference_ends]),
-            .references = to_array_ref(root[&EnvelopeBlob::sym_references]),
+            .hashes = to_array_ref(root[&TUIndexBlob::sym_hashes]),
+            .names = to_ref(root[&TUIndexBlob::sym_names]),
+            .name_ends = to_array_ref(root[&TUIndexBlob::sym_name_ends]),
+            .args = to_ref(root[&TUIndexBlob::sym_args]),
+            .args_ends = to_array_ref(root[&TUIndexBlob::sym_args_ends]),
+            .parents = to_array_ref(root[&TUIndexBlob::sym_parents]),
+            .kinds = to_array_ref(root[&TUIndexBlob::sym_kinds]),
+            .scopes = to_array_ref(root[&TUIndexBlob::sym_scopes]),
+            .flags = to_array_ref(root[&TUIndexBlob::sym_flags]),
+            .files = to_array_ref(root[&TUIndexBlob::sym_files]),
+            .reference_ends = to_array_ref(root[&TUIndexBlob::sym_reference_ends]),
+            .references = to_array_ref(root[&TUIndexBlob::sym_references]),
         };
     }
 
@@ -1385,34 +1385,34 @@ struct SymbolColumns {
         return static_cast<std::uint32_t>(it - hashes.begin());
     }
 
-    SymbolIdentity identity(std::uint32_t row) const {
+    SymbolIdentity identity(std::uint32_t entry) const {
         return {
-            .name = back_to_back(names, name_ends, row),
-            .args = back_to_back(args, args_ends, row),
-            .parent = parents[row],
-            .kind = SymbolKind(kinds[row]),
-            .scope = static_cast<SymbolScope>(scopes[row]),
-            .flags = static_cast<SymbolFlags>(flags[row]),
-            .file = files[row],
+            .name = back_to_back(names, name_ends, entry),
+            .args = back_to_back(args, args_ends, entry),
+            .parent = parents[entry],
+            .kind = SymbolKind(kinds[entry]),
+            .scope = static_cast<SymbolScope>(scopes[entry]),
+            .flags = static_cast<SymbolFlags>(flags[entry]),
+            .file = files[entry],
         };
     }
 
-    llvm::ArrayRef<std::uint32_t> references_of(std::uint32_t row) const {
-        return back_to_back(references, reference_ends, row);
+    llvm::ArrayRef<std::uint32_t> references_of(std::uint32_t entry) const {
+        return back_to_back(references, reference_ends, entry);
     }
 };
 
 }  // namespace
 
 TUIndex TUIndex::from_bytes(llvm::StringRef data) {
-    auto root = WireView::from_bytes(blob_bytes(data));
+    auto root = BlobView::from_bytes(blob_bytes(data));
     if(!root.valid()) {
         LOG_DEBUG("Rejecting TU index: structural verification failed");
         return {};
     }
-    if(root[&EnvelopeBlob::format_version] != index_format_version) {
+    if(root[&TUIndexBlob::format_version] != index_format_version) {
         LOG_DEBUG("Rejecting TU index: format version {}, this build reads {}",
-                  root[&EnvelopeBlob::format_version],
+                  root[&TUIndexBlob::format_version],
                   index_format_version);
         return {};
     }
@@ -1422,14 +1422,14 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // the accessors stay check-free. The builder ends every path table
     // with the main file, so consumers address path_count() - 1
     // unchecked — an empty table marks a corrupt envelope.
-    auto count = root[&EnvelopeBlob::paths].size();
+    auto count = root[&TUIndexBlob::paths].size();
     if(count == 0) {
         LOG_DEBUG("Rejecting TU index: empty path table");
         return {};
     }
     // A parent names another node or the root; consumers index their
     // per-node tables with it unchecked.
-    auto nodes = root[&EnvelopeBlob::nodes];
+    auto nodes = root[&TUIndexBlob::nodes];
     for(std::size_t i = 0; i < nodes.size(); i += 1) {
         IncludeNode node = nodes.at(i);
         if(node.file >= count || (node.parent != no_node && node.parent >= nodes.size())) {
@@ -1438,11 +1438,11 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
         }
     }
     auto symbols = SymbolColumns::of(root);
-    auto rows = symbols.hashes.size();
-    if(symbols.name_ends.size() != rows || symbols.args_ends.size() != rows ||
-       symbols.parents.size() != rows || symbols.kinds.size() != rows ||
-       symbols.scopes.size() != rows || symbols.flags.size() != rows ||
-       symbols.files.size() != rows || symbols.reference_ends.size() != rows ||
+    auto count = symbols.hashes.size();
+    if(symbols.name_ends.size() != count || symbols.args_ends.size() != count ||
+       symbols.parents.size() != count || symbols.kinds.size() != count ||
+       symbols.scopes.size() != count || symbols.flags.size() != count ||
+       symbols.files.size() != count || symbols.reference_ends.size() != count ||
        !monotone_ends(symbols.name_ends, symbols.names.size()) ||
        !monotone_ends(symbols.args_ends, symbols.args.size()) ||
        !monotone_ends(symbols.reference_ends, symbols.references.size())) {
@@ -1456,7 +1456,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // one is corrupt. Merged reference files would persist behind versions
     // that match the disk, so a path id past the table must reject the
     // whole envelope rather than be dropped.
-    for(std::size_t i = 0; i < rows; i += 1) {
+    for(std::size_t i = 0; i < count; i += 1) {
         if((i != 0 && symbols.hashes[i] <= symbols.hashes[i - 1]) ||
            reserved_key(symbols.hashes[i]) || reserved_key(symbols.parents[i])) {
             LOG_DEBUG("Rejecting TU index: unsorted or reserved symbol hash, or reserved parent");
@@ -1474,7 +1474,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // section_of binary-searches the section table by path id and shard_of
     // trusts the result, so the ids must ascend strictly — a repeated or
     // out-of-order id would attribute one file's rows to another.
-    auto sections = root[&EnvelopeBlob::sections];
+    auto sections = root[&TUIndexBlob::sections];
     std::uint32_t previous_path_id = 0;
     for(std::size_t i = 0; i < sections.size(); i += 1) {
         auto path_id = sections.at(i)[&FileSection::path_id];
@@ -1502,55 +1502,55 @@ TUIndex TUIndex::from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer) {
 }
 
 std::int64_t TUIndex::built_at() const {
-    return loaded() ? wire_root(data)[&EnvelopeBlob::built_at] : 0;
+    return loaded() ? blob_root(data)[&TUIndexBlob::built_at] : 0;
 }
 
 std::uint32_t TUIndex::path_count() const {
-    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::paths].size()) : 0;
+    return loaded() ? static_cast<std::uint32_t>(blob_root(data)[&TUIndexBlob::paths].size()) : 0;
 }
 
 llvm::StringRef TUIndex::path(std::uint32_t id) const {
-    return to_ref(wire_root(data)[&EnvelopeBlob::paths].at(id));
+    return to_ref(blob_root(data)[&TUIndexBlob::paths].at(id));
 }
 
 std::uint32_t TUIndex::absent_count() const {
-    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::absent].size()) : 0;
+    return loaded() ? static_cast<std::uint32_t>(blob_root(data)[&TUIndexBlob::absent].size()) : 0;
 }
 
 llvm::StringRef TUIndex::absent(std::uint32_t i) const {
-    return to_ref(wire_root(data)[&EnvelopeBlob::absent].at(i));
+    return to_ref(blob_root(data)[&TUIndexBlob::absent].at(i));
 }
 
 std::uint64_t TUIndex::path_hash(std::uint32_t id) const {
     // The hash column may be shorter than the path table on a foreign
     // blob; an absent hash reads as 0, "unavailable".
-    auto hashes = wire_root(data)[&EnvelopeBlob::path_hashes];
+    auto hashes = blob_root(data)[&TUIndexBlob::path_hashes];
     return id < hashes.size() ? hashes.at(id) : 0;
 }
 
 std::uint32_t TUIndex::node_count() const {
-    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::nodes].size()) : 0;
+    return loaded() ? static_cast<std::uint32_t>(blob_root(data)[&TUIndexBlob::nodes].size()) : 0;
 }
 
 IncludeNode TUIndex::node(std::uint32_t i) const {
-    return wire_root(data)[&EnvelopeBlob::nodes].at(i);
+    return blob_root(data)[&TUIndexBlob::nodes].at(i);
 }
 
 std::uint32_t TUIndex::section_count() const {
-    return loaded() ? static_cast<std::uint32_t>(wire_root(data)[&EnvelopeBlob::sections].size())
+    return loaded() ? static_cast<std::uint32_t>(blob_root(data)[&TUIndexBlob::sections].size())
                     : 0;
 }
 
 std::uint32_t TUIndex::section_path(std::uint32_t i) const {
-    return wire_root(data)[&EnvelopeBlob::sections].at(i)[&FileSection::path_id];
+    return blob_root(data)[&TUIndexBlob::sections].at(i)[&FileSection::path_id];
 }
 
 std::uint64_t TUIndex::section_hash(std::uint32_t i) const {
-    return wire_root(data)[&EnvelopeBlob::sections].at(i)[&FileSection::hash];
+    return blob_root(data)[&TUIndexBlob::sections].at(i)[&FileSection::hash];
 }
 
 llvm::StringRef TUIndex::section_blob(std::uint32_t i) const {
-    auto blob = to_array_ref(wire_root(data)[&EnvelopeBlob::sections].at(i)[&FileSection::blob]);
+    auto blob = to_array_ref(blob_root(data)[&TUIndexBlob::sections].at(i)[&FileSection::blob]);
     return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
 }
 
@@ -1610,9 +1610,9 @@ void TUIndex::iterate_symbols(
     if(!loaded()) {
         return;
     }
-    auto symbols = SymbolColumns::of(wire_root(data));
-    for(std::uint32_t row = 0; row < symbols.hashes.size(); row += 1) {
-        if(!callback(symbols.hashes[row], symbols.identity(row), symbols.references_of(row))) {
+    auto symbols = SymbolColumns::of(blob_root(data));
+    for(std::uint32_t entry = 0; entry < symbols.hashes.size(); entry += 1) {
+        if(!callback(symbols.hashes[entry], symbols.identity(entry), symbols.references_of(entry))) {
             return;
         }
     }
@@ -1622,9 +1622,9 @@ std::optional<SymbolIdentity> TUIndex::find_symbol(SymbolHash hash) const {
     if(!loaded()) {
         return std::nullopt;
     }
-    auto symbols = SymbolColumns::of(wire_root(data));
-    if(auto row = symbols.find(hash)) {
-        return symbols.identity(*row);
+    auto symbols = SymbolColumns::of(blob_root(data));
+    if(auto entry = symbols.find(hash)) {
+        return symbols.identity(*entry);
     }
     for(std::uint32_t section = 0; section < section_count(); section += 1) {
         if(auto identity = section_shard(section).find_symbol(hash)) {
@@ -1669,17 +1669,17 @@ bool TUIndex::matches_prefix(llvm::StringRef text) const {
     if(!loaded()) {
         return false;
     }
-    auto root = wire_root(data);
-    auto size = root[&EnvelopeBlob::preamble_size];
+    auto root = blob_root(data);
+    auto size = root[&TUIndexBlob::preamble_size];
     return text.size() >= size &&
-           llvm::xxh3_64bits(text.take_front(size)) == root[&EnvelopeBlob::preamble_hash];
+           llvm::xxh3_64bits(text.take_front(size)) == root[&TUIndexBlob::preamble_hash];
 }
 
 std::vector<DocumentLink> TUIndex::links() const {
     if(!loaded()) {
         return {};
     }
-    auto entries = wire_root(data)[&EnvelopeBlob::links];
+    auto entries = blob_root(data)[&TUIndexBlob::links];
 
     std::vector<DocumentLink> links;
     links.reserve(entries.size());
@@ -1697,21 +1697,21 @@ llvm::ArrayRef<std::uint32_t> TUIndex::inactive_regions() const {
     if(!loaded()) {
         return {};
     }
-    return to_array_ref(wire_root(data)[&EnvelopeBlob::inactive_regions]);
+    return to_array_ref(blob_root(data)[&TUIndexBlob::inactive_regions]);
 }
 
 llvm::ArrayRef<std::uint8_t> TUIndex::open_conditionals() const {
     if(!loaded()) {
         return {};
     }
-    return to_array_ref(wire_root(data)[&EnvelopeBlob::open_conditionals]);
+    return to_array_ref(blob_root(data)[&TUIndexBlob::open_conditionals]);
 }
 
 llvm::StringRef TUIndex::preamble_diagnostics() const {
     if(!loaded()) {
         return {};
     }
-    return to_ref(wire_root(data)[&EnvelopeBlob::diagnostics]);
+    return to_ref(blob_root(data)[&TUIndexBlob::diagnostics]);
 }
 
 }  // namespace clice::index

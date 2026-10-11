@@ -2,7 +2,7 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:sched.index.ledger;
+module clice:sched.index.pending_table;
 
 import :vfs.file_table;
 
@@ -46,9 +46,9 @@ enum class ReindexReason : std::uint8_t {
 ///
 /// Claims carry an opaque monotonic ticket as their identity; the ledger
 /// never touches queues, sessions or workers.
-class PendingLedger {
+class PendingTable {
 public:
-    struct Claim {
+    struct TakenDebt {
         Fid id;
         std::uint64_t ticket = 0;
     };
@@ -67,7 +67,7 @@ public:
     };
 
     /// What a failed dispatch did to the file's pending state.
-    enum class FailureVerdict : std::uint8_t {
+    enum class FailureDecision : std::uint8_t {
         /// No pending entry survived (file removed mid-flight).
         Dropped,
         /// The failed dispatch carried bytes older than the pending
@@ -81,13 +81,13 @@ public:
     };
 
     struct FailureOutcome {
-        FailureVerdict verdict;
+        FailureDecision decision;
         /// Requeued into a fresh queue slot: the pump owes it a queue
         /// entry (a still-queued slot absorbs the requeue instead).
         bool needs_slot = false;
     };
 
-    explicit PendingLedger(unsigned max_requeue_attempts) :
+    explicit PendingTable(unsigned max_requeue_attempts) :
         max_requeue_attempts(max_requeue_attempts) {}
 
     /// Record (or refresh) why a file is pending. Returns true when the
@@ -100,15 +100,15 @@ public:
     /// Atomically claim the file's current debt at dispatch, consuming
     /// its queued-slot state. Empty when the entry was cleared while the
     /// slot sat in the queue (file removed): the slot is skipped.
-    std::optional<Claim> claim(Fid id);
+    std::optional<TakenDebt> take(Fid id);
 
     /// The claim a dispatch of the file's current debt would take, with
     /// nothing consumed — for waiters binding to the pending attempt.
-    std::optional<Claim> peek(Fid id) const;
+    std::optional<TakenDebt> peek(Fid id) const;
 
     /// Settle the claimed debt after its attempt: erases the entry unless
     /// a recording during the flight booked newer debt, which survives.
-    void settle(const Claim& claim);
+    void finish(const TakenDebt& taken);
 
     /// The claim's result no longer lands: the entry was cleared, or a
     /// ContentChanged recording overtook the launch — its bytes describe
@@ -116,7 +116,7 @@ public:
     /// NOT superseding: in-flight rows are positionally right, and
     /// suppressing them would trade a tolerated semantic drift for a
     /// coverage hole.
-    bool superseded(const Claim& claim) const;
+    bool superseded(const TakenDebt& taken) const;
 
     /// Merge a failed claim back into pending debt. A crash of the
     /// file's own abandons it; only lost runs spend the bounded budget — a
@@ -125,7 +125,7 @@ public:
     /// dispatch was launched for, not the entry's current one: a
     /// deps-only downgrade during the flight bet on the content pass
     /// landing, and a failed pass leaves the edit uncovered.
-    FailureOutcome on_dispatch_failure(const Claim& claim, Failure failure);
+    FailureOutcome on_dispatch_failure(const TakenDebt& taken, Failure failure);
 
     /// Why the file awaits re-indexing (queued or in flight), or nullopt
     /// when nothing is pending. O(1), no I/O.

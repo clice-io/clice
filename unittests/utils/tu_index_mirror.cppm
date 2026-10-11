@@ -2,7 +2,7 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:unittests.utils.envelope_mirror;
+module clice:unittests.utils.tu_index_mirror;
 
 import :index.include_tree;
 import :index.serialization;
@@ -15,7 +15,7 @@ namespace clice::testing {
 /// The envelope's wire layout (tu_index.cpp's EnvelopeBlob) through its
 /// sections, field for field: tests plant shapes the builder never emits,
 /// or re-encode a real envelope with one field changed.
-struct EnvelopeMirror {
+struct TUIndexMirror {
     struct Section {
         std::uint32_t path_id = 0;
         std::uint64_t hash = 0;
@@ -60,8 +60,8 @@ struct EnvelopeMirror {
     }
 
     /// A loaded envelope's fields through the sections.
-    static EnvelopeMirror of(const index::TUIndex& view) {
-        EnvelopeMirror mirror;
+    static TUIndexMirror of(const index::TUIndex& view) {
+        TUIndexMirror mirror;
         mirror.built_at = view.built_at();
         for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
             mirror.paths.emplace_back(view.path(i));

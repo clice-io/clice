@@ -144,7 +144,7 @@ private:
     /// content hash it was scored on — persisted so a stale verdict is
     /// dropped on cache load; 0 means scored with no disk observation,
     /// which keeps the verdict session-local.
-    struct HeaderVerdict {
+    struct HeaderResult {
         HeaderMode mode = HeaderMode::Unknown;
         std::uint64_t content_hash = 0;
     };
@@ -152,7 +152,7 @@ private:
     /// Self-containment verdicts for headers, persisted in the artifacts
     /// blob. Reset when a closed header or a file along its include chain
     /// changes on disk.
-    llvm::DenseMap<Fid, HeaderVerdict> header_verdicts;
+    llvm::DenseMap<Fid, HeaderResult> header_results;
 
     /// Fill compile arguments for a header from a host source's command found
     /// through the include graph, synthesizing a preamble prefix/suffix when

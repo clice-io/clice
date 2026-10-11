@@ -18,16 +18,16 @@ namespace clice::index {
 
 /// One readable row set with its own coordinate system, as the federation
 /// hands it to a visitor.
-struct RowSource {
+struct IndexSource {
     enum class Kind : std::uint8_t {
         /// A persisted shard, in the coordinates of the text it indexed —
         /// or of an open buffer byte-identical to that text.
         Shard,
         /// An open buffer's own file index, in buffer coordinates.
-        SessionRows,
+        SessionIndex,
         /// An open buffer's preamble region as its PCH overlay indexed it,
         /// in buffer coordinates.
-        PreambleRows,
+        PreambleIndex,
         /// A header entry of a PCH overlay, in the coordinates of the text
         /// the overlay indexed.
         Overlay,
@@ -36,7 +36,7 @@ struct RowSource {
     Kind kind;
     Fid file;
     std::string path;
-    const Shard* rows;
+    const Shard* shard;
     PositionMap positions;
 
     /// The site of a row's range; nullopt for a range outside the text.
@@ -70,10 +70,10 @@ public:
     /// (freshness clauses 1 and 3), else its shard while the buffer is
     /// byte-identical to the text the shard indexed (clause 4), both in
     /// buffer coordinates. Nullopt while the buffer has moved on from both.
-    virtual std::optional<RowSource> claim(Fid file) const = 0;
+    virtual std::optional<IndexSource> serving_buffer(Fid file) const = 0;
 
     /// Every open buffer whose file index serves it (clause 3), as its rows.
-    virtual void each_session(llvm::function_ref<bool(const RowSource&)> visit) const = 0;
+    virtual void each_session(llvm::function_ref<bool(const IndexSource&)> visit) const = 0;
 
     /// The same buffers' index envelopes, which name (find_symbol) every
     /// symbol of the unsaved text.
@@ -81,7 +81,7 @@ public:
 
     /// Every open buffer's preamble rows whose overlay was built from that
     /// very file and still describes the buffer's start.
-    virtual void each_preamble(llvm::function_ref<bool(const RowSource&)> visit) const = 0;
+    virtual void each_preamble(llvm::function_ref<bool(const IndexSource&)> visit) const = 0;
 
     /// Each distinct PCH overlay envelope once (buffers sharing a preamble
     /// share one).
@@ -137,7 +137,7 @@ void dedup_sites(std::vector<Site>& sites);
 /// Whether a row's site spells the name a cursor stands on: a row spans
 /// the whole written name, an occurrence only the tokens the name owns
 /// (`operator` of `operator Foo*`, whose `Foo` is the class's).
-bool covers(const Site& row, const Site& cursor);
+bool covers(const Site& site, const Site& cursor);
 
 struct Named {
     LocalSourceRange range;
@@ -150,7 +150,7 @@ struct Named {
 /// name spells what the macro expanded to, and the macro itself is
 /// reached at its definition — so a macro gives way to the symbols it
 /// shares its range with.
-std::optional<Named> named_at(const Shard& rows,
+std::optional<Named> named_at(const Shard& shard,
                               std::uint32_t offset,
                               llvm::function_ref<bool(SymbolHash)> is_macro);
 
@@ -171,7 +171,7 @@ struct Highlight {
 /// range in range order: a Write row makes it Write, a reference Read, a
 /// declaration or definition Text — the strongest of them where several
 /// rows share a range.
-std::vector<Highlight> highlights(llvm::ArrayRef<const Shard*> rows,
+std::vector<Highlight> highlights(llvm::ArrayRef<const Shard*> shards,
                                   llvm::ArrayRef<SymbolHash> symbols);
 
 /// Read-only queries over every index source: disk shards, open sessions'
@@ -235,7 +235,7 @@ public:
 
     /// The freshness contract's single arbitration: the rows serving
     /// `file` right now, with the coordinates they are expressed in.
-    std::optional<RowSource> serving(Fid file) const;
+    std::optional<IndexSource> serving(Fid file) const;
 
     /// Whether the project index holds rows of `file`.
     bool indexes(Fid file) const {
@@ -308,7 +308,7 @@ public:
     /// for a buffer edited since its last compile the shard of its disk
     /// text — the edit moved positions, not most of what the file declares.
     /// Null for a closed file whose rows the freshness gate withholds.
-    const Shard* declaring_rows(Fid file) const;
+    const Shard* declaring_shard(Fid file) const;
 
     /// The open buffers whose own rows carry a relation of `kind` for the
     /// symbol, each once: what a buffer its own compile serves knows before
@@ -492,7 +492,7 @@ private:
         bool overlay = true;
     };
 
-    using RelationVisitor = llvm::function_ref<bool(const RowSource&, const Relation&)>;
+    using RelationVisitor = llvm::function_ref<bool(const IndexSource&, const Relation&)>;
 
     /// A search's ranked symbols before their sites are resolved, and
     /// whether the limit cut the ranking short.
@@ -563,7 +563,7 @@ private:
     /// buffer-true rows through their sessions, and entries of text the
     /// disk no longer holds point nowhere (clause 2). False once the
     /// visitor stopped.
-    bool visit_overlay_rows(const TUIndex& state,
+    bool visit_overlay_relations(const TUIndex& state,
                             SymbolHash hash,
                             RelationKind kind,
                             RelationVisitor visitor) const;
@@ -571,7 +571,7 @@ private:
     /// The text a source's offsets index: the buffer, the blob's stored
     /// text, or the disk re-read for pure-ASCII blobs (kept alive in
     /// `storage`), verified against the rows' content hash.
-    std::optional<llvm::StringRef> source_text(const RowSource& source,
+    std::optional<llvm::StringRef> source_text(const IndexSource& source,
                                                std::unique_ptr<llvm::MemoryBuffer>& storage) const;
 
     const ProjectIndex& index;

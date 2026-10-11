@@ -4,11 +4,11 @@ module;
 
 module clice;
 
-import :sched.index.ledger;
+import :sched.index.pending_table;
 
 namespace clice {
 
-bool PendingLedger::record(Fid id, ReindexReason reason) {
+bool PendingTable::record(Fid id, ReindexReason reason) {
     // A fresh slot means any prior slot was already consumed (or none
     // existed); a queued-and-unconsumed slot makes this call a duplicate.
     bool fresh_slot = queued.insert(id).second;
@@ -40,49 +40,49 @@ bool PendingLedger::record(Fid id, ReindexReason reason) {
     return fresh_slot;
 }
 
-std::optional<PendingLedger::Claim> PendingLedger::claim(Fid id) {
+std::optional<PendingTable::TakenDebt> PendingTable::take(Fid id) {
     queued.erase(id);
     auto it = entries.find(id);
     if(it == entries.end()) {
         return std::nullopt;
     }
-    return Claim{id, it->second.ticket};
+    return TakenDebt{id, it->second.ticket};
 }
 
-std::optional<PendingLedger::Claim> PendingLedger::peek(Fid id) const {
+std::optional<PendingTable::TakenDebt> PendingTable::peek(Fid id) const {
     auto it = entries.find(id);
     if(it == entries.end()) {
         return std::nullopt;
     }
-    return Claim{id, it->second.ticket};
+    return TakenDebt{id, it->second.ticket};
 }
 
-void PendingLedger::settle(const Claim& claim) {
-    if(auto it = entries.find(claim.id); it != entries.end() && it->second.ticket == claim.ticket) {
+void PendingTable::finish(const TakenDebt& taken) {
+    if(auto it = entries.find(taken.id); it != entries.end() && it->second.ticket == taken.ticket) {
         entries.erase(it);
     }
 }
 
-bool PendingLedger::superseded(const Claim& claim) const {
-    auto it = entries.find(claim.id);
-    return it == entries.end() || it->second.content_ticket > claim.ticket;
+bool PendingTable::superseded(const TakenDebt& taken) const {
+    auto it = entries.find(taken.id);
+    return it == entries.end() || it->second.content_ticket > taken.ticket;
 }
 
-PendingLedger::FailureOutcome PendingLedger::on_dispatch_failure(const Claim& claim,
+PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenDebt& taken,
                                                                  Failure failure) {
     // Only while the entry survives: a file removed from disk mid-flight
     // was cleared and has nothing to redo.
-    auto it = entries.find(claim.id);
+    auto it = entries.find(taken.id);
     if(it == entries.end()) {
-        return {FailureVerdict::Dropped};
+        return {FailureDecision::Dropped};
     }
 
     // The failed dispatch carried bytes a ContentChanged recording has
     // since replaced: its crash says nothing about the fixed content, so
     // it neither spends the fresh budget nor requeues — the newer
     // content's own booking redoes the work.
-    if(it->second.content_ticket > claim.ticket) {
-        return {FailureVerdict::Superseded};
+    if(it->second.content_ticket > taken.ticket) {
+        return {FailureDecision::Superseded};
     }
 
     if(failure == Failure::Crashed ||
@@ -92,8 +92,8 @@ PendingLedger::FailureOutcome PendingLedger::on_dispatch_failure(const Claim& cl
         // settle: a deps-only recording that landed mid-flight bumped
         // the ticket, and the guard would leave that downgraded entry
         // booked — a doomed retry that spends one more worker.
-        clear(claim.id);
-        return {FailureVerdict::GaveUp};
+        clear(taken.id);
+        return {FailureDecision::GaveUp};
     }
     if(failure == Failure::Lost) {
         it->second.requeue_attempts += 1;
@@ -103,15 +103,15 @@ PendingLedger::FailureOutcome PendingLedger::on_dispatch_failure(const Claim& cl
     // current one; record() resets the budget on ContentChanged — right
     // for a user edit, wrong for this requeue of the same bytes — so
     // restore the ledger afterwards.
-    auto reason = it->second.content_ticket == claim.ticket ? ReindexReason::ContentChanged
+    auto reason = it->second.content_ticket == taken.ticket ? ReindexReason::ContentChanged
                                                             : it->second.reason;
     auto attempts = it->second.requeue_attempts;
-    bool needs_slot = record(claim.id, reason);
-    entries.find(claim.id)->second.requeue_attempts = attempts;
-    return {FailureVerdict::Requeued, needs_slot};
+    bool needs_slot = record(taken.id, reason);
+    entries.find(taken.id)->second.requeue_attempts = attempts;
+    return {FailureDecision::Requeued, needs_slot};
 }
 
-llvm::SmallVector<Fid> PendingLedger::pending_files() const {
+llvm::SmallVector<Fid> PendingTable::pending_files() const {
     llvm::SmallVector<Fid> files;
     files.reserve(entries.size());
     for(auto id: llvm::make_first_range(entries)) {

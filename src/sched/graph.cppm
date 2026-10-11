@@ -84,7 +84,7 @@ enum class DependResult : std::uint8_t {
     Cancelled,
 };
 
-enum class JoinFlavor : std::uint8_t {
+enum class JoinKind : std::uint8_t {
     /// Retry through stale attempts until Success or Failed.
     UntilTerminal,
     /// Observe exactly one attempt and return its outcome.
@@ -92,7 +92,7 @@ enum class JoinFlavor : std::uint8_t {
 };
 
 struct JoinOptions {
-    JoinFlavor flavor = JoinFlavor::UntilTerminal;
+    JoinKind kind = JoinKind::UntilTerminal;
 
     /// Dispatch the awaited chain at user-visible priority.
     bool foreground = false;

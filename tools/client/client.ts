@@ -71,7 +71,7 @@ export { withTimeout } from "../promise.ts";
 
 // Standard timing constants — use these instead of hardcoded sleep values.
 export const MTIME_GRANULARITY = 1_100; // Filesystem mtime precision + margin
-export const SETTLE_TIME = 500; // Server stabilization after an operation
+export const IDLE_WAIT = 500; // Server stabilization after an operation
 export const IDLE_TIMEOUT = 5_000; // Idle soak time in lifecycle tests
 export const EDIT_SUPERSEDE_DELAY = 300; // An edit lands while SLOW_SOURCE still parses
 
@@ -788,16 +788,16 @@ export class CliceClient {
     open(filepath: string, version = 0, options: { text?: string } = {}): [string, string] {
         const target = this.resolvePath(filepath);
         const content = options.text ?? fs.readFileSync(target, "utf8");
-        const wireUri = URI.file(target).toString();
+        const sentUri = URI.file(target).toString();
         void this.sendNotification(proto.DidOpenTextDocumentNotification.type, {
             textDocument: {
-                uri: wireUri,
+                uri: sentUri,
                 languageId: "cpp",
                 version,
                 text: content,
             },
         });
-        return [this.normalizeUri(wireUri), content];
+        return [this.normalizeUri(sentUri), content];
     }
 
     close(uri: string): void {

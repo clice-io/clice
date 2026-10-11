@@ -12,7 +12,7 @@ import * as proto from "vscode-languageserver-protocol";
 import { waitUntil, withTimeout } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 import {
-    wireKeys,
+    protocolKeys,
     type CurrentContextResult,
     type SwitchContextResult,
 } from "@clice/tools/protocol";
@@ -61,7 +61,7 @@ test("current context automatic", async ({ session }) => {
 
     const result = await client.currentContext(utilsUri);
     expect(Object.keys(result).sort()).toEqual(
-        [...wireKeys<CurrentContextResult>()(["automatic", "context", "epoch"])].sort(),
+        [...protocolKeys<CurrentContextResult>()(["automatic", "context", "epoch"])].sort(),
     );
     expect(result.automatic).toBe(true);
     const listed = await client.queryContext(utilsUri);
@@ -83,7 +83,7 @@ test("switch context and current context", async ({ session }) => {
     // The C++ and TS shapes of the reply are hand-written on both sides; a
     // field added to one and not the other shows up here.
     expect(Object.keys(switchResult).sort()).toEqual(
-        [...wireKeys<SwitchContextResult>()(["stale", "success"])].sort(),
+        [...protocolKeys<SwitchContextResult>()(["stale", "success"])].sort(),
     );
 
     // Verify currentContext now returns main.cpp.

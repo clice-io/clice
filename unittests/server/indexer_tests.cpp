@@ -27,8 +27,8 @@ import :server.editor_context;
 import :syntax.dependency_graph;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils.cdb_helper;
-import :unittests.utils.envelope_mirror;
 import :unittests.utils.temp_dir;
+import :unittests.utils.tu_index_mirror;
 import :unittests.utils;
 import :vfs.cache_store;
 import :worker.pool;
@@ -39,7 +39,7 @@ namespace clice::testing {
 /// internals. The claim wrappers (merge/save/load/drop_index) route each
 /// store report back into the pump, as the production callers do.
 struct IndexerFixture {
-    using Verdict = PendingLedger::FailureVerdict;
+    using Decision = PendingTable::FailureDecision;
 
     constexpr static unsigned budget = IndexPump::max_requeue_attempts;
 
@@ -62,7 +62,7 @@ struct IndexerFixture {
     bool merge(const void* data, std::size_t size) {
         auto report = index_store.merge(data, size, {});
         if(report) {
-            pump.claim_report(*report);
+            pump.take_report(*report);
         }
         return report.has_value();
     }
@@ -70,19 +70,19 @@ struct IndexerFixture {
     /// One save with the pump's debt snapshot, its report claimed back —
     /// without persist()'s retry, so a test observes each save.
     kota::task<> async_save(IndexStore::SearchRebuild search = IndexStore::SearchRebuild::Behind) {
-        pump.claim_report(co_await index_store.save(pump.save_debt(), search));
+        pump.take_report(co_await index_store.save(pump.save_debt(), search));
     }
 
     /// Load and claim the report, as the workspace load does. Returns the
     /// decode verdict (false = old-format or corrupt global).
     bool load(bool read_only = false) {
         auto result = index_store.load({.read_only = read_only});
-        pump.claim_report(result.report);
+        pump.take_report(result.report);
         return result.decoded;
     }
 
     void drop_index(Fid id) {
-        pump.claim_report(index_store.drop_index(id));
+        pump.take_report(index_store.drop_index(id));
     }
 
     /// Replace the database with a fresh one, as corruption recovery does.
@@ -97,41 +97,41 @@ struct IndexerFixture {
     }
 
     /// Fail the entry's current dispatch: the launch ticket matches.
-    Verdict fail(Fid id, PendingLedger::Failure failure) {
+    Decision fail(Fid id, PendingTable::Failure failure) {
         return pump.note_dispatch_failure({id, ticket(id)}, failure);
     }
 
     /// Fail a dispatch launched with an explicit (possibly stale) ticket.
-    Verdict fail_at(Fid id, std::uint64_t ticket, PendingLedger::Failure failure) {
+    Decision fail_at(Fid id, std::uint64_t ticket, PendingTable::Failure failure) {
         return pump.note_dispatch_failure({id, ticket}, failure);
     }
 
     std::uint64_t ticket(Fid id) {
-        auto it = pump.ledger.entries.find(id);
-        return it == pump.ledger.entries.end() ? std::numeric_limits<std::uint64_t>::max()
+        auto it = pump.pending_table.entries.find(id);
+        return it == pump.pending_table.entries.end() ? std::numeric_limits<std::uint64_t>::max()
                                                : it->second.ticket;
     }
 
     unsigned attempts(Fid id) {
-        auto it = pump.ledger.entries.find(id);
-        return it == pump.ledger.entries.end() ? 0u : it->second.requeue_attempts;
+        auto it = pump.pending_table.entries.find(id);
+        return it == pump.pending_table.entries.end() ? 0u : it->second.requeue_attempts;
     }
 
     void set_attempts(Fid id, unsigned n) {
-        pump.ledger.entries.find(id)->second.requeue_attempts = n;
+        pump.pending_table.entries.find(id)->second.requeue_attempts = n;
     }
 
     /// Consume the queued slot as a dispatch would, so a later enqueue
     /// takes the fresh-slot (mid-flight) path.
     void consume(Fid id) {
-        pump.ledger.queued.erase(id);
+        pump.pending_table.queued.erase(id);
     }
 
     /// Complete an attempt for `ticket` on the loop, as run_index_task's
     /// tail does — waking waiters requires a running loop.
-    void settle(Fid id, std::uint64_t ticket) {
+    void finish(Fid id, std::uint64_t ticket) {
         auto body = [&]() -> kota::task<> {
-            pump.settle_attempt_waits(id, ticket);
+            pump.wake_attempt_waits(id, ticket);
             co_return;
         };
         auto task = body();
@@ -141,7 +141,7 @@ struct IndexerFixture {
 
     /// Start a fresh staleness round: per-round FileVersion verdicts are
     /// cleared by run_background_indexing, which these tests bypass.
-    void clear_verdicts() {
+    void clear_round() {
         index_store.begin_round();
     }
 
@@ -229,7 +229,7 @@ IndexedTU index_file(TempDir& tmp,
 /// Re-encode an envelope with its consumed-content hash column dropped,
 /// as a file behind a PCM ships it.
 std::string strip_path_hashes(llvm::StringRef data) {
-    auto mirror = EnvelopeMirror::of(index::TUIndex::from_bytes(data));
+    auto mirror = TUIndexMirror::of(index::TUIndex::from_bytes(data));
     mirror.path_hashes.clear();
     return mirror.bytes();
 }
@@ -974,16 +974,16 @@ ZEST_CASE(HashlessRemergeHits) {
     // A file behind a PCM ships no consumed-content hash; the variant
     // identity is the blob's own byte hash, so membership needs no
     // content vouching at all.
-    auto wire = strip_path_hashes(indexed.data);
-    ZASSERT(!wire.empty());
+    auto stripped = strip_path_hashes(indexed.data);
+    ZASSERT(!stripped.empty());
 
-    merge(wire.data(), wire.size());
+    merge(stripped.data(), stripped.size());
     auto path_id = project.file_table.intern(Spelling::absolute(src));
     ZASSERT(project.project_index.shards[path_id].variants().size() == std::size_t(1));
 
     // Re-merging the same rows must register as a hit, not append the
     // stored variant to the blob a second time.
-    merge(wire.data(), wire.size());
+    merge(stripped.data(), stripped.size());
     ZASSERT(project.project_index.shards[path_id].variants().size() == std::size_t(1));
 }
 
@@ -1285,7 +1285,7 @@ ZEST_CASE(CreatedHeaderStales) {
     ZASSERT(!f.need_update(src));
 
     tmp.touch("gen.h", "int make();\n");
-    f.clear_verdicts();
+    f.clear_round();
     ZASSERT(f.need_update(src));
 }
 
@@ -1321,7 +1321,7 @@ ZEST_CASE(TouchStaysFresh) {
     // mere touch, and nothing persisted needs rewriting.
     ZASSERT(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
     x.f.reset_global_dirty();
-    x.f.clear_verdicts();
+    x.f.clear_round();
     ZASSERT(!x.f.need_update(x.src));
     ZASSERT(!x.f.global_dirty());
 }
@@ -1336,7 +1336,7 @@ ZEST_CASE(PreservedMtimeEditStale) {
     // and the hash check must catch the edit.
     x.tmp.touch("dep.h", "#pragma once\ninline int dep() { return 12345; }\n");
     ZASSERT(set_file_mtime(x.header, recorded));
-    x.f.clear_verdicts();
+    x.f.clear_round();
     ZASSERT(x.f.need_update(x.src));
 }
 
@@ -1358,7 +1358,7 @@ ZEST_CASE(AllDepsChecked) {
     auto recorded = file_mtime_ns(tmp.path("second.h"));
     tmp.touch("second.h", "#pragma once\ninline int second() { return 22222; }\n");
     ZASSERT(set_file_mtime(tmp.path("second.h"), recorded));
-    f.clear_verdicts();
+    f.clear_round();
     ZASSERT(f.need_update(tmp.path("main.cpp")));
 }
 
@@ -1395,7 +1395,7 @@ ZEST_CASE(LoadRestoresIndex) {
     ZASSERT(!f.need_update(src));
 }
 
-ZEST_CASE(SettledRebuildPinsSearch) {
+ZEST_CASE(IdleRebuildPinsSearch) {
     TempDir tmp;
     tmp.touch("main.cpp", "int use() { return 1; }\n");
     auto src = tmp.path("main.cpp");
@@ -1411,7 +1411,7 @@ ZEST_CASE(SettledRebuildPinsSearch) {
         f.save();
         ZASSERT(!f.global_dirty());
         ZASSERT(!f.project.project_index.search_index.loaded());
-        f.save(IndexStore::SearchRebuild::Settled);
+        f.save(IndexStore::SearchRebuild::Idle);
         ZASSERT(f.project.project_index.search_index.loaded());
     }
 
@@ -1573,7 +1573,7 @@ ZEST_CASE(LoadHealsWrongGeneration) {
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
     auto src = tmp.path("main.cpp");
     std::string header_key;
-    std::uint64_t rows_hash = 0;
+    std::uint64_t variant = 0;
 
     {
         IndexerFixture f;
@@ -1584,8 +1584,8 @@ ZEST_CASE(LoadHealsWrongGeneration) {
         f.save();
         auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
-        rows_hash = f.project.project_index.contributions.lookup(header_id).lookup(tu_id);
-        ZASSERT(rows_hash != 0);
+        variant = f.project.project_index.contributions.lookup(header_id).lookup(tu_id);
+        ZASSERT(variant != 0);
         header_key = blob_key(f.project.file_table.resolve(header_id));
     }
 
@@ -1597,7 +1597,7 @@ ZEST_CASE(LoadHealsWrongGeneration) {
     inject_blob(tmp,
                 index::IndexBlobKind::Shard,
                 header_key,
-                planted_blob("stale text", rows_hash));
+                planted_blob("stale text", variant));
 
     IndexerFixture f;
     open_store(tmp, f.project);
@@ -1767,7 +1767,7 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
-ZEST_CASE(DeferredSweepYieldsToFreshWrite) {
+ZEST_CASE(DeferredRemovalYieldsToFreshWrite) {
     TempDir tmp;
     tmp.touch("main.cpp", "int sweep_target() { return 1; }\n");
     auto src = tmp.path("main.cpp");
@@ -2322,7 +2322,7 @@ ZEST_CASE(DefaultCommandKept) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
-    auto claim = [&](IndexerFixture& f) {
+    auto add_default_rule = [&](IndexerFixture& f) {
         f.project.config.rules.push_back(ConfigRule{.default_command = std::string("clang++ -c")});
         f.project.config.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
     };
@@ -2330,7 +2330,7 @@ ZEST_CASE(DefaultCommandKept) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        claim(f);
+        add_default_rule(f);
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
@@ -2341,7 +2341,7 @@ ZEST_CASE(DefaultCommandKept) {
     // identity matches and nothing is owed.
     IndexerFixture f;
     open_store(tmp, f.project);
-    claim(f);
+    add_default_rule(f);
     f.load();
 
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
@@ -2349,7 +2349,7 @@ ZEST_CASE(DefaultCommandKept) {
     ZASSERT(!f.pump.pending_reason(tu_id).has_value());
 }
 
-ZEST_CASE(UnclaimedDefaultRetires) {
+ZEST_CASE(UncoveredDefaultRetires) {
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
@@ -2542,7 +2542,7 @@ ZEST_CASE(ExcludedHostChangeDrops) {
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
     auto src = tmp.path("main.cpp");
     auto header = tmp.path("dep.h");
-    auto claim = [&](IndexerFixture& f, std::string command) {
+    auto add_default_rule = [&](IndexerFixture& f, std::string command) {
         f.project.config.rules.push_back(ConfigRule{.patterns = {"**/*.cpp"},
                                                     .default_command = std::move(command),
                                                     .index = false});
@@ -2552,7 +2552,7 @@ ZEST_CASE(ExcludedHostChangeDrops) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        claim(f, "clang++ -DFOO=1 -c");
+        add_default_rule(f, "clang++ -DFOO=1 -c");
         auto indexed = index_file(tmp, header);
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
@@ -2567,7 +2567,7 @@ ZEST_CASE(ExcludedHostChangeDrops) {
     // even while the host still includes the header.
     IndexerFixture f;
     open_store(tmp, f.project);
-    claim(f, "clang++ -DFOO=2 -c");
+    add_default_rule(f, "clang++ -DFOO=2 -c");
     auto src_id = f.project.file_table.intern(Spelling::absolute(src));
     auto header_id = f.project.file_table.intern(Spelling::absolute(header));
     f.project.dep_graph.set_includes(src_id, 0, {{header_id}});
@@ -3070,8 +3070,8 @@ ZEST_CASE(PreemptionKeepsBudget) {
     // A preemption under memory pressure requeues without spending the
     // crash budget, no matter how often it repeats.
     for(unsigned i = 0; i < 2 * IndexerFixture::budget; ++i) {
-        ZASSERT(int(f.fail(id, PendingLedger::Failure::Preempted)) ==
-                int(IndexerFixture::Verdict::Requeued));
+        ZASSERT(int(f.fail(id, PendingTable::Failure::Preempted)) ==
+                int(IndexerFixture::Decision::Requeued));
     }
     ZASSERT(f.attempts(id) == 0u);
     ZASSERT(f.pump.pending_reason(id));
@@ -3084,8 +3084,8 @@ ZEST_CASE(OwnCrashGivesUp) {
 
     // The run named by its dying worker would crash the next one too: the
     // file waits for its content to change.
-    ZASSERT(int(f.fail(id, PendingLedger::Failure::Crashed)) ==
-            int(IndexerFixture::Verdict::GaveUp));
+    ZASSERT(int(f.fail(id, PendingTable::Failure::Crashed)) ==
+            int(IndexerFixture::Decision::GaveUp));
     ZASSERT(!f.pump.pending_reason(id).has_value());
 }
 
@@ -3095,23 +3095,23 @@ ZEST_CASE(LostSpendsBudget) {
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
     for(unsigned i = 0; i < IndexerFixture::budget; ++i) {
-        ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) ==
-                int(IndexerFixture::Verdict::Requeued));
+        ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) ==
+                int(IndexerFixture::Decision::Requeued));
     }
     ZASSERT(f.attempts(id) == IndexerFixture::budget);
 
     // A preemption still requeues a file whose budget is spent: dropping
     // it would erase the pending state and serve the stale shard as fresh.
     // Only the next lost run gives up.
-    ZASSERT(int(f.fail(id, PendingLedger::Failure::Preempted)) ==
-            int(IndexerFixture::Verdict::Requeued));
+    ZASSERT(int(f.fail(id, PendingTable::Failure::Preempted)) ==
+            int(IndexerFixture::Decision::Requeued));
     ZASSERT(f.attempts(id) == IndexerFixture::budget);
 
     // Giving up clears the pending slot: nothing is left to requeue, and
     // the stale shard serves as fresh — the accepted cost of abandoning.
-    ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) == int(IndexerFixture::Verdict::GaveUp));
+    ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) == int(IndexerFixture::Decision::GaveUp));
     ZASSERT(!f.pump.pending_reason(id).has_value());
-    ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) == int(IndexerFixture::Verdict::Dropped));
+    ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) == int(IndexerFixture::Decision::Dropped));
 }
 
 ZEST_CASE(StaleCrashKeepsBudget) {
@@ -3124,8 +3124,8 @@ ZEST_CASE(StaleCrashKeepsBudget) {
     // the stale crash must not spend the fixed content's budget or touch
     // its pending slot.
     f.pump.enqueue(id, ReindexReason::ContentChanged);
-    ZASSERT(int(f.fail_at(id, stale, PendingLedger::Failure::Lost)) ==
-            int(IndexerFixture::Verdict::Superseded));
+    ZASSERT(int(f.fail_at(id, stale, PendingTable::Failure::Lost)) ==
+            int(IndexerFixture::Decision::Superseded));
     ZASSERT(f.attempts(id) == 0u);
     ZASSERT(f.pump.pending_reason(id));
 }
@@ -3144,8 +3144,8 @@ ZEST_CASE(DepsDowngradeKeepsDebt) {
     f.pump.enqueue(id, ReindexReason::DepsOnly);
     ZASSERT(int(*f.pump.pending_reason(id)) == int(ReindexReason::DepsOnly));
 
-    ZASSERT(int(f.fail_at(id, launch, PendingLedger::Failure::Lost)) ==
-            int(IndexerFixture::Verdict::Requeued));
+    ZASSERT(int(f.fail_at(id, launch, PendingTable::Failure::Lost)) ==
+            int(IndexerFixture::Decision::Requeued));
     ZASSERT(int(*f.pump.pending_reason(id)) == int(ReindexReason::ContentChanged));
     ZASSERT(f.attempts(id) == 1u);
 }
@@ -3162,15 +3162,15 @@ ZEST_CASE(GaveUpClearsDowngraded) {
     // is doomed, and the give-up already accepted the staleness.
     f.consume(id);
     f.pump.enqueue(id, ReindexReason::DepsOnly);
-    ZASSERT(int(f.fail_at(id, launch, PendingLedger::Failure::Lost)) ==
-            int(IndexerFixture::Verdict::GaveUp));
+    ZASSERT(int(f.fail_at(id, launch, PendingTable::Failure::Lost)) ==
+            int(IndexerFixture::Decision::GaveUp));
     ZASSERT(!f.pump.pending_reason(id).has_value());
 }
 
 ZEST_CASE(DroppedWithoutPending) {
     IndexerFixture f;
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/gone.cpp"));
-    ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) == int(IndexerFixture::Verdict::Dropped));
+    ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) == int(IndexerFixture::Decision::Dropped));
 }
 
 ZEST_CASE(AttemptWaitPerTicket) {
@@ -3205,11 +3205,11 @@ ZEST_CASE(AttemptWaitPerTicket) {
     // matter the requeue: await_attempt promises one attempt, and holding
     // the waiter through every follow-up would park a feature request for
     // as long as edits keep landing.
-    f.settle(id, launch);
+    f.finish(id, launch);
     ZASSERT(first_woke);
     ZASSERT(!second_woke);
 
-    f.settle(id, f.ticket(id));
+    f.finish(id, f.ticket(id));
     ZASSERT(second_woke);
 }
 
@@ -3218,10 +3218,10 @@ ZEST_CASE(ContentChangeResetsBudget) {
     auto id = f.project.file_table.intern(Spelling::absolute("/proj/fixed.cpp"));
     f.pump.enqueue(id, ReindexReason::ContentChanged);
 
-    ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) ==
-            int(IndexerFixture::Verdict::Requeued));
-    ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) ==
-            int(IndexerFixture::Verdict::Requeued));
+    ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) ==
+            int(IndexerFixture::Decision::Requeued));
+    ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) ==
+            int(IndexerFixture::Decision::Requeued));
     ZASSERT(f.attempts(id) == 2u);
 
     // The user fixes the file: new content starts a fresh poison budget.
@@ -3229,8 +3229,8 @@ ZEST_CASE(ContentChangeResetsBudget) {
     ZASSERT(f.attempts(id) == 0u);
 
     // A deps-only cascade is not new content and keeps the ledger.
-    ZASSERT(int(f.fail(id, PendingLedger::Failure::Lost)) ==
-            int(IndexerFixture::Verdict::Requeued));
+    ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) ==
+            int(IndexerFixture::Decision::Requeued));
     f.pump.enqueue(id, ReindexReason::DepsOnly);
     ZASSERT(f.attempts(id) == 1u);
 }
@@ -3323,7 +3323,7 @@ ZEST_CASE(PauseResumesRound) {
 /// snapshot both ways.
 ZEST_SUITE(IndexReports) {
 
-ZEST_CASE(MergeReportsRowsChanged) {
+ZEST_CASE(MergeReportsIndexChanged) {
     IndexerFixture f;
     TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
@@ -3331,7 +3331,7 @@ ZEST_CASE(MergeReportsRowsChanged) {
     ZASSERT(!indexed.data.empty());
 
     llvm::SmallVector<Fid> notified;
-    auto conn = f.pump.on_rows_changed.connect(
+    auto conn = f.pump.on_index_changed.connect(
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
 
@@ -3339,7 +3339,7 @@ ZEST_CASE(MergeReportsRowsChanged) {
                                f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
 }
 
-ZEST_CASE(DropReportsServedRows) {
+ZEST_CASE(DropReportsServedIndex) {
     // drop_index deletes rows an index-served session may already have
     // consumed; the report must carry every affected file so the serving
     // side can refresh — dropped rows change answers exactly like merged
@@ -3356,17 +3356,17 @@ ZEST_CASE(DropReportsServedRows) {
     auto header_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
 
     llvm::SmallVector<Fid> notified;
-    auto conn = f.pump.on_rows_changed.connect(
+    auto conn = f.pump.on_index_changed.connect(
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     auto report = f.index_store.drop_index(tu_id);
-    ZASSERT(llvm::is_contained(report.rows_changed(), tu_id));
-    ZASSERT(llvm::is_contained(report.rows_changed(), header_id));
+    ZASSERT(llvm::is_contained(report.index_changed(), tu_id));
+    ZASSERT(llvm::is_contained(report.index_changed(), header_id));
 
-    f.pump.claim_report(report);
+    f.pump.take_report(report);
     ZASSERT(llvm::is_contained(notified, header_id));
 }
 
-ZEST_CASE(RetireReportsRowsChanged) {
+ZEST_CASE(RetireReportsIndexChanged) {
     // The save-side recovery source: a shard retired by the compaction
     // vanishes from memory, which changes index-served answers exactly
     // like a merge — the report must say so.
@@ -3391,7 +3391,7 @@ ZEST_CASE(RetireReportsRowsChanged) {
     ZASSERT(f.project.project_index.shards.contains(header_id));
 
     llvm::SmallVector<Fid> notified;
-    auto conn = f.pump.on_rows_changed.connect(
+    auto conn = f.pump.on_index_changed.connect(
         [&](llvm::ArrayRef<Fid> ids) { notified.append(ids.begin(), ids.end()); });
     f.save();
 
@@ -3498,7 +3498,7 @@ ZEST_CASE(LateDebtShutdownRetry) {
     f.loop.run();
 
     ZASSERT(report.owes_retry);
-    f.pump.claim_report(report);
+    f.pump.take_report(report);
 
     // The retry persists into the freshly reopened database, snapshot
     // included.
@@ -3672,7 +3672,7 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     ZASSERT(!indexed.data.empty());
     auto report = stack.store.merge(indexed.data.data(), indexed.data.size(), {});
     ZASSERT(report);
-    stack.pump.claim_report(*report);
+    stack.pump.take_report(*report);
 
     auto task = stack.shutdown();
     loop.schedule(task);
@@ -3749,7 +3749,7 @@ ZEST_CASE(ModuleLintScanParity) {
     f.loop.run();
     ZEXPECT(done);
 
-    ZEXPECT(outcome.verdict == TURunFamily::Verdict::Completed);
+    ZEXPECT(outcome.result == TURunFamily::Result::Completed);
     // The finding inside the gated region proves the parse saw the
     // extras and consumed the edge-built PCM.
     ZASSERT(!outcome.tidy_diagnostics.empty());
@@ -3787,7 +3787,7 @@ ZEST_CASE(OutdatedRerunsInFull) {
     ZASSERT(!f.project.project_index.shards.contains(x2_id));
 
     auto b_id = f.project.file_table.intern(Spelling::absolute(tmp.path("b.cpp")));
-    std::vector<TURunFamily::Verdict> verdicts;
+    std::vector<TURunFamily::Result> results;
     bool done = false;
     auto body = [&]() -> kota::task<> {
         WorkerPoolOptions opts;
@@ -3799,7 +3799,7 @@ ZEST_CASE(OutdatedRerunsInFull) {
         for(int run = 0; run < 2; run += 1) {
             TURunFamily::Plan plan;
             plan.index = true;
-            verdicts.push_back((co_await f.turun.run(b_id, std::move(plan), {})).verdict);
+            results.push_back((co_await f.turun.run(b_id, std::move(plan), {})).result);
         }
 
         co_await f.graph.shutdown();
@@ -3811,8 +3811,8 @@ ZEST_CASE(OutdatedRerunsInFull) {
     f.loop.run();
     ZEXPECT(done);
 
-    using enum TURunFamily::Verdict;
-    ZEXPECT(verdicts == (std::vector<TURunFamily::Verdict>{Preempted, Completed}));
+    using enum TURunFamily::Result;
+    ZEXPECT(results == (std::vector<TURunFamily::Result>{Preempted, Completed}));
     ZEXPECT(f.project.project_index.shards.contains(x2_id));
 }
 
@@ -3846,7 +3846,7 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     auto id = [&](llvm::StringRef name) {
         return f.project.file_table.intern(Spelling::absolute(tmp.path(name)));
     };
-    std::vector<TURunFamily::Verdict> verdicts;
+    std::vector<TURunFamily::Result> results;
     std::size_t pcms_before_impl = 0;
     bool done = false;
     auto body = [&]() -> kota::task<> {
@@ -3862,7 +3862,7 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
             }
             TURunFamily::Plan plan;
             plan.index = true;
-            verdicts.push_back((co_await f.turun.run(id(name), std::move(plan), {})).verdict);
+            results.push_back((co_await f.turun.run(id(name), std::move(plan), {})).result);
         }
 
         co_await f.graph.shutdown();
@@ -3874,8 +3874,8 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
     f.loop.run();
     ZEXPECT(done);
 
-    using enum TURunFamily::Verdict;
-    ZEXPECT(verdicts == (std::vector<TURunFamily::Verdict>{Completed, Completed, Completed}));
+    using enum TURunFamily::Result;
+    ZEXPECT(results == (std::vector<TURunFamily::Result>{Completed, Completed, Completed}));
     ZEXPECT(pcms_before_impl == 0u);
     ZEXPECT(f.project.pcm_cache.size() == 1u);
     ZEXPECT(f.project.pcm_cache.contains(id("m.cppm")));

@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
-import { SETTLE_TIME, sleep, waitUntil, withTimeout, type CliceClient } from "@clice/tools/client";
+import { IDLE_WAIT, sleep, waitUntil, withTimeout, type CliceClient } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, test, type SessionFactory } from "../fixtures.ts";
 
@@ -85,10 +85,10 @@ test.skipIf(process.platform === "win32")("second name for an open file", async 
     expect(client.diagnostics.get(second) ?? [], "its warning leaves with it").toEqual([]);
     // An edit folded into the first buffer would recompile it on this pull.
     expect(await client.hoverAt(first, 0, 5), "the first document stays open").not.toBeNull();
-    await sleep(SETTLE_TIME);
+    await sleep(IDLE_WAIT);
     client.assertNoErrors(first, "the first document's buffer must be untouched");
     client.close(first);
-    await sleep(SETTLE_TIME);
+    await sleep(IDLE_WAIT);
     expect((await client.stats()).sessions, "the closed second name stays closed").toBe(0);
 });
 

@@ -124,7 +124,7 @@ public:
     /// A parse consumed the key's pair and completed without blaming it:
     /// clear its consumption strikes (cf. BlameBudget::on_land).
     void consumed_ok(llvm::StringRef pch_key) {
-        consume_blames.on_land(pch_key);
+        consume_blames.on_success(pch_key);
     }
 
     /// Open the pch.idx envelope of a cached PCH. The single consumption

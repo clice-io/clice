@@ -94,8 +94,8 @@ struct WorkerPoolFixture {
         pool.tick_cancel_grace();
     }
 
-    void set_claim_epoch(std::size_t idx, std::uint64_t epoch) {
-        pool.stateless_workers[idx].claim_epoch = epoch;
+    void set_acquire_epoch(std::size_t idx, std::uint64_t epoch) {
+        pool.stateless_workers[idx].acquire_epoch = epoch;
     }
 
     void cancel_low(std::size_t count) {
@@ -1048,7 +1048,7 @@ ZEST_CASE(ForegroundCancelsExcess) {
     f.set_low_limit(4);
     std::vector<std::shared_ptr<kota::cancellation_source>> sources;
     for(std::size_t i = 0; i < 4; i += 1) {
-        f.set_claim_epoch(i, i + 1);
+        f.set_acquire_epoch(i, i + 1);
         sources.push_back(f.arm_cancel_source(i));
     }
 
@@ -1103,8 +1103,8 @@ ZEST_CASE(CancelSkipsUnarmedSlots) {
     WorkerPoolFixture f;
     f.add_stateless(true, true, true);
     f.add_stateless(true, true, true);
-    f.set_claim_epoch(0, 1);
-    f.set_claim_epoch(1, 2);
+    f.set_acquire_epoch(0, 1);
+    f.set_acquire_epoch(1, 2);
     // Slot 1 was claimed but its sender has not resumed: no source yet.
     auto armed = f.arm_cancel_source(0);
 
@@ -1121,8 +1121,8 @@ ZEST_CASE(CancelSkipsAskedSlots) {
     WorkerPoolFixture f;
     f.add_stateless(true, true, true);
     f.add_stateless(true, true, true);
-    f.set_claim_epoch(0, 1);
-    f.set_claim_epoch(1, 2);
+    f.set_acquire_epoch(0, 1);
+    f.set_acquire_epoch(1, 2);
     f.arm_cancel_source(0);
     f.arm_cancel_source(1);
 
@@ -1133,7 +1133,7 @@ ZEST_CASE(CancelSkipsAskedSlots) {
     ZEXPECT((f.cancel_asked(0) && f.cancel_asked(1)));
 }
 
-ZEST_CASE(DeficitSurvivesUnarmedSweep) {
+ZEST_CASE(DeficitSurvivesUnarmedPass) {
     WorkerPoolFixture f;
     for(int i = 0; i < 4; i += 1) {
         f.add_stateless(true, true, true);
@@ -1196,7 +1196,7 @@ ZEST_CASE(QueuedLowHonorsCancel) {
     ZEXPECT(f.busy_count() == 0u);
 }
 
-ZEST_CASE(CancelAfterClaimReleases) {
+ZEST_CASE(CancelAfterAcquireReleases) {
     WorkerPoolFixture f;
     f.add_stateless(true, true);
     f.set_low_limit(1);
@@ -1789,7 +1789,7 @@ ZEST_CASE(SlotGenGuard) {
     ZEXPECT(f.test_slot_gen_guard());
 }
 
-ZEST_CASE(PendingClaimGenGuard) {
+ZEST_CASE(PendingAcquireGenGuard) {
     WorkerPoolFixture f;
     f.add_stateless();
     f.set_low_limit(1);

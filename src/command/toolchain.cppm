@@ -119,7 +119,7 @@ private:
 
     /// Lands a query's outcome: the tokens into the probe cache, a failure
     /// into the negative cache with its time.
-    void land_probe(llvm::StringRef key,
+    void commit_probe(llvm::StringRef key,
                     const std::expected<std::vector<std::string>, std::string>& result);
 
     CompilationDatabase& db;

@@ -90,7 +90,7 @@ ZEST_CASE(HandlerCancelChainsThrough) {
 // whose answer the sender keeps awaiting (the slot must stay busy while the
 // worker is): the stop flag it trips makes that answer arrive at the next
 // declaration boundary instead of after the whole TU.
-ZEST_CASE(WireCancelStopsBuild) {
+ZEST_CASE(IpcCancelStopsBuild) {
     TempDir tmp;
     std::string text;
     text.reserve(1 << 22);

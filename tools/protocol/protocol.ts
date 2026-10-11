@@ -334,7 +334,7 @@ export const HeldNotification = new NotificationType<HeldParams>("clice/internal
 /// hand-written C++ struct: the listing is checked complete at compile
 /// time (a key the type gains must be added here), and a test compares it
 /// with the reply's `Object.keys`.
-export function wireKeys<T>() {
+export function protocolKeys<T>() {
     return <const K extends readonly (keyof T)[]>(
         keys: Exclude<keyof T, K[number]> extends never ? K : never,
     ): readonly (keyof T)[] => keys;

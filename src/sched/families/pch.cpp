@@ -58,7 +58,7 @@ NodeId PCHFamily::prepare(Request request) {
 kota::task<PCHFamily::Outcome> PCHFamily::acquire(Request request) {
     auto id = prepare(std::move(request));
 
-    switch(co_await graph.request(id, {.flavor = JoinFlavor::OneAttempt, .foreground = true})) {
+    switch(co_await graph.request(id, {.kind = JoinKind::OneAttempt, .foreground = true})) {
         case JoinOutcome::Success: co_return Outcome::Ready;
         case JoinOutcome::Failed: co_return Outcome::Failed;
         case JoinOutcome::Stale:
@@ -250,7 +250,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
             return outcome;
         }
         outcome.index_path = std::move(*index_path);
-        outcome.state = load_pch_envelope(*outcome.index_path);
+        outcome.state = load_pch_index(*outcome.index_path);
         // A committed envelope that fails verification is as unusable as
         // an uncommitted one: retract the pair rather than publish a PCH
         // whose preamble state every consumer would fail to load.

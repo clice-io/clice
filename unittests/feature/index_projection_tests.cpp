@@ -18,18 +18,18 @@ ZEST_SUITE(index_projection, Tester) {
 /// The compiled unit's envelope and the main file's rows, extracted the
 /// way the router's index slice does it in production.
 index::TUIndex tu;
-std::string envelope;
+std::string bytes;
 std::vector<index::Occurrence> occurrences;
-std::vector<feature::IndexDeclRow> decls;
+std::vector<feature::IndexDecl> decls;
 
-void extract_rows() {
-    envelope = index::build_tu_index(*unit);
-    tu = index::TUIndex::from_bytes(envelope);
+void extract_entries() {
+    bytes = index::build_tu_index(*unit);
+    tu = index::TUIndex::from_bytes(bytes);
 
     auto main_id = tu.path_count() - 1;
-    auto rows = feature::extract_index_rows(tu.shard_of(main_id));
-    occurrences = std::move(rows.occurrences);
-    decls = std::move(rows.decls);
+    auto entries = feature::extract_index_entries(tu.shard_of(main_id));
+    occurrences = std::move(entries.occurrences);
+    decls = std::move(entries.decls);
 }
 
 std::optional<index::SymbolRef> resolve(index::SymbolHash hash) {
@@ -111,7 +111,7 @@ int total(Point point, int base) {
 }
 )cpp");
     ZASSERT(compile());
-    extract_rows();
+    extract_entries();
     expect_tokens_match_ast();
 }
 
@@ -122,7 +122,7 @@ export module demo.core;
 export int exported_value = 1;
 )cpp");
     ZASSERT(compile());
-    extract_rows();
+    extract_entries();
     expect_tokens_match_ast();
 }
 
@@ -150,7 +150,7 @@ import;
 module :private;
 )");
     ZASSERT(compile_with_modules());
-    extract_rows();
+    extract_entries();
     expect_tokens_match_ast();
 }
 
@@ -161,7 +161,7 @@ export module demo.core;
 export int entry();
 )cpp");
     ZASSERT(compile());
-    extract_rows();
+    extract_entries();
 
     auto ast = feature::document_symbols(*unit);
     auto projected = feature::index_document_symbols(decls, resolver());
@@ -199,7 +199,7 @@ int scale(int value) {
 }
 )cpp");
     ZASSERT(compile());
-    extract_rows();
+    extract_entries();
 
     auto ast = feature::document_symbols(*unit);
     auto projected = feature::index_document_symbols(decls, resolver());
@@ -238,7 +238,7 @@ int compute() {
 }
 )cpp");
     ZASSERT(compile());
-    extract_rows();
+    extract_entries();
 
     auto ast = feature::folding_ranges(*unit);
     auto projected = feature::index_folding_ranges(unit->main_content(),
@@ -286,7 +286,7 @@ typedef struct {
 } Point;
 )cpp");
     ZASSERT(compile());
-    extract_rows();
+    extract_entries();
 
     auto ast = feature::folding_ranges(*unit);
     auto projected = feature::index_folding_ranges(unit->main_content(),
@@ -316,7 +316,7 @@ int values[] =
 };
 )cpp");
     ZASSERT(compile());
-    extract_rows();
+    extract_entries();
 
     auto projected = feature::index_folding_ranges(unit->main_content(),
                                                    feature::index_lang_options("main.cpp", false),
@@ -348,7 +348,7 @@ void g() {
     auto f_end = static_cast<std::uint32_t>(content.find("#endif") + 6);
     auto g_begin = static_cast<std::uint32_t>(content.find("void g"));
     auto g_end = static_cast<std::uint32_t>(content.rfind('}') + 1);
-    std::vector<feature::IndexDeclRow> rows = {
+    std::vector<feature::IndexDecl> entries = {
         {.range = {5, 6},                     .extent = {0, f_end}, .symbol = 1, .definition = true},
         {.range = {g_begin + 5, g_begin + 6},
          .extent = {g_begin, g_end},
@@ -361,15 +361,15 @@ void g() {
 
     auto folds = feature::index_folding_ranges(content,
                                                feature::index_lang_options("main.cpp", false),
-                                               rows,
+                                               entries,
                                                resolve_synthetic);
     ZASSERT(folds.size() == std::size_t(1));
     ZASSERT(folds[0].range.begin == static_cast<std::uint32_t>(content.find("{", g_begin)));
     ZASSERT(folds[0].range.end == g_end);
 }
 
-ZEST_CASE(CollapsedRowsBecomeSiblings) {
-    std::vector<feature::IndexDeclRow> rows = {
+ZEST_CASE(CollapsedDeclsBecomeSiblings) {
+    std::vector<feature::IndexDecl> decls = {
         {.range = {8, 9},   .extent = {0, 100}, .symbol = 1, .definition = true},
         {.range = {20, 25}, .extent = {20, 50}, .symbol = 2, .definition = true},
         {.range = {20, 25}, .extent = {20, 50}, .symbol = 3, .definition = true},
@@ -386,7 +386,7 @@ ZEST_CASE(CollapsedRowsBecomeSiblings) {
         }
     };
 
-    auto symbols = feature::index_document_symbols(rows, resolve_synthetic);
+    auto symbols = feature::index_document_symbols(decls, resolve_synthetic);
     ZASSERT(symbols.size() == std::size_t(1));
     ZASSERT(symbols[0].name == "outer<int>");
     ZASSERT(symbols[0].children.size() == std::size_t(2));
@@ -454,7 +454,7 @@ ZEST_CASE(CDialectKeywords) {
     // under the C keyword table, or the C++ table would take `class` as
     // a keyword and shadow the row's kind.
     llvm::StringRef content = "int class;\n";
-    std::vector<feature::IndexDeclRow> rows = {
+    std::vector<feature::IndexDecl> entries = {
         {.range = {4, 9}, .extent = {0, 10}, .symbol = 1, .definition = true},
     };
     auto resolve_synthetic = [](index::SymbolHash) -> std::optional<index::SymbolRef> {
@@ -464,7 +464,7 @@ ZEST_CASE(CDialectKeywords) {
     auto c_tokens = feature::index_semantic_tokens(content,
                                                    feature::index_lang_options("header.h", true),
                                                    {},
-                                                   rows,
+                                                   entries,
                                                    resolve_synthetic);
     ZASSERT(c_tokens.size() == std::size_t(2));
     ZASSERT(c_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Variable).value_of());
@@ -472,7 +472,7 @@ ZEST_CASE(CDialectKeywords) {
     auto cpp_tokens = feature::index_semantic_tokens(content,
                                                      feature::index_lang_options("header.h", false),
                                                      {},
-                                                     rows,
+                                                     entries,
                                                      resolve_synthetic);
     ZASSERT(cpp_tokens.size() == std::size_t(2));
     ZASSERT(cpp_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Keyword).value_of());
@@ -518,7 +518,7 @@ ZEST_CASE(StandardFromCommand) {
     // -std must lex with that standard's keyword table, or a newer
     // table would take `concept` as a keyword and shadow the row.
     llvm::StringRef content = "int concept;\n";
-    std::vector<feature::IndexDeclRow> rows = {
+    std::vector<feature::IndexDecl> entries = {
         {.range = {4, 11}, .extent = {0, 12}, .symbol = 1, .definition = true},
     };
     auto resolve_synthetic = [](index::SymbolHash) -> std::optional<index::SymbolRef> {
@@ -529,7 +529,7 @@ ZEST_CASE(StandardFromCommand) {
         feature::index_semantic_tokens(content,
                                        feature::index_lang_options("main.cpp", false, "c++17"),
                                        {},
-                                       rows,
+                                       entries,
                                        resolve_synthetic);
     ZASSERT(cxx17_tokens.size() == std::size_t(2));
     ZASSERT(cxx17_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Variable).value_of());
@@ -538,7 +538,7 @@ ZEST_CASE(StandardFromCommand) {
         feature::index_semantic_tokens(content,
                                        feature::index_lang_options("main.cpp", false, "c++20"),
                                        {},
-                                       rows,
+                                       entries,
                                        resolve_synthetic);
     ZASSERT(cxx20_tokens.size() == std::size_t(2));
     ZASSERT(cxx20_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Keyword).value_of());
@@ -549,7 +549,7 @@ ZEST_CASE(StandardFromCommand) {
         feature::index_semantic_tokens(content,
                                        feature::index_lang_options("main.cpp", false),
                                        {},
-                                       rows,
+                                       entries,
                                        resolve_synthetic);
     ZASSERT(default_tokens.size() == std::size_t(2));
     ZASSERT(default_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Variable).value_of());

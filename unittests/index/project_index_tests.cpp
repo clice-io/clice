@@ -8,8 +8,8 @@ import :index.database;
 import :index.project_index;
 import :index.shard;
 import :index.tu_index;
-import :unittests.utils.envelope_mirror;
 import :unittests.utils.temp_dir;
+import :unittests.utils.tu_index_mirror;
 import :unittests.utils;
 import :unittests.utils.tester;
 import :vfs.cache_store;
@@ -19,13 +19,13 @@ namespace {
 
 ZEST_SUITE(ProjectIndex, Tester) {
 
-std::string wire;
+std::string serialized;
 
 /// Build the current unit's envelope and return the zero-copy reader the
 /// merge path consumes; `wire` keeps the bytes alive.
 index::TUIndex build_view() {
-    wire = index::build_tu_index(*unit);
-    return index::TUIndex::from_bytes(wire);
+    serialized = index::build_tu_index(*unit);
+    return index::TUIndex::from_bytes(serialized);
 }
 
 index::SymbolHash find_symbol(const index::ProjectIndex& project, llvm::StringRef name) {
@@ -123,8 +123,8 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
         [[deprecated]] int lib::shared_fn() { return 1; }
     )");
     ZASSERT(definer.compile());
-    std::string definer_wire = index::build_tu_index(*definer.unit);
-    auto definer_view = index::TUIndex::from_bytes(definer_wire);
+    std::string definer_bytes = index::build_tu_index(*definer.unit);
+    auto definer_view = index::TUIndex::from_bytes(definer_bytes);
     ZASSERT(definer_view.loaded());
     project.merge(definer_view, intern_paths(definer_view, pool));
 
@@ -149,8 +149,8 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
         int lib::shared_fn() { return 2; }
     )");
     ZASSERT(mover.compile());
-    std::string mover_wire = index::build_tu_index(*mover.unit);
-    auto mover_view = index::TUIndex::from_bytes(mover_wire);
+    std::string mover_bytes = index::build_tu_index(*mover.unit);
+    auto mover_view = index::TUIndex::from_bytes(mover_bytes);
     ZASSERT(mover_view.loaded());
     project.merge(mover_view, intern_paths(mover_view, pool));
     auto moved = pool.find(Spelling::absolute(mover_view.path(mover_view.path_count() - 1)));
@@ -161,10 +161,10 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
 ZEST_CASE(MergePicksOneSpelling) {
     // Two units spelling one specialization differently must leave the
     // same name in the table whichever merges first.
-    EnvelopeMirror spelled_int;
+    TUIndexMirror spelled_int;
     spelled_int.paths = {"/proj/main.cpp"};
     spelled_int.add_symbol(42, {.name = "X", .args = "<int>"});
-    EnvelopeMirror spelled_signed;
+    TUIndexMirror spelled_signed;
     spelled_signed.paths = {"/proj/main.cpp"};
     spelled_signed.add_symbol(42, {.name = "X", .args = "<signed int>"});
     auto int_bytes = spelled_int.bytes();
@@ -202,10 +202,10 @@ ZEST_CASE(ManifestContributions) {
     auto fv_b = pool.intern_version(Fid{2}, 0xb);
 
     auto manifest_for = [&](VersionID tu_fv,
-                            std::initializer_list<std::pair<VersionID, std::uint64_t>> rows) {
+                            std::initializer_list<std::pair<VersionID, std::uint64_t>> contributions) {
         index::TUManifest manifest;
         manifest.tu_fv = tu_fv;
-        manifest.contributions = rows;
+        manifest.contributions = contributions;
         return manifest;
     };
 
@@ -337,14 +337,14 @@ ZEST_CASE(LazyShardsStayPut) {
 
     constexpr std::uint32_t count = 300;
     llvm::StringRef content = "int x = 1;\n";
-    index::FileIndex rows;
-    rows.relations[7].push_back({
+    index::FileIndex file_index;
+    file_index.relations[7].push_back({
         .kind = RelationKind::Definition,
         .range = {4, 5}
     });
     std::string shard;
     llvm::raw_string_ostream shard_os(shard);
-    index::write_shard(rows, {}, content, shard_os);
+    index::write_shard(file_index, {}, content, shard_os);
     clice::FileTable files;
     index::ProjectIndex project;
     for(std::uint32_t i = 0; i < count; i += 1) {

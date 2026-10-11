@@ -60,18 +60,18 @@ bool read_starts_with_bom(llvm::StringRef path) {
 bool starts_with_bom(const Stamp& stamp, llvm::StringRef path) {
     using Key = std::tuple<std::uint64_t, std::uint64_t, std::uint64_t, std::int64_t, std::int64_t>;
     static std::mutex mutex;
-    static llvm::DenseMap<Key, bool> verdicts;
+    static llvm::DenseMap<Key, bool> results;
     Key key{stamp.device, stamp.file, stamp.size, stamp.mtime_ns, stamp.ctime_ns};
     {
         std::lock_guard lock(mutex);
-        if(auto it = verdicts.find(key); it != verdicts.end()) {
+        if(auto it = results.find(key); it != results.end()) {
             return it->second;
         }
     }
-    auto verdict = read_starts_with_bom(path);
+    auto has_bom = read_starts_with_bom(path);
     std::lock_guard lock(mutex);
-    verdicts.try_emplace(key, verdict);
-    return verdict;
+    results.try_emplace(key, has_bom);
+    return has_bom;
 }
 
 using StatusResult = std::expected<Status, std::error_code>;
@@ -643,7 +643,7 @@ private:
         text = std::move(*loaded);
         auto after = handle_status(handle);
         if(before && after && after->is_file() && before->stamp == after->stamp &&
-           settled(after->stamp.mtime_ns)) {
+           stable_mtime(after->stamp.mtime_ns)) {
             texts().insert(key, {.status = *after, .real_name = real_name, .text = text});
         }
         return {};
@@ -700,7 +700,7 @@ std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path)
     }
     result.obs.stamp = after->stamp;
     result.obs.paired = before && before->stamp == after->stamp;
-    result.obs.reliable = result.obs.paired && settled(after->stamp.mtime_ns);
+    result.obs.reliable = result.obs.paired && stable_mtime(after->stamp.mtime_ns);
     return result;
 }
 
@@ -812,7 +812,7 @@ void keep_mapped(llvm::StringRef path) {
     mapped().keep(path);
 }
 
-bool settled(std::int64_t mtime_ns) {
+bool stable_mtime(std::int64_t mtime_ns) {
     auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::system_clock::now().time_since_epoch())
                       .count();

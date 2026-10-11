@@ -57,7 +57,7 @@ public:
                   Clock::time_point now);
 
     /// A dispatch of `kind` answered: its record goes.
-    void on_land(std::uint8_t kind);
+    void on_success(std::uint8_t kind);
 
     /// The document's inputs changed: every barred kind may retry once
     /// retry_spacing has passed since its crash.

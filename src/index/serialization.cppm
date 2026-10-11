@@ -137,13 +137,13 @@ constexpr inline std::uint32_t packed_sentinel = 0xffffffff;
 ///
 /// Variant masks are absent for a single variant, then u32 / u64 /
 /// concatenated roaring bitmaps by variant count.
-struct RowRanges {
+struct RangeColumns {
     std::vector<std::uint32_t> packed;
 
     std::vector<std::uint32_t> begins;
     std::vector<std::uint8_t> lengths;
 
-    std::vector<std::uint32_t> long_rows;
+    std::vector<std::uint32_t> long_entries;
     std::vector<std::uint32_t> long_ends;
 
     std::vector<std::uint32_t> masks32;
@@ -186,14 +186,14 @@ struct ShardBlob {
 
     /// Mask bit position -> variant identity. Empty for a worker-emitted
     /// blob (one anonymous variant, identified by its own byte hash).
-    std::vector<RowsHash> variants;
+    std::vector<VariantHash> variants;
 
     /// Per-line byte lengths, up to and including the newline; the last
     /// entry runs to end of file. Lengths >= 255 escape to the sparse
     /// (line, length) table. Line starts are the prefix sums, materialized
     /// once at load.
     std::vector<std::uint8_t> line_lengths;
-    std::vector<std::uint32_t> long_line_rows;
+    std::vector<std::uint32_t> long_lines;
     std::vector<std::uint32_t> long_line_lengths;
 
     /// A bit for each line ending in "\r\n" — line `n` is bit `n % 64` of
@@ -221,20 +221,20 @@ struct ShardBlob {
     std::vector<std::uint16_t> local_flags;
 
     /// Occurrences sorted by (begin, end, symbol hash).
-    RowRanges occs;
+    RangeColumns occs;
     std::vector<std::uint8_t> occ_syms8;
     std::vector<std::uint16_t> occ_syms16;
     std::vector<std::uint32_t> occ_syms32;
 
     /// Relations in symbol-table order, sorted by (kind, begin, end,
     /// payload) within each group.
-    RowRanges rels;
+    RangeColumns rels;
     std::vector<std::uint8_t> rel_kinds;
-    std::vector<std::uint32_t> rel_sym_rows;
+    std::vector<std::uint32_t> rel_sym_entries;
     std::vector<std::uint8_t> rel_sym8;
     std::vector<std::uint16_t> rel_sym16;
     std::vector<std::uint32_t> rel_sym32;
-    std::vector<std::uint32_t> rel_def_rows;
+    std::vector<std::uint32_t> rel_def_entries;
     std::vector<std::uint32_t> rel_def_begins;
     std::vector<std::uint32_t> rel_def_ends;
 };

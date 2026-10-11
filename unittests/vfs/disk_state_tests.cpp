@@ -15,7 +15,7 @@ namespace clice::testing {
 namespace {
 
 using Clock = vfs::DiskState::Clock;
-using Verdict = vfs::DiskState::Verdict;
+using CheckResult = vfs::DiskState::CheckResult;
 using namespace std::chrono_literals;
 
 /// A file table whose schedule runs on a clock the test turns, with a
@@ -69,7 +69,7 @@ ZEST_CASE(WorkspaceAlwaysLooks) {
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     f.rewrite("src/a.h", "int b;\n");
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Stale);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Stale);
 }
 
 ZEST_CASE(PackageTrustedUntilDue) {
@@ -77,10 +77,10 @@ ZEST_CASE(PackageTrustedUntilDue) {
     auto fid = f.file("pkg/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     f.rewrite("pkg/a.h", "int b;\n");
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
 
     f.time += vfs::DiskState::package_policy.min;
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Stale);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Stale);
     ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 }
 
@@ -114,7 +114,7 @@ ZEST_CASE(TrustOnlyConfirms) {
     auto fid = f.file("pkg/a.h", "int a;\n");
     f.hash_of(fid);
     f.rewrite("pkg/a.h", "int b;\n");
-    ZASSERT(f.disk.check(fid, llvm::xxh3_64bits("int b;\n")) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, llvm::xxh3_64bits("int b;\n")) == CheckResult::Fresh);
     ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 
     // Nor that a place it found empty, after an upgrade removed the file
@@ -133,15 +133,15 @@ ZEST_CASE(OneLookPerTurn) {
     };
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
-    ZASSERT(f.disk.check(fid, hash + 1) == Verdict::Stale);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
+    ZASSERT(f.disk.check(fid, hash + 1) == CheckResult::Stale);
     f.rewrite("src/a.h", "int b;\n");
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
     ZASSERT(f.disk.checks.looked == 1u);
     ZASSERT(turns == 1);
 
     f.disk.end_turn();
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Stale);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Stale);
     ZASSERT(f.disk.checks.looked == 2u);
     ZASSERT(turns == 2);
 }
@@ -150,22 +150,22 @@ ZEST_CASE(TurnEndsBeforeIO) {
     Fixture f;
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    std::vector<Verdict> verdicts;
+    std::vector<CheckResult> results;
     kota::event_loop loop;
     auto body = [&]() -> kota::task<> {
         kota::task_group<> turns;
         turns.spawn(f.disk.end_turns(loop));
-        verdicts.push_back(f.disk.check(fid, hash));
+        results.push_back(f.disk.check(fid, hash));
         f.rewrite("src/a.h", "int b;\n");
-        verdicts.push_back(f.disk.check(fid, hash));
+        results.push_back(f.disk.check(fid, hash));
         co_await kota::sleep(1, loop);
-        verdicts.push_back(f.disk.check(fid, hash));
+        results.push_back(f.disk.check(fid, hash));
         turns.cancel();
         co_await turns.join();
     };
     loop.schedule(body());
     loop.run();
-    ZASSERT(verdicts == std::vector{Verdict::Fresh, Verdict::Fresh, Verdict::Stale});
+    ZASSERT(results == std::vector{CheckResult::Fresh, CheckResult::Fresh, CheckResult::Stale});
 }
 
 ZEST_CASE(MissingDropsPair) {
@@ -186,10 +186,10 @@ ZEST_CASE(OtherLookReplacesTurn) {
     };
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
     f.rewrite("src/a.h", "int b;\n");
     f.disk.look(llvm::ArrayRef<Fid>{fid});
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Stale);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Stale);
 }
 
 ZEST_CASE(LookJoinsOpenTurn) {
@@ -200,10 +200,10 @@ ZEST_CASE(LookJoinsOpenTurn) {
     auto a = f.file("src/a.h", "int a;\n");
     auto b = f.file("src/b.h", "int b;\n");
     auto hash = f.hash_of(a);
-    ZASSERT(f.disk.check(b, f.hash_of(b)) == Verdict::Fresh);
+    ZASSERT(f.disk.check(b, f.hash_of(b)) == CheckResult::Fresh);
     f.rewrite("src/a.h", "int c;\n");
     f.disk.look(llvm::ArrayRef<Fid>{a});
-    ZASSERT(f.disk.check(a, hash) == Verdict::Stale);
+    ZASSERT(f.disk.check(a, hash) == CheckResult::Stale);
     ZASSERT(f.disk.checks.looked == 1u);
 }
 
@@ -211,9 +211,9 @@ ZEST_CASE(UnownedCheckLooksAlone) {
     Fixture f;
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
     f.rewrite("src/a.h", "int b;\n");
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Stale);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Stale);
 }
 
 ZEST_CASE(DeepestRootDecides) {
@@ -225,7 +225,7 @@ ZEST_CASE(DeepestRootDecides) {
     auto fid = f.file("pkg/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     f.rewrite("pkg/a.h", "int b;\n");
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
 }
 
 ZEST_CASE(TickLooksWhenDue) {
@@ -276,7 +276,7 @@ ZEST_CASE(LookPostponesTick) {
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
     f.time += 900ms;
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
     f.rewrite("src/a.h", "int b;\n");
     f.time += 200ms;
     ZASSERT(f.tick().empty());
@@ -292,7 +292,7 @@ ZEST_CASE(ExpiredLooksAgain) {
     f.rewrite("pkg/sub/b.h", "int d;\n");
 
     f.disk.expire_under(f.identity("pkg/sub"));
-    ZASSERT(f.disk.check(b, hash) == Verdict::Stale);
+    ZASSERT(f.disk.check(b, hash) == CheckResult::Stale);
     ZASSERT(f.tick() == llvm::SmallVector<Fid>{b});
 }
 
@@ -323,7 +323,7 @@ ZEST_CASE(RootAddedLater) {
     auto hash = f.hash_of(fid);
     f.disk.add_root(f.identity("lib"), vfs::DiskState::package_policy);
     f.rewrite("lib/a.h", "int b;\n");
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
 }
 
 ZEST_CASE(BudgetLeavesRest) {
@@ -385,7 +385,7 @@ ZEST_CASE(EnvironmentInstallMakesDue) {
     f.disk.add_package(f.identity("env/include"));
     auto hash = f.hash_of(fid);
     f.rewrite("env/include/a.h", "int b;\n");
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
 
     // pixi rewrites the history with the same line every time.
     f.rewrite("env/conda-meta/history", "==> 1 <==\n");
@@ -401,11 +401,11 @@ ZEST_CASE(ShadowReportsStaleTrust) {
     f.disk.shadow = true;
     auto fid = f.file("pkg/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
     ZASSERT(trapped.empty());
 
     f.rewrite("pkg/a.h", "int b;\n");
-    ZASSERT(f.disk.check(fid, hash) == Verdict::Fresh);
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
     ZASSERT(trapped.size() == 1u);
     ZASSERT(trapped[0] == logging::AnomalyId::StaleTrust);
 

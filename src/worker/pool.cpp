@@ -461,13 +461,13 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
 
     // Every exit settles this incarnation's record, shutdown included:
     // senders whose link broke are parked on it.
-    struct Settle {
+    struct MarkDone {
         std::shared_ptr<WorkerDeath> death;
 
-        ~Settle() {
-            death->settled.set();
+        ~MarkDone() {
+            death->done.set();
         }
-    } settle{workers[index].death};
+    } mark_done{workers[index].death};
 
     auto result = co_await workers[index].proc.wait();
 
@@ -767,12 +767,12 @@ kota::task<> WorkerPool::revive_slot(std::size_t index, bool stateful) {
     worker_tasks.spawn(respawn_after(index, stateful, std::chrono::milliseconds(0)));
 }
 
-std::size_t WorkerPool::claim_stateless(std::size_t index, worker::Priority priority) {
+std::size_t WorkerPool::take_stateless(std::size_t index, worker::Priority priority) {
     auto& w = stateless_workers[index];
     w.busy = true;
     w.low_priority = priority == worker::Priority::Low;
-    next_claim_epoch += 1;
-    w.claim_epoch = next_claim_epoch;
+    next_acquire_epoch += 1;
+    w.acquire_epoch = next_acquire_epoch;
     set_oom_score(w, true);
     return index;
 }
@@ -790,7 +790,7 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
             priority == P::High ? high_queue.empty() : high_queue.empty() && low_queue.empty();
         if(fifo_clear && (priority == P::High || low_busy_count() < effective_low_limit())) {
             if(auto idx = pick_idle_stateless(); idx != SIZE_MAX)
-                co_return claim_stateless(idx, priority);
+                co_return take_stateless(idx, priority);
         }
 
         // A queued High request needs a process, not just CPU: with every
@@ -859,7 +859,7 @@ void WorkerPool::try_dispatch_pending() {
             auto* next = queue.front();
             queue.pop_front();
             next->queue = nullptr;
-            claim_stateless(idx, priority);
+            take_stateless(idx, priority);
             next->assigned_worker = idx;
             next->assigned_gen = stateless_workers[idx].generation;
             LOG_DEBUG("Dispatch {} -> {} (busy={}, low_busy={})",
@@ -1131,7 +1131,7 @@ void WorkerPool::cancel_low_priority(std::size_t count) {
         victims.push_back(i);
     }
     std::ranges::sort(victims, std::greater{}, [this](std::size_t i) {
-        return stateless_workers[i].claim_epoch;
+        return stateless_workers[i].acquire_epoch;
     });
     std::size_t cancelled = 0;
     for(auto i: victims) {

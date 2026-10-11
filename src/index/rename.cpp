@@ -162,7 +162,7 @@ std::optional<std::string> invalid_identifier(llvm::StringRef name) {
     return std::nullopt;
 }
 
-std::optional<SweptText> sweep_text(std::string text, const llvm::StringSet<>& names) {
+std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& names) {
     // Most files spell no name: a scan of the identifier-like runs, a
     // comment's words among them, rules them out before any lexing.
     llvm::StringRef rest = text;
@@ -179,7 +179,7 @@ std::optional<SweptText> sweep_text(std::string text, const llvm::StringSet<>& n
     if(!spelled) {
         return std::nullopt;
     }
-    SweptText swept;
+    ScannedText scanned;
     bool directive = false;
     Lexer lexer(text, {.lang_opts = &cxx()});
     for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
@@ -189,14 +189,14 @@ std::optional<SweptText> sweep_text(std::string text, const llvm::StringSet<>& n
             directive = false;
         }
         if(auto name = token.text(text); token.is_identifier() && names.contains(name)) {
-            swept.tokens[name].push_back({.offset = token.range.begin, .directive = directive});
+            scanned.tokens[name].push_back({.offset = token.range.begin, .directive = directive});
         }
     }
-    if(swept.tokens.empty()) {
+    if(scanned.tokens.empty()) {
         return std::nullopt;
     }
-    swept.text = std::move(text);
-    return swept;
+    scanned.text = std::move(text);
+    return scanned;
 }
 
 std::expected<RenameTarget, std::string> rename_target(const IndexQuery& query,
@@ -578,7 +578,7 @@ RenamePlan plan_rename(const IndexQuery& query,
         if(!source) {
             continue;
         }
-        source->rows->for_each_relation([&](SymbolHash hash, const Relation&) {
+        source->shard->for_each_relation([&](SymbolHash hash, const Relation&) {
             if(!listed.insert(hash).second) {
                 return true;
             }
@@ -780,8 +780,8 @@ BatchPlan plan_renames(const IndexQuery& query,
 
     llvm::StringMap<std::vector<std::string>> spelled;
     for(auto& path: scope.files) {
-        if(auto* swept = scope.read(path)) {
-            for(auto& name: swept->tokens) {
+        if(auto* scanned = scope.read(path)) {
+            for(auto& name: scanned->tokens) {
                 spelled[name.getKey()].push_back(path);
             }
         }

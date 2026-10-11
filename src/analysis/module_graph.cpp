@@ -325,9 +325,9 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             facts.files[id].units.push_back(unit);
         }
         if(unit != none) {
-            for(auto& [version, rows]: manifest.contributions) {
+            for(auto& [version, variant]: manifest.contributions) {
                 if(auto id = id_of(table.version(version).fid); id != none) {
-                    contributors[{id, rows}].push_back(unit);
+                    contributors[{id, variant}].push_back(unit);
                 }
             }
         }
@@ -485,7 +485,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     llvm::DenseMap<index::SymbolHash, llvm::SmallVector<Site, 2>> sites;
     std::vector<llvm::DenseMap<index::SymbolHash, RawUse>> raw(facts.files.size());
     std::vector<llvm::DenseSet<std::uint32_t>> pasted_lines(facts.files.size());
-    std::vector<std::vector<std::pair<std::uint32_t, index::SymbolHash>>> weak_rows(
+    std::vector<std::vector<std::pair<std::uint32_t, index::SymbolHash>>> weak_sites(
         facts.files.size());
     /// (file, entity) -> the units whose variant of the file declares it,
     /// for a file read differently across units.
@@ -493,7 +493,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         declaring_units;
     /// (file, entity) declared by only some of the file's variants.
     llvm::DenseSet<std::pair<std::uint32_t, index::SymbolHash>> partially_declared;
-    std::vector<std::vector<std::pair<std::uint32_t, index::SymbolHash>>> use_rows(
+    std::vector<std::vector<std::pair<std::uint32_t, index::SymbolHash>>> use_sites(
         facts.files.size());
     /// Specialization, primary template, file.
     std::vector<std::tuple<index::SymbolHash, index::SymbolHash, std::uint32_t>>
@@ -591,9 +591,9 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                 }
                 use.count += 1;
                 use.strong |= relation.kind != RelationKind::WeakReference;
-                use_rows[id].emplace_back(relation.range.begin, hash);
+                use_sites[id].emplace_back(relation.range.begin, hash);
                 if(relation.kind == RelationKind::WeakReference) {
-                    weak_rows[id].emplace_back(relation.range.begin, hash);
+                    weak_sites[id].emplace_back(relation.range.begin, hash);
                 }
             }
         });
@@ -621,7 +621,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     // anew (<assert.h>, <limits.h>): that #undef ends nothing.
     llvm::DenseSet<index::SymbolHash> undefined;
     for(std::uint32_t id = 0; id < facts.files.size(); id += 1) {
-        for(auto& [offset, hash]: use_rows[id]) {
+        for(auto& [offset, hash]: use_sites[id]) {
             if(undefined.contains(hash)) {
                 continue;
             }
@@ -726,7 +726,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     // target on a `using` line in a namespace.
     for(std::uint32_t id = 0; id < facts.files.size(); id += 1) {
         auto* shard = index.shard(fids[id]);
-        for(auto& [offset, target]: weak_rows[id]) {
+        for(auto& [offset, target]: weak_sites[id]) {
             auto identity = identity_of(target, shard);
             if(!identity || identity->name.empty()) {
                 continue;
@@ -768,7 +768,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         auto* shard = index.shard(fids[site->file]);
         index::SymbolHash target = 0;
         std::uint32_t last = 0;
-        for(auto& [offset, used]: use_rows[site->file]) {
+        for(auto& [offset, used]: use_sites[site->file]) {
             if(used == hash || offset < last || line_of(*shard, offset) != site->line) {
                 continue;
             }
@@ -1257,12 +1257,12 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         std::ranges::sort(definitions, [](const Extent& lhs, const Extent& rhs) {
             return std::tuple(lhs.begin, rhs.end) < std::tuple(rhs.begin, lhs.end);
         });
-        auto& rows = use_rows[id];
-        std::ranges::sort(rows);
-        std::vector<std::pair<std::uint32_t, std::uint32_t>> owned_rows;
+        auto& sites = use_sites[id];
+        std::ranges::sort(sites);
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> owned_uses;
         llvm::SmallVector<const Extent*> open;
         std::size_t next = 0;
-        for(auto& [offset, hash]: rows) {
+        for(auto& [offset, hash]: sites) {
             for(; next < definitions.size() && definitions[next].begin <= offset; next += 1) {
                 while(!open.empty() && open.back()->end <= definitions[next].begin) {
                     open.pop_back();
@@ -1280,11 +1280,11 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             auto& use = raw[id][hash];
             if(facts.entities[used].owner == id ||
                (!defines(id, hash) && (use.strong || !operators[used]))) {
-                owned_rows.emplace_back(open.back()->entity, used);
+                owned_uses.emplace_back(open.back()->entity, used);
             }
         }
-        std::ranges::sort(owned_rows);
-        for(auto& [entity, used]: owned_rows) {
+        std::ranges::sort(owned_uses);
+        for(auto& [entity, used]: owned_uses) {
             auto& body = facts.entities[entity].body;
             if(body.empty() || body.back().entity != used) {
                 body.push_back({.entity = used});
@@ -1321,8 +1321,8 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             }
             auto tested = none;
             auto expanded = none;
-            for(auto& [offset, row]: use_rows[id]) {
-                if(row != hash) {
+            for(auto& [offset, used]: use_sites[id]) {
+                if(used != hash) {
                     continue;
                 }
                 auto line = line_of(*shard, offset);
@@ -1587,15 +1587,15 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
 
     // The names a glob claims a file for; a directory module that happens to
     // share one stays the program's.
-    llvm::StringSet<> claimed_names;
+    llvm::StringSet<> matched_names;
     for(auto& file: facts.files) {
-        auto claimed =
+        auto matched =
             std::ranges::find_if(globs, [&](auto& glob) { return glob.second.match(file.path); });
-        if(claimed != globs.end()) {
-            claimed_names.insert(claimed->first);
+        if(matched != globs.end()) {
+            matched_names.insert(matched->first);
         }
         result.module_of.push_back(module_id(
-            claimed != globs.end() ? claimed->first : llvm::StringRef(directory(file.path))));
+            matched != globs.end() ? matched->first : llvm::StringRef(directory(file.path))));
     }
 
     for(llvm::StringRef move: spec.moves) {
@@ -1660,33 +1660,33 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
     // Whether an entry rewrites the module, and whether one wraps it, as an
     // entry without a kind says.
     std::vector<bool> rewritten(count, false), wrapped(count, false);
-    for(auto& claimed: spec.modules) {
+    for(auto& declared: spec.modules) {
         // A merge or move can still take a claimed module's files away.
-        auto module = result.module_named(claimed.name);
-        if(!claimed_names.contains(claimed.name) || module == count) {
+        auto module = result.module_named(declared.name);
+        if(!matched_names.contains(declared.name) || module == count) {
             continue;
         }
         // Wrapped is what an entry without a kind says; another entry of
         // the module may name its kind.
         auto& kind = result.kinds[module];
-        if(claimed.kind == ModuleKind::Wrapped) {
+        if(declared.kind == ModuleKind::Wrapped) {
             wrapped[module] = true;
             if(kind == ModuleKind::Program) {
                 kind = ModuleKind::Wrapped;
             }
         } else if(kind == ModuleKind::Program || kind == ModuleKind::Wrapped) {
-            kind = claimed.kind;
-        } else if(kind != claimed.kind) {
+            kind = declared.kind;
+        } else if(kind != declared.kind) {
             return std::unexpected(
-                std::format("module {} is both textual and external", claimed.name));
+                std::format("module {} is both textual and external", declared.name));
         }
-        for(auto& provided: claimed.provides) {
+        for(auto& provided: declared.provides) {
             result.provides[module].insert(provided.getKey());
         }
-        if(claimed.rewrite) {
+        if(declared.rewrite) {
             rewritten[module] = true;
-            if(!claimed.primary.empty()) {
-                result.primaries[module] = claimed.primary;
+            if(!declared.primary.empty()) {
+                result.primaries[module] = declared.primary;
             }
         }
     }

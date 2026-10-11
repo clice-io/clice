@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import {
     locationsOf,
     MTIME_GRANULARITY,
-    SETTLE_TIME,
+    IDLE_WAIT,
     sleep,
     waitUntil,
     withTimeout,
@@ -433,7 +433,7 @@ test("unchanged save no recompile", async ({ session }) => {
     const hoverRecompiles = async (): Promise<boolean> => {
         const arrived = client.armDiagnostics(host);
         await client.hoverAt(host, 1, 21);
-        return withTimeout(arrived, SETTLE_TIME, "publish").then(
+        return withTimeout(arrived, IDLE_WAIT, "publish").then(
             () => true,
             () => false,
         );

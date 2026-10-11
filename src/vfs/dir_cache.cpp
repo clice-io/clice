@@ -85,7 +85,7 @@ std::shared_ptr<const Listing> list(llvm::StringRef dir) {
         return listing;
     }
     auto after = vfs::status(dir);
-    if(after && before->stamp.mtime_ns == after->stamp.mtime_ns && settled(after->stamp.mtime_ns)) {
+    if(after && before->stamp.mtime_ns == after->stamp.mtime_ns && stable_mtime(after->stamp.mtime_ns)) {
         listing->mtime_ns = after->stamp.mtime_ns;
     }
     return listing;

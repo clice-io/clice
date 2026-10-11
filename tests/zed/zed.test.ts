@@ -22,7 +22,7 @@ import { afterAll, expect, test } from "vitest";
 
 const STARTUP_TIMEOUT = 300_000;
 /// How long a started server has to stay up for the start to count.
-const SETTLE_TIME = 10_000;
+const IDLE_WAIT = 10_000;
 /// Debug logs of how Zed loads the worktree environment and starts language
 /// servers, so a timeout's log tail shows where the start stopped.
 const ZED_LOG = "info,project::environment=debug,project::lsp_store=debug,language_extension=debug";
@@ -132,7 +132,7 @@ async function indexExtensions(): Promise<void> {
                 readLog().includes("extensions updated"),
             { timeout: STARTUP_TIMEOUT, interval: 1_000, description: "Zed to index extensions" },
         );
-        await sleep(SETTLE_TIME);
+        await sleep(IDLE_WAIT);
     } finally {
         await stop(zed);
     }
@@ -165,7 +165,7 @@ async function startServer(dir: string, file: string, env: Record<string, string
             const tail = readLog().split("\n").slice(-80).join("\n");
             throw new Error(`${String(error)}\n--- end of ${log}:\n${tail}`);
         });
-        await sleep(SETTLE_TIME);
+        await sleep(IDLE_WAIT);
         checkFailed();
         return fs.realpathSync.native(JSON.parse(`"${started}"`) as string);
     } finally {

@@ -337,7 +337,7 @@ kota::task<JoinOutcome> TaskGraph::request(NodeId id, JoinOptions options) {
             case RoundOutcome::Success: co_return JoinOutcome::Success;
             case RoundOutcome::Failed: co_return JoinOutcome::Failed;
             case RoundOutcome::Stale:
-                if(options.flavor == JoinFlavor::OneAttempt) {
+                if(options.kind == JoinKind::OneAttempt) {
                     co_return JoinOutcome::Stale;
                 }
                 break;

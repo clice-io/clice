@@ -1025,7 +1025,7 @@ Toolchain::ProbeAdmission Toolchain::admit_probe(ConfigID id, InputKind input) {
     return admission;
 }
 
-void Toolchain::land_probe(llvm::StringRef key,
+void Toolchain::commit_probe(llvm::StringRef key,
                            const std::expected<std::vector<std::string>, std::string>& result) {
     if(!result) {
         failed.try_emplace(key, std::pair{result.error(), std::chrono::steady_clock::now()});
@@ -1054,7 +1054,7 @@ std::expected<Toolchain::ResolvedID, std::string> Toolchain::resolve(ConfigID id
 
         auto [ended] = kota::run(query_one(admission.spec));
         auto& result = *ended;
-        land_probe(admission.key, result);
+        commit_probe(admission.key, result);
         if(!result) {
             return std::unexpected(std::move(result.error()));
         }
@@ -1122,7 +1122,7 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
         } else {
             LOG_ERROR("Toolchain query failed: {}", o.result.error());
         }
-        land_probe(o.key, o.result);
+        commit_probe(o.key, o.result);
     }
 
     LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);

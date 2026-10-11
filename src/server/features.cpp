@@ -63,7 +63,7 @@ bool Features::ast_answerable(const Session& session) const {
 
 kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
                                                  RouteOptions options,
-                                                 std::optional<index::RowSource>* source) {
+                                                 std::optional<index::IndexSource>* source) {
     for(bool waited = false;;) {
         if(!ticket.fresh()) {
             co_return Route::Superseded;
@@ -236,12 +236,12 @@ const clang::LangOptions& Features::index_lang_options(const Session& session) {
 
     auto& contributions = project.project_index.contributions;
     auto it = contributions.find(session.path_id);
-    bool c_rows = it != contributions.end() && !it->second.empty() &&
+    bool c_only = it != contributions.end() && !it->second.empty() &&
                   llvm::all_of(llvm::make_first_range(it->second), [&](Fid tu) {
                       return llvm::StringRef(project.file_table.resolve(tu)).ends_with(".c");
                   });
     return feature::index_lang_options(path,
-                                       c_rows,
+                                       c_only,
                                        own ? llvm::StringRef(own->standard) : llvm::StringRef());
 }
 
@@ -400,10 +400,10 @@ kota::task<std::vector<protocol::Diagnostic>>
             break;
         }
     }
-    co_return settled_diagnostics(*session);
+    co_return finished_diagnostics(*session);
 }
 
-std::vector<protocol::Diagnostic> Features::settled_diagnostics(const Session& session) const {
+std::vector<protocol::Diagnostic> Features::finished_diagnostics(const Session& session) const {
     std::vector<protocol::Diagnostic> diagnostics;
     if(session.closed) {
         return diagnostics;
@@ -496,7 +496,7 @@ Features::RawResult Features::definition(Ticket ticket,
     // against a buffer the index never described.
     auto serving = query.serving(path_id);
     if(session->serving == ServingMode::IndexOnly || ASTFamily::compile_barred(*session) ||
-       (serving && serving->kind == index::RowSource::Kind::Shard)) {
+       (serving && serving->kind == index::IndexSource::Kind::Shard)) {
         if(!query.shard_matching(session->path_id, session->text)) {
             co_return serde_raw{"[]"};
         }
@@ -614,16 +614,16 @@ Features::RawResult Features::hover(Ticket ticket,
 
 Features::RawResult Features::semantic_tokens(Ticket ticket, kota::cancellation_token token) {
     auto& session = ticket.session;
-    std::optional<index::RowSource> source;
+    std::optional<index::IndexSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
-            auto rows = feature::extract_index_rows(*source->rows);
+            auto entries = feature::extract_index_entries(*source->shard);
             auto tokens = feature::index_semantic_tokens(
                 session->text,
                 index_lang_options(*session),
-                rows.occurrences,
-                rows.decls,
+                entries.occurrences,
+                entries.decls,
                 [&](index::SymbolHash hash) { return query.symbol_info(hash); });
             session->index_served = true;
             co_return to_raw(feature::semantic_tokens_to_protocol(tokens,
@@ -711,15 +711,15 @@ Features::RawResult Features::folding_range(Ticket ticket,
                                                           line_folding_only));
     };
 
-    std::optional<index::RowSource> source;
+    std::optional<index::IndexSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
-            auto rows = feature::extract_index_rows(*source->rows);
+            auto entries = feature::extract_index_entries(*source->shard);
             auto folds = feature::index_folding_ranges(
                 session->text,
                 index_lang_options(*session),
-                rows.decls,
+                entries.decls,
                 [&](index::SymbolHash hash) { return query.symbol_info(hash); });
             session->index_served = true;
             co_return convert(folds);
@@ -743,12 +743,12 @@ Features::RawResult Features::folding_range(Ticket ticket,
 
 Features::RawResult Features::document_symbol(Ticket ticket, kota::cancellation_token token) {
     auto& session = ticket.session;
-    std::optional<index::RowSource> source;
+    std::optional<index::IndexSource> source;
     switch(co_await pick_route(ticket, {.await_cold_attempt = true}, &source)) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
-            auto rows = feature::extract_index_rows(*source->rows);
-            auto symbols = feature::index_document_symbols(rows.decls, [&](index::SymbolHash hash) {
+            auto entries = feature::extract_index_entries(*source->shard);
+            auto symbols = feature::index_document_symbols(entries.decls, [&](index::SymbolHash hash) {
                 return query.symbol_info(hash);
             });
             session->index_served = true;
@@ -1104,9 +1104,9 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
 
     // The walk, the reads and the sweep run off the loop; only the files
     // spelling a name come back with their text.
-    struct Swept {
+    struct Scanned {
         std::vector<std::string> files;
-        llvm::StringMap<index::SweptText> texts;
+        llvm::StringMap<index::ScannedText> texts;
     };
 
     CanonicalPath cache_dir;
@@ -1114,12 +1114,12 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
     }
     llvm::StringSet<> names{at->target.symbol.symbol.name, new_name};
-    auto swept = co_await kota::queue([root = config.workspace_root, cache_dir, names] {
-        Swept result;
+    auto scanned = co_await kota::queue([root = config.workspace_root, cache_dir, names] {
+        Scanned result;
         for(auto& source: workspace_sources(root, cache_dir)) {
             auto path = source.str();
             if(auto text = vfs::read(path)) {
-                if(auto spelled = index::sweep_text((*text)->getBuffer().str(), names)) {
+                if(auto spelled = index::scan_text((*text)->getBuffer().str(), names)) {
                     result.texts.try_emplace(path, std::move(*spelled));
                 }
             }
@@ -1147,7 +1147,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
 
     auto root = config.workspace_root;
     llvm::StringSet<> walked;
-    for(auto& path: swept.files) {
+    for(auto& path: scanned.files) {
         walked.insert(path);
     }
     auto editable = [&](llvm::StringRef path) {
@@ -1155,12 +1155,12 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
     };
     // Open buffers, and edited files the walk's suffixes left out, are
     // swept on first read.
-    llvm::StringMap<std::optional<index::SweptText>> late;
-    auto read = [&](llvm::StringRef path) -> const index::SweptText* {
+    llvm::StringMap<std::optional<index::ScannedText>> late;
+    auto read = [&](llvm::StringRef path) -> const index::ScannedText* {
         auto file = project.file_table.find(Spelling::absolute(path));
         auto document = file ? sessions.find(*file) : nullptr;
         if(!document) {
-            if(auto it = swept.texts.find(path); it != swept.texts.end()) {
+            if(auto it = scanned.texts.find(path); it != scanned.texts.end()) {
                 return &it->second;
             }
             if(walked.contains(path)) {
@@ -1170,9 +1170,9 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         auto [it, inserted] = late.try_emplace(path);
         if(inserted) {
             if(document) {
-                it->second = index::sweep_text(document->text, names);
+                it->second = index::scan_text(document->text, names);
             } else if(auto text = vfs::read(path)) {
-                it->second = index::sweep_text((*text)->getBuffer().str(), names);
+                it->second = index::scan_text((*text)->getBuffer().str(), names);
             }
         }
         return it->second ? &*it->second : nullptr;
@@ -1181,7 +1181,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
                                    project.file_table,
                                    at->target,
                                    new_name,
-                                   {.files = swept.files,
+                                   {.files = scanned.files,
                                     .editable = editable,
                                     .read = read,
                                     .units_pending = clice::query::units_pending(project)});

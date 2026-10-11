@@ -562,8 +562,8 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
                                   .line = node.line,
                                   .skipped = node.skipped});
     }
-    for(auto [local_id, rows_hash]: section_contributions) {
-        manifest.contributions.emplace_back(fv_of[local_id], rows_hash);
+    for(auto [local_id, variant]: section_contributions) {
+        manifest.contributions.emplace_back(fv_of[local_id], variant);
     }
     manifest.local_fanout = std::move(*local_fanout);
 
@@ -598,7 +598,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     for(auto& [global_id, replacement]: replacements) {
         project.project_index.shards[global_id] = std::move(replacement);
         dirty_shards.insert(global_id);
-        report.add_rows_changed(global_id);
+        report.add_index_changed(global_id);
     }
 
     // Replace this TU's manifest wholesale: files it no longer touches lose
@@ -607,7 +607,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     auto affected =
         project_index.apply_manifest(project.file_table, tu_path_id, std::move(manifest));
     for(auto path_id: affected) {
-        report.add_rows_changed(path_id);
+        report.add_index_changed(path_id);
         auto it = project.project_index.shards.find(path_id);
         if(it == project.project_index.shards.end()) {
             continue;
@@ -684,7 +684,7 @@ void IndexStore::drop_index_into(Fid tu_path_id, Report& report) {
         if(it != project.project_index.shards.end()) {
             it->second.set_live(project_index.live_variants(path_id));
         }
-        report.add_rows_changed(path_id);
+        report.add_index_changed(path_id);
     }
     dirty_manifests.insert(tu_path_id);
     global_dirty = true;
@@ -746,7 +746,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     for(auto path_id: retired) {
         project.project_index.shards.erase(path_id);
         dirty_shards.erase(path_id);
-        report.add_rows_changed(path_id);
+        report.add_index_changed(path_id);
         requeue_owners(path_id, report);
     }
 
@@ -1212,7 +1212,7 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
                       project.file_table.resolve(path_id));
             assert(false && "persisted shard must survive snapshot migration");
             project.project_index.shards.erase(path_id);
-            report.add_rows_changed(path_id);
+            report.add_index_changed(path_id);
             requeue_owners(path_id, report);
         }
     }
@@ -1245,7 +1245,7 @@ void IndexStore::shed_borrowed_shards(Report& report) {
     }
     for(auto path_id: shed) {
         project.project_index.shards.erase(path_id);
-        report.add_rows_changed(path_id);
+        report.add_index_changed(path_id);
         requeue_owners(path_id, report);
     }
 }
@@ -1295,7 +1295,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     auto& project_index = project.project_index;
     ScopedTimer timer;
 
-    auto sweep_all = [&] {
+    auto remove_all = [&] {
         if(read_only) {
             return;
         }
@@ -1358,7 +1358,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         }
         // No global table means no resolvable manifests: everything else
         // is unreachable data, swept so it cannot survive as orphans.
-        sweep_all();
+        remove_all();
         load_metadata();
         retire_snapshot();
         return result;
@@ -1368,7 +1368,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
            project_index.load_global(global.buffer->getBuffer(), project.file_table, manifest_pins);
        !loaded) {
         LOG_INFO("Discarding the index global blob: {}", loaded.error());
-        sweep_all();
+        remove_all();
         load_metadata();
         if(!read_only) {
             startup_removes.push_back({index::IndexBlobKind::Global, "global"});
@@ -1876,15 +1876,15 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
 }
 
 bool IndexStore::file_version_stale(VersionID fv_id) {
-    auto [cached, inserted] = fv_verdicts.try_emplace(fv_id, true);
+    auto [cached, inserted] = fv_stale.try_emplace(fv_id, true);
     if(!inserted) {
         return cached->second;
     }
 
     // Missing and unreadable both read as stale — conservative, the
     // reindex re-observes.
-    bool stale = project.file_table.check_version(fv_id) != vfs::DiskState::Verdict::Fresh;
-    fv_verdicts[fv_id] = stale;
+    bool stale = project.file_table.check_version(fv_id) != vfs::DiskState::CheckResult::Fresh;
+    fv_stale[fv_id] = stale;
     return stale;
 }
 

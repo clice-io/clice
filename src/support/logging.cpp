@@ -71,11 +71,11 @@ std::string session_log_directory(std::string_view logging_dir) {
 #else
     localtime_r(&now, &local);
 #endif
-    char stamp[32];
-    std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H-%M-%S", &local);
+    char timestamp[32];
+    std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d_%H-%M-%S", &local);
     llvm::SmallString<256> directory(logging_dir);
     llvm::sys::path::append(directory,
-                            std::format("{}_{}", stamp, llvm::sys::Process::getProcessId()));
+                            std::format("{}_{}", timestamp, llvm::sys::Process::getProcessId()));
     return directory.str().str();
 }
 

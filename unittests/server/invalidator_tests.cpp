@@ -1107,7 +1107,7 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
     ZASSERT(dirty.recheck_contexts);
 }
 
-ZEST_CASE(CDBRemovedStillClaimed) {
+ZEST_CASE(CDBRemovedStillCovered) {
     /// The entry left the database but a rule's default command still
     /// claims the file: a command change, not a retirement — the rows are
     /// rebuilt under the default command instead of leaving.

@@ -277,7 +277,7 @@ private:
             semantic = it->second;
         }
 
-        Classified result = settle(semantic, lexical);
+        Classified result = final_classification(semantic, lexical);
 
         /// Unclassified tokens in an inactive region (bare identifiers,
         /// punctuation) still need a token to carry the Inactive modifier

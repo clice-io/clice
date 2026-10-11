@@ -317,7 +317,7 @@ ZEST_CASE(ForcedLanguageMembers) {
         llvm::is_contained(members, files.intern(Spelling::absolute(tmp.path("src/iface.cppm")))));
 };
 
-ZEST_CASE(WorkspaceRuleClaimsKnownSources) {
+ZEST_CASE(WorkspaceRuleCoversKnownSources) {
     /// A rule without patterns applies to every file, so its forced language
     /// claims only what clang recognizes as a source: the configuration file
     /// and an extensionless script stay out until a pattern names the script.

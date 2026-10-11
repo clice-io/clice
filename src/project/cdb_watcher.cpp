@@ -183,7 +183,7 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
         // leaves its stamp as it was: only a settled stamp vouches for the
         // listing (see vfs::settled).
         auto& stamp = root_flag->stamp;
-        listed_at = stamp && vfs::settled(stamp->mtime_ns) ? stamp : std::nullopt;
+        listed_at = stamp && vfs::stable_mtime(stamp->mtime_ns) ? stamp : std::nullopt;
     }
 
     // In the order a startup discovery would register them, the nearest

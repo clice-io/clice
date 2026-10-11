@@ -115,7 +115,7 @@ bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {
 
 /// Remove directory children whose name parses as a dead pid.
 /// Used for both `tmp/{pid}` and Scratch `{ns}/{pid}` layouts.
-void sweep_dead_pid_dirs(llvm::StringRef dir, std::uint32_t self_pid) {
+void remove_dead_pid_dirs(llvm::StringRef dir, std::uint32_t self_pid) {
     for(auto& entry: vfs::read_dir(dir).value_or(std::vector<vfs::Entry>())) {
         std::uint32_t pid = 0;
         auto name = path::filename(entry.path);
@@ -199,11 +199,11 @@ struct CacheStore::State {
 
     /// Logical clock: strictly increasing per issued stamp so that LRU
     /// ordering is deterministic even within one millisecond.
-    std::int64_t last_stamp = 0;
+    std::int64_t last_generation = 0;
 
-    std::int64_t next_stamp() {
-        last_stamp = std::max(now_ms(), last_stamp + 1);
-        return last_stamp;
+    std::int64_t next_generation() {
+        last_generation = std::max(now_ms(), last_generation + 1);
+        return last_generation;
     }
 
     std::string blob_path(const Namespace& ns, llvm::StringRef key) const {
@@ -340,7 +340,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
             for(auto& entry: data.entries) {
                 auto key = entry.ns + "/" + entry.key;
                 state->manifest_atimes[key] = entry.atime;
-                state->last_stamp = std::max(state->last_stamp, entry.atime);
+                state->last_generation = std::max(state->last_generation, entry.atime);
             }
         } else {
             LOG_WARN("CacheStore: corrupt manifest {}, rebuilding from directory scan",
@@ -352,7 +352,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     // complete by construction (atomic rename).  Sweep tmp directories of
     // instances that no longer exist.
     auto tmp_parent = path::join(state->base, "tmp");
-    sweep_dead_pid_dirs(tmp_parent, state->self_pid);
+    remove_dead_pid_dirs(tmp_parent, state->self_pid);
 
     state->tmp_dir = path::join(tmp_parent, std::to_string(state->self_pid));
     vfs::remove_all(state->tmp_dir);
@@ -432,7 +432,7 @@ void CacheStore::register_namespace(CacheNamespace ns) {
         }
         // Scratch directories are per-instance; reclaim those left behind
         // by crashed instances and start with a fresh one of our own.
-        sweep_dead_pid_dirs(ns_dir, state->self_pid);
+        remove_dead_pid_dirs(ns_dir, state->self_pid);
         vfs::remove_all(ns_state.dir);
         vfs::create_directories(ns_state.dir);
         return;
@@ -528,7 +528,7 @@ std::optional<std::string> CacheStore::lookup(llvm::StringRef ns, llvm::StringRe
         return std::nullopt;
     }
 
-    it->second.atime = state->next_stamp();
+    it->second.atime = state->next_generation();
     state->dirty = true;
     return state->blob_path(*ns_state, key);
 }
@@ -546,7 +546,7 @@ std::optional<std::string> CacheStore::lookup_aux(llvm::StringRef ns, llvm::Stri
         return std::nullopt;
     }
 
-    it->second.atime = state->next_stamp();
+    it->second.atime = state->next_generation();
     state->dirty = true;
     return state->aux_blob_path(*ns_state, key);
 }
@@ -730,7 +730,7 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
             ns_state->total_size += status->stamp.size - entry.size;
             entry.size = status->stamp.size;
         }
-        entry.atime = state->next_stamp();
+        entry.atime = state->next_generation();
 
         if(ns_state->config.policy == CachePolicy::LRU) {
             state->evict_locked(*ns_state, pending.key);

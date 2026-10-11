@@ -1095,7 +1095,7 @@ Deduction deduce_arguments(clang::ASTContext& context,
         return constant_value(context, deduced[NTTP->getIndex()]);
     };
 
-    auto verdict = Deduction::Matched;
+    auto deduction = Deduction::Matched;
     for(auto& check: unifier.deferred()) {
         auto expected = evaluate_integral(context, check.pattern, value_of);
         auto actual = constant_value(context, check.argument);
@@ -1109,7 +1109,7 @@ Deduction deduce_arguments(clang::ASTContext& context,
            same_expression(context, params, deduced, check.pattern, check.argument.getAsExpr())) {
             continue;
         }
-        verdict = Deduction::Unverified;
+        deduction = Deduction::Unverified;
     }
 
     llvm::SmallVector<clang::AssociatedConstraint, 2> constraints;
@@ -1117,12 +1117,12 @@ Deduction deduce_arguments(clang::ASTContext& context,
     for(auto& constraint: constraints) {
         auto satisfied = satisfaction(context, constraint.ConstraintExpr, value_of);
         if(!satisfied) {
-            verdict = Deduction::Unverified;
+            deduction = Deduction::Unverified;
         } else if(!*satisfied) {
             return Deduction::Failed;
         }
     }
-    return verdict;
+    return deduction;
 }
 
 namespace {
@@ -1161,13 +1161,13 @@ PartialChoice<Partial> select_partial_impl(clang::ASTContext& context,
     }
     for(auto& match: viable) {
         if(&match != best && !more_specialized(context, best->partial, match.partial)) {
-            return {.verdict = PartialVerdict::Ambiguous};
+            return {.outcome = PartialOutcome::Ambiguous};
         }
     }
     if(!best->verified) {
-        return {.verdict = PartialVerdict::Unverified};
+        return {.outcome = PartialOutcome::Unverified};
     }
-    return {.verdict = PartialVerdict::Selected, .winner = best->partial};
+    return {.outcome = PartialOutcome::Selected, .winner = best->partial};
 }
 
 }  // namespace

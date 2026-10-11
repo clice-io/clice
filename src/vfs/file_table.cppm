@@ -177,7 +177,7 @@ struct FileTable {
 
     /// Whether the disk still holds a version's bytes, looked at once per
     /// turn.
-    vfs::DiskState::Verdict check_version(VersionID vid);
+    vfs::DiskState::CheckResult check_version(VersionID vid);
 
     /// Whether a place a build found empty holds a readable file now,
     /// looked at once per turn.

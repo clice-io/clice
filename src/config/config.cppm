@@ -26,7 +26,7 @@ bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef workspace_root);
 
 /// Record `workspace_root` as the owner of a cache directory it may use
 /// (owned_elsewhere is false); called under the directory's writer lock.
-void claim_cache_dir(llvm::StringRef cache_dir, CanonicalRef workspace_root);
+void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef workspace_root);
 
 /// The configuration files a workspace root may hold, in lookup order.
 constexpr inline std::array<llvm::StringRef, 2> config_file_names = {"clice.toml",

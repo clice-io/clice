@@ -471,8 +471,8 @@ std::uint32_t ProjectIndex::reference_count(SymbolHash hash) const {
 }
 
 void ProjectIndex::each_reference_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const {
-    auto own = [&](const Symbol& row) {
-        for(auto id: row.reference_files) {
+    auto own = [&](const Symbol& symbol) {
+        for(auto id: symbol.reference_files) {
             visit(Fid{id});
         }
     };
@@ -506,20 +506,20 @@ void ProjectIndex::each_reference_file(SymbolHash hash, llvm::function_ref<void(
 
 void ProjectIndex::for_each_symbol(
     llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, std::uint32_t)> visit) const {
-    for(auto& [hash, row]: changed) {
+    for(auto& [hash, symbol]: changed) {
         if(!visit(hash,
-                  row.identity(),
-                  static_cast<std::uint32_t>(row.reference_files.cardinality()))) {
+                  symbol.identity(),
+                  static_cast<std::uint32_t>(symbol.reference_files.cardinality()))) {
             return;
         }
     }
-    for(auto& [hash, row]: written) {
+    for(auto& [hash, symbol]: written) {
         if(changed.contains(hash)) {
             continue;
         }
         if(!visit(hash,
-                  row.identity(),
-                  static_cast<std::uint32_t>(row.reference_files.cardinality()))) {
+                  symbol.identity(),
+                  static_cast<std::uint32_t>(symbol.reference_files.cardinality()))) {
             return;
         }
     }
@@ -557,33 +557,33 @@ Symbol& ProjectIndex::touch(SymbolHash hash) {
     if(!inserted) {
         return it->second;
     }
-    auto& row = it->second;
+    auto& symbol = it->second;
     if(auto held = written.find(hash); held != written.end()) {
-        row = held->second;
-        return row;
+        symbol = held->second;
+        return symbol;
     }
     if(!base) {
-        return row;
+        return symbol;
     }
     auto doc = base->find(hash);
     if(!doc) {
-        return row;
+        return symbol;
     }
     auto identity = base->identity(*doc);
-    row.name = identity.name.str();
-    row.args = identity.args.str();
-    row.parent = identity.parent;
-    row.kind = identity.kind;
-    row.flags = identity.flags;
-    row.file = identity.file;
+    symbol.name = identity.name.str();
+    symbol.args = identity.args.str();
+    symbol.parent = identity.parent;
+    symbol.kind = identity.kind;
+    symbol.flags = identity.flags;
+    symbol.file = identity.file;
     if(auto decoded = base->bitmap(*doc)) {
         for(auto id: *decoded) {
             if(id < base->remap.size()) {
-                row.reference_files.add(base->remap[id].raw);
+                symbol.reference_files.add(base->remap[id].raw);
             }
         }
     }
-    return row;
+    return symbol;
 }
 
 void ProjectIndex::merge(const TUIndex& index,
@@ -619,14 +619,14 @@ void ProjectIndex::merge(const TUIndex& index,
         }
         bool known = identity_of(hash).has_value();
         auto& target = touch(hash);
-        bool changed_row = !known;
+        bool symbol_changed = !known;
         if(target.name.empty() && !identity.name.empty()) {
             target.parent = identity.parent;
             target.kind = identity.kind;
-            changed_row = true;
+            symbol_changed = true;
         }
-        changed_row = prefer(target.name, identity.name) || changed_row;
-        changed_row = prefer(target.args, identity.args) || changed_row;
+        symbol_changed = prefer(target.name, identity.name) || symbol_changed;
+        symbol_changed = prefer(target.args, identity.args) || symbol_changed;
         // A unit that defines the symbol always places it: the table never
         // retracts a unit's earlier report, so an old definition bit must
         // not pin the file after the definition moved. Declarations only
@@ -634,16 +634,16 @@ void ProjectIndex::merge(const TUIndex& index,
         bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
         if(identity.file != no_file && (target.file == no_file || defines)) {
             auto file = file_ids_map[identity.file].raw;
-            changed_row = changed_row || target.file != file;
+            symbol_changed = symbol_changed || target.file != file;
             target.file = file;
         }
         auto flags = target.flags | identity.flags;
-        changed_row = changed_row || flags != target.flags;
+        symbol_changed = symbol_changed || flags != target.flags;
         target.flags = flags;
         for(auto ref: references) {
             target.reference_files.add(file_ids_map[ref].raw);
         }
-        if(changed_row && added) {
+        if(symbol_changed && added) {
             added->push_back(hash);
         }
         return true;
@@ -653,8 +653,8 @@ void ProjectIndex::merge(const TUIndex& index,
 void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& files) {
     // The rows changed since the last write join the ones still held
     // aside from a write that never landed; the newer row wins.
-    for(auto& [hash, row]: changed) {
-        written[hash] = std::move(row);
+    for(auto& [hash, symbol]: changed) {
+        written[hash] = std::move(symbol);
     }
     changed.clear();
 
@@ -745,20 +745,20 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         blob.sym_bitmaps.insert(blob.sym_bitmaps.end(), image.begin(), image.end());
         blob.sym_bitmap_ends.push_back(static_cast<std::uint32_t>(blob.sym_bitmaps.size()));
     };
-    auto emit_row = [&](SymbolHash hash, const Symbol& row) {
+    auto emit_symbol = [&](SymbolHash hash, const Symbol& symbol) {
         blob.sym_hashes.push_back(hash);
-        blob.sym_names += row.name;
+        blob.sym_names += symbol.name;
         blob.sym_name_ends.push_back(static_cast<std::uint32_t>(blob.sym_names.size()));
-        blob.sym_args += row.args;
+        blob.sym_args += symbol.args;
         blob.sym_args_ends.push_back(static_cast<std::uint32_t>(blob.sym_args.size()));
-        blob.sym_parents.push_back(row.parent);
-        blob.sym_kinds.push_back(row.kind.value());
-        blob.sym_flags.push_back(static_cast<std::uint16_t>(row.flags));
-        blob.sym_files.push_back(row.file == no_file ? no_file : path_id(Fid{row.file}));
+        blob.sym_parents.push_back(symbol.parent);
+        blob.sym_kinds.push_back(symbol.kind.value());
+        blob.sym_flags.push_back(static_cast<std::uint16_t>(symbol.flags));
+        blob.sym_files.push_back(symbol.file == no_file ? no_file : path_id(Fid{symbol.file}));
         blob.sym_reference_counts.push_back(
-            static_cast<std::uint32_t>(row.reference_files.cardinality()));
+            static_cast<std::uint32_t>(symbol.reference_files.cardinality()));
         Bitmap references;
-        for(auto id: row.reference_files) {
+        for(auto id: symbol.reference_files) {
             references.add(path_id(Fid{id}));
         }
         auto image = write_bitmap(references);
@@ -785,7 +785,7 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         if(doc < base_count && base->hashes[doc] == keys[k]) {
             doc += 1;
         }
-        emit_row(keys[k], written.find(keys[k])->second);
+        emit_symbol(keys[k], written.find(keys[k])->second);
         k += 1;
     }
 
@@ -821,8 +821,8 @@ void ProjectIndex::rebase(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& f
 }
 
 void ProjectIndex::restore_unwritten() {
-    for(auto& [hash, row]: written) {
-        changed.try_emplace(hash, std::move(row));
+    for(auto& [hash, symbol]: written) {
+        changed.try_emplace(hash, std::move(symbol));
     }
     written.clear();
 }

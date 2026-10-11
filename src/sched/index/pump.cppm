@@ -6,7 +6,7 @@ module clice:sched.index.pump;
 
 import :project.index_store;
 import :project.project;
-import :sched.index.ledger;
+import :sched.index.pending_table;
 import :support.signal;
 
 namespace clice {
@@ -45,7 +45,7 @@ public:
     /// against the escalated state. Also invoked for a boost the pump
     /// refuses — a file a rule keeps out of the index — since no attempt
     /// will ever settle for it.
-    std::function<void(Fid path_id)> on_attempt_settled;
+    std::function<void(Fid path_id)> on_attempt_finished;
 
     /// Whether an open document's own compile serves the file: debt other
     /// than a change of its own content then settles without a background
@@ -57,7 +57,7 @@ public:
     /// re-masked, dropped or shed). Carries the affected path_ids; the
     /// serving adapter checks which of them an open session serves and
     /// refreshes those clients.
-    Signal<llvm::ArrayRef<Fid>> on_rows_changed;
+    Signal<llvm::ArrayRef<Fid>> on_index_changed;
 
     /// Temporarily pause background indexing to give priority to user
     /// requests.  Indexing tasks already dispatched to workers continue,
@@ -122,7 +122,7 @@ public:
     /// or nullopt when its index is not pending an update. O(1), no I/O —
     /// the query path calls this per candidate file.
     std::optional<ReindexReason> pending_reason(Fid server_path_id) const {
-        return ledger.pending_reason(server_path_id);
+        return pending_table.pending_reason(server_path_id);
     }
 
     /// Forget a file's pending-reindex debt: used when the file is removed
@@ -133,8 +133,8 @@ public:
     /// missing ledger entry as a cleared slot) unless the file is recorded
     /// again first, which reuses it.
     void clear_pending(Fid server_path_id) {
-        ledger.clear(server_path_id);
-        settle_attempt_waits(server_path_id);
+        pending_table.clear(server_path_id);
+        wake_attempt_waits(server_path_id);
     }
 
     /// Schedule background indexing (respects idle timeout and dedup).
@@ -148,7 +148,7 @@ public:
     /// the current attempt settles and its waiters wake, so a waker never
     /// observes rows as settled that the report just declared stale — and
     /// surface its serving-row changes through on_rows_changed.
-    void claim_report(const IndexStore::Report& report);
+    void take_report(const IndexStore::Report& report);
 
     /// The pump debt a save()'s CDB snapshot persists: files whose latest
     /// attempt failed for good plus everything still booked in the ledger.
@@ -234,21 +234,21 @@ private:
     /// 2. need_update() may shortcut deps-only slots ONLY: the engine
     ///    observed content changes itself, and the dep-hash check cannot
     ///    see a file's own edit.
-    PendingLedger ledger{max_requeue_attempts};
+    PendingTable pending_table{max_requeue_attempts};
 
     constexpr static unsigned max_requeue_attempts = 3;
 
     /// Merge a failed dispatch's claim back through the ledger and apply
     /// the pump-side halves: a Requeued file gets its queue slot, an
     /// abandoned one wakes its waiters.
-    PendingLedger::FailureVerdict note_dispatch_failure(const PendingLedger::Claim& claim,
-                                                        PendingLedger::Failure failure);
+    PendingTable::FailureDecision note_dispatch_failure(const PendingTable::TakenDebt& taken,
+                                                        PendingTable::Failure failure);
 
     /// Wake the file's await_attempt waiters whose observed ticket the
     /// settled attempt covers (`ticket` and older) and drop their events.
     /// The default wakes every waiter — for the paths where no further
     /// attempt will come (entry cleared, shutdown).
-    void settle_attempt_waits(Fid server_path_id, std::uint64_t ticket = -1);
+    void wake_attempt_waits(Fid server_path_id, std::uint64_t ticket = -1);
 
     llvm::DenseSet<Fid> failed_ids;
     std::size_t indexed_total = 0;
@@ -309,7 +309,7 @@ private:
     /// One dispatched unit of a background round: admit, run the TU through
     /// its TURun node, claim the merge report, settle the claimed debt and
     /// report progress.
-    kota::task<> run_index_task(PendingLedger::Claim claim,
+    kota::task<> run_index_task(PendingTable::TakenDebt taken,
                                 std::size_t index,
                                 std::size_t total,
                                 RoundState& round);

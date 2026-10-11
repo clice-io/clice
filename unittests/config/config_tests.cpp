@@ -92,7 +92,7 @@ ZEST_CASE(CacheDirServesOneProject) {
     CanonicalPath a(Spelling::absolute(tmp.path("a")));
     CanonicalPath b(Spelling::absolute(tmp.path("b")));
     ZEXPECT(!owned_elsewhere(shared, b));
-    claim_cache_dir(shared, a);
+    set_cache_dir_owner(shared, a);
     ZEXPECT(!owned_elsewhere(shared, a));
     ZEXPECT(owned_elsewhere(shared, b));
 
@@ -101,14 +101,14 @@ ZEST_CASE(CacheDirServesOneProject) {
     tmp.touch("a/.clice/owner", b.str() + "\n");
     auto inner = path::join(a, ".clice");
     ZEXPECT(!owned_elsewhere(inner, a));
-    claim_cache_dir(inner, a);
+    set_cache_dir_owner(inner, a);
     ZEXPECT(owned_elsewhere(inner, CanonicalPath(Spelling::absolute(path::join(a, "sub")))));
 
     // An owner that no longer exists claims nothing.
     tmp.touch("moved/owner", tmp.path("gone") + "\n");
     auto moved = tmp.path("moved");
     ZEXPECT(!owned_elsewhere(moved, b));
-    claim_cache_dir(moved, b);
+    set_cache_dir_owner(moved, b);
     ZEXPECT(owned_elsewhere(moved, a));
 
     tmp.touch("b/clice.toml", std::format("[project]\ncache_dir = '{}'\n", shared));

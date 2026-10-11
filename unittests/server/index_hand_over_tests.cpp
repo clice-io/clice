@@ -30,14 +30,14 @@ ZEST_CASE(SmallIndexInline) {
 ZEST_CASE(LargeIndexToFile) {
     TempDir tmp;
     auto path = tmp.path("index.transfer");
-    std::string envelope(max_index_bytes() + 1, 'x');
+    std::string blob(max_index_bytes() + 1, 'x');
     Reply reply;
-    ZEXPECT(!hand_over_index(envelope, path, reply));
+    ZEXPECT(!hand_over_index(blob, path, reply));
     ZEXPECT(reply.index_in_file);
     ZEXPECT(reply.tu_index_data.empty());
     auto written = vfs::read(path, vfs::Read::Bytes);
     ZASSERT(written);
-    ZEXPECT((*written)->getBuffer() == envelope);
+    ZEXPECT((*written)->getBuffer() == blob);
 }
 
 ZEST_CASE(LargeIndexWithoutPath) {

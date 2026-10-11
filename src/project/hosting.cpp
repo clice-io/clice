@@ -79,16 +79,16 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
                                                       Fid header,
                                                       VersionID root,
                                                       llvm::ArrayRef<index::IncludeNode> nodes) {
-    using Verdict = vfs::DiskState::Verdict;
+    using CheckResult = vfs::DiskState::CheckResult;
     auto& files = project.file_table;
-    if(files.check_version(root) != Verdict::Fresh) {
+    if(files.check_version(root) != CheckResult::Fresh) {
         return std::nullopt;
     }
     auto file_of = [&](std::uint32_t node) {
         return files.version(VersionID{nodes[node].file}).fid;
     };
     auto fresh = [&](std::uint32_t node) {
-        return files.check_version(VersionID{nodes[node].file}) == Verdict::Fresh;
+        return files.check_version(VersionID{nodes[node].file}) == CheckResult::Fresh;
     };
 
     // The header's own guard decides which of its includes after the first

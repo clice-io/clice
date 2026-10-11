@@ -202,7 +202,7 @@ public:
     /// message, so the look is exact — with periodic ticks off, as tests
     /// run: workspace polling and checkpoints start work on their own. The
     /// metadata save that follows a build is not waited for.
-    kota::task<> settle(const kota::ipc::JSONPeer& editor);
+    kota::task<> wait_idle(const kota::ipc::JSONPeer& editor);
 
     /// What settle() still waits for, one line each; empty once settled.
     std::vector<std::string> pending_work(const kota::ipc::JSONPeer& editor);
@@ -246,7 +246,7 @@ public:
     /// refresh request makes it re-pull them — index-only sessions never
     /// compile, so the compile-driven refresh in the output push path
     /// cannot cover them.
-    Signal<> on_serving_rows_changed;
+    Signal<> on_serving_index_changed;
 
     /// Wakes subscribers after a new message landed in notify_log. Pure
     /// wake-up per the Signal contract: subscribers keep a sequence cursor
@@ -337,7 +337,7 @@ private:
 
     /// The project a file belongs to: its compiler, else the deepest root
     /// holding it; null when none claims it.
-    ProjectServer* claimant(Fid path_id);
+    ProjectServer* project_of(Fid path_id);
 
     /// The claimant, else the first project.
     ProjectServer& route(Fid path_id);
@@ -363,7 +363,7 @@ private:
     void fold_index_progress();
 
     /// The pool's callbacks, routed to the projects owning the documents.
-    void wire();
+    void route_pool_callbacks();
 
     /// Cancellation scope of the serving phase. run_serve_mode serves until
     /// it fires; schedule_shutdown() cancels the source, unwinding the

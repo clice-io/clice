@@ -80,7 +80,7 @@ struct Pairing {
     Side side;
 
     llvm::DenseMap<Fid, Side> sides{};
-    llvm::DenseMap<Fid, const index::Shard*> rows{};
+    llvm::DenseMap<Fid, const index::Shard*> shards{};
     llvm::DenseMap<Fid, Evidence> found{};
 
     /// How many of the file's declarations (on the interface side) or
@@ -95,10 +95,10 @@ struct Pairing {
         return it->second;
     }
 
-    const index::Shard* rows_of(Fid other) {
-        auto [it, inserted] = rows.try_emplace(other);
+    const index::Shard* shard_of(Fid other) {
+        auto [it, inserted] = shards.try_emplace(other);
         if(inserted) {
-            it->second = ctx.query.declaring_rows(other);
+            it->second = ctx.query.declaring_shard(other);
         }
         return it->second;
     }
@@ -123,7 +123,7 @@ struct Pairing {
     /// files declare a definition's symbol — open buffers, and the files
     /// the project table lists as referencing it.
     void pair_by_declarations() {
-        auto* own = rows_of(file);
+        auto* own = shard_of(file);
         if(!own) {
             return;
         }
@@ -167,11 +167,11 @@ struct Pairing {
                 }
             });
             ctx.project.project_index.each_reference_file(hash, [&](Fid other) {
-                auto* other_rows = consider(other) ? rows_of(other) : nullptr;
-                if(!other_rows) {
+                auto* other_shard = consider(other) ? shard_of(other) : nullptr;
+                if(!other_shard) {
                     return;
                 }
-                other_rows->lookup(hash, RelationKind::Declaration, [&](const index::Relation&) {
+                other_shard->lookup(hash, RelationKind::Declaration, [&](const index::Relation&) {
                     declaring.insert(other);
                     return false;
                 });

@@ -29,8 +29,8 @@ void IndexPump::boost(Fid server_path_id) {
     if(!enqueue(server_path_id, ReindexReason::DepsOnly)) {
         // No attempt will ever settle for an excluded file: the serving
         // side hears that now, or the session waits on the index forever.
-        if(on_attempt_settled) {
-            on_attempt_settled(server_path_id);
+        if(on_attempt_finished) {
+            on_attempt_finished(server_path_id);
         }
         return;
     }
@@ -61,24 +61,24 @@ bool IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
     // would settle the fresh ticket on a verdict memoized before the
     // change and the file would never re-index.
     store.begin_round();
-    if(ledger.record(server_path_id, reason)) {
+    if(pending_table.record(server_path_id, reason)) {
         index_queue.push_back(server_path_id);
     }
     return true;
 }
 
-void IndexPump::claim_report(const IndexStore::Report& report) {
+void IndexPump::take_report(const IndexStore::Report& report) {
     for(auto id: report.reindex()) {
         enqueue(id, ReindexReason::ContentChanged);
     }
-    if(!report.rows_changed().empty()) {
-        on_rows_changed.emit(report.rows_changed());
+    if(!report.index_changed().empty()) {
+        on_index_changed.emit(report.index_changed());
     }
 }
 
 llvm::SmallVector<Fid> IndexPump::save_debt() const {
     llvm::SmallVector<Fid> debt(failed_ids.begin(), failed_ids.end());
-    auto pending = ledger.pending_files();
+    auto pending = pending_table.pending_files();
     debt.append(pending.begin(), pending.end());
     return debt;
 }
@@ -88,12 +88,12 @@ kota::task<> IndexPump::persist(IndexStore::SearchRebuild search) {
     while(retry) {
         auto report = co_await store.save(save_debt(), search);
         retry = report.owes_retry;
-        claim_report(report);
+        take_report(report);
     }
 }
 
 kota::task<> IndexPump::await_attempt(Fid server_path_id) {
-    auto pending = ledger.peek(server_path_id);
+    auto pending = pending_table.peek(server_path_id);
     if(!pending) {
         co_return;
     }
@@ -111,22 +111,22 @@ kota::task<> IndexPump::await_attempt(Fid server_path_id) {
     co_await event->wait();
 }
 
-void IndexPump::settle_attempt_waits(Fid server_path_id, std::uint64_t ticket) {
+void IndexPump::wake_attempt_waits(Fid server_path_id, std::uint64_t ticket) {
     auto it = attempt_waits.find(server_path_id);
     if(it == attempt_waits.end()) {
         return;
     }
-    llvm::SmallVector<std::shared_ptr<kota::event>, 2> settled;
+    llvm::SmallVector<std::shared_ptr<kota::event>, 2> woken;
     for(auto& wait: it->second) {
         if(wait.ticket <= ticket) {
-            settled.push_back(std::move(wait.event));
+            woken.push_back(std::move(wait.event));
         }
     }
     llvm::erase_if(it->second, [&](const AttemptWait& wait) { return wait.ticket <= ticket; });
     if(it->second.empty()) {
         attempt_waits.erase(it);
     }
-    for(auto& event: settled) {
+    for(auto& event: woken) {
         event->set();
     }
 }
@@ -202,19 +202,19 @@ void IndexPump::schedule(bool immediate) {
     }
 }
 
-auto IndexPump::note_dispatch_failure(const PendingLedger::Claim& claim,
-                                      PendingLedger::Failure failure)
-    -> PendingLedger::FailureVerdict {
-    auto outcome = ledger.on_dispatch_failure(claim, failure);
+auto IndexPump::note_dispatch_failure(const PendingTable::TakenDebt& taken,
+                                      PendingTable::Failure failure)
+    -> PendingTable::FailureDecision {
+    auto outcome = pending_table.on_dispatch_failure(taken, failure);
     if(outcome.needs_slot) {
-        index_queue.push_back(claim.id);
+        index_queue.push_back(taken.id);
     }
     // Giving up cleared the ledger; no further attempt will come, so any
     // parked waiter must not be left waiting for one.
-    if(outcome.verdict == PendingLedger::FailureVerdict::GaveUp) {
-        settle_attempt_waits(claim.id);
+    if(outcome.decision == PendingTable::FailureDecision::GaveUp) {
+        wake_attempt_waits(taken.id);
     }
-    return outcome.verdict;
+    return outcome.decision;
 }
 
 kota::task<> IndexPump::run_round_feeder(kota::task_group<>& workers,
@@ -271,8 +271,8 @@ kota::task<> IndexPump::run_round_feeder(kota::task_group<>& workers,
         // removed from disk) has nothing to index — skip the slot. Every
         // other slot has an entry, because enqueue books it before the
         // queue push.
-        auto claim = ledger.claim(server_path_id);
-        if(!claim) {
+        auto taken = pending_table.take(server_path_id);
+        if(!taken) {
             continue;
         }
 
@@ -288,32 +288,32 @@ kota::task<> IndexPump::run_round_feeder(kota::task_group<>& workers,
         // a lambda's captures live in the lambda object, which dies at the
         // end of this statement — anything read after the first suspension
         // would dangle. Coroutine parameters are copied into the frame.
-        workers.spawn(run_index_task(*claim, dispatched, total, round));
+        workers.spawn(run_index_task(*taken, dispatched, total, round));
     }
 
     LOG_DEBUG("Background indexing: all {} tasks spawned, waiting for completion", dispatched);
 }
 
-kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
+kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
                                        std::size_t index,
                                        std::size_t total,
                                        RoundState& round) {
-    auto server_path_id = claim.id;
+    auto server_path_id = taken.id;
     auto file_path = std::string(project.file_table.resolve(server_path_id));
     // The engine's own observation is authoritative for content
     // changes: it saw the event. The dep-hash check cannot be trusted
     // to see a file's own edit (it validates the recorded
     // dependencies), so only deps-only slots — where it exists to
     // deduplicate cascade storms — may take the shortcut.
-    bool content_changed = ledger.pending_reason(server_path_id) == ReindexReason::ContentChanged;
+    bool content_changed = pending_table.pending_reason(server_path_id) == ReindexReason::ContentChanged;
     bool served = !content_changed && compiled_by_session && compiled_by_session(server_path_id);
     if(!served && (content_changed || store.need_update(server_path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
         auto outcome =
-            co_await turun.run(server_path_id, {.index = true}, {.superseded = [this, claim] {
-                                   return ledger.superseded(claim);
+            co_await turun.run(server_path_id, {.index = true}, {.superseded = [this, taken] {
+                                   return pending_table.superseded(taken);
                                }});
-        if(outcome.verdict == TURunFamily::Verdict::Shutdown) {
+        if(outcome.result == TURunFamily::Result::Shutdown) {
             // The graph refused the round: nothing ran, so the debt
             // stays booked for the final snapshot and the next
             // session; only the round bookkeeping below still runs so
@@ -327,9 +327,9 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
         // waiter wake-ups below: a waker re-deriving its route must
         // never observe rows as settled that the merge just declared
         // stale.
-        claim_report(outcome.report);
-        switch(outcome.verdict) {
-            case TURunFamily::Verdict::Completed: {
+        take_report(outcome.report);
+        switch(outcome.result) {
+            case TURunFamily::Result::Completed: {
                 failed_ids.erase(server_path_id);
                 indexed_total += 1;
                 LOG_PERF("index",
@@ -342,43 +342,43 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
                          outcome.perf.merge_ms);
                 break;
             }
-            case TURunFamily::Verdict::Skipped: {
+            case TURunFamily::Result::Skipped: {
                 break;
             }
-            case TURunFamily::Verdict::Failed: {
+            case TURunFamily::Result::Failed: {
                 LOG_WARN("[{}/{}] Index failed for {}: {}", index, total, file_path, outcome.error);
                 failed_ids.insert(server_path_id);
                 break;
             }
-            case TURunFamily::Verdict::Crashed:
-            case TURunFamily::Verdict::Lost:
-            case TURunFamily::Verdict::Preempted: {
+            case TURunFamily::Result::Crashed:
+            case TURunFamily::Result::Lost:
+            case TURunFamily::Result::Preempted: {
                 // Preempted under memory pressure or lost to a worker
                 // death: the work itself is fine — requeue the file with
                 // its original reason so the next round redoes it instead
                 // of silently dropping coverage; only lost runs spend the
                 // bounded budget. A run that crashed its worker waits for
                 // the file to change: the same bytes would crash again.
-                using enum PendingLedger::Failure;
-                auto failure = outcome.verdict == TURunFamily::Verdict::Crashed ? Crashed
-                               : outcome.verdict == TURunFamily::Verdict::Lost  ? Lost
+                using enum PendingTable::Failure;
+                auto failure = outcome.result == TURunFamily::Result::Crashed ? Crashed
+                               : outcome.result == TURunFamily::Result::Lost  ? Lost
                                                                                 : Preempted;
-                switch(note_dispatch_failure(claim, failure)) {
-                    case PendingLedger::FailureVerdict::Dropped: {
+                switch(note_dispatch_failure(taken, failure)) {
+                    case PendingTable::FailureDecision::Dropped: {
                         LOG_INFO("[{}/{}] Index dropped for removed file {}",
                                  index,
                                  total,
                                  file_path);
                         break;
                     }
-                    case PendingLedger::FailureVerdict::Superseded: {
+                    case PendingTable::FailureDecision::Superseded: {
                         LOG_INFO("[{}/{}] Index failure for superseded content of {}",
                                  index,
                                  total,
                                  file_path);
                         break;
                     }
-                    case PendingLedger::FailureVerdict::GaveUp: {
+                    case PendingTable::FailureDecision::GaveUp: {
                         // Log-only by design: the file is usually not
                         // open (open documents are served by their
                         // session, not the shard), so there is no
@@ -395,7 +395,7 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
                         failed_ids.insert(server_path_id);
                         break;
                     }
-                    case PendingLedger::FailureVerdict::Requeued: {
+                    case PendingTable::FailureDecision::Requeued: {
                         if(failure == Lost) {
                             LOG_WARN("[{}/{}] Worker died while indexing {}; requeued: {}",
                                      index,
@@ -414,7 +414,7 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
                 }
                 break;
             }
-            case TURunFamily::Verdict::Shutdown: {
+            case TURunFamily::Result::Shutdown: {
                 std::unreachable();
             }
         }
@@ -426,19 +426,19 @@ kota::task<> IndexPump::run_index_task(PendingLedger::Claim claim,
     // since only a future event re-enqueues it. Any such event re-judges
     // staleness by content hash. A re-enqueue during the flight booked
     // newer debt: the settle leaves it standing.
-    ledger.settle(claim);
+    pending_table.finish(taken);
     // The attempt settled with no retry pending; the serving side judges
     // whether an open session still waiting on the index can ever be
     // served by it, before its waiters wake (contract 15).
-    if(on_attempt_settled && !ledger.contains(server_path_id)) {
-        on_attempt_settled(server_path_id);
+    if(on_attempt_finished && !pending_table.contains(server_path_id)) {
+        on_attempt_finished(server_path_id);
     }
     // Wake the waiters parked on this attempt (and older tickets it
     // covers) after the escalation above, so they re-derive their route
     // against the settled state. Waiters of a requeue made during the
     // flight bound the fresh ticket and stay parked for that newer
     // attempt.
-    settle_attempt_waits(server_path_id, claim.ticket);
+    wake_attempt_waits(server_path_id, taken.ticket);
     round.completed += 1;
     round.inflight -= 1;
     round.task_done.set();
@@ -506,7 +506,7 @@ kota::task<> IndexPump::run_background_indexing() {
     // Files enqueued or requeued past the round snapshot keep the queue
     // alive for the next scheduled round.
     if(index_queue_pos >= index_queue.size()) {
-        assert(!ledger.has_queued_slots() && "a drained queue must leave no unconsumed slot");
+        assert(!pending_table.has_queued_slots() && "a drained queue must leave no unconsumed slot");
         index_queue.clear();
         index_queue_pos = 0;
         round_end = 0;
@@ -518,7 +518,7 @@ kota::task<> IndexPump::run_background_indexing() {
              total - dispatched,
              total,
              timer.ms());
-    co_await persist(index_queue_pos >= index_queue.size() ? IndexStore::SearchRebuild::Settled
+    co_await persist(index_queue_pos >= index_queue.size() ? IndexStore::SearchRebuild::Idle
                                                            : IndexStore::SearchRebuild::Behind);
     // The round's merge buffers are freed by now; glibc would keep their
     // pages, and the master its round's peak, for the rest of the session.

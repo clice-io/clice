@@ -37,15 +37,15 @@ kota::task<TURunFamily::Outcome> TURunFamily::run(Fid path_id, Plan plan, Guards
     // re-mark the node dirty. TURun nodes have no dependents — the update
     // cascades nowhere.
     graph.update(node(path_id));
-    auto join = co_await graph.request(node(path_id), {.flavor = JoinFlavor::OneAttempt});
+    auto join = co_await graph.request(node(path_id), {.kind = JoinKind::OneAttempt});
     inputs.erase(path_id);
-    auto it = landed.find(path_id);
-    if(it == landed.end()) {
+    auto it = finished.find(path_id);
+    if(it == finished.end()) {
         assert(join == JoinOutcome::Shutdown && "a landed TURun round records its outcome");
         co_return Outcome{};
     }
     auto outcome = std::move(it->second);
-    landed.erase(it);
+    finished.erase(it);
     co_return outcome;
 }
 
@@ -86,11 +86,11 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         // never built) stays uncovered — count that as a failure so a batch
         // run reports the debt instead of exiting clean.
         if(!project.project_index.manifests.contains(path_id)) {
-            landed[path_id] = {.verdict = Verdict::Failed,
+            finished[path_id] = {.result = Result::Failed,
                                .error = "no compile command found; the file stays uncovered"};
             co_return RoundOutcome::Failed;
         }
-        landed[path_id] = {.verdict = Verdict::Skipped};
+        finished[path_id] = {.result = Result::Skipped};
         co_return RoundOutcome::Stale;
     }
     if(resolved.synthesized) {
@@ -136,7 +136,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         }
         for(auto dep: deps.resolved) {
             if(co_await ctx.depend({Family::PCM, dep.raw}) == DependResult::Cancelled) {
-                landed[path_id] = {.verdict = Verdict::Preempted};
+                finished[path_id] = {.result = Result::Preempted};
                 co_return RoundOutcome::Stale;
             }
         }
@@ -168,7 +168,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         if(value.index_in_file) {
             auto read = vfs::read(transfer->tmp_path, vfs::Read::Mapped);
             if(!read) {
-                landed[path_id] = {.verdict = Verdict::Failed,
+                finished[path_id] = {.result = Result::Failed,
                                    .error = std::format("reading the index from {} failed: {}",
                                                         transfer->tmp_path,
                                                         read.error().message())};
@@ -178,12 +178,12 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             index_bytes = transferred->getBuffer();
         }
         if(plan.index && index_bytes.empty()) {
-            landed[path_id] = {.verdict = Verdict::Failed,
+            finished[path_id] = {.result = Result::Failed,
                                .error = "the worker returned no TUIndex"};
             co_return RoundOutcome::Failed;
         }
         Outcome outcome;
-        outcome.verdict = Verdict::Completed;
+        outcome.result = Result::Completed;
         outcome.tidy_diagnostics = std::move(value.tidy_diagnostics);
         outcome.perf = {.bytes = index_bytes.size(), .index_ms = run_ms, .merge_ms = 0};
         if(plan.index) {
@@ -195,7 +195,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             // follow-up slot redoes it.
             if(guards.superseded && guards.superseded()) {
                 LOG_INFO("Discarding superseded index result for {}", file_path);
-                landed[path_id] = {.verdict = Verdict::Skipped};
+                finished[path_id] = {.result = Result::Skipped};
                 co_return RoundOutcome::Stale;
             }
             ScopedTimer merge_timer;
@@ -203,13 +203,13 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             if(!report) {
                 if(report.error() == IndexStore::MergeError::Outdated) {
                     send_in_full.insert(path_id);
-                    landed[path_id] = {.verdict = Verdict::Preempted,
+                    finished[path_id] = {.result = Result::Preempted,
                                        .error = "a variant the result named by hash is not stored"};
                     co_return RoundOutcome::Stale;
                 }
                 // Rejected wholesale: the file's rows are missing or stale,
                 // which is a failure, not a completed index.
-                landed[path_id] = {.verdict = Verdict::Failed,
+                finished[path_id] = {.result = Result::Failed,
                                    .error = "the TUIndex result failed verification"};
                 co_return RoundOutcome::Failed;
             }
@@ -226,36 +226,36 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             outcome.report = std::move(*report);
             outcome.perf.merge_ms = merge_timer.ms();
         }
-        landed[path_id] = std::move(outcome);
+        finished[path_id] = std::move(outcome);
         co_return RoundOutcome::Success;
     }
 
     if(result.has_value()) {
-        landed[path_id] = {.verdict = Verdict::Failed, .error = result.value().error};
+        finished[path_id] = {.result = Result::Failed, .error = result.value().error};
         co_return RoundOutcome::Failed;
     }
     if(result.error().code == worker::dispatch_errc::cancelled) {
-        landed[path_id] = {.verdict = Verdict::Preempted, .error = result.error().message};
+        finished[path_id] = {.result = Result::Preempted, .error = result.error().message};
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_crashed) {
-        landed[path_id] = {.verdict = Verdict::Crashed,
+        finished[path_id] = {.result = Result::Crashed,
                            .error = "it crashed the worker: " + result.error().message};
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_died ||
        result.error().code == worker::dispatch_errc::worker_lost) {
-        landed[path_id] = {.verdict = Verdict::Lost, .error = result.error().message};
+        finished[path_id] = {.result = Result::Lost, .error = result.error().message};
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_unavailable && pool.revives_slots()) {
         // The outage is a window, not a verdict: the pool revives dead
         // slots, so the requeued attempt can succeed once one returns to
         // service. Without revival the failure below is terminal.
-        landed[path_id] = {.verdict = Verdict::Preempted, .error = result.error().message};
+        finished[path_id] = {.result = Result::Preempted, .error = result.error().message};
         co_return RoundOutcome::Stale;
     }
-    landed[path_id] = {.verdict = Verdict::Failed, .error = result.error().message};
+    finished[path_id] = {.result = Result::Failed, .error = result.error().message};
     co_return RoundOutcome::Failed;
 }
 

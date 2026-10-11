@@ -50,8 +50,8 @@ Fid header_id;
 /// Build an envelope from the added sources and merge it into the
 /// workspace, installing each section's blob verbatim as the file's shard.
 void merge_into_workspace() {
-    auto wire = index::build_tu_index(*unit);
-    auto view = index::TUIndex::from_bytes(wire);
+    auto bytes = index::build_tu_index(*unit);
+    auto view = index::TUIndex::from_bytes(bytes);
     ZASSERT(view.loaded());
 
     llvm::SmallVector<Fid> file_ids_map;
@@ -108,7 +108,7 @@ ZEST_CASE(PendingReasonUpgrade) {
     ZASSERT(indexer.pending_reason(file) == ReindexReason::ContentChanged);
 }
 
-ZEST_CASE(GateSplitsRows) {
+ZEST_CASE(GateSplitsShards) {
     add_file("header.h", R"(
         int helper() { return 1; }
     )");
@@ -160,7 +160,7 @@ ZEST_CASE(GateSplitsRows) {
     ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
 }
 
-ZEST_CASE(DeletedFileWithdrawsRows) {
+ZEST_CASE(DeletedFileWithdrawsIndex) {
     add_main("main.cpp", R"(
         int helper() { return 1; }
         int use() { return §(use)helper(); }

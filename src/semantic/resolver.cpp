@@ -778,8 +778,8 @@ public:
         /// neither a partial nor the primary may be chosen (see
         /// select_partial).
         auto choice = match_partial(CTD, arguments);
-        if(choice.verdict == PartialVerdict::Ambiguous ||
-           choice.verdict == PartialVerdict::Unverified) {
+        if(choice.outcome == PartialOutcome::Ambiguous ||
+           choice.outcome == PartialOutcome::Unverified) {
             LOG_DEBUG(
                 "{}"
                 "no certain partial; degrading",
@@ -858,11 +858,11 @@ public:
         }
 
         auto choice = match_partial(CTD, arguments);
-        switch(choice.verdict) {
-            case PartialVerdict::Selected: return choice.winner;
-            case PartialVerdict::None: return CTD->getTemplatedDecl();
-            case PartialVerdict::Ambiguous:
-            case PartialVerdict::Unverified: return nullptr;
+        switch(choice.outcome) {
+            case PartialOutcome::Selected: return choice.winner;
+            case PartialOutcome::None: return CTD->getTemplatedDecl();
+            case PartialOutcome::Ambiguous:
+            case PartialOutcome::Unverified: return nullptr;
         }
         std::unreachable();
     }

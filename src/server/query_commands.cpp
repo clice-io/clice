@@ -581,28 +581,28 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
     }
     std::vector<std::string> sources;
     llvm::StringSet<> walked;
-    llvm::StringMap<index::SweptText> swept;
-    auto sweep = [&](llvm::StringRef path) -> const index::SweptText* {
+    llvm::StringMap<index::ScannedText> scanned;
+    auto scan = [&](llvm::StringRef path) -> const index::ScannedText* {
         walked.insert(path);
         auto text = vfs::read(path);
         if(!text) {
             return nullptr;
         }
-        auto spelled = index::sweep_text((*text)->getBuffer().str(), names);
-        return spelled ? &swept.try_emplace(path, std::move(*spelled)).first->second : nullptr;
+        auto spelled = index::scan_text((*text)->getBuffer().str(), names);
+        return spelled ? &scanned.try_emplace(path, std::move(*spelled)).first->second : nullptr;
     };
     for(auto& source: workspace_sources(root, cache_dir)) {
-        sweep(sources.emplace_back(source.str()));
+        scan(sources.emplace_back(source.str()));
     }
     auto editable = [&](llvm::StringRef path) {
         return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
     };
-    auto read = [&](llvm::StringRef path) -> const index::SweptText* {
-        if(auto found = swept.find(path); found != swept.end()) {
+    auto read = [&](llvm::StringRef path) -> const index::ScannedText* {
+        if(auto found = scanned.find(path); found != scanned.end()) {
             return &found->second;
         }
         // An edited file the walk's suffixes left out.
-        return walked.contains(path) ? nullptr : sweep(path);
+        return walked.contains(path) ? nullptr : scan(path);
     };
     planned.plan = index::plan_renames(ctx.query,
                                        ctx.project.file_table,

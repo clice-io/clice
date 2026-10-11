@@ -940,7 +940,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     }
     // A file written anew takes a path no other one and no existing file has.
     llvm::StringMap<std::string> written;
-    auto claim = [&](llvm::StringRef path, llvm::StringRef from) -> std::optional<std::string> {
+    auto reserve = [&](llvm::StringRef path, llvm::StringRef from) -> std::optional<std::string> {
         auto [it, inserted] = written.try_emplace(path, from.str());
         if(!inserted) {
             return std::format("{} and {} both become {}", it->second, from.str(), path.str());
@@ -1027,7 +1027,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 std::format("{} becomes {}, the primary interface of its module", info.path, path));
         }
         if(path != info.path) {
-            if(auto taken = claim(path, info.path)) {
+            if(auto taken = reserve(path, info.path)) {
                 return std::unexpected(*taken);
             }
         }
@@ -1074,7 +1074,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                 }
             }
         }
-        if(auto taken = claim(entry.primary, std::format("module {}", entry.name))) {
+        if(auto taken = reserve(entry.primary, std::format("module {}", entry.name))) {
             return std::unexpected(*taken);
         }
         result.files.push_back({.path = entry.primary, .content = assemble(lines)});
@@ -1112,7 +1112,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
             }
         }
         auto path = with_extension(facts.files[defining].path, "macros.h");
-        if(auto taken = claim(path, facts.files[defining].path)) {
+        if(auto taken = reserve(path, facts.files[defining].path)) {
             return std::unexpected(*taken);
         }
         result.files.push_back({.path = path, .content = assemble(lines)});

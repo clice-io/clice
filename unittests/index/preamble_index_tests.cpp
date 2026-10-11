@@ -8,8 +8,8 @@ import :index.serialization;
 import :index.shard;
 import :index.tu_index;
 import :project.project;
-import :unittests.utils.envelope_mirror;
 import :unittests.utils.temp_dir;
+import :unittests.utils.tu_index_mirror;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -19,8 +19,8 @@ namespace {
 
 /// An envelope holding only the minimal path table verification demands,
 /// under `version`.
-std::string envelope_of_version(std::uint32_t version) {
-    EnvelopeMirror mirror;
+std::string blob_of_version(std::uint32_t version) {
+    TUIndexMirror mirror;
     mirror.format_version = version;
     mirror.paths = {"/proj/main.cpp"};
     return mirror.bytes();
@@ -50,7 +50,7 @@ void build_state(std::source_location location = std::source_location::current()
 
     dir.touch("state.pch.idx",
               index::build_preamble_index(*unit, links, inactive, conditionals, diagnostics));
-    state = load_pch_envelope(dir.path("state.pch.idx"));
+    state = load_pch_index(dir.path("state.pch.idx"));
     ZASSERT(state != nullptr);
 }
 
@@ -110,7 +110,7 @@ ZEST_CASE(ForcedIncludeServed) {
     ZASSERT(try_compile());
 
     dir.touch("state.pch.idx", index::build_preamble_index(*unit, {}, {}, {}, {}));
-    state = load_pch_envelope(dir.path("state.pch.idx"));
+    state = load_pch_index(dir.path("state.pch.idx"));
     ZASSERT(state != nullptr);
 
     bool found = false;
@@ -252,10 +252,10 @@ int main() { return 0; }
 }
 
 ZEST_CASE(RejectBadBlob) {
-    ZEXPECT(load_pch_envelope(dir.path("missing.pch.idx")) == nullptr);
+    ZEXPECT(load_pch_index(dir.path("missing.pch.idx")) == nullptr);
 
     dir.touch("garbage.pch.idx", "not a flatbuffer at all");
-    ZEXPECT(load_pch_envelope(dir.path("garbage.pch.idx")) == nullptr);
+    ZEXPECT(load_pch_index(dir.path("garbage.pch.idx")) == nullptr);
 }
 
 ZEST_CASE(RejectVersionMismatch) {
@@ -264,8 +264,8 @@ ZEST_CASE(RejectVersionMismatch) {
     // load as missing, so the PCH pair rebuilds instead of serving a stale
     // layout.
     for(auto version: {0u, index::index_format_version - 1}) {
-        dir.touch("stale.pch.idx", envelope_of_version(version));
-        ZEXPECT(load_pch_envelope(dir.path("stale.pch.idx")) == nullptr);
+        dir.touch("stale.pch.idx", blob_of_version(version));
+        ZEXPECT(load_pch_index(dir.path("stale.pch.idx")) == nullptr);
     }
 }
 
@@ -273,8 +273,8 @@ ZEST_CASE(AcceptCurrentVersionBlob) {
     // Positive control for RejectVersionMismatch: the same blob carrying the
     // CURRENT version loads — the rejection comes from the version's value,
     // not from the blob's shape.
-    dir.touch("current.pch.idx", envelope_of_version(index::index_format_version));
-    ZEXPECT(load_pch_envelope(dir.path("current.pch.idx")) != nullptr);
+    dir.touch("current.pch.idx", blob_of_version(index::index_format_version));
+    ZEXPECT(load_pch_index(dir.path("current.pch.idx")) != nullptr);
 }
 
 ZEST_CASE(RejectCorruptBlob) {
@@ -289,7 +289,7 @@ int main() { return 0; }
     ZASSERT(bytes.size() > 8);
 
     dir.touch("truncated.pch.idx", bytes.take_front(bytes.size() / 2));
-    ZEXPECT(load_pch_envelope(dir.path("truncated.pch.idx")) == nullptr);
+    ZEXPECT(load_pch_index(dir.path("truncated.pch.idx")) == nullptr);
 
     // Bytes 4-7 carry the buffer identifier; a blob from another format
     // must be rejected up front.
@@ -298,7 +298,7 @@ int main() { return 0; }
         clobbered[i] = 'X';
     }
     dir.touch("clobbered.pch.idx", clobbered);
-    ZEXPECT(load_pch_envelope(dir.path("clobbered.pch.idx")) == nullptr);
+    ZEXPECT(load_pch_index(dir.path("clobbered.pch.idx")) == nullptr);
 }
 
 ZEST_CASE(RejectCorruptSectionBlob) {
@@ -325,7 +325,7 @@ int main() { return 0; }
     }
 
     dir.touch("bad_section.pch.idx", bytes);
-    ZEXPECT(load_pch_envelope(dir.path("bad_section.pch.idx")) == nullptr);
+    ZEXPECT(load_pch_index(dir.path("bad_section.pch.idx")) == nullptr);
 }
 
 ZEST_CASE(SourcePathAndPrefix) {

@@ -239,9 +239,9 @@ private:
     /// while its artifact is still built), or the acquisition of
     /// `request`.
     struct PCHPlan {
-        enum class Verdict : std::uint8_t { None, Defer, Acquire };
+        enum class Decision : std::uint8_t { None, Defer, Acquire };
 
-        Verdict verdict = Verdict::None;
+        Decision decision = Decision::None;
         PCHFamily::Request request;
         std::optional<std::string> previous;
     };

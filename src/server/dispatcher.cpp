@@ -97,7 +97,7 @@ RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
 }
 
 template <typename Outcome>
-Outcome Dispatcher::land(const Ticket& ticket,
+Outcome Dispatcher::finish(const Ticket& ticket,
                          std::uint8_t kind,
                          llvm::StringRef label,
                          Outcome result,
@@ -134,7 +134,7 @@ Outcome Dispatcher::land(const Ticket& ticket,
     // settles only when fresh. Clearing a record republishes: no compile
     // runs to drop its note.
     if(ticket.fresh() && session.quarantine->crashed(kind)) {
-        session.quarantine->on_land(kind);
+        session.quarantine->on_success(kind);
         ast.republish(ticket.session);
     }
     return result;
@@ -186,7 +186,7 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
         }
         co_return serde_raw{"null"};
     }
-    result = land(ticket, evidence, label, std::move(result));
+    result = finish(ticket, evidence, label, std::move(result));
     if(result.has_value()) {
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
@@ -234,7 +234,7 @@ kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
         }
         co_return Result{};
     }
-    result = land(ticket, evidence, label, std::move(result));
+    result = finish(ticket, evidence, label, std::move(result));
     if(result.has_value()) {
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
@@ -384,7 +384,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
         false,
         [&] { return pool.send_stateless(wp, worker::Priority::High, token); },
         [&](const kota::ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
-    result = land(ticket, evidence, label, std::move(result), snapshot());
+    result = finish(ticket, evidence, label, std::move(result), snapshot());
     if(result.has_value()) {
         LOG_PERF("request",
                  "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
@@ -446,7 +446,7 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
         false,
         [&] { return pool.send_stateless(wp, worker::Priority::High, token); },
         [&](const kota::ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
-    result = land(ticket, evidence, "Format", std::move(result));
+    result = finish(ticket, evidence, "Format", std::move(result));
     if(result.has_value()) {
         LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.ms_f());
     }

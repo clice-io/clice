@@ -17,8 +17,8 @@ namespace clice::testing {
 /// so live-variant masks and staleness gates behave as in production.
 /// `main` receives the unit's own file id.
 inline void merge_unit(Project& project, CompilationUnit& unit, Fid& main) {
-    auto wire = index::build_tu_index(unit);
-    auto view = index::TUIndex::from_bytes(wire);
+    auto bytes = index::build_tu_index(unit);
+    auto view = index::TUIndex::from_bytes(bytes);
     ZASSERT(view.loaded());
 
     auto& project_index = project.project_index;

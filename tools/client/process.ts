@@ -37,12 +37,12 @@ export function runProcess(
         let stderr = "";
         let error: Error | undefined;
         let timer: NodeJS.Timeout | undefined;
-        let settled = false;
-        const settle = (status: number | null, signal: NodeJS.Signals | null) => {
-            if (settled) {
+        let finished = false;
+        const finish = (status: number | null, signal: NodeJS.Signals | null) => {
+            if (finished) {
                 return;
             }
-            settled = true;
+            finished = true;
             clearTimeout(timer);
             resolve({ status, signal, stdout, stderr, ...(error && { error }) });
         };
@@ -59,9 +59,9 @@ export function runProcess(
         child.stdin.end(options.input);
         child.on("error", (spawnError) => {
             error = spawnError;
-            settle(null, null);
+            finish(null, null);
         });
-        child.on("close", settle);
+        child.on("close", finish);
         if (options.timeout !== undefined) {
             const timeout = options.timeout;
             timer = setTimeout(() => {
@@ -72,7 +72,7 @@ export function runProcess(
             // the child's death.
             child.on("exit", (status, signal) => {
                 if (error) {
-                    settle(status, signal);
+                    finish(status, signal);
                     child.stdout.destroy();
                     child.stderr.destroy();
                 }

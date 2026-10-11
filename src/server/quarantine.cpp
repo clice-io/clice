@@ -27,7 +27,7 @@ void Quarantine::on_crash(std::uint8_t kind,
                      now - last_change >= editing_window;
 }
 
-void Quarantine::on_land(std::uint8_t kind) {
+void Quarantine::on_success(std::uint8_t kind) {
     records.erase(kind);
 }
 

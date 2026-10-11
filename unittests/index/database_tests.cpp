@@ -258,18 +258,18 @@ ZEST_CASE(WritesCoverFreedTail) {
         file = path::join(index::library_directory(store, ""), "index.mdb");
         auto db = index::open_database(store, "");
         ZASSERT(db != nullptr);
-        auto settle = [&] {
+        auto advance_snapshot = [&] {
             ZASSERT(db->advance_read_snapshot());
             db->retire_old_snapshot();
         };
         ZASSERT(db->write({blob(index::IndexBlobKind::Shard, "x", large_value('x'))}, {}).empty());
-        settle();
+        advance_snapshot();
         ZASSERT(db->write(
                       {
         },
                       {{index::IndexBlobKind::Shard, "x"}})
                     .empty());
-        settle();
+        advance_snapshot();
         ZASSERT(db->write(
                       {
                           blob(index::IndexBlobKind::CDB, "cdb", "small"),

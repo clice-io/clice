@@ -168,7 +168,7 @@ void MasterServer::initialize() {
     }
     if(pool.start(pool_opts)) {
         lifecycle = ServerLifecycle::Ready;
-        wire();
+        route_pool_callbacks();
         for(auto& project: projects) {
             project->start();
         }
@@ -188,7 +188,7 @@ void MasterServer::initialize(const Spelling& root) {
     initialize();
 }
 
-void MasterServer::wire() {
+void MasterServer::route_pool_callbacks() {
     pool.on_crash = [this](const WorkerCrashInfo& info) {
         // A stateless crash loses only in-flight requests, which fail back
         // to their senders (see deliver). No state outlives the request, so
@@ -275,7 +275,7 @@ ProjectServer* MasterServer::compiler(Fid path_id) {
     return borrowed != projects.end() ? borrowed->get() : nullptr;
 }
 
-ProjectServer* MasterServer::claimant(Fid path_id) {
+ProjectServer* MasterServer::project_of(Fid path_id) {
     if(auto* compiling = compiler(path_id)) {
         return compiling;
     }
@@ -283,7 +283,7 @@ ProjectServer* MasterServer::claimant(Fid path_id) {
 }
 
 ProjectServer& MasterServer::route(Fid path_id) {
-    auto* project = claimant(path_id);
+    auto* project = project_of(path_id);
     return project ? *project : *projects.front();
 }
 
@@ -443,7 +443,7 @@ void MasterServer::rehome_sessions(ProjectServer& from) {
         }
     }
     if(index_served) {
-        on_serving_rows_changed.emit();
+        on_serving_index_changed.emit();
     }
 }
 
@@ -815,7 +815,7 @@ void MasterServer::serve_again(ProjectServer& project, std::shared_ptr<Session> 
     if(session->serving == ServingMode::Escalated) {
         project.ast.request_compile(std::move(session));
     } else {
-        on_serving_rows_changed.emit();
+        on_serving_index_changed.emit();
     }
 }
 
@@ -877,7 +877,7 @@ static auto awaited_requests(const kota::ipc::JSONPeer& editor) {
     return requests;
 }
 
-kota::task<> MasterServer::settle(const kota::ipc::JSONPeer& editor) {
+kota::task<> MasterServer::wait_idle(const kota::ipc::JSONPeer& editor) {
     auto quiet = [&] {
         drain_disk_changes();
         return awaited_requests(editor).empty() &&

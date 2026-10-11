@@ -9,7 +9,7 @@ import :project.command_resolver;
 import :project.index_store;
 import :project.project;
 import :sched.graph;
-import :sched.index.ledger;
+import :sched.index.pending_table;
 import :worker.pool;
 
 namespace clice {
@@ -50,7 +50,7 @@ public:
         std::optional<tidy::TidyParams> tidy;
     };
 
-    enum class Verdict : std::uint8_t {
+    enum class Result : std::uint8_t {
         /// The run produced its planned products (the index merged into
         /// the store, the tidy findings landed in the outcome).
         Completed,
@@ -77,7 +77,7 @@ public:
     /// What one observed attempt did, combined from the join outcome and
     /// the round's recorded detail.
     struct Outcome {
-        Verdict verdict = Verdict::Shutdown;
+        Result result = Result::Shutdown;
 
         /// Merge debt and serving-row changes — the pump claims these
         /// before the attempt settles and its waiters wake.
@@ -135,7 +135,7 @@ private:
     /// (the pump's ledger, the lint driver's sweep), so at most one live
     /// entry per TU.
     llvm::DenseMap<Fid, Inputs> inputs;
-    llvm::DenseMap<Fid, Outcome> landed;
+    llvm::DenseMap<Fid, Outcome> finished;
 
     /// TUs whose last result named a variant by hash that the store did
     /// not hold for its file: the next run sends every section's bytes,

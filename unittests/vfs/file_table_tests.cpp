@@ -107,7 +107,7 @@ ZEST_CASE(FastPathChecksIdentity) {
     ZASSERT(!vfs::rename(tmp.path("f.h.tmp"), f));
     ZEXPECT(set_file_mtime(f, read->stamp.mtime_ns));
 
-    ZASSERT(pool.check_version(vid) == vfs::DiskState::Verdict::Stale);
+    ZASSERT(pool.check_version(vid) == vfs::DiskState::CheckResult::Stale);
 }
 
 ZEST_CASE(PairNeedsSameFile) {
@@ -196,7 +196,7 @@ ZEST_CASE(FreshReadNotVouched) {
     ZASSERT(read);
     auto vid = pool.intern_version(fid, read->hash);
 
-    ZASSERT(pool.check_version(vid) == vfs::DiskState::Verdict::Fresh);
+    ZASSERT(pool.check_version(vid) == vfs::DiskState::CheckResult::Fresh);
     ZASSERT(!pool.cached_hash(fid, read->stamp).has_value());
 }
 

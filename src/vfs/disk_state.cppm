@@ -133,7 +133,7 @@ public:
     /// How a check of a file's content came out. Policy-free facts; what
     /// Missing or Unreadable *means* differs per consumer and stays with
     /// the caller.
-    enum class Verdict : std::uint8_t {
+    enum class CheckResult : std::uint8_t {
         /// The disk provably holds the bytes.
         Fresh,
         /// The disk holds different bytes.
@@ -158,7 +158,7 @@ public:
     /// Whether the disk still holds the bytes hashing to `hash`. Hash 0 is
     /// the consumed-hash sentinel for "the worker had no bytes to hash":
     /// nothing to compare against, never fresh.
-    Verdict check(Fid fid, std::uint64_t hash);
+    CheckResult check(Fid fid, std::uint64_t hash);
 
     /// Whether a file is there and readable now, for a place a build found
     /// empty.
@@ -269,7 +269,7 @@ private:
     /// is. The file is due again after its interval: the shortest after a
     /// first look, a change, or an mtime not yet `settled` (see
     /// vfs::settled), else twice the last one.
-    void saw(Fid fid, std::optional<std::uint64_t> hash, bool settled);
+    void saw(Fid fid, std::optional<std::uint64_t> hash, bool stable);
 
     /// The turn's look at a file, taken once per turn — unless the last
     /// look, at a package file not yet due, found what is `expected`.

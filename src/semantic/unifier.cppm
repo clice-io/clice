@@ -122,7 +122,7 @@ Deduction deduce_arguments(clang::ASTContext& context,
 /// match), and a winner whose match is Unverified may not apply at all.
 /// Callers degrade on both rather than pick arbitrarily or trust the
 /// unverified.
-enum class PartialVerdict : std::uint8_t {
+enum class PartialOutcome : std::uint8_t {
     None,
     Selected,
     Ambiguous,
@@ -131,7 +131,7 @@ enum class PartialVerdict : std::uint8_t {
 
 template <typename Partial>
 struct PartialChoice {
-    PartialVerdict verdict = PartialVerdict::None;
+    PartialOutcome outcome = PartialOutcome::None;
     /// Set for Selected only.
     Partial* winner = nullptr;
 };

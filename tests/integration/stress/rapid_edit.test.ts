@@ -1,6 +1,6 @@
 /// Integration tests for rapid editing: ensure no hang and correct hover results.
 
-import { SETTLE_TIME, sleep, withTimeout } from "@clice/tools/client";
+import { IDLE_WAIT, sleep, withTimeout } from "@clice/tools/client";
 import { cliceTest, expect } from "../fixtures.ts";
 
 const test = cliceTest("hello_world");
@@ -29,7 +29,7 @@ test("rapid edits with hover", async ({ client }) => {
     }
 
     // Wait a moment for in-flight requests to settle.
-    await sleep(SETTLE_TIME * 2);
+    await sleep(IDLE_WAIT * 2);
 
     // Final hover must succeed and return correct result.
     const finalHover = await withTimeout(client.hoverAt(uri, 2, 4), 30_000, "hover");

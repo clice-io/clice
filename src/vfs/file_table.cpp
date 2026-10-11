@@ -109,7 +109,7 @@ VersionID FileTable::intern_version(Fid fid, std::uint64_t content_hash) {
     return it->second;
 }
 
-vfs::DiskState::Verdict FileTable::check_version(VersionID vid) {
+vfs::DiskState::CheckResult FileTable::check_version(VersionID vid) {
     auto& version = this->version(vid);
     return disk.check(version.fid, version.content_hash);
 }

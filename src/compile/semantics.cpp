@@ -149,11 +149,11 @@ bool is_implicit(const clang::Stmt* statement) {
 //   [-]    CXXConstructExpr
 // For our purposes, we don't want the second MemberExpr to own any tokens,
 // so we reduce its range to match the CXXConstructExpr.
-clang::SourceRange claimed_source_range(const SemanticNode& node) {
+clang::SourceRange owned_source_range(const SemanticNode& node) {
     if(const auto* ME = node.get<clang::MemberExpr>()) {
         if(!ME->getMemberDecl()->getDeclName()) {
             if(auto* base = ME->getBase()) {
-                return claimed_source_range(SemanticNode(static_cast<const clang::Stmt*>(base)));
+                return owned_source_range(SemanticNode(static_cast<const clang::Stmt*>(base)));
             }
             return clang::SourceRange();
         }
@@ -478,7 +478,7 @@ private:
         if(options.main_file_only) {
             semantics.tokens = unit.spelled_tokens();
             semantics.pp_ignored = &unit.preprocessed_away();
-            claimed.resize(unit.expanded_tokens().size());
+            taken.resize(unit.expanded_tokens().size());
         }
 
         stack.push_back(Semantics::invalid);
@@ -509,14 +509,14 @@ private:
         semantics.nodes.push_back({std::move(node), stack.back()});
         semantics.nodes.back().flags.in_instantiation = instantiation_depth > 0;
         stack.push_back(self);
-        claim_range(early, self);
+        take_range(early, self);
     }
 
     // Pops a node off the ancestor stack, claims its tokens and seals its
     // subtree extent.
     void pop() {
         std::uint32_t self = stack.back();
-        claim_tokens_for(semantics.nodes[self].node, self);
+        take_tokens_for(semantics.nodes[self].node, self);
         semantics.nodes[self].subtree_end = static_cast<std::uint32_t>(semantics.nodes.size());
         stack.pop_back();
     }
@@ -558,12 +558,12 @@ private:
     // Claim tokens for N, after processing its children.
     // By default this claims all unclaimed tokens in its source range.
     // We override this if we want to claim fewer tokens (e.g. there are gaps).
-    void claim_tokens_for(const SemanticNode& N, std::uint32_t self) {
+    void take_tokens_for(const SemanticNode& N, std::uint32_t self) {
         // CXXConstructExpr often shows implicit construction, like `string s;`.
         // Don't associate any tokens with it unless there's some syntax like {}.
         // This prevents it from claiming 's', its primary location.
         if(const auto* CCE = N.get<clang::CXXConstructExpr>()) {
-            claim_range(CCE->getParenOrBraceRange(), self);
+            take_range(CCE->getParenOrBraceRange(), self);
             return;
         }
 
@@ -600,23 +600,23 @@ private:
         //   ### represents parts that children already claimed.
         if(const auto* TL = N.get<clang::TypeLoc>()) {
             if(auto PTL = TL->getAs<clang::ParenTypeLoc>()) {
-                claim_range(PTL.getLParenLoc(), self);
-                claim_range(PTL.getRParenLoc(), self);
+                take_range(PTL.getLParenLoc(), self);
+                take_range(PTL.getRParenLoc(), self);
                 return;
             }
 
             if(auto ATL = TL->getAs<clang::ArrayTypeLoc>()) {
-                claim_range(ATL.getBracketsRange(), self);
+                take_range(ATL.getBracketsRange(), self);
                 return;
             }
 
             if(auto PTL = TL->getAs<clang::PointerTypeLoc>()) {
-                claim_range(PTL.getStarLoc(), self);
+                take_range(PTL.getStarLoc(), self);
                 return;
             }
 
             if(auto FTL = TL->getAs<clang::FunctionTypeLoc>()) {
-                claim_range(clang::SourceRange(FTL.getLParenLoc(), FTL.getEndLoc()), self);
+                take_range(clang::SourceRange(FTL.getLParenLoc(), FTL.getEndLoc()), self);
                 return;
             }
         }
@@ -625,12 +625,12 @@ private:
         // link of `a = b = c = ...`.
         if(const auto* expr = N.get<clang::Expr>()) {
             if(const auto* op = llvm::dyn_cast<clang::BinaryOperator>(expr->IgnoreImpCasts())) {
-                claim_range(operator_range(op), self);
+                take_range(operator_range(op), self);
                 return;
             }
         }
 
-        claim_range(claimed_source_range(N), self);
+        take_range(owned_source_range(N), self);
     }
 
     /// clang finds a binary operator's ends by recursing down its operands,
@@ -661,7 +661,7 @@ private:
     // token ownership — skip the claim machinery entirely. This matters: the
     // preamble-state build runs a whole-TU pass over the preamble unit, and
     // claiming its entire expanded stream would be paid on every PCH build.
-    void claim_range(clang::SourceRange S, std::uint32_t self) {
+    void take_range(clang::SourceRange S, std::uint32_t self) {
         if(!options.main_file_only) {
             return;
         }
@@ -679,9 +679,9 @@ private:
         }
         auto begin = static_cast<unsigned>(tokens.data() - unit.expanded_tokens().data());
         auto end = begin + static_cast<unsigned>(tokens.size());
-        for(auto index = claimed.find_first_unset_in(begin, end); index != -1;
-            index = claimed.find_first_unset_in(index + 1, end)) {
-            claimed.set(index);
+        for(auto index = taken.find_first_unset_in(begin, end); index != -1;
+            index = taken.find_first_unset_in(index + 1, end)) {
+            taken.set(index);
             if(auto spelled = unit.expanded_token_origin(index)) {
                 add_token_entry(*spelled, self);
             }
@@ -774,26 +774,26 @@ private:
         semantics.lexical = lexical_scan(unit.main_content(), &unit.lang_options());
         filter_module_declarations();
 
-        struct Row {
+        struct Entry {
             unsigned offset;
             SemanticNode node;
             llvm::SmallVector<unsigned, 2> extra_offsets;
         };
 
-        std::vector<Row> rows;
+        std::vector<Entry> entries;
 
         if(auto it = unit.directives().find(main_fid); it != unit.directives().end()) {
             auto& directive = it->second;
 
             for(auto& macro: directive.macros) {
                 if(auto offset = offset_in_main_file(macro.loc)) {
-                    rows.push_back({*offset, SemanticNode(&macro), {}});
+                    entries.push_back({*offset, SemanticNode(&macro), {}});
                 }
             }
 
             for(auto& include: directive.includes) {
                 if(auto offset = offset_in_main_file(include.location)) {
-                    rows.push_back({*offset, SemanticNode(&include), {}});
+                    entries.push_back({*offset, SemanticNode(&include), {}});
                 }
             }
 
@@ -801,11 +801,11 @@ private:
                 /// An import spelled through a macro carries macro locations;
                 /// name tokens written as macro arguments still resolve to
                 /// spelled main-file tokens.
-                Row row{0, SemanticNode(&import), {}};
+                Entry entry{0, SemanticNode(&import), {}};
                 std::optional<unsigned> anchor;
                 if(auto offset = offset_in_main_file(import.location)) {
                     anchor = *offset;
-                    row.extra_offsets.push_back(*offset);
+                    entry.extra_offsets.push_back(*offset);
                 }
                 for(auto loc: import.name_locations) {
                     if(loc.isMacroID()) {
@@ -815,12 +815,12 @@ private:
                         if(!anchor) {
                             anchor = *name_offset;
                         }
-                        row.extra_offsets.push_back(*name_offset);
+                        entry.extra_offsets.push_back(*name_offset);
                     }
                 }
                 if(anchor) {
-                    row.offset = *anchor;
-                    rows.push_back(std::move(row));
+                    entry.offset = *anchor;
+                    entries.push_back(std::move(entry));
                 }
             }
         }
@@ -828,38 +828,38 @@ private:
         // A comment node owns no spelled tokens (the stream drops them); it
         // participates by its payload range only.
         for(auto& comment: semantics.lexical.comments) {
-            rows.push_back({comment.range.begin, SemanticNode(&comment), {}});
+            entries.push_back({comment.range.begin, SemanticNode(&comment), {}});
         }
 
         // A module declaration owns its written tokens: the keywords, the
         // name parts and the partition colon; the separators stay unowned,
         // matching imports.
         for(auto& module: semantics.lexical.modules) {
-            Row row{module.keyword.begin, SemanticNode(&module), {}};
+            Entry entry{module.keyword.begin, SemanticNode(&module), {}};
             if(module.export_keyword.valid()) {
-                row.offset = module.export_keyword.begin;
-                row.extra_offsets.push_back(module.export_keyword.begin);
+                entry.offset = module.export_keyword.begin;
+                entry.extra_offsets.push_back(module.export_keyword.begin);
             }
-            row.extra_offsets.push_back(module.keyword.begin);
+            entry.extra_offsets.push_back(module.keyword.begin);
             for(auto& part: module.name_parts) {
-                row.extra_offsets.push_back(part.begin);
+                entry.extra_offsets.push_back(part.begin);
             }
             if(module.colon.valid()) {
-                row.extra_offsets.push_back(module.colon.begin);
+                entry.extra_offsets.push_back(module.colon.begin);
             }
             for(auto& part: module.partition_parts) {
-                row.extra_offsets.push_back(part.begin);
+                entry.extra_offsets.push_back(part.begin);
             }
-            rows.push_back(std::move(row));
+            entries.push_back(std::move(entry));
         }
 
-        std::ranges::sort(rows, {}, &Row::offset);
+        std::ranges::sort(entries, {}, &Entry::offset);
 
-        for(auto& row: rows) {
+        for(auto& entry: entries) {
             auto self = static_cast<std::uint32_t>(semantics.nodes.size());
-            semantics.nodes.push_back({row.node, Semantics::invalid, self + 1});
-            add_directive_entry(row.offset, self);
-            for(auto offset: row.extra_offsets) {
+            semantics.nodes.push_back({entry.node, Semantics::invalid, self + 1});
+            add_directive_entry(entry.offset, self);
+            for(auto offset: entry.extra_offsets) {
                 add_directive_entry(offset, self);
             }
         }
@@ -909,7 +909,7 @@ private:
     clang::SourceRange main_file_range;
 
     /// Per expanded token, whether a node claimed it.
-    llvm::BitVector claimed;
+    llvm::BitVector taken;
 
     llvm::SmallVector<std::uint32_t, 64> stack;
 

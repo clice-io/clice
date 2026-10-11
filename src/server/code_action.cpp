@@ -203,7 +203,7 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
         std::optional<protocol::Position> after;
         auto source = request.container != 0 ? query.serving(host) : std::nullopt;
         if(source) {
-            source->rows->for_each_relation([&](index::SymbolHash hash,
+            source->shard->for_each_relation([&](index::SymbolHash hash,
                                                 const index::Relation& relation) {
                 if(relation.kind != RelationKind::Definition) {
                     return true;

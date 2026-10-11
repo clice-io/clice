@@ -92,7 +92,7 @@ kota::task<> DiskState::end_turns(kota::event_loop& loop) {
     on_turn = [&before_io] {
         before_io.start();
     };
-    auto unwired = llvm::make_scope_exit([this] { on_turn = {}; });
+    auto clear_hook = llvm::make_scope_exit([this] { on_turn = {}; });
     while(true) {
         co_await before_io.wait();
         before_io.stop();
@@ -100,14 +100,14 @@ kota::task<> DiskState::end_turns(kota::event_loop& loop) {
     }
 }
 
-DiskState::Verdict DiskState::check(Fid fid, std::uint64_t hash) {
+DiskState::CheckResult DiskState::check(Fid fid, std::uint64_t hash) {
     auto expected =
         hash != 0 ? std::optional(Look{.found = Look::Found::Read, .hash = hash}) : std::nullopt;
     auto look = turn_look(fid, expected);
     switch(look.found) {
-        case Look::Found::Missing: return Verdict::Missing;
-        case Look::Found::Unreadable: return Verdict::Unreadable;
-        case Look::Found::Read: return look == expected ? Verdict::Fresh : Verdict::Stale;
+        case Look::Found::Missing: return CheckResult::Missing;
+        case Look::Found::Unreadable: return CheckResult::Unreadable;
+        case Look::Found::Read: return look == expected ? CheckResult::Fresh : CheckResult::Stale;
     }
     std::unreachable();
 }
@@ -260,7 +260,7 @@ std::shared_ptr<const Flag> DiskState::watch(std::string path, std::function<voi
     return std::shared_ptr<const Flag>(watch, &watch->flag);
 }
 
-void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool settled) {
+void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool stable) {
     auto [it, first] = files.try_emplace(fid);
     auto& file = it->second;
     if(first) {
@@ -277,7 +277,7 @@ void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool settled) {
                                          : Look{.found = Look::Found::Missing});
     }
     auto& rule = policy(file);
-    file.interval = first || moved || !settled ? rule.min : std::min(file.interval * 2, rule.max);
+    file.interval = first || moved || !stable ? rule.min : std::min(file.interval * 2, rule.max);
     schedule(fid, file, now() + file.interval);
     if(!moved || !changed.insert(fid).second) {
         return;

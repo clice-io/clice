@@ -51,7 +51,7 @@ public:
     /// A consumer used the artifact: the key's strikes were transient —
     /// without this, two unrelated hiccups far apart would block a key
     /// that rebuilds fine in between.
-    void on_land(llvm::StringRef key) {
+    void on_success(llvm::StringRef key) {
         blames.erase(key);
     }
 

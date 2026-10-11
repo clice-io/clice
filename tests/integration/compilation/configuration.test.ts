@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { runProcess, waitUntil, type CliceClient } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
-import { wireKeys, type ListConfigurationsResult } from "@clice/tools/protocol";
+import { protocolKeys, type ListConfigurationsResult } from "@clice/tools/protocol";
 import type { Workspace } from "@clice/tools/workspace";
 import { cliceExecutable, expect, test, type SessionFactory } from "../fixtures.ts";
 
@@ -54,7 +54,7 @@ test("menu and selection layers", async ({ session }) => {
     });
     expect(Object.keys(listed).sort()).toEqual(
         [
-            ...wireKeys<ListConfigurationsResult>()([
+            ...protocolKeys<ListConfigurationsResult>()([
                 "active",
                 "configurations",
                 "defaultConfiguration",

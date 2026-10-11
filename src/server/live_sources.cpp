@@ -12,7 +12,7 @@ namespace {
 
 /// The source file's preamble-region rows of an overlay envelope (buffer
 /// offsets below the preamble bound).
-const index::Shard& preamble_rows(const index::TUIndex& state) {
+const index::Shard& preamble_shard(const index::TUIndex& state) {
     return state.shard_of(state.path_count() - 1);
 }
 
@@ -22,20 +22,20 @@ bool ServerLiveSources::is_open(Fid file) const {
     return sessions.find(file) != nullptr;
 }
 
-index::RowSource ServerLiveSources::buffer_source(index::RowSource::Kind kind,
+index::IndexSource ServerLiveSources::buffer_source(index::IndexSource::Kind kind,
                                                   Fid file,
                                                   const Session& session,
-                                                  const index::Shard& rows) const {
+                                                  const index::Shard& shard) const {
     return {
         .kind = kind,
         .file = file,
         .path = project.file_table.display(file),
-        .rows = &rows,
+        .shard = &shard,
         .positions = session.positions(),
     };
 }
 
-const index::Shard* ServerLiveSources::session_rows(Fid file, const Session& session) const {
+const index::Shard* ServerLiveSources::session_shard(Fid file, const Session& session) const {
     auto projection = projections.projection(file);
     if(!projection || !projection->index || !projection->index->loaded()) {
         return nullptr;
@@ -44,42 +44,42 @@ const index::Shard* ServerLiveSources::session_rows(Fid file, const Session& ses
     // their dependencies moved since (the shard's DepsOnly contract); a
     // header compiled with an appended suffix line never matches its
     // buffer's bytes and serves only while its compile is current.
-    auto& rows = projection->file_rows();
-    if(projections.current(file) || rows.matches_content(session.text.size(), session.hash)) {
-        return &rows;
+    auto& shard = projection->file_shard();
+    if(projections.current(file) || shard.matches_content(session.text.size(), session.hash)) {
+        return &shard;
     }
     return nullptr;
 }
 
-std::optional<index::RowSource> ServerLiveSources::claim(Fid file) const {
+std::optional<index::IndexSource> ServerLiveSources::serving_buffer(Fid file) const {
     auto session = sessions.find(file);
     if(!session) {
         return std::nullopt;
     }
-    if(auto* rows = session_rows(file, *session)) {
-        return buffer_source(index::RowSource::Kind::SessionRows, file, *session, *rows);
+    if(auto* shard = session_shard(file, *session)) {
+        return buffer_source(index::IndexSource::Kind::SessionIndex, file, *session, *shard);
     }
     auto it = project.project_index.shards.find(file);
     if(it == project.project_index.shards.end() ||
        !it->second.matches_content(session->text.size(), session->hash)) {
         return std::nullopt;
     }
-    return buffer_source(index::RowSource::Kind::Shard, file, *session, it->second);
+    return buffer_source(index::IndexSource::Kind::Shard, file, *session, it->second);
 }
 
 void
-    ServerLiveSources::each_session(llvm::function_ref<bool(const index::RowSource&)> visit) const {
+    ServerLiveSources::each_session(llvm::function_ref<bool(const index::IndexSource&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
-        auto* rows = session_rows(file, session);
-        return !rows ||
-               visit(buffer_source(index::RowSource::Kind::SessionRows, file, session, *rows));
+        auto* shard = session_shard(file, session);
+        return !shard ||
+               visit(buffer_source(index::IndexSource::Kind::SessionIndex, file, session, *shard));
     });
 }
 
 void ServerLiveSources::each_session_index(
     llvm::function_ref<bool(const index::TUIndex&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
-        return !session_rows(file, session) || visit(*projections.projection(file)->index);
+        return !session_shard(file, session) || visit(*projections.projection(file)->index);
     });
 }
 
@@ -94,7 +94,7 @@ std::shared_ptr<index::TUIndex> ServerLiveSources::overlay_of(Fid file) const {
 }
 
 void ServerLiveSources::each_preamble(
-    llvm::function_ref<bool(const index::RowSource&)> visit) const {
+    llvm::function_ref<bool(const index::IndexSource&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
         auto state = overlay_of(file);
         if(!state) {
@@ -111,10 +111,10 @@ void ServerLiveSources::each_preamble(
            !state->matches_prefix(session.text)) {
             return true;
         }
-        return visit(buffer_source(index::RowSource::Kind::PreambleRows,
+        return visit(buffer_source(index::IndexSource::Kind::PreambleIndex,
                                    file,
                                    session,
-                                   preamble_rows(*state)));
+                                   preamble_shard(*state)));
     });
 }
 

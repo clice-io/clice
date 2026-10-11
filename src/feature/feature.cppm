@@ -650,7 +650,7 @@ auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string;
 /// One Decl/Def relation row of the document: the name-token anchor, the
 /// declaration's full extent (invalid when the index recorded none — a
 /// cross-file or invalid source range) and the symbol it belongs to.
-struct IndexDeclRow {
+struct IndexDecl {
     LocalSourceRange range;
     LocalSourceRange extent;
     index::SymbolHash symbol = 0;
@@ -662,12 +662,12 @@ struct IndexDeclRow {
 /// another's written name (the class in `~Foo`, which owns no occurrence
 /// there) as occurrences of their own, and the Decl/Def relations as decl
 /// rows.
-struct IndexRows {
+struct IndexEntries {
     std::vector<index::Occurrence> occurrences;
-    std::vector<IndexDeclRow> decls;
+    std::vector<IndexDecl> decls;
 };
 
-auto extract_index_rows(const index::Shard& shard) -> IndexRows;
+auto extract_index_entries(const index::Shard& shard) -> IndexEntries;
 
 using IndexIncludeEdge = index::IncludeEdge;
 
@@ -682,7 +682,7 @@ using IndexSymbolResolver = llvm::function_ref<std::optional<index::SymbolRef>(i
 /// would shadow them. Absent, unknown or contradicting values fall back
 /// to the driver's default standard — the dialect a -std-less command
 /// was indexed under.
-auto index_lang_options(llvm::StringRef path, bool c_rows, llvm::StringRef standard = {})
+auto index_lang_options(llvm::StringRef path, bool c_only, llvm::StringRef standard = {})
     -> const clang::LangOptions&;
 
 /// Lexical layer (keywords, literals, comments, directives) from a raw lex
@@ -692,7 +692,7 @@ auto index_lang_options(llvm::StringRef path, bool c_rows, llvm::StringRef stand
 auto index_semantic_tokens(llvm::StringRef content,
                            const clang::LangOptions& lang_opts,
                            llvm::ArrayRef<index::Occurrence> occurrences,
-                           llvm::ArrayRef<IndexDeclRow> decls,
+                           llvm::ArrayRef<IndexDecl> decls,
                            IndexSymbolResolver resolve) -> std::vector<SemanticToken>;
 
 /// The outline's SymbolKind -> LSP mapping, exhaustive over the enum so a
@@ -704,7 +704,7 @@ auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind;
 /// Outline tree built from declaration extents by range containment;
 /// extents that merely overlap (macro-generated siblings collapse onto one
 /// invocation range) become siblings in source order. `detail` stays empty.
-auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls, IndexSymbolResolver resolve)
+auto index_document_symbols(llvm::ArrayRef<IndexDecl> decls, IndexSymbolResolver resolve)
     -> std::vector<DocumentSymbol>;
 
 /// Declaration folds: each definition extent folds its last balanced brace
@@ -715,7 +715,7 @@ auto index_document_symbols(llvm::ArrayRef<IndexDeclRow> decls, IndexSymbolResol
 /// wrong for some preprocessing variant.
 auto index_folding_ranges(llvm::StringRef content,
                           const clang::LangOptions& lang_opts,
-                          llvm::ArrayRef<IndexDeclRow> decls,
+                          llvm::ArrayRef<IndexDecl> decls,
                           IndexSymbolResolver resolve) -> std::vector<FoldingRange>;
 
 /// Document links from manifest include edges: each edge's argument span is

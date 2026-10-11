@@ -159,7 +159,7 @@ private:
     /// already diverged from its shard, or boost the file's background
     /// indexing when nothing can serve it. Escalated sessions need no
     /// settlement — builds are pull-driven.
-    void settle_open_serving(std::shared_ptr<Session> session);
+    void decide_open_serving(std::shared_ptr<Session> session);
 
     /// start() ran: documents opened from now on are settled at once.
     bool started = false;
@@ -167,18 +167,18 @@ private:
     /// An index attempt settled with no retry pending; a session waiting
     /// on the index with nothing servable will never be served by it —
     /// escalate instead of letting it answer empty forever.
-    void index_attempt_settled(Fid path_id);
+    void index_attempt_finished(Fid path_id);
 
     /// Whether an open session serves this file's project rows (freshness
     /// clause 4) and a client already pulled some of them — the emit
     /// condition of MasterServer::on_serving_rows_changed.
-    bool serves_session_rows(Fid path_id) const;
+    bool serves_session_index(Fid path_id) const;
 
     /// Filter a store row-change report down to the sessions actually
     /// serving those rows and wake the transports.
-    void index_rows_changed(llvm::ArrayRef<Fid> path_ids);
+    void index_changed(llvm::ArrayRef<Fid> path_ids);
 
-    Signal<llvm::ArrayRef<Fid>>::Connection index_rows_conn;
+    Signal<llvm::ArrayRef<Fid>>::Connection index_changed_conn;
 
     /// Forward the AST family's outputs and the pump's progress to the
     /// master's signals, which the transports subscribe to.

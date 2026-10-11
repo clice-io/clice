@@ -31,7 +31,7 @@ using RequestContext = kota::ipc::BincodePeer::RequestContext;
 /// is still in memory — the only moment the preamble's index is
 /// obtainable without deserializing the whole PCH. The file write
 /// happens separately, after the PCH itself is flushed.
-static std::string serialize_preamble_envelope(CompilationUnit& unit,
+static std::string serialize_preamble_index(CompilationUnit& unit,
                                                std::uint32_t preamble_bound) {
     ScopedTimer links_timer;
     auto links = feature::document_links(unit);
@@ -55,7 +55,7 @@ static std::string serialize_preamble_envelope(CompilationUnit& unit,
 
 /// Write the serialized blob next to the PCH. Returns an error description
 /// on failure so the master's anomaly carries the cause.
-static std::optional<std::string> write_preamble_envelope(llvm::StringRef blob,
+static std::optional<std::string> write_preamble_index(llvm::StringRef blob,
                                                           llvm::StringRef output_path) {
     if(auto error = vfs::write(output_path, blob)) {
         auto message =
@@ -90,7 +90,7 @@ static std::expected<std::string, std::string> artifact_output(llvm::StringRef l
 /// the errors — `internal_error` marks a failure of the worker's own I/O,
 /// never the user's code, and must not be downgraded to an expected build
 /// failure. Either way the reply carries the build's inputs.
-static worker::ArtifactBuildResult land_artifact(llvm::StringRef label,
+static worker::ArtifactBuildResult finish_artifact(llvm::StringRef label,
                                                  bool success,
                                                  const std::string& tmp_path,
                                                  std::int64_t build_at,
@@ -148,7 +148,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     std::string blob;
     ScopedTimer index_timer;
     if(success) {
-        blob = serialize_preamble_envelope(unit, params.preamble_bound);
+        blob = serialize_preamble_index(unit, params.preamble_bound);
     }
     auto index_ms = index_timer.ms();
 
@@ -165,7 +165,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     bool internal_error = false;
     ScopedTimer state_write_timer;
     if(success) {
-        if(auto error = write_preamble_envelope(blob, params.index_output_path)) {
+        if(auto error = write_preamble_index(blob, params.index_output_path)) {
             success = false;
             internal_error = true;
             errors = std::move(*error);
@@ -187,7 +187,7 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     } else {
         LOG_WARN("BuildPCH failed: file={}, {}ms, errors=[{}]", params.file, timer.ms(), errors);
     }
-    return land_artifact("PCH",
+    return finish_artifact("PCH",
                          success,
                          *output,
                          build_at,
@@ -244,7 +244,7 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
                  timer.ms(),
                  errors);
     }
-    return land_artifact("PCM",
+    return finish_artifact("PCM",
                          success,
                          *output,
                          build_at,
@@ -405,9 +405,9 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
     if(params.index) {
-        auto envelope = index::build_tu_index(unit, {.known_variants = params.known_variants});
-        index_bytes = envelope.size();
-        if(auto error = hand_over_index(std::move(envelope), params.index_output_path, result)) {
+        auto blob = index::build_tu_index(unit, {.known_variants = params.known_variants});
+        index_bytes = blob.size();
+        if(auto error = hand_over_index(std::move(blob), params.index_output_path, result)) {
             return {false, std::move(*error)};
         }
     }

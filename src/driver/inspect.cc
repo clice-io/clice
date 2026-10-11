@@ -228,20 +228,20 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
                                       range,
                                       *parse_feature_config<feature::InlayHintsOptions>(config));
 
-    std::string envelope;
+    std::string bytes;
     index::TUIndex tu;
     auto place = [&](index::SymbolHash symbol) -> std::optional<RawLocation> {
-        if(envelope.empty()) {
-            envelope = index::build_tu_index(unit);
-            tu = index::TUIndex::from_bytes(envelope);
+        if(bytes.empty()) {
+            bytes = index::build_tu_index(unit);
+            tu = index::TUIndex::from_bytes(bytes);
         }
         auto main = tu.path_count() - 1;
         for(auto kind: {RelationKind::Declaration, RelationKind::Definition}) {
             for(std::uint32_t i = 0; i < tu.path_count(); i += 1) {
                 auto path_id = i == 0 ? main : i - 1;
-                const auto& rows = tu.shard_of(path_id);
+                const auto& shard = tu.shard_of(path_id);
                 std::optional<LocalSourceRange> found;
-                rows.lookup(symbol, kind, [&](const index::Relation& relation) {
+                shard.lookup(symbol, kind, [&](const index::Relation& relation) {
                     found = relation.range;
                     return false;
                 });
@@ -250,7 +250,7 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
                 }
                 return RawLocation{
                     .path = tu.path(path_id).str(),
-                    .range = *rows.positions().range(*found, PositionEncoding::UTF16),
+                    .range = *shard.positions().range(*found, PositionEncoding::UTF16),
                 };
             }
         }
@@ -372,17 +372,17 @@ std::optional<kota::codec::RawValue>
     run_document_highlight(CompilationUnitRef unit,
                            std::uint32_t offset,
                            [[maybe_unused]] llvm::StringRef config) {
-    auto envelope = index::build_tu_index(unit);
-    auto tu = index::TUIndex::from_bytes(envelope);
-    const index::Shard& rows = tu.shard_of(tu.path_count() - 1);
-    auto named = index::named_at(rows, offset, [&](index::SymbolHash hash) {
+    auto bytes = index::build_tu_index(unit);
+    auto tu = index::TUIndex::from_bytes(bytes);
+    const index::Shard& shard = tu.shard_of(tu.path_count() - 1);
+    auto named = index::named_at(shard, offset, [&](index::SymbolHash hash) {
         auto symbol = tu.find_symbol(hash);
         return symbol && symbol->kind == SymbolKind::Macro;
     });
     if(!named) {
         return to_raw_json(std::vector<index::Highlight>{});
     }
-    return to_raw_json(index::highlights({&rows}, named->symbols));
+    return to_raw_json(index::highlights({&shard}, named->symbols));
 }
 
 /// A feature runs in exactly one shape: whole-document (`run`), once per

@@ -50,18 +50,18 @@ std::size_t max_index_bytes();
 /// Returns why the index cannot be handed over: too large with no path to
 /// write to, or the write failed.
 template <typename Result>
-std::optional<std::string> hand_over_index(std::string envelope,
+std::optional<std::string> hand_over_index(std::string blob,
                                            llvm::StringRef output_path,
                                            Result& result) {
-    if(envelope.size() <= max_index_bytes()) {
-        result.tu_index_data = std::move(envelope);
+    if(blob.size() <= max_index_bytes()) {
+        result.tu_index_data = std::move(blob);
         return std::nullopt;
     }
     if(output_path.empty()) {
         return std::format("the index ({} MiB) is too large to send between clice processes",
-                           envelope.size() / (1024 * 1024));
+                           blob.size() / (1024 * 1024));
     }
-    if(auto error = vfs::write(output_path, envelope)) {
+    if(auto error = vfs::write(output_path, blob)) {
         return std::format("writing the index to {} failed: {}", output_path, error.message());
     }
     result.index_in_file = true;

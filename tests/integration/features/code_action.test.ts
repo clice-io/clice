@@ -5,7 +5,7 @@
 
 import * as fs from "node:fs";
 import type * as proto from "vscode-languageserver-protocol";
-import { type CliceClient, SETTLE_TIME, sleep } from "@clice/tools/client";
+import { type CliceClient, IDLE_WAIT, sleep } from "@clice/tools/client";
 import { actionsOf, applyTextEdits, editsFor, positionAt } from "@clice/tools/client/edits";
 import { expect, test } from "../fixtures.ts";
 
@@ -108,7 +108,7 @@ test("definitions vetted and placed through the index", async ({ session }) => {
         const symbols = (await client.workspaceSymbols("b")) ?? [];
         indexed = symbols.some((symbol) => symbol.location.uri.endsWith("/other.cpp"));
         if (!indexed) {
-            await sleep(SETTLE_TIME);
+            await sleep(IDLE_WAIT);
         }
     }
     expect(indexed).toBe(true);
@@ -204,7 +204,7 @@ test("include spelling resolves to the declaring header", async ({ session }) =>
         const symbols = (await client.workspaceSymbols("shadowed")) ?? [];
         indexed = symbols.some((symbol) => symbol.location.uri.endsWith("/other.cpp"));
         if (!indexed) {
-            await sleep(SETTLE_TIME);
+            await sleep(IDLE_WAIT);
         }
     }
     expect(indexed).toBe(true);

@@ -290,12 +290,12 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
         // Missing means gone now — a change, since the build saw the file.
         // Unreadable cannot prove the disk unchanged and counts as changed
         // — conservative, retried by the rebuild's capture.
-        return files.check_version(dep.version) != vfs::DiskState::Verdict::Fresh;
+        return files.check_version(dep.version) != vfs::DiskState::CheckResult::Fresh;
     };
     return std::ranges::count_if(snap, changed) != 0;
 }
 
-std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path) {
+std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path) {
     auto buffer = vfs::read(path, vfs::Read::Mapped);
     if(!buffer) {
         return nullptr;
@@ -304,16 +304,16 @@ std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path) {
     // is deep-verified, and every embedded shard blob once — queries then
     // run unchecked. Anything failing reads as "pair missing" and the PCH
     // is rebuilt.
-    auto envelope = index::TUIndex::from_buffer(std::move(*buffer));
-    if(!envelope.loaded() || !envelope.shards_verify()) {
+    auto tu_index = index::TUIndex::from_buffer(std::move(*buffer));
+    if(!tu_index.loaded() || !tu_index.shards_verify()) {
         return nullptr;
     }
-    return std::make_shared<index::TUIndex>(std::move(envelope));
+    return std::make_shared<index::TUIndex>(std::move(tu_index));
 }
 
 const std::shared_ptr<index::TUIndex>& PCHState::load_state() {
     if(!state && !index_path.empty()) {
-        state = load_pch_envelope(index_path);
+        state = load_pch_index(index_path);
         if(!state) {
             // Unreadable blob: clear the path so queries don't retry the
             // mmap + verification on every call. The pair now looks

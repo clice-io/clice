@@ -59,11 +59,11 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
         auto session = sessions.find(path_id);
         return session && session->serving == ServingMode::Escalated;
     };
-    sched.pump.on_attempt_settled = [this](Fid path_id) {
-        index_attempt_settled(path_id);
+    sched.pump.on_attempt_finished = [this](Fid path_id) {
+        index_attempt_finished(path_id);
     };
-    index_rows_conn = sched.pump.on_rows_changed.connect(
-        [this](llvm::ArrayRef<Fid> path_ids) { index_rows_changed(path_ids); });
+    index_changed_conn = sched.pump.on_index_changed.connect(
+        [this](llvm::ArrayRef<Fid> path_ids) { index_changed(path_ids); });
 
     // The AST family's pull-side staleness check found an input of an open
     // document changed on disk: the document gets the treatment the
@@ -188,7 +188,7 @@ void ProjectServer::start() {
             contexts.validate_saved_context(session->path_id);
             session->serving =
                 ast.readonly == ReadonlyMode::Off ? ServingMode::Escalated : ServingMode::IndexOnly;
-            settle_open_serving(session);
+            decide_open_serving(session);
         }
     }
 
@@ -273,7 +273,7 @@ std::shared_ptr<Session> ProjectServer::create_session(Fid path_id) {
     return session;
 }
 
-void ProjectServer::settle_open_serving(std::shared_ptr<Session> session) {
+void ProjectServer::decide_open_serving(std::shared_ptr<Session> session) {
     // An escalated session needs no settlement: builds stay pull-driven,
     // and boosting its file would enqueue work the indexer skips for
     // open non-IndexOnly documents.
@@ -370,10 +370,10 @@ void ProjectServer::open_session(Fid path_id, std::string text, int version) {
         return;
     }
     contexts.validate_saved_context(path_id);
-    settle_open_serving(session);
+    decide_open_serving(session);
 }
 
-void ProjectServer::index_attempt_settled(Fid path_id) {
+void ProjectServer::index_attempt_finished(Fid path_id) {
     // The boost in settle_open_serving promised the index would serve the
     // cold session; an attempt that settles without a servable shard ends
     // that promise — escalate like the disabled-indexing branch, or the
@@ -389,17 +389,17 @@ void ProjectServer::index_attempt_settled(Fid path_id) {
     }
 }
 
-bool ProjectServer::serves_session_rows(Fid path_id) const {
+bool ProjectServer::serves_session_index(Fid path_id) const {
     auto session = sessions.find(path_id);
     return session && !ast.projections.index_current(path_id) && session->index_served;
 }
 
-void ProjectServer::index_rows_changed(llvm::ArrayRef<Fid> path_ids) {
+void ProjectServer::index_changed(llvm::ArrayRef<Fid> path_ids) {
     // Sessions without a current file index serve these very rows
     // (freshness clause 4); index_served says the client pulled some of
     // them. Tell subscribers so those results get re-pulled.
-    if(llvm::any_of(path_ids, [&](Fid id) { return serves_session_rows(id); })) {
-        server.on_serving_rows_changed.emit();
+    if(llvm::any_of(path_ids, [&](Fid id) { return serves_session_index(id); })) {
+        server.on_serving_index_changed.emit();
     }
 }
 
@@ -451,7 +451,7 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     }
 
     for(auto path_id: dirty.drop_index) {
-        sched.pump.claim_report(sched.store.drop_index(path_id));
+        sched.pump.take_report(sched.store.drop_index(path_id));
     }
 
     for(auto path_id: dirty.reindex_content_changed) {

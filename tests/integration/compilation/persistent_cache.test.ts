@@ -7,7 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { MTIME_GRANULARITY, SETTLE_TIME, sleep, waitUntil } from "@clice/tools/client";
+import { MTIME_GRANULARITY, IDLE_WAIT, sleep, waitUntil } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
@@ -101,7 +101,7 @@ test("pch reused on close reopen", async ({ session }) => {
 
     // Close.
     client.close(uri);
-    await sleep(SETTLE_TIME);
+    await sleep(IDLE_WAIT);
 
     // Clear diagnostics so we can wait for fresh ones.
     client.diagnostics.delete(uri);
@@ -295,7 +295,7 @@ test("pch rebuilt on header change", async ({ session }) => {
 
     // Close and reopen to get fresh preamble.
     client.close(uri);
-    await sleep(SETTLE_TIME);
+    await sleep(IDLE_WAIT);
     client.diagnostics.delete(uri);
 
     const [uri2] = await client.openAndWait("main.cpp");

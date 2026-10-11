@@ -67,7 +67,7 @@ struct ASTProjection {
     /// The main file's rows within `index` (an empty shard when the
     /// compile produced none). Callers gate on index_current, which
     /// implies a loaded envelope.
-    const index::Shard& file_rows() const {
+    const index::Shard& file_shard() const {
         return index->shard_of(index->path_count() - 1);
     }
 };

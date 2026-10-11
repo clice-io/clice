@@ -14,7 +14,7 @@ namespace clice {
 void Build::reset_active(llvm::StringRef configuration) {
     assert(configuration.empty() ? config.configurations().empty()
                                  : declares_configuration(config, configuration));
-    claimed_sources.reset();
+    covered_sources.reset();
     records.clear();
     provisional.clear();
     records_generation += 1;
@@ -312,11 +312,11 @@ std::vector<Fid> Build::members() {
             result.push_back(entry.file);
         }
     }
-    if(!claimed_sources) {
-        claimed_sources.emplace();
-        claim_sources(walk_sources(source_walk()), *claimed_sources);
+    if(!covered_sources) {
+        covered_sources.emplace();
+        collect_covered_sources(walk_sources(source_walk()), *covered_sources);
     }
-    for(auto file: *claimed_sources) {
+    for(auto file: *covered_sources) {
         if(seen.insert(file).second) {
             result.push_back(file);
         }
@@ -366,17 +366,17 @@ ConfigID Build::lend(ConfigID command, CanonicalRef lender, CanonicalRef file) {
 
 llvm::SmallVector<Fid> Build::refresh_default_sources(llvm::ArrayRef<CanonicalPath> walked) {
     std::vector<Fid> current;
-    claim_sources(walked, current);
+    collect_covered_sources(walked, current);
     llvm::SmallVector<Fid> appeared;
-    if(claimed_sources) {
-        llvm::DenseSet<Fid> known(claimed_sources->begin(), claimed_sources->end());
+    if(covered_sources) {
+        llvm::DenseSet<Fid> known(covered_sources->begin(), covered_sources->end());
         for(auto file: current) {
             if(!known.contains(file)) {
                 appeared.push_back(file);
             }
         }
     }
-    claimed_sources = std::move(current);
+    covered_sources = std::move(current);
     return appeared;
 }
 
@@ -413,7 +413,7 @@ bool Build::declared(Fid file) {
     return default_command(path).has_value() && default_source(path);
 }
 
-llvm::SmallVector<const CompiledRule*> Build::claimants() const {
+llvm::SmallVector<const CompiledRule*> Build::covering_rules() const {
     llvm::SmallVector<const CompiledRule*> result;
     for(auto& rule: config.compiled_rules) {
         if(rule_active(rule, active) && rule.has_default_command() && !rule.unmatchable) {
@@ -425,7 +425,7 @@ llvm::SmallVector<const CompiledRule*> Build::claimants() const {
 
 Build::SourceWalk Build::source_walk() const {
     SourceWalk walk;
-    auto rules = claimants();
+    auto rules = covering_rules();
     if(rules.empty()) {
         return walk;
     }
@@ -458,8 +458,8 @@ Build::SourceWalk Build::source_walk() const {
     return walk;
 }
 
-void Build::claim_sources(llvm::ArrayRef<CanonicalPath> walked, std::vector<Fid>& out) {
-    auto rules = claimants();
+void Build::collect_covered_sources(llvm::ArrayRef<CanonicalPath> walked, std::vector<Fid>& out) {
+    auto rules = covering_rules();
     llvm::DenseSet<Fid> seen(out.begin(), out.end());
     for(auto& path: walked) {
         auto matched = matching(path);

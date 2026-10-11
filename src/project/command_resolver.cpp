@@ -71,7 +71,7 @@ HeaderMode CommandResolver::header_mode(Fid path_id) const {
     if(is_context_header_path(project.file_table.resolve(path_id))) {
         return HeaderMode::NeedsContext;
     }
-    if(auto it = header_verdicts.find(path_id); it != header_verdicts.end()) {
+    if(auto it = header_results.find(path_id); it != header_results.end()) {
         return it->second.mode;
     }
     return HeaderMode::Unknown;
@@ -84,8 +84,8 @@ void CommandResolver::forget_self_contained(Fid path_id) {
 }
 
 std::uint64_t CommandResolver::persisted_mode_hash(Fid path_id) const {
-    auto it = header_verdicts.find(path_id);
-    if(it == header_verdicts.end() || it->second.mode != HeaderMode::NeedsContext) {
+    auto it = header_results.find(path_id);
+    if(it == header_results.end() || it->second.mode != HeaderMode::NeedsContext) {
         return 0;
     }
     return it->second.content_hash;
@@ -96,7 +96,7 @@ void CommandResolver::record_header_mode(Fid path_id, HeaderMode mode, std::uint
     if((header_mode(path_id) == HeaderMode::SelfContained) != (mode == HeaderMode::SelfContained)) {
         project.context_epoch += 1;
     }
-    header_verdicts[path_id] = {
+    header_results[path_id] = {
         .mode = mode,
         .content_hash = mode == HeaderMode::NeedsContext ? content_hash : 0,
     };
@@ -112,20 +112,20 @@ void CommandResolver::reset_header_mode(Fid path_id) {
     if(header_mode(path_id) == HeaderMode::SelfContained) {
         project.context_epoch += 1;
     }
-    header_verdicts.erase(path_id);
+    header_results.erase(path_id);
 }
 
 void CommandResolver::dump_mode_slices(std::vector<CacheModeEntry>& modes,
                                        llvm::function_ref<std::uint32_t(Fid)> intern_id) const {
-    for(auto& [path_id, verdict]: header_verdicts) {
+    for(auto& [path_id, result]: header_results) {
         // A verdict scored with no disk observation (hash 0) cannot be
         // validated on load, so it stays in memory: persisted, it would
         // skip the self-containment trial for whatever bytes the next
         // session finds on disk.
-        if(verdict.mode != HeaderMode::NeedsContext || verdict.content_hash == 0)
+        if(result.mode != HeaderMode::NeedsContext || result.content_hash == 0)
             continue;
         modes.push_back(
-            {intern_id(path_id), static_cast<std::uint32_t>(verdict.mode), verdict.content_hash});
+            {intern_id(path_id), static_cast<std::uint32_t>(result.mode), result.content_hash});
     }
 }
 
@@ -146,7 +146,7 @@ void CommandResolver::load_mode_slices(
         auto disk = project.file_table.current(*id);
         if(!disk || disk->hash != entry.content_hash)
             continue;
-        header_verdicts[*id] = {.mode = HeaderMode::NeedsContext,
+        header_results[*id] = {.mode = HeaderMode::NeedsContext,
                                 .content_hash = entry.content_hash};
     }
 }
@@ -280,7 +280,7 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         resolution.ref = ref;
     };
 
-    auto settle = [&](CommandSource source) {
+    auto finish = [&](CommandSource source) {
         resolution.source = source;
         log_command_decision(path, tried, source, arguments);
         return std::move(resolution);
@@ -294,7 +294,7 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     if(has_host_choice) {
         tried.push_back("switch_context");
         if(fill_header_context_args(path_id, directory, arguments, request, resolution)) {
-            return settle(CommandSource::IncludeGraph);
+            return finish(CommandSource::IncludeGraph);
         }
     }
 
@@ -315,14 +315,14 @@ Resolution CommandResolver::resolve_command(Fid path_id,
         auto picked =
             pick_pinned_config(project, path_id, commands, path, path, pinned_hash, pinned_base);
         fill(picked.config, picked.source, path, path);
-        return settle(picked.source);
+        return finish(picked.source);
     }
 
     // 3. No CDB entry — try automatic header context resolution.
     if(!has_host_choice) {
         tried.push_back("include_graph");
         if(fill_header_context_args(path_id, directory, arguments, request, resolution)) {
-            return settle(CommandSource::IncludeGraph);
+            return finish(CommandSource::IncludeGraph);
         }
     }
 
@@ -331,7 +331,7 @@ Resolution CommandResolver::resolve_command(Fid path_id,
     if(!commands.empty()) {
         tried.push_back("default");
         fill(commands.front().config, CommandSource::Default, path, path);
-        return settle(CommandSource::Default);
+        return finish(CommandSource::Default);
     }
 
     // 5. A nearby unit's command, edited for both files as a provisional
@@ -346,14 +346,14 @@ Resolution CommandResolver::resolve_command(Fid path_id,
              path,
              is_header_path(path) ? lender_path : path);
         LOG_INFO("resolve_command: {} borrows the command of {}", path, lender_path);
-        return settle(CommandSource::Inferred);
+        return finish(CommandSource::Inferred);
     }
 
     // 6. The builtin fallback, so the file still compiles and produces
     //    diagnostics instead of failing silently.
     tried.push_back("fallback");
     fill(project.build.builtin(path), CommandSource::Fallback, path, path);
-    return settle(CommandSource::Fallback);
+    return finish(CommandSource::Fallback);
 }
 
 std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid header_path_id,

@@ -42,7 +42,7 @@ constexpr std::int64_t stat_baseline_before_ns(std::int64_t at_ms) {
 
 /// Whether a stat taken now carrying `mtime_ns` may vouch for what it
 /// describes beyond this moment.
-bool settled(std::int64_t mtime_ns);
+bool stable_mtime(std::int64_t mtime_ns);
 
 /// A file's status, symlinks followed.
 struct Status {

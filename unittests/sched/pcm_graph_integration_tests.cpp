@@ -1224,7 +1224,7 @@ ZEST_CASE(shared_dep_import_switch) {
             // shared module's interest never drops to zero.
             start_c.set();
             req_a.cancel();
-            co_await settle([&] { return !cg->is_compiling(pid_a); });
+            co_await wait_until([&] { return !cg->is_compiling(pid_a); });
 
             ZEXPECT(cg->is_compiling(pid_shared));
             ZEXPECT(cg->refcount(pid_shared) == 1u);

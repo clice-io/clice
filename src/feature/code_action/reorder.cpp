@@ -362,7 +362,7 @@ std::vector<TextReplacement> permutation(CompilationUnitRef unit, std::vector<Sl
         return static_cast<std::size_t>(std::prev(it) - slots.begin());
     };
     // The order of an offset's text after the permutation.
-    auto landing = [&](std::uint32_t offset) -> std::pair<std::uint32_t, std::uint32_t> {
+    auto destination = [&](std::uint32_t offset) -> std::pair<std::uint32_t, std::uint32_t> {
         if(auto slot = slot_of(offset)) {
             return std::pair(slots[target[*slot]].range.begin, offset - slots[*slot].range.begin);
         }
@@ -377,7 +377,7 @@ std::vector<TextReplacement> permutation(CompilationUnitRef unit, std::vector<Sl
     while(true) {
         bool broken = false;
         for(const auto& order: orders) {
-            if(landing(order.before) > landing(order.after)) {
+            if(destination(order.before) > destination(order.after)) {
                 for(auto offset: {order.before, order.after}) {
                     if(auto slot = slot_of(offset)) {
                         pinned[*slot] = true;

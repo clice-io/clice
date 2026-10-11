@@ -248,17 +248,17 @@ private:
     bool default_source(CanonicalRef path);
 
     /// The active rules declaring a default command that can claim a file.
-    llvm::SmallVector<const CompiledRule*> claimants() const;
+    llvm::SmallVector<const CompiledRule*> covering_rules() const;
 
     /// The files of a walk a default-command rule claims: C-family sources
     /// (never headers) matching the rules' patterns.
-    void claim_sources(llvm::ArrayRef<CanonicalPath> walked, std::vector<Fid>& out);
+    void collect_covered_sources(llvm::ArrayRef<CanonicalPath> walked, std::vector<Fid>& out);
 
     Config& config;
     CompilationDatabase& cdb;
     FileTable& files;
     std::string active;
-    std::optional<std::vector<Fid>> claimed_sources;
+    std::optional<std::vector<Fid>> covered_sources;
     llvm::DenseSet<Fid> records;
     std::uint64_t records_generation = 0;
     llvm::DenseMap<Fid, ConfigID> provisional;

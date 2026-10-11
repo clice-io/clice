@@ -17,8 +17,8 @@ import :sched.index.pump;
 import :server.ast_projection;
 import :server.live_sources;
 import :server.session_store;
-import :unittests.utils.envelope_mirror;
 import :unittests.utils.temp_dir;
+import :unittests.utils.tu_index_mirror;
 import :unittests.utils;
 import :unittests.utils.tester;
 import :vfs.file_system;
@@ -136,7 +136,7 @@ void merge_disk_index() {
 /// row of its buffer lives behind the PCH. `loaded` is what the freshness
 /// gate keys on; an unloaded index means "compile not settled".
 index::TUIndex empty_session_index() {
-    EnvelopeMirror mirror;
+    TUIndexMirror mirror;
     mirror.built_at = 1;
     mirror.paths = {main_path};
     return index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(mirror.bytes()));
@@ -206,16 +206,16 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
     auto locations = relations("ref", RelationKind::Reference);
     ZASSERT(locations.size() == 2);
 
-    std::size_t header_rows = 0;
-    std::size_t main_rows = 0;
+    std::size_t header_refs = 0;
+    std::size_t main_refs = 0;
     for(auto& location: locations) {
         if(location.path.ends_with("foo.h"))
-            header_rows += 1;
+            header_refs += 1;
         if(location.path.ends_with("main.cpp"))
-            main_rows += 1;
+            main_refs += 1;
     }
-    ZEXPECT(header_rows == 1);
-    ZEXPECT(main_rows == 1);
+    ZEXPECT(header_refs == 1);
+    ZEXPECT(main_refs == 1);
 }
 
 ZEST_CASE(PreambleMacroCursor) {
@@ -410,8 +410,8 @@ ZEST_CASE(AsciiPreviewFromDisk) {
     auto path_id = project.file_table.intern(Spelling::absolute(path));
 
     index::SymbolHash sym = 777;
-    index::FileIndex rows;
-    rows.occurrences.push_back({
+    index::FileIndex file_index;
+    file_index.occurrences.push_back({
         {4, 9},
         sym
     });
@@ -420,8 +420,8 @@ ZEST_CASE(AsciiPreviewFromDisk) {
         .range = {4, 9}
     };
     def.set_definition_range({0, 14});
-    rows.relations[sym].push_back(def);
-    rows.relations[sym].push_back({
+    file_index.relations[sym].push_back(def);
+    file_index.relations[sym].push_back({
         .kind = RelationKind::Reference,
         .range = {27, 32},
         .target_symbol = 0
@@ -429,13 +429,13 @@ ZEST_CASE(AsciiPreviewFromDisk) {
 
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
-    index::write_shard(rows, {}, text, os);
+    index::write_shard(file_index, {}, text, os);
     project.project_index.shards[path_id] =
         index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(bytes));
     ZASSERT(project.project_index.shards[path_id].content().empty());
-    auto& row = project.project_index.touch(sym);
-    row.name = "value";
-    row.reference_files.add(path_id.raw);
+    auto& symbol = project.project_index.touch(sym);
+    symbol.name = "value";
+    symbol.reference_files.add(path_id.raw);
 
     auto definition = disk_query.definition_text(sym, Fid{});
     ZASSERT(definition);

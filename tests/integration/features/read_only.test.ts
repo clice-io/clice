@@ -4,7 +4,7 @@
 /// hints, no diagnostics push before a pull) is asserted explicitly.
 
 import * as proto from "vscode-languageserver-protocol";
-import { SETTLE_TIME, sleep } from "@clice/tools/client";
+import { IDLE_WAIT, sleep } from "@clice/tools/client";
 import type { Workspace } from "@clice/tools/workspace";
 import { expect, test } from "../fixtures.ts";
 
@@ -188,7 +188,7 @@ test("edit escalates to compile", async ({ session }) => {
         published = true;
     });
     client.change(uri, 2, MAIN + "// edited\n");
-    await sleep(SETTLE_TIME);
+    await sleep(IDLE_WAIT);
     expect(published).toBe(false);
 
     const hover = await client.hoverAt(uri, 4, 11);
@@ -403,7 +403,7 @@ test("off compiles on demand", async ({ session }) => {
         published = true;
     });
     client.open("main.cpp");
-    await sleep(SETTLE_TIME);
+    await sleep(IDLE_WAIT);
     expect(published).toBe(false);
 
     const hover = await client.hoverAt(uri, 4, 11);

@@ -37,7 +37,7 @@ inline void combine(Classified& result, Classified candidate) {
 /// semantic kind when there is one, the lexical kind otherwise. A
 /// semantic kind beats the lexical directive kinds (a macro named in an
 /// `#ifdef` is a macro); any other disagreement is a Conflict.
-inline Classified settle(Classified semantic, Classified lexical) {
+inline Classified final_classification(Classified semantic, Classified lexical) {
     if(semantic.kind == SymbolKind::Invalid) {
         return lexical;
     }

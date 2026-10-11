@@ -14,9 +14,9 @@ namespace clice::index {
 /// single-variant blob bytes the worker produced. Encoding is canonical
 /// and deterministic, so two compilation contexts whose preprocessing of
 /// the file agrees produce byte-identical blobs and share one identity.
-using RowsHash = std::uint64_t;
+using VariantHash = std::uint64_t;
 
-struct RowColumns;
+struct RangeColumnsView;
 struct LiveFilter;
 
 /// Zero-copy reader over a shard blob, plus the live-variant mask the
@@ -88,13 +88,13 @@ public:
     /// All variant identities stored in the blob, in mask-bit order. A
     /// worker-emitted blob holds one anonymous variant identified by its
     /// own byte hash.
-    std::vector<RowsHash> variants() const;
+    std::vector<VariantHash> variants() const;
 
-    bool has_variant(RowsHash hash) const;
+    bool has_variant(VariantHash hash) const;
 
     /// Restrict queries to the given variants (the file's live
     /// contributions). Hashes the blob does not store are ignored.
-    void set_live(llvm::ArrayRef<RowsHash> live);
+    void set_live(llvm::ArrayRef<VariantHash> live);
 
     /// Whether any stored variant was masked out by set_live — the signal
     /// that the next serialization of this file should compact.
@@ -144,7 +144,7 @@ private:
 
     /// The live mask resolved against one side's mask columns, built once
     /// per query.
-    LiveFilter live_filter(const RowColumns& columns) const;
+    LiveFilter live_filter(const RangeColumnsView& columns) const;
 
     std::unique_ptr<llvm::MemoryBuffer> buffer;
     Live live;
@@ -164,7 +164,7 @@ private:
 /// live in the ProjectIndex); returned name refs must stay valid for the
 /// duration of the call. `content` is the text the indexing compile
 /// consumed; pure-ASCII content is hashed and measured but not stored.
-void write_shard(const FileIndex& rows,
+void write_shard(const FileIndex& file_index,
                  llvm::function_ref<std::optional<SymbolIdentity>(SymbolHash)> symbols,
                  llvm::StringRef content,
                  llvm::raw_ostream& os);
@@ -180,7 +180,7 @@ void write_shard(const FileIndex& rows,
 /// must be a loaded single-variant blob of the same content generation as
 /// the other inputs.
 void merge_shards(const Shard& old,
-                  llvm::ArrayRef<RowsHash> keep,
+                  llvm::ArrayRef<VariantHash> keep,
                   llvm::ArrayRef<Shard> fresh,
                   llvm::raw_ostream& os);
 

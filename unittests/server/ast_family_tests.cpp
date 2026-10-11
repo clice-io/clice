@@ -304,7 +304,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
     // for a buffer that no longer exists — the editor re-requests after
     // an edit), and the next request compiles the fresh content. Liveness
     // pin; the interruption content is pinned by
-    // StatefulWorker.WireCancelInterruptsCompile.
+    // StatefulWorker.IpcCancelInterruptsCompile.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
@@ -383,7 +383,7 @@ ZEST_CASE(SupersededCompileCancelled) {
     // worker's parse, and the second waiter's respawned round compiles the
     // new content. This pins the supersede path's liveness; the
     // interruption itself is pinned content-wise by
-    // StatefulWorker.WireCancelInterruptsCompile.
+    // StatefulWorker.IpcCancelInterruptsCompile.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
     TempDir tmp;
@@ -1105,7 +1105,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
     logging::reset_anomaly_for_testing();
 }
 
-ZEST_CASE(StaleReplyLandsContentModified) {
+ZEST_CASE(StaleReplyBecomesContentModified) {
     // A reply for a buffer the client edited away never leaves as a value:
     // the landing turns it into ContentModified even when the worker
     // answered after the compile had settled — the edit landed while the
@@ -1497,10 +1497,10 @@ ZEST_CASE(EvictedAgainRecompiles) {
             a->path_id.raw,
             worker::EvictParams{std::string(stack.project.file_table.resolve(a->path_id))});
     };
-    int landings = 0;
+    int outputs = 0;
     auto connection = stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) {
-        landings += 1;
-        if(landings == 2) {
+        outputs += 1;
+        if(outputs == 2) {
             evict();
         }
     });
@@ -1520,7 +1520,7 @@ ZEST_CASE(EvictedAgainRecompiles) {
                                                       protocol::Position{0, 5});
         ZASSERT(result);
         ZEXPECT(result.value().data != "null");
-        ZEXPECT(landings == 3);
+        ZEXPECT(outputs == 3);
 
         co_await stack.ast.stop();
         co_await stack.graph.shutdown();

@@ -51,7 +51,7 @@ std::expected<CursorRename, std::string> rename_at(const IndexQuery& query,
 /// A file's current text as a rename's sweep looks at it: the tokens
 /// spelling each name swept — a rename's old and new name, or those of
 /// every rename of a batch.
-struct SweptText {
+struct ScannedText {
     std::string text;
 
     struct Token {
@@ -66,7 +66,7 @@ struct SweptText {
 /// Sweep `text` for `names`; nullopt when it spells none of them as a
 /// token. Text work alone, safe on any thread: a server runs it off its
 /// event loop over the whole workspace.
-std::optional<SweptText> sweep_text(std::string text, const llvm::StringSet<>& names);
+std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& names);
 
 /// Where a rename may change text, and how to read it.
 struct RenameScope {
@@ -82,7 +82,7 @@ struct RenameScope {
 
     /// A file's current text — an open buffer's, else the disk's — swept
     /// for the names of the rename (sweep_text); null when it spells none.
-    llvm::function_ref<const SweptText*(llvm::StringRef path)> read;
+    llvm::function_ref<const ScannedText*(llvm::StringRef path)> read;
 
     /// Whether some unit of the build the index is to hold has no record
     /// in it yet: a file the index holds no rows of may then be one the

@@ -78,8 +78,8 @@ public:
         /// Files whose stored rows were replaced, re-masked or dropped
         /// while possibly index-served: the serving adapter checks which
         /// of them an open session actually serves and refreshes those.
-        llvm::ArrayRef<Fid> rows_changed() const {
-            return rows_ids;
+        llvm::ArrayRef<Fid> index_changed() const {
+            return index_ids;
         }
 
         /// This save left state that an immediate retry commits: debt
@@ -94,21 +94,21 @@ public:
             }
         }
 
-        void add_rows_changed(Fid id) {
-            if(rows_seen.insert(id).second) {
-                rows_ids.push_back(id);
+        void add_index_changed(Fid id) {
+            if(index_seen.insert(id).second) {
+                index_ids.push_back(id);
             }
         }
 
         bool empty() const {
-            return reindex_ids.empty() && rows_ids.empty() && !owes_retry;
+            return reindex_ids.empty() && index_ids.empty() && !owes_retry;
         }
 
     private:
         llvm::SmallVector<Fid> reindex_ids;
-        llvm::SmallVector<Fid> rows_ids;
+        llvm::SmallVector<Fid> index_ids;
         llvm::DenseSet<Fid> reindex_seen;
-        llvm::DenseSet<Fid> rows_seen;
+        llvm::DenseSet<Fid> index_seen;
     };
 
     /// When a save rebuilds the derived search index before it commits.
@@ -118,7 +118,7 @@ public:
         Behind,
         /// Also when it is missing or merely behind: no more indexing is
         /// queued, so the persisted one is fresh for the next cold start.
-        Settled,
+        Idle,
         /// Never: the rows commit without waiting for it, and the next
         /// session rebuilds it.
         Never,
@@ -233,7 +233,7 @@ public:
     /// the disk can change under a running round, but staleness is
     /// re-judged per round anyway.
     void begin_round() {
-        fv_verdicts.clear();
+        fv_stale.clear();
     }
 
     /// Check whether a file needs re-indexing: no manifest, or a stale
@@ -367,7 +367,7 @@ private:
 
     /// Per-round FileVersion staleness verdicts: many TUs share the same
     /// versions, and one stat (or repair) per version per round is enough.
-    llvm::DenseMap<VersionID, bool> fv_verdicts;
+    llvm::DenseMap<VersionID, bool> fv_stale;
 
     /// Two-layer staleness test on a FileVersion, cached per round; a hash
     /// match after a stat mismatch repairs the version's stat fast path in

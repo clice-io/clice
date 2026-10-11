@@ -27,10 +27,10 @@ void build_index(llvm::StringRef code,
     ZASSERT(tu_index.loaded());
 }
 
-std::string write_fresh(const index::FileIndex& rows, llvm::StringRef content) {
+std::string write_fresh(const index::FileIndex& file_index, llvm::StringRef content) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
-    index::write_shard(rows, {}, content, os);
+    index::write_shard(file_index, {}, content, os);
     return bytes;
 }
 
@@ -50,7 +50,7 @@ index::Shard make_shard(llvm::StringRef bytes) {
 }
 
 index::Shard merge(const index::Shard& old,
-                   llvm::ArrayRef<index::RowsHash> keep,
+                   llvm::ArrayRef<index::VariantHash> keep,
                    std::vector<index::Shard> fresh) {
     std::string bytes;
     llvm::raw_string_ostream os(bytes);
@@ -61,10 +61,10 @@ index::Shard merge(const index::Shard& old,
 /// `content` must repeat the text the shard was built from — ASCII blobs
 /// do not store it, so it cannot be recovered from `old`.
 index::Shard append_variant(const index::Shard& old,
-                            const index::FileIndex& rows,
+                            const index::FileIndex& file_index,
                             llvm::StringRef content) {
     std::vector<index::Shard> fresh;
-    fresh.push_back(make_shard(write_fresh(rows, content)));
+    fresh.push_back(make_shard(write_fresh(file_index, content)));
     return merge(old, old.variants(), std::move(fresh));
 }
 
@@ -77,10 +77,10 @@ index::SymbolHash hash_at(const index::Shard& shard, std::uint32_t offset) {
     return result;
 }
 
-index::FileIndex simple_rows(std::initializer_list<index::Occurrence> occurrences) {
-    index::FileIndex rows;
-    rows.occurrences = occurrences;
-    return rows;
+index::FileIndex simple_index(std::initializer_list<index::Occurrence> occurrences) {
+    index::FileIndex file_index;
+    file_index.occurrences = occurrences;
+    return file_index;
 }
 
 ZEST_CASE(RoundtripLookups) {
@@ -120,34 +120,34 @@ ZEST_CASE(RoundtripLookups) {
 ZEST_CASE(DeterministicEncoding) {
     // The blob's byte hash is the variant's identity, so equal rows must
     // encode to equal bytes regardless of in-memory insertion order.
-    index::FileIndex rows;
-    rows.occurrences = {
+    index::FileIndex file_index;
+    file_index.occurrences = {
         {{0, 3},   111},
         {{10, 13}, 222},
         {{20, 23}, 111},
     };
-    rows.relations[111] = {
+    file_index.relations[111] = {
         {.kind = RelationKind::Definition, .range = {0, 3},   .target_symbol = 0},
         {.kind = RelationKind::Reference,  .range = {20, 23}, .target_symbol = 0},
     };
-    rows.relations[333] = {
+    file_index.relations[333] = {
         {.kind = RelationKind::Base, .range = {10, 13}, .target_symbol = 444},
     };
 
     index::FileIndex shuffled;
-    shuffled.occurrences = {rows.occurrences[2], rows.occurrences[0], rows.occurrences[1]};
-    shuffled.relations[333] = rows.relations[333];
-    shuffled.relations[111] = {rows.relations[111][1], rows.relations[111][0]};
+    shuffled.occurrences = {file_index.occurrences[2], file_index.occurrences[0], file_index.occurrences[1]};
+    shuffled.relations[333] = file_index.relations[333];
+    shuffled.relations[111] = {file_index.relations[111][1], file_index.relations[111][0]};
 
     auto content = "aaa bbb ccc ddd 111 222 333";
-    ZASSERT(write_fresh(rows, content) == write_fresh(shuffled, content));
+    ZASSERT(write_fresh(file_index, content) == write_fresh(shuffled, content));
 }
 
 ZEST_CASE(AnonymousVariantIdentity) {
-    auto rows = simple_rows({
+    auto file_index = simple_index({
         {{0, 3}, 111}
     });
-    auto bytes = write_fresh(rows, "aaa bbb");
+    auto bytes = write_fresh(file_index, "aaa bbb");
     auto shard = make_shard(bytes);
 
     auto variants = shard.variants();
@@ -158,10 +158,10 @@ ZEST_CASE(AnonymousVariantIdentity) {
 
 ZEST_CASE(AsciiContentOmitted) {
     std::string content = "int x;\nint y;\n";
-    auto rows = simple_rows({
+    auto file_index = simple_index({
         {{4, 5}, 111}
     });
-    auto shard = make_shard(write_fresh(rows, content));
+    auto shard = make_shard(write_fresh(file_index, content));
 
     ZASSERT(shard.content().empty());
     ZASSERT(shard.content_size() == static_cast<std::uint32_t>(content.size()));
@@ -177,12 +177,12 @@ ZEST_CASE(CRLFLinesMarked) {
     // ASCII content is not stored: the shard marks the lines ending in
     // "\r\n" so its coordinates place their ends without the text.
     std::string content = "int x;\r\nint y;\nint z;\r\n";
-    auto rows = simple_rows({
+    auto file_index = simple_index({
         {{4, 5}, 111}
     });
-    auto shard = make_shard(write_fresh(rows, content));
+    auto shard = make_shard(write_fresh(file_index, content));
     ZASSERT(shard.content().empty());
-    auto more = simple_rows({
+    auto more = simple_index({
         {{12, 13}, 222}
     });
     auto merged = append_variant(shard, more, content);
@@ -190,17 +190,17 @@ ZEST_CASE(CRLFLinesMarked) {
 
     auto starts = shard.line_starts();
     PositionMap scanned(content, starts);
-    for(std::uint32_t row = 0; row < starts.size(); row += 1) {
-        ZEXPECT(shard.positions().line_bounds(row) == scanned.line_bounds(row));
+    for(std::uint32_t line = 0; line < starts.size(); line += 1) {
+        ZEXPECT(shard.positions().line_bounds(line) == scanned.line_bounds(line));
     }
 }
 
 ZEST_CASE(NonAsciiContentStored) {
     std::string content = "int å;\nint y;\n";
-    auto rows = simple_rows({
+    auto file_index = simple_index({
         {{4, 6}, 111}
     });
-    auto shard = make_shard(write_fresh(rows, content));
+    auto shard = make_shard(write_fresh(file_index, content));
 
     ZASSERT(shard.content() == llvm::StringRef(content));
 
@@ -213,34 +213,34 @@ ZEST_CASE(LongLineEscape) {
     // A line past 255 bytes escapes to the sparse table; the materialized
     // starts must match a direct scan of the content.
     std::string content = "short\n" + std::string(300, 'a') + "\nshort again\n";
-    auto rows = simple_rows({
+    auto file_index = simple_index({
         {{0, 5}, 111}
     });
-    auto shard = make_shard(write_fresh(rows, content));
+    auto shard = make_shard(write_fresh(file_index, content));
 
     auto expected = kota::ipc::lsp::line_starts(content);
     auto starts = shard.line_starts();
     ZASSERT(std::vector<std::uint32_t>(starts.begin(), starts.end()) == expected);
 }
 
-ZEST_CASE(WideRangeTier) {
+ZEST_CASE(WideRangeEncoding) {
     // Past 16MB of content the packed range column cannot hold begins;
     // the wide tier takes over transparently.
     std::string content(index::packed_range_limit + 64, 'w');
-    auto rows = simple_rows({
+    auto file_index = simple_index({
         {{0, 3},                                                          111},
         {{index::packed_range_limit + 8, index::packed_range_limit + 11}, 222},
     });
-    auto shard = make_shard(write_fresh(rows, content));
+    auto shard = make_shard(write_fresh(file_index, content));
     ZASSERT(hash_at(shard, 1) == 111u);
     ZASSERT(hash_at(shard, index::packed_range_limit + 9) == 222u);
 }
 
 ZEST_CASE(VariantMaskFiltering) {
-    auto a = simple_rows({
+    auto a = simple_index({
         {{0, 3}, 111}
     });
-    auto b = simple_rows({
+    auto b = simple_index({
         {{0, 3},   111},
         {{10, 13}, 222}
     });
@@ -270,10 +270,10 @@ ZEST_CASE(VariantMaskFiltering) {
 }
 
 ZEST_CASE(CompactionDropsVariant) {
-    auto a = simple_rows({
+    auto a = simple_index({
         {{0, 3}, 111}
     });
-    auto b = simple_rows({
+    auto b = simple_index({
         {{0, 3},   111},
         {{10, 13}, 222}
     });
@@ -294,11 +294,11 @@ ZEST_CASE(KWayMerge) {
     std::string content = "aaa bbb ccc ddd eee";
     std::vector<index::Shard> fresh;
     for(std::uint32_t i = 0; i < 3; i += 1) {
-        auto rows = simple_rows({
+        auto file_index = simple_index({
             {{0, 3},                         111     },
             {{4 * (i + 1), 4 * (i + 1) + 3}, 1000 + i},
         });
-        fresh.push_back(make_shard(write_fresh(rows, content)));
+        fresh.push_back(make_shard(write_fresh(file_index, content)));
     }
     auto shard = merge(index::Shard(), {}, std::move(fresh));
 
@@ -320,15 +320,15 @@ index::Shard grow_variants(std::uint32_t count) {
     std::string content(16 * (count + 2), 'x');
     index::Shard shard;
     for(std::uint32_t i = 1; i <= count; i += 1) {
-        auto rows = simple_rows({
+        auto file_index = simple_index({
             {{0, 3},               111     },
             {{i * 16, i * 16 + 3}, 1000 + i}
         });
-        rows.relations[999] = {
+        file_index.relations[999] = {
             {.kind = RelationKind::Reference, .range = {0, 3},               .target_symbol = 0},
             {.kind = RelationKind::Reference, .range = {i * 16, i * 16 + 3}, .target_symbol = 0},
         };
-        auto fresh = make_shard(write_fresh(rows, content));
+        auto fresh = make_shard(write_fresh(file_index, content));
         if(!shard.loaded()) {
             shard = std::move(fresh);
         } else {
@@ -349,7 +349,7 @@ std::size_t reference_count(const index::Shard& shard, index::SymbolHash symbol)
     return count;
 }
 
-void expect_tier_behavior(std::uint32_t count) {
+void expect_encoding_behavior(std::uint32_t count) {
     auto shard = grow_variants(count);
     auto variants = shard.variants();
     ZASSERT(variants.size() == std::size_t(count));
@@ -370,25 +370,25 @@ void expect_tier_behavior(std::uint32_t count) {
     ZASSERT(reference_count(shard, 999) == std::size_t(2));
 }
 
-ZEST_CASE(MaskTier32) {
-    expect_tier_behavior(5);
+ZEST_CASE(MaskEncoding32) {
+    expect_encoding_behavior(5);
 }
 
-ZEST_CASE(MaskTier64) {
-    expect_tier_behavior(40);
+ZEST_CASE(MaskEncoding64) {
+    expect_encoding_behavior(40);
 }
 
-ZEST_CASE(MaskTierRoaring) {
-    expect_tier_behavior(70);
+ZEST_CASE(MaskEncodingRoaring) {
+    expect_encoding_behavior(70);
 }
 
 ZEST_CASE(LongTokenEscape) {
-    auto rows = simple_rows({
+    auto file_index = simple_index({
         {{0, 300},   111},
         {{400, 404}, 222}
     });
     std::string content(500, 'y');
-    auto shard = make_shard(write_fresh(rows, content));
+    auto shard = make_shard(write_fresh(file_index, content));
 
     bool found = false;
     shard.lookup(299, [&](const index::Occurrence& o) {
@@ -401,21 +401,21 @@ ZEST_CASE(LongTokenEscape) {
 }
 
 ZEST_CASE(RelationPayloadRoundtrip) {
-    index::FileIndex rows;
+    index::FileIndex file_index;
     index::Relation definition{
         .kind = RelationKind::Definition,
         .range = {0, 3}
     };
     definition.set_definition_range({0, 50});
-    rows.relations[111] = {
+    file_index.relations[111] = {
         definition,
         {.kind = RelationKind::Reference, .range = {10, 13}, .target_symbol = 0},
     };
-    rows.relations[333] = {
+    file_index.relations[333] = {
         {.kind = RelationKind::Base, .range = {20, 23}, .target_symbol = 444},
     };
 
-    auto shard = make_shard(write_fresh(rows, std::string(60, 'z')));
+    auto shard = make_shard(write_fresh(file_index, std::string(60, 'z')));
 
     bool checked_definition = false;
     shard.lookup(111, RelationKind::Definition, [&](const index::Relation& r) {
@@ -484,13 +484,13 @@ ZEST_CASE(MergedLocalFlagsUnion) {
     // either merge order.
     llvm::StringRef content = "static int helper();\n";
     auto variant = [&](index::SymbolFlags flags) {
-        auto rows = simple_rows({
+        auto file_index = simple_index({
             {{11, 17}, 7}
         });
         std::string bytes;
         llvm::raw_string_ostream os(bytes);
         index::write_shard(
-            rows,
+            file_index,
             [&](index::SymbolHash) -> std::optional<index::SymbolIdentity> {
                 return index::SymbolIdentity{.name = "helper",
                                              .kind = SymbolKind::Function,
@@ -527,7 +527,7 @@ ZEST_CASE(MergedLocalNames) {
     auto content = sources.all_files.find("main.cpp")->second.content;
     auto first = make_shard(main_blob());
 
-    auto extra = simple_rows({
+    auto extra = simple_index({
         {{0, 3}, 424242}
     });
     auto shard = append_variant(first, extra, content);
@@ -542,17 +542,17 @@ ZEST_CASE(MergedLocalNames) {
 ZEST_CASE(WideSymbolIds) {
     // Past 65536 distinct symbols the id columns must widen to u32; a
     // truncating writer corrupts resolution only on indexes this large.
-    index::FileIndex rows;
+    index::FileIndex file_index;
     constexpr std::uint32_t count = 70000;
-    rows.occurrences.reserve(count);
+    file_index.occurrences.reserve(count);
     for(std::uint32_t i = 0; i < count; i += 1) {
-        rows.occurrences.push_back({
+        file_index.occurrences.push_back({
             {i * 8, i * 8 + 3},
             0x100000u + i
         });
     }
     std::string content(count * 8 + 16, 'w');
-    auto shard = make_shard(write_fresh(rows, content));
+    auto shard = make_shard(write_fresh(file_index, content));
     ZASSERT(hash_at(shard, 69999 * 8 + 1) == 0x100000u + 69999);
     ZASSERT(hash_at(shard, 3 * 8 + 1) == 0x100000u + 3);
 }
@@ -574,7 +574,7 @@ void fill_content(index::ShardBlob& blob, llvm::StringRef text) {
     bool is_ascii = llvm::all_of(text, [](char c) { return static_cast<unsigned char>(c) < 0x80; });
     blob.content = is_ascii ? std::string() : text.str();
     blob.line_lengths.clear();
-    blob.long_line_rows.clear();
+    blob.long_lines.clear();
     blob.long_line_lengths.clear();
     auto starts = kota::ipc::lsp::line_starts(std::string_view(text.data(), text.size()));
     for(std::size_t i = 0; i < starts.size(); i += 1) {
@@ -582,7 +582,7 @@ void fill_content(index::ShardBlob& blob, llvm::StringRef text) {
         auto length = next - starts[i];
         if(length >= index::length_escape) {
             blob.line_lengths.push_back(index::length_escape);
-            blob.long_line_rows.push_back(static_cast<std::uint32_t>(i));
+            blob.long_lines.push_back(static_cast<std::uint32_t>(i));
             blob.long_line_lengths.push_back(length);
         } else {
             blob.line_lengths.push_back(static_cast<std::uint8_t>(length));
@@ -596,10 +596,10 @@ ZEST_CASE(CorruptBlobRejected) {
     // A valid blob cut mid-structure must fail verification, not be
     // misread. (One trailing byte can be alignment padding, so the cut
     // must reach real data.)
-    auto rows = simple_rows({
+    auto file_index = simple_index({
         {{0, 3}, 111}
     });
-    auto bytes = write_fresh(rows, "aaaa");
+    auto bytes = write_fresh(file_index, "aaaa");
     ZASSERT(
         !index::Shard::from_bytes(llvm::StringRef(bytes).take_front(bytes.size() / 2)).loaded());
 
@@ -725,7 +725,7 @@ ZEST_CASE(LineTableMismatchRejected) {
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
-ZEST_CASE(MisorderedRowsRejected) {
+ZEST_CASE(MisorderedEntriesRejected) {
     // Occurrence lookup binary-searches decoded row ends; a corrupt blob
     // whose rows lost their order must load as "not on disk" and be
     // rebuilt, not keep misresolving queries on every restart.
@@ -736,7 +736,7 @@ ZEST_CASE(MisorderedRowsRejected) {
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 0};
     blob.occs.packed = {index::pack_range(0, 3), index::pack_range(8, index::length_escape)};
-    blob.occs.long_rows = {1};
+    blob.occs.long_entries = {1};
     blob.occs.long_ends = {12};
     blob.occ_syms8 = {0, 0};
 
@@ -750,18 +750,18 @@ ZEST_CASE(MisorderedRowsRejected) {
 
     // Begins out of order.
     blob.occs.packed = {index::pack_range(8, index::length_escape), index::pack_range(0, 3)};
-    blob.occs.long_rows = {0};
+    blob.occs.long_entries = {0};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     // Begins sorted, but the escaped end regresses below the row before.
     blob.occs.packed = {index::pack_range(0, index::length_escape), index::pack_range(8, 3)};
-    blob.occs.long_rows = {0};
+    blob.occs.long_entries = {0};
     blob.occs.long_ends = {14};  // ends decode to {14, 11}
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     // An escaped end before its own begin.
     blob.occs.packed = {index::pack_range(0, 3), index::pack_range(8, index::length_escape)};
-    blob.occs.long_rows = {1};
+    blob.occs.long_entries = {1};
     blob.occs.long_ends = {5};  // row 1: begin 8, end 5
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
@@ -796,7 +796,7 @@ ZEST_CASE(DuplicateOccKeyRejected) {
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
-ZEST_CASE(UnsortedRelationRowsRejected) {
+ZEST_CASE(UnsortedRelationsRejected) {
     // Rows of one relation group merge under the full (kind, begin, end,
     // payload) key and the writer sorts and combines equal keys, so
     // out-of-order or repeated rows are non-canonical and would mis-merge
@@ -838,7 +838,7 @@ ZEST_CASE(EscapeTableMismatchRejected) {
     blob.sym_hashes = {111};
     blob.sym_rel_offsets = {0, 0};
     blob.occs.packed = {index::pack_range(0, index::length_escape)};
-    blob.occs.long_rows = {0};
+    blob.occs.long_entries = {0};
     blob.occs.long_ends = {260};
     blob.occ_syms8 = {0};
 
@@ -851,13 +851,13 @@ ZEST_CASE(EscapeTableMismatchRejected) {
     ZASSERT(make_shard(bytes_of()).loaded());
 
     // A sentinel without its sparse entry.
-    blob.occs.long_rows = {};
+    blob.occs.long_entries = {};
     blob.occs.long_ends = {};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     // A sparse entry pointing at an unescaped row.
     blob.occs.packed = {index::pack_range(0, 3)};
-    blob.occs.long_rows = {0};
+    blob.occs.long_entries = {0};
     blob.occs.long_ends = {260};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
@@ -899,11 +899,11 @@ ZEST_CASE(RangesBeyondContentRejected) {
 
     // An escaped end does too.
     blob.occs.packed = {index::pack_range(0, index::length_escape)};
-    blob.occs.long_rows = {0};
+    blob.occs.long_entries = {0};
     blob.occs.long_ends = {600};
     ZASSERT(!make_shard(bytes_of()).loaded());
     blob.occs.packed = {index::pack_range(0, 3)};
-    blob.occs.long_rows = {};
+    blob.occs.long_entries = {};
     blob.occs.long_ends = {};
 
     // Relation ranges are bounded alike.
@@ -920,13 +920,13 @@ ZEST_CASE(RangesBeyondContentRejected) {
     blob.rels.packed = {index::pack_range(0, 3)};
 
     // And definition-range payloads.
-    blob.rel_def_rows = {0};
+    blob.rel_def_entries = {0};
     blob.rel_def_begins = {0};
     blob.rel_def_ends = {600};
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
-ZEST_CASE(WrongRangeTierRejected) {
+ZEST_CASE(WrongRangeEncodingRejected) {
     // The range tier is a strict function of the content size — a second
     // spelling of the same rows would fork the byte identity.
     index::ShardBlob blob;
@@ -1023,7 +1023,7 @@ ZEST_CASE(StraySymbolIdRejected) {
     blob.occ_syms8 = {0};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base)};
     blob.rels.packed = {index::pack_range(4, 3)};
-    blob.rel_sym_rows = {0};
+    blob.rel_sym_entries = {0};
     blob.rel_sym8 = {0};
 
     auto bytes_of = [&] {
@@ -1054,7 +1054,7 @@ ZEST_CASE(MismatchedPayloadTableRejected) {
     blob.sym_rel_offsets = {0, 1};
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Definition)};
     blob.rels.packed = {index::pack_range(4, 3)};
-    blob.rel_def_rows = {0};
+    blob.rel_def_entries = {0};
     blob.rel_def_begins = {0};
     blob.rel_def_ends = {8};
 
@@ -1066,19 +1066,19 @@ ZEST_CASE(MismatchedPayloadTableRejected) {
     };
     ZASSERT(make_shard(bytes_of()).loaded());
 
-    blob.rel_def_rows = {};
+    blob.rel_def_entries = {};
     blob.rel_def_begins = {};
     blob.rel_def_ends = {};
-    blob.rel_sym_rows = {0};
+    blob.rel_sym_entries = {0};
     blob.rel_sym8 = {0};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
     blob.rel_kinds = {static_cast<std::uint8_t>(RelationKind::Base)};
     ZASSERT(make_shard(bytes_of()).loaded());
 
-    blob.rel_sym_rows = {};
+    blob.rel_sym_entries = {};
     blob.rel_sym8 = {};
-    blob.rel_def_rows = {0};
+    blob.rel_def_entries = {0};
     blob.rel_def_begins = {0};
     blob.rel_def_ends = {8};
     ZASSERT(!make_shard(bytes_of()).loaded());

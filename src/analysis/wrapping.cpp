@@ -258,7 +258,7 @@ std::expected<PartitionSpec, std::string> read_partition(PartitionSpec spec,
             std::format("{} is not a partition file: {}", path.str(), result.error().message));
     }
     for(auto& module: file.modules) {
-        PartitionSpec::Module claimed{
+        PartitionSpec::Module declared{
             .name = std::move(module.name),
             .files = std::move(module.files),
         };
@@ -266,16 +266,16 @@ std::expected<PartitionSpec, std::string> read_partition(PartitionSpec spec,
         auto external = module.external.value_or(false);
         if(textual && external) {
             return std::unexpected(
-                std::format("module {} is both textual and external", claimed.name));
+                std::format("module {} is both textual and external", declared.name));
         }
         if(module.rewrite.value_or(false)) {
             // A kind beside it is left for the partition to reject.
             if(!textual && !external) {
-                claimed.kind = ModuleKind::Program;
+                declared.kind = ModuleKind::Program;
             }
-            claimed.rewrite = true;
-            claimed.primary = module.primary.value_or("");
-            llvm::StringRef primary = claimed.primary;
+            declared.rewrite = true;
+            declared.primary = module.primary.value_or("");
+            llvm::StringRef primary = declared.primary;
             if(llvm::sys::path::is_absolute(primary) ||
                llvm::sys::path::is_absolute(primary, llvm::sys::path::Style::posix) ||
                llvm::is_contained(
@@ -283,32 +283,32 @@ std::expected<PartitionSpec, std::string> read_partition(PartitionSpec spec,
                    "..")) {
                 return std::unexpected(
                     std::format("module {}: primary {} lies outside the workspace",
-                                claimed.name,
+                                declared.name,
                                 primary.str()));
             }
         } else if(module.primary) {
             return std::unexpected(
                 std::format("module {} has a primary interface but is not rewritten",
-                            claimed.name));
+                            declared.name));
         }
         if(textual) {
-            claimed.kind = ModuleKind::Textual;
+            declared.kind = ModuleKind::Textual;
         }
         if(external) {
-            claimed.kind = ModuleKind::External;
+            declared.kind = ModuleKind::External;
         }
         if(module.provides) {
             if(*module.provides != "std.compat" || !libcxx) {
                 return std::unexpected(
                     std::format("module {} provided by {}: only std.compat, given --std",
-                                claimed.name,
+                                declared.name,
                                 *module.provides));
             }
             for(auto& name: libcxx->compat) {
-                claimed.provides.insert(name.getKey());
+                declared.provides.insert(name.getKey());
             }
         }
-        spec.modules.push_back(std::move(claimed));
+        spec.modules.push_back(std::move(declared));
     }
     return spec;
 }

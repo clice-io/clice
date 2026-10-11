@@ -439,7 +439,7 @@ ZEST_CASE(UncheckpointedBlobAdopted) {
     ZASSERT(store.lookup("pch", "orphan"));
 }
 
-ZEST_CASE(DeadInstanceTmpSwept) {
+ZEST_CASE(DeadInstanceTmpRemoved) {
     TempDir tmp;
     tmp.touch(std::string("root/cache/v1/tmp/") + dead_pid + "/0.pch", "leftover");
 
@@ -484,7 +484,7 @@ ZEST_CASE(ScratchBasics) {
     ZASSERT(!llvm::sys::fs::exists(path));
 }
 
-ZEST_CASE(ScratchDeadPidSwept) {
+ZEST_CASE(ScratchDeadPidRemoved) {
     TempDir tmp;
     tmp.touch(std::string("root/cache/v1/header_context/") + dead_pid + "/x.h", "stale");
 
@@ -667,7 +667,7 @@ ZEST_CASE(StaleAuxDropped) {
     ZASSERT(!read_file(aux_path).has_value());
 }
 
-ZEST_CASE(OrphanAuxSwept) {
+ZEST_CASE(OrphanAuxRemoved) {
     TempDir tmp;
     {
         auto store = open_store(tmp);

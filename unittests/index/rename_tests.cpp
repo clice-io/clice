@@ -67,13 +67,13 @@ void write(llvm::StringRef name, llvm::StringRef content) {
 /// The disk's files swept for the names of the renames planned, each
 /// read once.
 llvm::StringSet<> names;
-llvm::StringMap<std::optional<index::SweptText>> swept;
+llvm::StringMap<std::optional<index::ScannedText>> scanned;
 
-const index::SweptText* read(llvm::StringRef path) {
-    auto [it, inserted] = swept.try_emplace(path);
+const index::ScannedText* read(llvm::StringRef path) {
+    auto [it, inserted] = scanned.try_emplace(path);
     if(inserted) {
         if(auto text = vfs::read(path)) {
-            it->second = index::sweep_text((*text)->getBuffer().str(), names);
+            it->second = index::scan_text((*text)->getBuffer().str(), names);
         }
     }
     return it->second ? &*it->second : nullptr;
@@ -85,7 +85,7 @@ bool editable(llvm::StringRef path) {
 
 RenamePlan plan(const index::RenameTarget& target, llvm::StringRef new_name) {
     names = {target.symbol.symbol.name, new_name};
-    swept.clear();
+    scanned.clear();
     return index::plan_rename(query,
                               project.file_table,
                               target,
@@ -108,7 +108,7 @@ index::RenameTarget target(llvm::StringRef name) {
 /// Plan the renames together, as a batch.
 index::BatchPlan batch(std::vector<index::Renaming> renamings) {
     names.clear();
-    swept.clear();
+    scanned.clear();
     for(auto& [target, new_name]: renamings) {
         names.insert(target.symbol.symbol.name);
         names.insert(new_name);

@@ -124,7 +124,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JSONPeer& peer) : server(s
         }
     });
     progress_conn = server.on_index_progress.connect([this]() { report_index_progress(); });
-    serving_conn = server.on_serving_rows_changed.connect([this]() { refresh_index_served(); });
+    serving_conn = server.on_serving_index_changed.connect([this]() { refresh_index_served(); });
     held_conn = server.probe.on_held.connect([this](std::uint64_t id) {
         this->peer.send_notification("clice/internal/held", ext::HeldParams{id});
     });
@@ -1218,7 +1218,7 @@ void LSPClient::register_extensions() {
             auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::max(deadline - std::chrono::steady_clock::now(),
                          std::chrono::steady_clock::duration::zero()));
-            co_await kota::when_any(srv.settle(this->peer), kota::sleep(left, srv.loop));
+            co_await kota::when_any(srv.wait_idle(this->peer), kota::sleep(left, srv.loop));
             ext::SyncResult result;
             for(auto& project: srv.projects) {
                 for(auto id: project->sched.pump.failed()) {
@@ -1428,7 +1428,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
         if(auto it = pulled.find(session.path_id);
            it != pulled.end() && it->second.version == session.version &&
            it->second.report !=
-               llvm::xxh3_64bits(full_report(project.features.settled_diagnostics(session)).data)) {
+               llvm::xxh3_64bits(full_report(project.features.finished_diagnostics(session)).data)) {
             refresh_diagnostics();
         }
     } else {

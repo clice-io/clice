@@ -126,7 +126,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
     ZASSERT(test_done);
 }
 
-ZEST_CASE(WireCancelInterruptsCompile) {
+ZEST_CASE(IpcCancelInterruptsCompile) {
     TempDir tmp;
     tmp.touch("interrupt.cpp", "");
     auto src = tmp.path("interrupt.cpp");

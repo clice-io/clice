@@ -94,7 +94,7 @@ public:
     /// What diagnostics answers once the compile settled, without waiting
     /// for one: the output's diagnostics while it describes the buffer,
     /// then the crash notes; nothing once the session closed.
-    std::vector<protocol::Diagnostic> settled_diagnostics(const Session& session) const;
+    std::vector<protocol::Diagnostic> finished_diagnostics(const Session& session) const;
 
     /// Go-to-definition, assembled across all providers: preamble directive
     /// targets, the index, and the directives the worker's AST sees, with
@@ -266,7 +266,7 @@ private:
     /// or the state could shift between the decision and the read.
     kota::task<Route> pick_route(const Ticket& ticket,
                                  RouteOptions options,
-                                 std::optional<index::RowSource>* source = nullptr);
+                                 std::optional<index::IndexSource>* source = nullptr);
 
     /// completion's task, which takes its ticket as it starts.
     RawResult complete(std::shared_ptr<Session> session,

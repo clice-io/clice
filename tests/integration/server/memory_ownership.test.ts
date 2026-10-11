@@ -7,12 +7,12 @@
 
 import {
     MTIME_GRANULARITY,
-    SETTLE_TIME,
+    IDLE_WAIT,
     sleep,
     waitUntil,
     type CliceClient,
 } from "@clice/tools/client";
-import { wireKeys, type StatsResult } from "@clice/tools/protocol";
+import { protocolKeys, type StatsResult } from "@clice/tools/protocol";
 import { expect, test } from "../fixtures.ts";
 
 const EDIT_INTERVAL = 50;
@@ -113,7 +113,7 @@ test("save writes only dirty shards", async ({ session }) => {
     // alone and saving the same bytes queues nothing; closing it hands the
     // file back to the background index.
     client.save(uri);
-    await sleep(SETTLE_TIME);
+    await sleep(IDLE_WAIT);
     const settled = await waitStats(
         client,
         (s) => s.indexInmemoryShards === 0,
@@ -168,7 +168,7 @@ test("cancel storm leaves no tmp", async ({ session }) => {
     // gauge added to one and not the other shows up here.
     expect(Object.keys(stats).sort()).toEqual(
         [
-            ...wireKeys<StatsResult>()([
+            ...protocolKeys<StatsResult>()([
                 "builds",
                 "checksLooked",
                 "checksTrusted",

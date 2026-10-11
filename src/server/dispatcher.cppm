@@ -152,7 +152,7 @@ private:
     /// meanwhile. A fresh dispatch the workers could not serve answers
     /// empty.
     template <typename Outcome>
-    Outcome land(const Ticket& ticket,
+    Outcome finish(const Ticket& ticket,
                  std::uint8_t kind,
                  llvm::StringRef label,
                  Outcome result,

@@ -69,7 +69,7 @@ ProjectLoad load_project(Project& project,
                                  root);
                     project.writer_lock.reset();
                 } else {
-                    claim_cache_dir(cfg.cache_dir, root);
+                    set_cache_dir_owner(cfg.cache_dir, root);
                     project.index_db = index::open_database(*project.store, configuration);
                     if(!project.index_db) {
                         project.writer_lock.reset();

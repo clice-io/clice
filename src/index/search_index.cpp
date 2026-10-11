@@ -239,12 +239,12 @@ float symbol_quality(llvm::StringRef name,
 }
 
 std::string build_search_blob(const SearchSnapshot& snapshot) {
-    struct Row {
+    struct Ranked {
         std::uint32_t entry;
         float quality;
     };
 
-    std::vector<Row> rows;
+    std::vector<Ranked> ranked;
     llvm::DenseSet<SymbolHash> seen;
     for(std::uint32_t i = 0; i < snapshot.entries.size(); i += 1) {
         auto& entry = snapshot.entries[i];
@@ -253,18 +253,18 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
            reserved_key(entry.hash) || !seen.insert(entry.hash).second) {
             continue;
         }
-        rows.push_back(
+        ranked.push_back(
             {i, symbol_quality(entry.name, entry.kind, entry.flags, entry.reference_files)});
     }
-    std::ranges::sort(rows, [&](const Row& lhs, const Row& rhs) {
+    std::ranges::sort(ranked, [&](const Ranked& lhs, const Ranked& rhs) {
         if(lhs.quality != rhs.quality) {
             return lhs.quality > rhs.quality;
         }
         return snapshot.entries[lhs.entry].hash < snapshot.entries[rhs.entry].hash;
     });
-    auto count = static_cast<std::uint32_t>(rows.size());
+    auto count = static_cast<std::uint32_t>(ranked.size());
     auto entry_of = [&](std::uint32_t doc) -> const SearchEntry& {
-        return snapshot.entries[rows[doc].entry];
+        return snapshot.entries[ranked[doc].entry];
     };
 
     llvm::DenseMap<SymbolHash, std::uint32_t> doc_of;
@@ -321,7 +321,7 @@ std::string build_search_blob(const SearchSnapshot& snapshot) {
         blob.args += entry.args;
         blob.args_ends.push_back(static_cast<std::uint32_t>(blob.args.size()));
         blob.parents.push_back(parent_of(doc));
-        blob.qualities.push_back(rows[doc].quality);
+        blob.qualities.push_back(ranked[doc].quality);
         lower_names.push_back(lowercase(entry.name));
     }
 

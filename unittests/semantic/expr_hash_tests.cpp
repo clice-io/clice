@@ -136,10 +136,10 @@ struct Fidelity {
     }
 };
 
-struct ConstraintSweep : RecursiveASTVisitor<ConstraintSweep> {
+struct ConstraintScan : RecursiveASTVisitor<ConstraintScan> {
     Fidelity& fidelity;
 
-    explicit ConstraintSweep(Fidelity& fidelity) : fidelity(fidelity) {}
+    explicit ConstraintScan(Fidelity& fidelity) : fidelity(fidelity) {}
 
     bool shouldVisitTemplateInstantiations() const {
         return false;
@@ -311,8 +311,8 @@ template<class T> struct Partial<T, sizeof(T)> {};
     ZASSERT(compile_driver("-std=c++20"));
     ZASSERT(!has_errors(*unit));
     Fidelity fidelity{unit->context()};
-    ConstraintSweep sweep(fidelity);
-    ZASSERT(sweep.TraverseDecl(unit->tu()));
+    ConstraintScan scan(fidelity);
+    ZASSERT(scan.TraverseDecl(unit->tu()));
     LOG_INFO("expr_hash: checked {} distinct standard-library constraint expressions",
              fidelity.checked.size());
     ZEXPECT(fidelity.checked.size() > 1500u);

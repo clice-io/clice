@@ -35,11 +35,11 @@ struct CountingSessions : index::LiveSources {
         return false;
     }
 
-    std::optional<index::RowSource> claim(Fid) const override {
+    std::optional<index::IndexSource> serving_buffer(Fid) const override {
         return std::nullopt;
     }
 
-    void each_session(llvm::function_ref<bool(const index::RowSource&)>) const override {}
+    void each_session(llvm::function_ref<bool(const index::IndexSource&)>) const override {}
 
     void each_session_index(llvm::function_ref<bool(const index::TUIndex&)> visit) const override {
         for(auto& table: tables) {
@@ -50,7 +50,7 @@ struct CountingSessions : index::LiveSources {
         }
     }
 
-    void each_preamble(llvm::function_ref<bool(const index::RowSource&)>) const override {}
+    void each_preamble(llvm::function_ref<bool(const index::IndexSource&)>) const override {}
 
     void each_overlay(llvm::function_ref<bool(const index::TUIndex&)>) const override {}
 

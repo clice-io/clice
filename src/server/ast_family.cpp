@@ -227,7 +227,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
         // adopt under the new key: defer the rebuild, keep using the
         // previously adopted PCH while its artifact is still available.
         LOG_DEBUG("Preamble incomplete for {}, deferring PCH rebuild", path);
-        PCHPlan plan{.verdict = PCHPlan::Verdict::Defer};
+        PCHPlan plan{.decision = PCHPlan::Decision::Defer};
         if(auto previous = projections.projection(path_id); previous && previous->pch_key) {
             auto it = project.pch_cache.find(*previous->pch_key);
             if(it != project.pch_cache.end() && !it->second.path.empty()) {
@@ -237,7 +237,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
         return plan;
     }
     PCHPlan plan{
-        .verdict = PCHPlan::Verdict::Acquire,
+        .decision = PCHPlan::Decision::Acquire,
         .request =
             {
                       .pch_key = std::move(pch_key),
@@ -629,7 +629,7 @@ kota::task<std::optional<PCMFamily::ModuleDeps>>
         }
     }
     if(deps.resolved.empty()) {
-        session->quarantine->on_land(evidence_kind(EvidenceKind::PCM));
+        session->quarantine->on_success(evidence_kind(EvidenceKind::PCM));
         co_return deps;
     }
 
@@ -685,7 +685,7 @@ kota::task<std::optional<PCMFamily::ModuleDeps>>
         }
     }
     if(!crashed) {
-        session->quarantine->on_land(kind);
+        session->quarantine->on_success(kind);
     }
     co_return deps;
 }
@@ -887,11 +887,11 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                  params.arguments,
                                  synthesized,
                                  *imports);
-            switch(plan.verdict) {
+            switch(plan.decision) {
                 // No PCH build left to crash on.
-                case PCHPlan::Verdict::None: session->quarantine->on_land(pch_kind); break;
-                case PCHPlan::Verdict::Defer: adopted_pch = plan.previous; break;
-                case PCHPlan::Verdict::Acquire: {
+                case PCHPlan::Decision::None: session->quarantine->on_success(pch_kind); break;
+                case PCHPlan::Decision::Defer: adopted_pch = plan.previous; break;
+                case PCHPlan::Decision::Acquire: {
                     auto pch_key = plan.request.pch_key;
                     // A preamble whose build crashed a worker — for this
                     // document or another sharing it — is refused until
@@ -918,7 +918,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                                 // the session's PCH record as surely as
                                 // building one — but only its own; every
                                 // consumer clears for itself.
-                                session->quarantine->on_land(pch_kind);
+                                session->quarantine->on_success(pch_kind);
                             }
                             break;
                         case DependResult::Failed:
@@ -932,7 +932,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                             // A build that failed without a crash answered:
                             // the preamble no longer crashes.
                             if(session->generation == gen && ctx.current()) {
-                                session->quarantine->on_land(pch_kind);
+                                session->quarantine->on_success(pch_kind);
                             }
                             failed_pch = pch_key;
                             break;
@@ -1257,7 +1257,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             llvm::append_range(result.value().deps, tidy_config->files);
         }
         if(tidy_attempt) {
-            session->quarantine->on_land(tidy_kind);
+            session->quarantine->on_success(tidy_kind);
         } else if(session->tidy_crash) {
             record_crash(session, tidy_kind, *session->tidy_crash);
             session->tidy_crash.reset();
@@ -1265,7 +1265,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         entry.deps =
             capture_deps_snapshot(project.file_table, result.value().deps, result.value().build_at);
         entry.current = current;
-        session->quarantine->on_land(compile_kind);
+        session->quarantine->on_success(compile_kind);
         session->crashed_pch.clear();
         on_output.emit(session);
         // The push above told clients to re-pull what the fresh AST now
@@ -1297,17 +1297,17 @@ kota::task<std::optional<std::string>>
     };
 
     auto plan = plan_pch(path_id, text, directory, arguments, synthesized, imports);
-    switch(plan.verdict) {
-        case PCHPlan::Verdict::None:
+    switch(plan.decision) {
+        case PCHPlan::Decision::None:
             if(license()) {
                 projections.set_pch_key(path_id, std::nullopt);
-                session->quarantine->on_land(evidence_kind(EvidenceKind::PCH));
+                session->quarantine->on_success(evidence_kind(EvidenceKind::PCH));
             }
             co_return std::nullopt;
         // The adopted PCH may by now belong to a newer buffer than a
         // stale request's; without the license it cannot tell.
-        case PCHPlan::Verdict::Defer: co_return license() ? plan.previous : std::nullopt;
-        case PCHPlan::Verdict::Acquire: break;
+        case PCHPlan::Decision::Defer: co_return license() ? plan.previous : std::nullopt;
+        case PCHPlan::Decision::Acquire: break;
     }
     auto pch_key = plan.request.pch_key;
 
@@ -1339,7 +1339,7 @@ kota::task<std::optional<std::string>>
         // Adopting a proven-good artifact clears the session's PCH record as
         // surely as building one — but only its own; every consumer clears
         // for itself.
-        session->quarantine->on_land(pch_kind);
+        session->quarantine->on_success(pch_kind);
     }
     co_return pch_key;
 }

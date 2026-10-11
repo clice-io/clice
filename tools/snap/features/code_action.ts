@@ -1,5 +1,5 @@
 import type * as proto from "vscode-languageserver-protocol";
-import { SETTLE_TIME, sleep } from "../../client/client.ts";
+import { IDLE_WAIT, sleep } from "../../client/client.ts";
 import { markerPoints, markerRanges } from "../annotation.ts";
 import {
     directiveLines,
@@ -134,7 +134,7 @@ export const codeAction: Feature = {
                     (symbol) => symbol.name === name && symbol.location.uri !== uri,
                 );
                 if (!elsewhere) {
-                    await sleep(SETTLE_TIME);
+                    await sleep(IDLE_WAIT);
                 }
             }
             if (!elsewhere) {

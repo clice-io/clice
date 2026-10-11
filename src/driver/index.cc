@@ -111,9 +111,9 @@ std::string format_time(std::uint64_t epoch_ms) {
 #else
     localtime_r(&seconds, &local);
 #endif
-    char stamp[32];
-    std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", &local);
-    return stamp;
+    char timestamp[32];
+    std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &local);
+    return timestamp;
 }
 
 /// Index through the serving writer: the editor's server holds the cache
@@ -286,13 +286,13 @@ struct ShardColumns {
     std::uint64_t variants = 0;
     std::uint64_t symbols = 0;
     std::uint64_t locals = 0;
-    std::uint64_t occ_rows = 0;
+    std::uint64_t occ_entries = 0;
     std::uint64_t occ_masks = 0;
-    std::uint64_t rel_rows = 0;
+    std::uint64_t rel_entries = 0;
     std::uint64_t rel_masks = 0;
 
     std::uint64_t total() const {
-        return content + variants + symbols + locals + occ_rows + occ_masks + rel_rows + rel_masks;
+        return content + variants + symbols + locals + occ_entries + occ_masks + rel_entries + rel_masks;
     }
 };
 
@@ -302,16 +302,16 @@ ShardColumns shard_columns_of(llvm::StringRef bytes) {
     if(!index::deserialize_blob(bytes, blob)) {
         return columns;
     }
-    auto row_bytes = [](const index::RowRanges& rr) -> std::uint64_t {
+    auto range_bytes = [](const index::RangeColumns& rr) -> std::uint64_t {
         return rr.packed.size() * 4 + rr.begins.size() * 4 + rr.lengths.size() +
-               rr.long_rows.size() * 4 + rr.long_ends.size() * 4;
+               rr.long_entries.size() * 4 + rr.long_ends.size() * 4;
     };
-    auto mask_bytes = [](const index::RowRanges& rr) -> std::uint64_t {
+    auto mask_bytes = [](const index::RangeColumns& rr) -> std::uint64_t {
         return rr.masks32.size() * 4 + rr.masks64.size() * 8 + rr.roaring_offsets.size() * 4 +
                rr.roaring.size();
     };
     columns.content = blob.content.size() + blob.line_lengths.size() +
-                      blob.long_line_rows.size() * 4 + blob.long_line_lengths.size() * 4;
+                      blob.long_lines.size() * 4 + blob.long_line_lengths.size() * 4;
     columns.variants = blob.variants.size() * 8;
     columns.symbols = blob.sym_hashes.size() * 8 + blob.sym_rel_offsets.size() * 4;
     columns.locals = blob.local_syms.size() * 4 + blob.local_kinds.size() +
@@ -323,12 +323,12 @@ ShardColumns shard_columns_of(llvm::StringRef bytes) {
     for(auto& args: blob.local_args) {
         columns.locals += args.size();
     }
-    columns.occ_rows = row_bytes(blob.occs) + blob.occ_syms8.size() + blob.occ_syms16.size() * 2 +
+    columns.occ_entries = range_bytes(blob.occs) + blob.occ_syms8.size() + blob.occ_syms16.size() * 2 +
                        blob.occ_syms32.size() * 4;
     columns.occ_masks = mask_bytes(blob.occs);
-    columns.rel_rows = row_bytes(blob.rels) + blob.rel_kinds.size() + blob.rel_sym_rows.size() * 4 +
+    columns.rel_entries = range_bytes(blob.rels) + blob.rel_kinds.size() + blob.rel_sym_entries.size() * 4 +
                        blob.rel_sym8.size() + blob.rel_sym16.size() * 2 +
-                       blob.rel_sym32.size() * 4 + blob.rel_def_rows.size() * 4 +
+                       blob.rel_sym32.size() * 4 + blob.rel_def_entries.size() * 4 +
                        blob.rel_def_begins.size() * 4 + blob.rel_def_ends.size() * 4;
     columns.rel_masks = mask_bytes(blob.rels);
     return columns;
@@ -376,9 +376,9 @@ IndexStats collect_stats(Project& project) {
         stats.columns.variants += columns.variants;
         stats.columns.symbols += columns.symbols;
         stats.columns.locals += columns.locals;
-        stats.columns.occ_rows += columns.occ_rows;
+        stats.columns.occ_entries += columns.occ_entries;
         stats.columns.occ_masks += columns.occ_masks;
-        stats.columns.rel_rows += columns.rel_rows;
+        stats.columns.rel_entries += columns.rel_entries;
         stats.columns.rel_masks += columns.rel_masks;
         stats.shards.push_back(stat);
     }
@@ -454,9 +454,9 @@ void print_stats(const Project& project,
     driver::println();
     driver::println("Shard payload by column ({}; the rest of the file size is format framing):",
                     format_size(payload));
-    column("occurrence rows", stats.columns.occ_rows, payload);
+    column("occurrence rows", stats.columns.occ_entries, payload);
     column("occurrence masks", stats.columns.occ_masks, payload);
-    column("relation rows", stats.columns.rel_rows, payload);
+    column("relation rows", stats.columns.rel_entries, payload);
     column("relation masks", stats.columns.rel_masks, payload);
     column("symbol tables", stats.columns.symbols, payload);
     column("local symbols", stats.columns.locals, payload);

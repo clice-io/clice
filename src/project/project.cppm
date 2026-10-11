@@ -123,7 +123,7 @@ struct Selection {
 /// the file is unreadable, structurally invalid, of a different format
 /// version, or any embedded shard blob fails verification — callers treat
 /// all of these as a PCH cache miss.
-std::shared_ptr<index::TUIndex> load_pch_envelope(llvm::StringRef path);
+std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path);
 
 struct PCHState {
     /// The pair's name in the store: the key and a nonce of the build that

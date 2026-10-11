@@ -397,7 +397,7 @@ bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef workspace_root) {
            live_owner(cache_dir_owner(cache_dir), workspace_root);
 }
 
-void claim_cache_dir(llvm::StringRef cache_dir, CanonicalRef root) {
+void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef root) {
     auto owner = cache_dir_owner(cache_dir);
     // One inside the root is the root's, whatever it records — a copied
     // checkout carries the original's record along.

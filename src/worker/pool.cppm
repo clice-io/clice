@@ -57,7 +57,7 @@ struct WorkerCrashInfo {
 /// — the exit observed, the stderr drained — and only then learns whether
 /// its own request is the one that killed the worker.
 struct WorkerDeath {
-    kota::event settled;
+    kota::event done;
 
     /// The crash tag (worker::crash_tag) of the request the worker named in
     /// its last words, or that outlived the pool's deadline; empty when
@@ -386,7 +386,7 @@ private:
         /// Monotonic claim ordinal of the in-flight request. Victim
         /// selection picks the largest — the actual newest claim; the slot
         /// index says nothing about claim order once slots are reused.
-        std::uint64_t claim_epoch = 0;
+        std::uint64_t acquire_epoch = 0;
 
         /// Whether the worker holds work, and with it memory: a claim, a
         /// request in flight, or documents (whose last one can close while
@@ -622,7 +622,7 @@ private:
     void release_stateless_slot(std::size_t worker_index);
 
     /// Mark a claimed worker busy. Returns the index for chaining.
-    std::size_t claim_stateless(std::size_t index, worker::Priority priority);
+    std::size_t take_stateless(std::size_t index, worker::Priority priority);
 
     /// Wake queued requests when a worker becomes available; drains the
     /// queues with a failure signal when no capacity remains.
@@ -715,7 +715,7 @@ private:
     bool foreground_active = false;
     std::size_t stateful_inflight = 0;
     std::chrono::steady_clock::time_point last_fg_activity{};
-    std::uint64_t next_claim_epoch = 0;
+    std::uint64_t next_acquire_epoch = 0;
 
     /// Alive stateless slots busy with high-priority work.
     std::size_t high_busy_count() const;
@@ -928,7 +928,7 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     // monitor_worker reconciles with the real exit status.
     if(stateful_workers[idx].generation == gen)
         mark_worker_dead(idx, true, true);
-    co_await death->settled.wait();
+    co_await death->done.wait();
     co_await kota::fail(death_error(*death, dispatch.tag, worker::death_identity(idx, gen, true)));
 }
 
@@ -1026,7 +1026,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
     if(result.has_value() || !transport_dead)
         co_return std::move(result);
 
-    co_await death->settled.wait();
+    co_await death->done.wait();
     co_await kota::fail(death_error(*death, dispatch.tag, worker::death_identity(idx, gen, false)));
 }
 

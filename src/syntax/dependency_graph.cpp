@@ -831,9 +831,9 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         std::vector<FileScanResult> scan_results = std::move(pending_warm);
         pending_warm.clear();
         std::size_t wave_cache_hits = scan_results.size();
-        llvm::DenseSet<Fid> settled;
+        llvm::DenseSet<Fid> scanned;
         for(auto& r: scan_results) {
-            settled.insert(r.path_id);
+            scanned.insert(r.path_id);
         }
 
         if(!prefetch_tasks.empty()) {
@@ -855,7 +855,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             for(auto& entry: current_wave) {
                 auto pid = entry.path_id;
                 auto context = entry.context;
-                if(settled.contains(pid) || try_warm(pid, context)) {
+                if(scanned.contains(pid) || try_warm(pid, context)) {
                     continue;
                 }
                 auto path = file_table.resolve(pid).data();
