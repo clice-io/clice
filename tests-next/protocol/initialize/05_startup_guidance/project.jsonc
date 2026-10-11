@@ -1,0 +1,4 @@
+{
+  // No compile_commands.json: the guidance is about the missing database.
+  "databases": {}
+}

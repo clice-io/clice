@@ -1,0 +1,7 @@
+[test.diagnostics]
+diagnostics = []
+
+[test."after the storm"]
+pendingTmpFiles = 0
+pchCacheEntries = 2
+sessions = 1

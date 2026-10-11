@@ -1,0 +1,8 @@
+[unknown_string_enums.diagnostics]
+diagnostics = []
+
+[out_of_range_int_enums.diagnostics]
+diagnostics = []
+
+[unknown_fields.diagnostics]
+diagnostics = []

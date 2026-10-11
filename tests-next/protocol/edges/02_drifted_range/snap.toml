@@ -1,0 +1,16 @@
+[test.hover.hover]
+markdown = '''
+### function `foo`
+
+---
+→ `int`
+
+---
+```cpp
+int foo()
+```
+'''
+range = "int ⟦foo⟧() { return 1; }"
+
+[test.diagnostics]
+value = ["unknown type name 'oops'", "expected unqualified-id"]

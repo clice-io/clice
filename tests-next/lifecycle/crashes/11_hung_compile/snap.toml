@@ -1,0 +1,19 @@
+[test.hover]
+hover = {}
+
+[test.pushes]
+pushes = [
+    [
+        { at = "⟦⟧constexpr long fib(long n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }", severity = "warning", message = "clice's worker crashed while compiling this file (killed after running for over 2 seconds). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+]
+
+[test."hover asked again"]
+hover = {}
+
+[test."pushes after"]
+pushes = [
+    [
+        { at = "⟦⟧constexpr long fib(long n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }", severity = "warning", message = "clice's worker crashed while compiling this file (killed after running for over 2 seconds). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+]

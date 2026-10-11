@@ -1,0 +1,76 @@
+[test.diagnostics]
+diagnostics = [
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + ⟦missing⟧;', severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+[test.hover]
+wrong = "the declaration shows clang's internal <recovery - expr> in place of the initializer as written"
+
+[test.hover.hover]
+markdown = '''
+### variable `sum`
+
+---
+Type: `int`
+
+---
+```cpp
+int sum = <recovery - expr>(add(1, 2))
+```
+'''
+range = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing;'
+
+[test.definition]
+definition = ["int ⟦add⟧(int a, int b) { return a + b; }"]
+
+[test.highlights]
+highlights = [
+    { at = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing;', kind = "text" },
+]
+
+[test.tokens]
+semantic_tokens = [
+    { at = "⟦int⟧ add(int a, int b) { return a + b; }", type = "primitive" },
+    {
+        at = "int ⟦add⟧(int a, int b) { return a + b; }",
+        type = "function",
+        modifiers = ["definition"],
+    },
+    { at = "int add(⟦int⟧ a, int b) { return a + b; }", type = "primitive" },
+    {
+        at = "int add(int ⟦a⟧, int b) { return a + b; }",
+        type = "parameter",
+        modifiers = ["definition"],
+    },
+    { at = "int add(int a, ⟦int⟧ b) { return a + b; }", type = "primitive" },
+    {
+        at = "int add(int a, int ⟦b⟧) { return a + b; }",
+        type = "parameter",
+        modifiers = ["definition"],
+    },
+    { at = "int add(int a, int b) { ⟦return⟧ a + b; }", type = "keyword" },
+    { at = "int add(int a, int b) { return ⟦a⟧ + b; }", type = "parameter" },
+    { at = "int add(int a, int b) { return a + ⟦b⟧; }", type = "parameter" },
+    { at = '⟦const⟧ char* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing;', type = "keyword" },
+    { at = 'const ⟦char⟧* greeting = "π 🙂 中文"; int sum = add(1, 2) + missing;', type = "primitive" },
+    {
+        at = 'const char* ⟦greeting⟧ = "π 🙂 中文"; int sum = add(1, 2) + missing;',
+        type = "variable",
+        modifiers = ["definition", "readonly"],
+    },
+    { at = 'const char* greeting = ⟦"π 🙂 中文"⟧; int sum = add(1, 2) + missing;', type = "string" },
+    { at = 'const char* greeting = "π 🙂 中文"; ⟦int⟧ sum = add(1, 2) + missing;', type = "primitive" },
+    {
+        at = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing;',
+        type = "variable",
+        modifiers = ["definition"],
+    },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = ⟦add⟧(1, 2) + missing;', type = "function" },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(⟦1⟧, 2) + missing;', type = "number" },
+    { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, ⟦2⟧) + missing;', type = "number" },
+]
+
+[test.hints]
+inlay_hints = [
+    { line = 'const char* greeting = "π 🙂 中文"; int sum = add(⟨a:⟩1, ⟨b:⟩2) + missing;' },
+]

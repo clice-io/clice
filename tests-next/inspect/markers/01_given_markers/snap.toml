@@ -1,0 +1,112 @@
+[test."$ clice inspect hover main.cpp --markers=markers.json"]
+stdout = '''
+{
+  "feature": "hover",
+  "files": {
+    "main.cpp": {
+      "stripped_hash": "d13e3c80602f17885ed0fc092f209e91a7f39641b4402abb4cba6b2c9f34d36a",
+      "result": null,
+      "markers": {
+        "call": {
+          "range": {
+            "begin": 59,
+            "end": 62
+          },
+          "contents": "### function `add`  \n\n---\n→ `int`  \nParameters:  \n- `int a`\n- `int b`\n\n---\n```cpp\nint add(int a, int b)\n```"
+        }
+      },
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0
+
+[test."$ clice inspect inlay_hint main.cpp --markers=markers.json"]
+stdout = '''
+{
+  "feature": "inlay_hint",
+  "files": {
+    "main.cpp": {
+      "stripped_hash": "d13e3c80602f17885ed0fc092f209e91a7f39641b4402abb4cba6b2c9f34d36a",
+      "result": null,
+      "markers": {
+        "use": [
+          {
+            "offset": 63,
+            "kind": "Parameter",
+            "label": [
+              {
+                "value": "a",
+                "location": {
+                  "path": "${WS}/main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 13
+                    }
+                  }
+                }
+              },
+              {
+                "value": ":",
+                "location": null
+              }
+            ],
+            "padding_left": false,
+            "padding_right": true
+          },
+          {
+            "offset": 66,
+            "kind": "Parameter",
+            "label": [
+              {
+                "value": "b",
+                "location": {
+                  "path": "${WS}/main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 20
+                    }
+                  }
+                }
+              },
+              {
+                "value": ":",
+                "location": null
+              }
+            ],
+            "padding_left": false,
+            "padding_right": true
+          }
+        ]
+      },
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0
+
+[test."$ clice inspect hover main.cpp --markers=markers.json #2"]
+stderr = ["error: --markers puts a marker outside the text of main.cpp"]
+exit = 1
+
+[test."$ clice inspect hover main.cpp --markers=markers.json #3"]
+stderr = ["error: --markers names a point and a range use"]
+exit = 1
+
+[test."$ clice inspect hover . --markers=markers.json"]
+stderr = ["error: --markers places markers in one source file, unannotated"]
+exit = 1

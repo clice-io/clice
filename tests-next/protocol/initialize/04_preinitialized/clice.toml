@@ -1,0 +1,9 @@
+[project]
+cache_dir = "${workspace}/.clice"
+enable_indexing = false
+test_hooks = true
+stateless_worker_count = 1
+stateful_worker_count = 1
+
+[tracker]
+workspace_poll_seconds = 0

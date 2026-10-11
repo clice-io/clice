@@ -1,0 +1,50 @@
+["the handshake replays".hover.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) { return a + b; }"
+
+["the handshake replays".initialize]
+code = -32000
+message = "Server already initialized"
+
+["the handshake replays".pushes]
+pushes = [[]]
+
+["an edit drops the replay".hover.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) { return a + b; }"
+
+["an edit drops the replay".initialize]
+code = -32000
+message = "Server already initialized"
+
+["an edit drops the replay".diagnostics]
+diagnostics = [
+    { at = "int bad(⟦⟧", severity = "error", message = "expected ';' after top level declarator", source = "clang", code = "err_invalid_token_after_toplevel_declarator" },
+    { at = "int bad(⟦⟧", severity = "error", message = "expected expression", source = "clang", code = "err_expected_expression" },
+]

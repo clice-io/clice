@@ -1,0 +1,40 @@
+["a header change retries".hover]
+hover = {}
+
+["a header change retries".crashes]
+value = 1
+
+["a header change retries".pushes]
+pushes = [
+    [
+        { at = '⟦⟧#include "header.h"', severity = "warning", message = "clice's worker crashed while building the precompiled preamble of this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+]
+
+["a header change retries"."hover asked again"]
+hover = {}
+
+["a header change retries"."crashes while it sits still"]
+value = 1
+
+["a header change retries"."hover after the header changed"]
+hover = {}
+
+["a header change retries"."crashes after the header changed"]
+value = 2
+
+["a crash reading the preamble rebuilds it".hover]
+hover = {}
+
+["a crash reading the preamble rebuilds it".crashes]
+value = 2
+
+["a crash reading the preamble rebuilds it".pushes]
+pushes = [
+    [
+        { at = '⟦⟧#include "header.h"', severity = "warning", message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+]
+
+["a crash reading the preamble rebuilds it".builds]
+pch = 2

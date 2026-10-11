@@ -1,0 +1,90 @@
+[test.healthy]
+diagnostics = []
+
+[test."round 1"]
+poisoned = {}
+
+[test."round 1".healthy]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+[test."crashes after round 1"]
+value = 1
+
+[test."round 2"]
+poisoned = {}
+
+[test."round 2".healthy]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+[test."crashes after round 2"]
+value = 2
+
+[test."round 3"]
+poisoned = {}
+
+[test."round 3".healthy]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+[test."crashes after round 3"]
+value = 3
+
+[test."healthy pushes"]
+pushes = [[], [], [], []]
+
+[test."poison pushes"]
+pushes = [
+    [
+        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+    [
+        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+    [
+        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+]
+
+[test."healthy compiles"]
+value = 7

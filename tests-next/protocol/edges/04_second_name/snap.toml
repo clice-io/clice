@@ -1,0 +1,65 @@
+["a second name".first]
+diagnostics = []
+
+["a second name".second]
+diagnostics = []
+
+["a second name"."second hover".hover]
+markdown = '''
+### function `main`
+
+---
+→ `int`
+
+---
+```cpp
+int main()
+```
+'''
+range = "int ⟦main⟧() { return 0; }"
+
+["a second name"."second diverged"]
+diagnostics = [
+    { at = "⟦⟧int main() { return undefined_name; }", severity = "warning", message = "This file is also open as ${WS}/real/main.cpp, which clice analyzes; edits here are not analyzed until the texts agree. Close one of the two.", source = "clice" },
+]
+
+["a second name"."second hover diverged"]
+code = -32801
+message = "Document changed while the request was in flight"
+
+["a second name"."second references"]
+references = []
+
+["a second name"."second pushes"]
+pushes = [
+    [],
+    [
+        { at = "real/main.cpp │ ⟦⟧int main() { return 0; }", severity = "warning", message = "This file is also open as ${WS}/real/main.cpp, which clice analyzes; edits here are not analyzed until the texts agree. Close one of the two.", source = "clice" },
+    ],
+    [],
+]
+
+["a second name"."first hover".hover]
+markdown = '''
+### function `main`
+
+---
+→ `int`
+
+---
+```cpp
+int main()
+```
+'''
+range = "int ⟦main⟧() { return 0; }"
+
+["a second name"."first after"]
+diagnostics = []
+
+["a second name".sessions]
+value = 0
+
+["the second takes over".second]
+diagnostics = [
+    { at = "int main() { return ⟦undefined_name⟧; }", severity = "error", message = "use of undeclared identifier 'undefined_name'", source = "clang", code = "err_undeclared_var_use" },
+]

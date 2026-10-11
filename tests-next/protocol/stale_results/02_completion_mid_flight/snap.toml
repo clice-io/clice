@@ -1,0 +1,15 @@
+["an edit at the cursor".completion.completion]
+items = [
+    { label = "extra_value", kind = "Variable", detail = "int" },
+]
+
+["an edit before the cursor".completion]
+code = -32801
+message = "Document changed while the request was in flight"
+
+["read with an edit".completion]
+value = ["extra_value"]
+
+["read with a reopen".completion]
+code = -32801
+message = "Document changed while the request was in flight"

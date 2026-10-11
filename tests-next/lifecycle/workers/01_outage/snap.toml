@@ -1,0 +1,25 @@
+[test.diagnostics]
+diagnostics = [
+    { at = 'int ⟦y⟧ = "s";', severity = "error", message = "cannot initialize a variable of type 'int' with an lvalue of type 'const char[2]'", source = "clang", code = "err_init_conversion_failed" },
+]
+
+[test.hints]
+inlay_hints = [
+    { line = "int x = add(⟨a:⟩1, ⟨b:⟩2);" },
+]
+
+[test.pushes]
+pushes = [
+    [
+        { at = 'int ⟦y⟧ = "s";', severity = "error", message = "cannot initialize a variable of type 'int' with an lvalue of type 'const char[2]'", source = "clang", code = "err_init_conversion_failed" },
+    ],
+    [
+        { at = 'int ⟦y⟧ = "s";', severity = "error", message = "cannot initialize a variable of type 'int' with an lvalue of type 'const char[2]'", source = "clang", code = "err_init_conversion_failed" },
+    ],
+    [
+        { at = 'int ⟦y⟧ = "s";', severity = "error", message = "cannot initialize a variable of type 'int' with an lvalue of type 'const char[2]'", source = "clang", code = "err_init_conversion_failed" },
+    ],
+    [
+        { at = 'int ⟦y⟧ = "s";', severity = "error", message = "cannot initialize a variable of type 'int' with an lvalue of type 'const char[2]'", source = "clang", code = "err_init_conversion_failed" },
+    ],
+]

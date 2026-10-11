@@ -1,0 +1,101 @@
+["a save is the retry".hover]
+hover = {}
+
+["a save is the retry".pushes]
+pushes = [
+    [
+        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+]
+
+["a save is the retry".crashes]
+value = 1
+
+["a save is the retry"."hover asked again"]
+hover = {}
+
+["a save is the retry".symbols]
+document_symbols = []
+
+["a save is the retry"."crashes while it sits still"]
+value = 1
+
+["a save is the retry"."hover after a save"]
+hover = {}
+
+["a save is the retry"."crashes after a save"]
+value = 2
+
+["a pull shows the note".pulled]
+diagnostics = [
+    { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+]
+
+["a pull shows the note".crashes]
+value = 1
+
+["a pull shows the note".pushes]
+pushes = []
+
+["a fix retries after a pause".hover]
+hover = {}
+
+["a fix retries after a pause".crashes]
+value = 1
+
+["a fix retries after a pause"."hover after the fix".hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+["a fix retries after a pause".pushes]
+pushes = [
+    [
+        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+    [],
+]
+
+["a fix retries after a pause"."crashes after the fix"]
+value = 1
+
+["reopening keeps the bar".hover]
+hover = {}
+
+["reopening keeps the bar".crashes]
+value = 1
+
+["reopening keeps the bar"."hover after a reopen"]
+hover = {}
+
+["reopening keeps the bar".pushes]
+pushes = [
+    [
+        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+    [],
+    [
+        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+]
+
+["reopening keeps the bar"."crashes after a reopen"]
+value = 1
+
+["reopening keeps the bar"."hover after a save"]
+hover = {}
+
+["reopening keeps the bar"."crashes after a save"]
+value = 2

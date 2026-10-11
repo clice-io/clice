@@ -1,0 +1,16 @@
+["a reader that leaves"."$ clice inspect document_symbol big.cpp (stdout: closed early)"]
+killed = "SIGPIPE"
+
+["a FIFO whose reader left"."$ clice inspect document_symbol big.cpp (stdout: fifo gone)"]
+killed = "SIGPIPE"
+
+["a full nonblocking pipe"."$ clice inspect document_symbol big.cpp (stdout: fifo unread)"]
+stderr = ["error: Cannot write the output: Resource temporarily unavailable"]
+exit = 1
+
+["an unwritable output"."$ clice inspect document_symbol main.cpp (stdout: read only)"]
+stderr = ["error: Cannot write the output: Bad file descriptor"]
+exit = 1
+
+["stderr merged into stdout"."$ clice inspect document_symbol big.cpp (stdout: merged)"]
+exit = 0

@@ -1,0 +1,73 @@
+[test.hovers]
+"a.cpp" = {}
+"b.cpp" = {}
+"c.cpp" = {}
+
+[test."a.cpp pushes"]
+pushes = []
+
+[test."b.cpp pushes"]
+pushes = []
+
+[test."c.cpp pushes"]
+pushes = []
+
+[test."hovers asked again"."a.cpp"]
+markdown = '''
+### function `add_a`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add_a(int a, int b)
+```
+'''
+range = "int ⟦add_a⟧(int a, int b) {"
+
+[test."hovers asked again"."b.cpp"]
+markdown = '''
+### function `add_b`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add_b(int a, int b)
+```
+'''
+range = "int ⟦add_b⟧(int a, int b) {"
+
+[test."hovers asked again"."c.cpp"]
+markdown = '''
+### function `add_c`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add_c(int a, int b)
+```
+'''
+range = "int ⟦add_c⟧(int a, int b) {"
+
+[test."a.cpp pushes after"]
+pushes = [[]]
+
+[test."b.cpp pushes after"]
+pushes = [[]]
+
+[test."c.cpp pushes after"]
+pushes = [[]]

@@ -1,0 +1,14 @@
+[test.hover]
+value = "null"
+
+[test.formatting]
+formatting = '''
+-int add(int a, int b) {
+-    return a + b;
+-}
+-int  x = add(1,2);
+\ No newline at end of file
++int add(int a, int b) { return a + b; }
++int x = add(1, 2);
+\ No newline at end of file
+'''

@@ -1,0 +1,50 @@
+["open and close".diagnostics]
+diagnostics = []
+
+["open and close".pushes]
+pushes = [[], []]
+
+["open and close"."hover after the close"]
+code = -32602
+message = "Document not open"
+
+["every change applies".diagnostics]
+diagnostics = [
+    { at = "int broken(⟦⟧", severity = "error", message = "expected ';' after top level declarator", source = "clang", code = "err_invalid_token_after_toplevel_declarator" },
+    { at = "int broken(⟦⟧", severity = "error", message = "expected expression", source = "clang", code = "err_expected_expression" },
+]
+
+["every change applies".hover.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+[save.diagnostics]
+diagnostics = []
+
+[save.disk]
+value = '''
+int add(int a, int b) {
+    return a - b;
+}
+'''
+
+["a document never opened".hover]
+code = -32602
+message = "Document not open"
+
+["a document never opened"."hover outside the workspace"]
+code = -32602
+message = "Document not open"

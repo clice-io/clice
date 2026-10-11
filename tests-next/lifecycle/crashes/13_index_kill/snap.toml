@@ -1,0 +1,9 @@
+[test.sync]
+failed = []
+
+[test.symbols]
+workspace_symbols = [
+    { name = "func_0", kind = "Function", at = "file_0.cpp │ int ⟦func_0⟧() { return 0; }" },
+    { name = "func_1", kind = "Function", at = "file_1.cpp │ int ⟦func_1⟧() { return 1; }" },
+    { name = "func_2", kind = "Function", at = "file_2.cpp │ int ⟦func_2⟧() { return 2; }" },
+]

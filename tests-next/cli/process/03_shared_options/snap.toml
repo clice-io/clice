@@ -1,0 +1,44 @@
+["log level"."$ clice index --log-level bogus"]
+stderr = [
+    "stderr: at argv[1]:",
+    "stderr:   --log-level bogus",
+    "stderr:               ^~~~~",
+    "stderr:   invalid enum value: bogus (supported: trace, debug, info, warn, error, off)",
+]
+exit = 2
+
+["log level"."$ clice index --log-level error --workers 1"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["a missing workspace"."$ clice query --method projectFiles --workspace missing"]
+stdout = '''
+{
+  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
+  "stale": []
+}
+'''
+stderr = ["error: No index cache at ${WS}/missing/.clice; run `clice index` first"]
+exit = 1
+
+["a missing workspace"."$ clice format --check --workspace missing"]
+stderr = ["stderr: ${WS}/missing: not a directory"]
+exit = 2
+
+["a missing workspace"."$ clice lint --workspace missing"]
+wrong = "the error blames a missing compile_commands.json, not the workspace that does not exist"
+stderr = ["error: Nothing to lint: no compile_commands.json found under ${WS}/missing"]
+exit = 2
+
+["a missing workspace"."$ clice index --workspace missing"]
+wrong = "the error blames a missing compile_commands.json, not the workspace that does not exist, which the run creates for its log"
+stdout = "Session log: ${WS}/missing/.clice/logs/${SESSION}"
+stderr = ["error: Nothing to index: no compile_commands.json found under ${WS}/missing"]
+exit = 1
+
+["a missing workspace"."left behind"]
+wrong = "a run on a workspace that does not exist leaves a .clice directory there"
+value = ["missing/.clice/CACHEDIR.TAG", "missing/.clice/index.lock", "missing/.clice/owner"]

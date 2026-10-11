@@ -1,0 +1,149 @@
+[capabilities.capabilities]
+value = '''
+{
+    "textDocumentSync": {
+        "openClose": true,
+        "change": 2,
+        "save": true
+    },
+    "completionProvider": {
+        "triggerCharacters": [
+            ".",
+            "<",
+            ">",
+            ":",
+            "\"",
+            "/",
+            " "
+        ]
+    },
+    "hoverProvider": true,
+    "signatureHelpProvider": {
+        "triggerCharacters": [
+            "(",
+            ")",
+            "{",
+            "}",
+            "<",
+            ">",
+            ","
+        ]
+    },
+    "declarationProvider": {},
+    "definitionProvider": {},
+    "typeDefinitionProvider": {},
+    "implementationProvider": {},
+    "referencesProvider": {},
+    "documentHighlightProvider": true,
+    "documentSymbolProvider": true,
+    "codeActionProvider": {
+        "codeActionKinds": [
+            "quickfix",
+            "refactor.rewrite.define.inline",
+            "refactor.rewrite.define.outOfLine",
+            "refactor.rewrite.define.missing",
+            "refactor.rewrite.implementPureVirtuals",
+            "refactor.rewrite.generateMemberwiseConstructor",
+            "refactor.rewrite.populateSwitch",
+            "refactor.rewrite.expandDeducedType",
+            "refactor.rewrite.reorderDefinitions",
+            "refactor.inline.macro"
+        ]
+    },
+    "documentLinkProvider": {},
+    "workspaceSymbolProvider": true,
+    "documentFormattingProvider": true,
+    "documentRangeFormattingProvider": true,
+    "renameProvider": {
+        "prepareProvider": true
+    },
+    "foldingRangeProvider": true,
+    "selectionRangeProvider": true,
+    "callHierarchyProvider": true,
+    "semanticTokensProvider": {
+        "legend": {
+            "tokenTypes": [
+                "comment",
+                "number",
+                "character",
+                "string",
+                "keyword",
+                "directive",
+                "header",
+                "module",
+                "macro",
+                "macroParameter",
+                "namespace",
+                "class",
+                "struct",
+                "union",
+                "enum",
+                "type",
+                "field",
+                "enumMember",
+                "function",
+                "method",
+                "variable",
+                "parameter",
+                "label",
+                "concept",
+                "attribute",
+                "operator",
+                "paren",
+                "bracket",
+                "brace",
+                "angle",
+                "conflict",
+                "primitive",
+                "invalid",
+                "identifier"
+            ],
+            "tokenModifiers": [
+                "declaration",
+                "definition",
+                "const",
+                "overloaded",
+                "typed",
+                "templated",
+                "deprecated",
+                "deduced",
+                "readonly",
+                "static",
+                "abstract",
+                "virtual",
+                "dependentName",
+                "defaultLibrary",
+                "usedAsMutableReference",
+                "usedAsMutablePointer",
+                "constructorOrDestructor",
+                "userDefined",
+                "functionScope",
+                "classScope",
+                "fileScope",
+                "globalScope",
+                "inactive"
+            ]
+        },
+        "full": true
+    },
+    "typeHierarchyProvider": true,
+    "inlayHintProvider": true,
+    "workspace": {
+        "workspaceFolders": {
+            "supported": true,
+            "changeNotifications": true
+        }
+    }
+}
+'''
+
+[capabilities.server]
+name = "clice"
+
+[capabilities."$ clice --version"]
+stdout = "clice version ${VERSION}"
+exit = 0
+
+["a second initialize".refused]
+code = -32000
+message = "Server already initialized"

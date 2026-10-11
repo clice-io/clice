@@ -1,0 +1,138 @@
+["before the compile".hover.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+["before the compile".diagnostics]
+diagnostics = []
+
+["after the compile".diagnostics]
+diagnostics = []
+
+["after the compile".hover.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+["after the compile".completion.completion]
+items = [
+    { label = "Point", kind = "Class" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "x", kind = "Field", detail = "int" },
+    { label = "y", kind = "Field", detail = "int" },
+    { label = "~Point()", kind = "Method", detail = "void" },
+]
+
+["after the compile"."signature help".signature_help]
+signatures = ["add(int a, ⟦int b⟧) -> int"]
+active = 0
+
+["after the compile".definition]
+definition = ["int ⟦add⟧(int a, int b) {"]
+
+["after the compile".highlights]
+highlights = [
+    { at = "int ⟦result⟧ = add(1, 2);", kind = "text" },
+    { at = "return ⟦result⟧ + p.x;", kind = "read" },
+]
+
+["after the compile".symbols]
+document_symbols = [
+    { name = "add", kind = "Function", at = "int ⟦add⟧(int a, int b) {" },
+    {
+        name = "main",
+        kind = "Function",
+        at = "int ⟦main⟧() {",
+        children = [
+            { name = "p", kind = "Variable", at = "Point ⟦p⟧{1, 2};" },
+            { name = "result", kind = "Variable", at = "int ⟦result⟧ = add(1, 2);" },
+        ],
+    },
+]
+
+["after the compile".folds]
+folding_ranges = [
+    { kind = "functionBody", at = "int add(int a, int b) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "int main() ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
+]
+
+["after the compile".tokens]
+semantic_tokens = [
+    { at = '⟦#include⟧ "point.h"', type = "directive" },
+    { at = '#include ⟦"point.h"⟧', type = "header" },
+    { at = "⟦int⟧ add(int a, int b) {", type = "primitive" },
+    { at = "int ⟦add⟧(int a, int b) {", type = "function", modifiers = ["definition"] },
+    { at = "int add(⟦int⟧ a, int b) {", type = "primitive" },
+    { at = "int add(int ⟦a⟧, int b) {", type = "parameter", modifiers = ["definition"] },
+    { at = "int add(int a, ⟦int⟧ b) {", type = "primitive" },
+    { at = "int add(int a, int ⟦b⟧) {", type = "parameter", modifiers = ["definition"] },
+    { at = "⟦return⟧ a + b;", type = "keyword" },
+    { at = "return ⟦a⟧ + b;", type = "parameter" },
+    { at = "return a + ⟦b⟧;", type = "parameter" },
+    { at = "⟦int⟧ main() {", type = "primitive" },
+    { at = "int ⟦main⟧() {", type = "function", modifiers = ["definition"] },
+    { at = "⟦Point⟧ p{1, 2};", type = "struct" },
+    { at = "Point ⟦p⟧{1, 2};", type = "variable", modifiers = ["definition"] },
+    { at = "Point p{⟦1⟧, 2};", type = "number" },
+    { at = "Point p{1, ⟦2⟧};", type = "number" },
+    { at = "⟦int⟧ result = add(1, 2);", type = "primitive" },
+    { at = "int ⟦result⟧ = add(1, 2);", type = "variable", modifiers = ["definition"] },
+    { at = "int result = ⟦add⟧(1, 2);", type = "function" },
+    { at = "int result = add(⟦1⟧, 2);", type = "number" },
+    { at = "int result = add(1, ⟦2⟧);", type = "number" },
+    { at = "⟦return⟧ result + p.x;", type = "keyword" },
+    { at = "return ⟦result⟧ + p.x;", type = "variable" },
+    { at = "return result + ⟦p⟧.x;", type = "variable" },
+    { at = "return result + p.⟦x⟧;", type = "field" },
+]
+
+["after the compile".links]
+document_links = [
+    { at = '#include ⟦"point.h"⟧', target = "point.h" },
+]
+
+["after the compile".hints]
+inlay_hints = [
+    { line = "Point p{⟨.x=⟩1, ⟨.y=⟩2};" },
+    { line = "int result = add(⟨a:⟩1, ⟨b:⟩2);" },
+]
+
+["after the compile".actions]
+code_actions = []
+
+["after the compile".selection]
+selection_ranges = [
+    "int result = add(1, ⟦2⟧);",
+    "int result = add(⟦1, 2⟧);",
+    "int result = add⟦(1, 2)⟧;",
+    "int result = ⟦add(1, 2)⟧;",
+    "⟦int result = add(1, 2)⟧;",
+    "⟦int result = add(1, 2);⟧",
+    "⟦Point p{1, 2}; … return result + p.x;⟧ (3 lines)",
+    "int main() ⟦{ … }⟧ (5 lines)",
+    "⟦int main() { … }⟧ (5 lines)",
+]

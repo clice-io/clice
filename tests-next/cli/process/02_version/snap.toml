@@ -1,0 +1,7 @@
+[test."$ clice --version"]
+stdout = "clice version ${VERSION}"
+exit = 0
+
+[test."$ clice -v"]
+stdout = "clice version ${VERSION}"
+exit = 0

@@ -1,0 +1,13 @@
+[test.hover]
+wrong = "a hover the index answers lacks the return type and parameters a compile shows"
+
+[test.hover.hover]
+markdown = '''
+### function `unit_00`
+
+---
+```cpp
+int unit_00()
+```
+'''
+range = "int ⟦unit_00⟧() { return 0; }"

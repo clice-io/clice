@@ -1,0 +1,56 @@
+[test.hover.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+[test.completion.completion]
+items = []
+
+[test.crashes]
+value = 1
+
+[test.pushes]
+pushes = [
+    [
+        { at = "int x = ⟦ad⟧;", severity = "error", message = "use of undeclared identifier 'ad'", source = "clang", code = "err_undeclared_var_use" },
+    ],
+    [
+        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while completing code in this file (${CRASH}). Code completion is paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+        { at = "int x = ⟦ad⟧;", severity = "error", message = "use of undeclared identifier 'ad'", source = "clang", code = "err_undeclared_var_use" },
+    ],
+]
+
+[test."completion while paused".completion]
+items = []
+
+[test."hover while paused".hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+[test."crashes while paused"]
+value = 1

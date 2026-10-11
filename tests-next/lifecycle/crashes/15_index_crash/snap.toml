@@ -1,0 +1,21 @@
+[test.sync]
+failed = ["poison.cpp"]
+
+[test.symbols]
+workspace_symbols = [
+    { name = "healthy_fn", kind = "Function", at = "healthy.cpp │ int ⟦healthy_fn⟧() { return 2; }" },
+]
+
+[test.crashes]
+value = 1
+
+[test."sync after a change"]
+failed = ["poison.cpp"]
+
+[test."symbols after a change"]
+workspace_symbols = [
+    { name = "healthy_fn", kind = "Function", at = "healthy.cpp │ int ⟦healthy_fn⟧() { return 2; }" },
+]
+
+[test."crashes after a change"]
+value = 2

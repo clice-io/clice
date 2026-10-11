@@ -1,0 +1,52 @@
+["requests before initialize".hover]
+wrong = "a request before initialize is served; LSP asks for a ServerNotInitialized (-32002) error"
+code = -32602
+message = "Document not open"
+
+["requests before initialize".symbols]
+wrong = "a request before initialize is served; LSP asks for a ServerNotInitialized (-32002) error"
+workspace_symbols = []
+
+["an unknown method".request]
+code = -32601
+message = "method not found: textDocument/bogus"
+
+["an unknown method"."dollar request"]
+code = -32601
+message = "method not found: $/bogus"
+
+["an unknown method"."hover after".hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+["an open twice".diagnostics]
+diagnostics = []
+
+["an open twice"."diagnostics after"]
+value = ["use of undeclared identifier 'nope'"]
+
+["a close and save never opened".diagnostics]
+diagnostics = []
+
+["requests after shutdown".hover]
+wrong = "a request after shutdown is served; LSP asks for an InvalidRequest (-32600) error"
+hover = {}
+
+["requests after shutdown".symbols]
+wrong = "a request after shutdown is served; LSP asks for an InvalidRequest (-32600) error"
+workspace_symbols = [
+    { name = "add", kind = "Function", at = "main.cpp │ int ⟦add⟧(int a, int b) {" },
+]

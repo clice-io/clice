@@ -1,0 +1,20 @@
+[test."symbols during the outage"]
+workspace_symbols = []
+
+[test."pending during the outage"]
+value = ["index round at 6/9, 8 files queued"]
+
+[test.sync]
+failed = []
+
+[test."symbols after the revival"]
+workspace_symbols = [
+    { name = "unit_0", kind = "Function", at = "unit_0.cpp │ int ⟦unit_0⟧() { return 0; }" },
+    { name = "unit_1", kind = "Function", at = "unit_1.cpp │ int ⟦unit_1⟧() { return 1; }" },
+    { name = "unit_2", kind = "Function", at = "unit_2.cpp │ int ⟦unit_2⟧() { return 2; }" },
+    { name = "unit_3", kind = "Function", at = "unit_3.cpp │ int ⟦unit_3⟧() { return 3; }" },
+    { name = "unit_4", kind = "Function", at = "unit_4.cpp │ int ⟦unit_4⟧() { return 4; }" },
+    { name = "unit_5", kind = "Function", at = "unit_5.cpp │ int ⟦unit_5⟧() { return 5; }" },
+    { name = "unit_6", kind = "Function", at = "unit_6.cpp │ int ⟦unit_6⟧() { return 6; }" },
+    { name = "unit_7", kind = "Function", at = "unit_7.cpp │ int ⟦unit_7⟧() { return 7; }" },
+]

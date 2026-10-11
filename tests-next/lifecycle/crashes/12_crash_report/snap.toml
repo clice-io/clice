@@ -1,0 +1,5 @@
+[test.hover]
+hover = {}
+
+[test.crashes]
+value = 1

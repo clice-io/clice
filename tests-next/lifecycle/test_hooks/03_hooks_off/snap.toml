@@ -1,0 +1,21 @@
+[test.refused.sync]
+code = -32600
+message = "test hooks are not enabled"
+
+[test.refused.hold]
+code = -32600
+message = "test hooks are not enabled"
+
+[test.refused.gate]
+code = -32600
+message = "test hooks are not enabled"
+
+[test.refused.release]
+code = -32600
+message = "test hooks are not enabled"
+
+[test.diagnostics]
+diagnostics = []
+
+[test."builds counted"]
+value = 0

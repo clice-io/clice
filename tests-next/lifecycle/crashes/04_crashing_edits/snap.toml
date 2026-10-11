@@ -1,0 +1,43 @@
+[test.diagnostics]
+diagnostics = []
+
+[test."hover after edit 1"]
+hover = {}
+
+[test."crashes after edit 1"]
+value = 1
+
+[test."hover after edit 2"]
+hover = {}
+
+[test."crashes after edit 2"]
+value = 2
+
+[test."hover after edit 3"]
+hover = {}
+
+[test."crashes after edit 3"]
+value = 3
+
+[test."hover after edit 4"]
+hover = {}
+
+[test."crashes after edit 4"]
+value = 3
+
+[test.pushes]
+pushes = [
+    [],
+    [
+        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed 2 times in a row while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+    [
+        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed 3 times in a row while compiling this file (${CRASH}). Semantic features are paused here until you save this file.", source = "clice" },
+    ],
+]
+
+[test."hover after a save"]
+hover = {}
+
+[test."crashes after a save"]
+value = 4

@@ -1,0 +1,6 @@
+[test.hover]
+code = -32602
+message = "Document not open"
+
+[test."diagnostics after an open"]
+diagnostics = []

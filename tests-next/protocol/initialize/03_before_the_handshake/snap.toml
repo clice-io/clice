@@ -1,0 +1,29 @@
+["an open is served".hover.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+["an open is served".pushes]
+pushes = [[]]
+
+["a close takes it back".pushes]
+pushes = []
+
+["a close takes it back".hover]
+code = -32602
+message = "Document not open"
+
+["a close takes it back"."diagnostics after an open"]
+diagnostics = []

@@ -1,0 +1,7 @@
+["textDocument/hover".reply]
+code = -32801
+message = "Document changed while the request was in flight"
+
+["textDocument/formatting".reply]
+code = -32801
+message = "Document changed while the request was in flight"

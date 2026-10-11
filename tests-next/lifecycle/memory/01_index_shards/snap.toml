@@ -1,0 +1,12 @@
+["a round leaves no shard in memory"."after the round"]
+indexInmemoryShards = 0
+lastSaveShards = 4
+
+["a save writes the changed shard".symbols]
+workspace_symbols = [
+    { name = "func_2_renamed", kind = "Function", at = "file2.cpp │ int ⟦func_2_renamed⟧() { return 2; }" },
+]
+
+["a save writes the changed shard"."after the change"]
+indexInmemoryShards = 0
+lastSaveShards = 1
