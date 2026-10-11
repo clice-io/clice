@@ -273,6 +273,10 @@ public:
     /// another machine.
     bool client_on_host = false;
 
+    /// The client sent `exit` without a `shutdown` first, which LSP answers
+    /// with exit code 1.
+    bool exit_before_shutdown = false;
+
 private:
     /// A project over `root`, its cross-project queries connected to the
     /// others.

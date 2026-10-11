@@ -1,6 +1,5 @@
 ["exit without shutdown"."exit code"]
-wrong = "an exit with no shutdown before it ends the server with code 0; LSP asks for 1"
-value = 0
+value = 1
 
 [SIGTERM.exit]
 code = 0
