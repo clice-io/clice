@@ -1,0 +1,17 @@
+[answers."net::Socket"]
+workspace_symbols = [
+    { name = "deep::net::Socket", kind = "Struct", at = "main.cpp │ struct ⟦Socket⟧ {};", container = "deep::net" },
+]
+
+[answers."deep::Socket"]
+workspace_symbols = [
+    { name = "deep::net::Socket", kind = "Struct", at = "main.cpp │ struct ⟦Socket⟧ {};", container = "deep::net" },
+]
+
+[answers."::net::Socket"]
+workspace_symbols = []
+
+[answers."::deep::net::Socket"]
+workspace_symbols = [
+    { name = "deep::net::Socket", kind = "Struct", at = "main.cpp │ struct ⟦Socket⟧ {};", container = "deep::net" },
+]

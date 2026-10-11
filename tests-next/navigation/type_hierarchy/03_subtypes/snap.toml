@@ -1,0 +1,10 @@
+[answers.base]
+type_hierarchy = [
+    { name = "Shape", kind = "Struct", at = "struct ⟦Shape⟧ {};" },
+]
+supertypes = []
+subtypes = [
+    { name = "Circle", kind = "Struct", at = "struct ⟦Circle⟧ : Shape {};" },
+    { name = "Square", kind = "Struct", at = "struct ⟦Square⟧ : Shape {};" },
+    { name = "Triangle", kind = "Struct", at = "struct ⟦Triangle⟧ : Shape {};" },
+]

@@ -1,0 +1,8 @@
+[answers.conv_decl]
+definition = ["Number::⟦operator int⟧() const {"]
+
+[answers.conv_def]
+definition = ["⟦operator int⟧() const;"]
+
+[answers.conv_use]
+definition = ["Number::⟦operator int⟧() const {"]

@@ -1,0 +1,3 @@
+[answers._Z7processi]
+wrong = "should find process(int), the function the mangled name names"
+workspace_symbols = []

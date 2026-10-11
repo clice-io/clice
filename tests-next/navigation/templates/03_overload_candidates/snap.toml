@@ -1,0 +1,2 @@
+[answers.call]
+definition = ["void ⟦scale⟧(int value);", "void ⟦scale⟧(double value) {}"]

@@ -1,0 +1,8 @@
+[answers.type]
+type_definition = []
+
+[answers.param]
+type_definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.local]
+type_definition = ["struct ⟦Widget⟧ {};"]

@@ -1,0 +1,11 @@
+[answers.target_def]
+definition = ["int ⟦target⟧(int value) {"]
+
+[answers.pointer_def]
+definition = ["Callback ⟦callback⟧ = &target;"]
+
+[answers.address_use]
+definition = ["int ⟦target⟧(int value) {"]
+
+[answers.pointer_call]
+definition = ["Callback ⟦callback⟧ = &target;"]

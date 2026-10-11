@@ -1,0 +1,8 @@
+[answers.arrow_member]
+definition = ["int ⟦grow⟧(int by);"]
+
+[answers.deref_member]
+definition = ["int ⟦size⟧;"]
+
+[answers.arrow]
+definition = ["T* ⟦operator->⟧() const;"]

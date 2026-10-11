@@ -1,0 +1,27 @@
+[test.Size]
+workspace_symbols = [
+    { name = "Size", kind = "TypeParameter", at = "types.h │ typedef unsigned long ⟦Size⟧;", container = "net" },
+]
+
+[test.Handle]
+workspace_symbols = [
+    { name = "Handle", kind = "TypeParameter", at = "types.h │ using ⟦Handle⟧ = int*;", container = "net" },
+]
+
+[test.Ptr]
+workspace_symbols = [
+    { name = "Ptr", kind = "TypeParameter", at = "types.h │ using ⟦Ptr⟧ = T*;", container = "net" },
+]
+
+[test.id_type]
+workspace_symbols = [
+    { name = "id_type", kind = "TypeParameter", at = "types.h │ using ⟦id_type⟧ = int;", container = "net::Widget" },
+]
+
+[test.di]
+workspace_symbols = [
+    { name = "di", kind = "Namespace", at = "types.h │ namespace ⟦di⟧ = net;" },
+]
+
+[test.Hidden]
+workspace_symbols = []

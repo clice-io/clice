@@ -1,0 +1,7 @@
+[test.fresh_name]
+workspace_symbols = [
+    { name = "fresh_name", kind = "Function", at = "main.cpp │ int ⟦fresh_name⟧() {" },
+]
+
+[test.stale_name]
+workspace_symbols = []

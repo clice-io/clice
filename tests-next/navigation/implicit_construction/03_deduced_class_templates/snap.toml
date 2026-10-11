@@ -1,0 +1,2 @@
+[answers.ctad_paren]
+definition = ["⟦Box⟧(T input) : value(input) {}"]

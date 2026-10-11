@@ -1,0 +1,41 @@
+[answers.box]
+definition = ["struct ⟦Box⟧ {"]
+
+[answers.dtor_tilde]
+definition = ["Box<T>::⟦~Box⟧() {}"]
+
+[answers.dtor_class]
+definition = ["Box<T>::⟦~Box⟧() {}"]
+
+[answers.eq_keyword]
+definition = ["bool Vec::⟦operator==⟧(const Vec& other) const {"]
+
+[answers.eq_symbol]
+definition = ["bool Vec::⟦operator==⟧(const Vec& other) const {"]
+
+[answers.call_paren]
+definition = ["int Vec::⟦operator()⟧(int index) const {"]
+
+[answers.conv_keyword]
+definition = ["Vec::⟦operator Handle*⟧() const {"]
+
+[answers.conv_type]
+definition = ["struct ⟦Handle⟧ {};"]
+
+[answers.literal_suffix]
+definition = ['unsigned long long ⟦operator""_km⟧(unsigned long long value) {']
+
+[answers.dtor_call]
+definition = ["Box<T>::⟦~Box⟧() {}"]
+
+[answers.eq_pointer]
+definition = ["bool Vec::⟦operator==⟧(const Vec& other) const {"]
+
+[answers.conv_call_type]
+definition = ["struct ⟦Handle⟧ {};"]
+
+[answers.eq_use]
+definition = ["bool Vec::⟦operator==⟧(const Vec& other) const {"]
+
+[answers.eq_explicit]
+definition = ["bool Vec::⟦operator==⟧(const Vec& other) const {"]

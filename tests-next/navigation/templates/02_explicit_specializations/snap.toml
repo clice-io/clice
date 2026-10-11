@@ -1,0 +1,3 @@
+[answers.specialization]
+wrong = "should reach the primary template it specializes (clangd#212)"
+definition = ["struct ⟦Formatter⟧<int> {};"]

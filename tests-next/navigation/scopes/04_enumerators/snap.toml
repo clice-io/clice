@@ -1,0 +1,14 @@
+[answers.idle_def]
+definition = ["⟦Idle⟧,"]
+
+[answers.ready_def]
+definition = ["⟦Ready⟧,"]
+
+[answers.idle_case]
+definition = ["⟦Idle⟧,"]
+
+[answers.ready_case]
+definition = ["⟦Ready⟧,"]
+
+[answers.ready_use]
+definition = ["⟦Ready⟧,"]

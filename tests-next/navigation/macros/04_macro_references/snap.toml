@@ -1,0 +1,13 @@
+[answers.first]
+definition = ["#define ⟦FEATURE⟧ 1"]
+references = [
+    "#define ⟦FEATURE⟧ 1",
+    "int on = ⟦FEATURE⟧;",
+    "#ifdef ⟦FEATURE⟧",
+    "#ifndef ⟦FEATURE⟧",
+    "#undef ⟦FEATURE⟧",
+]
+
+[answers.second]
+definition = ["#define ⟦FEATURE⟧ 2"]
+references = ["#define ⟦FEATURE⟧ 2", "int again = ⟦FEATURE⟧;"]

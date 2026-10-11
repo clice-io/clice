@@ -1,0 +1,9 @@
+[answers.use]
+definition = ["lib.cpp │ int ⟦compute⟧(int value) {"]
+declaration = ["lib.cpp │ int ⟦compute⟧(int value) {", "shared.h │ int ⟦compute⟧(int value);"]
+references = [
+    "lib.cpp │ int ⟦compute⟧(int value) {",
+    "lib.cpp │ return ⟦compute⟧(value) + 1;",
+    "return ⟦compute⟧(value);",
+    "shared.h │ int ⟦compute⟧(int value);",
+]

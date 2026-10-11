@@ -1,0 +1,3 @@
+[answers.variable]
+wrong = "each reference should say whether it reads or writes x (clangd#2139)"
+references = ["int ⟦x⟧ = 0;", "int y = ⟦x⟧ + 1;", "⟦x⟧ = y;", "return ⟦x⟧;"]

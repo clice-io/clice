@@ -1,0 +1,2 @@
+[answers.base]
+implementation = ["int ⟦area⟧() const override; @+5", "int ⟦area⟧() const override; @+9"]

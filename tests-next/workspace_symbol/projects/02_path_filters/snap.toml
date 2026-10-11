@@ -1,0 +1,14 @@
+[answers."sum path:src/"]
+workspace_symbols = [
+    { name = "sum_src", kind = "Function", at = "src/a.cpp │ int ⟦sum_src⟧() {" },
+]
+
+[answers."sum path:lib/src/"]
+workspace_symbols = [
+    { name = "sum_lib", kind = "Function", at = "lib/src/b.cpp │ int ⟦sum_lib⟧() {" },
+]
+
+[answers."sum path:b.cpp"]
+workspace_symbols = [
+    { name = "sum_lib", kind = "Function", at = "lib/src/b.cpp │ int ⟦sum_lib⟧() {" },
+]

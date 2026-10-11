@@ -1,0 +1,17 @@
+[answers.target_def]
+definition = ["int ⟦compute⟧(int value) {"]
+
+[answers.ns_alias]
+definition = ["namespace ⟦api⟧ = core;"]
+
+[answers.ns_alias_target]
+definition = ["namespace ⟦core⟧ {"]
+
+[answers.using_decl]
+definition = ["int ⟦compute⟧(int value) {"]
+
+[answers.direct_use]
+definition = ["int ⟦compute⟧(int value) {"]
+
+[answers.qualified_use]
+definition = ["int ⟦compute⟧(int value) {"]

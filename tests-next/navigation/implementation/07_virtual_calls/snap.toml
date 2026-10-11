@@ -1,0 +1,11 @@
+[answers.base]
+implementation = ["struct ⟦Circle⟧ : Shape {", "struct ⟦Square⟧ : Shape {"]
+
+[answers.base_method]
+implementation = ["int ⟦area⟧() override { @+4", "int ⟦area⟧() override { @+10"]
+
+[answers.override_def]
+implementation = []
+
+[answers.virtual_call]
+implementation = ["int ⟦area⟧() override { @-12", "int ⟦area⟧() override { @-6"]

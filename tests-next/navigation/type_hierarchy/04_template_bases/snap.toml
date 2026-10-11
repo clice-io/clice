@@ -1,0 +1,8 @@
+[answers.base]
+type_hierarchy = [
+    { name = "Base", kind = "Struct", at = "struct ⟦Base⟧ {};" },
+]
+supertypes = []
+subtypes = [
+    { name = "CRTP", kind = "Struct", at = "struct ⟦CRTP⟧ : Base {};" },
+]

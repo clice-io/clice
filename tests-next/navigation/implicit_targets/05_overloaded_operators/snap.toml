@@ -1,0 +1,11 @@
+[answers.plus]
+definition = ["Vec ⟦operator+⟧(const Vec& other) const;"]
+
+[answers.subscript]
+definition = ["int ⟦operator[]⟧(int index) const;"]
+
+[answers.call]
+definition = ["int ⟦operator()⟧(int a, int b) const;"]
+
+[answers.arrow]
+definition = ["Iterator* ⟦operator->⟧();"]

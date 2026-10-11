@@ -1,0 +1,19 @@
+[answers.caller]
+call_hierarchy = [
+    { name = "use_conv", kind = "Function", at = "int ⟦use_conv⟧() {" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "operator int",
+        kind = "Method",
+        at = "conv.h │ ⟦operator int⟧() const;",
+        sites = ["int i = ⟦c⟧;"],
+    },
+    {
+        name = "get",
+        kind = "Method",
+        at = "conv.h │ int ⟦get⟧() const;",
+        sites = ["return i + c.⟦get⟧();"],
+    },
+]

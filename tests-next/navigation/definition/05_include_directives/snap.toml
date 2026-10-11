@@ -1,0 +1,5 @@
+[answers.preamble_include]
+definition = ["panel.h │ ⟦⟧#pragma once"]
+
+[answers.late_include]
+definition = ["extra.h │ ⟦⟧inline int spacing() {"]

@@ -1,0 +1,5 @@
+[answers.alias_use]
+definition = ["using ⟦Boxed⟧ = Box<T>;"]
+
+[answers.member]
+definition = ["T ⟦value⟧;"]

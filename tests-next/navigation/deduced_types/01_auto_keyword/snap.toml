@@ -1,0 +1,5 @@
+[answers.type]
+definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.auto_keyword]
+definition = ["struct ⟦Widget⟧ {};"]

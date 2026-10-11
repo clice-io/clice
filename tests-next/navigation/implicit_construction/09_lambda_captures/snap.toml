@@ -1,0 +1,3 @@
+[answers.capture]
+wrong = "should reach Widget(Widget&&), the constructor building the capture"
+definition = []

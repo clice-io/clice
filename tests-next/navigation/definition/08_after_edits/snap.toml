@@ -1,0 +1,8 @@
+[test.before]
+definition = ["int ⟦area⟧(int width, int height) {"]
+
+[test.moved]
+definition = ["int ⟦area⟧(int width, int height) {"]
+
+[test.added]
+definition = ["int ⟦volume⟧(int side) {"]

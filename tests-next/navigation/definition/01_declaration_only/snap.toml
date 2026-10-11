@@ -1,8 +1,11 @@
 [answers.method]
-definition = ["virtual void ⟦draw⟧() = 0;"]
+definition = ["virtual void ⟦refresh⟧() = 0;"]
 
 [answers.function]
-definition = ["int ⟦measure⟧(int value);"]
+definition = ["int ⟦probe⟧(int value);"]
 
 [answers.variable]
-definition = ["extern int ⟦quota⟧;"]
+definition = ["extern int ⟦threshold⟧;"]
+
+[answers.constant]
+definition = ["static const int ⟦margin⟧ = 4;"]

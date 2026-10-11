@@ -1,0 +1,2 @@
+[answers.base]
+implementation = ["struct ⟦Circle⟧ : Base {};", "struct ⟦Square⟧ : Base {};"]

@@ -1,0 +1,17 @@
+[answers.base_ctor]
+definition = ["⟦Base⟧(int input) : value(input) {}"]
+
+[answers.base_member]
+definition = ["int ⟦read⟧() const {"]
+
+[answers.ctor_using]
+definition = ["⟦Base⟧(int input) : value(input) {}"]
+
+[answers.member_using]
+definition = ["int ⟦read⟧() const {"]
+
+[answers.derived_use]
+definition = ["struct ⟦Derived⟧ : Base {"]
+
+[answers.member_use]
+definition = ["int ⟦read⟧() const {"]

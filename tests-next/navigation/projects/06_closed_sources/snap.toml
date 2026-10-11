@@ -1,0 +1,23 @@
+[test.use]
+definition = ["lib.cpp │ int ⟦compute⟧(int value) {"]
+declaration = ["lib.cpp │ int ⟦compute⟧(int value) {", "shared.h │ int ⟦compute⟧(int value);"]
+references = [
+    "lib.cpp │ int ⟦compute⟧(int value) {",
+    "return ⟦compute⟧(value);",
+    "other.cpp │ return ⟦compute⟧(value) + 1;",
+    "shared.h │ int ⟦compute⟧(int value);",
+]
+incoming_calls = [
+    {
+        name = "run",
+        kind = "Function",
+        at = "int ⟦run⟧(int value) {",
+        sites = ["return ⟦compute⟧(value);"],
+    },
+    {
+        name = "again",
+        kind = "Function",
+        at = "other.cpp │ int ⟦again⟧(int value) {",
+        sites = ["other.cpp │ return ⟦compute⟧(value) + 1;"],
+    },
+]

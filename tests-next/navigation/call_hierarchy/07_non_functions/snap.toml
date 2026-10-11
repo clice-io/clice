@@ -1,0 +1,11 @@
+[answers.variable]
+wrong = "a call hierarchy should open on a variable, with the functions using it (clangd#1308)"
+call_hierarchy = []
+incoming_calls = []
+outgoing_calls = []
+
+[answers.enumerator]
+wrong = "a call hierarchy should open on an enumerator, with the functions using it (clangd#1308)"
+call_hierarchy = []
+incoming_calls = []
+outgoing_calls = []

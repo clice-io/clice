@@ -1,0 +1,14 @@
+[answers.decl]
+definition = ["int ⟦scale⟧(int value) {"]
+
+[answers.def]
+definition = ["int ⟦scale⟧(int value);"]
+
+[answers.use]
+definition = ["int ⟦scale⟧(int value) {"]
+
+[answers.inline_def]
+definition = ["int ⟦twice⟧(int value) {"]
+
+[answers.inline_use]
+definition = ["int ⟦twice⟧(int value) {"]

@@ -1,0 +1,17 @@
+[answers.global_def]
+definition = ["int ⟦value⟧ = 1;"]
+
+[answers.param_def]
+definition = ["int read_shadowed(int ⟦value⟧) {"]
+
+[answers.param_use]
+definition = ["int read_shadowed(int ⟦value⟧) {"]
+
+[answers.local_def]
+definition = ["int ⟦value⟧ = 3;"]
+
+[answers.local_use]
+definition = ["int ⟦value⟧ = 3;"]
+
+[answers.global_use]
+definition = ["int ⟦value⟧ = 1;"]

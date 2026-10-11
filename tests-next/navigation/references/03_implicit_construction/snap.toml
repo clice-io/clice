@@ -1,0 +1,7 @@
+[answers.constructor]
+wrong = "Blob b; runs the constructor, so it should be among the references"
+references = ["⟦Blob⟧();"]
+
+[answers.destructor]
+wrong = "Blob b; runs the destructor at the end of its scope, so it should be among the references"
+references = ["⟦~Blob⟧();"]

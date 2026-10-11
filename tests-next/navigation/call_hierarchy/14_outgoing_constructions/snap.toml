@@ -1,0 +1,19 @@
+[answers.caller]
+call_hierarchy = [
+    { name = "combine", kind = "Function", at = "Widget ⟦combine⟧() {" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "Widget",
+        kind = "Method",
+        at = "⟦Widget⟧(int w, int h);",
+        sites = ["Widget a⟦(⟧1, 2);", "Widget b⟦{⟧3, 4};"],
+    },
+    {
+        name = "operator+",
+        kind = "Operator",
+        at = "Widget ⟦operator+⟧(const Widget& other) const;",
+        sites = ["return a ⟦+⟧ b;"],
+    },
+]

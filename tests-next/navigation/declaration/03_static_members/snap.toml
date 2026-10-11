@@ -1,0 +1,8 @@
+[answers.decl]
+declaration = ["int Config::⟦timeout⟧ = 30;"]
+
+[answers.def]
+declaration = ["static int ⟦timeout⟧;"]
+
+[answers.use]
+declaration = ["static int ⟦timeout⟧;", "int Config::⟦timeout⟧ = 30;"]

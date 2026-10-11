@@ -1,0 +1,5 @@
+[answers.local_use]
+definition = ["int ⟦total⟧ = base;"]
+
+[answers.param_use]
+definition = ["int accumulate(int ⟦base⟧) {"]

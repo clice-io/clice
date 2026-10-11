@@ -1,0 +1,8 @@
+[answers.decl]
+declaration = ["int ⟦render⟧(int w, int h) {"]
+
+[answers.def]
+declaration = ["int ⟦render⟧(int width, const int height);"]
+
+[answers.use]
+declaration = ["int ⟦render⟧(int width, const int height);", "int ⟦render⟧(int w, int h) {"]

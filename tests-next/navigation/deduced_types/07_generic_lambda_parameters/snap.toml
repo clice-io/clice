@@ -1,0 +1,14 @@
+[answers.parameter]
+wrong = "go to type definition should reach Point, the type of the only call, as the auto of such a parameter does"
+definition = ["auto get = [](auto ⟦p⟧) { return p.x; };"]
+type_definition = []
+
+[answers.member]
+wrong = "should reach Point::x, the member of the type the lambda is called with"
+definition = []
+type_definition = []
+
+[answers.method]
+wrong = "should reach Point::norm, the method of the type the lambda is called with"
+definition = []
+type_definition = []

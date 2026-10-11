@@ -1,0 +1,12 @@
+[answers."include/geometry/shape.h".counterparts]
+preferred = "src/shape.cpp"
+candidates = [
+    { path = "src/shape.cpp", reasons = ["defines 2 of 2 declarations", "same name"] },
+    { path = "tests/shape.cpp", reasons = ["same name"] },
+]
+
+[answers."src/shape.cpp".counterparts]
+preferred = "include/geometry/shape.h"
+candidates = [
+    { path = "include/geometry/shape.h", reasons = ["declares 2 of 2 definitions", "same name"] },
+]

@@ -1,0 +1,6 @@
+[answers.base]
+implementation = [
+    "int ⟦area⟧() override { return 1; }",
+    "int ⟦area⟧() override { return 2; }",
+    "int ⟦area⟧() override { return 3; }",
+]

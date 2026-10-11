@@ -1,0 +1,14 @@
+[answers.function]
+wrong = "the item should show the signature beside the name, to tell overloads apart"
+call_hierarchy = [
+    { name = "compute", kind = "Function", at = "int ⟦compute⟧(int a, int b) {" },
+]
+incoming_calls = [
+    {
+        name = "caller",
+        kind = "Function",
+        at = "int ⟦caller⟧() {",
+        sites = ["return ⟦compute⟧(1, 2);"],
+    },
+]
+outgoing_calls = []

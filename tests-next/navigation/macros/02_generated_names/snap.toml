@@ -1,0 +1,22 @@
+[answers.body_name]
+definition = []
+references = []
+
+[answers.counter_site]
+definition = ["#define ⟦DEFINE_COUNTER⟧ int counter_value = 0; int next_value()"]
+references = [
+    "#define ⟦DEFINE_COUNTER⟧ int counter_value = 0; int next_value()",
+    "⟦DEFINE_COUNTER⟧ {",
+]
+
+[answers.counter_use]
+definition = ["⟦DEFINE_COUNTER⟧ {"]
+references = ["⟦DEFINE_COUNTER⟧ {", "return ⟦counter_value⟧ + 1;"]
+
+[answers.flag_site]
+definition = ["#define ⟦MAKE_FLAG⟧(name) bool flag_##name = false"]
+references = ["#define ⟦MAKE_FLAG⟧(name) bool flag_##name = false", "⟦MAKE_FLAG⟧(verbose);"]
+
+[answers.flag_use]
+definition = ["⟦MAKE_FLAG⟧(verbose);"]
+references = ["⟦MAKE_FLAG⟧(verbose);", "return ⟦flag_verbose⟧;"]

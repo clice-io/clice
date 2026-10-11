@@ -1,0 +1,8 @@
+[answers.def]
+definition = ["int ⟦width⟧ = 3;"]
+
+[answers.after_unicode]
+definition = ['const char* text = "宽¢€𝄞"; int ⟦area⟧ = width + 1;']
+
+[answers.use]
+definition = ["int ⟦width⟧ = 3;"]

@@ -1,0 +1,14 @@
+[answers.ctor_decl]
+definition = ["Session::⟦Session⟧(int id) : id(id) {}"]
+
+[answers.scope_use]
+definition = ["struct ⟦Session⟧ {"]
+
+[answers.ctor_def]
+definition = ["⟦Session⟧(int id);"]
+
+[answers.ctor_use]
+definition = ["struct ⟦Session⟧ {"]
+
+[answers.ctor_invoke]
+definition = ["Session::⟦Session⟧(int id) : id(id) {}"]

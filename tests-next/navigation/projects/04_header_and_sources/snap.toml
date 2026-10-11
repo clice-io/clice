@@ -1,0 +1,66 @@
+[answers.def]
+definition = ["lib.h │ int ⟦area⟧(int width, int height);"]
+declaration = ["lib.h │ int ⟦area⟧(int width, int height);"]
+references = [
+    "int ⟦area⟧(int width, int height) {",
+    "lib.h │ int ⟦area⟧(int width, int height);",
+    "main.cpp │ return ⟦area⟧(width, height) + perimeter(width, height);",
+    "uses.cpp │ return ⟦area⟧(width, height);",
+]
+
+[answers.decl]
+definition = ["lib.cpp │ int ⟦area⟧(int width, int height) {"]
+declaration = ["lib.cpp │ int ⟦area⟧(int width, int height) {"]
+references = [
+    "lib.cpp │ int ⟦area⟧(int width, int height) {",
+    "int ⟦area⟧(int width, int height);",
+    "main.cpp │ return ⟦area⟧(width, height) + perimeter(width, height);",
+    "uses.cpp │ return ⟦area⟧(width, height);",
+]
+
+[answers.inline_def]
+definition = ["inline int ⟦perimeter⟧(int width, int height) {"]
+declaration = ["inline int ⟦perimeter⟧(int width, int height) {"]
+references = [
+    "inline int ⟦perimeter⟧(int width, int height) {",
+    "main.cpp │ return area(width, height) + ⟦perimeter⟧(width, height);",
+]
+
+[answers.include_target]
+definition = ["lib.h │ ⟦⟧#pragma once"]
+declaration = []
+references = []
+
+[answers.use]
+definition = ["lib.cpp │ int ⟦area⟧(int width, int height) {"]
+declaration = [
+    "lib.cpp │ int ⟦area⟧(int width, int height) {",
+    "lib.h │ int ⟦area⟧(int width, int height);",
+]
+references = [
+    "lib.cpp │ int ⟦area⟧(int width, int height) {",
+    "lib.h │ int ⟦area⟧(int width, int height);",
+    "return ⟦area⟧(width, height) + perimeter(width, height);",
+    "uses.cpp │ return ⟦area⟧(width, height);",
+]
+
+[answers.inline_use]
+definition = ["lib.h │ inline int ⟦perimeter⟧(int width, int height) {"]
+declaration = ["lib.h │ inline int ⟦perimeter⟧(int width, int height) {"]
+references = [
+    "lib.h │ inline int ⟦perimeter⟧(int width, int height) {",
+    "return area(width, height) + ⟦perimeter⟧(width, height);",
+]
+
+[answers.second_use]
+definition = ["lib.cpp │ int ⟦area⟧(int width, int height) {"]
+declaration = [
+    "lib.cpp │ int ⟦area⟧(int width, int height) {",
+    "lib.h │ int ⟦area⟧(int width, int height);",
+]
+references = [
+    "lib.cpp │ int ⟦area⟧(int width, int height) {",
+    "lib.h │ int ⟦area⟧(int width, int height);",
+    "main.cpp │ return ⟦area⟧(width, height) + perimeter(width, height);",
+    "return ⟦area⟧(width, height);",
+]

@@ -1,0 +1,8 @@
+[answers.dtor_decl]
+definition = ["Resource::⟦~Resource⟧() {}"]
+
+[answers.dtor_def]
+definition = ["⟦~Resource⟧();"]
+
+[answers.dtor_use]
+definition = ["Resource::⟦~Resource⟧() {}"]

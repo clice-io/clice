@@ -1,0 +1,27 @@
+[indexed.decl]
+definition = ["lib.cpp │ int ⟦compute⟧(int value) {"]
+references = [
+    "lib.cpp │ int ⟦compute⟧(int value) {",
+    "main.cpp │ return ⟦compute⟧(value);",
+    "other.cpp │ return ⟦compute⟧(value) + 1;",
+    "int ⟦compute⟧(int value);",
+]
+incoming_calls = [
+    {
+        name = "run",
+        kind = "Function",
+        at = "main.cpp │ int ⟦run⟧(int value) {",
+        sites = ["main.cpp │ return ⟦compute⟧(value);"],
+    },
+    {
+        name = "again",
+        kind = "Function",
+        at = "other.cpp │ int ⟦again⟧(int value) {",
+        sites = ["other.cpp │ return ⟦compute⟧(value) + 1;"],
+    },
+]
+
+[unindexed.decl]
+definition = ["int ⟦compute⟧(int value);"]
+references = ["int ⟦compute⟧(int value);"]
+incoming_calls = []

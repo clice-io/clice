@@ -1,0 +1,11 @@
+[answers.captured_def]
+definition = ["int ⟦base⟧ = seed;"]
+
+[answers.lambda_def]
+definition = ["auto ⟦add⟧ = [base](int value) {"]
+
+[answers.capture_use]
+definition = ["int ⟦base⟧ = seed;"]
+
+[answers.lambda_call]
+definition = ["auto ⟦add⟧ = [base](int value) {"]

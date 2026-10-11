@@ -1,0 +1,7 @@
+[answers.condition]
+wrong = "should reach Guard::operator bool, which the condition calls (clangd#1931)"
+definition = []
+
+[answers.negation]
+wrong = "should reach Guard::operator bool, which ! calls (clangd#1931)"
+definition = []

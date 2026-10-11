@@ -1,0 +1,8 @@
+[answers.use]
+definition = ["util.h │ static int ⟦helper⟧(int value) {"]
+declaration = ["util.h │ static int ⟦helper⟧(int value) {"]
+references = [
+    "return ⟦helper⟧(value);",
+    "other.cpp │ return ⟦helper⟧(value) * 2;",
+    "util.h │ static int ⟦helper⟧(int value) {",
+]

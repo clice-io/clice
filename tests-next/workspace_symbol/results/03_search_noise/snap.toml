@@ -1,0 +1,20 @@
+[test.Flag]
+workspace_symbols = [
+    { name = "OpenFlag", kind = "Struct", at = "main.cpp │ struct ⟦OpenFlag⟧ {};" },
+    { name = "Flag", kind = "Struct", at = "noise.h │ struct ⟦Flag⟧ {};", container = "outer" },
+]
+
+[test.N]
+workspace_symbols = []
+
+[test.TT]
+workspace_symbols = []
+
+[test.anonymous]
+workspace_symbols = []
+
+[test.M]
+workspace_symbols = []
+
+[test.local_value]
+workspace_symbols = []

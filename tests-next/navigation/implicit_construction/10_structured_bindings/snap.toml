@@ -1,0 +1,7 @@
+[answers.first]
+wrong = "should reach Pair::first, the member a names"
+definition = ["auto [⟦a⟧, b] = p;"]
+
+[answers.second]
+wrong = "should reach Pair::second, the member b names"
+definition = ["auto [a, ⟦b⟧] = p;"]

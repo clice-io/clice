@@ -1,0 +1,4 @@
+{
+  // `Unresolved` names no type: what navigation does then is the point.
+  "compiles": false
+}

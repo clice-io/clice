@@ -1,0 +1,10 @@
+[answers.copy_eq]
+wrong = "should reach Widget(const Widget&), the copy constructor the initialization runs"
+definition = []
+
+[answers.move_eq]
+wrong = "should reach Widget(Widget&&), the move constructor the initialization runs"
+definition = []
+
+[answers.assign_eq]
+definition = ["Widget& ⟦operator=⟧(const Widget& other);"]

@@ -1,0 +1,18 @@
+[answers.derived]
+type_hierarchy = [
+    { name = "Gamma", kind = "Struct", at = "struct ⟦Gamma⟧ : Alpha, Beta {};" },
+]
+supertypes = [
+    { name = "Alpha", kind = "Struct", at = "struct ⟦Alpha⟧ {};" },
+    { name = "Beta", kind = "Struct", at = "struct ⟦Beta⟧ {};" },
+]
+subtypes = []
+
+[answers.alias_base]
+type_hierarchy = [
+    { name = "Delta", kind = "Struct", at = "struct ⟦Delta⟧ : Base {};" },
+]
+supertypes = [
+    { name = "Alpha", kind = "Struct", at = "struct ⟦Alpha⟧ {};" },
+]
+subtypes = []

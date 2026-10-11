@@ -1,0 +1,5 @@
+[answers.scoped]
+type_definition = ["enum class ⟦State⟧ { Idle, Ready };"]
+
+[answers.unscoped]
+type_definition = ["enum ⟦Mode⟧ { Fast, Safe };"]

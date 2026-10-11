@@ -1,0 +1,28 @@
+[answers.base]
+type_hierarchy = [
+    { name = "Base", kind = "Struct", at = "struct ⟦Base⟧ {};" },
+]
+supertypes = []
+subtypes = [
+    { name = "Derived", kind = "Struct", at = "struct ⟦Derived⟧ : Base<int> {};" },
+    { name = "Generic", kind = "Struct", at = "struct ⟦Generic⟧ : Base<T> {};" },
+]
+
+[answers.derived]
+wrong = "the supertype should name Base<int>, the specialization Derived derives from (clangd#31)"
+type_hierarchy = [
+    { name = "Derived", kind = "Struct", at = "struct ⟦Derived⟧ : Base<int> {};" },
+]
+supertypes = [
+    { name = "Base", kind = "Struct", at = "struct ⟦Base⟧ {};" },
+]
+subtypes = []
+
+[answers.generic]
+type_hierarchy = [
+    { name = "Generic", kind = "Struct", at = "struct ⟦Generic⟧ : Base<T> {};" },
+]
+supertypes = [
+    { name = "Base", kind = "Struct", at = "struct ⟦Base⟧ {};" },
+]
+subtypes = []

@@ -1,0 +1,15 @@
+[answers.declared]
+references = [
+    "T ⟦twice⟧(T value) {",
+    "return ⟦twice⟧(1) + twice<int>(2);",
+    "return twice(1) + ⟦twice⟧<int>(2);",
+    "return ⟦twice⟧(1.5);",
+]
+
+[answers.call]
+references = [
+    "T ⟦twice⟧(T value) {",
+    "return ⟦twice⟧(1) + twice<int>(2);",
+    "return twice(1) + ⟦twice⟧<int>(2);",
+    "return ⟦twice⟧(1.5);",
+]

@@ -1,0 +1,2 @@
+[answers.suffix]
+definition = ['Duration ⟦operator""_ms⟧(unsigned long long value);']

@@ -1,0 +1,2 @@
+[answers.label]
+references = ["⟦retry⟧:", "goto ⟦retry⟧;"]

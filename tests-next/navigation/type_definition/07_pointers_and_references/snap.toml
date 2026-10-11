@@ -1,0 +1,38 @@
+[answers.type]
+type_definition = []
+
+[answers.pointer_alias]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.field_pointer]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.field_reference]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.const_reference]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.pointer]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.rvalue]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.array_parameter]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.array]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.pointer_to_const]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.use_reference]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.use_pointer]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.use_array]
+type_definition = ["struct ⟦Widget⟧ {"]

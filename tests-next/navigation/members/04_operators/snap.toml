@@ -1,0 +1,5 @@
+[answers.op_def]
+definition = ["Vec ⟦operator+⟧(Vec left, Vec right);"]
+
+[answers.op_use]
+definition = ["Vec ⟦operator+⟧(Vec left, Vec right) {"]

@@ -1,0 +1,11 @@
+[answers.seed_def]
+definition = ["int ⟦seed⟧ = 4;"]
+
+[answers.default_use]
+definition = ["int ⟦seed⟧ = 4;"]
+
+[answers.fn_def]
+definition = ["int ⟦choose_default⟧(int value = seed);"]
+
+[answers.call_use]
+definition = ["int ⟦choose_default⟧(int value) {"]

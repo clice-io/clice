@@ -1,0 +1,12 @@
+[answers.LinLis]
+workspace_symbols = [
+    { name = "LinkedList", kind = "Struct", at = "main.cpp │ struct ⟦LinkedList⟧ {};" },
+]
+
+[answers.pconf]
+workspace_symbols = [
+    { name = "parse_config", kind = "Function", at = "main.cpp │ void ⟦parse_config⟧();" },
+]
+
+[answers.pcfg]
+workspace_symbols = []

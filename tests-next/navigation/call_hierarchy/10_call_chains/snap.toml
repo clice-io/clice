@@ -1,0 +1,92 @@
+[answers.leaf]
+call_hierarchy = [
+    { name = "settle", kind = "Function", at = "int ⟦settle⟧(int value) {" },
+]
+incoming_calls = [
+    {
+        name = "route",
+        kind = "Function",
+        at = "int ⟦route⟧(int value) {",
+        sites = [
+            "return ⟦settle⟧(value) + settle(value + 1);",
+            "return settle(value) + ⟦settle⟧(value + 1);",
+        ],
+    },
+]
+outgoing_calls = []
+
+[answers.mid]
+call_hierarchy = [
+    { name = "route", kind = "Function", at = "int ⟦route⟧(int value) {" },
+]
+incoming_calls = [
+    {
+        name = "start",
+        kind = "Function",
+        at = "int ⟦start⟧(int value) {",
+        sites = ["return ⟦route⟧(value);"],
+    },
+    {
+        name = "restart",
+        kind = "Function",
+        at = "int ⟦restart⟧(int value) {",
+        sites = ["return ⟦route⟧(value) + restart(value - 1);"],
+    },
+]
+outgoing_calls = [
+    {
+        name = "settle",
+        kind = "Function",
+        at = "int ⟦settle⟧(int value) {",
+        sites = [
+            "return ⟦settle⟧(value) + settle(value + 1);",
+            "return settle(value) + ⟦settle⟧(value + 1);",
+        ],
+    },
+]
+
+[answers.top]
+call_hierarchy = [
+    { name = "start", kind = "Function", at = "int ⟦start⟧(int value) {" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "route",
+        kind = "Function",
+        at = "int ⟦route⟧(int value) {",
+        sites = ["return ⟦route⟧(value);"],
+    },
+]
+
+[answers.recursive]
+call_hierarchy = [
+    { name = "restart", kind = "Function", at = "int ⟦restart⟧(int value) {" },
+]
+incoming_calls = [
+    {
+        name = "restart",
+        kind = "Function",
+        at = "int ⟦restart⟧(int value) {",
+        sites = ["return route(value) + ⟦restart⟧(value - 1);"],
+    },
+]
+outgoing_calls = [
+    {
+        name = "route",
+        kind = "Function",
+        at = "int ⟦route⟧(int value) {",
+        sites = ["return ⟦route⟧(value) + restart(value - 1);"],
+    },
+    {
+        name = "restart",
+        kind = "Function",
+        at = "int ⟦restart⟧(int value) {",
+        sites = ["return route(value) + ⟦restart⟧(value - 1);"],
+    },
+]
+
+[answers.gate]
+call_hierarchy = []
+incoming_calls = []
+outgoing_calls = []

@@ -1,0 +1,8 @@
+[answers.decl]
+references = ["int ⟦scale⟧(int value);", "int ⟦scale⟧(int value) {", "return ⟦scale⟧(3);"]
+
+[answers.def]
+references = ["int ⟦scale⟧(int value);", "int ⟦scale⟧(int value) {", "return ⟦scale⟧(3);"]
+
+[answers.use]
+references = ["int ⟦scale⟧(int value);", "int ⟦scale⟧(int value) {", "return ⟦scale⟧(3);"]

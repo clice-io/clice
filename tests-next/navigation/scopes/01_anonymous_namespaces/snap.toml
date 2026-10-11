@@ -1,0 +1,11 @@
+[answers.hidden_var]
+definition = ["int ⟦state⟧ = 1;"]
+
+[answers.hidden_fn]
+definition = ["int ⟦next⟧() {"]
+
+[answers.fn_use]
+definition = ["int ⟦next⟧() {"]
+
+[answers.var_use]
+definition = ["int ⟦state⟧ = 1;"]

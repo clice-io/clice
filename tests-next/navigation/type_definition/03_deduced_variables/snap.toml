@@ -1,0 +1,8 @@
+[answers.keyword]
+type_definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.variable]
+type_definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.reference]
+type_definition = ["struct ⟦Widget⟧ {};"]

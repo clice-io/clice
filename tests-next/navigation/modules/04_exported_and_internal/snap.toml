@@ -1,0 +1,11 @@
+[answers.import_name]
+definition = ["math.cppm │ export module ⟦math⟧;"]
+
+[answers.imported_use]
+definition = ["math.cppm │ export int ⟦add⟧(int left, int right) {"]
+
+[answers.exported_def]
+definition = ["export int ⟦add⟧(int left, int right) {"]
+
+[answers.internal_def]
+definition = ["int ⟦carry⟧(int value) {"]

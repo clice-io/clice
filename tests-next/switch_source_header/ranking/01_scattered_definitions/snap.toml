@@ -1,0 +1,12 @@
+[answers."text.h".counterparts]
+preferred = "text_ops.cpp"
+candidates = [
+    { path = "text_ops.cpp", reasons = ["defines 3 of 4 declarations"] },
+    { path = "text_case.cpp", reasons = ["defines 1 of 4 declarations"] },
+]
+
+[answers."text_case.cpp".counterparts]
+preferred = "text.h"
+candidates = [
+    { path = "text.h", reasons = ["declares 1 of 1 definition"] },
+]

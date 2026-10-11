@@ -1,0 +1,5 @@
+[answers."math.h".counterparts]
+candidates = []
+
+[answers."colors.def".counterparts]
+candidates = []

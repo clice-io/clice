@@ -1,0 +1,50 @@
+[answers.root]
+type_hierarchy = [
+    { name = "Widget", kind = "Struct", at = "struct ⟦Widget⟧ {};" },
+]
+supertypes = []
+subtypes = [
+    { name = "Control", kind = "Struct", at = "struct ⟦Control⟧ : Widget {};" },
+]
+
+[answers.mid]
+type_hierarchy = [
+    { name = "Control", kind = "Struct", at = "struct ⟦Control⟧ : Widget {};" },
+]
+supertypes = [
+    { name = "Widget", kind = "Struct", at = "struct ⟦Widget⟧ {};" },
+]
+subtypes = [
+    { name = "Button", kind = "Struct", at = "struct ⟦Button⟧ : Control {};" },
+    { name = "Label", kind = "Struct", at = "struct ⟦Label⟧ : Control {};" },
+    { name = "Panel", kind = "Struct", at = "struct ⟦Panel⟧ : Control, Extra {};" },
+]
+
+[answers.multi]
+type_hierarchy = [
+    { name = "Panel", kind = "Struct", at = "struct ⟦Panel⟧ : Control, Extra {};" },
+]
+supertypes = [
+    { name = "Control", kind = "Struct", at = "struct ⟦Control⟧ : Widget {};" },
+    { name = "Extra", kind = "Struct", at = "struct ⟦Extra⟧ {};" },
+]
+subtypes = []
+
+[answers.union_def]
+type_hierarchy = [
+    { name = "Packet", kind = "Class", at = "union ⟦Packet⟧ {" },
+]
+supertypes = []
+subtypes = []
+
+[answers.leaf_enum]
+type_hierarchy = [
+    { name = "Mode", kind = "Enum", at = "enum class ⟦Mode⟧ : int {};" },
+]
+supertypes = []
+subtypes = []
+
+[answers.gate_fn]
+type_hierarchy = []
+supertypes = []
+subtypes = []

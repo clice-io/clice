@@ -1,0 +1,3 @@
+[answers.member]
+wrong = "obj.foo() calls foo once process is instantiated with A, so it should be among the references (clangd#258, clangd#675)"
+references = ["void ⟦foo⟧();"]

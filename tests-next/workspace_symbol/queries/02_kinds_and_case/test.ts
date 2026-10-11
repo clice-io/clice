@@ -1,0 +1,7 @@
+import { answers } from "@clice/tools/testing";
+
+answers({ paths: { server: "workspace symbols read the project index" } }, async (a) => {
+    for (const query of ["widget", "parse_config", "MODE", "fast", "no_such_symbol"]) {
+        await a.show(query, a.workspaceSymbols(query));
+    }
+});

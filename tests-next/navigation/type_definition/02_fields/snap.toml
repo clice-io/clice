@@ -1,0 +1,11 @@
+[answers.type]
+type_definition = []
+
+[answers.class_type]
+type_definition = []
+
+[answers.field]
+type_definition = ["struct ⟦Logger⟧ {};"]
+
+[answers.class_field]
+type_definition = ["class ⟦Store⟧ {};"]

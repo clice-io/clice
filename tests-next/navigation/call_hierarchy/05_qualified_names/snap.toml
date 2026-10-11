@@ -1,0 +1,7 @@
+[answers.method]
+wrong = "the item should name Circle::draw, to tell the method from a free function"
+call_hierarchy = [
+    { name = "draw", kind = "Method", at = "void Circle::⟦draw⟧() {}" },
+]
+incoming_calls = []
+outgoing_calls = []

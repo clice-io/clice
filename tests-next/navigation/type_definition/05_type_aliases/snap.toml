@@ -1,0 +1,20 @@
+[answers.underlying]
+type_definition = []
+
+[answers.alias]
+type_definition = ["struct ⟦Impl⟧ {};"]
+
+[answers.template_alias]
+type_definition = ["struct ⟦Box⟧ {};"]
+
+[answers.var]
+wrong = "should reach Impl, the type the alias names"
+type_definition = ["using ⟦Handle⟧ = Impl;"]
+
+[answers.legacy]
+wrong = "should reach Impl, the type the typedef names"
+type_definition = ["typedef Impl ⟦LegacyHandle⟧;"]
+
+[answers.boxed]
+wrong = "should reach Box, the template the alias names"
+type_definition = ["using ⟦Boxed⟧ = Box<int>;"]

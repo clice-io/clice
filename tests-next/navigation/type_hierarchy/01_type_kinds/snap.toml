@@ -1,0 +1,27 @@
+[answers.cls]
+type_hierarchy = [
+    { name = "Handle", kind = "Class", at = "class ⟦Handle⟧ {};" },
+]
+supertypes = []
+subtypes = []
+
+[answers.strct]
+type_hierarchy = [
+    { name = "Point", kind = "Struct", at = "struct ⟦Point⟧ {};" },
+]
+supertypes = []
+subtypes = []
+
+[answers.enm]
+type_hierarchy = [
+    { name = "Mode", kind = "Enum", at = "enum class ⟦Mode⟧ {};" },
+]
+supertypes = []
+subtypes = []
+
+[answers.uni]
+type_hierarchy = [
+    { name = "Storage", kind = "Class", at = "union ⟦Storage⟧ {" },
+]
+supertypes = []
+subtypes = []

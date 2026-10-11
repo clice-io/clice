@@ -1,0 +1,53 @@
+[answers.guard_def]
+definition = ["#define ⟦FEATURE_ON⟧"]
+references = [
+    "#define ⟦FEATURE_ON⟧",
+    "#ifdef ⟦FEATURE_ON⟧",
+    "#ifndef ⟦FEATURE_ON⟧",
+    "#if defined(⟦FEATURE_ON⟧) && defined FEATURE_ON",
+    "#if defined(FEATURE_ON) && defined ⟦FEATURE_ON⟧",
+]
+
+[answers.ifdef_use]
+definition = ["#define ⟦FEATURE_ON⟧"]
+references = [
+    "#define ⟦FEATURE_ON⟧",
+    "#ifdef ⟦FEATURE_ON⟧",
+    "#ifndef ⟦FEATURE_ON⟧",
+    "#if defined(⟦FEATURE_ON⟧) && defined FEATURE_ON",
+    "#if defined(FEATURE_ON) && defined ⟦FEATURE_ON⟧",
+]
+
+[answers.ifndef_use]
+definition = ["#define ⟦FEATURE_ON⟧"]
+references = [
+    "#define ⟦FEATURE_ON⟧",
+    "#ifdef ⟦FEATURE_ON⟧",
+    "#ifndef ⟦FEATURE_ON⟧",
+    "#if defined(⟦FEATURE_ON⟧) && defined FEATURE_ON",
+    "#if defined(FEATURE_ON) && defined ⟦FEATURE_ON⟧",
+]
+
+[answers.defined_paren]
+definition = ["#define ⟦FEATURE_ON⟧"]
+references = [
+    "#define ⟦FEATURE_ON⟧",
+    "#ifdef ⟦FEATURE_ON⟧",
+    "#ifndef ⟦FEATURE_ON⟧",
+    "#if defined(⟦FEATURE_ON⟧) && defined FEATURE_ON",
+    "#if defined(FEATURE_ON) && defined ⟦FEATURE_ON⟧",
+]
+
+[answers.defined_bare]
+definition = ["#define ⟦FEATURE_ON⟧"]
+references = [
+    "#define ⟦FEATURE_ON⟧",
+    "#ifdef ⟦FEATURE_ON⟧",
+    "#ifndef ⟦FEATURE_ON⟧",
+    "#if defined(⟦FEATURE_ON⟧) && defined FEATURE_ON",
+    "#if defined(FEATURE_ON) && defined ⟦FEATURE_ON⟧",
+]
+
+[answers.builtin_use]
+definition = []
+references = []

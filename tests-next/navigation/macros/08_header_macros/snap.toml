@@ -1,0 +1,39 @@
+[answers.macro_use]
+definition = ["hooks.h │ #define ⟦EXPORT_HOOK⟧(name) int name(int state)"]
+references = [
+    "hooks.h │ #define ⟦EXPORT_HOOK⟧(name) int name(int state)",
+    "⟦EXPORT_HOOK⟧(advance);",
+    "⟦EXPORT_HOOK⟧(advance) {",
+]
+
+[answers.hook_decl]
+definition = ["EXPORT_HOOK(⟦advance⟧) {"]
+references = [
+    "EXPORT_HOOK(⟦advance⟧);",
+    "EXPORT_HOOK(⟦advance⟧) {",
+    "return uses_counted && ⟦advance⟧(1) > 0;",
+]
+
+[answers.hook_def]
+definition = ["EXPORT_HOOK(⟦advance⟧);"]
+references = [
+    "EXPORT_HOOK(⟦advance⟧);",
+    "EXPORT_HOOK(⟦advance⟧) {",
+    "return uses_counted && ⟦advance⟧(1) > 0;",
+]
+
+[answers.body_gen_site]
+definition = ["hooks.h │ #define ⟦COUNT_USES⟧ bool uses_counted = true"]
+references = ["hooks.h │ #define ⟦COUNT_USES⟧ bool uses_counted = true", "⟦COUNT_USES⟧;"]
+
+[answers.body_gen_use]
+definition = ["⟦COUNT_USES⟧;"]
+references = ["⟦COUNT_USES⟧;", "return ⟦uses_counted⟧ && advance(1) > 0;"]
+
+[answers.hook_use]
+definition = ["EXPORT_HOOK(⟦advance⟧) {"]
+references = [
+    "EXPORT_HOOK(⟦advance⟧);",
+    "EXPORT_HOOK(⟦advance⟧) {",
+    "return uses_counted && ⟦advance⟧(1) > 0;",
+]

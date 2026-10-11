@@ -1,0 +1,8 @@
+[answers.decl]
+declaration = ["void Widget::⟦draw⟧() {}"]
+
+[answers.def]
+declaration = ["void ⟦draw⟧();"]
+
+[answers.use]
+declaration = ["void ⟦draw⟧();", "void Widget::⟦draw⟧() {}"]

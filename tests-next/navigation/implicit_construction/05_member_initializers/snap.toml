@@ -1,0 +1,11 @@
+[answers.base_init]
+definition = ["struct ⟦Base⟧ {"]
+
+[answers.base_paren]
+definition = ["⟦Base⟧(int x);"]
+
+[answers.member_init]
+definition = ["Logger ⟦logger⟧;"]
+
+[answers.member_paren]
+definition = ["⟦Logger⟧(int level);"]

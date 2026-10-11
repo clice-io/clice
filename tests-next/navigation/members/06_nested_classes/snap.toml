@@ -1,0 +1,14 @@
+[answers.inner_def]
+definition = ["struct ⟦Inner⟧ {"]
+
+[answers.member_decl]
+definition = ["int Outer::Inner::⟦read⟧() const {"]
+
+[answers.inner_scope]
+definition = ["struct ⟦Inner⟧ {"]
+
+[answers.member_def]
+definition = ["int ⟦read⟧() const;"]
+
+[answers.member_use]
+definition = ["int Outer::Inner::⟦read⟧() const {"]

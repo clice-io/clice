@@ -1,0 +1,8 @@
+[test.Connection]
+workspace_symbols = [
+    { name = "ConnectionImpl", kind = "Struct", at = "main.cpp │ struct ⟦ConnectionImpl⟧ {};" },
+    { name = "Connection", kind = "TypeParameter", at = "main.cpp │ using ⟦Connection⟧ = ConnectionImpl;" },
+]
+
+[test.order]
+value = ["Connection", "ConnectionImpl"]

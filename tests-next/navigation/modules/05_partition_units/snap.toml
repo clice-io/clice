@@ -1,0 +1,17 @@
+[answers.partition_ref]
+definition = ["geo_shapes.cppm │ export module ⟦geo:shapes⟧;"]
+
+[answers.primary_fn]
+definition = ["export int ⟦area⟧(int width, int height) {"]
+
+[answers.partition_name]
+definition = ["export module ⟦geo:shapes⟧;"]
+
+[answers.partition_fn]
+definition = ["export int ⟦corners⟧() {"]
+
+[answers.use_primary]
+definition = ["geo.cppm │ export int ⟦area⟧(int width, int height) {"]
+
+[answers.use_partition]
+definition = ["geo_shapes.cppm │ export int ⟦corners⟧() {"]

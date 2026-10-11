@@ -1,0 +1,10 @@
+[answers.co_await_kw]
+wrong = "should reach the awaiter's methods the expression calls"
+definition = []
+
+[answers.co_yield_kw]
+definition = ["Awaiter ⟦yield_value⟧(int value);"]
+
+[answers.co_return_kw]
+wrong = "should reach the promise's return_value, which co_return calls"
+definition = []

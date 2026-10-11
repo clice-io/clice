@@ -1,0 +1,5 @@
+[answers.module_name]
+definition = ["widget.cppm │ export module ⟦widget⟧;"]
+
+[answers.imported_use]
+definition = ["widget.cppm │ export int ⟦area⟧(int width, int height) {"]

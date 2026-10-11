@@ -1,0 +1,5 @@
+[answers.member_decl]
+definition = ["void ⟦push⟧(T value);"]
+
+[answers.member_call]
+definition = ["void ⟦push⟧(T value);"]

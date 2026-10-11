@@ -1,0 +1,3 @@
+[answers.method]
+wrong = "go to implementation should reach the out-of-line definition (clangd#854)"
+implementation = []

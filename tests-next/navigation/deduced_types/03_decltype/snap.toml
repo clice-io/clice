@@ -1,0 +1,8 @@
+[answers.operand]
+definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.nested]
+definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.trailing]
+definition = ["struct ⟦Widget⟧ {};"]

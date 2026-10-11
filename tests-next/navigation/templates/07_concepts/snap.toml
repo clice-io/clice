@@ -1,0 +1,11 @@
+[answers.concept_def]
+definition = ["concept ⟦Addable⟧ = requires(T value) {"]
+
+[answers.type_constraint]
+definition = ["concept ⟦Addable⟧ = requires(T value) {"]
+
+[answers.requires_use]
+definition = ["concept ⟦Addable⟧ = requires(T value) {"]
+
+[answers.constrained_call]
+definition = ["T ⟦twice⟧(T value) {"]

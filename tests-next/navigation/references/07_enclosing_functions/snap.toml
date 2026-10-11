@@ -1,0 +1,8 @@
+[answers.variable]
+wrong = "each reference should name the function it lies in (clangd#177)"
+references = [
+    "int ⟦shared_value⟧ = 0;",
+    "return ⟦shared_value⟧; @+3",
+    "⟦shared_value⟧ = 1;",
+    "return ⟦shared_value⟧; @+8",
+]

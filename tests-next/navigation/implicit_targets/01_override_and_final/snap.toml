@@ -1,0 +1,7 @@
+[answers.override]
+wrong = "should reach Base::draw, the method it overrides"
+definition = []
+
+[answers.final]
+wrong = "should reach Base::paint, the method it overrides"
+definition = []

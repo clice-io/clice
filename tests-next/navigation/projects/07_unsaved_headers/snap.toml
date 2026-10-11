@@ -1,0 +1,15 @@
+[test.errors]
+wrong = "main.cpp should see volume in the unsaved buffer of shapes.h, as it does once saved (clangd#488)"
+errors = [
+    { at = "return area(1, 2) + ⟦volume⟧(3);", severity = "error", message = "use of undeclared identifier 'volume'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+[test.added]
+wrong = "should reach volume in the unsaved buffer of shapes.h, as it does once saved (clangd#488)"
+definition = []
+
+[test."saved errors"]
+errors = []
+
+[test.saved]
+definition = ["shapes.h │ int ⟦volume⟧(int side);"]

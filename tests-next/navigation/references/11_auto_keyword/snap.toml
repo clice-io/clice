@@ -1,0 +1,9 @@
+[answers.type]
+references = ["struct ⟦Widget⟧ {};", "⟦Widget⟧ make_widget();"]
+
+[answers.parameter_auto]
+wrong = "the auto of the parameter is no use of Widget, as the auto of a variable is not"
+references = ["struct ⟦Widget⟧ {};", "⟦Widget⟧ make_widget();", "void once(⟦auto⟧ value) {}"]
+
+[answers.variable_auto]
+references = ["struct ⟦Widget⟧ {};", "⟦Widget⟧ make_widget();"]

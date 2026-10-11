@@ -1,0 +1,26 @@
+[answers.primary]
+definition = ["struct ⟦Box⟧ {};"]
+
+[answers.explicit_specialization]
+definition = ["struct ⟦Box⟧<char> {};"]
+
+[answers.partial_specialization]
+definition = ["struct ⟦Box⟧<T*> {};"]
+
+[answers.alias]
+definition = ["using ⟦Handle⟧ = Box<long>;"]
+
+[answers.builtin]
+definition = []
+
+[answers.closure]
+definition = []
+
+[answers.new_expression]
+definition = []
+
+[answers.init_capture]
+definition = ["[⟦copy⟧ = make_box()] {};"]
+
+[answers.macro]
+definition = ["#define ⟦AUTO⟧ auto"]

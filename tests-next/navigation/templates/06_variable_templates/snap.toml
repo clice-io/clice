@@ -1,0 +1,11 @@
+[answers.primary]
+definition = ["T ⟦zero⟧ = T{};"]
+
+[answers.specialization]
+definition = ["int ⟦zero⟧<int> = 7;"]
+
+[answers.spec_use]
+definition = ["int ⟦zero⟧<int> = 7;"]
+
+[answers.primary_use]
+definition = ["T ⟦zero⟧ = T{};"]

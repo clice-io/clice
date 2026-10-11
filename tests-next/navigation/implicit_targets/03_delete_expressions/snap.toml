@@ -1,0 +1,3 @@
+[answers.delete]
+wrong = "should reach Widget::~Widget, the destructor it runs"
+definition = []

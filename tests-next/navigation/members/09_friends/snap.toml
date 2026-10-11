@@ -1,0 +1,14 @@
+[answers.friend_decl]
+definition = ["int ⟦inspect⟧(const Vault& vault) {"]
+
+[answers.hidden_def]
+definition = ["friend int ⟦reveal⟧(const Vault& vault) {"]
+
+[answers.friend_def]
+definition = ["friend int ⟦inspect⟧(const Vault& vault);"]
+
+[answers.friend_use]
+definition = ["int ⟦inspect⟧(const Vault& vault) {"]
+
+[answers.hidden_use]
+definition = ["friend int ⟦reveal⟧(const Vault& vault) {"]

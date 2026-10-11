@@ -1,0 +1,5 @@
+[answers.seg_app]
+definition = ["app_core.cppm │ export module ⟦app.core⟧;"]
+
+[answers.seg_core]
+definition = ["app_core.cppm │ export module ⟦app.core⟧;"]

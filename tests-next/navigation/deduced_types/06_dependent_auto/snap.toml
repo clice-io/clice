@@ -1,0 +1,5 @@
+[answers.dependent_call]
+definition = ["struct ⟦Node⟧ {"]
+
+[answers.dependent_member]
+definition = ["template <typename ⟦T⟧> @-3"]

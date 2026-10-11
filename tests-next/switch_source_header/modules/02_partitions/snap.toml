@@ -1,0 +1,12 @@
+[answers."api.cppm".counterparts]
+preferred = "api.cpp"
+candidates = [
+    { path = "api.cpp", reasons = ["defines 1 of 1 declaration", "same name"] },
+]
+
+[answers."api.cpp".counterparts]
+preferred = "api.cppm"
+candidates = [
+    { path = "api.cppm", reasons = ["declares 1 of 1 definition", "same name"] },
+    { path = "lib.cppm", reasons = ["interface of module lib"] },
+]

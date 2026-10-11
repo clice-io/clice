@@ -1,0 +1,5 @@
+[answers.neq]
+definition = ["bool ⟦operator==⟧(const S& other) const;"]
+
+[answers.gt]
+definition = ["auto ⟦operator<=>⟧(const S& other) const = default;"]

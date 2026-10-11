@@ -1,0 +1,14 @@
+[answers.var_decl]
+definition = ["extern int ⟦threshold⟧;"]
+
+[answers.fn_decl]
+definition = ["int ⟦probe⟧(int value);"]
+
+[answers.caller]
+definition = ["int ⟦watch⟧(int value) {"]
+
+[answers.fn_use]
+definition = ["int ⟦probe⟧(int value);"]
+
+[answers.var_use]
+definition = ["extern int ⟦threshold⟧;"]

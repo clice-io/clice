@@ -1,0 +1,11 @@
+[answers.fwd]
+declaration = ["struct ⟦Widget⟧ {"]
+
+[answers.def]
+declaration = ["struct ⟦Widget⟧;"]
+
+[answers.use]
+declaration = ["struct ⟦Widget⟧;", "struct ⟦Widget⟧ {"]
+
+[answers.class_use]
+declaration = ["class ⟦Panel⟧;", "class ⟦Panel⟧ {"]

@@ -1,0 +1,5 @@
+[answers.first]
+definition = ["namespace ⟦geo⟧ { @+4"]
+
+[answers.qualifier]
+definition = ["namespace ⟦geo⟧ { @-9", "namespace ⟦geo⟧ { @-5"]

@@ -1,0 +1,27 @@
+[answers.leaf]
+call_hierarchy = [
+    { name = "leaf", kind = "Function", at = "int ⟦leaf⟧(int value) {" },
+]
+incoming_calls = [
+    {
+        name = "big",
+        kind = "Function",
+        at = "int ⟦big⟧() {",
+        sites = ['#include ⟦"body.inc"⟧', "total += ⟦leaf⟧(3);"],
+    },
+]
+outgoing_calls = []
+
+[answers.big]
+call_hierarchy = [
+    { name = "big", kind = "Function", at = "int ⟦big⟧() {" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "leaf",
+        kind = "Function",
+        at = "int ⟦leaf⟧(int value) {",
+        sites = ['#include ⟦"body.inc"⟧', "total += ⟦leaf⟧(3);"],
+    },
+]

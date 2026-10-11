@@ -1,0 +1,19 @@
+[answers.first_def]
+definition = ["#define ⟦PHASE⟧ 1"]
+references = ["#define ⟦PHASE⟧ 1", "int before = ⟦PHASE⟧;", "#undef ⟦PHASE⟧"]
+
+[answers.first_use]
+definition = ["#define ⟦PHASE⟧ 1"]
+references = ["#define ⟦PHASE⟧ 1", "int before = ⟦PHASE⟧;", "#undef ⟦PHASE⟧"]
+
+[answers.undef_site]
+definition = ["#define ⟦PHASE⟧ 1"]
+references = ["#define ⟦PHASE⟧ 1", "int before = ⟦PHASE⟧;", "#undef ⟦PHASE⟧"]
+
+[answers.second_def]
+definition = ["#define ⟦PHASE⟧ 2"]
+references = ["#define ⟦PHASE⟧ 2", "int after = ⟦PHASE⟧;"]
+
+[answers.second_use]
+definition = ["#define ⟦PHASE⟧ 2"]
+references = ["#define ⟦PHASE⟧ 2", "int after = ⟦PHASE⟧;"]

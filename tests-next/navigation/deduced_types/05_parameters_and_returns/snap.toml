@@ -1,0 +1,14 @@
+[answers.single_instantiation]
+definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.several_instantiations]
+definition = []
+
+[answers.deduced_return]
+definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.trailing_return]
+definition = ["struct ⟦Gadget⟧ {};"]
+
+[answers.generic_lambda]
+definition = ["struct ⟦Gadget⟧ {};"]

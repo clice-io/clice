@@ -1,0 +1,11 @@
+[answers.left_def]
+definition = ["auto [⟦left⟧, right] = make_pair();"]
+
+[answers.right_def]
+definition = ["auto [left, ⟦right⟧] = make_pair();"]
+
+[answers.left_use]
+definition = ["auto [⟦left⟧, right] = make_pair();"]
+
+[answers.right_use]
+definition = ["auto [left, ⟦right⟧] = make_pair();"]

@@ -1,0 +1,23 @@
+[answers.subscript]
+definition = ["void ⟦push⟧(const T& value);"]
+
+[answers.overload]
+definition = ["T& ⟦front⟧();"]
+
+[answers.call]
+definition = ["void ⟦push⟧(const T& value);"]
+
+[answers.const_overload]
+definition = ["const T& ⟦front⟧() const;"]
+
+[answers.parameters]
+definition = ["void ⟦take⟧(int count);", "void ⟦take⟧(long count) const;"]
+
+[answers.template_overload]
+definition = ["void ⟦pick⟧();", "void ⟦pick⟧() const;"]
+
+[answers.deduced]
+definition = ["void ⟦push⟧(const T& value);"]
+
+[answers.direct_init]
+definition = ["void ⟦push⟧(const T& value);"]

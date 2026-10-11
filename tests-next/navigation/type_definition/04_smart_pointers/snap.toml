@@ -1,0 +1,6 @@
+[answers.type]
+type_definition = []
+
+[answers.ptr]
+wrong = "should also offer Widget, the type the smart pointer points to (clangd#1026)"
+type_definition = ["struct ⟦Ptr⟧ {"]

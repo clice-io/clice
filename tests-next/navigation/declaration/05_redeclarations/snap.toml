@@ -1,0 +1,15 @@
+[answers.first_decl]
+declaration = ["int ⟦clamp⟧(int value); @+1", "int ⟦clamp⟧(int value) {"]
+
+[answers.second_decl]
+declaration = ["int ⟦clamp⟧(int value); @-1", "int ⟦clamp⟧(int value) {"]
+
+[answers.def]
+declaration = ["int ⟦clamp⟧(int value); @-3", "int ⟦clamp⟧(int value); @-2"]
+
+[answers.use]
+declaration = [
+    "int ⟦clamp⟧(int value); @-8",
+    "int ⟦clamp⟧(int value); @-7",
+    "int ⟦clamp⟧(int value) {",
+]

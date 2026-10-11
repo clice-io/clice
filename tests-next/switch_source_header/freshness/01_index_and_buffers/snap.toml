@@ -1,0 +1,36 @@
+["before the index"."include/codec.h".counterparts]
+preferred = "src/codec.cpp"
+candidates = [
+    { path = "src/codec.cpp", reasons = ["same name"] },
+]
+
+["before the index"."src/codec.cpp".counterparts]
+preferred = "include/codec.h"
+candidates = [
+    { path = "include/codec.h", reasons = ["same name"] },
+]
+
+[indexed."include/codec.h".counterparts]
+preferred = "src/codec.cpp"
+candidates = [
+    { path = "src/codec.cpp", reasons = ["defines 1 of 2 declarations", "same name"] },
+    { path = "src/decode.cpp", reasons = ["defines 1 of 2 declarations"] },
+]
+
+[indexed."src/decode.cpp".counterparts]
+preferred = "include/codec.h"
+candidates = [
+    { path = "include/codec.h", reasons = ["declares 1 of 1 definition"] },
+]
+
+["edited buffer"."include/codec.h".counterparts]
+candidates = [
+    { path = "src/decode.cpp", reasons = ["defines 2 of 2 declarations"] },
+    { path = "src/codec.cpp", reasons = ["same name"] },
+]
+
+["nothing to pair"."src/inline.h".counterparts]
+candidates = []
+
+["nothing to pair"."src/missing.h".counterparts]
+candidates = []

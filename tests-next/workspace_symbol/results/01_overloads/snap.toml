@@ -1,0 +1,6 @@
+[answers.process]
+wrong = "each overload should show its parameters, to tell the two process apart (clangd#1344)"
+workspace_symbols = [
+    { name = "process", kind = "Function", at = "main.cpp │ void ⟦process⟧(int value) {}" },
+    { name = "process", kind = "Function", at = "main.cpp │ void ⟦process⟧(bool flag, int level) {}" },
+]

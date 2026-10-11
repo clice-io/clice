@@ -1,0 +1,3 @@
+[answers.colon]
+wrong = "should reach Range::begin and Range::end, which the loop calls"
+definition = []

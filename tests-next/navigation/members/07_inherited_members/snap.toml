@@ -1,0 +1,11 @@
+[answers.base_def]
+definition = ["struct ⟦Base⟧ {"]
+
+[answers.method_def]
+definition = ["int ⟦measure⟧() const {"]
+
+[answers.derived_def]
+definition = ["struct ⟦Derived⟧ : Base {};"]
+
+[answers.inherited_use]
+definition = ["int ⟦measure⟧() const {"]

@@ -1,0 +1,5 @@
+[answers.pure_root]
+implementation = ["void ⟦f⟧() override = 0;", "void ⟦f⟧() override {}"]
+
+[answers.concrete_root]
+implementation = ["void ⟦g⟧() override {} @+4"]

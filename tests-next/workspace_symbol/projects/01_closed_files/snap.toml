@@ -1,0 +1,4 @@
+[test.helper_elsewhere]
+workspace_symbols = [
+    { name = "helper_elsewhere", kind = "Function", at = "other.cpp │ void ⟦helper_elsewhere⟧() {}" },
+]

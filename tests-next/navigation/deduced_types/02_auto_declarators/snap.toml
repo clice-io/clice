@@ -1,0 +1,20 @@
+[answers.pointer_declarator]
+definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.const_reference]
+definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.forwarding]
+definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.deduced_pointer]
+definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.array_reference]
+definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.decltype_auto]
+definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.binding]
+definition = ["struct ⟦Pair⟧ {"]

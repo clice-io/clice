@@ -1,0 +1,8 @@
+[answers.decl]
+declaration = ["int ⟦log_level⟧ = 0;"]
+
+[answers.def]
+declaration = ["extern int ⟦log_level⟧;"]
+
+[answers.use]
+declaration = ["extern int ⟦log_level⟧;", "int ⟦log_level⟧ = 0;"]

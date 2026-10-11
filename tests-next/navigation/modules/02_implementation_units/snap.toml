@@ -1,0 +1,15 @@
+[answers.iface_module_name]
+wrong = "should lead to impl.cpp, the unit implementing the module, as the implementation unit's name leads here"
+definition = ["export module ⟦store⟧;"]
+
+[answers.iface_decl]
+definition = ["impl.cpp │ int ⟦fetch⟧(int key) {"]
+
+[answers.impl_module_name]
+definition = ["iface.cppm │ export module ⟦store⟧;"]
+
+[answers.impl_def]
+definition = ["iface.cppm │ export int ⟦fetch⟧(int key);"]
+
+[answers.use]
+definition = ["impl.cpp │ int ⟦fetch⟧(int key) {"]

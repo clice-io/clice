@@ -1,12 +1,13 @@
-extern int quota;
+extern int threshold;
 
-int measure(int value);
+int probe(int value);
 
-struct Panel {
-    virtual void draw() = 0;
+struct Screen {
+    static const int margin = 4;
+    virtual void refresh() = 0;
 };
 
-int render(Panel& panel) {
-    panel.§(method)draw();
-    return §(function)measure(§(variable)quota);
+int watch(Screen& screen, int value) {
+    screen.§(method)refresh();
+    return §(function)probe(value) + §(variable)threshold + Screen::§(constant)margin;
 }

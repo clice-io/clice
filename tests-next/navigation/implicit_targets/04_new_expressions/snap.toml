@@ -1,0 +1,3 @@
+[answers.new_kw]
+wrong = "should also reach Pool(), the constructor the expression runs"
+definition = ["static void* ⟦operator new⟧(decltype(sizeof(0)) size);"]

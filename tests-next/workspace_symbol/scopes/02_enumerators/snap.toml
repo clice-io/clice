@@ -1,0 +1,4 @@
+[answers."Color::Red"]
+workspace_symbols = [
+    { name = "Color::Red", kind = "EnumMember", at = "main.cpp │ enum Color { ⟦Red⟧, Green };", container = "Color" },
+]

@@ -1,0 +1,7 @@
+[answers.break]
+wrong = "should reach the loop it leaves (clangd#1921)"
+definition = []
+
+[answers.continue]
+wrong = "should reach the loop it continues (clangd#1921)"
+definition = []

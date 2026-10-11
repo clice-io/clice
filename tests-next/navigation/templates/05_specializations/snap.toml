@@ -1,0 +1,26 @@
+[answers.primary]
+definition = ["T ⟦identity⟧(T value) {"]
+
+[answers.spec]
+definition = ["int ⟦identity⟧<int>(int value) {"]
+
+[answers.class_primary]
+definition = ["struct ⟦Box⟧ {"]
+
+[answers.member_decl]
+definition = ["T Box<T>::⟦get⟧() {"]
+
+[answers.member_def]
+definition = ["T ⟦get⟧();"]
+
+[answers.class_use]
+definition = ["struct ⟦Box⟧ {"]
+
+[answers.use_spec]
+definition = ["int ⟦identity⟧<int>(int value) {"]
+
+[answers.use_primary]
+definition = ["T ⟦identity⟧(T value) {"]
+
+[answers.member_use]
+definition = ["T Box<T>::⟦get⟧() {"]

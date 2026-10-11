@@ -1,0 +1,5 @@
+[answers.enum_name]
+definition = ["enum class ⟦Color⟧ { Red, Green };"]
+
+[answers.enumerator]
+definition = ["enum class Color { ⟦Red⟧, Green };"]
