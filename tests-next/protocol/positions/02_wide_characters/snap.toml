@@ -3,9 +3,6 @@ diagnostics = [
     { at = 'const char* greeting = "π 🙂 中文"; int sum = add(1, 2) + ⟦missing⟧;', severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
 ]
 
-[test.hover]
-wrong = "the declaration shows clang's internal <recovery - expr> in place of the initializer as written"
-
 [test.hover.hover]
 markdown = '''
 ### variable `sum`
@@ -15,7 +12,7 @@ Type: `int`
 
 ---
 ```cpp
-int sum = <recovery - expr>(add(1, 2))
+int sum
 ```
 '''
 range = 'const char* greeting = "π 🙂 中文"; int ⟦sum⟧ = add(1, 2) + missing;'

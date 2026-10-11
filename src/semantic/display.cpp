@@ -984,10 +984,13 @@ using TokenCount = llvm::function_ref<std::size_t(clang::SourceRange)>;
 
 /// Initializers might be huge and result in lots of memory allocations in
 /// some catastrophic cases. Such long lists are not useful in hover cards
-/// anyway.
-bool is_huge(const clang::Expr* init, const clang::PrintingPolicy& policy, TokenCount token_count) {
-    return init &&
-           (token_count(init->getSourceRange()) > 200 || printed_length(*init, policy) > 500);
+/// anyway, and neither is one that does not compile: clang prints the parts
+/// it recovered as `<recovery-expr>`.
+bool hides_initializer(const clang::Expr* init,
+                       const clang::PrintingPolicy& policy,
+                       TokenCount token_count) {
+    return init && (init->containsErrors() || token_count(init->getSourceRange()) > 200 ||
+                    printed_length(*init, policy) > 500);
 }
 
 auto initializer(const clang::Decl& member) -> const clang::Expr* {
@@ -1117,7 +1120,7 @@ struct MemberPrinter {
             }
             os << '\n' << enumerator->getName();
             if(const clang::Expr* init = enumerator->getInitExpr();
-               init && !is_huge(init, policy, token_count)) {
+               init && !hides_initializer(init, policy, token_count)) {
                 os << " = ";
                 init->printPretty(os, nullptr, policy);
             } else if(!enumerator->getType()->isDependentType()) {
@@ -1210,7 +1213,7 @@ struct MemberPrinter {
     }
 
     void print(const clang::Decl& member, clang::PrintingPolicy member_policy) {
-        if(is_huge(initializer(member), member_policy, token_count)) {
+        if(hides_initializer(initializer(member), member_policy, token_count)) {
             member_policy.SuppressInitializers = true;
         }
         member.print(os, member_policy);
@@ -1225,7 +1228,7 @@ auto definition(const clang::Decl* decl,
     assert(decl);
     clang::PrintingPolicy policy = derive_policy(decl->getASTContext(), options);
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
-       var && is_huge(var->getInit(), policy, token_count)) {
+       var && hides_initializer(var->getInit(), policy, token_count)) {
         policy.SuppressInitializers = true;
     }
 

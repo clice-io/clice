@@ -574,7 +574,7 @@ ZEST_CASE(all_no_crash) {
              hi.namespace_scope = "";
              hi.local_scope = "Foo::foo::";
              hi.type = "Bar";
-             hi.definition = "Bar x = <recovery - expr>()";
+             hi.definition = "Bar x";
          }},
     };
     check_cases(cases);
