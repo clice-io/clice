@@ -64,23 +64,73 @@ void write(llvm::StringRef name, llvm::StringRef content) {
     scope.push_back(path);
 }
 
-RenamePlan plan(const index::RenameTarget& target, llvm::StringRef new_name) {
-    auto editable = [&](llvm::StringRef path) {
-        return !foreign.contains(path);
-    };
-    auto read = [&](llvm::StringRef path) -> std::optional<index::SweptText> {
-        auto text = vfs::read(path);
-        if(!text) {
-            return std::nullopt;
+/// The disk's files swept for the names of the renames planned, each
+/// read once.
+llvm::StringSet<> names;
+llvm::StringMap<std::optional<index::SweptText>> swept;
+
+const index::SweptText* read(llvm::StringRef path) {
+    auto [it, inserted] = swept.try_emplace(path);
+    if(inserted) {
+        if(auto text = vfs::read(path)) {
+            it->second = index::sweep_text((*text)->getBuffer().str(), names);
         }
-        return index::sweep_text((*text)->getBuffer().str(), target.symbol.symbol.name, new_name);
-    };
-    return index::plan_rename(
-        query,
-        project.file_table,
-        target,
-        new_name,
-        {.files = scope, .editable = editable, .read = read, .units_pending = units_pending});
+    }
+    return it->second ? &*it->second : nullptr;
+}
+
+bool editable(llvm::StringRef path) {
+    return !foreign.contains(path);
+}
+
+RenamePlan plan(const index::RenameTarget& target, llvm::StringRef new_name) {
+    names = {target.symbol.symbol.name, new_name};
+    swept.clear();
+    return index::plan_rename(query,
+                              project.file_table,
+                              target,
+                              new_name,
+                              {.files = scope,
+                               .editable = [&](llvm::StringRef path) { return editable(path); },
+                               .read = [&](llvm::StringRef path) { return read(path); },
+                               .units_pending = units_pending});
+}
+
+/// The rename target of the one symbol the query `name` finds.
+index::RenameTarget target(llvm::StringRef name) {
+    auto hits = query.locate(*index::SymbolQuery::parse(name));
+    ZASSERT(hits.size() == 1U);
+    auto found = index::rename_target(query, hits.front());
+    ZASSERT(found);
+    return std::move(*found);
+}
+
+/// Plan the renames together, as a batch.
+index::BatchPlan batch(std::vector<index::Renaming> renamings) {
+    names.clear();
+    swept.clear();
+    for(auto& [target, new_name]: renamings) {
+        names.insert(target.symbol.symbol.name);
+        names.insert(new_name);
+    }
+    return index::plan_renames(query,
+                               project.file_table,
+                               renamings,
+                               {.files = scope,
+                                .editable = [&](llvm::StringRef path) { return editable(path); },
+                                .read = [&](llvm::StringRef path) { return read(path); },
+                                .units_pending = units_pending});
+}
+
+/// The text of `path` with the batch's edits applied.
+std::string applied(const index::BatchPlan& plan, llvm::StringRef path) {
+    auto text = vfs::read(path);
+    ZASSERT(text);
+    auto file = project.file_table.find(Spelling::absolute(path));
+    ZASSERT(file);
+    auto renamed = index::apply_renames((*text)->getBuffer(), plan, *file);
+    ZASSERT(renamed);
+    return std::move(*renamed);
 }
 
 /// Rename the one symbol the query `name` finds.
@@ -805,21 +855,133 @@ ZEST_CASE(ApplyRewritesTokens) {
         int compute(int x) { return x > 0 ? compute(x - 1) : 0; }
     )");
     merge();
-    auto renamed = rename("compute", "evaluate");
-    ZASSERT(renamed);
-
-    auto text = sources.all_files[file("a.cpp")].content;
-    auto applied = index::apply_rename(text, *renamed, main_id, "evaluate");
-    ZASSERT(applied);
-    ZEXPECT(*applied == R"(
+    auto renamed = batch({
+        {.target = target("compute"), .new_name = "evaluate"}
+    });
+    ZASSERT(!renamed.blocked());
+    ZEXPECT(applied(renamed, file("a.cpp")) == R"(
         int evaluate(int x) { return x > 0 ? evaluate(x - 1) : 0; }
     )");
 
     // The text moved on: a token no longer spells the old name.
-    ZEXPECT(!index::apply_rename("int x;", *renamed, main_id, "evaluate").has_value());
-    auto longer = text;
-    longer.insert(renamed->edits.front().site.range.end, "d");
-    ZEXPECT(!index::apply_rename(longer, *renamed, main_id, "evaluate").has_value());
+    ZEXPECT(!index::apply_renames("int x;", renamed, main_id).has_value());
+    auto longer = sources.all_files[file("a.cpp")].content;
+    longer.insert(renamed.edits.front().edit.site.range.end, "d");
+    ZEXPECT(!index::apply_renames(longer, renamed, main_id).has_value());
+}
+
+ZEST_CASE(BatchSwapsNames) {
+    add_main(file("a.cpp"), R"(
+        int alpha;
+        int beta;
+        int gamma() { return alpha + beta; }
+    )");
+    merge();
+    auto renamed = batch({
+        {.target = target("alpha"), .new_name = "beta" },
+        {.target = target("beta"),  .new_name = "alpha"},
+        {.target = target("gamma"), .new_name = "delta"},
+    });
+    ZEXPECT(!renamed.blocked());
+    for(auto& plan: renamed.plans) {
+        ZEXPECT(plan.warnings.empty());
+        ZEXPECT(plan.unconfirmed.empty());
+    }
+    ZEXPECT(applied(renamed, file("a.cpp")) == R"(
+        int beta;
+        int alpha;
+        int delta() { return beta + alpha; }
+    )");
+}
+
+ZEST_CASE(BatchJudgesFinalNames) {
+    add_main(file("a.cpp"), R"(
+        int first;
+        int second;
+        int taken;
+        struct Row { int entry; };
+    )");
+    merge();
+
+    // Two symbols of one scope given one name collide; a name the batch
+    // frees is free.
+    auto collide = batch({
+        {.target = target("first"),  .new_name = "same"},
+        {.target = target("second"), .new_name = "same"},
+    });
+    ZASSERT(collide.plans.size() == 2U);
+    ZASSERT(collide.plans[0].conflicts.size() == 1U);
+    ZEXPECT(collide.plans[0].conflicts.front().contains("already declared in the same scope"));
+    ZASSERT(collide.plans[1].conflicts.size() == 1U);
+    auto freed = batch({
+        {.target = target("first"), .new_name = "taken"},
+        {.target = target("taken"), .new_name = "kept" },
+    });
+    ZEXPECT(!freed.blocked());
+
+    // A member named as its class will be.
+    auto member = batch({
+        {.target = target("Row"),        .new_name = "Entry"},
+        {.target = target("Row::entry"), .new_name = "Entry"},
+    });
+    ZASSERT(member.plans[1].conflicts.size() == 1U);
+    ZEXPECT(member.plans[1].conflicts.front().contains("names the class the member belongs to"));
+}
+
+ZEST_CASE(BatchRenamesOnce) {
+    add_main(file("a.cpp"), R"(
+        struct Base { virtual void run(); };
+        struct Derived : Base { void run() override; };
+    )");
+    merge();
+    auto twice = batch({
+        {.target = target("Base::run"),    .new_name = "start"},
+        {.target = target("Derived::run"), .new_name = "start"},
+    });
+    ZEXPECT(!twice.blocked());
+    ZEXPECT(twice.plans[1].edits.empty());
+    ZEXPECT(twice.plans[1].warnings.size() == 1U);
+
+    auto apart = batch({
+        {.target = target("Base::run"),    .new_name = "start" },
+        {.target = target("Derived::run"), .new_name = "launch"},
+    });
+    ZASSERT(apart.plans[1].conflicts.size() == 1U);
+    ZEXPECT(apart.plans[1].conflicts.front().contains("as well"));
+}
+
+ZEST_CASE(BatchSharedTokens) {
+    add_main(file("a.cpp"), R"(
+        int §(int)scale(int x) { return x; }
+        double §(double)scale(double x) { return x; }
+        template <typename T> T twice(T v) { return scale(v) * 2; }
+    )");
+    merge();
+    auto overload = [&](llvm::StringRef mark) {
+        auto at = cursor(mark);
+        ZASSERT(at);
+        return std::move(at->target);
+    };
+
+    // Overloads renamed alike stay overloads, and the call a template
+    // leaves open between them is theirs.
+    auto alike = batch({
+        {.target = overload("int"),    .new_name = "resize"},
+        {.target = overload("double"), .new_name = "resize"},
+    });
+    ZEXPECT(!alike.blocked());
+    ZEXPECT(alike.edits.size() == 3U);
+    for(auto& plan: alike.plans) {
+        ZEXPECT(plan.warnings.empty());
+        ZEXPECT(plan.unconfirmed.empty());
+    }
+
+    auto apart = batch({
+        {.target = overload("int"),    .new_name = "resize" },
+        {.target = overload("double"), .new_name = "rescale"},
+    });
+    ZASSERT(apart.plans[0].conflicts.size() == 1U);
+    ZEXPECT(apart.plans[0].conflicts.front().contains("another rename makes `rescale`"));
 }
 
 ZEST_CASE(NonAsciiColumns) {

@@ -147,8 +147,11 @@ Reply answer(Project& project,
                 render_json(Answer{.result = std::move(*outcome), .stale = std::move(stale)});
         } else {
             reply.exit_code = 1;
-            reply.json =
-                render_json(symbol_failure(std::move(outcome.error()), ctx, std::move(stale)));
+            Failure failure{.error = std::move(outcome.error()), .stale = std::move(stale)};
+            if(!ctx.candidates.empty()) {
+                failure.candidates = std::move(ctx.candidates);
+            }
+            reply.json = render_json(failure);
         }
     };
 

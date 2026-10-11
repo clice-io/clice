@@ -9,6 +9,8 @@ export interface ProcessOptions {
     env?: NodeJS.ProcessEnv;
     /// Milliseconds until the child gets SIGTERM; no limit when unset.
     timeout?: number;
+    /// What the child reads on stdin; nothing when unset.
+    input?: string;
 }
 
 /// The fields of a `spawnSync(..., { encoding: "utf8" })` result; the
@@ -22,8 +24,8 @@ export interface ProcessResult {
     error?: Error;
 }
 
-/// Run `command` with an empty stdin until it exits. Never rejects: a
-/// failed spawn or a timeout is reported in `error`.
+/// Run `command` until it exits, its stdin holding `options.input`. Never
+/// rejects: a failed spawn or a timeout is reported in `error`.
 export function runProcess(
     command: string,
     args: readonly string[],
@@ -51,7 +53,7 @@ export function runProcess(
         child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
             stderr += chunk;
         });
-        child.stdin.end();
+        child.stdin.end(options.input);
         child.on("error", (spawnError) => {
             error = spawnError;
             settle(null, null);

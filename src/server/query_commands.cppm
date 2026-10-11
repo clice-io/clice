@@ -166,10 +166,49 @@ struct TypeHierarchyResult {
     std::vector<GraphEntry> subtypes;
 };
 
+/// One rename asked for: the symbol, by a locator, and its new name.
+struct RenameRequest {
+    /// The locator as written, for the answer.
+    std::string text;
+    index::SymbolQuery locator;
+    std::string new_name;
+
+    /// The line of the rename list asking for it; absent on the command
+    /// line.
+    std::optional<int> line;
+};
+
+/// One rename of the answer: the symbol its locator found, and what it
+/// alone brings — the rest is the batch's.
+struct RenameEntry {
+    std::optional<int> line;
+    std::string locator;
+    std::string name;
+    std::string kind;
+    std::string symbol;
+    std::string new_name;
+
+    /// The tokens it replaces.
+    int edits = 0;
+
+    /// What keeps it from being made, which stops the batch.
+    std::vector<std::string> conflicts;
+
+    std::vector<std::string> warnings;
+
+    /// Why the locator names no symbol to rename, which stops the batch.
+    std::optional<std::string> error;
+
+    /// The symbols a locator naming several left to choose from.
+    std::optional<std::vector<SymbolEntry>> candidates;
+};
+
 /// One token a rename replaces: 1-based line and byte column.
 struct RenameEditEntry {
     int line = 0;
     int column = 0;
+    std::string name;
+    std::string new_name;
 
     /// Reached through a name the index resolved heuristically.
     bool heuristic = false;
@@ -180,42 +219,44 @@ struct RenameFileEntry {
     std::vector<RenameEditEntry> edits;
 };
 
-/// A token spelling the old name that the rename leaves alone.
+/// A token spelling an old name that the renames leave alone.
 struct RenameNoteEntry {
     std::string file;
     int line = 0;
     int column = 0;
+    std::string name;
     std::string reason;
     std::string text;
 };
 
 struct RenameResult {
-    std::string name;
-    std::string kind;
-    std::string symbol;
-    std::string new_name;
-
     /// Whether the edits were written.
     bool applied = false;
 
+    std::vector<RenameEntry> renames;
     std::vector<RenameFileEntry> files;
     std::vector<RenameNoteEntry> unconfirmed;
 
-    /// What keeps the rename from being written.
+    /// What keeps the renames from being written beyond each one's own:
+    /// a token two of them would change to different names.
     std::vector<std::string> conflicts;
 
-    std::vector<std::string> warnings;
-
-    /// Files spelling the old name whose rows are not current; the rename
-    /// is not written while any stands.
+    /// Files spelling an old or a new name whose rows are not current; the
+    /// renames are not written while any stands.
     std::vector<std::string> stale;
 };
 
-/// A rename computed but not applied: the answer, and the plan its edits
+/// Renames computed but not applied: the answer, and the plan their edits
 /// come from.
 struct PlannedRename {
     RenameResult result;
-    index::RenamePlan plan;
+    index::BatchPlan plan;
+
+    /// Whether anything keeps the edits from being written.
+    bool blocked() const {
+        return plan.blocked() ||
+               llvm::any_of(result.renames, [](const RenameEntry& entry) { return entry.error; });
+    }
 };
 
 /// The file's compile command as the editor would use it: pins and header
@@ -266,13 +307,13 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
 /// it yet (see index::RenameScope::units_pending).
 bool units_pending(Project& project);
 
-/// Rename the symbol the locator names to `new_name`, planned against the
-/// workspace on disk (see index::RenameScope): what would change, what the
-/// index cannot vouch for, and what keeps the change from being safe.
-/// Nothing is written. A rename names its symbol by its whole name, never
-/// a pattern; the overloads of one scope that name spells are renamed
-/// together.
-Outcome<PlannedRename> rename(Context& ctx, index::SymbolQuery locator, llvm::StringRef new_name);
+/// Plan the renames together against the workspace on disk (see
+/// index::plan_renames), each workspace file read once: what would change,
+/// what the index cannot vouch for, and what keeps the change from being
+/// safe. Nothing is written. A rename names its symbol by its whole name,
+/// never a pattern; the overloads of one scope that name spells are
+/// renamed together.
+PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests);
 
 /// `direction` one of supertypes, subtypes, both.
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,

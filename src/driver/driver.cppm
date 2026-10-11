@@ -228,18 +228,6 @@ struct Failure {
     std::vector<std::string> stale;
 };
 
-/// The Failure of a question about a symbol, with the candidates of a
-/// locator that named several where one was wanted.
-inline Failure symbol_failure(std::string error,
-                              query::Context& ctx,
-                              std::vector<std::string> stale) {
-    Failure failure{.error = std::move(error), .stale = std::move(stale)};
-    if(!ctx.candidates.empty()) {
-        failure.candidates = std::move(ctx.candidates);
-    }
-    return failure;
-}
-
 template <typename T>
 std::string render_json(const T& value) {
     return to_client_json(value, "null");

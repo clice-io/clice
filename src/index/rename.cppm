@@ -48,8 +48,9 @@ struct CursorRename {
 std::expected<CursorRename, std::string> rename_at(const IndexQuery& query,
                                                    const IndexQuery::Cursor& cursor);
 
-/// A file's current text as the rename's sweep looks at it: the tokens
-/// spelling the old name, and whether any spells the new one.
+/// A file's current text as a rename's sweep looks at it: the tokens
+/// spelling each name swept — a rename's old and new name, or those of
+/// every rename of a batch.
 struct SweptText {
     std::string text;
 
@@ -59,16 +60,21 @@ struct SweptText {
         bool directive;
     };
 
-    std::vector<Token> old_tokens;
-    bool spells_new = false;
+    llvm::StringMap<std::vector<Token>> tokens;
+
+    llvm::ArrayRef<Token> spelling(llvm::StringRef name) const {
+        auto found = tokens.find(name);
+        if(found == tokens.end()) {
+            return {};
+        }
+        return found->second;
+    }
 };
 
-/// Sweep `text` for the two names; nullopt when it spells neither as a
+/// Sweep `text` for `names`; nullopt when it spells none of them as a
 /// token. Text work alone, safe on any thread: a server runs it off its
 /// event loop over the whole workspace.
-std::optional<SweptText> sweep_text(std::string text,
-                                    llvm::StringRef old_name,
-                                    llvm::StringRef new_name);
+std::optional<SweptText> sweep_text(std::string text, const llvm::StringSet<>& names);
 
 /// Where a rename may change text, and how to read it.
 struct RenameScope {
@@ -83,8 +89,8 @@ struct RenameScope {
     llvm::function_ref<bool(llvm::StringRef path)> editable;
 
     /// A file's current text — an open buffer's, else the disk's — swept
-    /// for the two names (sweep_text).
-    llvm::function_ref<std::optional<SweptText>(llvm::StringRef path)> read;
+    /// for the names of the rename (sweep_text); null when it spells none.
+    llvm::function_ref<const SweptText*(llvm::StringRef path)> read;
 
     /// Whether some unit of the build the index is to hold has no record
     /// in it yet: a file the index holds no rows of may then be one the
@@ -113,6 +119,7 @@ struct RenameNote {
 
 struct RenamePlan {
     std::string old_name;
+    std::string new_name;
 
     /// Sorted by file, then offset.
     std::vector<RenameEdit> edits;
@@ -134,16 +141,63 @@ struct RenamePlan {
     }
 };
 
+/// What the other renames of a batch do to names: the symbols each gives
+/// a new name, and the symbols ending with each new name. A rename judges
+/// its new name by the names the whole batch leaves; alone, by today's.
+struct RenameBatch {
+    llvm::DenseMap<SymbolHash, std::string> renamed;
+    llvm::StringMap<std::vector<IndexQuery::Located>> named;
+};
+
 RenamePlan plan_rename(const IndexQuery& query,
                        FileTable& files,
                        const RenameTarget& target,
                        llvm::StringRef new_name,
+                       const RenameScope& scope,
+                       const RenameBatch& batch = RenameBatch());
+
+/// One rename of a batch: the symbols it changes and the name they get.
+struct Renaming {
+    RenameTarget target;
+    std::string new_name;
+};
+
+/// A token a batch replaces, and the plan replacing it.
+struct BatchEdit {
+    RenameEdit edit;
+    std::uint32_t plan;
+};
+
+/// Renames planned together against one index and one reading of the
+/// workspace, all applying at once: `A` to `B` beside `B` to `C` renames
+/// the old `B`, and two names may swap.
+struct BatchPlan {
+    /// One per renaming, in order.
+    std::vector<RenamePlan> plans;
+
+    /// Every plan's edits, sorted by file, then offset, each token once.
+    std::vector<BatchEdit> edits;
+
+    /// What makes the batch unsafe beyond its plans' own conflicts: a
+    /// token two renamings would change to different names.
+    std::vector<std::string> conflicts;
+
+    bool blocked() const {
+        return !conflicts.empty() || llvm::any_of(plans, &RenamePlan::blocked);
+    }
+};
+
+/// Plan `renamings` together. `scope.read` sweeps a file for the old and
+/// new names of all of them; each plan looks only at the files spelling
+/// its own two.
+BatchPlan plan_renames(const IndexQuery& query,
+                       FileTable& files,
+                       llvm::ArrayRef<Renaming> renamings,
                        const RenameScope& scope);
 
-/// `text` with the plan's edits of `file` applied: each old-name token
-/// replaced by `new_name`. Nullopt when a token no longer spells the old
-/// name — the text moved on since the plan was made.
-std::optional<std::string>
-    apply_rename(llvm::StringRef text, const RenamePlan& plan, Fid file, llvm::StringRef new_name);
+/// `text` with the batch's edits of `file` applied, each token replaced
+/// by the new name of its plan. Nullopt when a token no longer spells its
+/// old name — the text moved on since the plan was made.
+std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& batch, Fid file);
 
 }  // namespace clice::index

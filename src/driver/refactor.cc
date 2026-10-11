@@ -43,6 +43,13 @@ struct RefactorOptions {
     DecoKV(style = KVStyle::JoinedOrSeparate, help = "rename: the new name", required = false)
     <std::string> to;
 
+    DecoKV(style = KVStyle::JoinedOrSeparate,
+           help =
+               "rename: a file listing renames to make at once, `<locator> => <new name>` a "
+               "line; - reads them from stdin",
+           required = false)
+    <std::string> spec;
+
     DecoFlag(names = {"--dry-run"},
              help = "Answer with the planned edits without writing them",
              required = false)
@@ -58,14 +65,87 @@ struct RefactorOptions {
     LogLevelOption log{.log_level = LogLevel::Warn};
 };
 
-/// Write the plan's edits, every file's new text computed before the
+/// The renames a list asks for: `<locator> => <new name>` a line, blank
+/// lines and lines starting with `//` aside.
+std::expected<std::vector<query::RenameRequest>, std::string> parse_renames(llvm::StringRef text) {
+    std::vector<query::RenameRequest> requests;
+    llvm::SmallVector<llvm::StringRef> lines;
+    text.split(lines, '\n');
+    for(std::size_t i = 0; i < lines.size(); i += 1) {
+        auto line = lines[i].trim();
+        if(line.empty() || line.starts_with("//")) {
+            continue;
+        }
+        auto number = static_cast<int>(i + 1);
+        auto [locator, new_name] = line.rsplit("=>");
+        locator = locator.trim();
+        new_name = new_name.trim();
+        if(!line.contains("=>") || locator.empty() || new_name.empty()) {
+            return std::unexpected(
+                std::format("line {}: expected `<locator> => <new name>`", number));
+        }
+        auto parsed = index::SymbolQuery::parse(locator);
+        if(!parsed) {
+            return std::unexpected(std::format("line {}: {}", number, parsed.error()));
+        }
+        requests.push_back({
+            .text = locator.str(),
+            .locator = std::move(*parsed),
+            .new_name = new_name.str(),
+            .line = number,
+        });
+    }
+    if(requests.empty()) {
+        return std::unexpected("the rename list names no rename");
+    }
+    return requests;
+}
+
+/// The renames the options ask for: one by --symbol and --to, or a list by
+/// --spec.
+std::expected<std::vector<query::RenameRequest>, std::string>
+    requests_of(const RefactorOptions& opts) {
+    if(opts.spec) {
+        if(opts.symbol || opts.to) {
+            return std::unexpected("--spec lists the renames; --symbol and --to name one");
+        }
+        std::unique_ptr<llvm::MemoryBuffer> list;
+        if(*opts.spec == "-") {
+            auto input = llvm::MemoryBuffer::getSTDIN();
+            if(!input) {
+                return std::unexpected(std::format("cannot read the renames from stdin: {}",
+                                                   input.getError().message()));
+            }
+            list = std::move(*input);
+        } else {
+            auto file = vfs::read(*opts.spec);
+            if(!file) {
+                return std::unexpected(
+                    std::format("cannot read {}: {}", *opts.spec, file.error().message()));
+            }
+            list = std::move(*file);
+        }
+        return parse_renames(list->getBuffer());
+    }
+    if(!opts.to) {
+        return std::unexpected("--to names the new name");
+    }
+    auto locator = locator_of(opts.symbol.as_optional());
+    if(!locator) {
+        return std::unexpected(locator.error());
+    }
+    std::vector<query::RenameRequest> requests;
+    requests.push_back(
+        {.text = *opts.symbol, .locator = std::move(*locator), .new_name = *opts.to});
+    return requests;
+}
+
+/// Write the batch's edits, every file's new text computed before the
 /// first is written: a file whose text moved on since it was indexed
 /// stops the whole rename, never half of it. Files are rewritten in
 /// place, keeping their permissions, owner and links, each only while its
 /// status still is the one taken before it was read.
-std::expected<void, std::string> apply(FileTable& files,
-                                       const index::RenamePlan& plan,
-                                       llvm::StringRef new_name) {
+std::expected<void, std::string> apply(FileTable& files, const index::BatchPlan& plan) {
     struct Rewrite {
         std::string path;
         vfs::Stamp stamp;
@@ -74,7 +154,7 @@ std::expected<void, std::string> apply(FileTable& files,
 
     std::vector<Rewrite> rewrites;
     llvm::DenseSet<Fid> seen;
-    for(auto& edit: plan.edits) {
+    for(auto& [edit, index]: plan.edits) {
         auto file = edit.site.file;
         if(!seen.insert(file).second) {
             continue;
@@ -89,7 +169,7 @@ std::expected<void, std::string> apply(FileTable& files,
         }
         auto content = (*bytes)->getBuffer();
         auto text = vfs::without_bom(content);
-        auto renamed = index::apply_rename(text, plan, file, new_name);
+        auto renamed = index::apply_renames(text, plan, file);
         if(!renamed) {
             return std::unexpected(
                 std::format("{} changed since it was indexed; run with --fresh", edit.site.path));
@@ -125,13 +205,9 @@ std::expected<void, std::string> apply(FileTable& files,
 }
 
 int run_rename(const RefactorOptions& opts, const char* self_path) {
-    if(!opts.to) {
-        print_json(Failure{.error = "--to names the new name"});
-        return 1;
-    }
-    auto locator = locator_of(opts.symbol.as_optional());
-    if(!locator) {
-        print_json(Failure{.error = locator.error()});
+    auto requests = requests_of(opts);
+    if(!requests) {
+        print_json(Failure{.error = std::move(requests.error())});
         return 1;
     }
     auto spelling = workspace_spelling(opts.workspace.value_or(""));
@@ -185,24 +261,20 @@ int run_rename(const RefactorOptions& opts, const char* self_path) {
         return all;
     };
 
-    auto planned = query::rename(ctx, std::move(*locator), *opts.to);
-    if(!planned) {
-        print_json(symbol_failure(std::move(planned.error()), ctx, stale({})));
-        return 1;
-    }
-
-    auto& result = planned->result;
+    auto planned = query::rename(ctx, *requests);
+    auto& result = planned.result;
     // A unit --fresh failed to index answers from rows that may be old.
-    bool blocked = planned->plan.blocked() || !failed.empty();
-    if(!blocked && !opts.dry_run && !planned->plan.edits.empty()) {
-        if(auto applied = apply(files, planned->plan, *opts.to); !applied) {
+    bool blocked = planned.blocked() || !failed.empty();
+    if(!blocked && !opts.dry_run && !planned.plan.edits.empty()) {
+        if(auto applied = apply(files, planned.plan); !applied) {
             result.conflicts.push_back(applied.error());
             blocked = true;
         } else {
             result.applied = true;
         }
     }
-    print_json(Answer{.result = std::move(result), .stale = stale(planned->plan.stale)});
+    auto withheld = stale(result.stale);
+    print_json(Answer{.result = std::move(result), .stale = std::move(withheld)});
     return blocked ? 1 : 0;
 }
 
