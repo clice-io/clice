@@ -521,10 +521,6 @@ ZEST_CASE(SameScopeCollisions) {
         }
         namespace §(left)left {}
         namespace right {}
-        void scope() {
-            int §(local)first = 0;
-            int second = first;
-        }
     )");
     merge();
 
@@ -543,12 +539,6 @@ ZEST_CASE(SameScopeCollisions) {
     ZASSERT(left);
     ZASSERT(left->conflicts.size() == 1U);
     ZEXPECT(left->conflicts.front().contains("merging namespaces"));
-
-    auto local = rename_at("local", "second");
-    ZASSERT(local);
-    ZEXPECT(!local->blocked());
-    ZASSERT(local->warnings.size() == 1U);
-    ZEXPECT(local->warnings.front().contains("local of the same function"));
 }
 
 ZEST_CASE(ParametersAndLabels) {
@@ -584,26 +574,6 @@ ZEST_CASE(ParametersAndLabels) {
     ZASSERT(label);
     ZASSERT(label->conflicts.size() == 1U);
     ZEXPECT(label->conflicts.front().contains("label of the same function"));
-}
-
-ZEST_CASE(LocalCapturesUse) {
-    add_main(file("a.cpp"), R"(
-        int §(cursor)total;
-        int consume(int x);
-        int use() { int sum = 0; return consume(total) + sum; }
-        int elsewhere() { int amount = 1; return amount; }
-    )");
-    merge();
-
-    auto captured = rename_at("cursor", "sum");
-    ZASSERT(captured);
-    ZEXPECT(!captured->blocked());
-    ZASSERT(captured->warnings.size() == 1U);
-    ZEXPECT(captured->warnings.front().contains("captures"));
-
-    auto apart = rename_at("cursor", "amount");
-    ZASSERT(apart);
-    ZEXPECT(clean(*apart));
 }
 
 ZEST_CASE(MemberHidesInherited) {
@@ -842,6 +812,31 @@ ZEST_CASE(FilesOutsideTheIndex) {
     ZEXPECT(renamed->blocked());
     ZASSERT(renamed->stale.size() == 1U);
     ZEXPECT(renamed->stale.front().ends_with("notes.cpp"));
+}
+
+ZEST_CASE(LocalsStayHome) {
+    add_file(file("b.h"), R"(
+        #define ROWS rows
+        #if 0
+        int stale = rows;
+        #endif
+    )");
+    add_main(file("a.cpp"), R"(
+        #include "b.h"
+        int count(int §(cursor)§rows) { return §rows; }
+    )");
+    merge();
+    write("notes.cpp", "int rows = 3;\n");
+    units_pending = true;
+
+    // Another file reaches a parameter only through a macro it defines.
+    auto renamed = rename_at("cursor", "entries");
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(!renamed->blocked());
+    ZASSERT(renamed->unconfirmed.size() == 1U);
+    ZEXPECT(renamed->unconfirmed.front().site.path.ends_with("b.h"));
+    ZEXPECT(renamed->unconfirmed.front().reason.contains("preprocessor directive"));
 }
 
 ZEST_CASE(EditOutsideWorkspace) {

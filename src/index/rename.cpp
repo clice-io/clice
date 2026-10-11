@@ -502,7 +502,14 @@ RenamePlan plan_rename(const IndexQuery& query,
         auto display = files.display(file);
         auto& served = text_of(file);
         bool indexed = served.text.has_value();
-        if(indexed ? *served.text != current->text : query.indexes(file) || scope.units_pending) {
+        // A local or a parameter is out of another file's reach but through
+        // a macro it defines, and one no unit compiles defines none for it.
+        bool foreign = root.scope == SymbolScope::FileLocal && file != target.symbol.site.file;
+        if(foreign && !indexed) {
+            continue;
+        }
+        if(!foreign &&
+           (indexed ? *served.text != current->text : query.indexes(file) || scope.units_pending)) {
             stale.insert(display);
             continue;
         }
@@ -512,6 +519,9 @@ RenamePlan plan_rename(const IndexQuery& query,
         }
         Lines lines(current->text);
         for(auto [offset, directive]: spelled->second) {
+            if(foreign && !directive) {
+                continue;
+            }
             if(!indexed) {
                 plan.unconfirmed.push_back(
                     {.site = lines.site(file, display, offset, old_name.size()),
@@ -685,20 +695,17 @@ RenamePlan plan_rename(const IndexQuery& query,
                                 "when their parameters are the same",
                                 std::string_view(new_name),
                                 where(other.site)));
-            } else if(local && symbol.kind == root.kind &&
-                      (root.kind == SymbolKind::Parameter || root.kind == SymbolKind::Label)) {
-                plan.conflicts.push_back(
-                    std::format("`{}` already names a {} of the same function ({})",
-                                std::string_view(new_name),
-                                root.kind == SymbolKind::Label ? "label" : "parameter",
-                                where(other.site)));
             } else if(local) {
-                plan.warnings.push_back(
-                    std::format("`{}` already names a local of the same function ({}): declared "
-                                "in the same block, the two fail to build; in nested blocks, "
-                                "the inner hides the outer",
-                                std::string_view(new_name),
-                                where(other.site)));
+                // Other locals clash only within one block, and the index
+                // records no blocks.
+                if(symbol.kind == root.kind &&
+                   (root.kind == SymbolKind::Parameter || root.kind == SymbolKind::Label)) {
+                    plan.conflicts.push_back(
+                        std::format("`{}` already names a {} of the same function ({})",
+                                    std::string_view(new_name),
+                                    root.kind == SymbolKind::Label ? "label" : "parameter",
+                                    where(other.site)));
+                }
             } else if(symbol.kind == SymbolKind::Namespace && root.kind == SymbolKind::Namespace) {
                 plan.conflicts.push_back(std::format(
                     "a namespace `{}` already exists in the same scope ({}); merging namespaces "
@@ -720,28 +727,6 @@ RenamePlan plan_rename(const IndexQuery& query,
                             std::string_view(new_name),
                             where(other.site)));
             continue;
-        }
-        // A local of a function holding an edited use may capture it.
-        if(edited.contains(other.site.file)) {
-            auto owner = query.symbol_info(other_home, other.site.file);
-            auto function = owner && function_like(owner->kind)
-                                ? query.resolve(other_home, other.site.file)
-                                : std::nullopt;
-            if(function) {
-                auto& body = function->extent;
-                if(llvm::any_of(llvm::make_first_range(edits), [&](const auto& key) {
-                       return key.first == body.file && body.range.begin <= key.second &&
-                              key.second < body.range.end;
-                   })) {
-                    plan.warnings.push_back(
-                        std::format("`{}` is declared in {} ({}): where it is in scope, it "
-                                    "captures the renamed name used there",
-                                    std::string_view(new_name),
-                                    query.qualified_name(other_home),
-                                    where(other.site)));
-                }
-                continue;
-            }
         }
         if(hierarchy.contains(other_home)) {
             plan.conflicts.push_back(
