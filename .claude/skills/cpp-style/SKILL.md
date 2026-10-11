@@ -169,6 +169,36 @@ process(result.value());
 - Doc comments on declarations use `///`; the bar for when to write a
   comment at all is in CLAUDE.md.
 
+## Words to Use and Avoid
+
+Identifiers and comments use plain words. These were renamed out of the
+codebase; don't bring them back:
+
+| Avoid                              | Say instead                                                                                                                               |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| row / rows                         | an index record: `occurrence` / `relation`, else `entry`; a file's whole index data: `index` / `shard` / `variant`; a source line: `line` |
+| verdict                            | `result` / `decision` / `outcome`, whichever the site is                                                                                  |
+| claim                              | one word per site: `take`, `acquire`, `reserve`, `cover`, `report`                                                                        |
+| envelope                           | what it is: `TUIndexBlob`, the TU index, a container, a header                                                                            |
+| ledger                             | `table` / `list`                                                                                                                          |
+| wire (the serialized form)         | `serialized` / `encoded`; "in the protocol" for IPC                                                                                       |
+| settle                             | `finish` / `become idle`                                                                                                                  |
+| flavor                             | `kind` / `variant`                                                                                                                        |
+| land / landing (a result arriving) | `commit` / `merge` / `finish`                                                                                                             |
+| sweep                              | `pass` / `run` / `scan`; for cleanup, `remove`                                                                                            |
+| tier (an encoding choice)          | `encoding` (`MaskEncoding`); the search ranking's `NameRank::tier` stays                                                                  |
+| surface (verb), vouch for          | `report` / `show`, `guarantee` / `confirm`                                                                                                |
+| stamp outside `vfs`                | `version` / `generation`                                                                                                                  |
+
+Domain words with one meaning each — use them only in that meaning:
+
+- **spelling**: how a path is written — the anchored absolute path,
+  `..` kept, handed only to the identity functions or to clang.
+- **host**: the source file whose compile context a header borrows.
+- **slot**: one worker's place in the worker pool.
+- **stamp**: in `vfs` only, a file's change fingerprint (size + mtime +
+  ctime).
+
 ## Template & Type Traits
 
 - Do NOT blindly add `std::remove_cvref_t` on every template parameter. Understand C++ template argument deduction rules:

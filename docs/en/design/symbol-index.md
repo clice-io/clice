@@ -95,7 +95,7 @@ During construction, the main file's rows are kept separate from the headers'. T
 
 The core problem for shards is: the same header file is included by N source files, producing N row sets. If each were stored in full, storage would grow linearly with the number of translation units. But in practice, the vast majority of headers produce identical index data under different compilation contexts. Only headers like the `crypto.h` example above, affected by conditional compilation, produce different content under different contexts.
 
-clice solves this by making **the encoded bytes themselves the identity**. Each variant is encoded canonically and deterministically — same rows, same bytes — and its identity (`RowsHash`) is the xxh3 hash of those bytes. When a new compilation contributes a variant:
+clice solves this by making **the encoded bytes themselves the identity**. Each variant is encoded canonically and deterministically — same rows, same bytes — and its identity (`VariantHash`) is the xxh3 hash of those bytes. When a new compilation contributes a variant:
 
 1. Encode the file's rows into the canonical blob and hash it
 2. If a variant with this identity already exists in the shard, the merge is pure bookkeeping — the contributing TU is recorded, nothing is decoded or rewritten
