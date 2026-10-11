@@ -50,15 +50,17 @@ std::uint64_t BuildProbe::gate(std::string tag) {
     return id;
 }
 
-void BuildProbe::sending(llvm::StringRef tag, const std::shared_ptr<kota::ipc::BincodePeer>& peer) {
+std::optional<std::uint64_t>
+    BuildProbe::sending(llvm::StringRef tag, const std::shared_ptr<kota::ipc::BincodePeer>& peer) {
     auto it =
         llvm::find_if(standing, [&](const Gate& gate) { return !gate.sent && gate.tag == tag; });
     if(it == standing.end()) {
-        return;
+        return std::nullopt;
     }
     it->sent = true;
     it->worker = peer;
     peer->send_notification(worker::GateParams{.id = it->id, .tag = it->tag});
+    return it->id;
 }
 
 void BuildProbe::gate_parked(std::uint64_t id) {
@@ -74,6 +76,14 @@ void BuildProbe::gate_parked(std::uint64_t id) {
 static void release_gate(const BuildProbe::Gate& gate) {
     if(auto worker = gate.worker.lock()) {
         worker->send_notification(worker::GateReleaseParams{gate.id});
+    }
+}
+
+void BuildProbe::answered(std::uint64_t id) {
+    auto it = llvm::find_if(standing, [&](const Gate& gate) { return gate.id == id; });
+    if(it != standing.end() && !it->parked) {
+        release_gate(*it);
+        standing.erase(it);
     }
 }
 

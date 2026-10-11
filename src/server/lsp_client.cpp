@@ -44,6 +44,10 @@ static bool past_shutdown(ServerLifecycle lifecycle) {
     return lifecycle == ServerLifecycle::ShuttingDown || lifecycle == ServerLifecycle::Exited;
 }
 
+static kota::ipc::Error hooks_off() {
+    return kota::ipc::Error{protocol::ErrorCode::InvalidRequest, "test hooks are not enabled"};
+}
+
 /// Fire a workspace refresh request without awaiting the reply. Peer
 /// lifetime discipline as in the progress handshake: the peer outlives the
 /// client, and teardown fails pending requests before run() returns. A
@@ -64,10 +68,10 @@ static kota::task<T, kota::ipc::Error> holding(std::shared_ptr<ProjectServer> pr
     co_return co_await std::move(task);
 }
 
-/// Tick the file trackers of every project, as clice/internal/poll asks:
-/// the database loop (`force` skips its gates, see ext::PollParams) or the
-/// workspace loop. Returns the events of all.
-static kota::task<std::uint32_t> tick_trackers(MasterServer& srv, bool cdb, bool force) {
+/// Tick the file trackers of every project, as clice/internal/poll asks.
+/// Returns the events of all.
+static kota::task<std::uint32_t> tick_trackers(MasterServer& srv, const ext::PollParams& params) {
+    bool cdb = params.loop == "cdb";
     std::uint32_t count = 0;
     if(cdb) {
         srv.files.disk.look_flags();
@@ -84,7 +88,7 @@ static kota::task<std::uint32_t> tick_trackers(MasterServer& srv, bool cdb, bool
         }
         llvm::SmallVector<FileEvent> events;
         if(cdb) {
-            events = project->tracker->tick_cdb(force);
+            events = project->tracker->tick_cdb(params.force.value_or(true));
         } else {
             events = co_await project->tracker->tick_sources();
         }
@@ -94,6 +98,19 @@ static kota::task<std::uint32_t> tick_trackers(MasterServer& srv, bool cdb, bool
         }
     }
     co_return count;
+}
+
+/// The file a hold or gate is placed on, in the spelling the worker
+/// requests carry it under. Refused once the server is shutting down: the
+/// stopping pool released every one, and a later one would park work the
+/// shutdown waits on.
+static std::expected<std::string, kota::ipc::Error> park_target(MasterServer& srv,
+                                                                const Spelling& path) {
+    if(past_shutdown(srv.lifecycle)) {
+        return std::unexpected(
+            kota::ipc::Error{protocol::ErrorCode::InvalidRequest, "the server is shutting down"});
+    }
+    return std::string(srv.files.resolve(srv.files.intern(path)));
 }
 
 LSPClient::LSPClient(MasterServer& server, kota::ipc::JSONPeer& peer) : server(server), peer(peer) {
@@ -1181,17 +1198,12 @@ void LSPClient::register_extensions() {
                 co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
                                                      "No workspace is loaded"});
             }
-            co_return to_raw(ext::PollResult{
-                co_await tick_trackers(srv, params.loop == "cdb", params.force.value_or(true))});
+            co_return to_raw(ext::PollResult{co_await tick_trackers(srv, params)});
         });
-
-    auto hooks_off = [] {
-        return kota::ipc::Error{protocol::ErrorCode::InvalidRequest, "test hooks are not enabled"};
-    };
 
     peer.on_request(
         "clice/internal/sync",
-        [this, hooks_off](RequestContext& ctx, const ext::SyncParams& params) -> RawResult {
+        [this](RequestContext& ctx, const ext::SyncParams& params) -> RawResult {
             auto& srv = this->server;
             if(!srv.test_hooks()) {
                 co_await kota::fail(hooks_off());
@@ -1201,7 +1213,7 @@ void LSPClient::register_extensions() {
             auto deadline = std::chrono::steady_clock::now() +
                             std::chrono::milliseconds(params.deadline_ms.value_or(240'000));
             if(params.poll.value_or(false)) {
-                co_await tick_trackers(srv, /*cdb=*/false, /*force=*/true);
+                co_await tick_trackers(srv, {.loop = "workspace"});
             }
             auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::max(deadline - std::chrono::steady_clock::now(),
@@ -1221,7 +1233,7 @@ void LSPClient::register_extensions() {
 
     peer.on_request(
         "clice/internal/hold",
-        [this, hooks_off](RequestContext& ctx, const ext::HoldParams& params) -> RawResult {
+        [this](RequestContext& ctx, const ext::HoldParams& params) -> RawResult {
             auto& srv = this->server;
             if(!srv.test_hooks()) {
                 co_await kota::fail(hooks_off());
@@ -1233,70 +1245,62 @@ void LSPClient::register_extensions() {
                     protocol::ErrorCode::InvalidParams,
                     R"(a hold names a kind of "compile", "pch", "pcm" or "index", and a file URI)"});
             }
-            // The stopping pool released every hold; a later one would park
-            // a reply the shutdown waits on.
-            if(past_shutdown(srv.lifecycle)) {
-                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
-                                                     "the server is shutting down"});
+            auto file = park_target(srv, *path);
+            if(!file) {
+                co_await kota::fail(std::move(file.error()));
             }
-            // The spelling the builds send the file under.
-            auto file = srv.files.resolve(srv.files.intern(*path));
-            co_return to_raw(ext::HoldResult{srv.probe.hold(*kind, std::string(file))});
+            co_return to_raw(ext::HoldResult{srv.probe.hold(*kind, std::move(*file))});
         });
 
-    peer.on_request(
-        "clice/internal/gate",
-        [this, hooks_off](RequestContext& ctx, const ext::GateParams& params) -> RawResult {
-            auto& srv = this->server;
-            if(!srv.test_hooks()) {
-                co_await kota::fail(hooks_off());
-            }
-            auto path = uri_to_path(params.uri);
-            if(params.request.empty() || !path) {
-                co_await kota::fail(
-                    kota::ipc::Error{protocol::ErrorCode::InvalidParams,
-                                     "a gate names a worker request and a file URI"});
-            }
-            if(past_shutdown(srv.lifecycle)) {
-                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidRequest,
-                                                     "the server is shutting down"});
-            }
-            // The spelling the requests send the file under.
-            auto file = std::string(srv.files.resolve(srv.files.intern(*path)));
-            auto tag = std::format("clice/worker/{} {}", params.request, file);
-            co_return to_raw(ext::HoldResult{srv.probe.gate(std::move(tag))});
-        });
+    peer.on_request("clice/internal/gate",
+                    [this](RequestContext& ctx, const ext::GateParams& params) -> RawResult {
+                        auto& srv = this->server;
+                        if(!srv.test_hooks()) {
+                            co_await kota::fail(hooks_off());
+                        }
+                        auto path = uri_to_path(params.uri);
+                        if(params.request.empty() || !path) {
+                            co_await kota::fail(
+                                kota::ipc::Error{protocol::ErrorCode::InvalidParams,
+                                                 "a gate names a worker request and a file URI"});
+                        }
+                        auto file = park_target(srv, *path);
+                        if(!file) {
+                            co_await kota::fail(std::move(file.error()));
+                        }
+                        co_return to_raw(ext::HoldResult{srv.probe.gate(
+                            std::format("clice/worker/{} {}", params.request, *file))});
+                    });
 
-    peer.on_request(
-        "clice/internal/release",
-        [this, hooks_off](RequestContext& ctx, const ext::ReleaseParams& params) -> RawResult {
-            auto& srv = this->server;
-            if(!srv.test_hooks()) {
-                co_await kota::fail(hooks_off());
-            }
-            if(!srv.probe.release(params.id)) {
-                co_await kota::fail(kota::ipc::Error{protocol::ErrorCode::InvalidParams,
-                                                     std::format("no hold {}", params.id)});
-            }
-            co_return to_raw(ext::ReleaseResult{});
-        });
+    peer.on_request("clice/internal/release",
+                    [this](RequestContext& ctx, const ext::ReleaseParams& params) -> RawResult {
+                        auto& srv = this->server;
+                        if(!srv.test_hooks()) {
+                            co_await kota::fail(hooks_off());
+                        }
+                        if(!srv.probe.release(params.id)) {
+                            co_await kota::fail(
+                                kota::ipc::Error{protocol::ErrorCode::InvalidParams,
+                                                 std::format("no hold {}", params.id)});
+                        }
+                        co_return to_raw(ext::ReleaseResult{});
+                    });
 
-    peer.on_request(
-        "clice/internal/logFlood",
-        [this, hooks_off](RequestContext& ctx, const ext::LogFloodParams& params) -> RawResult {
-            // Load-generating hook: a stray client must not be able to
-            // bloat the file log.
-            if(!this->server.test_hooks()) {
-                co_await kota::fail(hooks_off());
-            }
-            auto count = std::min<std::uint32_t>(params.count, 100'000);
-            auto size = std::clamp<std::uint32_t>(params.size, 16, 4096);
-            std::string padding(size, 'f');
-            for(std::uint32_t i = 0; i < count; ++i) {
-                LOG_INFO("[stderr-flood {}] {}", i, padding);
-            }
-            co_return to_raw(ext::LogFloodResult{count});
-        });
+    peer.on_request("clice/internal/logFlood",
+                    [this](RequestContext& ctx, const ext::LogFloodParams& params) -> RawResult {
+                        // Load-generating hook: a stray client must not be able to
+                        // bloat the file log.
+                        if(!this->server.test_hooks()) {
+                            co_await kota::fail(hooks_off());
+                        }
+                        auto count = std::min<std::uint32_t>(params.count, 100'000);
+                        auto size = std::clamp<std::uint32_t>(params.size, 16, 4096);
+                        std::string padding(size, 'f');
+                        for(std::uint32_t i = 0; i < count; ++i) {
+                            LOG_INFO("[stderr-flood {}] {}", i, padding);
+                        }
+                        co_return to_raw(ext::LogFloodResult{count});
+                    });
 
     // Ownership gauges for memory-lifecycle tests (see ext::StatsParams).
     // Read-only and synchronous: every counter is computed from live

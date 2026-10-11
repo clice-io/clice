@@ -210,6 +210,39 @@ test.skipIf(process.platform === "win32")("sighup saves progress", async ({ sess
     expect(stats.stdout).toMatch(/Translation units: [1-9]/);
 });
 
+test.skipIf(process.platform === "win32")("interrupt at a pause point", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    const units = Array.from({ length: 6 }, (_, i) => `unit${i}.cpp`);
+    for (const [i, unit] of units.entries()) {
+        ws.write(unit, `int unit${i}() { return ${i}; }\n`);
+    }
+    ws.writeCDB(units);
+
+    const paused = ws.path("paused");
+    const child = spawn(cliceExecutable(), ["index", "--workspace", ws.root, "--workers", "1"], {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, CLICE_TEST_PAUSE: `1 ${paused}` },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
+    child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+    await waitUntil(() => fs.existsSync(paused), {
+        timeout: 30_000,
+        interval: 10,
+        description: "the run to park after one unit",
+    });
+    child.kill("SIGINT");
+    const { code } = await exitOf(child);
+    expect(code, `stderr: ${stderr}`).toBe(130);
+    expect(stdout).toContain("progress saved");
+
+    const rest = await runClice("index", "--workspace", ws.root);
+    expect(rest.status, `stderr: ${rest.stderr}`).toBe(0);
+    expect(rest.stdout).toContain("Indexed 5 translation units in");
+});
+
 test("index reports header losing host", async ({ session }) => {
     const ws = session.tmpdir();
     ws.pinCacheDir();
@@ -325,6 +358,57 @@ test.skipIf(process.platform === "win32")("output survives merged stderr", async
     );
     expect(run.status, run.stdout.slice(-2000)).toBe(0);
     expect(run.stdout).toContain(`function_number_${BIG_FUNCTIONS - 1}`);
+});
+
+interface InspectOutput {
+    files: Record<string, { markers?: Record<string, unknown> }>;
+}
+
+test("inspect answers at given markers", async ({ session }) => {
+    const ws = session.tmpdir();
+    const source = "int add(int a, int b) { return a + b; }\nint use() { return add(1, 2); }\n";
+    ws.write("main.cpp", source);
+    const markers = (table: object): string => {
+        ws.write("markers.json", JSON.stringify(table));
+        return `--markers=${ws.path("markers.json")}`;
+    };
+    const inspect = (feature: string, table: object, input = ws.path("main.cpp")) =>
+        runClice("inspect", feature, input, "--flags", '["-std=c++23"]', markers(table));
+    const answers = (stdout: string) => (JSON.parse(stdout) as InspectOutput).files["main.cpp"];
+    const table = {
+        points: { call: source.indexOf("add(1") },
+        ranges: { use: { begin: source.indexOf("int use"), end: source.length } },
+    };
+
+    const hover = await inspect("hover", table);
+    expect(hover.status, `stderr: ${hover.stderr}`).toBe(0);
+    const hovered = answers(hover.stdout)?.markers ?? {};
+    expect(Object.keys(hovered)).toEqual(["call"]);
+    expect(JSON.stringify(hovered["call"])).toContain("int add(int a, int b)");
+
+    const hints = await inspect("inlay_hint", table);
+    expect(hints.status, `stderr: ${hints.stderr}`).toBe(0);
+    const hinted = answers(hints.stdout)?.markers ?? {};
+    expect(Object.keys(hinted)).toEqual(["use"]);
+    const labels = (hinted["use"] as { label: { value: string }[] }[]).map((hint) =>
+        hint.label.map((part) => part.value).join(""),
+    );
+    expect(labels).toEqual(["a:", "b:"]);
+
+    for (const [refused, why] of [
+        [{ points: { far: source.length + 1 } }, "outside the text"],
+        [
+            { points: { use: 0 }, ranges: { use: { begin: 0, end: 3 } } },
+            "names a point and a range",
+        ],
+    ] as const) {
+        const run = await inspect("hover", refused);
+        expect(run.status, why).toBe(1);
+        expect(run.stderr).toContain(why);
+    }
+    const directory = await inspect("hover", table, ws.root);
+    expect(directory.status).toBe(1);
+    expect(directory.stderr).toContain("one source file");
 });
 
 test("closed reader ends quietly", async ({ session }) => {

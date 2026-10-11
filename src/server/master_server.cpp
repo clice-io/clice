@@ -858,11 +858,15 @@ bool MasterServer::test_hooks() const {
     return pool.probe != nullptr;
 }
 
-/// Whether the project has work settle() waits for. A queue no round will
-/// take, indexing being off, is none.
+/// Whether the project's index pump has work settle() waits for. A queue
+/// no round will take, indexing being off, is none.
+static bool indexing(ProjectServer& project) {
+    return project.project.config.project.enable_indexing.value && !project.sched.pump.is_idle();
+}
+
+/// Whether the project has work settle() waits for.
 static bool working(ProjectServer& project) {
-    return !project.sched.graph.compiling().empty() ||
-           (project.project.config.project.enable_indexing.value && !project.sched.pump.is_idle());
+    return !project.sched.graph.compiling().empty() || indexing(project);
 }
 
 /// The requests of `editor` settle() waits for: all but syncs.
@@ -932,8 +936,8 @@ std::vector<std::string> MasterServer::pending_work(const kota::ipc::JSONPeer& e
                 case Family::PCH: lines.push_back(std::format("pch #{}", id.key)); break;
             }
         }
-        auto& pump = project->sched.pump;
-        if(project->project.config.project.enable_indexing.value && !pump.is_idle()) {
+        if(indexing(*project)) {
+            auto& pump = project->sched.pump;
             lines.push_back(std::format("index round at {}/{}, {} files queued",
                                         pump.progress().completed,
                                         pump.progress().total,

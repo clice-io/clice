@@ -16,6 +16,8 @@ test("defaults overlay the caller's options", () => {
             cache_dir: ws.path(".clice"),
             stateful_worker_count: 3,
             stateless_worker_count: 1,
+            idle_timeout_ms: 0,
+            test_hooks: true,
         },
         tracker: { workspace_poll_seconds: 0 },
     });

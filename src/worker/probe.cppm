@@ -58,9 +58,16 @@ public:
     std::uint64_t gate(std::string tag);
 
     /// A request of `tag` is about to go to the worker behind `peer`: the
-    /// gate waiting for one, if any, goes ahead of it. Called with every
-    /// request the pool sends.
-    void sending(llvm::StringRef tag, const std::shared_ptr<kota::ipc::BincodePeer>& peer);
+    /// gate waiting for one, if any, goes ahead of it; returns its id.
+    /// Called with every request the pool sends.
+    std::optional<std::uint64_t> sending(llvm::StringRef tag,
+                                         const std::shared_ptr<kota::ipc::BincodePeer>& peer);
+
+    /// The request the gate went ahead of came back. A gate whose work it
+    /// never reached — the request withdrawn first, or finding nothing to
+    /// do — is dropped, in the worker too: left standing there, it would
+    /// park the next request of its tag.
+    void answered(std::uint64_t id);
 
     /// The worker parked the work of a gated request.
     void gate_parked(std::uint64_t id);

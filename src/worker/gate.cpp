@@ -54,9 +54,7 @@ void install_test_gates(kota::ipc::BincodePeer& peer, kota::event_loop& loop) {
         std::lock_guard lock(gates.mutex);
         auto it =
             llvm::find_if(gates.standing, [&](const Gate& gate) { return gate.id == params.id; });
-        if(it == gates.standing.end()) {
-            return;
-        }
+        assert(it != gates.standing.end());
         if(!it->parked) {
             erase_gate(it);
             return;

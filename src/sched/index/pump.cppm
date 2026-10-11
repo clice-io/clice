@@ -67,6 +67,10 @@ public:
     /// Resume background indexing after a pause.
     void resume_indexing();
 
+    /// Pause indexing once `units` more files are dispatched, so exactly
+    /// that many finish before the pause holds (CLICE_TEST_PAUSE).
+    void pause_after(std::size_t units);
+
     /// RAII guard that pauses indexing for its lifetime; a moved-from one
     /// holds nothing.
     struct [[nodiscard]] ScopedPause {
@@ -268,6 +272,9 @@ private:
     /// Uses a counter so nested pause/resume pairs work correctly.
     std::size_t pause_depth = 0;
     kota::event resume_event{true};
+
+    /// Dispatches left before pause_after() pauses; zero when none is due.
+    std::size_t dispatches_before_pause = 0;
 
     /// Set by on_stateless_capacity: wakes a round parked on "no schedulable
     /// stateless worker" the moment a slot (re)enters service.

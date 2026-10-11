@@ -21,6 +21,7 @@ import { URI } from "vscode-uri";
 import {
     CounterpartsRequest,
     CurrentContextRequest,
+    GateRequest,
     HeldNotification,
     HoldRequest,
     ListConfigurationsRequest,
@@ -1318,7 +1319,14 @@ export class CliceClient {
         return (await this.sendRequest(HoldRequest, { kind, uri })).id;
     }
 
-    /// Resolves once the hold parked a reply (clice/internal/held).
+    /// clice/internal/gate (test hook): park the work of the next `request`
+    /// for `uri` in its worker, where the work starts; returns the hold's id.
+    async gate(request: string, uri: string): Promise<number> {
+        return (await this.sendRequest(GateRequest, { request, uri })).id;
+    }
+
+    /// Resolves once the hold parked a reply, or the gate a request's work
+    /// (clice/internal/held).
     parkedBy(id: number): Promise<void> {
         if (this.parked.has(id)) {
             return Promise.resolve();
@@ -1328,8 +1336,8 @@ export class CliceClient {
         });
     }
 
-    /// clice/internal/release (test hook): let the parked reply go on, or
-    /// drop a hold no reply reached.
+    /// clice/internal/release (test hook): let the parked reply or work go
+    /// on, or drop a hold or gate nothing reached.
     async release(id: number): Promise<void> {
         this.parked.delete(id);
         await this.sendRequest(ReleaseRequest, { id });

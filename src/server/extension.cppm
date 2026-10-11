@@ -282,9 +282,14 @@ struct HoldResult {
     std::uint64_t id = 0;
 };
 
-/// clice/internal/gate: park the work of the next request named so in its
-/// worker (BuildProbe::gate). `request` is the worker request's name as its
-/// crash tag spells it ("compile", "completion", "query:Hover", "tuRun").
+/// clice/internal/gate — TEST-ONLY, present while project.test_hooks is on.
+/// Parks the work of the next request named `request` for the file in its
+/// worker, where the work starts: the worker is busy with it (see
+/// BuildProbe::gate). `request` is the worker request's name as its crash
+/// tag spells it ("compile", "completion", "signatureHelp", "format",
+/// "buildPch", "tuRun", "query:Hover"). The reply is a hold id:
+/// clice/internal/held announces the park, clice/internal/release lets the
+/// work go on.
 struct GateParams {
     std::string request;
     std::string uri;

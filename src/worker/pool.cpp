@@ -188,11 +188,8 @@ void WorkerPool::install_evict_handler(WorkerProcess& worker, std::size_t index)
 }
 
 void WorkerPool::install_gate_handler(WorkerProcess& worker) {
-    worker.peer->on_notification([this](const worker::GateParkedParams& params) {
-        if(probe) {
-            probe->gate_parked(params.id);
-        }
-    });
+    worker.peer->on_notification(
+        [this](const worker::GateParkedParams& params) { probe->gate_parked(params.id); });
 }
 
 bool WorkerPool::spawn_worker(bool stateful) {

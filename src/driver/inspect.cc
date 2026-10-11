@@ -55,10 +55,9 @@ struct InspectOptions {
 
     DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
                  names = {"--markers", "--markers="},
-                 help =
-                     "JSON file of the markers in the inspected source file, at byte "
-                     "offsets: {\"points\": {\"name\": 12}, \"ranges\": {\"name\": "
-                     "{\"begin\": 3, \"end\": 7}}}; results are keyed by these names",
+                 help = R"(JSON file of the markers in the inspected source file, at byte )"
+                        R"(offsets: {"points": {"name": 12}, "ranges": {"name": )"
+                        R"({"begin": 3, "end": 7}}}; results are keyed by these names)",
                  required = false)
     <std::string> markers;
 
@@ -119,18 +118,13 @@ struct FileEntry {
     std::optional<std::vector<std::string>> diagnostics;
 };
 
-struct MarkerRange {
-    std::uint32_t begin;
-    std::uint32_t end;
-};
-
 /// The inspected file's markers, as --markers gives them.
 struct FileMarkers {
     KOTATSU_ANNOTATE(defaulted = true)
     <std::map<std::string, std::uint32_t>> points;
 
     KOTATSU_ANNOTATE(defaulted = true)
-    <std::map<std::string, MarkerRange>> ranges;
+    <std::map<std::string, LocalSourceRange>> ranges;
 };
 
 /// `files` keys are POSIX-style paths relative to the input directory (the
@@ -858,6 +852,10 @@ int run_inspect(const InspectOptions& opts) {
             LOG_ERROR("invalid --markers: {}", result.error().message);
             return 1;
         }
+        if(marked->points.contains("") || marked->ranges.contains("")) {
+            LOG_ERROR("--markers gives every marker a name");
+            return 1;
+        }
         // A selection feature answers points and ranges under one name each.
         for(const auto& name: marked->points | std::views::keys) {
             if(marked->ranges.contains(name)) {
@@ -961,9 +959,10 @@ int run_inspect(const InspectOptions& opts) {
             };
             const auto& [points, ranges] = *marked;
             if(!std::ranges::all_of(points | std::views::values, inside) ||
-               !std::ranges::all_of(ranges | std::views::values, [&](const MarkerRange& range) {
-                   return range.begin <= range.end && inside(range.end);
-               })) {
+               !std::ranges::all_of(ranges | std::views::values,
+                                    [&](const LocalSourceRange& range) {
+                                        return range.begin <= range.end && inside(range.end);
+                                    })) {
                 LOG_ERROR("--markers puts a marker outside the text of {}", rel);
                 return 1;
             }
@@ -971,7 +970,7 @@ int run_inspect(const InspectOptions& opts) {
                 source.offsets[name] = offset;
             }
             for(const auto& [name, range]: ranges) {
-                source.ranges[name] = LocalSourceRange{range.begin, range.end};
+                source.ranges[name] = range;
             }
         }
         FileEntry entry;

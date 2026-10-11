@@ -139,6 +139,10 @@ void IndexPump::pause_indexing() {
     }
 }
 
+void IndexPump::pause_after(std::size_t units) {
+    dispatches_before_pause = units;
+}
+
 void IndexPump::resume_indexing() {
     if(pause_depth > 0)
         pause_depth -= 1;
@@ -274,6 +278,12 @@ kota::task<> IndexPump::run_round_feeder(kota::task_group<>& workers,
 
         dispatched += 1;
         round.inflight += 1;
+        if(dispatches_before_pause > 0) {
+            dispatches_before_pause -= 1;
+            if(dispatches_before_pause == 0) {
+                pause_indexing();
+            }
+        }
         // A member coroutine, not an immediately-invoked capturing lambda:
         // a lambda's captures live in the lambda object, which dies at the
         // end of this statement — anything read after the first suspension

@@ -6,6 +6,7 @@ module;
 
 module clice;
 
+import :compile.diagnostic;
 import :compile.selection;
 import :feature.feature;
 import :index.serialization;
@@ -1930,7 +1931,7 @@ ZEST_CASE(CoAwaitReferencesOperator) {
         namespace std {
         template <typename Ret, typename...>
         struct coroutine_traits {
-            using promise_type = typename Ret::promise_type;
+            §(traits)⟦using promise_type = typename Ret::promise_type⟧;
         };
 
         template <typename = void>
@@ -1962,19 +1963,27 @@ ZEST_CASE(CoAwaitReferencesOperator) {
             std::suspend_never §(operator)⟦§(operator)operator co_await⟧() const;
         };
 
-        Task coro(Awaitable value) {
-            §(await)⟦§(await)co_await value⟧;
-        }
+        §(coro)⟦Task coro(Awaitable value) {
+            §(await)co_await value;
+        }⟧
     )");
 
     ZEXPECT(spelled_in("operator") ==
             std::vector<Spelled>{
                 {"operator co_await", SymbolKind::Operator, {RelationKind::Declaration}},
     });
-    ZEXPECT(spelled_in("await") ==
+    ZEXPECT(spelled_in("traits") ==
             std::vector<Spelled>{
-                {"co_await", SymbolKind::Operator,  {RelationKind::Reference}},
-                {"value",    SymbolKind::Parameter, {RelationKind::Reference}},
+                {"promise_type", SymbolKind::Type, {RelationKind::Definition}},
+                {"Ret",          SymbolKind::Type, {RelationKind::Reference} },
+    });
+    ZEXPECT(spelled_in("coro") == std::vector<Spelled>{
+                                      {"Task",      SymbolKind::Struct,    {RelationKind::Reference} },
+                                      {"coro",      SymbolKind::Function,  {RelationKind::Definition}},
+                                      {"Awaitable", SymbolKind::Struct,    {RelationKind::Reference} },
+                                      {"value",     SymbolKind::Parameter, {RelationKind::Definition}},
+                                      {"co_await",  SymbolKind::Operator,  {RelationKind::Reference} },
+                                      {"value",     SymbolKind::Parameter, {RelationKind::Reference} },
     });
     auto keyword = select("await");
     auto declaration = select("operator");
@@ -2000,6 +2009,9 @@ ZEST_CASE(InvalidBindingKeepsFile) {
         }
     )");
 
+    ZEXPECT(std::ranges::any_of(unit->diagnostics(), [](const Diagnostic& diagnostic) {
+        return diagnostic.id.level >= DiagnosticLevel::Error;
+    }));
     ZEXPECT(spelled_in("broken") == std::vector<Spelled>{
                                         {"a", SymbolKind::Variable, {RelationKind::Definition}},
                                         {"b", SymbolKind::Variable, {RelationKind::Definition}},
@@ -2014,15 +2026,18 @@ ZEST_CASE(InvalidBindingKeepsFile) {
     });
 }
 
-ZEST_CASE(MacroSpelledNameFirstToken) {
+ZEST_CASE(MacroNameFirstToken) {
     build_index(R"(
-        #define NAME Widget
+        #define §(macro)⟦NAME⟧ Widget
 
         struct Widget {
             §(destructor)⟦~NAME()⟧;
         };
     )");
 
+    ZEXPECT(spelled_in("macro") == std::vector<Spelled>{
+                                       {"NAME", SymbolKind::Macro, {RelationKind::Definition}},
+    });
     ZEXPECT(spelled_in("destructor") == std::vector<Spelled>{
                                             {"~",    SymbolKind::Method, {RelationKind::Declaration}},
                                             {"NAME", SymbolKind::Macro,  {RelationKind::Reference}  },
@@ -2064,7 +2079,7 @@ ZEST_CASE(OccurrenceCoverage) {
             return §(offsetof)⟦__builtin_offsetof(S, field)⟧;
         }
 
-        int §(literal_operator)⟦operator""_unit⟧(unsigned long long value);
+        int §(literal_operator)⟦operator""_unit(unsigned long long value)⟧;
 
         int literal() {
             return §(literal)⟦12_unit⟧;
@@ -2096,7 +2111,7 @@ ZEST_CASE(OccurrenceCoverage) {
         struct Property {
             int get_value();
             void put_value(int);
-            __declspec(property(get = get_value, put = put_value)) §(property)⟦int value⟧;
+            §(property)⟦__declspec(property(get = get_value, put = put_value)) int value⟧;
         };
 
         int property(Property p) {
@@ -2120,7 +2135,8 @@ ZEST_CASE(OccurrenceCoverage) {
     });
     ZEXPECT(spelled_in("literal_operator") ==
             std::vector<Spelled>{
-                {R"(operator""_unit)", SymbolKind::Function, {RelationKind::Declaration}},
+                {R"(operator""_unit)", SymbolKind::Function,  {RelationKind::Declaration}},
+                {"value",              SymbolKind::Parameter, {RelationKind::Definition} },
     });
     ZEXPECT(spelled_in("literal") ==
             std::vector<Spelled>{
@@ -2174,15 +2190,15 @@ ZEST_CASE(UnnamedDeclarationsUnrecorded) {
         };
 
         int use() {
-            §(binding)⟦auto [left, right] = Pair{}⟧;
-            return left + right;
+            §(binding)⟦auto [left, right] = Pair{};
+            return left + right⟧;
         }
 
-        template <class T>
+        §(pack)⟦template <class T>
         int pack(T source) {
-            §(pack)⟦auto [... elements] = source⟧;
+            auto [... elements] = source;
             return (elements + ...);
-        }
+        }⟧
 
         §(template_template)⟦template <template <class> class TT>
         struct Holder⟧;
@@ -2199,12 +2215,19 @@ ZEST_CASE(UnnamedDeclarationsUnrecorded) {
                 {"left",  SymbolKind::Variable, {RelationKind::Definition}},
                 {"right", SymbolKind::Variable, {RelationKind::Definition}},
                 {"Pair",  SymbolKind::Struct,   {RelationKind::Reference} },
+                {"left",  SymbolKind::Variable, {RelationKind::Reference} },
+                {"right", SymbolKind::Variable, {RelationKind::Reference} },
     });
     ZEXPECT(spelled_in("pack") ==
             std::vector<Spelled>{
+                {"T",        SymbolKind::Type,      {RelationKind::Definition}},
+                {"pack",     SymbolKind::Function,  {RelationKind::Definition}},
+                {"T",        SymbolKind::Type,      {RelationKind::Reference} },
+                {"source",   SymbolKind::Parameter, {RelationKind::Definition}},
                 {"auto",     SymbolKind::Type,      {RelationKind::Deduced}   },
                 {"elements", SymbolKind::Variable,  {RelationKind::Definition}},
                 {"source",   SymbolKind::Parameter, {RelationKind::Reference} },
+                {"elements", SymbolKind::Variable,  {RelationKind::Reference} },
     });
     ZEXPECT(spelled_in("template_template") ==
             std::vector<Spelled>{

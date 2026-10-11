@@ -831,11 +831,22 @@ private:
     friend struct testing::WorkerPoolFixture;
 };
 
-/// The build a request carries, as the probe counts it: its kind and file;
-/// none for the other requests.
-template <typename Params>
-std::optional<std::pair<BuildKind, llvm::StringRef>> probed_build(const Params& params) {
+/// The build a worker ran to its end, as the probe counts it: its kind and
+/// file. The request reached the worker, and it answered or died running
+/// it; a build the master withdrew — preempted, superseded — comes back
+/// cancelled whatever the worker had done, or as a compile the worker
+/// stopped. None for the other requests.
+template <typename Params, typename Result>
+std::optional<std::pair<BuildKind, llvm::StringRef>> ran_build(const Params& params,
+                                                               const Result& result,
+                                                               bool sent) {
+    if(!sent || (!result.has_value() && result.error().code == worker::dispatch_errc::cancelled)) {
+        return std::nullopt;
+    }
     if constexpr(std::same_as<Params, worker::CompileParams>) {
+        if(result.has_value() && result->status == worker::CompileStatus::Cancelled) {
+            return std::nullopt;
+        }
         return std::pair{BuildKind::Compile, llvm::StringRef(params.path)};
     } else if constexpr(std::same_as<Params, worker::BuildPCHParams>) {
         return std::pair{BuildKind::PCH, llvm::StringRef(params.file)};
@@ -848,31 +859,13 @@ std::optional<std::pair<BuildKind, llvm::StringRef>> probed_build(const Params& 
     }
 }
 
-/// Whether a worker ran the build to its end: the request reached it, and it
-/// answered or died running it. A request the master withdrew — preempted,
-/// superseded — comes back cancelled whatever the worker had done, or as a
-/// compile the worker stopped.
-template <typename Params, typename Result>
-bool build_ran(const Result& result, bool sent) {
-    if(!sent) {
-        return false;
-    }
-    if(!result.has_value()) {
-        return result.error().code != worker::dispatch_errc::cancelled;
-    }
-    if constexpr(std::same_as<Params, worker::CompileParams>) {
-        return result->status != worker::CompileStatus::Cancelled;
-    }
-    return true;
-}
-
 template <typename Params>
 RequestResult<Params> WorkerPool::send_stateful(std::uint32_t path_id,
                                                 const Params& params,
                                                 kota::ipc::request_options opts) {
     bool sent = false;
     auto result = co_await dispatch_stateful(path_id, params, std::move(opts), sent);
-    if(auto build = probed_build(params); build && probe && build_ran<Params>(result, sent)) {
+    if(auto build = ran_build(params, result, sent); build && probe) {
         co_await probe->returned(build->first, build->second);
     }
     co_return std::move(result);
@@ -884,7 +877,7 @@ RequestResult<Params> WorkerPool::send_stateless(const Params& params,
                                                  kota::cancellation_token cancel) {
     bool sent = false;
     auto result = co_await dispatch_stateless(params, priority, std::move(cancel), sent);
-    if(auto build = probed_build(params); build && probe && build_ran<Params>(result, sent)) {
+    if(auto build = ran_build(params, result, sent); build && probe) {
         co_await probe->returned(build->first, build->second);
     }
     co_return std::move(result);
@@ -922,10 +915,11 @@ RequestResult<Params> WorkerPool::dispatch_stateful(std::uint32_t path_id,
     auto death = assigned.death;
     sent = true;
     Dispatch dispatch(*this, idx, true, worker::crash_tag(params), worker::is_build<Params>);
-    if(probe) {
-        probe->sending(dispatch.tag, peer);
-    }
+    auto gate = probe ? probe->sending(dispatch.tag, peer) : std::nullopt;
     auto result = co_await peer->send_request(params, opts);
+    if(gate) {
+        probe->answered(*gate);
+    }
     if(result.has_value() || !worker::is_transport_error(result.error()))
         co_return std::move(result);
 
@@ -997,10 +991,11 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
 
     sent = true;
     Dispatch dispatch(*this, idx, false, worker::crash_tag(params), worker::is_build<Params>);
-    if(probe) {
-        probe->sending(dispatch.tag, peer);
-    }
+    auto gate = probe ? probe->sending(dispatch.tag, peer) : std::nullopt;
     auto result = co_await peer->send_request(params, {.token = preempt_src->token()});
+    if(gate) {
+        probe->answered(*gate);
+    }
     // The worker link broke mid-request: declare the slot dead now so a
     // caller-side retry cannot land on the same corpse before the monitor
     // observed the exit. This must precede the cancel classification — a

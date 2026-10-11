@@ -155,6 +155,18 @@ ZEST_CASE(gate_park_announced) {
     ZEXPECT(held.size() == 1u);
 }
 
+ZEST_CASE(answer_drops_unreached_gate) {
+    // A request that came back before its work reached the gate drops the
+    // gate; one whose work parked keeps it until the release.
+    auto unreached = probe.gate("clice/worker/format /w/a.cpp");
+    auto parked = probe.gate("clice/worker/compile /w/a.cpp");
+    probe.gate_parked(parked);
+    probe.answered(unreached);
+    probe.answered(parked);
+    ZEXPECT(probe.gates().size() == 1u);
+    ZEXPECT(probe.gates().front().id == parked);
+}
+
 };  // ZEST_SUITE(BuildProbe)
 
 }  // namespace
