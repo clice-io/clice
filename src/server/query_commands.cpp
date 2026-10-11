@@ -163,18 +163,48 @@ Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQu
     return std::move(candidates->front());
 }
 
+/// Hold a name query to the whole name: a near match is no symbol to act
+/// on, and a pattern names many. False for a pattern.
+bool hold_to_whole_name(index::SymbolQuery& locator) {
+    using Mode = index::SymbolQuery::Mode;
+    if(!locator.by_pattern() || locator.mode == Mode::Exact) {
+        return true;
+    }
+    if(locator.mode == Mode::Fuzzy) {
+        locator.mode = Mode::Exact;
+        return true;
+    }
+    return false;
+}
+
+/// Whether the symbols are the overloads of one scope. One of internal
+/// linkage shares a scope only within its file — two units' `static`
+/// helpers are no overload set.
+bool one_overload_set(llvm::ArrayRef<const index::IndexQuery::Located*> symbols) {
+    auto& first = *symbols.front();
+    auto overloaded = [&](const index::IndexQuery::Located* located) {
+        auto& symbol = located->symbol;
+        return (symbol.kind == SymbolKind::Function || symbol.kind == SymbolKind::Method) &&
+               symbol.parent == first.symbol.parent;
+    };
+    auto internal = [](const index::IndexQuery::Located* located) {
+        return located->symbol.scope != index::SymbolScope::External;
+    };
+    auto one_file = [&](const index::IndexQuery::Located* located) {
+        return located->site.file == first.site.file;
+    };
+    return llvm::all_of(symbols, overloaded) &&
+           (llvm::none_of(symbols, internal) || llvm::all_of(symbols, one_file));
+}
+
 /// The rename target of the symbols a locator names: one symbol's, or,
 /// for a name the overloads of one scope spell, all of theirs — renamed
 /// together, a call a template leaves open between them stays theirs.
 Outcome<index::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
-    using Mode = index::SymbolQuery::Mode;
-    bool by_pattern = locator.by_pattern();
-    // A near match is no symbol to rewrite a workspace for.
-    if(by_pattern && locator.mode == Mode::Fuzzy) {
-        locator.mode = Mode::Exact;
-    } else if(by_pattern && locator.mode != Mode::Exact) {
+    if(!hold_to_whole_name(locator)) {
         return std::unexpected("a rename names its symbol by its whole name, not by a pattern");
     }
+    bool by_pattern = locator.by_pattern();
     auto candidates = resolve(ctx, std::move(locator));
     if(!candidates) {
         return std::unexpected(candidates.error());
@@ -195,24 +225,14 @@ Outcome<index::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator)
             targets.push_back(std::move(*target));
         }
     }
-    // Overloads share a scope; one of internal linkage shares it only
-    // within its file — two units' `static` helpers are no overload set.
-    auto& first = targets.front().symbol;
-    auto overloaded = [&](const index::RenameTarget& target) {
-        auto& symbol = target.symbol.symbol;
-        return (symbol.kind == SymbolKind::Function || symbol.kind == SymbolKind::Method) &&
-               symbol.parent == first.symbol.parent;
-    };
-    auto internal = [](const index::RenameTarget& target) {
-        return target.symbol.symbol.scope != index::SymbolScope::External;
-    };
-    auto one_file = [&](const index::RenameTarget& target) {
-        return target.symbol.site.file == first.site.file;
-    };
-    bool overloads = by_pattern && llvm::all_of(targets, overloaded) &&
-                     (llvm::none_of(targets, internal) || llvm::all_of(targets, one_file));
-    if(targets.size() > 1 && !overloads) {
-        return ambiguous(ctx, *candidates);
+    if(targets.size() > 1) {
+        llvm::SmallVector<const index::IndexQuery::Located*> roots;
+        for(auto& target: targets) {
+            roots.push_back(&target.symbol);
+        }
+        if(!by_pattern || !one_overload_set(roots)) {
+            return ambiguous(ctx, *candidates);
+        }
     }
     auto merged = std::move(targets.front());
     for(auto& other: llvm::drop_begin(targets)) {
@@ -680,6 +700,29 @@ Outcome<CallGraphResult> call_graph(Context& ctx,
         .callers = graph_entries(graph.callers),
         .callees = graph_entries(graph.callees),
     };
+}
+
+Outcome<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQuery locator) {
+    if(!hold_to_whole_name(locator)) {
+        return std::unexpected("a declaration is named by its whole name, not by a pattern");
+    }
+    bool by_pattern = locator.by_pattern();
+    auto candidates = resolve(ctx, std::move(locator));
+    if(!candidates) {
+        return std::unexpected(candidates.error());
+    }
+    llvm::SmallVector<const index::IndexQuery::Located*> symbols;
+    for(auto& candidate: *candidates) {
+        symbols.push_back(&candidate);
+    }
+    if(symbols.size() > 1 && (!by_pattern || !one_overload_set(symbols))) {
+        return ambiguous(ctx, *candidates);
+    }
+    std::vector<index::SymbolHash> hashes;
+    for(auto& candidate: *candidates) {
+        hashes.push_back(candidate.symbol.hash);
+    }
+    return hashes;
 }
 
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,

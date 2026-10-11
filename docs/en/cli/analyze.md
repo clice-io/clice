@@ -16,7 +16,7 @@ Every file in the scope belongs to a module, by default its directory. A module 
 - `--depth <n>` names a file's default module by the first `n` segments of its directory instead of all of them.
 - `--partition <file>` assigns modules by globs, first match wins: `{"modules": [{"name": "core", "files": ["src/support/**", "src/vfs/**"]}]}`. Files no glob claims keep their directory module. For the `interface` view and [modularize](./modularize.md), `"textual": true` keeps a module headers, `"external": true` marks one an existing module stands for (the standard library), and `"provides": "std.compat"` names the module exporting a module's names, read from the libc++ module sources `--std <dir>` names.
 - `--move <path>=<module>,...` and `--merge <module>+<module>[+...],...` evaluate a hypothetical change without making it.
-- `--move-entity <name>=<header>,...` evaluates moving a declaration, with its members and what their definitions name, to another header, existing or new; `#<id>` from the `edge` view picks one of several overloads.
+- `--move-entity <locator>=<header>` evaluates moving a declaration, with its members and what their definitions name, to another header, existing or new; repeat it for several moves. The [locator](./query.md#locators) names the declaration by its whole name: a function's overloads in one scope move together, `#<id>` from the `edge` view picks one of them, and a name several scopes spell is an error listing the candidates.
 - `--annotation <file>,...` and `--churn-since <date>` weigh the results; see [annotations](#annotations).
 - `--view <view>` chooses the answer, `overview` by default.
 

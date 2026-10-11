@@ -473,6 +473,32 @@ test("hypothetical partitions", async ({ session }) => {
         expect.arrayContaining(["Str", "length"]),
     );
     expect(edge(carried, "core", "meta")?.sample).toContain("Clock");
+
+    // Each repetition is one more move.
+    const one = (await analyze(ws, "--move-entity", "twice=core/twice.h")) as Overview;
+    expect(edge(one, "core", "util")?.sample).toContain("Clock");
+    const both = (await analyze(
+        ws,
+        "--move-entity",
+        "twice=core/twice.h",
+        "--move-entity",
+        "kind:struct,class Clock=core/clock.h",
+    )) as Overview;
+    expect(edge(both, "core", "util")?.sample ?? []).not.toEqual(expect.arrayContaining(["Clock"]));
+    expect(edge(both, "core", "util")?.sample ?? []).not.toEqual(expect.arrayContaining(["twice"]));
+
+    const failed = await runClice(
+        "analyze",
+        "modules",
+        "--workspace",
+        ws.root,
+        "--move-entity",
+        "Traits=core/traits2.h",
+    );
+    expect(failed.status).toBe(1);
+    const failure = JSON.parse(failed.stdout) as { error: string; candidates: unknown[] };
+    expect(failure.error).toMatch(/^--move-entity Traits=core\/traits2\.h: ambiguous/);
+    expect(failure.candidates.length).toBeGreaterThan(1);
 });
 
 test("partition files and limits", async ({ session }) => {

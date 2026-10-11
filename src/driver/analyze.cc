@@ -10,6 +10,12 @@ import :analysis.annotation;
 import :analysis.module_graph;
 import :analysis.wrapping;
 import :driver.driver;
+import :index.query;
+import :index.symbol_query;
+import :project.command_resolver;
+import :project.project;
+import :server.editor_context;
+import :server.query_commands;
 import :support.text;
 
 namespace clice::driver {
@@ -99,9 +105,9 @@ struct ModulesOptions {
 
     DecoKV(names = {"--move-entity", "--move-entity="},
            style = KVStyle::JoinedOrSeparate,
-           help = "Comma-separated hypothetical declaration moves: <name or #id>=<header>",
+           help = "A hypothetical declaration move: <locator>=<header>",
            required = false)
-    <std::string> move_entity;
+    <std::vector<std::string>> move_entity;
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help =
@@ -147,20 +153,51 @@ int run_modules(const ModulesOptions& opts) {
     if(!spec) {
         return fail(spec.error());
     }
+    std::vector<query::SymbolEntry> candidates;
+    auto move = [&](Project& project,
+                    CommandResolver& commands,
+                    analysis::Facts& facts) -> std::expected<void, std::string> {
+        ContextsBlob saved;
+        EditorContext contexts{project, commands, saved};
+        index::IndexQuery index_query(project.project_index, project.file_table, nullptr, nullptr);
+        query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
+        for(llvm::StringRef spec: opts.move_entity.value_or(std::vector<std::string>{})) {
+            auto [text, path] = spec.rsplit('=');
+            if(text.empty() || path.empty()) {
+                return std::unexpected(std::format("--move-entity {}: expected <locator>=<header>",
+                                                   std::string_view(spec)));
+            }
+            auto locator = index::SymbolQuery::parse(text);
+            if(!locator) {
+                return std::unexpected(
+                    std::format("--move-entity {}: {}", std::string_view(spec), locator.error()));
+            }
+            auto symbols = query::declaration(ctx, std::move(*locator));
+            if(!symbols) {
+                candidates = std::move(ctx.candidates);
+                return std::unexpected(
+                    std::format("--move-entity {}: {}", std::string_view(spec), symbols.error()));
+            }
+            if(auto moved = analysis::move_entities(facts, spec, *symbols, path); !moved) {
+                return moved;
+            }
+        }
+        return {};
+    };
     auto loaded = analysis::load_facts(workspace_spelling(opts.workspace.value_or("")),
                                        opts.configuration.value_or(""),
-                                       comma_list(opts.scope.value_or("")));
+                                       comma_list(opts.scope.value_or("")),
+                                       move);
     if(!loaded) {
-        print_json(Failure{.error = std::move(loaded.error().message),
-                           .stale = std::move(loaded.error().dropped)});
+        Failure failure{.error = std::move(loaded.error().message),
+                        .stale = std::move(loaded.error().dropped)};
+        if(!candidates.empty()) {
+            failure.candidates = std::move(candidates);
+        }
+        print_json(failure);
         return 1;
     }
     auto& facts = loaded->facts;
-    for(auto& move: comma_list(opts.move_entity.value_or(""))) {
-        if(auto moved = analysis::move_entities(facts, move); !moved) {
-            return fail(moved.error());
-        }
-    }
     auto partition = analysis::partition(facts, *spec);
     if(!partition) {
         return fail(partition.error());

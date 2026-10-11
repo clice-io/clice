@@ -1366,7 +1366,8 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
 
 std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
                                                  llvm::StringRef configuration,
-                                                 llvm::ArrayRef<std::string> scope) {
+                                                 llvm::ArrayRef<std::string> scope,
+                                                 FactsEdit edit) {
     std::vector<kota::GlobPattern> globs;
     for(auto& pattern: scope) {
         auto glob = kota::GlobPattern::create(pattern);
@@ -1405,27 +1406,28 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
         return !llvm::sys::path::is_absolute(path) && !path.starts_with(".") &&
                !path.contains("/.");
     });
+    if(edit) {
+        if(auto edited = edit(project, commands, facts); !edited) {
+            return std::unexpected(LoadError{.message = std::move(edited.error())});
+        }
+    }
     return LoadedFacts{.root = llvm::StringRef(root).str(), .facts = std::move(facts)};
 }
 
-std::expected<void, std::string> move_entities(Facts& facts, llvm::StringRef spec) {
-    auto [selector, path] = spec.rsplit('=');
-    if(selector.empty() || path.empty()) {
-        return std::unexpected(
-            std::format("--move-entity {}: expected <name or #id>=<path>", std::string_view(spec)));
-    }
+std::expected<void, std::string> move_entities(Facts& facts,
+                                               llvm::StringRef spec,
+                                               llvm::ArrayRef<index::SymbolHash> symbols,
+                                               llvm::StringRef path) {
     llvm::SmallVector<std::uint32_t> selected;
-    auto hash = index::parse_symbol_id(selector);
     for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
         auto& info = facts.entities[entity];
-        if(info.kind != SymbolKind::Macro && (hash ? info.hash == *hash : info.name == selector)) {
+        if(info.kind != SymbolKind::Macro && llvm::is_contained(symbols, info.hash)) {
             selected.push_back(entity);
         }
     }
     if(selected.empty()) {
-        return std::unexpected(std::format("--move-entity {}: no entity {}",
-                                           std::string_view(spec),
-                                           std::string_view(selector)));
+        return std::unexpected(
+            std::format("--move-entity {}: no entity in scope", std::string_view(spec)));
     }
     // A member moves with its class.
     for(auto& entity: selected) {

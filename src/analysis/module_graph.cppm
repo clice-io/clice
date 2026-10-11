@@ -11,9 +11,10 @@ import :vfs.path;
 
 namespace clice {
 
+class CommandResolver;
 struct Project;
 
-}
+}  // namespace clice
 
 namespace clice::analysis {
 
@@ -286,13 +287,19 @@ struct LoadError {
     std::vector<std::string> dropped;
 };
 
+/// Changes the facts while the index they were read from is still open,
+/// for what only the index can resolve: the symbols a locator names.
+using FactsEdit =
+    llvm::function_ref<std::expected<void, std::string>(Project&, CommandResolver&, Facts&)>;
+
 /// The facts of the files the `scope` globs select out of the index of
 /// `workspace` (default: the workspace's own files outside dot
-/// directories), and the workspace root; none from an index that lacks a
-/// unit.
+/// directories), after `edit`, and the workspace root; none from an index
+/// that lacks a unit.
 std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
                                                  llvm::StringRef configuration,
-                                                 llvm::ArrayRef<std::string> scope);
+                                                 llvm::ArrayRef<std::string> scope,
+                                                 FactsEdit edit = {});
 
 /// What a module is to the program a partition wraps.
 enum class ModuleKind : std::uint8_t {
@@ -385,10 +392,13 @@ bool is_keyword(llvm::StringRef word);
 /// directory.
 bool is_module_name(llvm::StringRef name);
 
-/// Move the entities a `<name or #id>=<path>` spec selects, with their
-/// members, to another header, existing or hypothetical: what the move
-/// of a declaration would do to the graph, without making it.
-std::expected<void, std::string> move_entities(Facts& facts, llvm::StringRef spec);
+/// Move the entities of `symbols`, with their members, to the header
+/// `path`, existing or hypothetical: what the move of a declaration would
+/// do to the graph, without making it. `spec` names the move in errors.
+std::expected<void, std::string> move_entities(Facts& facts,
+                                               llvm::StringRef spec,
+                                               llvm::ArrayRef<index::SymbolHash> symbols,
+                                               llvm::StringRef path);
 
 struct ModuleSummary {
     std::string name;
